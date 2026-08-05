@@ -1,0 +1,30 @@
+# Lefthook — local enforcement of the ruse change workflow, mirroring CI.
+# Install once (per clone):  lefthook install   (get it with `brew install lefthook` etc.)
+# The commit-message convention and required checks are defined in
+# docs/operations/github-workflow.md §8 and CONTRIBUTING.md — these hooks enforce them.
+
+# Validate the commit subject against the ruse type set (spec|rfc|feat|fix|refactor|
+# test|bench|docs|build|chore). {1} is the path to the commit-message file.
+commit-msg:
+  commands:
+    conventional-type:
+      run: python3 tools/lint-commit-msg.py {1}
+
+# Fast gates on every commit. glob'd commands run only when matching files are staged.
+pre-commit:
+  parallel: true
+  commands:
+    spec-validate:
+      run: python3 tools/spec-validate.py
+    docs-check:
+      glob: "{docs,spec}/**/*.md"
+      run: python3 tools/docs/check.py
+    rustfmt:
+      glob: "*.rs"
+      run: cargo fmt --all --check
+
+# The heavier, complete gate before sharing — same as `ruse verify --full`.
+pre-push:
+  commands:
+    verify-full:
+      run: python3 tools/ruse.py verify --full

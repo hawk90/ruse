@@ -82,6 +82,20 @@ cargo test --workspace
 
 CI enforces these; run them locally before pushing.
 
+## Git hooks (Lefthook)
+
+Local enforcement mirrors CI so mistakes fail fast. Install once per clone:
+
+```
+brew install lefthook   # or your package manager
+lefthook install
+```
+
+Then: **commit-msg** validates the subject against the type set above
+([`tools/lint-commit-msg.py`](tools/lint-commit-msg.py)); **pre-commit** runs `spec-validate` + `docs check`
+(and `cargo fmt --all --check` when `*.rs` is staged); **pre-push** runs `ruse verify --full`. Config:
+[`lefthook.yml`](lefthook.yml). Hooks are a convenience — CI remains the enforcement of record.
+
 ## New dependency?
 
 Follow the dependency policy — do not add a crate ad hoc:
