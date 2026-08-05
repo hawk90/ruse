@@ -59,15 +59,28 @@ ARCH = set(re.findall(r"\b(ARCH-[A-Z]+-\d+)\b", read("spec/ARCHITECTURE.md")))
 FEAT = set((prd.get("features") or {}).keys())
 COMP = set((prd.get("components") or {}).keys())
 
-# anti-pattern catalog: `## CODE — Name` (ALL-CAPS code) then a numbered list gives CODE-1..CODE-N
+# anti-pattern catalog: `## CODE — Name` (ALL-CAPS code) then a numbered list gives CODE-1..CODE-N.
+# Each item must carry a severity tier `[P0]..[P3]` right after the `N. ` marker (reuses review-axes tiers;
+# keeps the catalog filterable and prevents new items from landing untiered). Any non-category `## ` heading
+# (e.g. "Critical-15", "Priorities") resets `cur` so its illustrative numbered lists are not counted.
 AP = {}  # category -> count
+AP_TIER = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+ap_untagged = []
 cur = None
 for line in read("docs/anti-patterns/anti-patterns.md").splitlines():
-    m = re.match(r"^## ([A-Z0-9][A-Z0-9-]+) — ", line)  # em-dash
-    if m:
-        cur = m.group(1); AP.setdefault(cur, 0); continue
+    if line.startswith("## "):
+        m = re.match(r"^## ([A-Z0-9][A-Z0-9-]+) — ", line)  # em-dash; ALL-CAPS category code only
+        cur = m.group(1) if m else None
+        if m: AP.setdefault(cur, 0)
+        continue
     if cur and re.match(r"^\d+\.\s", line):
         AP[cur] += 1
+        t = re.match(r"^\d+\.\s+\[(P[0-3])\]", line)
+        if t: AP_TIER[t.group(1)] += 1
+        else: ap_untagged.append(f"{cur}-{AP[cur]}")
+if ap_untagged:
+    err(f"anti-patterns: {len(ap_untagged)} item(s) missing a [P0-3] severity tag: "
+        f"{ap_untagged[:8]}{' ...' if len(ap_untagged) > 8 else ''}")
 def ap_ok(ref):
     m = re.match(r"^([A-Z0-9-]+)-(\d+)$", ref)
     if not m: return False
@@ -191,10 +204,28 @@ for f in mdfiles:
         if not os.path.exists(os.path.normpath(os.path.join(base, link))):
             err(f"{f}: broken link -> {link}")
 
+# ---------- 8. review-axes catalog (single verification entry point — RA-CICD-002) ----------
+RA_COUNT = 0
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+try:
+    import review_axes as _ra
+    _cat = _ra.load_catalog(os.path.join(ROOT, _ra.CATALOG))
+    _e, _w = _ra.validate_catalog(_cat)
+    for e in _e: err(f"review-axes: {e}")
+    for w in _w: warn(f"review-axes: {w}")
+    RA_COUNT = sum(1 for _ in _ra.iter_axes(_cat))
+except FileNotFoundError:
+    warn("review-axes: spec/review-axes.yaml not found (skipped)")
+except Exception as e:
+    err(f"review-axes: could not validate ({e})")
+
 # ---------- report ----------
 print(f"registries: INV={len(INV)} ENG={len(ENG)} D={len(D)} ARCH={len(ARCH)} "
       f"F={len(FEAT)} C={len(COMP)} CAP={len(CAP)} DEP={len(DEP)} "
-      f"anti-pattern-categories={len(AP)} glossary-terms={len(gloss.get('terms',{}))}")
+      f"anti-pattern-categories={len(AP)} glossary-terms={len(gloss.get('terms',{}))} "
+      f"review-axes={RA_COUNT}")
+print(f"anti-pattern severity: P0={AP_TIER['P0']} P1={AP_TIER['P1']} P2={AP_TIER['P2']} P3={AP_TIER['P3']} "
+      f"(total {sum(AP_TIER.values())})")
 print(f"md files checked: {len(mdfiles)}")
 for w in warnings: print("WARN:", w)
 if errors:

@@ -1,0 +1,741 @@
+# Review Axes — ruse's inspection rubric (the durable form of the "검사 축" catalog).
+#
+# WHAT THIS IS: a machine-checkable catalog of the dimensions a review of ruse should cover. It captures the
+# *questions* (definitions), not the *answers*. A point-in-time assessment of these axes lives in a dated
+# report under docs/reviews/ (one fact, one home) — never inline here.
+#
+# METHOD (how an axis is assessed — be honest about enforcement, per RA-RUSE-001):
+#   machine = a tool/test/CI gate can decide it        llm    = an LLM rubric can assess it from the repo
+#   manual  = needs human judgement                    mixed  = partly automatable, partly judgement
+# TIER (review priority):
+#   P0 = ruse-critical, check first (the RUSE domain)  P1 = core correctness/architecture
+#   P2 = quality                                       P3 = long-horizon / polish
+#
+# Each domain sets default_method/default_tier; an axis overrides with its own `method:`/`tier:` when needed.
+# IDs are stable: RA-<DOMAIN>-NNN. Never rename or renumber an id (RA-LLM-013). `refs:` cross-link related
+# axes; `q:` (RUSE only) is the sharpened assessment question. Adding an axis = one line. This catalog is
+# itself validated by `spec-validate` (dogfood: the review system reviews itself).
+#
+# Run:  python3 tools/review_axes.py --stats | --list --tier P0 | --json
+version: 1
+
+methods: [machine, llm, manual, mixed]
+tiers:
+  P0: ruse-critical — check first
+  P1: core correctness / architecture
+  P2: quality
+  P3: long-horizon / polish
+
+domains:
+  # ============================================================================================
+  - id: RUSE
+    title: "Ruse-critical cross-cutting priorities (check first)"
+    default_tier: P0
+    default_method: mixed
+    axes:
+      - { id: RA-RUSE-001, title: "Spec vs enforcement gap", method: mixed, refs: [RA-ARCH-037, RA-DOC-018], q: "For every normative rule (POLICY/INV/DECISION), is there a machine gate or test? Enumerate prose-only rules — those are unenforced." }
+      - { id: RA-RUSE-002, title: "Current vs target-state drift", method: mixed, refs: [RA-ARCH-039, RA-LLM-012], q: "Does every doc/spec distinguish 'is' from 'will be', and does code match the 'is'? List claims true only of the target." }
+      - { id: RA-RUSE-003, title: "Management overhead vs product-implementation ratio", method: manual, refs: [RA-PM-029, RA-PM-028], q: "Is the ceremony (specs, workflows, gates) justified by product code shipped? Flag process that outweighs implementation." }
+      - { id: RA-RUSE-004, title: "First vertical slice validates the architecture", method: manual, refs: [RA-ARCH-004, RA-STATE-008, RA-INPUT-001], q: "Can one end-to-end slice (keypress → transaction → document → render) prove the layering before breadth is built?" }
+      - { id: RA-RUSE-005, title: "LLM context completeness · minimality · freshness", method: mixed, refs: [RA-LLM-003, RA-LLM-004, RA-LLM-018], q: "Does the generated agent context carry exactly what's needed, no more, and is it provably current (source hash)?" }
+      - { id: RA-RUSE-006, title: "CI == local verification (single entry point)", method: machine, refs: [RA-CICD-001, RA-CICD-002], q: "Does one command reproduce CETL locally, and does CI run that same command — no drift between the two?" }
+      - { id: RA-RUSE-007, title: "State / authority / process / trust boundaries are explicit", method: llm, refs: [RA-ARCH-009, RA-ARCH-010, RA-ARCH-011, RA-ARCH-012], q: "For each boundary: who owns the state, which process runs it, what is trusted across it? Any implicit boundary is a bug." }
+      - { id: RA-RUSE-008, title: "Command–Transaction–Document–Render path integrity", method: llm, refs: [RA-INPUT-001, RA-STATE-008, RA-RENDER-001], q: "Is the core path single, deterministic, and the only way to mutate? Any bypass (direct edit, side-channel render) breaks it." }
+      - { id: RA-RUSE-009, title: "Plugin & remote fault + security isolation", method: llm, refs: [RA-PLUGIN-007, RA-REMOTE-025, RA-SEC-012], q: "Can a plugin crash/hang or a remote failure never corrupt core state or leak trust? Prove the blast radius is bounded." }
+      - { id: RA-RUSE-010, title: "Requirement → design → code → test traceability", method: mixed, refs: [RA-ARCH-003, RA-TEST-030], q: "Can every requirement be traced to a design, an implementation, and a test — and back? Enumerate breaks in the chain." }
+
+  # ============================================================================================
+  - id: ARCH
+    title: "Architecture & Design"
+    default_tier: P1
+    default_method: llm
+    axes:
+      - { id: RA-ARCH-001, title: "Requirement completeness" }
+      - { id: RA-ARCH-002, title: "Requirement conflicts" }
+      - { id: RA-ARCH-003, title: "Requirement traceability", method: mixed }
+      - { id: RA-ARCH-004, title: "Architecture layer clarity" }
+      - { id: RA-ARCH-005, title: "Module responsibility cohesion" }
+      - { id: RA-ARCH-006, title: "Inter-module coupling" }
+      - { id: RA-ARCH-007, title: "Dependency direction", method: mixed }
+      - { id: RA-ARCH-008, title: "Circular dependencies", method: machine }
+      - { id: RA-ARCH-009, title: "Runtime boundary clarity" }
+      - { id: RA-ARCH-010, title: "Process boundary clarity" }
+      - { id: RA-ARCH-011, title: "Trust boundary clarity" }
+      - { id: RA-ARCH-012, title: "Authority / ownership model" }
+      - { id: RA-ARCH-013, title: "State ownership" }
+      - { id: RA-ARCH-014, title: "Data-flow clarity" }
+      - { id: RA-ARCH-015, title: "Control-flow clarity" }
+      - { id: RA-ARCH-016, title: "Sync / async boundary" }
+      - { id: RA-ARCH-017, title: "Error-propagation model" }
+      - { id: RA-ARCH-018, title: "Cancellation model" }
+      - { id: RA-ARCH-019, title: "Timeout model" }
+      - { id: RA-ARCH-020, title: "Retry model" }
+      - { id: RA-ARCH-021, title: "Recovery model" }
+      - { id: RA-ARCH-022, title: "Idempotency" }
+      - { id: RA-ARCH-023, title: "Determinism" }
+      - { id: RA-ARCH-024, title: "Extensibility" }
+      - { id: RA-ARCH-025, title: "Replaceability" }
+      - { id: RA-ARCH-026, title: "Testability" }
+      - { id: RA-ARCH-027, title: "Observability" }
+      - { id: RA-ARCH-028, title: "Fault isolation" }
+      - { id: RA-ARCH-029, title: "Performance budget", method: mixed }
+      - { id: RA-ARCH-030, title: "Memory budget", method: mixed }
+      - { id: RA-ARCH-031, title: "Compatibility strategy" }
+      - { id: RA-ARCH-032, title: "Migration strategy" }
+      - { id: RA-ARCH-033, title: "Versioning strategy" }
+      - { id: RA-ARCH-034, title: "Public API surface", method: mixed }
+      - { id: RA-ARCH-035, title: "Internal API exposure", method: mixed }
+      - { id: RA-ARCH-036, title: "Invariant definition" }
+      - { id: RA-ARCH-037, title: "Invariant enforcement level", method: mixed }
+      - { id: RA-ARCH-038, title: "ADR / decision-record quality" }
+      - { id: RA-ARCH-039, title: "Current vs target architecture separation" }
+      - { id: RA-ARCH-040, title: "Design ↔ code drift", method: mixed }
+
+  # ============================================================================================
+  - id: STRUCT
+    title: "Codebase Structure"
+    default_tier: P2
+    default_method: mixed
+    axes:
+      - { id: RA-STRUCT-001, title: "Crate size balance", method: machine }
+      - { id: RA-STRUCT-002, title: "Crate split criteria" }
+      - { id: RA-STRUCT-003, title: "Crate naming clarity" }
+      - { id: RA-STRUCT-004, title: "Module depth", method: machine }
+      - { id: RA-STRUCT-005, title: "Module size", method: machine }
+      - { id: RA-STRUCT-006, title: "Over-exposed public modules" }
+      - { id: RA-STRUCT-007, title: "pub scope discipline" }
+      - { id: RA-STRUCT-008, title: "Facade composition" }
+      - { id: RA-STRUCT-009, title: "Shared-code location" }
+      - { id: RA-STRUCT-010, title: "Utility-module bloat" }
+      - { id: RA-STRUCT-011, title: "Type duplication" }
+      - { id: RA-STRUCT-012, title: "Abstraction duplication" }
+      - { id: RA-STRUCT-013, title: "Cyclic-reference workaround patterns" }
+      - { id: RA-STRUCT-014, title: "Vertical (feature) separation" }
+      - { id: RA-STRUCT-015, title: "Horizontal (layer) separation" }
+      - { id: RA-STRUCT-016, title: "Test-code location" }
+      - { id: RA-STRUCT-017, title: "Fixture location" }
+      - { id: RA-STRUCT-018, title: "Generated-code location" }
+      - { id: RA-STRUCT-019, title: "Experimental-code isolation" }
+      - { id: RA-STRUCT-020, title: "Deprecated-code isolation" }
+      - { id: RA-STRUCT-021, title: "Platform-specific code separation" }
+      - { id: RA-STRUCT-022, title: "Feature-flag structure" }
+      - { id: RA-STRUCT-023, title: "Optional-dependency structure" }
+      - { id: RA-STRUCT-024, title: "Example / benchmark / fuzz folder layout" }
+      - { id: RA-STRUCT-025, title: "Source-file naming consistency", method: machine }
+      - { id: RA-STRUCT-026, title: "Directory naming consistency", method: machine }
+
+  # ============================================================================================
+  - id: RUST
+    title: "Rust Design"
+    default_tier: P2
+    default_method: mixed
+    axes:
+      - { id: RA-RUST-001, title: "Ownership-model appropriateness", method: llm }
+      - { id: RA-RUST-002, title: "Unnecessary clone", method: machine }
+      - { id: RA-RUST-003, title: "Unnecessary allocation" }
+      - { id: RA-RUST-004, title: "String ownership choice (String vs &str vs Cow)" }
+      - { id: RA-RUST-005, title: "Lifetime complexity" }
+      - { id: RA-RUST-006, title: "Trait responsibility scope", method: llm }
+      - { id: RA-RUST-007, title: "Trait-object overuse" }
+      - { id: RA-RUST-008, title: "Generic overuse" }
+      - { id: RA-RUST-009, title: "Enum extensibility (non_exhaustive)" }
+      - { id: RA-RUST-010, title: "Error-type hierarchy" }
+      - { id: RA-RUST-011, title: "anyhow vs typed-error boundary" }
+      - { id: RA-RUST-012, title: "unwrap / expect policy", method: machine }
+      - { id: RA-RUST-013, title: "Panic boundary" }
+      - { id: RA-RUST-014, title: "Unsafe-code isolation", method: machine }
+      - { id: RA-RUST-015, title: "Interior-mutability use" }
+      - { id: RA-RUST-016, title: "Global state", method: machine }
+      - { id: RA-RUST-017, title: "Lock scope" }
+      - { id: RA-RUST-018, title: "Lock ordering" }
+      - { id: RA-RUST-019, title: "Deadlock potential", method: llm }
+      - { id: RA-RUST-020, title: "Send / Sync boundary" }
+      - { id: RA-RUST-021, title: "Async-runtime coupling" }
+      - { id: RA-RUST-022, title: "Blocking calls mixed into async", method: machine }
+      - { id: RA-RUST-023, title: "Channel choice" }
+      - { id: RA-RUST-024, title: "Backpressure" }
+      - { id: RA-RUST-025, title: "Cancellation safety" }
+      - { id: RA-RUST-026, title: "Side effects in Drop" }
+      - { id: RA-RUST-027, title: "RAII resource cleanup" }
+      - { id: RA-RUST-028, title: "Serialization stability" }
+      - { id: RA-RUST-029, title: "Public-type semver impact", method: machine }
+      - { id: RA-RUST-030, title: "Feature-combination compilation", method: machine }
+      - { id: RA-RUST-031, title: "MSRV compliance", method: machine }
+      - { id: RA-RUST-032, title: "Clippy policy", method: machine }
+      - { id: RA-RUST-033, title: "Rustdoc completeness", method: machine }
+
+  # ============================================================================================
+  - id: PERF
+    title: "Performance"
+    default_tier: P2
+    default_method: mixed
+    axes:
+      - { id: RA-PERF-001, title: "Startup time", method: machine }
+      - { id: RA-PERF-002, title: "Input latency", method: machine }
+      - { id: RA-PERF-003, title: "Render latency", method: machine }
+      - { id: RA-PERF-004, title: "Frame time", method: machine }
+      - { id: RA-PERF-005, title: "Large-file handling" }
+      - { id: RA-PERF-006, title: "Memory peak", method: machine }
+      - { id: RA-PERF-007, title: "Memory fragmentation" }
+      - { id: RA-PERF-008, title: "Unnecessary copies" }
+      - { id: RA-PERF-009, title: "Buffer reuse" }
+      - { id: RA-PERF-010, title: "Cache locality" }
+      - { id: RA-PERF-011, title: "Data-structure choice" }
+      - { id: RA-PERF-012, title: "String-processing cost" }
+      - { id: RA-PERF-013, title: "Unicode-processing cost" }
+      - { id: RA-PERF-014, title: "Incremental computation" }
+      - { id: RA-PERF-015, title: "Full-recomputation avoidance" }
+      - { id: RA-PERF-016, title: "Render-tree diff cost" }
+      - { id: RA-PERF-017, title: "Command-dispatch cost" }
+      - { id: RA-PERF-018, title: "Undo-recording cost" }
+      - { id: RA-PERF-019, title: "Snapshot-creation cost" }
+      - { id: RA-PERF-020, title: "Plugin-call cost" }
+      - { id: RA-PERF-021, title: "IPC cost" }
+      - { id: RA-PERF-022, title: "Remote-connection latency", method: machine }
+      - { id: RA-PERF-023, title: "LSP message throughput" }
+      - { id: RA-PERF-024, title: "Logging cost" }
+      - { id: RA-PERF-025, title: "Debug-build performance" }
+      - { id: RA-PERF-026, title: "Release optimization settings", method: machine }
+      - { id: RA-PERF-027, title: "Benchmark reproducibility", method: machine }
+      - { id: RA-PERF-028, title: "Performance-regression detection", method: machine }
+      - { id: RA-PERF-029, title: "Performance-budget gate", method: machine }
+
+  # ============================================================================================
+  - id: CONC
+    title: "Concurrency & Runtime"
+    default_tier: P1
+    default_method: llm
+    axes:
+      - { id: RA-CONC-001, title: "Task lifecycle" }
+      - { id: RA-CONC-002, title: "Thread lifecycle" }
+      - { id: RA-CONC-003, title: "Background-worker ownership" }
+      - { id: RA-CONC-004, title: "Shutdown ordering" }
+      - { id: RA-CONC-005, title: "Graceful shutdown" }
+      - { id: RA-CONC-006, title: "Forced termination" }
+      - { id: RA-CONC-007, title: "Task leak" }
+      - { id: RA-CONC-008, title: "Thread leak" }
+      - { id: RA-CONC-009, title: "Handle leak" }
+      - { id: RA-CONC-010, title: "Channel saturation" }
+      - { id: RA-CONC-011, title: "Unbounded queue growth" }
+      - { id: RA-CONC-012, title: "Priority inversion" }
+      - { id: RA-CONC-013, title: "Starvation" }
+      - { id: RA-CONC-014, title: "Race condition" }
+      - { id: RA-CONC-015, title: "Lost wakeup" }
+      - { id: RA-CONC-016, title: "Duplicate events" }
+      - { id: RA-CONC-017, title: "Event-ordering guarantee" }
+      - { id: RA-CONC-018, title: "Revision conflict" }
+      - { id: RA-CONC-019, title: "Stale-work discard" }
+      - { id: RA-CONC-020, title: "Reentrancy" }
+      - { id: RA-CONC-021, title: "Main-thread blocking", method: machine }
+      - { id: RA-CONC-022, title: "UI-thread safety" }
+      - { id: RA-CONC-023, title: "Remote-disconnect recovery" }
+      - { id: RA-CONC-024, title: "Plugin-hang isolation" }
+
+  # ============================================================================================
+  - id: STATE
+    title: "Data & State Model"
+    default_tier: P1
+    default_method: llm
+    axes:
+      - { id: RA-STATE-001, title: "Document-model completeness" }
+      - { id: RA-STATE-002, title: "Buffer / File separation" }
+      - { id: RA-STATE-003, title: "View / Document separation" }
+      - { id: RA-STATE-004, title: "Workspace-state boundary" }
+      - { id: RA-STATE-005, title: "Session-state boundary" }
+      - { id: RA-STATE-006, title: "Persistent / transient state separation" }
+      - { id: RA-STATE-007, title: "Revision model" }
+      - { id: RA-STATE-008, title: "Transaction atomicity" }
+      - { id: RA-STATE-009, title: "Undo / redo semantics" }
+      - { id: RA-STATE-010, title: "Save-conflict handling" }
+      - { id: RA-STATE-011, title: "External file-change detection" }
+      - { id: RA-STATE-012, title: "Crash recovery" }
+      - { id: RA-STATE-013, title: "Autosave model" }
+      - { id: RA-STATE-014, title: "Snapshot consistency" }
+      - { id: RA-STATE-015, title: "Data normalization" }
+      - { id: RA-STATE-016, title: "Cache invalidation" }
+      - { id: RA-STATE-017, title: "Derived-state rules" }
+      - { id: RA-STATE-018, title: "Duplicated-state storage" }
+      - { id: RA-STATE-019, title: "Single source of truth" }
+      - { id: RA-STATE-020, title: "Serialization-format stability" }
+      - { id: RA-STATE-021, title: "Format migration" }
+      - { id: RA-STATE-022, title: "Corrupted-data recovery" }
+      - { id: RA-STATE-023, title: "Large-state limits" }
+
+  # ============================================================================================
+  - id: INPUT
+    title: "Command & Input Model"
+    default_tier: P2
+    default_method: llm
+    axes:
+      - { id: RA-INPUT-001, title: "Raw input vs semantic command separation" }
+      - { id: RA-INPUT-002, title: "Key-mapping conflict" }
+      - { id: RA-INPUT-003, title: "Input-profile inheritance" }
+      - { id: RA-INPUT-004, title: "Command-ID stability", method: machine }
+      - { id: RA-INPUT-005, title: "Command parameter schema" }
+      - { id: RA-INPUT-006, title: "Command context" }
+      - { id: RA-INPUT-007, title: "Command availability" }
+      - { id: RA-INPUT-008, title: "Command enable condition" }
+      - { id: RA-INPUT-009, title: "Command cancellation" }
+      - { id: RA-INPUT-010, title: "Command replay" }
+      - { id: RA-INPUT-011, title: "Macro recording" }
+      - { id: RA-INPUT-012, title: "Undo granularity" }
+      - { id: RA-INPUT-013, title: "Multi-cursor semantics" }
+      - { id: RA-INPUT-014, title: "Composition / IME handling" }
+      - { id: RA-INPUT-015, title: "Mouse input" }
+      - { id: RA-INPUT-016, title: "Terminal escape sequences" }
+      - { id: RA-INPUT-017, title: "Key-chord timeout" }
+      - { id: RA-INPUT-018, title: "Repeat-command semantics" }
+      - { id: RA-INPUT-019, title: "Mode-transition state" }
+      - { id: RA-INPUT-020, title: "Vim-parity semantics" }
+      - { id: RA-INPUT-021, title: "Input testability" }
+
+  # ============================================================================================
+  - id: RENDER
+    title: "Rendering & UI"
+    default_tier: P2
+    default_method: mixed
+    axes:
+      - { id: RA-RENDER-001, title: "Render-model independence", method: llm }
+      - { id: RA-RENDER-002, title: "Terminal-backend coupling", method: llm }
+      - { id: RA-RENDER-003, title: "Layout-computation ownership", method: llm }
+      - { id: RA-RENDER-004, title: "Diff rendering" }
+      - { id: RA-RENDER-005, title: "Dirty-region computation" }
+      - { id: RA-RENDER-006, title: "Unicode width", method: machine }
+      - { id: RA-RENDER-007, title: "Grapheme cluster", method: machine }
+      - { id: RA-RENDER-008, title: "Wide character", method: machine }
+      - { id: RA-RENDER-009, title: "Combining character", method: machine }
+      - { id: RA-RENDER-010, title: "BiDi support scope" }
+      - { id: RA-RENDER-011, title: "Emoji handling", method: machine }
+      - { id: RA-RENDER-012, title: "Cursor-position accuracy", method: machine }
+      - { id: RA-RENDER-013, title: "Selection representation" }
+      - { id: RA-RENDER-014, title: "Scroll stability" }
+      - { id: RA-RENDER-015, title: "Resize handling" }
+      - { id: RA-RENDER-016, title: "Theme model" }
+      - { id: RA-RENDER-017, title: "Accessibility" }
+      - { id: RA-RENDER-018, title: "Color-limited terminals" }
+      - { id: RA-RENDER-019, title: "Terminal-capability detection" }
+      - { id: RA-RENDER-020, title: "Flicker" }
+      - { id: RA-RENDER-021, title: "Partial-render failure" }
+      - { id: RA-RENDER-022, title: "Headless rendering", method: machine }
+      - { id: RA-RENDER-023, title: "Golden test", method: machine }
+      - { id: RA-RENDER-024, title: "UI-state vs core-state separation", method: llm }
+      - { id: RA-RENDER-025, title: "GUI / TUI shared-model scope", method: llm }
+
+  # ============================================================================================
+  - id: PLUGIN
+    title: "Plugin System"
+    default_tier: P1
+    default_method: llm
+    axes:
+      - { id: RA-PLUGIN-001, title: "Plugin-API minimality" }
+      - { id: RA-PLUGIN-002, title: "Plugin ABI / protocol stability" }
+      - { id: RA-PLUGIN-003, title: "Capability-based permissions" }
+      - { id: RA-PLUGIN-004, title: "Sandbox" }
+      - { id: RA-PLUGIN-005, title: "Resource quota" }
+      - { id: RA-PLUGIN-006, title: "Timeout" }
+      - { id: RA-PLUGIN-007, title: "Crash isolation" }
+      - { id: RA-PLUGIN-008, title: "Version negotiation" }
+      - { id: RA-PLUGIN-009, title: "Feature negotiation" }
+      - { id: RA-PLUGIN-010, title: "Compatibility policy" }
+      - { id: RA-PLUGIN-011, title: "Plugin install" }
+      - { id: RA-PLUGIN-012, title: "Update" }
+      - { id: RA-PLUGIN-013, title: "Removal" }
+      - { id: RA-PLUGIN-014, title: "Config isolation" }
+      - { id: RA-PLUGIN-015, title: "State persistence" }
+      - { id: RA-PLUGIN-016, title: "Event-subscription model" }
+      - { id: RA-PLUGIN-017, title: "Command-registration conflict" }
+      - { id: RA-PLUGIN-018, title: "UI extension point" }
+      - { id: RA-PLUGIN-019, title: "Inter-plugin conflict" }
+      - { id: RA-PLUGIN-020, title: "Dependency resolution" }
+      - { id: RA-PLUGIN-021, title: "Trust level" }
+      - { id: RA-PLUGIN-022, title: "Signing / verification" }
+      - { id: RA-PLUGIN-023, title: "Malicious-plugin defense" }
+      - { id: RA-PLUGIN-024, title: "API deprecation" }
+      - { id: RA-PLUGIN-025, title: "Compatibility fixture", method: machine }
+
+  # ============================================================================================
+  - id: REMOTE
+    title: "Remote / LSP / DAP"
+    default_tier: P1
+    default_method: llm
+    axes:
+      - { id: RA-REMOTE-001, title: "Client / host responsibility split" }
+      - { id: RA-REMOTE-002, title: "Remote-file authority" }
+      - { id: RA-REMOTE-003, title: "Path representation" }
+      - { id: RA-REMOTE-004, title: "OS differences" }
+      - { id: RA-REMOTE-005, title: "Env-var propagation" }
+      - { id: RA-REMOTE-006, title: "Process-exec permissions" }
+      - { id: RA-REMOTE-007, title: "Connection authentication" }
+      - { id: RA-REMOTE-008, title: "Encryption" }
+      - { id: RA-REMOTE-009, title: "Reconnect" }
+      - { id: RA-REMOTE-010, title: "Resume" }
+      - { id: RA-REMOTE-011, title: "Duplicate requests" }
+      - { id: RA-REMOTE-012, title: "Message ordering" }
+      - { id: RA-REMOTE-013, title: "Protocol version" }
+      - { id: RA-REMOTE-014, title: "Capability negotiation" }
+      - { id: RA-REMOTE-015, title: "LSP lifecycle" }
+      - { id: RA-REMOTE-016, title: "LSP restart" }
+      - { id: RA-REMOTE-017, title: "Multi-workspace LSP" }
+      - { id: RA-REMOTE-018, title: "DAP lifecycle" }
+      - { id: RA-REMOTE-019, title: "Terminal forwarding" }
+      - { id: RA-REMOTE-020, title: "Port forwarding" }
+      - { id: RA-REMOTE-021, title: "Large messages" }
+      - { id: RA-REMOTE-022, title: "Compression" }
+      - { id: RA-REMOTE-023, title: "Latency hiding" }
+      - { id: RA-REMOTE-024, title: "Offline behavior" }
+      - { id: RA-REMOTE-025, title: "Local-state protection on remote failure" }
+      - { id: RA-REMOTE-026, title: "Log / secret exposure", method: mixed }
+
+  # ============================================================================================
+  - id: SEC
+    title: "Security"
+    default_tier: P1
+    default_method: mixed
+    axes:
+      - { id: RA-SEC-001, title: "Threat model", method: manual }
+      - { id: RA-SEC-002, title: "Trust boundary", method: llm }
+      - { id: RA-SEC-003, title: "Input validation" }
+      - { id: RA-SEC-004, title: "Path traversal", method: machine }
+      - { id: RA-SEC-005, title: "Symlink attack" }
+      - { id: RA-SEC-006, title: "Command injection", method: machine }
+      - { id: RA-SEC-007, title: "Shell escaping", method: machine }
+      - { id: RA-SEC-008, title: "Env-var exposure" }
+      - { id: RA-SEC-009, title: "Secret storage" }
+      - { id: RA-SEC-010, title: "Secret in logs", method: machine }
+      - { id: RA-SEC-011, title: "Temp-file permissions", method: machine }
+      - { id: RA-SEC-012, title: "Plugin permissions" }
+      - { id: RA-SEC-013, title: "Remote authentication" }
+      - { id: RA-SEC-014, title: "Supply-chain security", method: machine }
+      - { id: RA-SEC-015, title: "Dependency vulnerabilities", method: machine }
+      - { id: RA-SEC-016, title: "Dependency license", method: machine }
+      - { id: RA-SEC-017, title: "Unsafe-code review", method: machine }
+      - { id: RA-SEC-018, title: "Serialization attack" }
+      - { id: RA-SEC-019, title: "Resource exhaustion" }
+      - { id: RA-SEC-020, title: "Denial of service" }
+      - { id: RA-SEC-021, title: "Zip bomb / oversized input" }
+      - { id: RA-SEC-022, title: "Malicious project files" }
+      - { id: RA-SEC-023, title: "Config-file code execution" }
+      - { id: RA-SEC-024, title: "Update integrity" }
+      - { id: RA-SEC-025, title: "Release-artifact signing", method: machine }
+      - { id: RA-SEC-026, title: "Security policy", method: machine }
+      - { id: RA-SEC-027, title: "Vulnerability-disclosure process" }
+
+  # ============================================================================================
+  - id: TEST
+    title: "Test Strategy"
+    default_tier: P2
+    default_method: mixed
+    axes:
+      - { id: RA-TEST-001, title: "Unit test", method: machine }
+      - { id: RA-TEST-002, title: "Integration test", method: machine }
+      - { id: RA-TEST-003, title: "Architecture test", method: machine }
+      - { id: RA-TEST-004, title: "Contract test", method: machine }
+      - { id: RA-TEST-005, title: "Compatibility test", method: machine }
+      - { id: RA-TEST-006, title: "Golden test", method: machine }
+      - { id: RA-TEST-007, title: "Snapshot test", method: machine }
+      - { id: RA-TEST-008, title: "Property test", method: machine }
+      - { id: RA-TEST-009, title: "Fuzz test", method: machine }
+      - { id: RA-TEST-010, title: "Mutation test", method: machine }
+      - { id: RA-TEST-011, title: "Stress test" }
+      - { id: RA-TEST-012, title: "Soak test" }
+      - { id: RA-TEST-013, title: "Concurrency test" }
+      - { id: RA-TEST-014, title: "Failure injection" }
+      - { id: RA-TEST-015, title: "Recovery test" }
+      - { id: RA-TEST-016, title: "Migration test" }
+      - { id: RA-TEST-017, title: "Upgrade / downgrade test" }
+      - { id: RA-TEST-018, title: "Cross-platform test", method: machine }
+      - { id: RA-TEST-019, title: "Feature-matrix test", method: machine }
+      - { id: RA-TEST-020, title: "Performance test", method: machine }
+      - { id: RA-TEST-021, title: "Memory-leak test", method: machine }
+      - { id: RA-TEST-022, title: "Determinism test", method: machine }
+      - { id: RA-TEST-023, title: "Reproducibility test", method: machine }
+      - { id: RA-TEST-024, title: "Test-fixture management" }
+      - { id: RA-TEST-025, title: "Test-data size" }
+      - { id: RA-TEST-026, title: "Flaky-test management" }
+      - { id: RA-TEST-027, title: "Test isolation" }
+      - { id: RA-TEST-028, title: "Test-execution time", method: machine }
+      - { id: RA-TEST-029, title: "Test-coverage meaningfulness" }
+      - { id: RA-TEST-030, title: "Requirement → test traceability", method: mixed }
+
+  # ============================================================================================
+  - id: CICD
+    title: "CI / CD"
+    default_tier: P2
+    default_method: machine
+    axes:
+      - { id: RA-CICD-001, title: "Local / CI command parity" }
+      - { id: RA-CICD-002, title: "Single verification entry point" }
+      - { id: RA-CICD-003, title: "Required-check completeness" }
+      - { id: RA-CICD-004, title: "Path-filter accuracy" }
+      - { id: RA-CICD-005, title: "Feature matrix" }
+      - { id: RA-CICD-006, title: "OS matrix" }
+      - { id: RA-CICD-007, title: "Rust-version matrix" }
+      - { id: RA-CICD-008, title: "Cache correctness" }
+      - { id: RA-CICD-009, title: "Cache poisoning" }
+      - { id: RA-CICD-010, title: "Generated-file drift" }
+      - { id: RA-CICD-011, title: "Lockfile verification" }
+      - { id: RA-CICD-012, title: "Dependency audit" }
+      - { id: RA-CICD-013, title: "License audit" }
+      - { id: RA-CICD-014, title: "API compatibility" }
+      - { id: RA-CICD-015, title: "Protocol compatibility" }
+      - { id: RA-CICD-016, title: "Benchmark regression" }
+      - { id: RA-CICD-017, title: "Artifact reproducibility" }
+      - { id: RA-CICD-018, title: "Release dry run" }
+      - { id: RA-CICD-019, title: "Tag / version match" }
+      - { id: RA-CICD-020, title: "Changelog generation" }
+      - { id: RA-CICD-021, title: "Failure-log readability", method: manual }
+      - { id: RA-CICD-022, title: "CI runtime" }
+      - { id: RA-CICD-023, title: "CI cost", method: manual }
+      - { id: RA-CICD-024, title: "Fork-PR security" }
+      - { id: RA-CICD-025, title: "Secret-access restriction" }
+      - { id: RA-CICD-026, title: "Merge-queue handling" }
+      - { id: RA-CICD-027, title: "Branch-protection consistency" }
+
+  # ============================================================================================
+  - id: TOOL
+    title: "Scripts & Tooling"
+    default_tier: P3
+    default_method: mixed
+    axes:
+      - { id: RA-TOOL-001, title: "Single-CLI consistency" }
+      - { id: RA-TOOL-002, title: "Command-naming consistency" }
+      - { id: RA-TOOL-003, title: "Exit-code consistency", method: machine }
+      - { id: RA-TOOL-004, title: "JSON-output support", method: machine }
+      - { id: RA-TOOL-005, title: "Human / machine output separation" }
+      - { id: RA-TOOL-006, title: "Dry-run support" }
+      - { id: RA-TOOL-007, title: "Idempotency" }
+      - { id: RA-TOOL-008, title: "Error-message quality" }
+      - { id: RA-TOOL-009, title: "Partial-failure handling" }
+      - { id: RA-TOOL-010, title: "Rollback capability" }
+      - { id: RA-TOOL-011, title: "Atomic file writes" }
+      - { id: RA-TOOL-012, title: "Temp-file cleanup" }
+      - { id: RA-TOOL-013, title: "Git dirty-state handling" }
+      - { id: RA-TOOL-014, title: "Run-location independence" }
+      - { id: RA-TOOL-015, title: "Path quoting" }
+      - { id: RA-TOOL-016, title: "Windows paths" }
+      - { id: RA-TOOL-017, title: "External-command timeout" }
+      - { id: RA-TOOL-018, title: "Subprocess error propagation" }
+      - { id: RA-TOOL-019, title: "Python import structure" }
+      - { id: RA-TOOL-020, title: "Type checking", method: machine }
+      - { id: RA-TOOL-021, title: "Script tests", method: machine }
+      - { id: RA-TOOL-022, title: "Fixture tests", method: machine }
+      - { id: RA-TOOL-023, title: "Schema validation", method: machine }
+      - { id: RA-TOOL-024, title: "Tool performance" }
+      - { id: RA-TOOL-025, title: "Logic duplication" }
+      - { id: RA-TOOL-026, title: "Hardcoded policy" }
+      - { id: RA-TOOL-027, title: "Config-file precedence" }
+      - { id: RA-TOOL-028, title: "Backward compatibility" }
+      - { id: RA-TOOL-029, title: "Tool-version output", method: machine }
+      - { id: RA-TOOL-030, title: "Doctor command" }
+      - { id: RA-TOOL-031, title: "Self-check" }
+      - { id: RA-TOOL-032, title: "Generated-output determinism", method: machine }
+
+  # ============================================================================================
+  - id: LLM
+    title: "Human / LLM Collaboration"
+    default_tier: P2
+    default_method: mixed
+    axes:
+      - { id: RA-LLM-001, title: "Human canonical docs" }
+      - { id: RA-LLM-002, title: "LLM-generated view" }
+      - { id: RA-LLM-003, title: "Context minimality" }
+      - { id: RA-LLM-004, title: "Context completeness" }
+      - { id: RA-LLM-005, title: "Token budget", method: machine }
+      - { id: RA-LLM-006, title: "Relevance ordering" }
+      - { id: RA-LLM-007, title: "Direct vs indirect dependency distinction" }
+      - { id: RA-LLM-008, title: "Forbidden-path marking" }
+      - { id: RA-LLM-009, title: "Allowed-path marking" }
+      - { id: RA-LLM-010, title: "Verification-command inclusion" }
+      - { id: RA-LLM-011, title: "Current-implementation-status inclusion" }
+      - { id: RA-LLM-012, title: "Target vs current-state distinction" }
+      - { id: RA-LLM-013, title: "Stable-ID quality", method: machine }
+      - { id: RA-LLM-014, title: "ID duplication", method: machine }
+      - { id: RA-LLM-015, title: "ID orphan", method: machine }
+      - { id: RA-LLM-016, title: "Broken reference", method: machine }
+      - { id: RA-LLM-017, title: "Unknown-ID failure handling", method: machine }
+      - { id: RA-LLM-018, title: "Context freshness" }
+      - { id: RA-LLM-019, title: "Context source hash", method: machine }
+      - { id: RA-LLM-020, title: "Generation reproducibility", method: machine }
+      - { id: RA-LLM-021, title: "LLM-output verification" }
+      - { id: RA-LLM-022, title: "Change-scope overrun detection", method: machine }
+      - { id: RA-LLM-023, title: "Architecture-violation detection", method: machine }
+      - { id: RA-LLM-024, title: "Hallucinated-file detection", method: machine }
+      - { id: RA-LLM-025, title: "Nonexistent-API-reference detection", method: machine }
+      - { id: RA-LLM-026, title: "Doc / code drift", method: mixed }
+      - { id: RA-LLM-027, title: "Per-model context profile" }
+      - { id: RA-LLM-028, title: "Per-task context profile" }
+      - { id: RA-LLM-029, title: "Read-only regions" }
+      - { id: RA-LLM-030, title: "Human approval point", method: manual }
+      - { id: RA-LLM-031, title: "AI-evidence trust level", method: manual }
+      - { id: RA-LLM-032, title: "AI-generated code marking" }
+      - { id: RA-LLM-033, title: "Prompt / instruction versioning" }
+      - { id: RA-LLM-034, title: "LLM-workflow regression tests", method: machine }
+
+  # ============================================================================================
+  - id: DOC
+    title: "Documentation"
+    default_tier: P3
+    default_method: mixed
+    axes:
+      - { id: RA-DOC-001, title: "Doc authority grade" }
+      - { id: RA-DOC-002, title: "Doc type" }
+      - { id: RA-DOC-003, title: "Currency" }
+      - { id: RA-DOC-004, title: "Duplicated facts" }
+      - { id: RA-DOC-005, title: "Conflicting content" }
+      - { id: RA-DOC-006, title: "Broken link", method: machine }
+      - { id: RA-DOC-007, title: "Broken anchor", method: machine }
+      - { id: RA-DOC-008, title: "Orphan document", method: machine }
+      - { id: RA-DOC-009, title: "Doc navigability" }
+      - { id: RA-DOC-010, title: "Doc depth" }
+      - { id: RA-DOC-011, title: "Heading consistency" }
+      - { id: RA-DOC-012, title: "Terminology consistency", method: machine }
+      - { id: RA-DOC-013, title: "Abbreviation definition" }
+      - { id: RA-DOC-014, title: "Diagram freshness" }
+      - { id: RA-DOC-015, title: "Code-example compilation", method: machine }
+      - { id: RA-DOC-016, title: "CLI-example runnability", method: machine }
+      - { id: RA-DOC-017, title: "Config-example schema compliance", method: machine }
+      - { id: RA-DOC-018, title: "Doc / code API match" }
+      - { id: RA-DOC-019, title: "Doc / CI command match", method: machine }
+      - { id: RA-DOC-020, title: "Decision-supersede relations", method: machine }
+      - { id: RA-DOC-021, title: "RFC status", method: machine }
+      - { id: RA-DOC-022, title: "Deprecated-doc marking" }
+      - { id: RA-DOC-023, title: "Generated-doc marking" }
+      - { id: RA-DOC-024, title: "Doc ownership" }
+      - { id: RA-DOC-025, title: "Audience clarity" }
+      - { id: RA-DOC-026, title: "Explanation level" }
+      - { id: RA-DOC-027, title: "Doc length" }
+      - { id: RA-DOC-028, title: "LLM token efficiency", method: machine }
+      - { id: RA-DOC-029, title: "Searchability" }
+      - { id: RA-DOC-030, title: "Auto index generation", method: machine }
+      - { id: RA-DOC-031, title: "Related-doc notification on change" }
+
+  # ============================================================================================
+  - id: PM
+    title: "Project Management"
+    default_tier: P3
+    default_method: manual
+    axes:
+      - { id: RA-PM-001, title: "Issue quality" }
+      - { id: RA-PM-002, title: "Acceptance criteria" }
+      - { id: RA-PM-003, title: "Definition of Ready" }
+      - { id: RA-PM-004, title: "Definition of Done" }
+      - { id: RA-PM-005, title: "Issue size" }
+      - { id: RA-PM-006, title: "Capability / Slice relation" }
+      - { id: RA-PM-007, title: "Milestone realism" }
+      - { id: RA-PM-008, title: "Status definitions" }
+      - { id: RA-PM-009, title: "Priority criteria" }
+      - { id: RA-PM-010, title: "Risk classification" }
+      - { id: RA-PM-011, title: "Change-type classification" }
+      - { id: RA-PM-012, title: "Lightweight change path" }
+      - { id: RA-PM-013, title: "RFC-required conditions" }
+      - { id: RA-PM-014, title: "Decision-required conditions" }
+      - { id: RA-PM-015, title: "Waiver process" }
+      - { id: RA-PM-016, title: "Exception expiry" }
+      - { id: RA-PM-017, title: "Blocker representation" }
+      - { id: RA-PM-018, title: "Dependency tracking" }
+      - { id: RA-PM-019, title: "Ownership" }
+      - { id: RA-PM-020, title: "Bus factor" }
+      - { id: RA-PM-021, title: "Solo-maintainer cost" }
+      - { id: RA-PM-022, title: "Task-startup cost" }
+      - { id: RA-PM-023, title: "PR-template quality" }
+      - { id: RA-PM-024, title: "Review checklist" }
+      - { id: RA-PM-025, title: "Merge policy" }
+      - { id: RA-PM-026, title: "Release cadence" }
+      - { id: RA-PM-027, title: "Roadmap / reality match" }
+      - { id: RA-PM-028, title: "Management-automation excess" }
+      - { id: RA-PM-029, title: "Management / implementation work ratio" }
+      - { id: RA-PM-030, title: "Incomplete management artifacts" }
+      - { id: RA-PM-031, title: "Stale issue / RFC cleanup" }
+
+  # ============================================================================================
+  - id: MAINT
+    title: "Maintainability"
+    default_tier: P2
+    default_method: llm
+    axes:
+      - { id: RA-MAINT-001, title: "Change locality" }
+      - { id: RA-MAINT-002, title: "Feature-add cost" }
+      - { id: RA-MAINT-003, title: "Bug-fix blast radius" }
+      - { id: RA-MAINT-004, title: "Refactoring safety" }
+      - { id: RA-MAINT-005, title: "Code-comprehension cost" }
+      - { id: RA-MAINT-006, title: "New-contributor onboarding cost" }
+      - { id: RA-MAINT-007, title: "LLM onboarding cost" }
+      - { id: RA-MAINT-008, title: "Name predictability" }
+      - { id: RA-MAINT-009, title: "Abstraction-level consistency" }
+      - { id: RA-MAINT-010, title: "Policy discoverability" }
+      - { id: RA-MAINT-011, title: "Implicit rules" }
+      - { id: RA-MAINT-012, title: "Hidden coupling" }
+      - { id: RA-MAINT-013, title: "Global config" }
+      - { id: RA-MAINT-014, title: "Magic value", method: machine }
+      - { id: RA-MAINT-015, title: "Dead code", method: machine }
+      - { id: RA-MAINT-016, title: "Deprecated path" }
+      - { id: RA-MAINT-017, title: "TODO / FIXME management", method: machine }
+      - { id: RA-MAINT-018, title: "Tech-debt registry" }
+      - { id: RA-MAINT-019, title: "Migration cost" }
+      - { id: RA-MAINT-020, title: "Dependency-replacement cost" }
+      - { id: RA-MAINT-021, title: "Backend-replacement cost" }
+      - { id: RA-MAINT-022, title: "Frontend-add cost" }
+      - { id: RA-MAINT-023, title: "Protocol-extension cost" }
+
+  # ============================================================================================
+  - id: REL
+    title: "OSS & Release Readiness"
+    default_tier: P3
+    default_method: manual
+    axes:
+      - { id: RA-REL-001, title: "License", method: machine }
+      - { id: RA-REL-002, title: "Third-party notice", method: machine }
+      - { id: RA-REL-003, title: "CONTRIBUTING", method: machine }
+      - { id: RA-REL-004, title: "CODE_OF_CONDUCT", method: machine }
+      - { id: RA-REL-005, title: "SECURITY", method: machine }
+      - { id: RA-REL-006, title: "Support policy", method: machine }
+      - { id: RA-REL-007, title: "Governance" }
+      - { id: RA-REL-008, title: "Maintainer roles" }
+      - { id: RA-REL-009, title: "Issue template", method: machine }
+      - { id: RA-REL-010, title: "Discussion policy" }
+      - { id: RA-REL-011, title: "Release process" }
+      - { id: RA-REL-012, title: "Versioning policy" }
+      - { id: RA-REL-013, title: "Changelog", method: machine }
+      - { id: RA-REL-014, title: "Roadmap" }
+      - { id: RA-REL-015, title: "Compatibility guarantee" }
+      - { id: RA-REL-016, title: "MSRV", method: machine }
+      - { id: RA-REL-017, title: "Supported platforms" }
+      - { id: RA-REL-018, title: "Install method" }
+      - { id: RA-REL-019, title: "Uninstall method" }
+      - { id: RA-REL-020, title: "Upgrade method" }
+      - { id: RA-REL-021, title: "Binary packaging" }
+      - { id: RA-REL-022, title: "Package-manager strategy" }
+      - { id: RA-REL-023, title: "Release-artifact verification", method: machine }
+      - { id: RA-REL-024, title: "Reproducible build", method: machine }
+      - { id: RA-REL-025, title: "Telemetry policy" }
+      - { id: RA-REL-026, title: "Privacy policy" }
+      - { id: RA-REL-027, title: "Crash-report policy" }
+
+  # ============================================================================================
+  - id: PROD
+    title: "Product Perspective"
+    default_tier: P1
+    default_method: manual
+    axes:
+      - { id: RA-PROD-001, title: "Core-user definition" }
+      - { id: RA-PROD-002, title: "Core use cases" }
+      - { id: RA-PROD-003, title: "Non-goals" }
+      - { id: RA-PROD-004, title: "Differentiators" }
+      - { id: RA-PROD-005, title: "Positioning vs Neovim / Helix / Zed" }
+      - { id: RA-PROD-006, title: "MVP scope" }
+      - { id: RA-PROD-007, title: "Core vs extension feature split" }
+      - { id: RA-PROD-008, title: "Success metrics" }
+      - { id: RA-PROD-009, title: "Performance goals" }
+      - { id: RA-PROD-010, title: "Compatibility goals" }
+      - { id: RA-PROD-011, title: "Onboarding flow" }
+      - { id: RA-PROD-012, title: "Default-config quality" }
+      - { id: RA-PROD-013, title: "Config complexity" }
+      - { id: RA-PROD-014, title: "Usable without plugins" }
+      - { id: RA-PROD-015, title: "First-run experience" }
+      - { id: RA-PROD-016, title: "Error-recovery experience" }
+      - { id: RA-PROD-017, title: "Debuggability" }
+      - { id: RA-PROD-018, title: "Deployability" }
+      - { id: RA-PROD-019, title: "Long-term roadmap" }
+      - { id: RA-PROD-020, title: "Value vs implementation difficulty" }
+      - { id: RA-PROD-021, title: "Over-design" }
+      - { id: RA-PROD-022, title: "% requirements validated by real use" }

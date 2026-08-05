@@ -121,7 +121,7 @@ reviews are separate folders.
 | **Protocols** | [protocols/versioning-and-evolution.md](protocols/versioning-and-evolution.md) |
 | **Parity** | [parity/README.md](parity/README.md) → vim, neovim, emacs, terminal, remote, native-style, workspace, plugin-ecosystem, roadmap, common |
 | **Anti-patterns** | [anti-patterns/anti-patterns.md](anti-patterns/anti-patterns.md) |
-| **Operations** | [operations/](operations/ci-cd-and-release.md) — development-model, definition-of-done, testing-and-benchmarks, github-workflow, ci-cd-and-release, spec-validate |
+| **Operations** | [operations/](operations/ci-cd-and-release.md) — development-model, definition-of-done, testing-and-benchmarks, github-workflow, ci-cd-and-release, spec-validate, review-axes |
 | **Contributing** | [contributing/](contributing/README.md) — hub, change-paths, ai-assisted-development, quickstart (+ root CONTRIBUTING/SUPPORT/CODE_OF_CONDUCT/SECURITY) |
 | **Reviews** | [reviews/verification.md](reviews/verification.md) (point-in-time design-verification report) |
 | **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/` (0001–0011), `rejected/` (R001) |
