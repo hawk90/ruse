@@ -1,0 +1,16 @@
+# Template: one entry under `features:` in spec/PRD.yaml. Replace F-XXX with the next free ID.
+# Enums — stage: mvp|post-mvp|future · priority: must|should|could · status: planned|active|blocked|done|dropped
+# Defaults if omitted: priority=should, status=planned. Do not renumber existing IDs; retire via status:dropped.
+
+  F-XXX:
+    title: <short imperative title>
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-..., F-...]        # component/feature IDs; omit if none
+    conflicts_with: []                 # optional
+    summary: <1-2 sentence what & why>
+    acceptance:                        # observable, testable outcomes
+      - <condition 1>
+      - <condition 2>
+    ref: ../docs/...                    # optional pointer to prose detail

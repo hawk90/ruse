@@ -1,0 +1,72 @@
+name: Feature request
+description: Propose new functionality for the ruse editor
+labels: [type/capability]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem before the solution. Requests framed as "add X" without a problem are hard to evaluate.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? Describe the problem, not just "add X".
+    validations:
+      required: true
+  - type: textarea
+    id: user-scenario
+    attributes:
+      label: User scenario
+      description: Concrete situation where a user hits this problem.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-behavior
+    attributes:
+      label: Proposed behavior
+      description: How you imagine the feature working.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other approaches you considered.
+    validations:
+      required: false
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: What this feature explicitly should not do.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Observable conditions that mean this is done.
+    validations:
+      required: false
+  - type: dropdown
+    id: delivery-classification
+    attributes:
+      label: Expected delivery classification
+      description: Where this feature is expected to ship.
+      options:
+        - base
+        - official-pack
+        - third-party
+    validations:
+      required: false
+  - type: dropdown
+    id: execution-location
+    attributes:
+      label: Execution location
+      description: Where the feature runs.
+      options:
+        - client
+        - workspace
+        - both
+    validations:
+      required: false

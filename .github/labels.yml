@@ -1,0 +1,33 @@
+# Source of truth for repo labels (sync with a label-sync action). Principle (docs/operations/github-workflow.md):
+# Label = nature; Project field = state; Milestone = release. Do NOT add priority/*, status/*, size/*, target/*.
+- { name: type/bug,         color: d73a4a, description: A defect }
+- { name: type/capability,  color: 0e8a16, description: A long-lived ability the project must provide }
+- { name: type/slice,       color: 1a7f37, description: A smallest mergeable end-to-end behavior }
+- { name: type/rfc,         color: 5319e7, description: Architecture / contract proposal (RFC) }
+- { name: type/spike,       color: bfdadc, description: Time-boxed experiment resolving uncertainty }
+- { name: type/debt,        color: fef2c0, description: Refactor / cleanup }
+- { name: type/chore,       color: ededed, description: Maintenance; no product behavior change }
+- { name: type/dependency,  color: 1d76db, description: Add/replace a dependency or tool }
+- { name: area/core,        color: ededed, description: Editing core / kernel }
+- { name: area/document,    color: ededed, description: Document / text / transaction }
+- { name: area/input,       color: ededed, description: Input profiles / editing language }
+- { name: area/render,      color: ededed, description: Render IR / frontends }
+- { name: area/terminal,    color: ededed, description: Terminal input / capability }
+- { name: area/remote,      color: ededed, description: Remote runtime / agent }
+- { name: area/language,    color: ededed, description: LSP / tree-sitter / language packs }
+- { name: area/debug,       color: ededed, description: Debug / DAP / GDB }
+- { name: area/plugin,      color: ededed, description: Plugin protocol / ecosystem }
+- { name: area/infra,       color: ededed, description: CI / tooling / repo }
+- { name: area/docs,        color: ededed, description: Docs / spec }
+- { name: impact/correctness,   color: b60205, description: Wrong behavior }
+- { name: impact/performance,   color: fbca04, description: Latency / memory / throughput }
+- { name: impact/reliability,   color: d93f0b, description: Crashes / recovery }
+- { name: impact/security,      color: b60205, description: Security / trust boundary }
+- { name: impact/compatibility, color: 0052cc, description: Parity / API / protocol compatibility }
+- { name: impact/readability,   color: c2e0c6, description: Code / call-flow readability }
+- { name: community/good-first-issue, color: 7057ff, description: Good first contribution }
+- { name: community/help-wanted,      color: 008672, description: Extra attention wanted }
+- { name: needs/reproduction, color: e99695, description: Needs a reproduction }
+- { name: needs/design,       color: d4c5f9, description: Needs design before work }
+- { name: needs/benchmark,    color: fef2c0, description: Needs measurement }
+- { name: needs/decision,     color: fbca04, description: Blocked on a decision }

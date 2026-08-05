@@ -1,0 +1,89 @@
+# Context profiles — manifest for task-scoped LLM context packs.
+# A generator (xtask, D-022) will build .context/<name>.md by concatenating the referenced sources/IDs.
+# Until then this is just the manifest describing what each pack should contain.
+# include entries are file names or IDs (F-*, C-*, ENG-*, ARCH-*, D-*, INV-*, or doc paths).
+
+version: 1
+
+always_include: [PROJECT.md, CONTEXT.md]   # every pack starts with these
+
+profiles:
+  core-editing:
+    purpose: Work on document/transaction/undo/anchor and the edit flow.
+    include:
+      - F-001
+      - F-002
+      - F-005
+      - ARCH-FLOW-001
+      - ARCH-OWN-001
+      - ENG-TXN-001
+      - ENG-POS-001
+      - D-001
+      - D-005
+      - ../docs/architecture/architecture.md#3
+
+  input-and-commands:
+    purpose: Work on input profiles and the semantic command layer.
+    include:
+      - F-003
+      - F-004
+      - ENG-CMD-001
+      - ENG-PROFILE-001
+      - D-006
+      - D-008
+      - ../docs/parity/vim.md
+      - ../docs/architecture/architecture.md#1
+
+  rendering:
+    purpose: Work on the Render IR, TUI backend, and terminal capability.
+    include:
+      - F-006
+      - F-010
+      - ARCH-RENDER-001
+      - ENG-RENDER-001
+      - D-014
+      - D-015
+      - ../docs/design/render-and-frontends.md
+      - ../docs/parity/terminal.md
+
+  plugin-system:
+    purpose: Work on the plugin protocol, host, and API lifecycle.
+    include:
+      - F-016
+      - ENG-PLUG-001
+      - ENG-PROTO-001
+      - D-004
+      - D-009
+      - D-010
+      - ../docs/architecture/architecture.md#4
+      - ../docs/protocols/versioning-and-evolution.md
+
+  remote:
+    purpose: Work on client/runtime split and remote execution.
+    include:
+      - F-017
+      - ENG-TRUST-001
+      - D-011
+      - D-012
+      - D-013
+      - ../docs/parity/remote.md
+      - ../docs/architecture/architecture.md#5
+
+  stability:
+    purpose: Work on errors, logging, status, recovery, safe mode.
+    include:
+      - ENG-ERR-001
+      - ENG-FAIL-001
+      - ENG-OBS-001
+      - D-016
+      - D-017
+      - ../docs/design/stability-and-observability.md
+
+  ci:
+    purpose: Work on CI/CD, release, and quality gates.
+    include:
+      - ENG-TEST-001
+      - ENG-PERF-001
+      - ENG-DOC-001
+      - D-019
+      - ../docs/operations/ci-cd-and-release.md

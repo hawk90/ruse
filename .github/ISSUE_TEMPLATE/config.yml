@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & ideas
+    url: https://github.com/ruse-editor/ruse/discussions
+    about: Use Discussions for questions and ideas. Issues are for actionable work.
+  - name: Report a security vulnerability
+    url: https://github.com/ruse-editor/ruse/security/policy
+    about: Report vulnerabilities privately per SECURITY.md.

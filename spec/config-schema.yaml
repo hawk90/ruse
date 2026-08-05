@@ -1,0 +1,71 @@
+# Config schema — the machine-managed, authored source of truth for every CORE setting (C-CONFIG).
+# Prose model + rationale: ../docs/design/config-model.md. Requirements: ../docs/architecture/design-requirements.md#10 (CFG).
+# This file drives autocomplete, type-check, deprecation warnings, and migration — no manual upkeep elsewhere.
+# A generator (D-021/D-022) may emit a JSON copy for editor tooling; THIS YAML is canonical and hand-edited.
+#
+# `scopes:` declares the three layers and their precedence (low -> high). Some keys are security-locked so a
+# workspace layer can NEVER contribute them, regardless of workspace trust (CFG-LOCK-001; enforces INV-TRUST-1).
+#
+# `settings:` is an ID-keyed map (dotted namespaced key). Each entry is a record with fields:
+#   type            bool | int | string | enum | list | map          (required)
+#   default         the schema-default value (layer 0)               (required)
+#   scope           user | workspace | machine  = BROADEST layer allowed to write it (required)
+#                     machine  -> only machine-local may set it (user/workspace inert)
+#                     user     -> machine or user may set it (workspace inert)
+#                     workspace-> any layer may set it
+#   merge           replace | append | set-union | deep-merge  = how layers fold (required)
+#                     replace   -> higher layer wins (scalars)
+#                     append    -> concatenate low->high, keep order+dups (lists)
+#                     set-union -> union + de-dup (sets)
+#                     deep-merge-> recurse per key, leaves resolve by their own strategy (maps)
+#   security_locked bool = workspace can NEVER override (executables/trust/forwarding). Default false.
+#   enum            [..]  = allowed values (required iff type=enum)
+#   min / max       int bounds (optional, type=int)
+#   secret          bool = never logged / redacted in `:inspect config`. Default false. (optional)
+#   deprecated      bool + optional replaced_by (alias for a deprecation window). Default false. (optional)
+#   desc            one-line description                                (required)
+#
+# LLM rules: patch a single key; never rename a key (add new + mark old deprecated); never renumber `version`
+# without a matching migration entry; loosening `security_locked`/`scope` is a security-relevant breaking change.
+
+version: 1
+
+scopes:
+  # precedence low -> high; for a `replace` key the highest layer ALLOWED to write it wins (per-key, not per-file).
+  machine:   { precedence: 1, location: "system/admin (/etc/ruse, install dir)", trust: core, note: "admin baseline; may PIN security_locked / scope:machine keys above user+workspace (enterprise lock)" }
+  user:      { precedence: 2, location: "~/.config/ruse", trust: user, note: "per-user preferences" }
+  workspace: { precedence: 3, location: ".ruse/ in workspace root", trust: workspace, note: "project settings; INERT until the workspace is trusted; security_locked keys are always dropped here" }
+  # Security note: security_locked=true keys and keys whose `scope` is narrower than a given layer are dropped
+  # from that layer BEFORE merge, with a config.locked_key_ignored / scope diagnostic (CFG-LOCK-001).
+
+settings:
+  # ---- input ----
+  input.profile:        { type: enum,   default: vim,    scope: user,      merge: replace,   security_locked: false, enum: [vim, emacs, native], desc: "Active input profile (editing language + state machine, architecture section 1)." }
+
+  # ---- editor ----
+  editor.tab_width:     { type: int,    default: 4,      scope: workspace, merge: replace,   security_locked: false, min: 1, max: 16, desc: Number of columns a tab renders/indents as. }
+  editor.indent_style:  { type: enum,   default: space,  scope: workspace, merge: replace,   security_locked: false, enum: [space, tab], desc: Whether indentation uses spaces or tabs. }
+  editor.line_endings:  { type: enum,   default: auto,   scope: workspace, merge: replace,   security_locked: false, enum: [lf, crlf, auto], desc: Line-ending policy on save (auto = preserve/detect per file). }
+
+  # ---- files ----
+  files.watcher:        { type: enum,   default: native, scope: workspace, merge: replace,   security_locked: false, enum: [native, poll, off], desc: File-watch backend (native OS events, polling fallback, or disabled). }
+  files.exclude:        { type: list,   default: [".git", "node_modules", "target"], scope: workspace, merge: append, security_locked: false, desc: "Glob patterns hidden from tree/search/watch; layers append (use !pattern to remove)." }
+
+  # ---- ui ----
+  ui.theme:             { type: string, default: default, scope: user,     merge: replace,   security_locked: false, desc: Active color theme name. }
+
+  # ---- update ----
+  update.channel:       { type: enum,   default: stable, scope: user,      merge: replace,   security_locked: false, enum: [stable, beta, nightly], desc: Release channel used for self-update checks. }
+
+  # ---- remote (security-sensitive: trust) ----
+  remote.trust_prompt:  { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: true,  desc: Prompt before trusting a remote runtime/workspace. Workspace can NEVER override (INV-TRUST-1). }
+
+  # ---- plugins (security-sensitive: executables/trust) ----
+  plugins.allow_unsigned: { type: bool, default: false,  scope: machine,   merge: replace,   security_locked: true,  desc: Allow loading unsigned/unverified plugins. Admin-only; workspace can NEVER override (INV-TRUST-1). }
+
+  # ---- telemetry ----
+  telemetry.enabled:    { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, desc: Opt-in anonymous telemetry (off by default). }
+
+# Per-plugin settings are NOT listed here: a plugin declares its own schema (same field set) namespaced under
+# `plugin.<plugin-id>.*` in its manifest (architecture #4.5 / config-model.md CFG-PLUGIN). A plugin may only
+# declare keys in its own namespace and may NOT mark a core key security_locked or un-lock one.

@@ -1,0 +1,28 @@
+# Rust CI. No-ops until crates/ has real code; activates automatically once Cargo.toml exists.
+# Security (docs/operations/ci-cd-and-release.md §11): pin actions by SHA (TODO), least-privilege token.
+name: ci
+on:
+  pull_request:
+  push: { branches: [main, next] }
+permissions: { contents: read }
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # TODO pin SHA
+      - id: detect
+        run: '[ -f Cargo.toml ] && echo "have=1" >> "$GITHUB_OUTPUT" || echo "have=0" >> "$GITHUB_OUTPUT"'
+      - if: steps.detect.outputs.have == '1'
+        uses: dtolnay/rust-toolchain@stable  # TODO pin SHA
+        with: { components: rustfmt, clippy }
+      - if: steps.detect.outputs.have == '1'
+        run: cargo fmt --all --check
+      - if: steps.detect.outputs.have == '1'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - if: steps.detect.outputs.have == '1'
+        run: cargo test --workspace
+      - if: steps.detect.outputs.have == '0'
+        run: echo "No Cargo.toml with real code yet — spec-first phase."

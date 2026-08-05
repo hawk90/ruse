@@ -1,0 +1,94 @@
+name: Dependency add/replace
+description: Propose adding or replacing a dependency
+labels: [type/dependency]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New dependencies carry ongoing cost. Justify the addition and the choice of package. If accepted, also add it to `spec/dependencies.yaml`.
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What the dependency is for.
+    validations:
+      required: false
+  - type: input
+    id: candidate
+    attributes:
+      label: Candidate package/tool
+      description: Name and version/source of the candidate.
+    validations:
+      required: false
+  - type: textarea
+    id: why-not-ourselves
+    attributes:
+      label: Why not implement ourselves
+      description: Why building it in-house is not preferable.
+    validations:
+      required: false
+  - type: textarea
+    id: why-existing-dont-fit
+    attributes:
+      label: Why existing packages don't fit
+      description: Why already-vendored packages can't cover this.
+    validations:
+      required: false
+  - type: dropdown
+    id: critical-path
+    attributes:
+      label: Critical path?
+      description: Tier of criticality (0 = most critical).
+      options:
+        - "0"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+    validations:
+      required: false
+  - type: dropdown
+    id: public-type-exposure
+    attributes:
+      label: Public type exposure?
+      description: Whether the dependency's types leak into our public API.
+      options:
+        - none
+        - limited
+    validations:
+      required: false
+  - type: textarea
+    id: transitive-dependencies
+    attributes:
+      label: Transitive dependencies
+      description: Notable transitive dependencies it pulls in.
+    validations:
+      required: false
+  - type: textarea
+    id: unsafe-usage
+    attributes:
+      label: unsafe usage
+      description: Any use of unsafe code in the dependency.
+    validations:
+      required: false
+  - type: input
+    id: license
+    attributes:
+      label: License
+      description: License of the dependency.
+    validations:
+      required: false
+  - type: textarea
+    id: platform-support
+    attributes:
+      label: Platform support
+      description: Platforms/architectures supported.
+    validations:
+      required: false
+  - type: textarea
+    id: replace-exit-strategy
+    attributes:
+      label: Replace/exit strategy
+      description: How we would remove or swap it later.
+    validations:
+      required: false

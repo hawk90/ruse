@@ -1,0 +1,10 @@
+# Auto-applies area labels by changed path. Advisory only — humans may correct.
+'area/core':   [{ changed-files: [{ any-glob-to-any-file: 'crates/core/**' }] }]
+'area/render': [{ changed-files: [{ any-glob-to-any-file: 'crates/render-model/**' }] }]
+'area/terminal': [{ changed-files: [{ any-glob-to-any-file: 'crates/terminal-platform/**' }] }]
+'area/remote': [{ changed-files: [{ any-glob-to-any-file: ['crates/workspace-runtime/**', 'apps/remote-agent/**'] }] }]
+'area/plugin': [{ changed-files: [{ any-glob-to-any-file: 'crates/plugin-protocol/**' }] }]
+'area/infra':  [{ changed-files: [{ any-glob-to-any-file: ['.github/**', 'tools/**'] }] }]
+'area/docs':   [{ changed-files: [{ any-glob-to-any-file: 'docs/**' }] }]
+'type/rfc': [{ changed-files: [{ any-glob-to-any-file: ['docs/rfc/**'] }] }]
+'area/docs': [{ changed-files: [{ any-glob-to-any-file: ['spec/**'] }] }]

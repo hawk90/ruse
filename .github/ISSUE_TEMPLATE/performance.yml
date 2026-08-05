@@ -1,0 +1,71 @@
+name: Performance issue
+description: Report a performance regression or bottleneck
+labels: [type/bug, impact/performance]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include measurements. Reports without numbers are hard to act on.
+  - type: textarea
+    id: workload
+    attributes:
+      label: Workload
+      description: What operation or scenario is slow.
+    validations:
+      required: false
+  - type: input
+    id: input-size
+    attributes:
+      label: Input size
+      description: Size of the input (lines, bytes, file count, etc.).
+    validations:
+      required: false
+  - type: textarea
+    id: measurement-method
+    attributes:
+      label: Measurement method
+      description: How you measured (tool, command, harness).
+    validations:
+      required: false
+  - type: textarea
+    id: current-numbers
+    attributes:
+      label: Current numbers
+      description: Measured performance now.
+    validations:
+      required: false
+  - type: textarea
+    id: expected-numbers
+    attributes:
+      label: Expected numbers
+      description: The performance you expected or need.
+    validations:
+      required: false
+  - type: input
+    id: percentiles
+    attributes:
+      label: p50/p95/p99
+      description: Latency percentiles if available.
+    validations:
+      required: false
+  - type: input
+    id: cpu-memory
+    attributes:
+      label: CPU/memory
+      description: CPU and memory usage observed.
+    validations:
+      required: false
+  - type: input
+    id: regression-version
+    attributes:
+      label: Regression start version
+      description: First version where performance regressed, if known.
+    validations:
+      required: false
+  - type: textarea
+    id: profile-results
+    attributes:
+      label: Profile results
+      description: Profiler output, flamegraphs, or traces.
+    validations:
+      required: false

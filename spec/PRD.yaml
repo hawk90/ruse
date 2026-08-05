@@ -1,0 +1,425 @@
+# PRD — Requirements source of truth.
+# LLM rules: patch a single ID; never renumber; delete = status:dropped; keep summary to 1-2 sentences.
+# Enums (closed sets):
+#   stage:    mvp | post-mvp | future
+#   priority: must | should | could
+#   status:   planned | active | blocked | done | dropped
+# Defaults when omitted: priority=should, status=planned.
+# IDs: F-xxx feature, C-xxx component. depends_on references C-/F- IDs. Prose lives in ../docs (by ID).
+#
+# Each feature carries a `trace:` block giving end-to-end traceability parity -> design -> verify:
+#   trace.parity  = parity IDs the feature must satisfy (VIM-*/NVIM-*/EMACS-*/COM-*/TERM-*/WS-*/REM-*/
+#                   REM-SERVICE-*/ECO-*/NAT-*), defined in ../docs/parity/*.md (index: ../docs/parity/README.md).
+#                   Omitted when a feature genuinely has no external parity target.
+#   trace.design  = 1-3 design/architecture docs that specify it (../docs/architecture/* | ../docs/design/*).
+#   trace.verify  = planned test fixture path(s)/method that will prove it (../tests/...).
+# `acceptance:` lists 2-4 concrete, testable pass criteria.
+# Feature <-> capability links are NOT stored here: they live in spec/capabilities.yaml as `prd:` on CAP-*
+# entries (one fact, one home). Do not add a `capability` field to features.
+
+version: 1
+
+product:
+  name: ruse
+  goal: >
+    A terminal-first, remote-first, extensible editor with Vim/Neovim/Emacs feature parity,
+    designed as a specification with a reference implementation.
+  target_users:
+    - terminal-first developers
+    - remote developers
+
+mvp:
+  non_goals: [gui, web, marketplace, wasm-plugin-host, collaborative-editing, running-vimscript-or-elisp]
+
+# --- Components (architectural building blocks) ---
+# `layer` = build stage (kernel < input < tui < workspace < plugin < remote); a component must not depend
+# on a later layer (checkable by spec validate, D-022). `depends_on` makes build order machine-verifiable.
+components:
+  # kernel (stage 1: editor-core, includes Command per ARCH-LAYER-001)
+  C-DOCUMENT:   { title: Document model, layer: kernel, depends_on: [], status: planned, ref: ../docs/rfc/proposed/RFC-0008-document-model.md }
+  C-TRANSACTION: { title: Transaction engine, layer: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/rfc/proposed/RFC-0007-transaction-engine.md }
+  C-ANCHOR:     { title: Anchor/position model, layer: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/parity/vim.md }
+  C-UNDO:       { title: Undo history, layer: kernel, depends_on: [C-TRANSACTION], status: planned, ref: ../docs/design/persistence-and-recovery.md }
+  C-REGISTER:   { title: Register/kill-ring model, layer: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/register-model.md }   # D-026
+  C-REGEX:      { title: Regex abstraction + Vim-dialect engine, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/vim-regex.md }          # D-028
+  C-POSHIST:    { title: Positions history (marks/jumplist/mark-ring/selections), layer: kernel, depends_on: [C-ANCHOR], status: planned, ref: ../docs/design/positions-history.md }  # D-027
+  C-CONTEXT:    { title: Context/when-expression evaluator, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/command-engine.md }
+  C-QUERY:      { title: Read/query layer, layer: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/query-and-snapshot.md }
+  C-COMMAND:    { title: Semantic command layer, layer: kernel, depends_on: [C-TRANSACTION, C-QUERY, C-CONTEXT], status: planned, ref: ../docs/design/command-engine.md }
+  C-EDITLANG:   { title: Editing-language composition (operator/motion/range IR), layer: kernel, depends_on: [C-COMMAND, C-ANCHOR, C-REGISTER], status: planned, ref: ../docs/design/editing-language.md }  # D-025
+  C-CONFIG:     { title: Config/keymap loading + merge, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/config-model.md }
+  C-HEALTH:     { title: Health/observability, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/stability-and-observability.md }
+  C-SCHEDULER:  { title: Background scheduler, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/scheduler.md }
+  # input (stage 2)
+  C-INPUT:      { title: Input engine + profiles, layer: input, depends_on: [C-COMMAND, C-EDITLANG, C-CONFIG], status: planned, ref: ../docs/design/input-engine.md }
+  # tui (stage 3)
+  C-RENDER:     { title: Render IR + lowering, layer: tui, depends_on: [C-QUERY], status: planned, ref: ../docs/design/render-and-frontends.md }
+  C-VIEW:       { title: View/Window/layout, layer: tui, depends_on: [C-RENDER, C-ANCHOR], status: planned, ref: ../docs/design/view-window-workspace.md }
+  C-TERMINAL:   { title: Terminal platform (input+capability), layer: tui, depends_on: [], status: planned, ref: ../docs/parity/terminal.md }
+  # workspace (stage 4)
+  C-WORKSPACE:  { title: Workspace + buffers, layer: workspace, depends_on: [C-DOCUMENT, C-VIEW], status: planned, ref: ../docs/design/view-window-workspace.md }
+  C-PERSIST:    { title: Persistence + recovery journal, layer: workspace, depends_on: [C-DOCUMENT, C-WORKSPACE], status: planned, ref: ../docs/design/persistence-and-recovery.md }  # D-005
+  C-LSPHOST:    { title: Language Service host (LSP mgmt + normalized model), layer: workspace, depends_on: [C-WORKSPACE, C-QUERY], status: planned, ref: ../docs/design/remote-runtime.md }
+  C-DEBUG:      { title: Debug service (DAP/GDB, location model), layer: workspace, depends_on: [C-WORKSPACE], status: planned, ref: ../docs/design/remote-runtime.md }  # D-032
+  # plugin (stage 5) / remote (stage 6)
+  C-PLUGIN:     { title: Plugin protocol/host, layer: plugin, depends_on: [C-COMMAND, C-RENDER, C-WORKSPACE], status: planned, ref: ../docs/rfc/proposed/RFC-0003-plugin-api.md }
+  C-AGENT:      { title: Remote workspace agent (headless service supervisor), layer: remote, depends_on: [C-WORKSPACE, C-LSPHOST, C-DEBUG], status: planned, ref: ../docs/design/remote-runtime.md }  # D-029/D-030/D-031
+  C-REMOTE:     { title: Remote client/runtime boundary, layer: remote, depends_on: [C-WORKSPACE, C-PLUGIN, C-AGENT], status: planned, ref: ../docs/design/remote-runtime.md }
+
+# --- Features ---
+features:
+  F-001:
+    title: Transactional editing
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-DOCUMENT, C-TRANSACTION]
+    summary: Every document change is applied as a tracked, reversible transaction.
+    trace:
+      parity: [COM-7, VIM-UNDO-1, EMACS-EDIT-1]
+      design: [../docs/architecture/architecture.md#3]
+      verify: [../tests/property/undo-roundtrip, ../tests/unit/transaction-revision]
+    acceptance:
+      - Undo after an edit restores the byte-identical original document.
+      - Every change records an origin and a revision.
+      - Applying a transaction strictly increases the document revision (monotonic).
+      - A transaction applies atomically or not at all (no partial-apply state).
+
+  F-002:
+    title: Document & coordinate model
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-DOCUMENT, C-ANCHOR]
+    summary: Typed byte/char/grapheme/screen-cell coordinates; positions tracked as anchors.
+    trace:
+      parity: [TERM-WIDTH-1, TERM-WIDTH-2, NVIM-EXT-1, NVIM-EXT-6]
+      design: [../docs/architecture/architecture.md#3, ../docs/design/positions-history.md]
+      verify: [../tests/property/anchor-stability, ../tests/unit/coordinate-widths]
+    acceptance:
+      - Cursor/decoration positions survive edits via anchors, not raw offsets.
+      - Wide/emoji/combining/ZWJ clusters do not desync the cursor from logical text.
+      - Anchor gravity (left/right) is honored when an edit lands exactly at the anchor.
+      - Byte, char, grapheme, and screen-cell coordinates are distinct types, not interchanged.
+
+  F-003:
+    title: Vim input profile
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-REGISTER, C-CONFIG]
+    summary: Vim-style input compiled to semantic commands.
+    trace:
+      parity: [VIM-MODE-1, VIM-MODE-2, VIM-MODE-4, VIM-MODE-6, VIM-OP-1, VIM-MOT-PROMOTE, VIM-TOBJ-1, VIM-TOBJ-3, VIM-CNT-INS, VIM-REG-1, VIM-REG-2, VIM-REPEAT-DOT]
+      design: [../docs/design/editing-language.md, ../docs/design/register-model.md, ../docs/design/positions-history.md]
+      verify: [../tests/parity/vim/operator-motion.yaml, ../tests/parity/vim/text-objects.yaml, ../tests/parity/vim/registers.yaml]
+    acceptance:
+      - Normal, Insert, and Visual (char/line/block) modes with operator-pending as a transient state.
+      - "Operator+motion composes with count multiplication (2d3w deletes 6 words) and doubling goes linewise (dd/yy)."
+      - "Exclusive->inclusive->linewise motion promotion (VIM-MOT-PROMOTE) matches vim.md checklist item 1."
+      - 'diw / daw / di( / dd / yy / p and the unnamed + yank-only (reg 0) registers behave per the docs/parity/vim.md L2 checklist; dot-repeat replays the full change including inserted text.'
+
+  F-004:
+    title: Semantic command engine + palette
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-COMMAND, C-CONTEXT, C-QUERY]
+    summary: Namespaced typed commands decoupled from keybindings; context-aware palette.
+    trace:
+      parity: [EMACS-CMD-1, EMACS-CMD-3, ECO-1, ECO-6]
+      design: [../docs/architecture/architecture.md#2, ../docs/design/render-and-frontends.md]
+      verify: [../tests/unit/command-registry, ../tests/integration/palette-context]
+    acceptance:
+      - Commands are invocable by stable namespaced ID independent of any key binding.
+      - The palette lists only context-appropriate commands and shows each command's current binding.
+      - Command metadata (typed args, when-context) is introspectable for discovery/docs generation.
+
+  F-005:
+    title: Undo/redo with logical grouping
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-UNDO, C-TRANSACTION]
+    summary: Undo recorded by logical unit (e.g. one insert session), not per keystroke.
+    trace:
+      parity: [COM-7, COM-8, VIM-UNDO-1, EMACS-EDIT-1]
+      design: [../docs/architecture/architecture.md#3, ../docs/design/editing-language.md]
+      verify: [../tests/parity/vim/undo-tree.yaml, ../tests/unit/undo-grouping]
+    acceptance:
+      - "An i…<Esc> insert session is a single undo step, not one step per keystroke."
+      - Formatter/LSP edits group as separate undo units from user edits.
+      - "A new change after an undo branches history without losing the undone states (g-/g+ chronological traversal)."
+
+  F-006:
+    title: TUI rendering (ANSI/Unicode)
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-RENDER, C-TERMINAL]
+    summary: Render-diff output on the compatibility path; grapheme-correct widths.
+    trace:
+      parity: [TERM-SYNC-1, TERM-COLOR-1, TERM-WIDTH-1, NVIM-UI-2]
+      design: [../docs/design/render-and-frontends.md, ../docs/architecture/architecture.md#6]
+      verify: [../tests/unit/render-diff, ../tests/integration/render-profile-pin]
+    acceptance:
+      - Only changed cells are emitted (no full-screen redraw).
+      - Render profile/tier is pinned per session and not flipped on probe noise.
+      - Nothing paints before a flush boundary; large redraws use synchronized output when available.
+      - Cell widths are grapheme-cluster correct (no width-by-char-count).
+
+  F-007:
+    title: Buffers, views, windows, splits
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-VIEW, C-WORKSPACE]
+    summary: Same buffer openable in multiple views; view-local state stays in the view.
+    trace:
+      parity: [COM-2, COM-3, COM-4, VIM-WIN-1, EMACS-BUFFER-2]
+      design: [../docs/architecture/architecture.md#7, ../docs/design/render-and-frontends.md]
+      verify: [../tests/integration/split-independent-cursors, ../tests/unit/view-local-state]
+    acceptance:
+      - Splitting shows two views of one document with independent cursors and scroll.
+      - View-local state (cursor, folds, selection) stays in the view, not the buffer.
+      - Closing one view does not close the shared buffer while another view holds it.
+      - Buffer, View, and Window are distinct (tabs are window layouts, not buffers-as-tabs).
+
+  F-008:
+    title: File open / save / crash recovery
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
+    summary: Atomic save preserving encoding/line-endings; append-only recovery journal.
+    trace:
+      parity: [COM-1, COM-9, COM-13, VIM-STATE-1]
+      design: [../docs/design/persistence-and-recovery.md]
+      verify: [../tests/fault-injection/truncated-journal, ../tests/unit/save-atomic]
+    acceptance:
+      - 'The "Saved" UI reflects a durable write (fsync), not just a successful syscall.'
+      - Save preserves the file's original encoding and line-ending style.
+      - A crash offers current-document / disk-file / recoverable-changes.
+      - Recovery never auto-overwrites the original file; a truncated journal tail is discarded, not fatal.
+
+  F-009:
+    title: Search & substitute
+    stage: mvp
+    priority: should
+    status: planned
+    depends_on: [C-DOCUMENT, C-COMMAND, C-REGEX, C-QUERY]
+    summary: Incremental search and range substitution.
+    trace:
+      parity: [COM-5, COM-6, VIM-SEARCH-1, VIM-EX-GLOBAL]
+      design: [../docs/design/vim-regex.md]
+      verify: [../tests/parity/vim/search-substitute.yaml]
+    acceptance:
+      - Incremental highlight of matches with smartcase (case-smart) search.
+      - "Range :s///[flags] substitutes with g/c/i flags and honors gdefault inversion."
+      - Vim regex dialect (not PCRE) is handled, including \\zs/\\ze and magic levels.
+      - ":g/pat/cmd runs two-pass (mark matching lines first, then execute)."
+
+  F-010:
+    title: Terminal capability detection
+    stage: mvp
+    priority: must   # promoted: F-006 (must) depends on the capability ledger (V-18)
+    status: planned
+    depends_on: [C-TERMINAL]
+    summary: Active probing with a confidence ledger and user override; not TERM-only.
+    trace:
+      parity: [TERM-PROBE-1, TERM-PROBE-2, TERM-KBD-1, TERM-COLOR-1]
+      design: [../docs/architecture/architecture.md#6, ../docs/parity/terminal.md]
+      verify: [../tests/unit/capability-ledger, ../tests/integration/da1-probe]
+    acceptance:
+      - Capabilities are probed via queries fenced by DA1 (no arbitrary timeouts), not judged by TERM alone.
+      - Each ledger entry carries {value, source, confidence}; a user override always wins.
+      - Probe/enter sequences are pushed and popped/reset on exit (no parent-shell corruption).
+
+  F-011:
+    title: PTY-backed terminal buffer
+    stage: post-mvp
+    priority: should
+    status: planned
+    depends_on: [C-TERMINAL, C-WORKSPACE, C-SCHEDULER]
+    summary: A terminal emulator as a first-class buffer (Unix PTY + Windows ConPTY).
+    trace:
+      parity: [TERM-PTY-1, TERM-PTY-2, WS-5, EMACS-PROC-2, VIM-JOB-1]
+      design: [../docs/architecture/architecture.md#8, ../docs/parity/terminal.md]
+      verify: [../tests/integration/pty-unix, ../tests/integration/conpty-windows]
+    acceptance:
+      - A shell runs in an ordinary workspace buffer with Terminal and Terminal-Normal modes.
+      - Resize is driven via the platform API (TIOCSWINSZ/SIGWINCH on Unix, ResizePseudoConsole on Windows).
+      - PTY output is processed asynchronously off the main loop without blocking editing.
+      - Windows ConPTY grid re-emission is handled without assuming byte round-trip fidelity.
+
+  F-012:
+    title: Emacs input profile
+    stage: post-mvp
+    priority: should
+    status: planned
+    depends_on: [C-INPUT, C-COMMAND]
+    summary: Prefix keys, M-x, mark/region, kill ring, universal argument, major/minor modes.
+    trace:
+      parity: [EMACS-KEYMAP-1, EMACS-KEYMAP-2, EMACS-CMD-1, EMACS-REGION-1, EMACS-KILL-1, EMACS-KILL-2, EMACS-ARG-1, EMACS-MODE-1, EMACS-MODE-2]
+      design: [../docs/design/editing-language.md, ../docs/design/register-model.md, ../docs/design/positions-history.md]
+      verify: [../tests/parity/emacs/kill-ring.yaml, ../tests/parity/emacs/prefix-keys.yaml, ../tests/parity/emacs/universal-arg.yaml]
+    acceptance:
+      - "Prefix keys (C-x, C-c, ...) select sub-keymaps; M-x invokes any command by name."
+      - "Keymap resolution is layered transient > ordered minor > major > global."
+      - "Kill ring is an ordered history with M-y yank-pop valid only immediately after a yank."
+      - "C-u universal argument feeds a raw-vs-numeric prefix channel interpreted per command."
+
+  F-013:
+    title: Native input profile
+    stage: post-mvp
+    priority: could
+    status: planned
+    depends_on: [C-INPUT, C-COMMAND]
+    summary: The third input language (modal text, command discovery, transient special views).
+    trace:
+      parity: [NAT-1, NAT-2, NAT-3, NAT-4, NAT-5]
+      design: [../docs/design/editing-language.md, ../docs/architecture/architecture.md#1]
+      verify: [../tests/parity/native/modal-text.yaml, ../tests/parity/native/leader-discovery.yaml]
+    acceptance:
+      - Text editing uses Vim-style operator/motion/text-object grammar.
+      - A leader-based command layer offers which-key-style prefix discovery.
+      - Special views (git/debug/picker) expose transient action maps.
+      - "All bindings resolve onto semantic commands; the profile is versioned (native-profile@N)."
+
+  F-014:
+    title: Built-in LSP (local + remote)
+    stage: post-mvp
+    priority: should
+    status: planned
+    depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
+    summary: >
+      Language Service host manages LSP processes and normalizes results into one model (mergeable with
+      tree-sitter/compiler diagnostics); UI is local, server runs where the code is (remote via C-AGENT).
+    trace:
+      parity: [NVIM-LSP-1, NVIM-LSP-2, NVIM-LSP-5, NVIM-DIAG-1, REM-SERVICE-4]
+      design: [../docs/design/remote-runtime.md, ../docs/design/render-and-frontends.md]
+      verify: [../tests/integration/lsp-remote, ../tests/unit/language-service-model]
+    acceptance:
+      - Diagnostics/hover/definition/rename/format work against a remote language server.
+      - Client UI never consumes raw LSP protocol (goes through the Language Service model).
+      - Diagnostics from LSP/tree-sitter/compiler merge by namespace into one model.
+      - No duplicate per-plugin LSP process is spawned for the same server.
+
+  F-015:
+    title: Tree-sitter highlighting
+    stage: post-mvp
+    priority: should
+    status: planned
+    depends_on: [C-DOCUMENT, C-RENDER, C-SCHEDULER]
+    summary: Incremental structural highlighting from snapshots; injections; TS folds/indent.
+    trace:
+      parity: [NVIM-TS-1, NVIM-TS-2, NVIM-TS-3, NVIM-TS-5, NVIM-EXT-2]
+      design: [../docs/design/render-and-frontends.md, ../docs/architecture/architecture.md#3]
+      verify: [../tests/integration/treesitter-highlight, ../tests/property/incremental-reparse]
+    acceptance:
+      - Highlighting comes from tree-sitter capture groups applied as prioritized decorations.
+      - The parser reads a document snapshot, never the live buffer.
+      - Re-parse is incremental on edit, not a full per-keystroke re-parse.
+      - Language injections and tree-sitter folds/indent are supported.
+
+  F-016:
+    title: Plugin protocol + host
+    stage: post-mvp
+    priority: must
+    status: planned
+    depends_on: [C-PLUGIN, C-COMMAND, C-RENDER]
+    summary: Isolated plugins over a versioned protocol (WASM/process); stable/experimental/internal layers.
+    trace:
+      parity: [ECO-2, ECO-3, ECO-4, ECO-8, ECO-14]
+      design: [../docs/architecture/architecture.md#4, ../docs/protocols/versioning-and-evolution.md]
+      verify: [../tests/integration/plugin-panic-isolation, ../tests/integration/plugin-sdk-conformance]
+    acceptance:
+      - A plugin panic never terminates the editor.
+      - Plugins register commands and request transactions; never touch core types.
+      - A plugin manifest declares features/permissions (deny-by-default) before execution.
+      - Stable/Experimental/Internal API layers are enforced with a promotion ladder.
+
+  F-017:
+    title: Remote client/runtime (SSH agent)
+    stage: post-mvp
+    priority: should
+    status: planned
+    depends_on: [C-REMOTE, C-AGENT, C-WORKSPACE]
+    summary: >
+      Built-in `editor ssh host`: thin client + auto-bootstrapped headless Workspace Agent over SSH stdio.
+      Agent supervises remote fs/watch, lazy file tree, search, Git, PTY, port-forward, toolchain discovery;
+      UI local, execution remote. Version negotiation; capability negotiation with degradation.
+    trace:
+      parity: [REM-SPLIT-1, REM-SPLIT-2, REM-SERVICE-1, REM-RESUME-1, REM-VERSION-1, REM-PATH-1, REM-SEC-1]
+      design: [../docs/design/remote-runtime.md]
+      verify: [../tests/remote-scenarios/first-connect-bootstrap, ../tests/remote-scenarios/reconnect-resume]
+    acceptance:
+      - First connect auto-installs the version-matched agent under $HOME (no sudo) and handshakes.
+      - File tree lazy-loads; search/PTY/process run remotely; reconnect resumes the live agent.
+      - Missing remote tools degrade (partial capability), they don't fail the connection.
+
+  F-021:
+    title: Debugger (DAP + location model)
+    stage: future
+    priority: could
+    status: planned
+    depends_on: [C-DEBUG, C-WORKSPACE, C-RENDER]
+    summary: >
+      Debug UI local; debugger and target locations modeled separately (remote process / container /
+      board). DAP backend first, GDB/MI backend later for embedded/firmware.
+    trace:
+      parity: [WS-7, REM-SERVICE-5]
+      design: [../docs/design/remote-runtime.md]
+      verify: [../tests/debug/dap-backend, ../tests/debug/location-model]
+    acceptance:
+      - Stack / Variables / Console views drive a DAP session with breakpoints and stepping.
+      - Debugger location and target location are modeled separately (local / remote / container / board).
+      - The debug adapter and target run remotely while the debug UI stays local.
+
+  F-018:
+    title: GUI frontend
+    stage: future
+    priority: could
+    status: planned
+    depends_on: [C-RENDER, C-COMMAND]
+    summary: Native-window GPU frontend reusing the same command system and Render IR.
+    trace:
+      parity: [NVIM-UI-1, NVIM-UI-2, NVIM-UI-3, ECO-8]
+      design: [../docs/design/render-and-frontends.md, ../docs/architecture/architecture.md#6]
+      verify: [../tests/integration/gui-render-parity, ../tests/unit/render-ir-shared]
+    acceptance:
+      - The GUI consumes the same Render IR and semantic command system as the TUI.
+      - Cmdline/popupmenu/messages are surfaced semantically, not drawn into a cell grid.
+      - Nothing paints before a flush boundary; each client-view pins its own render tier.
+
+  F-019:
+    title: Extension marketplace
+    stage: future
+    priority: could
+    status: planned
+    depends_on: [C-PLUGIN]
+    summary: Signed packages, verification levels, lockfile, compatibility CI.
+    trace:
+      parity: [ECO-10, ECO-11, ECO-12, ECO-13, ECO-15]
+      design: [../docs/design/delivery-and-dependencies.md, ../docs/protocols/versioning-and-evolution.md]
+      verify: [../tests/integration/lockfile-reproducible, ../tests/integration/compat-ci-old-sdk]
+    acceptance:
+      - Packages are signed with verification levels (Official/Verified/Community/Unreviewed/Deprecated/Quarantined).
+      - A lockfile yields reproducible installs.
+      - Compatibility CI runs old-SDK fixtures; deprecations hold for at least 2 majors.
+
+  F-020:
+    title: AI agent integration
+    stage: future
+    priority: could
+    status: planned
+    depends_on: [C-COMMAND, C-TRANSACTION, C-PLUGIN]
+    summary: AI proposals reviewed before apply; execute vs propose capability distinction.
+    trace:
+      parity: [WS-8, ECO-4]
+      design: [../docs/architecture/architecture.md#4, ../docs/design/stability-and-observability.md]
+      verify: [../tests/integration/ai-proposal-review, ../tests/unit/execute-vs-propose]
+    acceptance:
+      - AI edits arrive as proposals reviewed (accept/reject/edit) before any transaction applies.
+      - Execute capability is distinct from propose capability and permission-gated (deny-by-default).
+      - Chat / Proposal / Review surfaces are workspace buffers over the shared view model.

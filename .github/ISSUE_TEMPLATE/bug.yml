@@ -1,0 +1,96 @@
+name: Bug report
+description: Report a defect in the ruse editor
+labels: [type/bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please fill in the required fields so we can reproduce and triage quickly.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-sentence description of the bug.
+      placeholder: Cursor jumps to line 1 after saving a large file
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact, minimal steps to trigger the bug.
+      placeholder: |
+        1. Open a 5,000-line file
+        2. Move cursor to line 200
+        3. Press :w
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: What actually happened.
+    validations:
+      required: true
+  - type: dropdown
+    id: impact-scope
+    attributes:
+      label: Impact scope
+      description: The primary dimension affected by this bug.
+      options:
+        - correctness
+        - data-loss
+        - reliability
+        - performance
+        - security
+        - cosmetic
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Fill in each line that applies.
+      placeholder: |
+        Client OS:
+        Remote OS:
+        Terminal:
+        tmux (y/n):
+        SSH or WSL:
+        Editor version:
+        Agent version:
+        Input profile:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs & diagnostics
+      description: Attach relevant logs. Run `:diagnostics export` and paste or attach the output.
+    validations:
+      required: false
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Regression?
+      description: Did this work in a previous version? Note which version in the field below if known.
+      options:
+        - "yes"
+        - "no"
+        - unknown
+    validations:
+      required: false
+  - type: input
+    id: regression-version
+    attributes:
+      label: Last known good version
+      description: If this is a regression, which version last worked?
+    validations:
+      required: false

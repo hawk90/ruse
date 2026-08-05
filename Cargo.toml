@@ -1,0 +1,11 @@
+# ruse — Cargo workspace. Crate layout mirrors docs/README.md §Target Repository Layout and the PRD
+# component layers (kernel < input < tui < workspace < plugin < remote). This is a compiling SKELETON:
+# modules are stubs pending the design docs under docs/design/ (spec-first). `cargo test` passes empty.
+[workspace]
+resolver = "2"
+members = ["crates/*", "apps/*"]
+
+[workspace.package]
+edition = "2021"
+version = "0.0.0"
+license = "MIT"

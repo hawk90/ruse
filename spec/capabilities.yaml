@@ -1,0 +1,57 @@
+# Capability inventory — classifies user-facing capabilities along TWO independent axes (D-033):
+#   product_layer      = base | official-pack | third-party        (delivery/product axis)
+#   architecture_layer = kernel | service | bundled-extension | external-plugin | external-tool
+#   implementation     = own | wrapped | direct | external-process (source axis, D-034)
+# A single feature is decomposed (engine / UI / adapter) rather than dropped into one cell.
+# This is NOT PRD.yaml: PRD owns what/when (F-*/C-*, stage/status); here we own where-it-lives + how-built +
+# who-trusts-it. Link to PRD via `prd:` where useful. awesome-neovim is used as the inventory source, not copied.
+#
+# Enums — runtime: client|workspace|both · activation: startup|workspace|language|command|on-demand ·
+#   trust: core|official|untrusted · replaceable: true|false
+# LLM: patch one CAP-id; `requires` references service capability ids; never rename an id.
+
+version: 1
+
+capabilities:
+  # ---- Base: always present; complete local+remote editing with zero plugins ----
+  CAP-EDIT-CORE:    { title: Editing core (Document/View/Transaction/Undo/Selection), product_layer: base, architecture_layer: kernel, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false, prd: [F-001, F-002, F-005] }
+  CAP-VIM-PROFILE:  { title: Vim input profile, product_layer: base, architecture_layer: kernel, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-003] }
+  CAP-NATIVE-PROFILE: { title: Native input profile, product_layer: base, architecture_layer: kernel, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-013] }
+  CAP-COMMAND-PALETTE: { title: Command palette, product_layer: base, architecture_layer: bundled-extension, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-004] }
+  CAP-FILE-PICKER:  { title: File picker / fuzzy finder, product_layer: base, architecture_layer: bundled-extension, implementation: own, runtime: both, activation: startup, trust: core, replaceable: true, requires: [CAP-FS, CAP-SEARCH] }
+  CAP-FILE-TREE-UI: { title: File tree UI (minimal), product_layer: base, architecture_layer: bundled-extension, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, requires: [CAP-FS, CAP-WATCHER, CAP-RESOURCE] }
+  CAP-RESOURCE:     { title: Resource/Path/identity model, product_layer: base, architecture_layer: service, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false }
+  CAP-FS:           { title: Filesystem service, product_layer: base, architecture_layer: service, implementation: wrapped, runtime: both, activation: startup, trust: core, replaceable: false }
+  CAP-WATCHER:      { title: File watcher, product_layer: base, architecture_layer: service, implementation: wrapped, runtime: both, activation: startup, trust: core, replaceable: true, dep: [DEP-WATCH] }
+  CAP-SEARCH:       { title: Workspace search, product_layer: base, architecture_layer: service, implementation: external-process, runtime: both, activation: on-demand, trust: core, replaceable: true, dep: [DEP-RIPGREP] }
+  CAP-SYNTAX:       { title: Syntax highlighting (tree-sitter mgmt), product_layer: base, architecture_layer: service, implementation: wrapped, runtime: both, activation: startup, trust: core, replaceable: false, prd: [F-015], dep: [DEP-TREESITTER] }
+  CAP-DIAGNOSTICS:  { title: Diagnostics store, product_layer: base, architecture_layer: service, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false }
+  CAP-COMPLETION:   { title: Completion aggregation, product_layer: base, architecture_layer: service, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false }
+  CAP-LSP-COORD:    { title: LSP client/coordinator + Language Service model, product_layer: base, architecture_layer: service, implementation: own, runtime: workspace, activation: language, trust: core, replaceable: false, prd: [F-014], requires: [CAP-PROCESS] }
+  CAP-LSP-CODEC:    { title: LSP protocol codec, product_layer: base, architecture_layer: service, implementation: wrapped, runtime: workspace, activation: language, trust: core, replaceable: true, dep: [DEP-SERDE] }
+  CAP-TERMINAL:     { title: Terminal / PTY, product_layer: base, architecture_layer: service, implementation: wrapped, runtime: both, activation: on-demand, trust: core, replaceable: false, prd: [F-011], dep: [DEP-PTY] }
+  CAP-PROCESS:      { title: Process/task supervisor + scheduler, product_layer: base, architecture_layer: service, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false }
+  CAP-GIT-PRIMITIVE: { title: Git repository discovery + diff/blame primitive, product_layer: base, architecture_layer: service, implementation: wrapped, runtime: workspace, activation: workspace, trust: core, replaceable: true, dep: [DEP-GIT] }
+  CAP-REMOTE-RUNTIME: { title: SSH remote runtime + agent, product_layer: base, architecture_layer: service, implementation: own, runtime: both, activation: on-demand, trust: core, replaceable: false, prd: [F-017], requires: [CAP-FS, CAP-WATCHER, CAP-SEARCH, CAP-PROCESS, CAP-TERMINAL], dep: [DEP-SSH] }
+  CAP-RECOVERY:     { title: Session/crash recovery + journal, product_layer: base, architecture_layer: service, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false, prd: [F-008] }
+
+  # ---- Official Pack: official, maintained, activated on demand (per language/workspace/command) ----
+  CAP-CPP-PACK:     { title: C/C++ development pack, product_layer: official-pack, architecture_layer: external-tool, implementation: external-process, runtime: workspace, activation: language, trust: official, replaceable: true, requires: [CAP-LSP-COORD, CAP-PROCESS] }
+  CAP-RUST-PACK:    { title: Rust development pack, product_layer: official-pack, architecture_layer: external-tool, implementation: external-process, runtime: workspace, activation: language, trust: official, replaceable: true, requires: [CAP-LSP-COORD, CAP-PROCESS] }
+  CAP-DEBUG-MODEL:  { title: Debug session model (DAP/GDB), product_layer: official-pack, architecture_layer: service, implementation: own, runtime: workspace, activation: command, trust: official, replaceable: false, prd: [F-021], requires: [CAP-PROCESS] }
+  CAP-DEBUG-UI:     { title: Default debug UI, product_layer: official-pack, architecture_layer: bundled-extension, implementation: own, runtime: client, activation: command, trust: official, replaceable: true, requires: [CAP-DEBUG-MODEL] }
+  CAP-GDB-ADAPTER:  { title: GDB/LLDB adapter, product_layer: official-pack, architecture_layer: external-tool, implementation: external-process, runtime: workspace, activation: command, trust: official, replaceable: true, requires: [CAP-DEBUG-MODEL] }
+  CAP-TEST-EXPLORER: { title: Test explorer + model, product_layer: official-pack, architecture_layer: service, implementation: own, runtime: workspace, activation: command, trust: official, replaceable: true, requires: [CAP-PROCESS] }
+  CAP-GIT-UI:       { title: Git advanced UI (stage/diff/history/blame), product_layer: official-pack, architecture_layer: bundled-extension, implementation: own, runtime: client, activation: command, trust: official, replaceable: true, requires: [CAP-GIT-PRIMITIVE] }
+  CAP-MARKDOWN:     { title: Markdown preview pack, product_layer: official-pack, architecture_layer: bundled-extension, implementation: own, runtime: client, activation: language, trust: official, replaceable: true }
+  CAP-CONTAINER-REMOTE: { title: Container/WSL remote provider, product_layer: official-pack, architecture_layer: service, implementation: own, runtime: both, activation: on-demand, trust: official, replaceable: true, requires: [CAP-REMOTE-RUNTIME] }
+
+  # ---- Third-party: provider/domain-variable, optional, alternative UX, higher-risk permissions ----
+  CAP-AI:           { title: AI provider integration, product_layer: third-party, architecture_layer: external-plugin, implementation: external-process, runtime: workspace, activation: command, trust: untrusted, replaceable: true, prd: [F-020], permissions: [network, credentials] }
+  CAP-GITHUB:       { title: GitHub/GitLab/Jira integration, product_layer: third-party, architecture_layer: external-plugin, implementation: external-process, runtime: workspace, activation: command, trust: untrusted, replaceable: true, permissions: [network, credentials] }
+  CAP-DATABASE:     { title: Database client, product_layer: third-party, architecture_layer: external-plugin, implementation: external-process, runtime: workspace, activation: command, trust: untrusted, replaceable: true, permissions: [network, credentials] }
+  CAP-CLOUD:        { title: AWS/Kubernetes/cloud tools, product_layer: third-party, architecture_layer: external-plugin, implementation: external-process, runtime: workspace, activation: command, trust: untrusted, replaceable: true, permissions: [network, credentials] }
+  CAP-VENDOR-DEBUG: { title: Vendor/FPGA/probe debugger (OpenOCD etc.), product_layer: third-party, architecture_layer: external-tool, implementation: external-process, runtime: workspace, activation: command, trust: untrusted, replaceable: true, requires: [CAP-DEBUG-MODEL] }
+  CAP-ALT-UI:       { title: Alternative UI (explorer/statusline/completion-UI/finder/git-UI), product_layer: third-party, architecture_layer: external-plugin, implementation: external-process, runtime: client, activation: on-demand, trust: untrusted, replaceable: true }
+  CAP-THEME:        { title: Themes / icons, product_layer: third-party, architecture_layer: external-plugin, implementation: external-process, runtime: client, activation: startup, trust: untrusted, replaceable: true }
+  CAP-NICHE-LANG:   { title: Niche language integrations, product_layer: third-party, architecture_layer: external-tool, implementation: external-process, runtime: workspace, activation: language, trust: untrusted, replaceable: true, requires: [CAP-LSP-COORD] }

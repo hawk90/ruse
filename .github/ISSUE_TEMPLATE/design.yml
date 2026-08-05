@@ -1,0 +1,78 @@
+name: Design change / RFC candidate
+description: Propose a structural or architectural change
+labels: [type/rfc, needs/design]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for changes to structure, invariants, or call flow. Significant or irreversible changes become an RFC via `spec/templates/rfc.md` plus a `DECISIONS` D-* record.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem or limitation motivates this change?
+    validations:
+      required: true
+  - type: textarea
+    id: current-structure
+    attributes:
+      label: Current structure
+      description: How the relevant part is structured today.
+    validations:
+      required: false
+  - type: textarea
+    id: proposed-structure
+    attributes:
+      label: Proposed structure
+      description: The structure you propose instead.
+    validations:
+      required: true
+  - type: textarea
+    id: invariant-impact
+    attributes:
+      label: Invariant impact
+      description: Which invariants are added, changed, or broken.
+    validations:
+      required: false
+  - type: textarea
+    id: dependency-impact
+    attributes:
+      label: Dependency impact
+      description: Effect on internal or external dependencies.
+    validations:
+      required: false
+  - type: textarea
+    id: call-flow-impact
+    attributes:
+      label: Call-flow impact
+      description: How control and data flow change.
+    validations:
+      required: false
+  - type: textarea
+    id: performance-impact
+    attributes:
+      label: Performance impact
+      description: Expected effect on latency, throughput, or memory.
+    validations:
+      required: false
+  - type: textarea
+    id: compatibility-impact
+    attributes:
+      label: Compatibility impact
+      description: Backward/forward compatibility and migration concerns.
+    validations:
+      required: false
+  - type: textarea
+    id: failure-recovery
+    attributes:
+      label: Failure & recovery
+      description: New failure modes and how the system recovers.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives & rejection reasons
+      description: Alternatives considered and why they were rejected.
+    validations:
+      required: false

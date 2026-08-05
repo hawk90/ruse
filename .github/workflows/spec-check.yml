@@ -1,0 +1,17 @@
+# Doc-system integrity (runnable today). Blocks dangling refs / layer violations / broken links /
+# bad enums / dup IDs across spec/ + docs/. See docs/operations/spec-validate.md.
+name: spec-check
+on:
+  pull_request:
+  push: { branches: [main, next] }
+permissions: { contents: read }
+jobs:
+  spec-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # TODO pin SHA
+      - uses: actions/setup-python@v5      # TODO pin SHA
+        with: { python-version: '3.12' }
+      - run: pip install pyyaml
+      - run: python3 tools/spec-validate.py
+      # When the generator (D-022) exists: python3 tools/spec-build.py && git diff --exit-code

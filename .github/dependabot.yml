@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    labels: [type/dependency]
+    # Critical deps (terminal/PTY/SSH/serialization/async/rope/parser) must be reviewed by hand — see D-034.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    labels: [type/dependency, area/infra]

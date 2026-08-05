@@ -1,0 +1,21 @@
+# Supply-chain / advisory checks. cargo-audit activates once Cargo.lock exists.
+name: security
+on:
+  pull_request:
+  push: { branches: [main] }
+  schedule: [{ cron: '0 6 * * 1' }]
+permissions: { contents: read }
+jobs:
+  advisory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # TODO pin SHA
+      - id: detect
+        run: '[ -f Cargo.lock ] && echo "have=1" >> "$GITHUB_OUTPUT" || echo "have=0" >> "$GITHUB_OUTPUT"'
+      - if: steps.detect.outputs.have == '1'
+        uses: rustsec/audit-check@v2       # TODO pin SHA
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - if: steps.detect.outputs.have == '0'
+        run: echo "No Cargo.lock yet — advisory scan skipped."
+  # TODO: CodeQL (Rust) + secret scanning are enabled in repo settings, not here.

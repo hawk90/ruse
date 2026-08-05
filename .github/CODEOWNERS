@@ -1,0 +1,7 @@
+# Solo project: no required owners yet. When a team exists, uncomment to auto-request review on
+# critical paths (remote protocol / persistence / plugin API / security / release / spec).
+# /spec/                    @architecture-maintainers
+# /crates/core/             @core-maintainers
+# /crates/workspace-runtime/ @remote-maintainers
+# /crates/plugin-protocol/  @plugin-maintainers
+# /.github/                 @maintainers

@@ -1,0 +1,14 @@
+changelog:
+  categories:
+    - title: Features
+      labels: [type/slice, type/capability]
+    - title: Bug fixes
+      labels: [type/bug]
+    - title: Performance
+      labels: [impact/performance]
+    - title: Architecture & design
+      labels: [type/rfc]
+    - title: Dependencies
+      labels: [type/dependency]
+    - title: Other changes
+      labels: ["*"]

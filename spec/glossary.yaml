@@ -1,0 +1,190 @@
+# Glossary — the SINGLE canonical source for ruse terminology (state; LLM-manageable).
+# Human-readable tables (spec/PROJECT.md, docs) and a runtime glossary.json are GENERATED from this
+# (xtask, D-022) — do not hand-maintain those copies. Authoring format is YAML per D-021.
+# LLM rules: patch one term id; never rename an existing id (it is the stable key); add `en`/`ko`
+#   definitions for new terms; ja/zh are term labels (standard localized forms), definitions optional.
+# Fields: en (English term) · def (English definition) · ko/ja/zh (localized term labels) ·
+#   def_ko (Korean definition) · related (other term ids) · note (optional).
+
+version: 1
+
+terms:
+  workspace:
+    en: Workspace
+    ko: 워크스페이스
+    ja: ワークスペース
+    zh: 工作区
+    def: The top-level unit a user opens; owns documents, views, services, and an optional remote runtime.
+    def_ko: 사용자가 여는 최상위 단위. 문서·뷰·서비스와 (선택적으로) 원격 런타임을 소유한다.
+    related: [document, view, remote]
+
+  document:
+    en: Document
+    ko: 문서
+    ja: ドキュメント
+    zh: 文档
+    def: The content model of a resource. Knows nothing about Views.
+    def_ko: 리소스의 내용 모델. View를 전혀 알지 못한다.
+    related: [view, buffer, transaction, revision]
+
+  view:
+    en: View
+    ko: 뷰
+    ja: ビュー
+    zh: 视图
+    def: A presentation of a Document/buffer in a Window; owns view-local state (cursor, selection, viewport, folds).
+    def_ko: Window 안에서 Document/버퍼를 표현하는 것. 커서·선택·뷰포트·폴드 등 view-local 상태를 소유한다.
+    related: [document, window, buffer]
+
+  window:
+    en: Window
+    ko: 윈도우
+    ja: ウィンドウ
+    zh: 窗口
+    def: A layout region hosting a View.
+    def_ko: View를 담는 레이아웃 영역.
+    related: [view]
+
+  buffer:
+    en: Buffer
+    ko: 버퍼
+    ja: バッファ
+    zh: 缓冲区
+    def: Any content surface (document, git status, terminal, help) presented as a View.
+    def_ko: View로 표현되는 모든 내용 표면(문서·git 상태·터미널·도움말 등).
+    related: [document, view]
+
+  command:
+    en: Command
+    ko: 명령
+    ja: コマンド
+    zh: 命令
+    def: A semantic, namespaced, typed action; the unit that keymaps/palette/RPC/macros dispatch.
+    def_ko: 시맨틱·네임스페이스·타입 있는 동작. 키맵/팔레트/RPC/매크로가 디스패치하는 단위.
+    related: [query, transaction]
+
+  query:
+    en: Query
+    ko: 쿼리
+    ja: クエリ
+    zh: 查询
+    def: A read-only request returning a snapshot/DTO (never a live mutable object).
+    def_ko: 스냅샷/DTO를 반환하는 읽기 전용 요청(살아있는 가변 객체를 넘기지 않음).
+    related: [command, snapshot]
+
+  transaction:
+    en: Transaction
+    ko: 트랜잭션
+    ja: トランザクション
+    zh: 事务
+    def: An atomic, undoable document mutation carrying a base revision and an origin.
+    def_ko: base revision과 origin을 지닌, 원자적이고 되돌릴 수 있는 문서 변경.
+    related: [document, revision]
+
+  revision:
+    en: Revision
+    ko: 리비전
+    ja: リビジョン
+    zh: 修订版本
+    def: A monotonically increasing document version stamp.
+    def_ko: 단조 증가하는 문서 버전 스탬프.
+    related: [document, transaction]
+
+  anchor:
+    en: Anchor
+    ko: 앵커
+    ja: アンカー
+    zh: 锚点
+    def: A position that survives edits, with affinity/gravity (cursor/decoration/diagnostic positions).
+    def_ko: 편집을 견디는 위치. affinity/gravity를 가짐(커서·데코레이션·진단 위치).
+    related: [document]
+
+  snapshot:
+    en: Snapshot
+    ko: 스냅샷
+    ja: スナップショット
+    zh: 快照
+    def: An immutable, cheap-to-share view of state at a revision.
+    def_ko: 특정 revision 시점 상태의 불변·공유 저렴한 뷰.
+    related: [revision, query]
+
+  handle:
+    en: Handle
+    ko: 핸들
+    ja: ハンドル
+    zh: 句柄
+    def: A stable, typed, generation-checked identifier for a live object.
+    def_ko: 살아있는 객체에 대한 안정적·타입 있는·세대 검사 식별자.
+    related: []
+
+  plugin:
+    en: Plugin
+    ko: 플러그인
+    ja: プラグイン
+    zh: 插件
+    def: An isolated extension communicating over a versioned protocol; never touches core types.
+    def_ko: 버전 있는 프로토콜로 통신하는 격리된 확장. 코어 타입을 절대 만지지 않음.
+    related: [capability, command]
+
+  capability:
+    en: Capability
+    ko: 케이퍼빌리티
+    ja: ケーパビリティ
+    zh: 能力
+    def: A detected/declared feature with a confidence source and user override (terminal, host, remote).
+    def_ko: 신뢰 출처와 사용자 override를 가진 탐지·선언된 기능(터미널·호스트·원격).
+    related: [remote]
+
+  remote:
+    en: Remote
+    ko: 리모트
+    ja: リモート
+    zh: 远程
+    def: A workspace runtime running on another host/container; the local client is thin.
+    def_ko: 다른 호스트/컨테이너에서 실행되는 workspace 런타임. 로컬 클라이언트는 얇다.
+    related: [workspace, capability]
+
+  profile:
+    en: Profile
+    ko: 프로파일
+    ja: プロファイル
+    zh: 配置文件
+    def: A versioned input language (Vim / Emacs / Native).
+    def_ko: 버전 있는 입력 언어(Vim / Emacs / Native).
+    related: [command]
+
+  render-tree:
+    en: Render Tree
+    ko: 렌더 트리
+    ja: レンダーツリー
+    zh: 渲染树
+    def: The semantic paint IR produced before any frontend-specific lowering. Synonym of "Render IR".
+    def_ko: 프런트엔드별 lowering 전에 만들어지는 시맨틱 paint IR. "Render IR"과 동의어.
+    related: [render-ir, semantic-view-model]
+
+  render-ir:
+    en: Render IR
+    ko: 렌더 IR
+    ja: レンダーIR
+    zh: 渲染IR
+    def: Synonym of Render Tree — the backend-neutral semantic paint IR.
+    def_ko: Render Tree의 동의어 — 백엔드 중립 시맨틱 paint IR.
+    related: [render-tree, semantic-view-model]
+
+  semantic-view-model:
+    en: Semantic View Model
+    ko: 시맨틱 뷰 모델
+    ja: セマンティックビューモデル
+    zh: 语义视图模型
+    def: The higher-level, plugin-facing description of a view (kinds/nodes) that lowers into the Render IR. Plugins target this, not the Render IR directly.
+    def_ko: 뷰의 상위 수준·플러그인 대상 기술(종류/노드)로, Render IR로 lowering된다. 플러그인은 Render IR이 아니라 이것을 대상으로 한다.
+    related: [render-ir, plugin]
+
+  health-registry:
+    en: Health Registry
+    ko: 헬스 레지스트리
+    ja: ヘルスレジストリ
+    zh: 健康状态注册表
+    def: The authoritative, subscribable source of per-component status; the UI only renders it.
+    def_ko: 컴포넌트별 상태의 권위 있는 구독 가능 출처. UI는 이것을 렌더만 한다.
+    related: []

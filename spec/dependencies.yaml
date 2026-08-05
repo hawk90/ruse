@@ -1,0 +1,41 @@
+# Dependency inventory — the implementation-source axis (D-034). Separate from capabilities.yaml (product)
+# and PRD (requirements). Governs Cargo packages AND external tools/processes.
+# Principle: we own domain SEMANTICS/CONTRACTS, not all code. Never let an external type decide the
+# vocabulary of Document/Command/Remote/Plugin. Wrap stateful deps behind an Adapter; don't wrap trivial ones.
+#
+# Enums —
+#   usage: own | wrapped | direct | external-process | tooling
+#   tier:  0 (tooling-only) | 1 (leaf util) | 2 (infrastructure) | 3 (critical path) | 4 (trust boundary)
+#   criticality: low | medium | high | critical
+#   public_api_exposure: none | limited   (external types must NOT reach the public domain API)
+# Higher tier ⇒ stricter review (maintenance, security history, transitive count, unsafe, MSRV, license,
+# binary size, startup/runtime cost, cancellation, API stability, bus factor, replacement availability).
+# Budget is by COST TYPE (compile/binary/startup/alloc/threads/transitive/native/unsafe/supply-chain),
+# not crate count. A dep that spawns its own thread pool or global runtime must be flagged (scheduler clash).
+# LLM: patch one DEP-id; `allowed_layers` lists the only crates it may appear in.
+
+version: 1
+
+dependencies:
+  DEP-ROPE:      { purpose: text storage (rope/piece-table), usage: wrapped, tier: 3, criticality: critical, public_api_exposure: none, allowed_layers: [core], alternatives: [own piece-table, other rope crate], exit_strategy: TextStorage trait swap, review: {security: required, performance: benchmark, compatibility: conformance-test} }
+  DEP-TREESITTER: { purpose: incremental parsing + grammars, usage: wrapped, tier: 3, criticality: high, public_api_exposure: none, allowed_layers: [core, terminal-platform], alternatives: [none practical], exit_strategy: parser-service adapter }
+  DEP-REGEX:     { purpose: regex engine (non-Vim-dialect paths), usage: wrapped, tier: 3, criticality: high, public_api_exposure: none, allowed_layers: [core], alternatives: [own Vim-dialect engine (D-028)], exit_strategy: Regex trait; Vim dialect is own }
+  DEP-WATCH:     { purpose: filesystem watcher, usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [workspace, workspace-runtime], alternatives: [polling fallback (own), remote agent], exit_strategy: FileWatcher trait swap }
+  DEP-IGNORE:    { purpose: gitignore/glob matching, usage: wrapped, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [workspace, workspace-runtime], alternatives: [own matcher], exit_strategy: IgnoreEngine trait }
+  DEP-PTY:       { purpose: pseudo-terminal (Unix PTY / Windows ConPTY), usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [terminal-platform, workspace-runtime], alternatives: [platform-native], exit_strategy: Pty trait }
+  DEP-TERM-PARSER: { purpose: terminal escape/VT parser, usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [terminal-platform], alternatives: [own parser (risky — edge cases)], exit_strategy: adapter }
+  DEP-UNICODE-WIDTH: { purpose: grapheme/East-Asian width tables, usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [terminal-platform, core], alternatives: [correction tables], exit_strategy: width fn swap }
+  DEP-SERDE:     { purpose: serialization framework, usage: direct, tier: 2, criticality: medium, public_api_exposure: limited, allowed_layers: [core, plugin-protocol, workspace, workspace-runtime, render-model], alternatives: [manual codec], exit_strategy: schema is contract-first (D-021) }
+  DEP-MSGPACK:   { purpose: MessagePack codec (plugin/remote protocol), usage: wrapped, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [plugin-protocol, workspace-runtime], alternatives: [other codec], exit_strategy: protocol is versioned (D-024) }
+  DEP-CRYPTO-HASH: { purpose: checksums/signatures (journal, plugin store), usage: wrapped, tier: 4, criticality: critical, public_api_exposure: none, allowed_layers: [workspace, plugin-protocol, workspace-runtime], alternatives: [vetted crate only — never hand-roll], exit_strategy: hash trait; NEVER self-implement crypto }
+  DEP-SSH:       { purpose: SSH transport for remote agent, usage: wrapped, tier: 4, criticality: critical, public_api_exposure: none, allowed_layers: [workspace-runtime], alternatives: [external ssh executable], exit_strategy: Transport trait; may switch to external-process }
+  DEP-GIT:       { purpose: git repository ops/diff/blame, usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [workspace, workspace-runtime], alternatives: [git CLI (external-process)], exit_strategy: GitBackend trait (lib or CLI) }
+
+  # ---- external tools (not linked; run as versioned processes under the supervisor) ----
+  DEP-RIPGREP:   { purpose: fast workspace search, usage: external-process, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [workspace, workspace-runtime], alternatives: [wrapped search lib], exit_strategy: search-service adapter }
+  DEP-LSP-SERVER: { purpose: language servers (rust-analyzer, clangd, ...), usage: external-process, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [workspace-runtime], alternatives: [per-language], exit_strategy: managed vs user-provided }
+  DEP-GDB:       { purpose: debugger (gdb/lldb), usage: external-process, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [workspace-runtime], alternatives: [DAP adapters], exit_strategy: debug-service adapter (DAP/MI) }
+  DEP-FORMATTER: { purpose: formatters/linters (rustfmt, clang-format, prettier), usage: external-process, tier: 1, criticality: low, public_api_exposure: none, allowed_layers: [workspace, workspace-runtime], alternatives: [per-tool], exit_strategy: formatter adapter }
+
+  # ---- tooling only (never in shipped binaries) ----
+  DEP-TEST-UTIL: { purpose: test assertions / property testing / fixtures, usage: tooling, tier: 0, criticality: low, public_api_exposure: none, allowed_layers: [any-dev], alternatives: [std], exit_strategy: n/a }

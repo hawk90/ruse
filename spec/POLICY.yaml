@@ -1,0 +1,196 @@
+# POLICY — Enforced engineering principles (the subset with teeth).
+# This is NOT the full anti-pattern list — that stays in ../docs/anti-patterns/anti-patterns.md.
+# Each principle references catalog IDs (antipattern.refs) and invariant IDs (invariants) instead of copying them.
+# LLM rules: patch one ID; never renumber; new principle => add ID + reason; deprecate via status:dropped.
+# Enums:
+#   strength: required | recommended | situational
+#   category: correctness | stability | security | performance | architecture | ecosystem | observability
+#   status:   active | dropped
+# Defaults: strength=recommended, status=active, exception.allowed=false.
+# NOTE: `enforcement:` mechanisms are TARGET-STATE. Pre-code (no repo yet, `spec validate` unbuilt — D-022),
+#       "required" principles are enforced by review until the toolchain exists. Prioritize D-022.
+
+version: 1
+
+principles:
+  ENG-TXN-001:
+    title: Document mutations are transactional
+    strength: required
+    category: correctness
+    scope: [core.document]
+    invariants: [INV-TXN, INV-ORIGIN]
+    practice:
+      summary: All document changes apply through a Transaction with base revision and origin.
+      evidence: [transaction-origin, revision-increment, undo-round-trip-test]
+    antipattern:
+      summary: Mutating document state directly / scattered insert-delete calls.
+      refs: [TEXT-9, TEXT-10, CORE-6]
+    enforcement: [forbidden-call-lint, architecture-test, property-test]
+    exception: { allowed: false }
+
+  ENG-POS-001:
+    title: Positions are typed and anchor-based
+    strength: required
+    category: correctness
+    scope: [core.document, core.anchor]
+    invariants: [INV-POS-TYPED, INV-ANCHOR]
+    practice:
+      summary: Coordinates carry their unit; long-lived positions are anchors with affinity.
+      evidence: [no-usize-coords, anchor-transform-property-test]
+    antipattern: { summary: usize coordinates / raw-offset positions., refs: [TEXT-1, TEXT-2, TEXT-4] }
+    enforcement: [type-check, property-test]
+
+  ENG-DOCVIEW-001:
+    title: Document does not know View
+    strength: required
+    category: architecture
+    scope: [core.document, core.view]
+    invariants: [INV-DOC-VIEW]
+    practice: { summary: Document/View/Window/File are distinct; view-local state stays in the View. }
+    antipattern: { summary: Coupling document and view; storing view state in the document., refs: [CORE-4, UI-6, UI-8] }
+    enforcement: [architecture-test]
+
+  ENG-ARCH-001:
+    title: Dependency direction is enforced
+    strength: required
+    category: architecture
+    scope: [all]
+    invariants: [INV-NO-GLOBAL-STATE, INV-PLUGIN-NO-CORE]
+    practice: { summary: Forbidden dependencies (ARCH-FORBID-001) are checked, not just documented. }
+    antipattern: { summary: Global Arc<Mutex<EditorState>>, crate cycles, plugins touching core types., refs: [CORE-2, CORE-10, PLUGIN-2] }
+    enforcement: [dependency-lint, architecture-test]
+
+  ENG-CMD-001:
+    title: Commands are semantic and namespaced
+    strength: required
+    category: ecosystem
+    scope: [core.command]
+    invariants: [INV-CMD-SEMANTIC]
+    practice: { summary: Stable namespaced IDs, typed args, decoupled from keybindings; keymaps resolve onto commands. }
+    antipattern: { summary: Coupling command to key/CLI string; unnamespaced IDs; Vec<String> args., refs: [CMD-1, CMD-7, CMD-8] }
+    enforcement: [schema-validation, review-checklist]
+
+  ENG-PROFILE-001:
+    title: Input profiles are isolated with a fixed priority
+    strength: required
+    category: correctness
+    scope: [core.input]
+    invariants: [INV-PROFILE-ISOLATION, INV-PRIORITY]
+    practice: { summary: Profiles never share a key space; conflicts detected statically; plugins cannot force global keys. }
+    antipattern: { summary: One global keymap; last-plugin-wins; plugin over user override., refs: [PROFILE-1, PROFILE-3, PROFILE-7] }
+    enforcement: [static-conflict-check]
+
+  ENG-PLUG-001:
+    title: Plugins are isolated over a versioned protocol
+    strength: required
+    category: ecosystem
+    scope: [plugin]
+    invariants: [INV-PLUGIN-ISOLATED, INV-PROTOCOL-VERSIONED]
+    practice:
+      summary: WASM/process isolation; a plugin panic/timeout cannot kill the editor; no Rust dylib ABI.
+      evidence: [plugin-compat-ci, crash-isolation-test]
+    antipattern: { summary: Rust dylib ABI; &mut EditorState; unisolated load., refs: [PLUGIN-1, PLUGIN-2, PLUGIN-4] }
+    enforcement: [plugin-compat-ci]
+    exception: { allowed: false }
+
+  ENG-PROTO-001:
+    title: Protocols evolve additively and are contract-first
+    strength: required
+    category: ecosystem
+    scope: [protocol]
+    invariants: [INV-CONTRACT-FIRST, INV-ADDITIVE, INV-PROMOTION]
+    practice: { summary: Additive minor changes; unknown-variant handling; no Stable without 2 independent users. }
+    antipattern: { summary: Rust type == contract; deleting IDs in minor; stabilizing on first request., refs: [ECO-2, ECO-3, APIX-1] }
+    enforcement: [protocol-fixture-test]
+
+  ENG-ERR-001:
+    title: Typed errors vs assertions, logged once
+    strength: required
+    category: stability
+    scope: [all]
+    invariants: [INV-ERR-CLASS]
+    practice:
+      summary: Expected failures are typed errors with stable codes; impossible states are asserts; log once at boundaries.
+      evidence: [error-code-registry, no-duplicate-log-check]
+    antipattern: { summary: Err(String); swallowing asserts; log-and-rethrow; catch_unwind-all., refs: [STAB-1, STAB-2, STAB-3, STAB-6] }
+    enforcement: [review-checklist, lint]
+
+  ENG-FAIL-001:
+    title: Bounded blast radius + safe mode
+    strength: required
+    category: stability
+    scope: [all]
+    invariants: [INV-FAIL-BOUNDED, INV-CAP-DEGRADE]
+    practice: { summary: External components fail independently and degrade; core invariant failure snapshots and recovers; safe-mode boot exists. }
+    antipattern: { summary: One failure kills the editor; features vanish instead of degrading., refs: [PLUGIN-5, TERMOUT-11, SCOPE-7] }
+    enforcement: [fault-injection-ci]
+
+  ENG-OBS-001:
+    title: Observability is first-class
+    strength: required
+    category: observability
+    scope: [all]
+    invariants: [INV-ORIGIN, INV-ASYNC-ORDER, INV-STATUS]
+    practice:
+      summary: Every async op has an ID; every mutation an origin; status is a per-component state machine; UI only renders Health Registry.
+      evidence: [correlation-id, transaction-origin, status-state-machine]
+    antipattern: { summary: Unstructured logs; global is_ok bool; UI owns status., refs: [STAB-4, STAB-7, STAB-8] }
+    enforcement: [review-checklist]
+
+  ENG-ASYNC-001:
+    title: Deterministic ordering; drop stale results
+    strength: required
+    category: correctness
+    scope: [core, scheduler]
+    invariants: [INV-ASYNC-ORDER]
+    practice: { summary: Single-threaded deterministic executor; request-id+revision on async results; central scheduler with budgets/cancellation. }
+    antipattern: { summary: async everything; global event bus; applying stale results; per-plugin thread pools., refs: [ASYNC-1, ASYNC-9, SCHED-1] }
+    enforcement: [replay-test]
+
+  ENG-RENDER-001:
+    title: Render only by lowering the Render Tree
+    strength: required
+    category: architecture
+    scope: [render, plugin]
+    invariants: [INV-RENDER-IR, INV-RENDER-PROFILE, INV-QUERY-SNAPSHOT]
+    practice: { summary: No view/plugin emits backend bytes; render profile pinned per session; queries return snapshots. }
+    antipattern: { summary: Plugins emit escapes; flip backend mid-session; live mutable query objects., refs: [RENDER-1, RENDER-2, RIR-2] }
+    enforcement: [architecture-test]
+
+  ENG-TRUST-001:
+    title: Trust boundaries and capabilities
+    strength: required
+    category: security
+    scope: [security, plugin, remote, ai]
+    invariants: [INV-TRUST-1, INV-REMOTE-FIRST]
+    practice:
+      summary: Distinct trust levels per principal; workspace-trust before executing code; capability-gated side effects; AI proposals reviewed before apply.
+    antipattern: { summary: Trust local user always; run remote code with local trust; auto-approve new permissions., refs: [TRUST-1, TRUST-4, SEC-2] }
+    enforcement: [architecture-test, review-checklist]
+
+  ENG-PERF-001:
+    title: Performance is budgeted (p95/p99)
+    strength: required
+    category: performance
+    scope: [all]
+    practice: { summary: Per-stage latency budgets; benchmark with a real plugin set; cold vs warm; gate on a fixed machine. }
+    antipattern: { summary: Judge by startup only; average-only benchmarks; measure on small fixtures., refs: [PERFS-1, PERFS-3, PERFS-5] }
+    enforcement: [benchmark-gate]
+
+  ENG-DOC-001:
+    title: One fact, one home; humans edit sources, tools generate derived
+    strength: required
+    category: architecture
+    scope: [docs, spec]
+    practice: { summary: State in spec/ YAML; prose in docs/; generated files are never hand-edited and are clearly marked. }
+    antipattern: { summary: Duplicating state across files; hand-editing generated files; giant single spec., refs: [CONTRIB-6, OPS-8] }
+    enforcement: [spec-validate]
+
+  ENG-TEST-001:
+    title: Behavior and parity are tested, not just documented
+    strength: required
+    category: correctness
+    scope: [test]
+    practice: { summary: Differential Vim tests; property tests (undo/anchor round-trip); parity/plugin/protocol fixtures in CI. }
+    antipattern: { summary: Parity only in doc tables; sleep-based flaky fixes; no differential tests., refs: [TEST-2, TEST-20, OPS-8] }
+    enforcement: [ci]

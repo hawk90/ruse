@@ -1,0 +1,26 @@
+# Template: one entry under `principles:` in spec/POLICY.yaml. Replace ENG-XXX-001 with a scoped ID.
+# Enums — strength: required|recommended|situational · status: active|dropped
+#   category: correctness|stability|security|performance|architecture|ecosystem|observability
+# Defaults: strength=recommended, status=active, exception.allowed=false.
+# Reference, do not copy: antipattern.refs -> catalog IDs in docs/anti-patterns; invariants -> INV-* IDs.
+
+  ENG-XXX-001:
+    title: <the rule, positively stated>
+    strength: required
+    category: correctness
+    scope: [<module or "all">]
+    invariants: [INV-...]              # optional
+    practice:
+      summary: <what to do>
+      evidence: [<observable signals it holds>]   # optional
+    antipattern:
+      summary: <the wrong way>
+      refs: [<CATEGORY-n>, ...]        # anti-pattern catalog IDs, not copied text
+    requires: [ENG-...]                # optional dependencies
+    conflicts:                          # optional
+      - { id: ENG-..., condition: <when they tension> }
+    enforcement: [<lint|architecture-test|property-test|ci|review-checklist|...>]
+    exception:
+      allowed: false
+      requires_reason: true            # only if allowed:true
+      requires_expiry: true            # only if allowed:true
