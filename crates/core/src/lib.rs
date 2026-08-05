@@ -34,3 +34,9 @@ pub mod health {}
 
 /// TODO: scheduler — see design docs.
 pub mod scheduler {}
+
+/// Reject a transaction whose base revision is stale (INV-TXN, ENG-TXN-001).
+/// Stub: real logic lands with the Transaction engine (RFC-0007 / C-TRANSACTION).
+pub fn is_stale_revision(base: u64, current: u64) -> bool {
+    base < current
+}
