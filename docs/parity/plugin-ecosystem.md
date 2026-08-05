@@ -32,23 +32,23 @@ org.example.git.stage
   Palette      → Git: Stage Selection
 ```
 
-| ID | Foundation | Target | Detail |
-| --- | --- | --- | --- |
-| ECO-1 | Stable namespaced command IDs | L1 | [architecture.md](../architecture/architecture.md) §2.2 |
-| ECO-2 | Versioned plugin API (WASM/process, not Rust ABI) | L1 | [architecture.md](../architecture/architecture.md) §4.3, D-004 |
-| ECO-3 | Plugin manifest (features known before execution) | L1 | §4.4 |
-| ECO-4 | Capability / permission model (deny-by-default) | L1 | §4.4, §10 |
-| ECO-5 | Config schema per plugin | L1 | §4.5 |
-| ECO-6 | Command-palette auto-registration | L1 | §2 |
-| ECO-7 | Per-profile recommended keymaps (suggested, not forced) | L1 | §1.4 |
-| ECO-8 | Semantic UI API (TUI/GUI/Web-independent) | L1 | render-and-frontends |
-| ECO-9 | Local/remote execution-location distinction | L1 | [remote.md](remote.md) |
-| ECO-10 | Lockfile + reproducible install | L1 | §4.6 |
-| ECO-11 | Compatibility CI (old-SDK fixtures) | L1 | [ci-cd-and-release.md](../operations/ci-cd-and-release.md) §4 |
-| ECO-12 | Long deprecation policy (≥2 majors) | L1 | §11 |
-| ECO-13 | Marketplace signing + verification levels | future | design-requirements §9 |
-| ECO-14 | Stable/Experimental/Internal API layering + promotion ladder | L1 | versioning-and-evolution |
-| ECO-15 | Extension SDK conformance test kit | post-MVP | design-requirements §9 |
+| ID | Foundation | Target | Detail | Compat | Weight |
+| --- | --- | --- | --- | --- | --- |
+| ECO-1 | Stable namespaced command IDs | L1 | [architecture.md](../architecture/architecture.md) §2.2 | Adapted | high |
+| ECO-2 | Versioned plugin API (WASM/process, not Rust ABI) | L1 | [architecture.md](../architecture/architecture.md) §4.3, D-004 | Intentionally-different | high |
+| ECO-3 | Plugin manifest (features known before execution) | L1 | §4.4 | Adapted | med |
+| ECO-4 | Capability / permission model (deny-by-default) | L1 | §4.4, §10 | Adapted | high |
+| ECO-5 | Config schema per plugin | L1 | §4.5 | Adapted | med |
+| ECO-6 | Command-palette auto-registration | L1 | §2 | Equivalent | med |
+| ECO-7 | Per-profile recommended keymaps (suggested, not forced) | L1 | §1.4 | Adapted | med |
+| ECO-8 | Semantic UI API (TUI/GUI/Web-independent) | L1 | render-and-frontends | Adapted | med |
+| ECO-9 | Local/remote execution-location distinction | L1 | [remote.md](remote.md) | Adapted | med |
+| ECO-10 | Lockfile + reproducible install | L1 | §4.6 | Equivalent | med |
+| ECO-11 | Compatibility CI (old-SDK fixtures) | L1 | [ci-cd-and-release.md](../operations/ci-cd-and-release.md) §4 | Adapted | med |
+| ECO-12 | Long deprecation policy (≥2 majors) | L1 | §11 | Adapted | low |
+| ECO-13 | Marketplace signing + verification levels | future | design-requirements §9 | Adapted | low |
+| ECO-14 | Stable/Experimental/Internal API layering + promotion ladder | L1 | versioning-and-evolution | Adapted | med |
+| ECO-15 | Extension SDK conformance test kit | post-MVP | design-requirements §9 | Adapted | low |
 
 ## Governance (beyond the API)
 

@@ -20,21 +20,21 @@ related:
 Capabilities shared by Vim, Neovim, and Emacs — provided once in the core and surfaced through every
 profile. Profile-specific keystrokes are in [vim.md](vim.md) / [emacs.md](emacs.md) / [native-style.md](native-style.md).
 
-| ID | Capability | Vim | Neovim | Emacs | Target |
-| --- | --- | --- | --- | --- | --- |
-| COM-1 | Open / save / reload files | ✓ | ✓ | ✓ | L1 required |
-| COM-2 | Multiple buffers | ✓ | ✓ | ✓ | L1 required |
-| COM-3 | Window splits | ✓ | ✓ | ✓ | L1 required |
-| COM-4 | Tabs / workspaces | ✓ | ✓ | ✓ | L1 required |
-| COM-5 | Search & substitute | ✓ | ✓ | ✓ | L1 required |
-| COM-6 | Regex search | ✓ | ✓ | ✓ | L1 required |
-| COM-7 | Undo / redo | ✓ | ✓ | ✓ | L1 required |
-| COM-8 | Undo tree (branching history) | ✓ | ✓ | ~ (concept differs) | L1 required |
-| COM-9 | Session recovery | ✓ | ✓ | ✓ | L1 required |
-| COM-10 | Macros | ✓ | ✓ | ✓ | L1 required |
-| COM-11 | Clipboard / registers / kill ring | registers | registers | kill ring | unified model |
-| COM-12 | Large files | ✓ | ✓ | ✓ | L1 required |
-| COM-13 | Encoding / line endings | ✓ | ✓ | ✓ | L1 required |
+| ID | Capability | Vim | Neovim | Emacs | Target | Compat | Weight |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| COM-1 | Open / save / reload files | ✓ | ✓ | ✓ | L1 | Equivalent | high |
+| COM-2 | Multiple buffers | ✓ | ✓ | ✓ | L1 | Equivalent | high |
+| COM-3 | Window splits | ✓ | ✓ | ✓ | L1 | Equivalent | high |
+| COM-4 | Tabs / workspaces | ✓ | ✓ | ✓ | L1 | Adapted | med |
+| COM-5 | Search & substitute | ✓ | ✓ | ✓ | L1 | Equivalent | high |
+| COM-6 | Regex search | ✓ | ✓ | ✓ | L1 | Adapted | high |
+| COM-7 | Undo / redo | ✓ | ✓ | ✓ | L1 | Equivalent | high |
+| COM-8 | Undo tree (branching history) | ✓ | ✓ | ~ (concept differs) | L1 | Equivalent | med |
+| COM-9 | Session recovery | ✓ | ✓ | ✓ | L1 | Adapted | med |
+| COM-10 | Macros | ✓ | ✓ | ✓ | L1 | Equivalent | med |
+| COM-11 | Clipboard / registers / kill ring | registers | registers | kill ring | unified model | Adapted | high |
+| COM-12 | Large files | ✓ | ✓ | ✓ | L1 | Adapted | med |
+| COM-13 | Encoding / line endings | ✓ | ✓ | ✓ | L1 | Equivalent | med |
 
 ## Notes on the hard ones
 

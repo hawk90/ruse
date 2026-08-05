@@ -33,13 +33,13 @@ versioned plugin protocol (architecture §4.3). Parity target: the *architecture
 ## NVIM-LSP — Built-in LSP client
 Source: `lsp.txt`.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| NVIM-LSP-1 | In-core LSP client (no plugin needed): start/config/enable, stdio+rpc transport | L1 |
-| NVIM-LSP-2 | `buf.*`: hover, definition, references, rename, code_action, format, signature_help, document_symbol, calls | L1 |
-| NVIM-LSP-3 | LSP-driven completion; inlay hints (as decorations); semantic tokens (`@lsp.*`) | L1 |
-| NVIM-LSP-4 | Composable autocmds: `LspAttach/Detach/Progress/Request/TokenUpdate` | L1 |
-| NVIM-LSP-5 | Diagnostics via publishDiagnostics → diagnostics framework | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| NVIM-LSP-1 | In-core LSP client (no plugin needed): start/config/enable, stdio+rpc transport | L1 | Equivalent | high |
+| NVIM-LSP-2 | `buf.*`: hover, definition, references, rename, code_action, format, signature_help, document_symbol, calls | L1 | Equivalent | high |
+| NVIM-LSP-3 | LSP-driven completion; inlay hints (as decorations); semantic tokens (`@lsp.*`) | L1 | Equivalent | med |
+| NVIM-LSP-4 | Composable autocmds: `LspAttach/Detach/Progress/Request/TokenUpdate` | L1 | Equivalent | med |
+| NVIM-LSP-5 | Diagnostics via publishDiagnostics → diagnostics framework | L1 | Equivalent | high |
 
 Design note: the value is that the client is **in-core so plugins compose rather than replace it**. ruse
 exposes LSP through the stable plugin API (architecture §4.2), never as a per-plugin reimplementation
@@ -48,13 +48,13 @@ exposes LSP through the stable plugin API (architecture §4.2), never as a per-p
 ## NVIM-TS — Tree-sitter
 Source: `treesitter.txt`.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| NVIM-TS-1 | Incremental concrete-syntax parsing (C tree-sitter), replacing regex `syntax` | L1 |
-| NVIM-TS-2 | Structural highlighting via `highlights.scm` capture groups, applied as decorations at priority | L1 |
-| NVIM-TS-3 | Language injections (`injections.scm`: content/language, combined/include-children) | L1 |
-| NVIM-TS-4 | Query API (`iter_captures/iter_matches`, predicates `eq?/match?`, directives `set!/offset!`) | L2 |
-| NVIM-TS-5 | Tree-sitter folds and indent; `LanguageTree` incremental re-parse | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| NVIM-TS-1 | Incremental concrete-syntax parsing (C tree-sitter), replacing regex `syntax` | L1 | Equivalent | high |
+| NVIM-TS-2 | Structural highlighting via `highlights.scm` capture groups, applied as decorations at priority | L1 | Equivalent | high |
+| NVIM-TS-3 | Language injections (`injections.scm`: content/language, combined/include-children) | L1 | Equivalent | med |
+| NVIM-TS-4 | Query API (`iter_captures/iter_matches`, predicates `eq?/match?`, directives `set!/offset!`) | L2 | Equivalent | med |
+| NVIM-TS-5 | Tree-sitter folds and indent; `LanguageTree` incremental re-parse | L1 | Equivalent | med |
 
 Design note: the parser must read a **snapshot**, not the live buffer (guards TEXT-16), and re-parse
 incrementally, not per-keystroke full-parse (guards PERF-3).
@@ -62,27 +62,27 @@ incrementally, not per-keystroke full-parse (guards PERF-3).
 ## NVIM-DIAG — Diagnostics framework
 Source: `diagnostic.txt`.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| NVIM-DIAG-1 | Producer/consumer split: any source (LSP/linter/compiler) sets diagnostics by **namespace** | L1 |
-| NVIM-DIAG-2 | Item model: `lnum/col/end_*` (0-indexed), message, severity, source, code | L1 |
-| NVIM-DIAG-3 | Pluggable render handlers: virtual_text, virtual_lines, signs, underline | L1 |
-| NVIM-DIAG-4 | Navigation + quickfix/loclist population; cascading config (ephemeral > ns > global) | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| NVIM-DIAG-1 | Producer/consumer split: any source (LSP/linter/compiler) sets diagnostics by **namespace** | L1 | Equivalent | high |
+| NVIM-DIAG-2 | Item model: `lnum/col/end_*` (0-indexed), message, severity, source, code | L1 | Equivalent | med |
+| NVIM-DIAG-3 | Pluggable render handlers: virtual_text, virtual_lines, signs, underline | L1 | Adapted | med |
+| NVIM-DIAG-4 | Navigation + quickfix/loclist population; cascading config (ephemeral > ns > global) | L1 | Equivalent | med |
 
 In ruse this surfaces as a **Problems buffer** (see [workspace.md](workspace.md)).
 
 ## NVIM-EXT — Extmarks & namespaces (the anchor/decoration model)
 Source: `api.txt` (extmarks). **This is the single most important Neovim primitive to reproduce.**
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| NVIM-EXT-1 | Persistent, gravity-aware buffer positions grouped by **namespace**, auto-tracking edits | L1 |
-| NVIM-EXT-2 | Range highlights (`hl_group`, `end_row/col`, `priority`, `hl_mode` replace/combine/blend) | L1 |
-| NVIM-EXT-3 | Virtual text: `virt_text_pos` = eol/overlay/right_align/**inline** (inlay hints) | L1 |
-| NVIM-EXT-4 | Virtual lines (block hints, inline diffs) | L1 |
-| NVIM-EXT-5 | **Signs as extmarks** (`sign_text`, `line_hl_group`, `number_hl_group`) — unified sign column | L1 |
-| NVIM-EXT-6 | Gravity (`right_gravity`, `end_right_gravity`), `invalidate`, `ephemeral`, `conceal`, `url` | L1 |
-| NVIM-EXT-7 | Decoration providers (`set_decoration_provider` on_start/on_win/on_line) for per-redraw marks | L2 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| NVIM-EXT-1 | Persistent, gravity-aware buffer positions grouped by **namespace**, auto-tracking edits | L1 | Equivalent | high |
+| NVIM-EXT-2 | Range highlights (`hl_group`, `end_row/col`, `priority`, `hl_mode` replace/combine/blend) | L1 | Equivalent | high |
+| NVIM-EXT-3 | Virtual text: `virt_text_pos` = eol/overlay/right_align/**inline** (inlay hints) | L1 | Equivalent | med |
+| NVIM-EXT-4 | Virtual lines (block hints, inline diffs) | L1 | Equivalent | med |
+| NVIM-EXT-5 | **Signs as extmarks** (`sign_text`, `line_hl_group`, `number_hl_group`) — unified sign column | L1 | Equivalent | med |
+| NVIM-EXT-6 | Gravity (`right_gravity`, `end_right_gravity`), `invalidate`, `ephemeral`, `conceal`, `url` | L1 | Equivalent | med |
+| NVIM-EXT-7 | Decoration providers (`set_decoration_provider` on_start/on_win/on_line) for per-redraw marks | L2 | Adapted | med |
 
 **Client-observable guarantee to reproduce:** *extmark stability* — anchors survive edits with defined
 gravity so decorations don't drift; namespaces isolate producers. This is ruse's **anchor model** (TEXT-4,
@@ -111,11 +111,11 @@ Source: `ui.txt`, `api-ui-events.txt`.
   default_colors_set/mode_change`. `ext_multigrid`: per-window grids (`win_pos/win_float_pos/win_hide`).
 - Semantic externalization options: `ext_cmdline/popupmenu/tabline/messages/hlstate/termcolors`.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| NVIM-UI-1 | External/remote UI attach + render a cell grid | L1 · **multiple clients: post-MVP (D-012)**, each client-view pins its own render tier (V-13) |
-| NVIM-UI-2 | Batched redraw with **flush** boundary; ordered events; stable grid ids | L1 |
-| NVIM-UI-3 | Semantic externalization of cmdline/popupmenu/messages (not drawn into the grid) | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| NVIM-UI-1 | External/remote UI attach + render a cell grid | L1 · **multiple clients: post-MVP (D-012)**, each client-view pins its own render tier (V-13) | Equivalent | med |
+| NVIM-UI-2 | Batched redraw with **flush** boundary; ordered events; stable grid ids | L1 | Equivalent | high |
+| NVIM-UI-3 | Semantic externalization of cmdline/popupmenu/messages (not drawn into the grid) | L1 | Adapted | med |
 
 **Guarantee to reproduce:** nothing paints before flush; events applied in batch order. This validates
 ruse's **semantic view model** + synchronized output (UI-10, architecture §6.2, §7). ruse generalizes

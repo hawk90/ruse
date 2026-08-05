@@ -31,17 +31,17 @@ plugins depend on. We do **not** target L3 (running Vimscript / actual Vim plugi
 ## VIM-MODE — Modes & Transitions
 Source: `intro.txt`, `visual.txt`, `terminal.txt`.
 
-| ID | Mode | Enter | Exit | Target |
-| --- | --- | --- | --- | --- |
-| VIM-MODE-1 | Normal | `<Esc>` | — | L2 |
-| VIM-MODE-2 | Insert | `i I a A o O gi gI` | `<Esc> C-c C-[` | L2 |
-| VIM-MODE-3 | Replace / Virtual Replace | `R` / `gR gr` | `<Esc>`; `<BS>` restores | L1 |
-| VIM-MODE-4 | Visual char / line / block | `v` / `V` / `C-v` | `<Esc>` / toggle | L2 |
-| VIM-MODE-5 | Select mode | `gh gH g C-h` | printable char → Insert | L1 |
-| VIM-MODE-6 | Operator-pending | after operator | motion completes / `<Esc>` | L2 |
-| VIM-MODE-7 | Command-line | `: / ? ! q:` | `<CR>` / `<Esc> C-c` | L2 |
-| VIM-MODE-8 | Ex mode | `Q` / `gQ` | `:visual` | L1 |
-| VIM-MODE-9 | Terminal-Job / Terminal-Normal | `:terminal` / `C-w N`, `C-\ C-n` | `C-w N` / any key | L1 |
+| ID | Mode | Enter | Exit | Target | Compat | Weight |
+| --- | --- | --- | --- | --- | --- | --- |
+| VIM-MODE-1 | Normal | `<Esc>` | — | L2 | Exact | high |
+| VIM-MODE-2 | Insert | `i I a A o O gi gI` | `<Esc> C-c C-[` | L2 | Exact | high |
+| VIM-MODE-3 | Replace / Virtual Replace | `R` / `gR gr` | `<Esc>`; `<BS>` restores | L1 | Equivalent | low |
+| VIM-MODE-4 | Visual char / line / block | `v` / `V` / `C-v` | `<Esc>` / toggle | L2 | Exact | high |
+| VIM-MODE-5 | Select mode | `gh gH g C-h` | printable char → Insert | L1 | Equivalent | low |
+| VIM-MODE-6 | Operator-pending | after operator | motion completes / `<Esc>` | L2 | Exact | high |
+| VIM-MODE-7 | Command-line | `: / ? ! q:` | `<CR>` / `<Esc> C-c` | L2 | Equivalent | high |
+| VIM-MODE-8 | Ex mode | `Q` / `gQ` | `:visual` | L1 | Adapted | low |
+| VIM-MODE-9 | Terminal-Job / Terminal-Normal | `:terminal` / `C-w N`, `C-\ C-n` | `C-w N` / any key | L1 | Equivalent | med |
 
 - `C-o` in Insert runs **one** Normal command then returns; `gi` re-enters Insert at `` `^ ``.
 - **⚠️ VIM-MODE-6**: model operator-pending as a *transient state*, not a special case (VIM-1, anti-pattern VIM-12).
@@ -50,17 +50,17 @@ Source: `intro.txt`, `visual.txt`, `terminal.txt`.
 ## VIM-OP — Operators & Operator+Motion Grammar
 Source: `change.txt`, `motion.txt`. Grammar: `[count1] operator [count2] {motion|text-object}`; effective repeat = `count1 × count2`. Doubling → linewise (`dd yy >> == cc guu`).
 
-| ID | Operator | Action | Target |
-| --- | --- | --- | --- |
-| VIM-OP-1 | `d c y` | delete / change / yank | L2 |
-| VIM-OP-2 | `> <` | shift by `shiftwidth` | L1 |
-| VIM-OP-3 | `=` | reindent (`equalprg`/`indentexpr`) | L1 |
-| VIM-OP-4 | `gu gU g~` | lower / upper / toggle case | L1 |
-| VIM-OP-5 | `!` | filter lines through external program | L1 |
-| VIM-OP-6 | `gq gw` | format text (`gw` keeps cursor) | L1 |
-| VIM-OP-7 | `g?` | ROT13 | L2 |
-| VIM-OP-8 | `zf` | create fold over motion | L1 |
-| VIM-OP-9 | `g@` | call `operatorfunc` (user operator) | L2 |
+| ID | Operator | Action | Target | Compat | Weight |
+| --- | --- | --- | --- | --- | --- |
+| VIM-OP-1 | `d c y` | delete / change / yank | L2 | Exact | high |
+| VIM-OP-2 | `> <` | shift by `shiftwidth` | L1 | Exact | high |
+| VIM-OP-3 | `=` | reindent (`equalprg`/`indentexpr`) | L1 | Equivalent | med |
+| VIM-OP-4 | `gu gU g~` | lower / upper / toggle case | L1 | Exact | med |
+| VIM-OP-5 | `!` | filter lines through external program | L1 | Equivalent | low |
+| VIM-OP-6 | `gq gw` | format text (`gw` keeps cursor) | L1 | Equivalent | med |
+| VIM-OP-7 | `g?` | ROT13 | L2 | Exact | low |
+| VIM-OP-8 | `zf` | create fold over motion | L1 | Equivalent | low |
+| VIM-OP-9 | `g@` | call `operatorfunc` (user operator) | L2 | Equivalent | med |
 
 Normal aliases: `x=dl X=dh D=d$ C=c$ Y=yy s=cl S=cc`.
 - **⚠️ VIM-OP-CW**: `cw`/`cW` behaves like `ce`/`cE` on a non-blank (no trailing whitespace) — preserve this Vi wart.
@@ -69,17 +69,17 @@ Normal aliases: `x=dl X=dh D=d$ C=c$ Y=yy s=cl S=cc`.
 ## VIM-MOT — Motions (types & inclusive/exclusive)
 Source: `motion.txt`. Three types: **characterwise** (inclusive/exclusive), **linewise**, **blockwise**.
 
-| ID | Class | Motions | Target |
-| --- | --- | --- | --- |
-| VIM-MOT-1 | char excl. | `h l 0 ^ <Space> <BS> \|` | L2 |
-| VIM-MOT-2 | char incl. | `$ g_`; `f t` incl., `F T` excl.; `; ,` | L2 |
-| VIM-MOT-3 | word | `w W b B` (excl.), `e E ge gE` (incl.) | L2 |
-| VIM-MOT-4 | linewise | `j k + - _ G gg H M L {n}%` | L2 |
-| VIM-MOT-5 | display line | `gj gk g0 g^ g$` | L1 |
-| VIM-MOT-6 | sentence/para | `( ) { }` (excl.) | L2 |
-| VIM-MOT-7 | section | `[[ ]] [] ][` | L1 |
-| VIM-MOT-8 | match | `%` (incl.), `[( ]) [{ ]} [m ]m` | L1 |
-| VIM-MOT-9 | search | `/ ? n N * # g* g#` | L2 |
+| ID | Class | Motions | Target | Compat | Weight |
+| --- | --- | --- | --- | --- | --- |
+| VIM-MOT-1 | char excl. | `h l 0 ^ <Space> <BS> \|` | L2 | Exact | high |
+| VIM-MOT-2 | char incl. | `$ g_`; `f t` incl., `F T` excl.; `; ,` | L2 | Exact | high |
+| VIM-MOT-3 | word | `w W b B` (excl.), `e E ge gE` (incl.) | L2 | Exact | high |
+| VIM-MOT-4 | linewise | `j k + - _ G gg H M L {n}%` | L2 | Exact | high |
+| VIM-MOT-5 | display line | `gj gk g0 g^ g$` | L1 | Exact | med |
+| VIM-MOT-6 | sentence/para | `( ) { }` (excl.) | L2 | Exact | med |
+| VIM-MOT-7 | section | `[[ ]] [] ][` | L1 | Equivalent | low |
+| VIM-MOT-8 | match | `%` (incl.), `[( ]) [{ ]} [m ]m` | L1 | Equivalent | med |
+| VIM-MOT-9 | search | `/ ? n N * # g* g#` | L2 | Exact | high |
 
 **⚠️ VIM-MOT-PROMOTE** — replicate exactly (governs `d}`, `d/pat`):
 1. exclusive→inclusive: exclusive motion ending in column 1 → end moves to prev line's end, becomes inclusive.
@@ -89,13 +89,13 @@ Source: `motion.txt`. Three types: **characterwise** (inclusive/exclusive), **li
 ## VIM-TOBJ — Text Objects
 Source: `motion.txt`. `i`=inner, `a`=around.
 
-| ID | Objects | Target |
-| --- | --- | --- |
-| VIM-TOBJ-1 | `iw aw iW aW` | L2 |
-| VIM-TOBJ-2 | `is as ip ap` | L2 |
-| VIM-TOBJ-3 | `i( a( ib i{ a{ iB i[ a[ i< a<` | L2 |
-| VIM-TOBJ-4 | `it at` (tag) | L1 |
-| VIM-TOBJ-5 | `i" a" i' a'` `` i` a` `` | L2 |
+| ID | Objects | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| VIM-TOBJ-1 | `iw aw iW aW` | L2 | Exact | high |
+| VIM-TOBJ-2 | `is as ip ap` | L2 | Exact | med |
+| VIM-TOBJ-3 | `i( a( ib i{ a{ iB i[ a[ i< a<` | L2 | Exact | high |
+| VIM-TOBJ-4 | `it at` (tag) | L1 | Equivalent | med |
+| VIM-TOBJ-5 | `i" a" i' a'` `` i` a` `` | L2 | Exact | high |
 
 - **⚠️** `aw` trailing-vs-leading whitespace rule; quote objects single-line + "next pair on line" + `a"` space handling; `it`/`at` nesting with counts; `ap`/`ip` blank-line handling.
 
@@ -106,17 +106,17 @@ Source: `motion.txt`. `i`=inner, `a`=around.
 ## VIM-REG — Registers & Put
 Source: `change.txt`.
 
-| ID | Register | Contents | Target |
-| --- | --- | --- | --- |
-| VIM-REG-1 | `""` | unnamed; last delete/change/yank | L2 |
-| VIM-REG-2 | `"0` | last **yank only** | L2 |
-| VIM-REG-3 | `"1`–`"9` | delete/change ring (≥1 line) | L2 |
-| VIM-REG-4 | `"-` | small-delete (<1 line) | L2 |
-| VIM-REG-5 | `"a`–`"z`, `"A`–`"Z` append | named | L2 |
-| VIM-REG-6 | `"_` | black hole | L1 |
-| VIM-REG-7 | `"=` | expression register | L1 |
-| VIM-REG-8 | `"+ "*` | clipboard / primary selection | L1 |
-| VIM-REG-9 | `"~ "% "# ". ": "/` | drop/file/alt/insert/cmd/search | L1 |
+| ID | Register | Contents | Target | Compat | Weight |
+| --- | --- | --- | --- | --- | --- |
+| VIM-REG-1 | `""` | unnamed; last delete/change/yank | L2 | Exact | high |
+| VIM-REG-2 | `"0` | last **yank only** | L2 | Exact | med |
+| VIM-REG-3 | `"1`–`"9` | delete/change ring (≥1 line) | L2 | Exact | med |
+| VIM-REG-4 | `"-` | small-delete (<1 line) | L2 | Exact | low |
+| VIM-REG-5 | `"a`–`"z`, `"A`–`"Z` append | named | L2 | Exact | med |
+| VIM-REG-6 | `"_` | black hole | L1 | Exact | med |
+| VIM-REG-7 | `"=` | expression register | L1 | Adapted | low |
+| VIM-REG-8 | `"+ "*` | clipboard / primary selection | L1 | Equivalent | high |
+| VIM-REG-9 | `"~ "% "# ". ": "/` | drop/file/alt/insert/cmd/search | L1 | Equivalent | low |
 
 Put: `p P gp gP ]p [p`.
 - **⚠️ VIM-REG-TYPE**: register **type** (char/line/blockwise) is stored and governs paste geometry.

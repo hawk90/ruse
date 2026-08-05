@@ -34,10 +34,10 @@ The local editor is a thin client (render/input/UI); a server binary hosts the w
 | Workspace extensions | remote | operate on workspace content |
 | UI / theme / keymap extensions | local | only touch the client UI |
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| REM-SPLIT-1 | Thin client + auto-installed remote runtime; only high-level RPC crosses the wire | L1 |
-| REM-SPLIT-2 | UI vs Workspace extension placement (like VS Code `extensionKind`) | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| REM-SPLIT-1 | Thin client + auto-installed remote runtime; only high-level RPC crosses the wire | L1 | Equivalent | high |
+| REM-SPLIT-2 | UI vs Workspace extension placement (like VS Code `extensionKind`) | L1 | Equivalent | med |
 
 Guards REMOTE-1/2 (remote ≠ remote FS; not "only files remote"). **Full agent/bootstrap/transport/per-service
 design: [../design/remote-runtime.md](../design/remote-runtime.md).**
@@ -46,25 +46,25 @@ design: [../design/remote-runtime.md](../design/remote-runtime.md).**
 Every heavy service runs in the remote Workspace Agent; the client renders its UI. (Design:
 [../design/remote-runtime.md](../design/remote-runtime.md).)
 
-| ID | Service | Client (local) | Agent (remote) | Target |
-| --- | --- | --- | --- | --- |
-| REM-SERVICE-1 | File tree | tree view/keymap | filesystem, ignore model, **lazy** children, watcher | L1 |
-| REM-SERVICE-2 | Search | results/preview UI | ripgrep/index | L1 |
-| REM-SERVICE-3 | Git | diff/status UI | repository ops | post-MVP |
-| REM-SERVICE-4 | LSP | completion/diagnostic UI | language server + normalized model (C-LSPHOST) | post-MVP |
-| REM-SERVICE-5 | Debug | stack/variable/console UI | debugger + target (location model, C-DEBUG) | future |
-| REM-SERVICE-6 | Terminal | terminal rendering | PTY/shell | L1 |
-| REM-SERVICE-7 | Build/Task/Test | task/test UI | process execution / discovery | post-MVP |
+| ID | Service | Client (local) | Agent (remote) | Target | Compat | Weight |
+| --- | --- | --- | --- | --- | --- | --- |
+| REM-SERVICE-1 | File tree | tree view/keymap | filesystem, ignore model, **lazy** children, watcher | L1 | Equivalent | high |
+| REM-SERVICE-2 | Search | results/preview UI | ripgrep/index | L1 | Equivalent | high |
+| REM-SERVICE-3 | Git | diff/status UI | repository ops | post-MVP | Equivalent | med |
+| REM-SERVICE-4 | LSP | completion/diagnostic UI | language server + normalized model (C-LSPHOST) | post-MVP | Equivalent | high |
+| REM-SERVICE-5 | Debug | stack/variable/console UI | debugger + target (location model, C-DEBUG) | future | Equivalent | low |
+| REM-SERVICE-6 | Terminal | terminal rendering | PTY/shell | L1 | Equivalent | med |
+| REM-SERVICE-7 | Build/Task/Test | task/test UI | process execution / discovery | post-MVP | Equivalent | med |
 
 Agent = **headless workspace-execution runtime** (supervisor of these services), auto-bootstrapped over SSH
 stdio, no sudo (D-029/D-030/D-031). Capability negotiation gates UI; missing tools degrade, not fail.
 
 ## REM-TRANSPORT — SSH / WSL / Container
-| ID | Transport | Runtime location | Lifecycle |
-| --- | --- | --- | --- |
-| REM-TRANSPORT-1 | SSH | remote host over tunnel | bound to host/session |
-| REM-TRANSPORT-2 | WSL | Linux distro (`+<distro>` authority) | bound to the distro |
-| REM-TRANSPORT-3 | Container/Dev Container | container from a manifest | **container lifecycle ≠ workspace lifecycle** |
+| ID | Transport | Runtime location | Lifecycle | Compat | Weight |
+| --- | --- | --- | --- | --- | --- |
+| REM-TRANSPORT-1 | SSH | remote host over tunnel | bound to host/session | Equivalent | high |
+| REM-TRANSPORT-2 | WSL | Linux distro (`+<distro>` authority) | bound to the distro | Equivalent | med |
+| REM-TRANSPORT-3 | Container/Dev Container | container from a manifest | **container lifecycle ≠ workspace lifecycle** | Equivalent | med |
 
 - Container: lifecycle hooks (create→postCreate→postStart→postAttach); a failed hook skips later ones;
   editing the manifest does not auto-rebuild; rebuild resets container state (bind-mount persists).
@@ -76,10 +76,10 @@ stdio, no sudo (D-029/D-030/D-031). Capability negotiation gates UI; missing too
 - Distinguish **transient tunnel loss** (auto-reattach to the live runtime) from **runtime death** (respawn).
 - Keepalives to avoid idle drops; a stale cache / version mismatch forces a clean re-provision.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| REM-RESUME-1 | Runtime survives client disconnect; client re-attaches | L1 |
-| REM-RESUME-2 | Distinguish tunnel loss vs runtime death; document-state recovery | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| REM-RESUME-1 | Runtime survives client disconnect; client re-attaches | L1 | Equivalent | high |
+| REM-RESUME-2 | Distinguish tunnel loss vs runtime death; document-state recovery | L1 | Equivalent | med |
 
 Guards REMOTE-8/9. Offline/reconnect editing policy is an open decision (DECISIONS D-013).
 
@@ -88,10 +88,10 @@ Guards REMOTE-8/9. Offline/reconnect editing policy is an open decision (DECISIO
   (`node_modules`, `.git/objects`, build dirs); **polling fallback** when unavailable; **full rescan**
   reconciles after gaps/reconnect.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| REM-WATCH-1 | Remote-side watching with exclusions + polling fallback | L1 |
-| REM-WATCH-2 | Full-rescan reconciliation after watcher gaps | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| REM-WATCH-1 | Remote-side watching with exclusions + polling fallback | L1 | Equivalent | med |
+| REM-WATCH-2 | Full-rescan reconciliation after watcher gaps | L1 | Equivalent | med |
 
 Guards REMOTE-12 (trust watcher without full-rescan fallback). Don't re-transfer large files in full
 (REMOTE-13); don't stuff blobs into RPC JSON (REMOTE-14).
@@ -100,9 +100,9 @@ Guards REMOTE-12 (trust watcher without full-rescan fallback). Don't re-transfer
 - Do **not** require byte-identical client/runtime builds. Negotiate a compatible protocol version; either
   bundle/offline-cache compatible runtime builds or negotiate down.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| REM-VERSION-1 | Protocol version negotiation (not commit-pinned) | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| REM-VERSION-1 | Protocol version negotiation (not commit-pinned) | L1 | Equivalent | med |
 
 Guards REMOTE-10/11; uses the additive-protocol policy ([../protocols/versioning-and-evolution.md](../protocols/versioning-and-evolution.md)).
 
@@ -111,10 +111,10 @@ Guards REMOTE-10/11; uses the additive-protocol policy ([../protocols/versioning
   never bare OS paths across the boundary.
 - Local path ≠ workspace path (distinct types); WSL translation via the platform tool, not string replace.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| REM-PATH-1 | Typed ClientPath / WorkspacePath / RemoteUri | L1 |
-| REM-PATH-2 | Correct WSL/UNC/case-sensitivity handling (no `/mnt/c` string substitution) | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| REM-PATH-1 | Typed ClientPath / WorkspacePath / RemoteUri | L1 | Equivalent | med |
+| REM-PATH-2 | Correct WSL/UNC/case-sensitivity handling (no `/mnt/c` string substitution) | L1 | Equivalent | med |
 
 Guards REMOTE-6/7, XPLAT-2/4. Aligns with the cross-platform path model (design-requirements §7, §13).
 
@@ -126,10 +126,10 @@ Guards REMOTE-6/7, XPLAT-2/4. Aligns with the cross-platform path model (design-
 - **Connecting executes remote code at the workspace's trust level** — treat any remote as a code-execution
   boundary (workspace trust, [../architecture/architecture.md](../architecture/architecture.md) §10).
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| REM-SEC-1 | Per-session runtime auth; no public port exposure by default | L1 |
-| REM-SEC-2 | Credential/port forwarding off by default; workspace-trust before executing remote code | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| REM-SEC-1 | Per-session runtime auth; no public port exposure by default | L1 | Equivalent | high |
+| REM-SEC-2 | Credential/port forwarding off by default; workspace-trust before executing remote code | L1 | Equivalent | high |
 
 Guards REMOTE-18/19, TRUST-2/7, SEC-4.
 

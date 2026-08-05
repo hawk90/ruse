@@ -45,7 +45,7 @@ compatibility** — not a flat feature list. Each feature is additionally tagged
 | **Equivalent** | same outcome, different mechanism |
 | **Adapted** | intentionally reshaped to fit ruse's model |
 | **Unsupported** | not provided |
-| **Intentionally different** | deliberately diverges (documented) |
+| **Intentionally-different** | deliberately diverges (documented) |
 
 Behavior tests assert cursor, register/kill ring, mode, selection shape, undo grouping, and error timing —
 not just final text. Parity % is weighted by **usage frequency and importance**, not feature count. Bug

@@ -463,6 +463,21 @@ Resolution chain:
 "Kitty lowering," not blamed on "the terminal." This makes conflicts and state problems debuggable by
 inspection rather than guesswork, and is the product-facing side of the observability model.
 
+**Offline counterparts (the `tools/` CLIs).** The same surfaces are reachable without a running editor, for
+bug reports and CI regression capture (`tools/`, see [docs/README.md](../README.md) §Target Repository
+Layout):
+- `protocol-dump` — decodes a captured **framed protocol stream** (remote runtime ↔ agent, or host ↔
+  plugin) into human-readable, versioned records: one line per frame with `session-id`, direction,
+  `protocol-version`, message kind, and transaction id. Unknown/newer variants are shown, not dropped
+  (`INV-ADDITIVE`), so a version-skew bug is visible as an unhandled frame rather than a silent desync. It
+  reads a `.jsonl`/binary capture (or `--follow` a live socket) and never needs the document contents —
+  same redaction defaults as the diagnostic bundle (§10).
+- `render-diff` — diffs two semantic Render Trees (golden vs actual) for the terminal-matrix tests (§ testing).
+- `inspector` / `diagnostic-bundle` — the interactive state inspector and the §10 bundle packer.
+
+These are thin wrappers over the same query/serialization the `:debug` commands use — one model, two entry
+points (in-editor command, offline CLI), never a divergent second implementation.
+
 ## Reference Invariants (this doc)
 
 This doc depends on these registry invariants (defined in

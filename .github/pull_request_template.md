@@ -40,6 +40,6 @@ Human verification performed:
 
 <!-- You (the author) understand and are responsible for every change; generated output is not evidence. -->
 
-## Dependency changes (D-034 — delete if none)
+## New dependency? (D-034 — delete if none)
 <!-- New Cargo package or external tool: purpose · why not implement · tier · exposure (no public types) ·
      runtime impact (threads/global) · exit strategy · added to spec/dependencies.yaml -->

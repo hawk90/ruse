@@ -42,11 +42,11 @@ Source: `Prefix-Keys`, `Active-Keymaps`, `Searching-Keymaps`, `Controlling-Activ
 | 5 | local (major-mode) map | Buffer-local mode |
 | 6 | global map | Built-in profile default |
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-KEYMAP-1 | Prefix keys select sub-keymaps; multi-key nesting | L1 |
-| EMACS-KEYMAP-2 | Runtime-layered keymap resolution (transient > **ordered** minor > major > global) + text-span keymaps | L2 |
-| EMACS-KEYMAP-3 | Per-buffer / per-text-span keymaps | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-KEYMAP-1 | Prefix keys select sub-keymaps; multi-key nesting | L1 | Equivalent | high |
+| EMACS-KEYMAP-2 | Runtime-layered keymap resolution (transient > **ordered** minor > major > global) + text-span keymaps | L2 | Equivalent | high |
+| EMACS-KEYMAP-3 | Per-buffer / per-text-span keymaps | L1 | Equivalent | med |
 
 **Semantic model:** key resolution is dynamic and compositional — a minor mode shadows a major-mode key
 without either knowing. This is ruse's **Context Key Resolver + priority ABI** (architecture §1.3–1.4).
@@ -57,11 +57,11 @@ Source: `M-x`, `Defining-Commands`, `Interactive-Call`.
   key binding. The `interactive` spec declares *how args are gathered* (region, prefix arg, prompt, file).
 - Discovery: `C-h b` (bindings), `C-h w` (where-is), `C-h a` (apropos-command), `M-X` (buffer-relevant).
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-CMD-1 | Named command registry; invoke by name independent of any key | L1 |
-| EMACS-CMD-2 | Commands self-describe argument acquisition | L2 |
-| EMACS-CMD-3 | Discovery: bindings list, where-is, apropos | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-CMD-1 | Named command registry; invoke by name independent of any key | L1 | Equivalent | high |
+| EMACS-CMD-2 | Commands self-describe argument acquisition | L2 | Equivalent | med |
+| EMACS-CMD-3 | Discovery: bindings list, where-is, apropos | L1 | Equivalent | med |
 
 **Semantic model = ruse's Semantic Command Layer exactly** (architecture §2): stable names, typed args,
 context-aware availability, palette discovery. Keybindings are a convenience layer over the registry.
@@ -72,11 +72,11 @@ Source: `Mark`, `Mark-Ring`, `Persistent-Mark`.
 - `C-SPC` set mark, `C-SPC C-SPC` push without activating, `C-x C-x` exchange, `C-u C-SPC` pop mark ring,
   `pop-global-mark` across buffers. `transient-mark-mode` highlights region transiently.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-REGION-1 | Region = point↔mark; mark is a first-class saved position | L2 |
-| EMACS-REGION-2 | Mark ring (per-buffer) + global mark ring = navigation history | L1 |
-| EMACS-REGION-3 | Active vs inactive region independent of highlight (transient-mark) | L2 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-REGION-1 | Region = point↔mark; mark is a first-class saved position | L2 | Adapted | med |
+| EMACS-REGION-2 | Mark ring (per-buffer) + global mark ring = navigation history | L1 | Equivalent | med |
+| EMACS-REGION-3 | Active vs inactive region independent of highlight (transient-mark) | L2 | Adapted | med |
 
 **Semantic model:** region ≠ selection; mark doubles as a navigation-history stack. In ruse, unify with
 Vim marks/jumplist ([vim.md](vim.md) VIM-MARK) and Helix/Kakoune selections ([native-style.md](native-style.md)).
@@ -87,12 +87,12 @@ Source: `Kill-Ring`, `Appending-Kills`, `Clipboard`.
 - Ring holds `kill-ring-max` (default 120); consecutive kills **coalesce**; shared across buffers; optional
   bidirectional clipboard bridge.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-KILL-1 | Ordered kill-ring history (not a single clipboard slot) | L2 |
-| EMACS-KILL-2 | `yank-pop` cycling valid only immediately after yank | L2 |
-| EMACS-KILL-3 | Consecutive-kill coalescing; shared across buffers | L2 |
-| EMACS-KILL-4 | Optional OS clipboard bridge (source/sink) | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-KILL-1 | Ordered kill-ring history (not a single clipboard slot) | L2 | Equivalent | high |
+| EMACS-KILL-2 | `yank-pop` cycling valid only immediately after yank | L2 | Exact | med |
+| EMACS-KILL-3 | Consecutive-kill coalescing; shared across buffers | L2 | Exact | med |
+| EMACS-KILL-4 | Optional OS clipboard bridge (source/sink) | L1 | Equivalent | high |
 
 **Semantic model:** kill ring ≠ clipboard. ruse unifies **Vim registers + Emacs kill ring** into one
 model (see [vim.md](vim.md) VIM-REG, architecture §3). Guards anti-pattern EMACS-5.
@@ -103,10 +103,10 @@ Source: `Arguments`, `Prefix-Command-Arguments`.
 - Commands read **raw** (`P`, "was any C-u given?") vs **numeric** (`p`) and interpret per-command (repeat
   count / toggle / mode).
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-ARG-1 | Uniform pre-command argument channel; raw vs numeric distinction | L2 |
-| EMACS-ARG-2 | Per-command interpretation (count/toggle/mode) | L2 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-ARG-1 | Uniform pre-command argument channel; raw vs numeric distinction | L2 | Equivalent | med |
+| EMACS-ARG-2 | Per-command interpretation (count/toggle/mode) | L2 | Equivalent | med |
 
 Guards anti-pattern EMACS-3 (special-casing per command). Conceptually parallels Vim counts (VIM-CNT).
 
@@ -115,11 +115,11 @@ Source: `Keyboard-Macros`, `Keyboard-Macro-Counter`.
 - `C-x (`/`F3` start, `C-x )`/`F4` end, `C-x e` replay, `C-u N C-x e` repeat, `0 C-x e` until error,
   `kmacro-name-last-macro`, `kmacro-bind-to-key`, `kmacro-edit-macro`, macro **ring**, insertable **counter**.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-MACRO-1 | Record/replay command sequences; repeat count; until-error | L1 |
-| EMACS-MACRO-2 | Promote to named/bound command; macro ring; editable as text | L2 |
-| EMACS-MACRO-3 | Auto-incrementing counter for numbered edits | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-MACRO-1 | Record/replay command sequences; repeat count; until-error | L1 | Equivalent | med |
+| EMACS-MACRO-2 | Promote to named/bound command; macro ring; editable as text | L2 | Equivalent | low |
+| EMACS-MACRO-3 | Auto-incrementing counter for numbered edits | L1 | Equivalent | low |
 
 **Semantic model:** macros are first-class command sequences — matches Vim macros (VIM-REPEAT). ruse
 records **commands**, not raw keys (guards anti-patterns EMACS/VIM "raw key replay", CMD-19).
@@ -129,11 +129,11 @@ Source: `Major-Modes`, `Minor-Modes`.
 - One major mode per buffer (local map, syntax, indent, comment, font-lock; derived-mode inheritance) +
   any number of minor modes (orthogonal toggles contributing keymap + local vars, layered above major).
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-MODE-1 | Exclusive major mode: per-buffer base behavior + keymap | L1 |
-| EMACS-MODE-2 | Composable minor modes layered above major | L1 |
-| EMACS-MODE-3 | Derived-mode inheritance (`prog-mode` → `python-mode`) | L2 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-MODE-1 | Exclusive major mode: per-buffer base behavior + keymap | L1 | Equivalent | high |
+| EMACS-MODE-2 | Composable minor modes layered above major | L1 | Equivalent | high |
+| EMACS-MODE-3 | Derived-mode inheritance (`prog-mode` → `python-mode`) | L2 | Equivalent | med |
 
 **Semantic model:** behavior composed per buffer from one base layer + a stack of opt-in layers. In ruse =
 **buffer-local mode** priority tier (architecture §1.4) + context bindings. Guards EMACS-6.
@@ -144,10 +144,10 @@ Source: `Buffer-Local-Variables`, `Hooks`, `File-Variables`, `Directory-Variable
 - Hooks: mode hooks (`<mode>-hook`) + general hooks (`after-save-hook`, `find-file-hook`, `post-command-hook`,
   …); normal vs abnormal; `add-hook` with buffer-local scope + depth ordering.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-VAR-1 | Scoped config: global → buffer-local → file/dir-local shadowing | L1 |
-| EMACS-VAR-2 | Pervasive hook mechanism at lifecycle points | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-VAR-1 | Scoped config: global → buffer-local → file/dir-local shadowing | L1 | Equivalent | med |
+| EMACS-VAR-2 | Pervasive hook mechanism at lifecycle points | L1 | Equivalent | med |
 
 **Semantic model:** named extension points invoked at lifecycle moments without patching core = ruse's
 typed **event model** (architecture §8) + scoped config (guards EMACS-9). Workspace override vs user
@@ -159,11 +159,11 @@ Source: `Minibuffer`, `Completion`, `Incremental-Search`, `Query-Replace`.
   `completion-styles`: basic/substring/**flex**/orderless; UIs Vertico/Ivy/Helm/Ido).
 - isearch `C-s`/`C-r` (incremental, live sub-keymap), `C-M-s` regex; query-replace `M-%`, `C-M-%` (interactive review loop).
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-MINI-1 | Reusable prompting substrate with history + pluggable completion (single contract) | L1 |
-| EMACS-MINI-2 | Incremental search as a modal sub-keymap during the command | L1 |
-| EMACS-MINI-3 | Interactive query-replace review loop (y/n/!/^/edit) | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-MINI-1 | Reusable prompting substrate with history + pluggable completion (single contract) | L1 | Equivalent | high |
+| EMACS-MINI-2 | Incremental search as a modal sub-keymap during the command | L1 | Equivalent | high |
+| EMACS-MINI-3 | Interactive query-replace review loop (y/n/!/^/edit) | L1 | Equivalent | med |
 
 In ruse = the **command palette + input line** (Native Style readline layer, [native-style.md](native-style.md));
 completion honors one contract, not per-plugin UIs (guards UI-14, CMD-4).
@@ -173,11 +173,11 @@ Source: `Controlling-Active-Maps` (set-transient-map), `Repeating`, Transient ma
 - `set-transient-map` installs a temporary top-priority keymap that self-dismisses (basis for Magit-style
   transient popups with toggleable args + sub-menus). `repeat-mode`. which-key surfaces live continuations.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-TRANSIENT-1 | Temporary top-priority self-dismissing keymap (modal/repeatable clusters) | L1 |
-| EMACS-TRANSIENT-2 | Transient popup menus with toggleable arguments + sub-menus | L1 |
-| EMACS-TRANSIENT-3 | which-key-style live discovery of available continuations | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-TRANSIENT-1 | Temporary top-priority self-dismissing keymap (modal/repeatable clusters) | L1 | Equivalent | high |
+| EMACS-TRANSIENT-2 | Transient popup menus with toggleable arguments + sub-menus | L1 | Equivalent | med |
+| EMACS-TRANSIENT-3 | which-key-style live discovery of available continuations | L1 | Equivalent | med |
 
 **This is the direct basis for Native Style's "special views = Magit-style transient actions"**
 (architecture §1.5) and for prefix discovery (guards PROFILE-13). ruse special-view keymaps (git/debug)
@@ -188,10 +188,10 @@ Source: `Dired`, `Buffers`, `Lisp-Interaction`.
 - Dired = directory as an **editable buffer** (`RET/d/x/C/R/m/!`, `wdired` edit filenames as text).
 - All surfaces are buffers: `*scratch* *Messages* *Help* *Completions* *Occur* *grep* *compilation*`.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-BUFFER-1 | File manager as an editable/navigable buffer (dired/wdired) | L1 |
-| EMACS-BUFFER-2 | Every surface (help, logs, results, scratch) is a searchable buffer | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-BUFFER-1 | File manager as an editable/navigable buffer (dired/wdired) | L1 | Equivalent | med |
+| EMACS-BUFFER-2 | Every surface (help, logs, results, scratch) is a searchable buffer | L1 | Equivalent | high |
 
 **Semantic model = ruse's "everything is a workspace view/buffer"** (architecture §7, [workspace.md](workspace.md)).
 Guards UI-4/UI-5 (neither force-all-text nor bespoke-UI-per-view — use a semantic view model).
@@ -201,10 +201,10 @@ Source: `Interactive-Shell`, `Shell-Mode`, `Terminal-emulator`.
 - Subprocess-in-a-buffer via **comint** (input ring, prompt handling, completion): `shell` (line-mode),
   `term`/`ansi-term` (char-mode terminal emulation), `eshell` (Elisp shell), language REPLs.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-PROC-1 | Process I/O as buffer text with shared input-history/prompt/completion layer | L1 |
-| EMACS-PROC-2 | Line-mode (full editing) vs char-mode (raw terminal) distinction | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-PROC-1 | Process I/O as buffer text with shared input-history/prompt/completion layer | L1 | Equivalent | med |
+| EMACS-PROC-2 | Line-mode (full editing) vs char-mode (raw terminal) distinction | L1 | Equivalent | med |
 
 Overlaps Vim/Neovim `:terminal` ([vim.md](vim.md) VIM-JOB, [neovim.md](neovim.md) NVIM-TERM) → ruse
 PTY-backed buffers ([workspace.md](workspace.md), [terminal.md](terminal.md)).
@@ -214,10 +214,10 @@ Source: `Help`, `Key-Help`, `Name-Help`.
 - Introspective, live: `C-h k` (what does this key run, as currently bound), `C-h f/v/w/b/m/a/o`, `C-h i`.
 - Help reflects the *current* keymap stack (accounts for shadowing) and links to source + docstrings.
 
-| ID | Capability | Target |
-| --- | --- | --- |
-| EMACS-HELP-1 | Docs coupled to the live runtime: key → command-as-bound, command → docstring + current binding | L1 |
-| EMACS-HELP-2 | Self-documentation as a property of the command model, not an add-on | L1 |
+| ID | Capability | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| EMACS-HELP-1 | Docs coupled to the live runtime: key → command-as-bound, command → docstring + current binding | L1 | Equivalent | med |
+| EMACS-HELP-2 | Self-documentation as a property of the command model, not an add-on | L1 | Equivalent | med |
 
 In ruse: command metadata generates docs/discovery (architecture §2.3; guards CMD-20); help is a buffer
 (EMACS-BUFFER-2).
@@ -225,13 +225,13 @@ In ruse: command metadata generates docs/discovery (architecture §2.3; guards C
 ## EMACS-EDIT — Undo, narrowing, rectangles, registers, bookmarks
 Source: `Undo`, `Narrowing`, `Rectangles`, `Registers`, `Bookmarks`.
 
-| ID | Capability | Semantic model | Target |
-| --- | --- | --- | --- |
-| EMACS-EDIT-1 | Undo where undo entries are themselves undoable (redo = re-undo); optional branching tree | matches Vim undo-tree (VIM-UNDO); validates ruse transaction/undo model | L2 |
-| EMACS-EDIT-2 | Narrowing: **document-level** restriction region confining all ops (search/motion/txn) to a sub-span | owner = Document, not View (V-27) | L1 |
-| EMACS-EDIT-3 | Rectangles: column-block region geometry with its own kill/yank | overlaps Vim blockwise (VIM-MODE-4) | L1 |
-| EMACS-EDIT-4 | Registers: named per-session slots holding text/positions/rects/window-configs | unify with Vim registers (VIM-REG) | L1 |
-| EMACS-EDIT-5 | Bookmarks: named persistent cross-session locations | — | L1 |
+| ID | Capability | Semantic model | Target | Compat | Weight |
+| --- | --- | --- | --- | --- | --- |
+| EMACS-EDIT-1 | Undo where undo entries are themselves undoable (redo = re-undo); optional branching tree | matches Vim undo-tree (VIM-UNDO); validates ruse transaction/undo model | L2 | Equivalent | high |
+| EMACS-EDIT-2 | Narrowing: **document-level** restriction region confining all ops (search/motion/txn) to a sub-span | owner = Document, not View (V-27) | L1 | Equivalent | low |
+| EMACS-EDIT-3 | Rectangles: column-block region geometry with its own kill/yank | overlaps Vim blockwise (VIM-MODE-4) | L1 | Equivalent | low |
+| EMACS-EDIT-4 | Registers: named per-session slots holding text/positions/rects/window-configs | unify with Vim registers (VIM-REG) | L1 | Equivalent | med |
+| EMACS-EDIT-5 | Bookmarks: named persistent cross-session locations | — | L1 | Equivalent | med |
 
 ## EMACS-ECO — Capability-kind targets (NOT parity targets)
 These illustrate the *category* the substrate must enable — build the same *kind* of thing, don't clone:

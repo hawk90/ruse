@@ -59,13 +59,13 @@ Transient Git layer (special view)
   p                push
 ```
 
-| ID | Element | Target |
-| --- | --- | --- |
-| NAT-1 | Modal text editing (operator/motion/text-object) | L1 |
-| NAT-2 | Leader-based command layer with prefix discovery (which-key style) | L1 |
-| NAT-3 | Transient action maps in special views (git/debug/picker) | L1 |
-| NAT-4 | Readline-style input/search line | L1 |
-| NAT-5 | Multiple-selection model | L2 (post-MVP; single selection must not block extension) |
+| ID | Element | Target | Compat | Weight |
+| --- | --- | --- | --- | --- |
+| NAT-1 | Modal text editing (operator/motion/text-object) | L1 | Equivalent | high |
+| NAT-2 | Leader-based command layer with prefix discovery (which-key style) | L1 | Intentionally-different | high |
+| NAT-3 | Transient action maps in special views (git/debug/picker) | L1 | Equivalent | med |
+| NAT-4 | Readline-style input/search line | L1 | Equivalent | med |
+| NAT-5 | Multiple-selection model | L2 (post-MVP; single selection must not block extension) | Equivalent | med |
 
 ## Design constraints
 

@@ -23,19 +23,19 @@ Every workspace surface is a **view over a shared semantic view model** (not a c
 engine per feature). This is Emacs's "everything is a buffer" ([emacs.md](emacs.md) EMACS-BUFFER) realized
 through ruse's Render IR ([../design/render-and-frontends.md](../design/render-and-frontends.md)).
 
-| ID | Surface | Target form | Target |
-| --- | --- | --- | --- |
-| WS-1 | File explorer | Tree/List buffer (dired/wdired-style editability) | L1 |
-| WS-2 | Git status | Magit-style transient action buffer | L1 |
-| WS-3 | Search results | Navigable results buffer | L1 |
-| WS-4 | Diagnostics | Problems buffer (from the diagnostics framework, [neovim.md](neovim.md) NVIM-DIAG) | L1 |
-| WS-5 | Terminal | PTY-backed buffer (Unix PTY + ConPTY) | L1 |
-| WS-6 | Help | Documentation buffer (command↔doc coupling, EMACS-HELP) | L1 |
-| WS-7 | Debugger | Stack / Variables / Console views | post-MVP |
-| WS-8 | AI | Chat / Proposal / Review buffer (proposals reviewed before apply) | future |
-| WS-9 | Image | Semantic media view (degradation ladder) | L1 |
-| WS-10 | Hex / Binary | Typed binary view | post-MVP |
-| WS-11 | Remote file | Remote workspace document ([remote.md](remote.md)) | L1 |
+| ID | Surface | Target form | Target | Compat | Weight |
+| --- | --- | --- | --- | --- | --- |
+| WS-1 | File explorer | Tree/List buffer (dired/wdired-style editability) | L1 | Equivalent | high |
+| WS-2 | Git status | Magit-style transient action buffer | L1 | Equivalent | med |
+| WS-3 | Search results | Navigable results buffer | L1 | Equivalent | high |
+| WS-4 | Diagnostics | Problems buffer (from the diagnostics framework, [neovim.md](neovim.md) NVIM-DIAG) | L1 | Equivalent | med |
+| WS-5 | Terminal | PTY-backed buffer (Unix PTY + ConPTY) | L1 | Equivalent | med |
+| WS-6 | Help | Documentation buffer (command↔doc coupling, EMACS-HELP) | L1 | Equivalent | med |
+| WS-7 | Debugger | Stack / Variables / Console views | post-MVP | Equivalent | low |
+| WS-8 | AI | Chat / Proposal / Review buffer (proposals reviewed before apply) | future | Adapted | low |
+| WS-9 | Image | Semantic media view (degradation ladder) | L1 | Adapted | low |
+| WS-10 | Hex / Binary | Typed binary view | post-MVP | Equivalent | low |
+| WS-11 | Remote file | Remote workspace document ([remote.md](remote.md)) | L1 | Equivalent | med |
 
 ## Virtual-document kinds
 
