@@ -32,39 +32,40 @@ mvp:
   non_goals: [gui, web, marketplace, wasm-plugin-host, collaborative-editing, running-vimscript-or-elisp]
 
 # --- Components (architectural building blocks) ---
-# `layer` = build stage (kernel < input < tui < workspace < plugin < remote); a component must not depend
-# on a later layer (checkable by spec validate, D-022). `depends_on` makes build order machine-verifiable.
+# `build_stage` = bring-up order (kernel < input < tui < workspace < plugin < remote); a component may not
+# depend on a later stage (checked by spec validate). `depends_on` makes build order machine-verifiable.  # D-036
+
 components:
   # kernel (stage 1: editor-core, includes Command per ARCH-LAYER-001)
-  C-DOCUMENT:   { title: Document model, layer: kernel, depends_on: [], status: planned, ref: ../docs/rfc/proposed/RFC-0008-document-model.md }
-  C-TRANSACTION: { title: Transaction engine, layer: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/rfc/proposed/RFC-0007-transaction-engine.md }
-  C-ANCHOR:     { title: Anchor/position model, layer: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/parity/vim.md }
-  C-UNDO:       { title: Undo history, layer: kernel, depends_on: [C-TRANSACTION], status: planned, ref: ../docs/design/persistence-and-recovery.md }
-  C-REGISTER:   { title: Register/kill-ring model, layer: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/register-model.md }   # D-026
-  C-REGEX:      { title: Regex abstraction + Vim-dialect engine, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/vim-regex.md }          # D-028
-  C-POSHIST:    { title: Positions history (marks/jumplist/mark-ring/selections), layer: kernel, depends_on: [C-ANCHOR], status: planned, ref: ../docs/design/positions-history.md }  # D-027
-  C-CONTEXT:    { title: Context/when-expression evaluator, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/command-engine.md }
-  C-QUERY:      { title: Read/query layer, layer: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/query-and-snapshot.md }
-  C-COMMAND:    { title: Semantic command layer, layer: kernel, depends_on: [C-TRANSACTION, C-QUERY, C-CONTEXT], status: planned, ref: ../docs/design/command-engine.md }
-  C-EDITLANG:   { title: Editing-language composition (operator/motion/range IR), layer: kernel, depends_on: [C-COMMAND, C-ANCHOR, C-REGISTER], status: planned, ref: ../docs/design/editing-language.md }  # D-025
-  C-CONFIG:     { title: Config/keymap loading + merge, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/config-model.md }
-  C-HEALTH:     { title: Health/observability, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/stability-and-observability.md }
-  C-SCHEDULER:  { title: Background scheduler, layer: kernel, depends_on: [], status: planned, ref: ../docs/design/scheduler.md }
+  C-DOCUMENT:   { title: Document model, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/rfc/proposed/RFC-0008-document-model.md }
+  C-TRANSACTION: { title: Transaction engine, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/rfc/proposed/RFC-0007-transaction-engine.md }
+  C-ANCHOR:     { title: Anchor/position model, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/parity/vim.md }
+  C-UNDO:       { title: Undo history, build_stage: kernel, depends_on: [C-TRANSACTION], status: planned, ref: ../docs/design/persistence-and-recovery.md }
+  C-REGISTER:   { title: Register/kill-ring model, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/register-model.md }   # D-026
+  C-REGEX:      { title: Regex abstraction + Vim-dialect engine, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/design/vim-regex.md }          # D-028
+  C-POSHIST:    { title: Positions history (marks/jumplist/mark-ring/selections), build_stage: kernel, depends_on: [C-ANCHOR], status: planned, ref: ../docs/design/positions-history.md }  # D-027
+  C-CONTEXT:    { title: Context/when-expression evaluator, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/design/command-engine.md }
+  C-QUERY:      { title: Read/query layer, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/query-and-snapshot.md }
+  C-COMMAND:    { title: Semantic command layer, build_stage: kernel, depends_on: [C-TRANSACTION, C-QUERY, C-CONTEXT], status: planned, ref: ../docs/design/command-engine.md }
+  C-EDITLANG:   { title: Editing-language composition (operator/motion/range IR), build_stage: kernel, depends_on: [C-COMMAND, C-ANCHOR, C-REGISTER], status: planned, ref: ../docs/design/editing-language.md }  # D-025
+  C-CONFIG:     { title: Config/keymap loading + merge, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/design/config-model.md }
+  C-HEALTH:     { title: Health/observability, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/design/stability-and-observability.md }
+  C-SCHEDULER:  { title: Background scheduler, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/design/scheduler.md }
   # input (stage 2)
-  C-INPUT:      { title: Input engine + profiles, layer: input, depends_on: [C-COMMAND, C-EDITLANG, C-CONFIG], status: planned, ref: ../docs/design/input-engine.md }
+  C-INPUT:      { title: Input engine + profiles, build_stage: input, depends_on: [C-COMMAND, C-EDITLANG, C-CONFIG], status: planned, ref: ../docs/design/input-engine.md }
   # tui (stage 3)
-  C-RENDER:     { title: Render IR + lowering, layer: tui, depends_on: [C-QUERY], status: planned, ref: ../docs/design/render-and-frontends.md }
-  C-VIEW:       { title: View/Window/layout, layer: tui, depends_on: [C-RENDER, C-ANCHOR], status: planned, ref: ../docs/design/view-window-workspace.md }
-  C-TERMINAL:   { title: Terminal platform (input+capability), layer: tui, depends_on: [], status: planned, ref: ../docs/parity/terminal.md }
+  C-RENDER:     { title: Render IR + lowering, build_stage: tui, depends_on: [C-QUERY], status: planned, ref: ../docs/design/render-and-frontends.md }
+  C-VIEW:       { title: View/Window/layout, build_stage: tui, depends_on: [C-RENDER, C-ANCHOR], status: planned, ref: ../docs/design/view-window-workspace.md }
+  C-TERMINAL:   { title: Terminal platform (input+capability), build_stage: tui, depends_on: [], status: planned, ref: ../docs/parity/terminal.md }
   # workspace (stage 4)
-  C-WORKSPACE:  { title: Workspace + buffers, layer: workspace, depends_on: [C-DOCUMENT, C-VIEW], status: planned, ref: ../docs/design/view-window-workspace.md }
-  C-PERSIST:    { title: Persistence + recovery journal, layer: workspace, depends_on: [C-DOCUMENT, C-WORKSPACE], status: planned, ref: ../docs/design/persistence-and-recovery.md }  # D-005
-  C-LSPHOST:    { title: Language Service host (LSP mgmt + normalized model), layer: workspace, depends_on: [C-WORKSPACE, C-QUERY], status: planned, ref: ../docs/design/remote-runtime.md }
-  C-DEBUG:      { title: Debug service (DAP/GDB, location model), layer: workspace, depends_on: [C-WORKSPACE], status: planned, ref: ../docs/design/remote-runtime.md }  # D-032
+  C-WORKSPACE:  { title: Workspace + buffers, build_stage: workspace, depends_on: [C-DOCUMENT, C-VIEW], status: planned, ref: ../docs/design/view-window-workspace.md }
+  C-PERSIST:    { title: Persistence + recovery journal, build_stage: workspace, depends_on: [C-DOCUMENT, C-WORKSPACE], status: planned, ref: ../docs/design/persistence-and-recovery.md }  # D-005
+  C-LSPHOST:    { title: Language Service host (LSP mgmt + normalized model), build_stage: workspace, depends_on: [C-WORKSPACE, C-QUERY], status: planned, ref: ../docs/design/remote-runtime.md }
+  C-DEBUG:      { title: Debug service (DAP/GDB, location model), build_stage: workspace, depends_on: [C-WORKSPACE], status: planned, ref: ../docs/design/remote-runtime.md }  # D-032
   # plugin (stage 5) / remote (stage 6)
-  C-PLUGIN:     { title: Plugin protocol/host, layer: plugin, depends_on: [C-COMMAND, C-RENDER, C-WORKSPACE], status: planned, ref: ../docs/rfc/proposed/RFC-0003-plugin-api.md }
-  C-AGENT:      { title: Remote workspace agent (headless service supervisor), layer: remote, depends_on: [C-WORKSPACE, C-LSPHOST, C-DEBUG], status: planned, ref: ../docs/design/remote-runtime.md }  # D-029/D-030/D-031
-  C-REMOTE:     { title: Remote client/runtime boundary, layer: remote, depends_on: [C-WORKSPACE, C-PLUGIN, C-AGENT], status: planned, ref: ../docs/design/remote-runtime.md }
+  C-PLUGIN:     { title: Plugin protocol/host, build_stage: plugin, depends_on: [C-COMMAND, C-RENDER, C-WORKSPACE], status: planned, ref: ../docs/rfc/proposed/RFC-0003-plugin-api.md }
+  C-AGENT:      { title: Remote workspace agent (headless service supervisor), build_stage: remote, depends_on: [C-WORKSPACE, C-LSPHOST, C-DEBUG], status: planned, ref: ../docs/design/remote-runtime.md }  # D-029/D-030/D-031
+  C-REMOTE:     { title: Remote client/runtime boundary, build_stage: remote, depends_on: [C-WORKSPACE, C-PLUGIN, C-AGENT], status: planned, ref: ../docs/design/remote-runtime.md }
 
 # --- Features ---
 features:

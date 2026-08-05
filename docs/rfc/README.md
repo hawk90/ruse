@@ -35,6 +35,7 @@ compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 | [RFC-0008](proposed/RFC-0008-document-model.md) | Document Model & Coordinates | D-003, D-023 | [architecture §3](../architecture/architecture.md) |
 | [RFC-0009](proposed/RFC-0009-render-model.md) | Render Model & Frontends | D-014, D-015, D-012 | [render-and-frontends](../design/render-and-frontends.md), [parity/terminal](../parity/terminal.md) |
 | [RFC-0010](proposed/RFC-0010-stability-observability.md) | Stability & Observability | D-016, D-017 | [stability-and-observability](../design/stability-and-observability.md) |
+| [RFC-0011](proposed/RFC-0011-layer-axis-terminology.md) | Layer-axis terminology (build_stage / architecture_tier) | D-036 | [glossary](../../spec/glossary.yaml), [spec-validate](../operations/spec-validate.md) |
 
 ## Rejected (do-not-relitigate)
 

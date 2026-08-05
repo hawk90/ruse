@@ -34,7 +34,7 @@ ID_RE = re.compile(
     r"|ARCH-[A-Z]+-\d+|ENG-[A-Z0-9-]+|D-\d+|RFC-\d{1,4})\b"
 )
 
-LAYER_ORDER = ["kernel", "input", "tui", "workspace", "plugin", "remote"]
+BUILD_STAGES = ["kernel", "input", "tui", "workspace", "plugin", "remote"]  # PRD build_stage axis (D-036)
 
 
 @dataclass
@@ -178,7 +178,7 @@ def load() -> Model:
     prd = _load_yaml("spec/PRD.yaml", m)
     for cid, c in (prd.get("components") or {}).items():
         m.add_node(Node(cid, "C", title=c.get("title", ""), file="spec/PRD.yaml",
-                        meta={"layer": c.get("layer"), "status": c.get("status")}))
+                        meta={"build_stage": c.get("build_stage"), "status": c.get("status")}))
     for fid, f in (prd.get("features") or {}).items():
         m.add_node(Node(fid, "F", title=f.get("title", ""), file="spec/PRD.yaml",
                         meta={"stage": f.get("stage"), "status": f.get("status")}))

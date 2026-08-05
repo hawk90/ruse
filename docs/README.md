@@ -76,7 +76,7 @@ A solo/small-team effort must not aim at the final product on the first pass. Se
 > Reconciles verification V-10 (Command was contradictorily placed at step 4 while Input at step 2 depends
 > on it) and V-11 (Workspace was unplaced yet F-007/F-008 need it). Command lives in editor-core; a local
 > Workspace stage precedes plugin/remote. **Machine-checkable ordering = `spec/PRD.yaml` component
-> `layer`/`depends_on`** (this prose is the narrative view).
+> `build_stage`/`depends_on`** (this prose is the narrative view).
 
 Render backends specifically sequence: (1) Semantic Render Tree → (2) ANSI/Unicode backend → (3) virtual
 terminal tests → (4) Kitty image backend → (5) remote protocol → (6) GUI backend. Do **not** implement
@@ -124,7 +124,7 @@ reviews are separate folders.
 | **Operations** | [operations/](operations/ci-cd-and-release.md) — development-model, definition-of-done, testing-and-benchmarks, github-workflow, ci-cd-and-release, spec-validate |
 | **Contributing** | [contributing/](contributing/README.md) — hub, change-paths, ai-assisted-development, quickstart (+ root CONTRIBUTING/SUPPORT/CODE_OF_CONDUCT/SECURITY) |
 | **Reviews** | [reviews/verification.md](reviews/verification.md) (point-in-time design-verification report) |
-| **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/` (0001–0010), `rejected/` (R001) |
+| **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/` (0001–0011), `rejected/` (R001) |
 
 > The old "one PRD.md per folder" idea is superseded by the single [`spec/PRD.yaml`](../spec/PRD.yaml).
 

@@ -52,8 +52,8 @@ Anti-pattern categories are ALL-CAPS by convention, so section headers like `## 
 
 1. **YAML parses**; PRD `stage/priority/status` and POLICY `strength/status` are within their closed enum
    sets; no duplicate `F-`/`C-`/`D-` IDs.
-2. **PRD component `depends_on`** resolve, and respect **layer order** `kernel < input < tui < workspace <
-   plugin < remote` (a component may not depend on a later-layer component). This makes the build order
+2. **PRD component `depends_on`** resolve, and respect **build_stage order** `kernel < input < tui < workspace <
+   plugin < remote` (a component may not depend on a later-stage component; D-036). This makes the build order
    machine-checkable (V-10/V-11 could not have slipped past this).
 3. **PRD feature `depends_on`** resolve to a component or feature.
 4. **POLICY `invariants:`** resolve to the INV-* registry.
@@ -89,7 +89,7 @@ Exit `0` PASS, `1` FAIL (lists each error). Warnings do not fail the build.
 
 ## CI integration
 
-- **PR (fast CI):** `spec validate` must pass to merge (blocks dangling refs, layer violations, broken
+- **PR (fast CI):** `spec validate` must pass to merge (blocks dangling refs, build_stage violations, broken
   links, bad enums, duplicate IDs).
 - **PR:** `spec build` then `git diff --exit-code` on generated files (catches hand-edited or stale
   generated artifacts).

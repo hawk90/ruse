@@ -199,26 +199,26 @@ terms:
     def: >
       Overloaded term. Depending on context it means the architecture-tier, the build-stage, the
       runtime-location, or the trust-domain. Never reason about dependencies from "layer" alone; name
-      the axis. PRD's component `layer:` field is the build-stage; capabilities' `architecture_layer:`
+      the axis. PRD's component `build_stage` field is the build-stage; capabilities' `architecture_tier`
       is the architecture-tier.
     def_ko: >
       과부하된 용어. 문맥에 따라 architecture-tier·build-stage·runtime-location·trust-domain 중 하나를
-      뜻한다. "layer"만으로 의존성을 추론하지 말고 축을 명시할 것. PRD 컴포넌트의 `layer:`는 build-stage,
-      capabilities의 `architecture_layer:`는 architecture-tier다.
+      뜻한다. "layer"만으로 의존성을 추론하지 말고 축을 명시할 것. PRD 컴포넌트의 `build_stage`는 build-stage,
+      capabilities의 `architecture_tier`는 architecture-tier다.
     related: [architecture-tier, build-stage, runtime-location, trust-domain]
 
   architecture-tier:
     en: Architecture tier
     ko: 아키텍처 티어
-    def: "What a capability IS, by isolation/trust boundary: kernel | service | bundled-extension | external-plugin | external-tool. Stored as capabilities.yaml `architecture_layer`."
-    def_ko: "격리/신뢰 경계 기준으로 '무엇인가': kernel | service | bundled-extension | external-plugin | external-tool. capabilities.yaml의 `architecture_layer`."
+    def: "What a capability IS, by isolation/trust boundary: kernel | service | bundled-extension | external-plugin | external-tool. Stored as capabilities.yaml `architecture_tier`."
+    def_ko: "격리/신뢰 경계 기준으로 '무엇인가': kernel | service | bundled-extension | external-plugin | external-tool. capabilities.yaml의 `architecture_tier`."
     related: [layer, trust-domain]
 
   build-stage:
     en: Build stage
     ko: 빌드 스테이지
-    def: "The bring-up ORDER of the reference implementation: kernel < input < tui < workspace < plugin < remote. A component may not depend on a later stage. Stored as PRD component `layer` (checked by spec-validate)."
-    def_ko: "참조 구현의 빌드 순서: kernel < input < tui < workspace < plugin < remote. 컴포넌트는 이후 스테이지에 의존 불가. PRD 컴포넌트의 `layer`(spec-validate가 검사)."
+    def: "The bring-up ORDER of the reference implementation: kernel < input < tui < workspace < plugin < remote. A component may not depend on a later stage. Stored as PRD component `build_stage` (checked by spec-validate)."
+    def_ko: "참조 구현의 빌드 순서: kernel < input < tui < workspace < plugin < remote. 컴포넌트는 이후 스테이지에 의존 불가. PRD 컴포넌트의 `build_stage`(spec-validate가 검사)."
     related: [layer]
 
   runtime-location:

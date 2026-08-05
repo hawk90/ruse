@@ -4,8 +4,8 @@ spec-validate — reference implementation of the D-022 `spec validate` checker.
 
 Runs from the repo root. Enforces the doc-system discipline (one fact one home relies on it):
   1. YAML parses; PRD/POLICY enums are within their closed sets; no duplicate F-/C-/ENG- IDs.
-  2. PRD component `depends_on` resolve AND respect layer order
-     (kernel < input < tui < workspace < plugin < remote — a component may not depend on a later layer).
+  2. PRD component `depends_on` resolve AND respect build_stage order (D-036)
+     (kernel < input < tui < workspace < plugin < remote — a component may not depend on a later stage).
   3. PRD feature `depends_on` resolve to a component or feature.
   4. POLICY `invariants:` resolve to the INV-* registry (docs/invariants/reference-invariants.md).
   5. POLICY `antipattern.refs` resolve to a real anti-pattern catalog ID (docs/anti-patterns).
@@ -93,14 +93,14 @@ for path,pat in [("spec/PRD.yaml", r"^  (F-\d+):"), ("spec/PRD.yaml", r"^  (C-[A
     if dup: err(f"{path}: duplicate IDs {sorted(dup)}")
 
 # ---------- 2/3. PRD dependency graph ----------
-LAYER = ["kernel","input","tui","workspace","plugin","remote"]
-LI = {l:i for i,l in enumerate(LAYER)}
+STAGE_ORDER = ["kernel","input","tui","workspace","plugin","remote"]   # D-036: build_stage axis
+SI = {s:i for i,s in enumerate(STAGE_ORDER)}
 for cid,c in (prd.get("components") or {}).items():
-    if c.get("layer") not in LI: err(f"PRD {cid}: bad layer {c.get('layer')}")
+    if c.get("build_stage") not in SI: err(f"PRD {cid}: bad build_stage {c.get('build_stage')}")
     for d in c.get("depends_on",[]) or []:
         if d not in COMP: err(f"PRD {cid}: depends_on missing {d}")
-        elif LI.get(c.get("layer"),99) < LI.get((prd['components'][d]).get("layer"),0):
-            err(f"PRD {cid}({c.get('layer')}) depends on later-layer {d}({prd['components'][d].get('layer')})")
+        elif SI.get(c.get("build_stage"),99) < SI.get((prd['components'][d]).get("build_stage"),0):
+            err(f"PRD {cid}({c.get('build_stage')}) depends on later-stage {d}({prd['components'][d].get('build_stage')})")
 for fid,f in (prd.get("features") or {}).items():
     for d in f.get("depends_on",[]) or []:
         if d not in COMP and d not in FEAT: err(f"PRD {fid}: depends_on missing {d}")
@@ -116,7 +116,7 @@ for pid,pr in (pol.get("principles") or {}).items():
 # ---------- 5b. capabilities.yaml + dependencies.yaml ----------
 CAP_ENUMS = {
     "product_layer": {"base","official-pack","third-party"},
-    "architecture_layer": {"kernel","service","bundled-extension","external-plugin","external-tool"},
+    "architecture_tier": {"kernel","service","bundled-extension","external-plugin","external-tool"},
     "implementation": {"own","wrapped","direct","external-process"},
     "runtime": {"client","workspace","both"},
     "activation": {"startup","workspace","language","command","on-demand"},

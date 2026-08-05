@@ -358,7 +358,7 @@ fallback** in `VimEngine` (backrefs, variable-width lookbehind) — the only non
 
 ### 9. `C-REGEX` component & contract
 
-`C-REGEX` (capabilities.yaml: *Regex engine (Vim dialect), layer: kernel, usage: own*) exposes the versioned
+`C-REGEX` (PRD.yaml: *Regex abstraction + Vim-dialect engine, build_stage: kernel*) exposes the versioned
 contract (INV-CONTRACT-FIRST):
 
 - `compile(dialect, pattern, CompileOpts) -> Result<Regex, RegexError>`

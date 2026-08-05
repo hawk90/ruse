@@ -311,3 +311,13 @@
 - **Reason:** avoid a third drifting doc layer; keep all normative docs inside the enforced validation loop.
 - **Re-evaluate:** only if real users repeatedly need a community-writable, non-normative space.
 - Refs: [../docs/contributing/README.md](../docs/contributing/README.md), ENG-DOC-001, D-021.
+
+## D-036 — Disambiguate the "layer" axes (build_stage / architecture_tier) · decided
+- **Decision:** Rename the two spec fields that literally spell "layer": PRD component `layer` →
+  `build_stage`, capabilities `architecture_layer` → `architecture_tier`. Values unchanged; `runtime` and
+  `trust` already unambiguous; `product_layer` and `dependencies.yaml` `allowed_layers` left for a later pass.
+- **Reason:** "layer" named four independent axes (tier / build-stage / runtime-location / trust-domain); the
+  shared key invited invalid cross-axis conclusions by humans and LLMs — costlier now that the project is
+  multi-contributor.
+- **Re-evaluate if:** a rename of `product_layer`/`allowed_layers` proves worth the churn.
+- Refs: RFC-0011, [../docs/rfc/proposed/RFC-0011-layer-axis-terminology.md](../docs/rfc/proposed/RFC-0011-layer-axis-terminology.md), ENG-DOC-001.
