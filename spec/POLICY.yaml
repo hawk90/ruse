@@ -7,8 +7,10 @@
 #   category: correctness | stability | security | performance | architecture | ecosystem | observability
 #   status:   active | dropped
 # Defaults: strength=recommended, status=active, exception.allowed=false.
-# NOTE: `enforcement:` mechanisms are TARGET-STATE. Pre-code (no repo yet, `spec validate` unbuilt — D-022),
-#       "required" principles are enforced by review until the toolchain exists. Prioritize D-022.
+# NOTE: `enforcement:` mechanisms are the TARGET state. Some are LIVE now — spec-validate, docs-check,
+#       dependency-check, and change classify / pr check via tools/ruse.py, run by CI + lefthook. Others
+#       (property / fault-injection / benchmark / protocol-fixture / plugin-compat CI) need the reference
+#       implementation and stay review-enforced until the first slices land.
 
 version: 1
 

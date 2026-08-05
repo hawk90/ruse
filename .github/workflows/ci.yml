@@ -1,4 +1,5 @@
-# Rust CI. No-ops until crates/ has real code; activates automatically once Cargo.toml exists.
+# Rust CI. The Cargo workspace exists (skeleton), so fmt/clippy/test + dependency-check run now and
+# grow teeth as crates/ gains real code. The have==0 branch stays as a fallback if Cargo.toml is removed.
 # Security (docs/operations/ci-cd-and-release.md §11): pin actions by SHA (TODO), least-privilege token.
 name: ci
 on:

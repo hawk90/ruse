@@ -16,7 +16,11 @@ Terminal-first, remote-first, extensible editor with Vim/Neovim/Emacs feature pa
 specification + reference implementation.
 
 ## Current stage
-Pre-code. Design/spec phase. No repo/crates yet.
+Skeleton phase. The Cargo workspace compiles but `crates/*` and `apps/*` are stubs pending the design
+docs — no product behavior yet. The repo tooling *is* built: `spec-validate`, the change-workflow CLI
+(`tools/ruse.py`: classify / impact / context / verify / pr check), docs-check and dependency-check,
+enforced by CI + lefthook. Next milestone: the first vertical slice
+(Document → Transaction → Undo → Snapshot) to prove the architecture under real code.
 
 ## Core invariants (must hold)
 - Document does not depend on View. (INV-DOC-VIEW)
