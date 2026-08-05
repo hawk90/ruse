@@ -39,7 +39,7 @@ components:
   # kernel (stage 1: editor-core, includes Command per ARCH-LAYER-001)
   C-DOCUMENT:   { title: Document model, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/rfc/proposed/RFC-0008-document-model.md }
   C-TRANSACTION: { title: Transaction engine, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/rfc/proposed/RFC-0007-transaction-engine.md }
-  C-ANCHOR:     { title: Anchor/position model, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/parity/vim.md }
+  C-ANCHOR:     { title: Anchor/position model, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/anchor-store.md }   # D-023
   C-UNDO:       { title: Undo history, build_stage: kernel, depends_on: [C-TRANSACTION], status: planned, ref: ../docs/design/persistence-and-recovery.md }
   C-REGISTER:   { title: Register/kill-ring model, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/register-model.md }   # D-026
   C-REGEX:      { title: Regex abstraction + Vim-dialect engine, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/design/vim-regex.md }          # D-028
