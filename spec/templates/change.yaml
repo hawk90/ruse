@@ -1,0 +1,45 @@
+# Change Contract — the small, local, per-task agreement. Lives at
+# .ruse/work/<issue>/change.yaml (NOT committed; .ruse/ is gitignored). Only the final
+# RFC / Decision / PRD change / PR is permanent. `python3 tools/ruse.py change start`
+# scaffolds this; you fill it in before asking an agent to implement.
+#
+# kind: one of spec/change-kinds.yaml (docs-editorial | docs-semantic | implementation |
+#       spec | architecture | contract). `change classify` may only RAISE this, never lower.
+
+issue: "<id>"                 # tracking issue / short slug
+kind: "<kind>"
+
+goal: >
+  <one paragraph: the observable outcome this change delivers>
+
+non_goals:
+  - <explicitly out of scope>
+
+# affected — spec IDs this change touches (must resolve; checked by `change classify`).
+affected:
+  capabilities: []            # CAP-*
+  requirements: []            # F-* / C-*
+  invariants: []              # INV-*
+  decisions: []               # D-*
+  crates: []                  # core | plugin-protocol | render-model | terminal-platform | workspace | workspace-runtime
+
+# contracts — does this cross a stability boundary? (any true ⇒ kind is at least `contract`)
+contracts:
+  public_api: false
+  protocol: false
+  persistent_format: false
+
+# artifacts — the required process outputs for this kind (see change-kinds.yaml).
+artifacts:
+  issue: "<id>"
+  rfc: null                   # RFC-#### when kind is architecture/contract
+  decision: null              # D-### when hard to reverse
+  migration: false
+
+# allow_paths / forbid_paths — the blast radius the implementer (human or agent) may touch.
+# `pr check` flags a diff that strays outside allow_paths.
+allow_paths: []               # e.g. ["crates/core/", "docs/design/document-model.md"]
+forbid_paths: []              # e.g. ["spec/DECISIONS.md"]
+
+# evidence — verify steps that must be green to close (see change-kinds.yaml defaults).
+evidence: []

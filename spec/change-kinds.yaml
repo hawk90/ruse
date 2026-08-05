@@ -1,0 +1,93 @@
+# Change-kind taxonomy — the authoritative policy the change classifier enforces.
+# Companion to docs/contributing/change-paths.md (the human one-minute guide): this file is
+# the machine-checkable version that `python3 tools/ruse.py change classify` reads.
+#
+# One fact, one home (ENG-DOC-001): the risk ladder and path rules live ONLY here. The
+# classifier never hard-codes them.
+#
+# The load-bearing rule (from change-paths.md): a classifier may RAISE the required risk of a
+# change above what the author declared; it may NEVER lower it. Editorial-vs-semantic and
+# "is this really an architecture change" stay human judgments (see `human_judgment` below) —
+# the tool only forces a floor when a path is unambiguously high-risk.
+#
+# Enums —
+#   risk: 0..3 monotonic ladder (higher = heavier required process)
+#   required_artifacts entries: issue | rfc | decision | impact | compat | spec_ref | migration
+#   evidence entries: names of verify steps (see tools/verify/run.py STEPS)
+# LLM: patch one kind or one trigger; never renumber risk out of order.
+
+version: 1
+
+kinds:
+  docs-editorial:
+    risk: 0
+    title: Editorial docs change — typo, link, wording; no change in meaning.
+    process: direct PR (CI is the only gate).
+    required_artifacts: []
+    evidence: [docs-check]
+
+  docs-semantic:
+    risk: 1
+    title: Explanatory docs change — clarify or expand; authoritative meaning unchanged.
+    process: link the relevant spec/Decision ID; PR.
+    required_artifacts: [spec_ref]
+    evidence: [docs-check, spec-validate]
+
+  implementation:
+    risk: 2
+    title: Code implementing an already-approved design, within existing contracts.
+    process: Issue required + one observable acceptance condition.
+    required_artifacts: [issue]
+    evidence: [spec-validate, cargo-fmt, cargo-clippy, cargo-test]
+
+  spec:
+    risk: 2
+    title: Requirement/policy/invariant change (PRD / POLICY / capabilities / invariants).
+    process: Issue + spec diff; the spec lands before or with the first impl PR.
+    required_artifacts: [issue]
+    evidence: [spec-validate]
+
+  architecture:
+    risk: 3
+    title: Layer, dependency direction, or core data-model change.
+    process: RFC + impact analysis + human approval; Decision (D-*) when hard to reverse.
+    required_artifacts: [rfc, impact]
+    evidence: [spec-validate, dependency-check, cargo-test]
+
+  contract:
+    risk: 3
+    title: Public API, plugin/remote protocol, or persistent storage format change.
+    process: RFC + compatibility/migration analysis + separate review.
+    required_artifacts: [rfc, compat]
+    evidence: [spec-validate, dependency-check, cargo-test]
+
+# path_triggers — touching a matching path forces AT LEAST `min_kind`. The highest-risk
+# match wins. Patterns are Python regex against repo-relative, forward-slash paths.
+# Deliberately conservative: only paths whose risk is unambiguous regardless of intent.
+# (Plain docs/*.md prose is intentionally absent — editorial vs semantic is human-judged.)
+path_triggers:
+  - { pattern: '^spec/ARCHITECTURE\.md$',      min_kind: architecture, reason: architecture spec }
+  - { pattern: '^spec/DECISIONS\.md$',         min_kind: architecture, reason: decision record }
+  - { pattern: '^spec/dependencies\.yaml$',    min_kind: architecture, reason: dependency inventory (layering) }
+  - { pattern: '^crates/plugin-protocol/',     min_kind: contract,     reason: plugin protocol crate }
+  - { pattern: '^spec/(PRD|POLICY|capabilities|config-schema|context-profiles|glossary|change-kinds)\.(yaml|yml)$',
+      min_kind: spec, reason: spec source of truth }
+  - { pattern: '^docs/invariants/',            min_kind: spec,         reason: invariant registry }
+  - { pattern: '^crates/',                     min_kind: implementation, reason: rust crate source }
+  - { pattern: '^apps/',                       min_kind: implementation, reason: rust app source }
+  - { pattern: '^tools/',                      min_kind: implementation, reason: tooling source }
+  - { pattern: '\.rs$',                        min_kind: implementation, reason: rust source }
+
+# human_judgment — matched paths get a WARNING (not a floor) telling the human to decide the
+# real kind. This is where the tool refuses to pretend it can read intent.
+human_judgment:
+  - { pattern: '^docs/rfc/',  note: "editing an RFC may be editorial OR an architecture decision — set kind accordingly" }
+  - { pattern: '^docs/',      note: "docs prose: choose docs-editorial (no meaning change) vs docs-semantic (clarifies a contract)" }
+
+# normative_leak — words that, added to docs prose, may silently turn explanation into a
+# contract. Reported as WARNINGS by docs-check; a real contract change belongs in spec/.
+normative_leak_terms: [MUST, MUST NOT, SHALL, REQUIRED, GUARANTEED, CANONICAL, AUTHORITATIVE]
+
+# generated_marker — files whose head contains this marker are tool-generated and must never
+# be hand-edited (ENG-DOC-001). The classifier hard-FAILS a diff that touches one.
+generated_marker: "GENERATED FILE: DO NOT EDIT"
