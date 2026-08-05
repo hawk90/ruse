@@ -188,3 +188,49 @@ terms:
     def: The authoritative, subscribable source of per-component status; the UI only renders it.
     def_ko: 컴포넌트별 상태의 권위 있는 구독 가능 출처. UI는 이것을 렌더만 한다.
     related: []
+
+  # --- The four "layer" axes. "layer" alone is AMBIGUOUS: these are independent axes, and a
+  #     dependency conclusion is only valid within ONE of them. A full field rename (PRD `layer` ->
+  #     `build_stage`, capabilities `architecture_layer` -> `architecture_tier`) is a normative change
+  #     tracked for an RFC; these terms disambiguate the vocabulary now.
+  layer:
+    en: Layer (ambiguous — prefer a specific axis)
+    ko: 레이어(모호 — 구체 축을 쓸 것)
+    def: >
+      Overloaded term. Depending on context it means the architecture-tier, the build-stage, the
+      runtime-location, or the trust-domain. Never reason about dependencies from "layer" alone; name
+      the axis. PRD's component `layer:` field is the build-stage; capabilities' `architecture_layer:`
+      is the architecture-tier.
+    def_ko: >
+      과부하된 용어. 문맥에 따라 architecture-tier·build-stage·runtime-location·trust-domain 중 하나를
+      뜻한다. "layer"만으로 의존성을 추론하지 말고 축을 명시할 것. PRD 컴포넌트의 `layer:`는 build-stage,
+      capabilities의 `architecture_layer:`는 architecture-tier다.
+    related: [architecture-tier, build-stage, runtime-location, trust-domain]
+
+  architecture-tier:
+    en: Architecture tier
+    ko: 아키텍처 티어
+    def: "What a capability IS, by isolation/trust boundary: kernel | service | bundled-extension | external-plugin | external-tool. Stored as capabilities.yaml `architecture_layer`."
+    def_ko: "격리/신뢰 경계 기준으로 '무엇인가': kernel | service | bundled-extension | external-plugin | external-tool. capabilities.yaml의 `architecture_layer`."
+    related: [layer, trust-domain]
+
+  build-stage:
+    en: Build stage
+    ko: 빌드 스테이지
+    def: "The bring-up ORDER of the reference implementation: kernel < input < tui < workspace < plugin < remote. A component may not depend on a later stage. Stored as PRD component `layer` (checked by spec-validate)."
+    def_ko: "참조 구현의 빌드 순서: kernel < input < tui < workspace < plugin < remote. 컴포넌트는 이후 스테이지에 의존 불가. PRD 컴포넌트의 `layer`(spec-validate가 검사)."
+    related: [layer]
+
+  runtime-location:
+    en: Runtime location
+    ko: 런타임 위치
+    def: "WHERE code runs: client | workspace(host) | both. Independent of tier and stage. Stored as capabilities.yaml `runtime`."
+    def_ko: "코드가 실행되는 위치: client | workspace(host) | both. tier·stage와 독립. capabilities.yaml의 `runtime`."
+    related: [layer, remote]
+
+  trust-domain:
+    en: Trust domain
+    ko: 신뢰 도메인
+    def: "WHO is trusted with a principal's side effects: core | official | untrusted. Independent of the other axes. Stored as capabilities.yaml `trust`."
+    def_ko: "부수효과를 신뢰받는 주체: core | official | untrusted. 다른 축과 독립. capabilities.yaml의 `trust`."
+    related: [layer, architecture-tier]
