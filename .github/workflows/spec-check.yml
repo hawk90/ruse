@@ -15,3 +15,7 @@ jobs:
       - run: pip install pyyaml
       - run: python3 tools/spec-validate.py
       # When the generator (D-022) exists: python3 tools/spec-build.py && git diff --exit-code
+      - name: docs hygiene (anchors / frontmatter / normative leak)
+        run: python3 tools/docs/check.py
+      - name: change-workflow toolchain tests
+        run: python3 -m unittest discover -s tools/tests -t .

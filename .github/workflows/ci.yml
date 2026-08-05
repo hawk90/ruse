@@ -24,5 +24,13 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - if: steps.detect.outputs.have == '1'
         run: cargo test --workspace
+      - if: steps.detect.outputs.have == '1'
+        uses: actions/setup-python@v5        # TODO pin SHA
+        with: { python-version: '3.12' }
+      - if: steps.detect.outputs.have == '1'
+        run: pip install pyyaml
+      - name: dependency direction + cycle check
+        if: steps.detect.outputs.have == '1'
+        run: python3 tools/arch/dependencies.py
       - if: steps.detect.outputs.have == '0'
         run: echo "No Cargo.toml with real code yet — spec-first phase."
