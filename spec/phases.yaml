@@ -73,6 +73,13 @@ phases:
 
 # Legitimate cross-phase component dependencies (owned exceptions to the forward-dep rule that
 # tools/phases.py enforces). Each needs a reason; a bare entry is not accepted for new deps without review.
+# Components that are infrastructure, not delivered by any user-facing feature, so they are intentionally
+# not placed in a phase. tools/phases.py otherwise warns about a component required by no feature (a trace
+# gap). Listing one here says "foundational on purpose" — the checker errors if a listed component is
+# actually required by a feature (then it belongs to that feature's phase, not here).
+foundational_components:
+  - C-HEALTH   # health/observability infra (roadmap: "foundations present but minimal"); no feature owns it
+
 cross_phase_deps_allowed:
   - from: C-AGENT
     to: C-DEBUG

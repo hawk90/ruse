@@ -105,13 +105,16 @@ def validate(cat, features, components=None):
         names = [p.get("id") for p in phases]
         order = {p.get("id"): i for i, p in enumerate(phases)}
         allow = {(a.get("from"), a.get("to")) for a in (cat.get("cross_phase_deps_allowed") or [])}
+        foundational = set(cat.get("foundational_components") or [])
         comp_phase = {}
         for fid, pid in seen.items():
             for c in (features.get(fid, {}).get("depends_on") or []):
                 comp_phase[c] = min(comp_phase.get(c, 10 ** 9), order.get(pid, 10 ** 9))
         for cid, meta in sorted(components.items()):
             if cid not in comp_phase:
-                warnings.append(f"component {cid} is required by no phased feature (not placed in a phase)")
+                if cid not in foundational:
+                    warnings.append(f"component {cid} is required by no phased feature and is not in phases.yaml "
+                                    f"`foundational_components` — trace it to a feature or declare it foundational")
                 continue
             for dep in (meta.get("depends_on") or []):
                 if dep in comp_phase and comp_phase[dep] > comp_phase[cid] and (cid, dep) not in allow:
@@ -119,6 +122,12 @@ def validate(cat, features, components=None):
                         f"forward-dep: {cid} ({names[comp_phase[cid]]}) depends on {dep} "
                         f"({names[comp_phase[dep]]}) — a later phase. Fix the dep, re-phase, or add "
                         f"{{from: {cid}, to: {dep}}} to phases.yaml `cross_phase_deps_allowed` with a reason.")
+        for cid in sorted(foundational):
+            if cid in comp_phase:
+                errors.append(f"`foundational_components` lists {cid}, but a feature requires it — remove it "
+                              f"(it belongs to that feature's phase, not to infrastructure)")
+            elif cid not in components:
+                errors.append(f"`foundational_components` lists unknown component {cid}")
     return (errors, warnings)
 
 
