@@ -34,16 +34,38 @@ pub struct Transaction {
     pub edits: EditList,
     /// The cause of the mutation (INV-ORIGIN).
     pub origin: TransactionOrigin,
+    /// How this change groups with the previous one for undo (persistence §6).
+    pub group_hint: GroupHint,
 }
 
 impl Transaction {
-    /// Build a transaction over `base_revision`.
+    /// Build a transaction over `base_revision` with default grouping ([`GroupHint::Continue`]).
     #[must_use]
     pub fn new(base_revision: Revision, edits: EditList, origin: TransactionOrigin) -> Transaction {
         Transaction {
             base_revision,
             edits,
             origin,
+            group_hint: GroupHint::Continue,
         }
     }
+
+    /// Set an explicit grouping hint (`BreakBefore` / `JoinPrev`).
+    #[must_use]
+    pub fn with_hint(mut self, hint: GroupHint) -> Transaction {
+        self.group_hint = hint;
+        self
+    }
+}
+
+/// How a transaction joins the undo history's grouping of adjacent changes (persistence §6).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum GroupHint {
+    /// Default: coalesce with the previous change if it is the same origin in the same session.
+    #[default]
+    Continue,
+    /// Start a new undo group even mid-session (backs Insert-mode `C-g u`).
+    BreakBefore,
+    /// Merge into the previous group even across the normal boundary (backs `:undojoin`).
+    JoinPrev,
 }
