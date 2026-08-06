@@ -46,38 +46,24 @@ related:
 ```
 (Command is part of editor-core; a local workspace stage precedes plugins — see verification V-10/V-11.)
 
-## MVP — a usable Vim-style TUI editor on a solid core
+## Milestone intent
 
-Goal: prove the core contracts end-to-end (key → command → transaction → document → render).
+The canonical phase → feature membership is the [Delivery phases](#delivery-phases) table above (generated
+from `spec/phases.yaml`); the notes here are intent only and deliberately do **not** re-list features.
 
-- Core: **F-001** transactional editing, **F-002** document & coordinate model, **F-005** undo grouping.
-- Input: **F-003** Vim profile (Normal/Insert, operator+motion, counts, basic text objects).
-- Commands: **F-004** semantic command engine + palette.
-- UI: **F-006** TUI rendering (ANSI/Unicode, render-diff), **F-007** buffers/views/windows.
-- Files: **F-008** open/save + crash-recovery journal.
-- Extras: **F-009** search & substitute, **F-010** terminal capability detection.
-- Foundations present but minimal: observability (health/status), single-thread deterministic executor,
-  internal extension API (no public plugin host yet).
-
-Explicitly **not** in MVP: Emacs/Native profiles complete, LSP, tree-sitter, public plugin host/WASM,
-remote, GUI, marketplace, AI (Non-goals; D-020).
-
-## 1.0 — a genuinely useful editor with an ecosystem
-
-- Vim: broaden operation parity toward the L2 checklist ([vim.md](vim.md)).
-- Emacs: **F-012** profile — kill ring, mark/region, prefix keys, universal argument, major/minor modes.
-- Language: **F-014** built-in LSP, **F-015** tree-sitter highlighting.
-- Workspace: **F-011** PTY terminal buffer; Git / search / diagnostics buffers ([workspace.md](workspace.md)).
-- Ecosystem: **F-016** plugin protocol + host (versioned, isolated); per-profile recommended keymaps;
-  compatibility CI.
-- Remote: **F-017** SSH/WSL runtime with reconnect; image fallback ladder.
-
-## Later — platform breadth
-
-- **F-013** Native Style advancement (incl. multi-selection).
-- DAP/debugger views; container remote; **F-018** GUI client (same command system + Render IR).
-- **F-019** marketplace (signing, verification levels, lockfile); **F-020** AI (proposals reviewed before
-  apply); large plugins of the Org/Magit *kind* (built on the stable API, not ported).
+- **MVP** (`core-editing` + `usable-vim-tui`) — prove the core contracts end-to-end
+  (key → command → transaction → document → render), then wrap them in a usable Vim-style TUI: buffers and
+  windows, open/save with a crash-recovery journal, search & substitute, terminal-capability detection.
+  Foundations are present but minimal — health/status observability, a single-thread deterministic executor,
+  an internal (not yet public) extension API. Explicitly **not** here: complete Emacs/Native profiles, LSP,
+  tree-sitter, a public plugin host/WASM, remote, GUI, marketplace, or AI (Non-goals; D-020).
+- **1.0** (`ide-grade` + `ecosystem`) — broaden Vim toward the L2 checklist ([vim.md](vim.md)); add the Emacs
+  profile, built-in LSP and tree-sitter, a PTY terminal plus Git / search / diagnostics buffers
+  ([workspace.md](workspace.md)), the versioned isolated plugin host with per-profile keymaps and
+  compatibility CI, and an SSH/WSL remote runtime with reconnect.
+- **Later** (`breadth`) — Native Style advancement (incl. multi-selection), DAP/debugger views, container
+  remote, a GUI client on the same command system + Render IR, the marketplace (signing, verification levels,
+  lockfile), reviewed AI proposals, and large plugins of the Org/Magit *kind* built on the stable API (not ported).
 
 ## Parity-level expectations by milestone
 
