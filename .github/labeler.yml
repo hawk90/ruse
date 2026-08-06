@@ -5,6 +5,5 @@
 'area/remote': [{ changed-files: [{ any-glob-to-any-file: ['crates/workspace-runtime/**', 'apps/remote-agent/**'] }] }]
 'area/plugin': [{ changed-files: [{ any-glob-to-any-file: 'crates/plugin-protocol/**' }] }]
 'area/infra':  [{ changed-files: [{ any-glob-to-any-file: ['.github/**', 'tools/**'] }] }]
-'area/docs':   [{ changed-files: [{ any-glob-to-any-file: 'docs/**' }] }]
+'area/docs':   [{ changed-files: [{ any-glob-to-any-file: ['docs/**', 'spec/**'] }] }]
 'type/rfc': [{ changed-files: [{ any-glob-to-any-file: ['docs/rfc/**'] }] }]
-'area/docs': [{ changed-files: [{ any-glob-to-any-file: ['spec/**'] }] }]
