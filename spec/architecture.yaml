@@ -1,0 +1,42 @@
+# Architecture as Code — the machine-checkable form of ARCH-LAYER-001 (crate dependencies flow downward
+# only) and ARCH-FORBID-001 (forbidden edges), enforced by ENG-ARCH-001. This is NOT a new decision — it is
+# the enforcement layer for existing ARCH-* rules, exactly as spec/change-kinds.yaml is for change-paths.md.
+#
+# PORTABILITY (Repository Governance Plane): this file is per-repo POLICY; tools/arch/dependencies.py is the
+# reusable ENGINE. Another repo adopts the checker and ships its own architecture.yaml. Checked by
+# `python3 tools/ruse.py arch deps`.
+#
+# Semantics: a crate may depend (in Cargo) ONLY on crates in the transitive closure of its `may_depend_on`,
+# plus std + vetted external deps (those are governed separately in spec/dependencies.yaml). The crates are
+# empty skeletons today, so `respect_may_depend_on` is trivially satisfied now and GATES the implementation
+# phase — the contract lands before the code it constrains.
+
+version: 1
+
+# Crate dependency contract. `tier` = architecture-tier (ARCH-LAYER-001); frontends are clients, not crates.
+crates:
+  core:              { tier: kernel,  may_depend_on: [] }                                  # Document/Transaction/Command/Query/Anchor/Undo/Health/Scheduler
+  plugin-protocol:   { tier: plugin,  may_depend_on: [] }                                  # trust boundary — MUST NOT reach core internals (INV-PLUGIN-NO-CORE)
+  render-model:      { tier: service, may_depend_on: [core] }                              # backend-neutral Render IR
+  terminal-platform: { tier: service, may_depend_on: [core, render-model] }               # lowers Render IR → ANSI/image
+  workspace:         { tier: service, may_depend_on: [core] }                              # LOCAL buffers/fs/save/recovery
+  workspace-runtime: { tier: service, may_depend_on: [core, workspace, plugin-protocol] } # process/remote/LSP/plugin-host
+
+# Module-level forbidden edges (ARCH-FORBID-001). Checked by scanning source imports once crates have code;
+# declared now so the contract predates the code. Until sources exist the checker reports these as
+# `not-yet-enforceable` rather than passing silently.
+forbidden_module_edges:
+  - { from: document, to: view,             reason: "Document must not know View (INV-DOC-VIEW)" }
+  - { from: kernel,   to: terminal-backend, reason: "Kernel must not depend on a terminal backend/frontend" }
+  - { from: renderer, to: command-executor, reason: "Renderer must not execute Commands" }
+  - { from: view,     to: backend-bytes,    reason: "Views/plugins emit Render nodes, never backend bytes" }
+  - { from: plugin,   to: document-mutate,  reason: "Plugins mutate only via CommandRequest → Transaction" }
+
+# What `ruse arch deps` enforces. Each rule reports live | not-yet-enforceable (needs source) so the gate is
+# honest about coverage in the spec-first phase.
+rules:
+  - no_cycles                # crate graph is acyclic — LIVE (cargo metadata)
+  - respect_may_depend_on    # cargo deps ⊆ transitive may_depend_on — LIVE (trivial until crates gain deps)
+  - forbidden_module_edges   # source-import scan — NOT-YET (needs code)
+
+refs: [ARCH-LAYER-001, ARCH-FORBID-001, ARCH-OWN-001, ENG-ARCH-001, INV-DOC-VIEW, INV-PLUGIN-NO-CORE]

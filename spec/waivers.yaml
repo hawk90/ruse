@@ -1,0 +1,21 @@
+# Governance waivers — every suppressed rule is EXPLICIT, OWNED, and EXPIRING. No indefinite ignore lists:
+# a waiver missing any required field, or past its `expires`, FAILS `ruse gov waivers` (run in verify + CI),
+# so a team cannot silently disable a checker or grow an unbounded ignore list. `ruse pr check` consults the
+# ACTIVE waivers, so a required-but-waived gate is an owned, dated exception — not an invisible skip.
+#
+# PORTABILITY (Repository Governance Plane): the schema + tools/gov/waivers.py are the reusable ENGINE;
+# the entries below are per-repo POLICY. Another repo adopts the checker and keeps its own waivers.yaml.
+#
+# Required per waiver: id · rule · reason · owner · approved_by · expires (future ISO date) · removal_spec.
+
+version: 1
+
+waivers: []
+  # - id: WAIVER-001
+  #   rule: dependency-check                 # the check / architecture-rule id being waived
+  #   reason: "migration bridge while decoupling workspace-runtime from plugin-protocol"
+  #   owner: "@arch-team"
+  #   approved_by: "@tech-lead"
+  #   expires: 2026-12-01                    # REQUIRED — a future ISO date; a past date FAILS
+  #   removal_spec: RFC-00XX                 # the plan that removes the need for this waiver
+  #   scope: [crates/workspace-runtime]      # optional: where it applies

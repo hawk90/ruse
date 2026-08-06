@@ -51,6 +51,23 @@ def _internal_graph(meta: dict) -> dict[str, list[str]]:
     return graph
 
 
+def _closure(crates: dict) -> dict:
+    """crate -> set of all TRANSITIVELY allowed crate deps, from architecture.yaml may_depend_on."""
+    direct = {c: set((v or {}).get("may_depend_on") or []) for c, v in crates.items()}
+    out: dict = {}
+    for c in direct:
+        seen: set = set()
+        stack = list(direct[c])
+        while stack:
+            n = stack.pop()
+            if n in seen:
+                continue
+            seen.add(n)
+            stack.extend(direct.get(n, set()))
+        out[c] = seen
+    return out
+
+
 def _find_cycle(graph: dict[str, list[str]]) -> list[str] | None:
     WHITE, GRAY, BLACK = 0, 1, 2
     color = {n: WHITE for n in graph}
@@ -93,10 +110,19 @@ def main(argv: list[str]) -> int:
                 if layer not in valid:
                     errors.append(f"{did}: allowed_layers '{layer}' is not a real crate "
                                   f"(known: {sorted(valid)})")
-        crate_layers = deps.get("crate_layers")
     else:
-        crate_layers = None
         warns.append("spec/dependencies.yaml not readable — skipped allowed_layers check")
+
+    # 1b. Architecture-as-Code: the crate dependency contract (spec/architecture.yaml, ARCH-LAYER-001).
+    arch: dict = {}
+    if yaml is not None and os.path.isfile(repo.path("spec/architecture.yaml")):
+        arch = yaml.safe_load(open(repo.path("spec/architecture.yaml"))) or {}
+        for c in (arch.get("crates") or {}):
+            if c not in repo.CRATES:
+                errors.append(f"architecture.yaml: crate '{c}' is not a real crate {sorted(repo.CRATES)}")
+    else:
+        warns.append("spec/architecture.yaml not found — no crate dependency contract (ARCH-LAYER-001)")
+    allowed_closure = _closure(arch.get("crates") or {})
 
     # 2. internal crate graph: cycles + optional direction
     meta = _cargo_metadata()
@@ -113,16 +139,24 @@ def main(argv: list[str]) -> int:
         cyc = _find_cycle(graph)
         if cyc:
             errors.append("crate dependency cycle: " + " → ".join(cyc))
-        # optional declared direction
-        if crate_layers:
-            for src, allowed in crate_layers.items():
+        # crate dependency contract: cargo edges ⊆ transitive may_depend_on (ARCH-LAYER-001)
+        if allowed_closure:
+            for src in sorted(graph):
                 for dst in graph.get(src, []):
-                    if dst not in (allowed or []):
+                    if dst not in allowed_closure.get(src, set()):
+                        allowed = sorted(allowed_closure.get(src, set())) or ["nothing"]
                         errors.append(f"forbidden crate dep: {src} → {dst} "
-                                      f"(allowed: {allowed})")
+                                      f"(architecture.yaml allows {src} → {allowed})")
+            render.bullet(f"crate contract: {len(allowed_closure)} crates, direction enforced "
+                          "(ARCH-LAYER-001)", mark="·")
         else:
-            render.bullet("crate_layers not declared in spec/dependencies.yaml — "
-                          "direction check skipped (cycles still enforced)", mark="·")
+            render.bullet("no architecture.yaml crate contract — cycles enforced, direction skipped",
+                          mark="·")
+        # forbidden module edges: declared now, source-enforceable once crates have code
+        fme = arch.get("forbidden_module_edges") or []
+        if fme:
+            render.bullet(f"forbidden module edges: {len(fme)} declared "
+                          "(source-scan NOT-YET — needs code)", mark="·")
 
     print()
     for w in warns:

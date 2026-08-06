@@ -26,6 +26,8 @@ STEPS = [
      "cmd": [sys.executable, "tools/spec-validate.py"]},
     {"name": "docs-check", "scope": "spec_docs", "needs": "python3",
      "cmd": [sys.executable, "tools/docs/check.py"]},
+    {"name": "gov-waivers", "scope": "spec_docs", "needs": "python3",
+     "cmd": [sys.executable, "tools/gov/waivers.py"]},
     {"name": "dependency-check", "scope": "rust", "needs": "cargo",
      "cmd": [sys.executable, "tools/arch/dependencies.py"]},
     {"name": "cargo-fmt", "scope": "rust", "needs": "cargo",

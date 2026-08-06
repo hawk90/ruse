@@ -15,7 +15,8 @@ spec/ (change-kinds.yaml, PRD/POLICY/...), never in a Makefile or here.
   spec validate    run spec-validate.py + change-workflow extensions
   spec generate    (P1) regenerate derived spec artifacts
   docs check       anchor / frontmatter / normative-leak hygiene
-  arch deps        crate dependency direction + cycle detection
+  arch deps        crate dependency contract (architecture.yaml) + cycles (ARCH-LAYER-001)
+  gov waivers      governance waiver workflow — owned, dated, expiring exceptions
   pr render        generate the PR body from the contract + evidence
   pr check         the merge gate (classify + artifacts + blast radius + evidence)
   status           show the active change workspace
@@ -216,6 +217,13 @@ def main() -> int:
             return 2
         from arch import dependencies
         return dependencies.main(rest[1:])
+
+    if cmd == "gov":
+        if not rest or rest[0] != "waivers":
+            render.fail("usage: ruse gov waivers")
+            return 2
+        from gov import waivers
+        return waivers.main(rest[1:])
 
     if cmd == "pr":
         if not rest or rest[0] not in ("render", "check"):
