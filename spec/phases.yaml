@@ -70,3 +70,14 @@ phases:
       Debugger (DAP), GUI frontend on the same command system + Render IR, extension marketplace, and
       reviewed AI proposals. The long-horizon parity target.
     includes: [F-018, F-019, F-020, F-021]
+
+# Legitimate cross-phase component dependencies (owned exceptions to the forward-dep rule that
+# tools/phases.py enforces). Each needs a reason; a bare entry is not accepted for new deps without review.
+cross_phase_deps_allowed:
+  - from: C-AGENT
+    to: C-DEBUG
+    reason: >
+      The remote agent (ecosystem) supervises headless services INCLUDING the remote debug service (DAP runs
+      where the code is). C-DEBUG's own phase is breadth, so full remote-debug supervision only lights up
+      there; the agent shipping earlier without it is fine (it supervises the services that exist). Accepted,
+      not a bug.

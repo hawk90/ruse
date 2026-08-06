@@ -225,7 +225,8 @@ try:
     import phases as _ph
     _pcat = _ph.load(os.path.join(ROOT, _ph.PHASES))
     _pfeat = _ph.load_features(os.path.join(ROOT, _ph.PRD))
-    _pe, _pw = _ph.validate(_pcat, _pfeat)
+    _pcomp = _ph.load_components(os.path.join(ROOT, _ph.PRD))
+    _pe, _pw = _ph.validate(_pcat, _pfeat, _pcomp)
     for e in _pe: err(f"phases: {e}")
     for w in _pw: warn(f"phases: {w}")
     PH_COUNT = len(_pcat.get("phases") or [])
