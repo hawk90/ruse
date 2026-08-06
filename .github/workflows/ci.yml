@@ -54,7 +54,7 @@ jobs:
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo test --workspace
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
-        uses: actions/setup-python@v5        # TODO pin SHA
+        uses: actions/setup-python@v7        # TODO pin SHA
         with: { python-version: '3.12' }
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: pip install pyyaml
