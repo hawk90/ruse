@@ -4,8 +4,8 @@
 //! the kernel design end-to-end in code — the "prove the design in code" step, not a UI.
 
 use ruse_core::{
-    pos, AnchorPolicy, Bias, Document, DocumentId, Edit, EditList, Revision, Transaction,
-    TransactionOrigin, TxnError,
+    pos, AnchorPolicy, Bias, Document, DocumentId, Edit, EditList, GroupHint, Revision,
+    Transaction, TransactionOrigin, TxnError,
 };
 
 /// Build a document with `text` already "on disk" (marked saved at open).
@@ -56,7 +56,7 @@ fn f001_apply_strictly_increases_revision_and_records_origin() {
         .history()
         .creation_order()
         .iter()
-        .map(|(_, o)| *o)
+        .map(|(_, o, _)| *o)
         .collect();
     assert_eq!(
         origins,
@@ -227,11 +227,15 @@ fn f005_new_change_after_undo_branches_without_losing_history() {
         TransactionOrigin::UserInput,
     ))
     .unwrap(); // node 1
-    doc.apply(txn(
-        &doc,
-        Edit::insert(1, b"B".to_vec()),
-        TransactionOrigin::UserInput,
-    ))
+    doc.apply(
+        // a break keeps B a separate undo group from A, so undo lands on A (not "" — see f005 grouping)
+        txn(
+            &doc,
+            Edit::insert(1, b"B".to_vec()),
+            TransactionOrigin::UserInput,
+        )
+        .with_hint(GroupHint::BreakBefore),
+    )
     .unwrap(); // node 2
     assert_eq!(doc.as_str(), Some("AB"));
 
@@ -253,13 +257,123 @@ fn f005_new_change_after_undo_branches_without_losing_history() {
         .history()
         .creation_order()
         .iter()
-        .map(|(s, _)| s.0)
+        .map(|(s, _, _)| s.0)
         .collect();
     assert_eq!(
         seqs,
         vec![0, 1, 2, 3],
         "chronological index keeps every state ever reached"
     );
+}
+
+#[test]
+fn f005_insert_session_is_one_undo_step() {
+    // Three consecutive same-origin keystrokes (an `i…<Esc>` session) coalesce into ONE undo group.
+    let mut doc = opened("");
+    for ch in [b"h".to_vec(), b"i".to_vec(), b"!".to_vec()] {
+        let at = doc.len();
+        doc.apply(txn(
+            &doc,
+            Edit::insert(at, ch),
+            TransactionOrigin::UserInput,
+        ))
+        .unwrap();
+    }
+    assert_eq!(doc.as_str(), Some("hi!"));
+    assert_eq!(
+        doc.history().node_count(),
+        4,
+        "three nodes recorded (+root)"
+    );
+
+    // ONE undo reverts the whole session, not one keystroke.
+    doc.undo().unwrap();
+    assert_eq!(
+        doc.as_str(),
+        Some(""),
+        "the insert session undoes as a single step (F-005)"
+    );
+    assert!(!doc.can_undo(), "nothing left to undo — it was one group");
+
+    doc.redo().unwrap();
+    assert_eq!(
+        doc.as_str(),
+        Some("hi!"),
+        "redo re-applies the whole session in one step"
+    );
+}
+
+#[test]
+fn f005_a_different_origin_never_merges_into_typing() {
+    // User types, then a formatter (Lsp origin) edit lands: SEPARATE undo groups, so undoing the
+    // formatter change does not swallow the user's keystrokes (persistence §6).
+    let mut doc = opened("");
+    doc.apply(txn(
+        &doc,
+        Edit::insert(0, b"user".to_vec()),
+        TransactionOrigin::UserInput,
+    ))
+    .unwrap();
+    doc.apply(txn(
+        &doc,
+        Edit::insert(4, b"-fmt".to_vec()),
+        TransactionOrigin::Lsp,
+    ))
+    .unwrap();
+    assert_eq!(doc.as_str(), Some("user-fmt"));
+
+    doc.undo().unwrap();
+    assert_eq!(
+        doc.as_str(),
+        Some("user"),
+        "undo removes only the formatter group"
+    );
+    assert!(
+        doc.can_undo(),
+        "the user's typing is still a separate undoable group"
+    );
+    doc.undo().unwrap();
+    assert_eq!(doc.as_str(), Some(""));
+}
+
+#[test]
+fn f005_join_prev_merges_across_the_boundary() {
+    // `:undojoin` — a change that would normally start its own group merges into the previous one.
+    let mut doc = opened("");
+    doc.apply(txn(
+        &doc,
+        Edit::insert(0, b"a".to_vec()),
+        TransactionOrigin::UserInput,
+    ))
+    .unwrap();
+    doc.apply(
+        txn(
+            &doc,
+            Edit::insert(1, b"b".to_vec()),
+            TransactionOrigin::UserInput,
+        )
+        .with_hint(GroupHint::BreakBefore), // would be its own group…
+    )
+    .unwrap();
+    doc.apply(
+        txn(
+            &doc,
+            Edit::insert(2, b"c".to_vec()),
+            TransactionOrigin::UserInput,
+        )
+        .with_hint(GroupHint::JoinPrev), // …but this joins b's group
+    )
+    .unwrap();
+    assert_eq!(doc.as_str(), Some("abc"));
+
+    doc.undo().unwrap();
+    assert_eq!(
+        doc.as_str(),
+        Some("a"),
+        "JoinPrev merged c into b's group; one undo removes both"
+    );
+    doc.undo().unwrap();
+    assert_eq!(doc.as_str(), Some(""), "a is its own group");
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -325,11 +439,16 @@ fn golden_scenario_transcript() {
     ))
     .unwrap();
     step(&doc, "type", &mut log);
-    doc.apply(txn(
-        &doc,
-        Edit::replace(0, 5, b"HELLO".to_vec()),
-        TransactionOrigin::UserInput,
-    ))
+    // An explicit undo-break (like a mode/gesture boundary) keeps "upcase" a separate undo step from
+    // "type"; without it the two same-origin edits would coalesce into one group (see f005_* tests).
+    doc.apply(
+        txn(
+            &doc,
+            Edit::replace(0, 5, b"HELLO".to_vec()),
+            TransactionOrigin::UserInput,
+        )
+        .with_hint(GroupHint::BreakBefore),
+    )
     .unwrap();
     step(&doc, "upcase", &mut log);
     doc.undo().unwrap();

@@ -148,25 +148,36 @@ impl Document {
         self.text = Arc::from(new_text);
         self.revision = self.revision.next();
         self.anchors.apply_edits(&txn.edits);
+        let (origin, hint) = (txn.origin, txn.group_hint);
         self.undo
-            .record(txn.edits, inverse, txn.origin, self.revision);
+            .record(txn.edits, inverse, origin, hint, self.revision);
         self.rebuild_index();
         Ok(self.revision)
     }
 
-    /// Undo the last change on the current lineage, returning the new revision, or `None` at the root.
-    /// Re-applies the current node's inverse and moves `current` to its parent — the revision advances
-    /// (INV-TXN §2) but no new undo node is created.
+    /// Undo the last change **group** on the current lineage, returning the new revision, or `None` at the
+    /// root. Re-applies each node's inverse (a whole insert session / operator undoes in one step) and moves
+    /// `current` to the node below the group — the revision advances (INV-TXN §2) but no new node is created.
     pub fn undo(&mut self) -> Option<Revision> {
-        let inverse = self.undo.undo()?;
-        self.reapply(&inverse);
+        let inverses = self.undo.undo();
+        if inverses.is_empty() {
+            return None;
+        }
+        for edits in &inverses {
+            self.reapply(edits);
+        }
         Some(self.revision)
     }
 
-    /// Redo along the newest branch, returning the new revision, or `None` if there is nothing to redo.
+    /// Redo the next change **group** along the newest branch, or `None` if there is nothing to redo.
     pub fn redo(&mut self) -> Option<Revision> {
-        let forward = self.undo.redo()?;
-        self.reapply(&forward);
+        let forwards = self.undo.redo();
+        if forwards.is_empty() {
+            return None;
+        }
+        for edits in &forwards {
+            self.reapply(edits);
+        }
         Some(self.revision)
     }
 

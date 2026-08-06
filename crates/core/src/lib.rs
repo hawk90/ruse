@@ -28,7 +28,7 @@ pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};
 pub use snapshot::{AnchorIndex, DocumentSnapshot};
-pub use transaction::{Transaction, TransactionOrigin};
+pub use transaction::{GroupHint, Transaction, TransactionOrigin};
 pub use undo::{MonotonicSeq, UndoHistory};
 
 /// Reject a transaction whose base revision is stale (INV-TXN, ENG-TXN-001). Retained as the kernel's
