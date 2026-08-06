@@ -1,5 +1,8 @@
 # Rust CI. The Cargo workspace exists (skeleton), so fmt/clippy/test + dependency-check run now and
-# grow teeth as crates/ gains real code. The have==0 branch stays as a fallback if Cargo.toml is removed.
+# grow teeth as crates/ gains real code. This job is NOT a required check, so it is safe to scope:
+# on a PR the heavy cargo/arch steps run ONLY when Rust-relevant paths changed (docs/spec/tools-only
+# PRs skip the compile entirely). push/schedule and any Rust-touching PR run the full set. Skipping
+# still reports success — no paths-filter deadlock (that trap is reserved for required checks).
 # Security (docs/operations/ci-cd-and-release.md §11): pin actions by SHA (TODO), least-privilege token.
 name: ci
 on:
@@ -14,24 +17,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4          # TODO pin SHA
+        with:
+          fetch-depth: 0                   # need the base ref to diff a PR
       - id: detect
-        run: '[ -f Cargo.toml ] && echo "have=1" >> "$GITHUB_OUTPUT" || echo "have=0" >> "$GITHUB_OUTPUT"'
-      - if: steps.detect.outputs.have == '1'
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          have=0; [ -f Cargo.toml ] && have=1
+          echo "have=$have" >> "$GITHUB_OUTPUT"
+          # PRs: run the heavy Rust steps only when Rust-relevant paths moved. Fail SAFE — if the diff
+          # cannot be computed, run them. Other events always run.
+          rust=1
+          if [ "$EVENT" = "pull_request" ]; then
+            if git fetch --no-tags --depth=1 origin "$BASE_REF" 2>/dev/null; then
+              if git diff --name-only FETCH_HEAD HEAD 2>/dev/null \
+                   | grep -qE '^(crates|apps)/|Cargo\.(toml|lock)$|^rust-toolchain|^\.github/workflows/ci\.yml$|^spec/(architecture|dependencies)\.yaml$'; then
+                rust=1
+              else
+                rust=0
+              fi
+            fi
+          fi
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+      - if: steps.detect.outputs.rust == '0'
+        run: echo "No Rust-relevant change in this PR — cargo/arch steps skipped (still green)."
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         uses: dtolnay/rust-toolchain@stable  # TODO pin SHA
         with: { components: rustfmt, clippy }
-      - if: steps.detect.outputs.have == '1'
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
+        uses: Swatinem/rust-cache@v2         # TODO pin SHA — caches ~/.cargo + target/ keyed on Cargo.lock
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo fmt --all --check
-      - if: steps.detect.outputs.have == '1'
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - if: steps.detect.outputs.have == '1'
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo test --workspace
-      - if: steps.detect.outputs.have == '1'
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         uses: actions/setup-python@v5        # TODO pin SHA
         with: { python-version: '3.12' }
-      - if: steps.detect.outputs.have == '1'
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: pip install pyyaml
       - name: dependency direction + cycle check
-        if: steps.detect.outputs.have == '1'
+        if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: python3 tools/ruse.py arch deps
-      - if: steps.detect.outputs.have == '0'
-        run: echo "No Cargo.toml with real code yet — spec-first phase."
