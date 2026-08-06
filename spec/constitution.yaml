@@ -1,0 +1,59 @@
+# Repository Constitution — the standing invariant principles humans and agents must not violate. Each
+# article LINKS to its enforcement (a checker) where one exists, or is marked `review` (human-enforced)
+# until code makes it checkable. This is the one home for the standing rules; it REFERENCES POLICY.yaml
+# (ENG-*), architecture.yaml (crate contract), invariants (INV-*) and PROJECT.md — it never duplicates them.
+#
+# PORTABILITY (Repository Governance Plane): schema + tools/gov/constitution.py are the reusable engine;
+# the articles are per-repo. Checked by `ruse gov constitution` (auto-discovered into `ruse gov check`).
+#
+# Per article: id (CON-*) · statement · enforcement (check | review) · check (checker name, if enforcement
+# is check) · refs (existing IDs/docs, optional). The checker validates the constitution's own integrity and
+# reports enforcement coverage; it does not re-run the referenced checks.
+
+version: 1
+
+articles:
+  - id: CON-EDITOR-NOT-IDE
+    statement: "The editor stays fast, predictable, and fully usable with every plugin AND the AI runtime disabled."
+    rationale: "An editor, not an IDE. AI / LSP / Git / debugger / remote are capabilities layered on the editor, never the editor itself."
+    enforcement: review          # behavioral — provable via a safe-mode / all-disabled boot test once the core exists
+    refs: [PROJECT.md, ENG-FAIL-001]
+
+  - id: CON-CORE-INDEPENDENT
+    statement: "Editor Core must not depend on anything above it — not even the Plugin Runtime."
+    enforcement: check
+    check: dependency-check       # architecture.yaml core.may_depend_on: [] (ARCH-LAYER-001)
+    refs: [ARCH-LAYER-001, INV-PLUGIN-NO-CORE]
+
+  - id: CON-AI-ASSISTS
+    statement: "AI assists editing; it does not drive the editor. AI proposals are reviewed before they apply."
+    enforcement: review
+    refs: [ENG-TRUST-001]
+
+  - id: CON-TXN-ONLY-MUTATION
+    statement: "All document mutation goes through a Transaction; plugins mutate only via CommandRequest -> Transaction."
+    enforcement: check
+    check: spec-validate          # INV-TXN / ENG-TXN-001 (architecture-test target once code exists)
+    refs: [INV-TXN, ARCH-FORBID-001]
+
+  - id: CON-GENERATED-NOT-EDITED
+    statement: "Generated files are never hand-edited; they are regenerated from their source."
+    enforcement: check
+    check: change-classify        # change-kinds generated_marker is a hard fail
+    refs: [ENG-DOC-001]
+
+  - id: CON-SPEC-BEFORE-CODE
+    statement: "Spec lands before or with the first implementing PR, never after."
+    enforcement: review
+    refs: [change-paths.md]
+
+  - id: CON-AUTHOR-NOT-APPROVER
+    statement: "No single agent/session both authors and gives the final approval of the same change."
+    enforcement: review
+    refs: [ai-assisted-development.md]
+
+  - id: CON-NO-INDEFINITE-WAIVER
+    statement: "Every governance exception is owned, dated, and expiring — no indefinite ignore lists."
+    enforcement: check
+    check: gov-waivers
+    refs: []
