@@ -26,4 +26,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh pr view "${{ github.event.pull_request.number }}" --json body -q .body > /tmp/pr-body.md
       - name: Change-policy gate (classify + artifacts + blast radius, re-derived from the diff)
-        run: python3 tools/ruse.py pr check --pr-body /tmp/pr-body.md --base "origin/${{ github.base_ref }}"
+        run: >
+          python3 tools/ruse.py pr check --pr-body /tmp/pr-body.md
+          --base "origin/${{ github.base_ref }}"
+          --actor "${{ github.event.pull_request.user.login }}"

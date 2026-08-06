@@ -29,6 +29,7 @@ related:
 | Change | Required process |
 | --- | --- |
 | Docs / typos / small isolated tests | **direct PR** |
+| Build / CI / dependency bump | **direct PR** (CI must stay green) |
 | Clear bug fix | **Issue recommended, PR ok** |
 | Feature Slice | **Issue required** + an observable acceptance condition |
 | Public API / protocol | **Discussion → RFC** (before implementation) |
@@ -39,6 +40,12 @@ related:
 
 - **Docs / typos / small isolated tests — direct PR.** No Issue needed. The change is self-evident and
   isolated; CI is the only gate. If a "doc fix" implies a behavior change, it is not this row.
+
+- **Build / CI / dependency bump — direct PR.** Changes to build config, CI workflows, `.github/`,
+  or dependency/hook manifests (`Cargo.toml`/`Cargo.lock`/`pyproject.toml`/`lefthook.yml`) that don't change
+  product behavior, spec, or doc meaning. This is the `build` change-kind (risk 1); CI staying green is the
+  gate. Trusted automation (Dependabot) opens these without a gate block — the server re-derives the kind from
+  the diff and still enforces artifacts, so a bot PR that strays into code is rejected, not waved through.
 
 - **Clear bug fix — Issue recommended, PR ok.** Reproducible, understood, no contract change. An Issue helps
   tracking and links a fixture, but a well-described PR that reproduces the bug and adds a regression test is

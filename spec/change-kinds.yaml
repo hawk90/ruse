@@ -33,6 +33,13 @@ kinds:
     required_artifacts: [spec_ref]
     evidence: [docs-check, spec-validate]
 
+  build:
+    risk: 1
+    title: Build, CI, tooling, or dependency-manifest change — no product/spec/doc-meaning change.
+    process: PR; CI must stay green. No spec/Decision artifact required.
+    required_artifacts: []
+    evidence: [spec-validate]
+
   implementation:
     risk: 2
     title: Code implementing an already-approved design, within existing contracts.
@@ -73,6 +80,9 @@ path_triggers:
   - { pattern: '^spec/(PRD|POLICY|capabilities|config-schema|context-profiles|glossary|change-kinds)\.(yaml|yml)$',
       min_kind: spec, reason: spec source of truth }
   - { pattern: '^docs/invariants/',            min_kind: spec,         reason: invariant registry }
+  - { pattern: '^\.github/',                    min_kind: build,        reason: CI / repo automation config }
+  - { pattern: '^(Cargo\.toml|Cargo\.lock|pyproject\.toml|lefthook\.yml)$',
+      min_kind: build, reason: build / dependency / hook manifest }
   - { pattern: '^crates/',                     min_kind: implementation, reason: rust crate source }
   - { pattern: '^apps/',                       min_kind: implementation, reason: rust app source }
   - { pattern: '^tools/',                      min_kind: implementation, reason: tooling source }

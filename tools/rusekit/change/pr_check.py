@@ -16,6 +16,12 @@ from rusekit import repo, render, contract, model as model_mod  # noqa: E402
 from rusekit.change.classify import classify_changeset  # noqa: E402
 
 
+# Automation whose PRs never carry a hand-authored gate block. Rather than exempt them blindly,
+# `pr check` synthesizes a self-consistent contract from the diff (declared = observed kind) and
+# still enforces the artifacts that kind requires — so a bot straying into a high-risk path fails.
+TRUSTED_BOTS = {"dependabot[bot]"}
+
+
 def _match_any(path: str, prefixes: list[str]) -> bool:
     return any(path == p or path.startswith(p.rstrip("*")) for p in prefixes)
 
@@ -54,19 +60,33 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--files", nargs="*", help="explicit file list")
     ap.add_argument("--pr-body", help="CI mode: read the declared contract from a PR body file "
                                       "(gate of record = diff + re-run verify; local .ruse is untrusted)")
+    ap.add_argument("--actor", help="CI: PR author login; a TRUSTED_BOTS actor may pass without a gate block")
     args = ap.parse_args(argv)
 
     ci = bool(args.pr_body)
+    bot_note: str | None = None
     if ci:
         try:
-            body = open(args.pr_body, encoding="utf-8").read()
+            with open(args.pr_body, encoding="utf-8") as fh:
+                body = fh.read()
         except OSError as e:
             render.fail(f"cannot read --pr-body {args.pr_body}: {e}")
             return 1
         c = _contract_from_body(body)
         if c is None:
-            render.fail("no `ruse-gate:v1` machine block in the PR body — regenerate it with `ruse pr render`")
-            return 1
+            actor = (args.actor or "").strip()
+            if actor in TRUSTED_BOTS:
+                bcs = repo.resolve_changeset(base=args.base, files=args.files)
+                bcl = classify_changeset(bcs.files, None, source=bcs.source)
+                derived = bcl.observed_kind or "build"
+                c = {"kind": derived, "goal": f"automated change by {actor}", "affected": {},
+                     "artifacts": {}, "allow_paths": [], "forbid_paths": [], "contracts": {}}
+                bot_note = (f"trusted bot '{actor}': no gate block — auto-declared kind '{derived}' from "
+                            "the diff; required artifacts for that kind are still enforced")
+            else:
+                render.fail("no `ruse-gate:v1` machine block in the PR body — "
+                            "regenerate it with `ruse pr render`")
+                return 1
         issue = (c.get("artifacts") or {}).get("issue") or args.issue or "PR"
     else:
         issue = args.issue or repo.active_issue()
@@ -81,6 +101,8 @@ def main(argv: list[str]) -> int:
     m = model_mod.load()
     checks: list[tuple[bool, str]] = []          # (passed, message)
     warns: list[str] = []
+    if bot_note:
+        warns.append(bot_note)
 
     # contract structural validity
     errs, cwarns = contract.validate(c, m)
