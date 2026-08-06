@@ -337,3 +337,14 @@ related:
   multi-contributor.
 - **Re-evaluate if:** a rename of `product_layer`/`allowed_layers` proves worth the churn.
 - Refs: RFC-0011, [../docs/rfc/proposed/RFC-0011-layer-axis-terminology.md](../docs/rfc/proposed/RFC-0011-layer-axis-terminology.md), ENG-DOC-001.
+
+## D-037 — Delivery phases as a spec-owned axis synced to GitHub · decided
+- **Decision:** A repo's delivery milestones live in `phases.yaml` — an ordered phase ladder that REFINES the
+  coarse PRD F-* `stage` (mvp/post-mvp/future), validated in spec-validate (partition + no cross-stage). GitHub
+  Milestones are a one-way generated MIRROR via `ruse phase sync` (idempotent, dry-run by default), never the
+  gate of record. Phase ids are slugs, not `P0/P1` (that vocabulary is methodology-rollout priority in the
+  governance model). Intra-phase implementation order is derived from `depends_on`, not stored.
+- **Reason:** the "when does it ship" axis existed only as prose (roadmap.md) and drifted from capabilities; a
+  structured, validated source with generated mirrors removes the drift and is a portable governance methodology.
+- **Re-evaluate if:** phases need per-feature (not per-phase) granularity, or a non-GitHub tracker is adopted.
+- Refs: `phases.yaml`, [../docs/operations/governance-model.md](../docs/operations/governance-model.md), [../docs/parity/roadmap.md](../docs/parity/roadmap.md), D-021, D-022.
