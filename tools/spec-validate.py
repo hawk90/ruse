@@ -234,6 +234,21 @@ except FileNotFoundError:
 except Exception as e:
     err(f"phases: could not validate ({e})")
 
+# ---------- 10. generated roadmap phase table must stay current (no silent drift) ----------
+try:
+    import gen_roadmap as _gr
+    _rtext = open(os.path.join(ROOT, _gr.ROADMAP)).read()
+    _curblk = _gr._current(_rtext)
+    _fresh = f"{_gr.BEGIN}\n{_gr.table(os.path.join(ROOT, _gr.PHASES))}\n{_gr.END}"
+    if _curblk is None:
+        warn("roadmap: generated phase-table markers not found")
+    elif _curblk != _fresh:
+        err("roadmap: generated phase table is stale — run `python3 tools/gen_roadmap.py --write`")
+except FileNotFoundError:
+    pass
+except Exception as e:
+    warn(f"roadmap: could not check generated table ({e})")
+
 # ---------- report ----------
 print(f"registries: INV={len(INV)} ENG={len(ENG)} D={len(D)} ARCH={len(ARCH)} "
       f"F={len(FEAT)} C={len(COMP)} CAP={len(CAP)} DEP={len(DEP)} "
