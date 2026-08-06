@@ -14,7 +14,7 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4          # TODO pin SHA
+      - uses: actions/checkout@v7          # TODO pin SHA
         with:
           fetch-depth: 0                   # need the base ref to diff the PR
       - uses: actions/setup-python@v5      # TODO pin SHA

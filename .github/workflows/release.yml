@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4          # TODO pin SHA
+      - uses: actions/checkout@v7          # TODO pin SHA
       - run: |
           echo "TODO: cross-platform build + test + SHA256SUMS + SBOM + provenance -> draft release."
           echo "Rollback = re-publish a prior verified artifact (never a fresh build)."

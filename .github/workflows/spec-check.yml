@@ -9,7 +9,7 @@ jobs:
   spec-validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4          # TODO pin SHA
+      - uses: actions/checkout@v7          # TODO pin SHA
       - uses: actions/setup-python@v5      # TODO pin SHA
         with: { python-version: '3.12' }
       - run: pip install pyyaml
