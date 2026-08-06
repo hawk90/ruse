@@ -1,0 +1,27 @@
+# Architecture Fitness Functions — measurable thresholds that keep the repo healthy over TIME. A fitness
+# function is not a feature test ("does X work?") but a trend/threshold guard ("is the repo evolving in a
+# healthy direction?"). Static/graph functions are enforced NOW via the named checker; quantitative ones
+# (build time, binary size, API breakage) are DECLARED now with metric/operator/threshold and go live once
+# code + a metrics source exist — the checker reports live vs planned honestly (never a silent pass).
+#
+# PORTABILITY (Repository Governance Plane): schema + tools/gov/fitness.py are the reusable engine; the
+# functions are per-repo. Auto-discovered into `ruse gov check`.
+#
+# Per function: id (FIT-*) · metric · operator (equals | less_than | less_than_pct | no_new) · threshold ·
+#   kind (atomic | holistic | continuous) · status (live | planned) · check (enforcing checker, if live) ·
+#   refs (existing IDs, optional).
+
+version: 1
+
+functions:
+  # --- live now: graph/static, enforced by an existing checker ---
+  - { id: FIT-ARCH-CYCLES,     metric: crate_dependency_cycles,     operator: equals,        threshold: 0,  kind: holistic,   status: live,    check: dependency-check, refs: [ARCH-LAYER-001] }
+  - { id: FIT-ARCH-DIRECTION,  metric: forbidden_crate_deps,        operator: equals,        threshold: 0,  kind: holistic,   status: live,    check: dependency-check, refs: [ARCH-LAYER-001] }
+  - { id: FIT-WAIVERS-EXPIRED, metric: expired_waivers,             operator: equals,        threshold: 0,  kind: continuous, status: live,    check: gov-waivers,      refs: [] }
+
+  # --- planned: quantitative, go live with code + a metrics source (D-018/019, F-* impl) ---
+  - { id: FIT-BUILD-P95,       metric: incremental_build_p95_s,     operator: less_than,     threshold: 15, kind: continuous, status: planned, refs: [ENG-PERF-001] }
+  - { id: FIT-CORE-SIZE,       metric: core_binary_size_delta_pct,  operator: less_than_pct, threshold: 3,  kind: continuous, status: planned, refs: [] }
+  - { id: FIT-PUBLIC-API,      metric: breaking_public_api_changes, operator: equals,        threshold: 0,  kind: atomic,     status: planned, refs: [D-010] }
+  - { id: FIT-STARTUP,         metric: startup_p95_regression_pct,  operator: less_than_pct, threshold: 5,  kind: continuous, status: planned, refs: [ENG-PERF-001] }
+  - { id: FIT-CORE-FANIN,      metric: core_module_fanin,           operator: no_new,        threshold: 0,  kind: continuous, status: planned, refs: [ARCH-OWN-001] }
