@@ -154,20 +154,17 @@ Rules:
 A typed coordinate (§2) is valid **only against the snapshot it was taken from**. Anything retained
 across edits is an **Anchor**:
 
-```
-Anchor {
-  id,                 // stable, generation-checked handle into the anchor store
-  affinity,           // Left | Right — which side it clings to at an insertion boundary
-  gravity,            // whether it moves with inserted text or holds position (bias)
-}
-```
+An **Anchor** is a generation-checked handle into the anchor store, never a coordinate. Its canonical
+value — an `offset`, a boundary **bias** (`Before | After`), and a span-delete **policy**
+(`Clamp | Invalidate`) — is defined once in [anchor-store.md §1](../../design/anchor-store.md) (D-023);
+this RFC does not restate the type (design-doc types are non-normative; the store owns it).
 
 - **Long-lived positions are anchors, never raw offsets** (INV-ANCHOR, D-023): cursors, selections,
   marks, diagnostics, decorations, LSP ranges, fold points. Storing a `BytePos` on a diagnostic is
   anti-pattern #5 (TEXT-4).
-- **Affinity/gravity** decide behaviour at a boundary: text inserted *at* an anchor either pushes it
-  right (right-gravity) or is absorbed to its left — the semantics extmark stability and Vim/Emacs
-  mark behaviour depend on (D-023).
+- **Bias** (`Before | After`) decides behaviour at a boundary: text inserted *at* an anchor is either
+  absorbed to its left (`Before`) or pushes the anchor right (`After`) — the semantics extmark stability
+  and Vim/Emacs mark behaviour depend on (canonical: anchor-store.md §Bias, D-023).
 - **The anchor store updates anchors as a transaction applies**, driven by the edit set — anchor
   update cost is **not** `O(anchors × edits)` (INV-ANCHOR, PERF-6). Anchors resolve **to** a typed
   coordinate on demand (against the current snapshot); they are not themselves a coordinate.

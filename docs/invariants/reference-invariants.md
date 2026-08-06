@@ -41,10 +41,11 @@ they do not mint new numbering.
 
 ## Text & Position
 
-- **INV-POS-TYPED** — Positions are typed by unit (byte / char / grapheme / UTF-16 column); coordinates are
-  never an untyped `usize`. *Guards:* TEXT-1/2.
-- **INV-ANCHOR** — Long-lived positions (cursors, diagnostics, decorations) are anchors with affinity/gravity
-  that survive edits, never raw offsets; anchor update cost is not O(anchors × edits).
+- **INV-POS-TYPED** — Positions are typed by unit (byte / char / grapheme / UTF-16 column / screen cell);
+  coordinates are never an untyped `usize`. *Guards:* TEXT-1/2.
+- **INV-ANCHOR** — Long-lived positions (cursors, diagnostics, decorations) are anchors with a boundary
+  **bias** (`Before | After`, anchor-store D-023) that survive edits, never raw offsets; anchor update cost
+  is not O(anchors × edits).
   *Guards:* TEXT-4/5/6, PERF-6.
 
 ## Transaction & Undo

@@ -145,7 +145,7 @@ features:
     summary: Undo recorded by logical unit (e.g. one insert session), not per keystroke.
     trace:
       parity: [COM-7, COM-8, VIM-UNDO-1, EMACS-EDIT-1]
-      design: [../docs/architecture/architecture.md#3, ../docs/design/editing-language.md]
+      design: [../docs/architecture/architecture.md#3, ../docs/design/editing-language.md, ../docs/design/persistence-and-recovery.md]
       verify: [../tests/parity/vim/undo-tree.yaml, ../tests/unit/undo-grouping]
     acceptance:
       - "An i…<Esc> insert session is a single undo step, not one step per keystroke."
