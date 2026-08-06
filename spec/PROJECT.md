@@ -26,10 +26,14 @@ related:
 
 ## Vision
 
-`ruse` is a Rust, terminal-first, remote-first, extensible code editor targeting **feature parity** with
-Vim/Neovim (editing language) and Emacs (command/buffer/extension model). It is designed as a
-**specification with a reference implementation** — the architecture is meant to outlive the language.
-Not a Neovim port; a redesign that grows an ecosystem yet **breaks less than Neovim**.
+`ruse` is a Rust, **terminal-based modal** code editor targeting **feature parity** with Vim/Neovim (editing
+language) and Emacs (command/buffer/extension model). **The editor is the product** — a daily-driver we
+dogfood; the governance plane is the methodology we dogfood *with*, secondary to it. Remote, GUI, and a
+plugin protocol are capabilities **deferred** behind explicit re-boundary triggers ([D-039] / RFC-0012), not
+day-one boundaries — "remote-first from day one" is xi-editor's failed shape. Every edit is a replayable,
+shareable **command-level trace** — a first-class feature, not just a test artifact. It is designed as a
+**specification with a reference implementation** — the architecture is meant to outlive the language. Not a
+Neovim port; a redesign that grows an ecosystem yet **breaks less than Neovim**.
 
 ## Principles
 

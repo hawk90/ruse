@@ -91,9 +91,12 @@ they do not mint new numbering.
 - **INV-CAP-DEGRADE** — An unsupported capability degrades (lower quality / fewer features), it does not
   disappear; capability is a confidence ledger with user override, never a bare bool, and never inferred
   from `TERM` alone. *Guards:* TERMOUT-11/15/17, TERMIN-1.
-- **INV-REMOTE-FIRST** — The client/remote boundary is a first-class type distinction (local path ≠
-  workspace path) present from the start, not bolted on; remote runtime and client negotiate versions and
-  never assume identical builds. *Guards:* CORE-19, REMOTE-1/3/7/11.
+- **INV-REMOTE-FIRST** — *(DEFERRED by [D-039] / RFC-0012 — downgraded from an active invariant to a deferred
+  design commitment; ruse is a terminal modal editor first, and "remote-first from day one" is xi-editor's
+  failed shape. Re-boundary trigger: ≥2 months of local dogfooding. Retained here for when it is re-earned as
+  a new invariant.)* The client/remote boundary is a first-class type distinction (local path ≠ workspace
+  path) present from the start, not bolted on; remote runtime and client negotiate versions and never assume
+  identical builds. *Guards:* CORE-19, REMOTE-1/3/7/11.
 
 ## Failure & Observability
 
