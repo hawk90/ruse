@@ -1,4 +1,8 @@
-# Supply-chain / advisory checks. cargo-audit activates once Cargo.lock exists.
+# Supply-chain / advisory checks. rustsec audits the lockfile — a diff-INDEPENDENT concern (new
+# advisories land in the DB over time; the weekly cron covers that) and a diff-DEPENDENT concern
+# (a PR introduces a vulnerable dep). So on a PR we run rustsec ONLY when a dependency/lock manifest
+# actually changed; push-to-main and the weekly schedule always run the full audit. `advisory` is not
+# a required check, so skipping on unrelated PRs is safe and removes a ~3-minute step from most PRs.
 name: security
 on:
   pull_request:
@@ -10,12 +14,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4          # TODO pin SHA
+        with:
+          fetch-depth: 0                   # need the base ref to diff a PR
       - id: detect
-        run: '[ -f Cargo.lock ] && echo "have=1" >> "$GITHUB_OUTPUT" || echo "have=0" >> "$GITHUB_OUTPUT"'
-      - if: steps.detect.outputs.have == '1'
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          have=0; [ -f Cargo.lock ] && have=1
+          echo "have=$have" >> "$GITHUB_OUTPUT"
+          # PRs: audit only when a dependency manifest moved. Fail SAFE — if the diff cannot be
+          # computed, audit anyway. push/schedule always audit.
+          run=1
+          if [ "$EVENT" = "pull_request" ]; then
+            if git fetch --no-tags --depth=1 origin "$BASE_REF" 2>/dev/null; then
+              if git diff --name-only FETCH_HEAD HEAD 2>/dev/null | grep -qE 'Cargo\.(lock|toml)$'; then
+                run=1
+              else
+                run=0
+              fi
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - if: steps.detect.outputs.run == '0'
+        run: echo "No dependency manifest change in this PR — rustsec deferred to the weekly scan."
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.run == '1'
         uses: rustsec/audit-check@v2       # TODO pin SHA
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - if: steps.detect.outputs.have == '0'
+      - if: steps.detect.outputs.have == '0' && steps.detect.outputs.run == '1'
         run: echo "No Cargo.lock yet — advisory scan skipped."
   # TODO: CodeQL (Rust) + secret scanning are enabled in repo settings, not here.
