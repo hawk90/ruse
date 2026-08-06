@@ -60,16 +60,16 @@ Each methodology is tagged **[live]** (enforced now), **[partial]** (declared / 
 | Methodology | Status | Where |
 | --- | --- | --- |
 | Spec-Driven Development | live | [change-workflow.md](change-workflow.md), spec/PRD.yaml, spec-validate |
-| Repository Constitution (agent-invariant principles) | partial | spec/POLICY.yaml (ENG-*), CLAUDE.md/AGENTS.md, [change-workflow.md](change-workflow.md) roles → explicit `constitution.yaml` planned |
+| Repository Constitution (agent-invariant principles) | **live** | [spec/constitution.yaml](../../spec/constitution.yaml) + `ruse gov constitution` (CON-* articles, 4 machine-enforced incl. editor-not-IDE → dependency-check); references POLICY.yaml/architecture.yaml, never duplicates |
 | Decision Records + revisit triggers | partial | spec/DECISIONS.md (Re-evaluate lines) → fitness-linked auto-revisit planned |
-| Contract-Driven Development | partial | docs/protocols, D-010 promotion ladder → per-contract files + consumer-driven tests planned |
+| Contract-Driven Development | **live** | [spec/contracts/](../../spec/contracts/) + `ruse gov contracts` (plugin/remote/persistence declared contract-first, D-004/011/005); consumer-driven tests planned |
 
 ### 2. Structural layer — *the shape must hold*
 | Methodology | Status | Where |
 | --- | --- | --- |
 | Architecture as Code | **live** | [spec/architecture.yaml](../../spec/architecture.yaml) + `ruse arch deps` (ARCH-LAYER-001 / ARCH-FORBID-001) |
 | Dependency Governance | live | spec/dependencies.yaml + `ruse arch deps` (cycles, allowed_layers) + PR-template dep gate |
-| Architecture Fitness Functions | partial | static (cycles=0, direction) live via `arch deps`; quantitative (build/size/API) planned |
+| Architecture Fitness Functions | **live** | [spec/fitness.yaml](../../spec/fitness.yaml) + `ruse gov fitness` (3 live: cycles/direction/expired-waivers; 5 quantitative — build/size/API/startup/fan-in — planned pending code) |
 | API Lifecycle Governance | partial | D-010 Internal→Experimental→Preview→Stable → `api-diff` planned (verify NOT_YET) |
 | Ownership / Team Topologies (Conway) | planned | CODEOWNERS exists; ownership fitness planned |
 
@@ -129,8 +129,12 @@ define intent
 ## Priorities (honest status)
 
 - **P0 — foundational.** Architecture as Code **[done]**, Governance Waiver **[done]**, Change Impact
-  **[done]**, Risk-Based **[done]**, Context Manifest **[done]**; Fitness Functions (quantitative) and
-  Contract files **[next]**.
+  **[done]**, Risk-Based **[done]**, Context Manifest **[done]**, Repository Constitution **[done]**,
+  Fitness Functions (static) **[done]**, Contract files **[done]**. All governance checkers run behind one
+  auto-discovered `ruse gov check` (drop a `tools/gov/*.py` module → it joins the gate with no wiring), and
+  all verification is one registry ([spec/verification.yaml](../../spec/verification.yaml)) read by
+  `ruse verify` + lefthook + CI. Quantitative fitness (build/size/API) stays **[next]**, pending code + a
+  metrics source; phased-delivery planning (`spec/phases.yaml`, `ruse phase`) tracks the editor build ladder.
 - **P1 — before scale.** Ownership governance, API-diff, Decision revisit triggers, structured Evidence
   artifacts, Agent provenance, Tech-debt budget, Continuous Verification (nightly).
 - **P2 — once large.** InnerSource, Progressive Delivery, Conway fitness, integration-friction metrics,
