@@ -1,42 +1,39 @@
-//! ruse-core — kernel: Document/Transaction/Command/Query/Anchor/Undo/Register/Context/Health/EditLang
-//! Stub (spec-first, pre-implementation). See docs/design/ + spec/PRD.yaml components.
-#![allow(dead_code)]
+//! ruse-core — the editor kernel.
+//!
+//! This crate is the reference implementation of ruse's kernel contracts. The first vertical slice
+//! implements the mutation spine end-to-end, **built against the design docs, not invented**:
+//!
+//! - [`pos`] — typed coordinates + [`pos::Revision`] (INV-POS-TYPED, INV-TXN).
+//! - [`edit`] — the canonical [`edit::Edit`] and the disjoint, sorted [`edit::EditList`] (RFC-0007).
+//! - [`anchor`] — the long-lived-position store: bias, span-delete policy, the §3 update rule and the
+//!   §4 batched `O(A+E)` sweep (anchor-store.md / D-023 / INV-ANCHOR).
+//! - [`transaction`] — [`transaction::Transaction`] carrying `base_revision` + origin (INV-ORIGIN).
+//! - [`undo`] — the branching undo tree with a chronological index (persistence §7 / INV-UNDO).
+//! - [`document`] — [`document::Document`]: atomic transaction apply, undo/redo, anchors (INV-TXN).
+//! - [`snapshot`] — the immutable, revision-stamped [`snapshot::DocumentSnapshot`] (INV-QUERY-SNAPSHOT).
+//!
+//! Out of scope for this slice (owned by F-008 persistence): the on-disk journal, atomic save, and
+//! crash recovery. Those extend this in-memory core; the contracts here are their substrate.
 
-/// TODO: document — see design docs.
-pub mod document {}
+pub mod anchor;
+pub mod document;
+pub mod edit;
+pub mod pos;
+pub mod snapshot;
+pub mod transaction;
+pub mod undo;
 
-/// TODO: transaction — see design docs.
-pub mod transaction {}
+pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
+pub use document::{Document, DocumentId, TxnError};
+pub use edit::{Edit, EditError, EditList};
+pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};
+pub use snapshot::{AnchorIndex, DocumentSnapshot};
+pub use transaction::{Transaction, TransactionOrigin};
+pub use undo::{MonotonicSeq, UndoHistory};
 
-/// TODO: anchor — see design docs.
-pub mod anchor {}
-
-/// TODO: undo — see design docs.
-pub mod undo {}
-
-/// TODO: register — see design docs.
-pub mod register {}
-
-/// TODO: context — see design docs.
-pub mod context {}
-
-/// TODO: command — see design docs.
-pub mod command {}
-
-/// TODO: query — see design docs.
-pub mod query {}
-
-/// TODO: editlang — see design docs.
-pub mod editlang {}
-
-/// TODO: health — see design docs.
-pub mod health {}
-
-/// TODO: scheduler — see design docs.
-pub mod scheduler {}
-
-/// Reject a transaction whose base revision is stale (INV-TXN, ENG-TXN-001).
-/// Stub: real logic lands with the Transaction engine (RFC-0007 / C-TRANSACTION).
-pub fn is_stale_revision(base: u64, current: u64) -> bool {
+/// Reject a transaction whose base revision is stale (INV-TXN, ENG-TXN-001). Retained as the kernel's
+/// smallest invariant check; [`Document::apply`] enforces it as part of atomic apply.
+#[must_use]
+pub fn is_stale_revision(base: Revision, current: Revision) -> bool {
     base < current
 }
