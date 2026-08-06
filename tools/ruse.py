@@ -16,7 +16,8 @@ spec/ (change-kinds.yaml, PRD/POLICY/...), never in a Makefile or here.
   spec generate    (P1) regenerate derived spec artifacts
   docs check       anchor / frontmatter / normative-leak hygiene
   arch deps        crate dependency contract (architecture.yaml) + cycles (ARCH-LAYER-001)
-  gov waivers      governance waiver workflow — owned, dated, expiring exceptions
+  gov check        run every governance checker (auto-discovered tools/gov/*.py)
+  gov <checker>    one governance checker (e.g. gov waivers)
   pr render        generate the PR body from the contract + evidence
   pr check         the merge gate (classify + artifacts + blast radius + evidence)
   status           show the active change workspace
@@ -219,11 +220,24 @@ def main() -> int:
         return dependencies.main(rest[1:])
 
     if cmd == "gov":
-        if not rest or rest[0] != "waivers":
-            render.fail("usage: ruse gov waivers")
+        # Auto-discover tools/gov/*.py checkers — adding one needs NO edit here.
+        import glob
+        import importlib
+        names = sorted(os.path.splitext(os.path.basename(p))[0]
+                       for p in glob.glob(os.path.join(HERE, "gov", "*.py"))
+                       if not p.endswith("__init__.py"))
+        if not rest or rest[0] not in (*names, "check"):
+            render.fail(f"usage: ruse gov <{'|'.join(names)}|check>")
             return 2
-        from gov import waivers
-        return waivers.main(rest[1:])
+        if rest[0] == "check":
+            render.heading("gov check")
+            render.bullet("checkers: " + ", ".join(names))
+            print()
+            rc = 0
+            for n in names:
+                rc |= (importlib.import_module(f"gov.{n}").main([]) or 0)
+            return rc
+        return importlib.import_module(f"gov.{rest[0]}").main(rest[1:])
 
     if cmd == "pr":
         if not rest or rest[0] not in ("render", "check"):

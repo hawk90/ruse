@@ -1,0 +1,72 @@
+# Phased-delivery plan — the ordered milestone ladder for the reference implementation.
+#
+# PORTABLE GOVERNANCE METHODOLOGY (dogfooded here by the ruse editor). Any repo governed by ruse can
+# carry a spec/phases.yaml: an ordered list of delivery phases, each bundling the features that ship in
+# it. The ENGINE (tools/phases.py) is repo-agnostic; the phase ladder below is ruse-editor POLICY.
+#
+# One fact, one home (D-021): this file owns the *fine* phase ordering. It does NOT duplicate the coarse
+# delivery bucket — PRD F-* already carry `stage: mvp | post-mvp | future`. Each phase here declares which
+# `stage` it refines, and tools/phases.py FAILS if the phase grouping is not a clean refinement of stage
+# (every feature in exactly one phase; the phases within a stage union to exactly that stage's members).
+# So the two axes are cross-checked, never hand-synced.
+#
+# NOT stored here: implementation order *within* a phase — it is derived from the dependency graph
+# (PRD F-* `depends_on` over C-* components), emitted by `python3 tools/phases.py --order`.
+#
+# GENERATED FROM this file (planned, D-022): the docs/parity/roadmap.md milestone tables and the GitHub
+# Milestones (one per phase, one-way `ruse phase sync`). Those are mirrors; this file is the source.
+#
+# Naming: phase ids are SLUGS, not P0/P1 — governance-model.md already uses P0/P1/P2 for methodology
+# rollout priority; a distinct vocabulary keeps the delivery axis unambiguous.
+
+version: 1
+
+axis:
+  name: delivery-phase
+  question: "WHEN does a feature ship — in which milestone of the reference implementation?"
+  refines: "PRD F-* `stage` (mvp | post-mvp | future); this is the fine, ordered view of that bucket."
+  distinct_from:
+    - "build_stage (component bring-up order: kernel<input<tui<workspace<plugin<remote)"
+    - "product_layer (packaging bundle: base | official-pack | third-party)"
+
+# Ordered: earlier phases must be shippable without later ones. `stage` ties each phase to the coarse bucket.
+phases:
+  - id: core-editing
+    title: "Core editing — prove the contracts (headless vertical slice)"
+    stage: mvp
+    goal: >
+      The Document → Transaction → Undo → Snapshot core, anchor-tracked, exercised by a headless golden
+      test. No input profile or TUI yet — this is the "prove the design in code" slice.
+    includes: [F-001, F-002, F-005]
+
+  - id: usable-vim-tui
+    title: "Usable Vim-style TUI editor"
+    stage: mvp
+    goal: >
+      A real editor: key → command → transaction → document → render, on the proven core. Vim profile,
+      command palette, buffers/windows, file open/save + recovery, search/substitute, terminal detection.
+    includes: [F-003, F-004, F-006, F-007, F-008, F-009, F-010]
+
+  - id: ide-grade
+    title: "IDE-grade — language intelligence"
+    stage: post-mvp
+    goal: >
+      Built-in LSP, tree-sitter highlighting, PTY terminal buffer. The editor becomes genuinely useful
+      for daily development.
+    includes: [F-011, F-014, F-015]
+
+  - id: ecosystem
+    title: "Ecosystem & multi-environment"
+    stage: post-mvp
+    goal: >
+      Public plugin protocol + isolated host, Emacs and Native input profiles, SSH remote runtime. Third
+      parties can extend; work happens across machines.
+    includes: [F-012, F-013, F-016, F-017]
+
+  - id: breadth
+    title: "Breadth — platform reach (full-parity target)"
+    stage: future
+    goal: >
+      Debugger (DAP), GUI frontend on the same command system + Render IR, extension marketplace, and
+      reviewed AI proposals. The long-horizon parity target.
+    includes: [F-018, F-019, F-020, F-021]

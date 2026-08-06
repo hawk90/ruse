@@ -18,25 +18,30 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rusekit import repo, render  # noqa: E402
 
-# Each step: scope predicate decides inclusion in --changed; --full runs all applicable.
-#   scope: "spec_docs" | "rust"      needs: external tool that must exist
-#   heavy: excluded from --changed unless --heavy (kept out of the fast inner loop)
-STEPS = [
-    {"name": "spec-validate", "scope": "spec_docs", "needs": "python3",
-     "cmd": [sys.executable, "tools/spec-validate.py"]},
-    {"name": "docs-check", "scope": "spec_docs", "needs": "python3",
-     "cmd": [sys.executable, "tools/docs/check.py"]},
-    {"name": "gov-waivers", "scope": "spec_docs", "needs": "python3",
-     "cmd": [sys.executable, "tools/gov/waivers.py"]},
-    {"name": "dependency-check", "scope": "rust", "needs": "cargo",
-     "cmd": [sys.executable, "tools/arch/dependencies.py"]},
-    {"name": "cargo-fmt", "scope": "rust", "needs": "cargo",
-     "cmd": ["cargo", "fmt", "--check"]},
-    {"name": "cargo-clippy", "scope": "rust", "needs": "cargo", "heavy": True,
-     "cmd": ["cargo", "clippy", "--workspace", "--all-targets", "-q"]},
-    {"name": "cargo-test", "scope": "rust", "needs": "cargo", "heavy": True,
-     "cmd": ["cargo", "test", "--workspace", "-q"]},
-]
+# Steps come from the ONE registry (spec/verification.yaml) so verify, lefthook and CI cannot drift.
+#   scope: "spec_docs" | "rust"  · needs: tool that must exist · heavy: excluded from --changed
+#   gate_on: a file that must exist or the step is skipped.  "python3" in cmd → this interpreter.
+def _load_steps() -> list[dict]:
+    py = sys.executable
+    try:
+        import yaml
+        data = yaml.safe_load(open(repo.path("spec/verification.yaml"), encoding="utf-8")) or {}
+        raw = data.get("steps") or []
+    except Exception:
+        raw = []
+    if not raw:  # fallback: the always-safe check, so verify never hard-crashes without the registry
+        return [{"name": "spec-validate", "scope": "spec_docs", "needs": "python3",
+                 "heavy": False, "gate_on": None, "cmd": [py, "tools/spec-validate.py"]}]
+    steps = []
+    for s in raw:
+        steps.append({"name": s["name"], "scope": s.get("scope", "spec_docs"),
+                      "needs": s.get("needs", "python3"), "heavy": bool(s.get("heavy")),
+                      "gate_on": s.get("gate_on"),
+                      "cmd": [py if c == "python3" else c for c in (s.get("cmd") or [])]})
+    return steps
+
+
+STEPS = _load_steps()
 
 # tools the change-kinds policy names but whose implementation is not built yet.
 NOT_YET = {"public-api-diff", "protocol-compat"}
@@ -64,6 +69,9 @@ def _select(scopes: set[str], heavy: bool) -> tuple[list[dict], list[str]]:
             continue
         if st.get("needs") and shutil.which(st["needs"]) is None and st["needs"] != "python3":
             skipped.append(f"{st['name']} (missing tool: {st['needs']})")
+            continue
+        if st.get("gate_on") and not os.path.isfile(repo.path(st["gate_on"])):
+            skipped.append(f"{st['name']} (gate {st['gate_on']} absent)")
             continue
         selected.append(st)
     return selected, skipped
