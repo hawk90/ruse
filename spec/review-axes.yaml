@@ -52,12 +52,12 @@ domains:
     axes:
       - { id: RA-ARCH-001, title: "Requirement completeness" }
       - { id: RA-ARCH-002, title: "Requirement conflicts" }
-      - { id: RA-ARCH-003, title: "Requirement traceability", method: mixed }
+      - { id: RA-ARCH-003, title: "Requirement traceability", method: mixed, automated_by: spec-validate }
       - { id: RA-ARCH-004, title: "Architecture layer clarity" }
       - { id: RA-ARCH-005, title: "Module responsibility cohesion" }
       - { id: RA-ARCH-006, title: "Inter-module coupling" }
-      - { id: RA-ARCH-007, title: "Dependency direction", method: mixed }
-      - { id: RA-ARCH-008, title: "Circular dependencies", method: machine }
+      - { id: RA-ARCH-007, title: "Dependency direction", method: mixed, automated_by: dependency-check }
+      - { id: RA-ARCH-008, title: "Circular dependencies", method: machine, automated_by: dependency-check }
       - { id: RA-ARCH-009, title: "Runtime boundary clarity" }
       - { id: RA-ARCH-010, title: "Process boundary clarity" }
       - { id: RA-ARCH-011, title: "Trust boundary clarity" }
@@ -89,7 +89,7 @@ domains:
       - { id: RA-ARCH-037, title: "Invariant enforcement level", method: mixed }
       - { id: RA-ARCH-038, title: "ADR / decision-record quality" }
       - { id: RA-ARCH-039, title: "Current vs target architecture separation" }
-      - { id: RA-ARCH-040, title: "Design ↔ code drift", method: mixed }
+      - { id: RA-ARCH-040, title: "Design ↔ code drift", method: mixed, automated_by: design_code }
 
   # ============================================================================================
   - id: STRUCT
