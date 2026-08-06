@@ -24,6 +24,7 @@ related:
 ---
 
 <!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+<!-- design-code-ack: UndoNode — design ahead of code: the first vertical slice stores forward/inverse/origin per undo node (in-memory undo/redo) and tracks the saved point via Document.saved_node, with the node id being its slot index; the persistent-undo `id`/`saved_here` fields land with F-008. -->
 
 # ruse Persistence, Crash Recovery & the Undo Journal
 
