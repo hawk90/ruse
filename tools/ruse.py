@@ -18,6 +18,7 @@ spec/ (change-kinds.yaml, PRD/POLICY/...), never in a Makefile or here.
   arch deps        crate dependency contract (architecture.yaml) + cycles (ARCH-LAYER-001)
   gov check        run every governance checker (auto-discovered tools/gov/*.py)
   gov <checker>    one governance checker (e.g. gov waivers)
+  phase sync       reconcile GitHub milestones from spec/phases.yaml (dry-run; --apply to mutate)
   pr render        generate the PR body from the contract + evidence
   pr check         the merge gate (classify + artifacts + blast radius + evidence)
   status           show the active change workspace
@@ -218,6 +219,13 @@ def main() -> int:
             return 2
         from arch import dependencies
         return dependencies.main(rest[1:])
+
+    if cmd == "phase":
+        if not rest or rest[0] != "sync":
+            render.fail("usage: ruse phase sync [--apply] [--prune]")
+            return 2
+        import phase_sync
+        return phase_sync.main(rest[1:])
 
     if cmd == "gov":
         # Auto-discover tools/gov/*.py checkers — adding one needs NO edit here.
