@@ -1,0 +1,22 @@
+# Contract-Driven Development — the client ↔ workspace-runtime protocol contract (D-011 boundary),
+# declared before implementation. Version negotiation + a bounded skew range (D-024) are part of the contract.
+id: CONTRACT-REMOTE
+title: Client ↔ workspace-runtime protocol
+kind: protocol
+owner: remote-runtime
+status: declared
+compatibility: backward
+version: 1
+guarantees:
+  - version_is_negotiated_on_connect     # D-011 / INV-REMOTE-FIRST
+  - bounded_version_skew_range           # D-024
+  - unknown_fields_are_ignored           # INV-ADDITIVE
+  - remote_code_runs_with_remote_trust   # ENG-TRUST-001 (never local trust)
+  - reconnect_preserves_or_declares_state  # D-013 (policy pending)
+budgets:
+  connect_negotiation_p95_ms: 200
+  frame_max_bytes: 4194304
+verified_by:
+  - tests/contract/remote-version-skew   # planned
+  - tests/contract/remote-reconnect      # planned
+refs: [D-011, D-013, D-024, INV-REMOTE-FIRST, INV-ADDITIVE, ENG-TRUST-001, ARCH-LAYER-001]

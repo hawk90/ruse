@@ -1,0 +1,23 @@
+# Contract-Driven Development — the on-disk transaction-journal + save file-format contract (D-005),
+# declared before implementation. A stored format is the hardest contract to change, so it is contract-first.
+id: CONTRACT-PERSISTENCE
+title: Transaction journal + save file format
+kind: file-format
+owner: workspace
+status: declared
+compatibility: backward        # older journals remain recoverable; schema version gates changes
+version: 1
+guarantees:
+  - record_carries_checksum_and_schema_version   # D-005
+  - truncated_journal_is_recoverable             # torn-write tolerant
+  - inverse_edit_enables_undo_replay             # INV-UNDO
+  - atomic_save_temp_then_rename                 # never a partially-written file
+  - original_never_auto_overwritten              # 3-way crash recovery
+  - ephemeral_buffers_exempt                     # INV-BUFFER-KIND
+budgets:
+  recovery_scan_p95_ms: 500
+  journal_record_overhead_bytes: 64
+verified_by:
+  - tests/contract/journal-roundtrip     # planned: save→load preserves semantic content
+  - tests/contract/journal-torn-write    # planned: truncated-tail recovery
+refs: [D-005, INV-TXN, INV-UNDO, INV-BUFFER-KIND]

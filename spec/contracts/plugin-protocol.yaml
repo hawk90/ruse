@@ -1,0 +1,23 @@
+# Contract-Driven Development — the plugin host protocol contract, declared BEFORE its implementation
+# (contract-first, D-021/INV-CONTRACT-FIRST). status: declared until the schema + conformance tests exist;
+# then active. Validated by `ruse gov contracts`.
+id: CONTRACT-PLUGIN
+title: Plugin host protocol
+kind: protocol                 # api | abi | protocol | file-format | config | error | event | cli
+owner: extension-platform
+status: declared               # declared | active (active ⇒ verified_by paths must exist)
+compatibility: backward        # additive minor changes; unknown-variant tolerant
+version: 3
+guarantees:
+  - unknown_fields_are_ignored          # INV-ADDITIVE
+  - old_plugins_remain_loadable         # INV-PROTOCOL-VERSIONED
+  - error_codes_are_stable              # INV-ERR-CLASS
+  - no_rust_dylib_abi                   # D-004: WASM / external process only
+  - stable_only_after_two_users         # D-010 / INV-PROMOTION
+budgets:
+  request_latency_p95_ms: 20
+  allocations_per_call: 3
+verified_by:
+  - tests/contract/plugin-compat        # planned: old-SDK ↔ new-host replay
+  - tests/contract/plugin-malformed     # planned: unknown/oversized message handling
+refs: [D-004, D-009, D-010, INV-PROTOCOL-VERSIONED, INV-ADDITIVE, INV-CONTRACT-FIRST, ENG-PROTO-001, ENG-PLUG-001]
