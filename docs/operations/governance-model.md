@@ -79,7 +79,7 @@ Each methodology is tagged **[live]** (enforced now), **[partial]** (declared / 
 | --- | --- | --- |
 | Change Impact Analysis | live | `ruse impact` (spec cross-reference graph) → runtime/coverage graph planned |
 | Risk-Based Verification | live | spec/change-kinds.yaml risk ladder + `ruse verify` scope selection |
-| Evidence-Driven Completion | live | `.ruse/work/<id>/evidence.json` from `ruse verify` → structured artifact retention planned |
+| Evidence-Driven Completion | live | local `.ruse/.../evidence.json` (preflight only) + **server-side gate of record**: `.github/workflows/change-policy.yml` re-derives kind/blast-radius from the PR diff and re-runs verify — local files untrusted (RA-RUSE-006) |
 | Property / Model-Based / Differential testing | partial | anchor-store test plan (extmark parity, undo round-trip) declared; corpus absent |
 
 ### 4. Agent layer — *humans and agents, bounded*
