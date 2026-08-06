@@ -103,7 +103,7 @@ review**. Spec lands *before or with* the first implementation PR, never after.
 
 **Git workflow** — protected, continuously-integrated `main`; short-lived branches
 (`feat/123-…` `fix/…` `spec/…` `rfc/…` `spike/…`) → **Draft PR** (`Closes #NN`) → review + CI +
-`spec-validate` → **squash-merge** → release tag at a release boundary.
+`spec-validate` + `gate` → **squash-merge** → release tag at a release boundary.
 
 **Documentation model** — authoritative state in [`spec/`](spec/PROJECT.md); explanation/research in
 [`docs/`](docs/README.md); Issues/Projects track work; Discussions host Q&A. **GitHub Wiki is not used as an
