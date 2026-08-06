@@ -1,0 +1,45 @@
+# ruse — Python tooling package (the Repository Governance Plane engine).
+#
+# Scope: minimal + non-breaking. It declares the runtime dependency (PyYAML) and standard dev-tool config so
+# a contributor gets `pip install -e .`, `pytest`, `ruff`, and `mypy` with zero setup. The generic sibling
+# packages (change / verify / ai / arch / docs / gov) are still loaded via a small `sys.path` shim in each
+# entry script — load-bearing because verify / lefthook / CI invoke them as `python3 tools/<x>.py`
+# subprocesses. Folding those under a single `rusekit.*` namespace to delete the 17 shims is a tracked
+# follow-up (a mechanical but wide refactor); this file is the safe first step, not that refactor.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ruse-tools"
+version = "0.0.0"
+description = "ruse Repository Governance Plane — spec-first change workflow + governance checkers"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["PyYAML>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.setuptools]
+package-dir = { "" = "tools" }
+packages = ["rusekit"]          # the installable shared lib; siblings stay script-invoked until the rusekit.* fold
+
+[tool.pytest.ini_options]
+pythonpath = ["tools"]          # resolve `from rusekit import …` (and siblings) without the runtime shim
+testpaths = ["tools/tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["tools"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]               # long spec-reference lines are intentional
+
+[tool.mypy]
+python_version = "3.10"
+files = ["tools/rusekit"]
+ignore_missing_imports = true
