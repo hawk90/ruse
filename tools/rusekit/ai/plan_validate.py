@@ -11,7 +11,6 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rusekit import repo, render  # noqa: E402
 
 REQUIRED = [

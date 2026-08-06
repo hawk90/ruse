@@ -11,9 +11,8 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rusekit import repo, render, contract  # noqa: E402
-from change.classify import classify_changeset  # noqa: E402
+from rusekit.change.classify import classify_changeset  # noqa: E402
 
 AI_BLOCK = """### AI assistance
 - [ ] No significant AI assistance

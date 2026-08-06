@@ -1,11 +1,11 @@
 # ruse — Python tooling package (the Repository Governance Plane engine).
 #
-# Scope: minimal + non-breaking. It declares the runtime dependency (PyYAML) and standard dev-tool config so
-# a contributor gets `pip install -e .`, `pytest`, `ruff`, and `mypy` with zero setup. The generic sibling
-# packages (change / verify / ai / arch / docs / gov) are still loaded via a small `sys.path` shim in each
-# entry script — load-bearing because verify / lefthook / CI invoke them as `python3 tools/<x>.py`
-# subprocesses. Folding those under a single `rusekit.*` namespace to delete the 17 shims is a tracked
-# follow-up (a mechanical but wide refactor); this file is the safe first step, not that refactor.
+# Scope: declares the runtime dependency (PyYAML) and standard dev-tool config so a contributor gets
+# `pip install -e .`, `pytest`, `ruff`, and `mypy` with zero setup. The former sibling packages
+# (change / verify / ai / arch / docs / gov) are now folded under `rusekit.*` — the 17 `sys.path` shims are
+# gone. Every runtime entry (tools/ruse.py, tools/spec-validate.py, tools/lint-commit-msg.py) is a top-level
+# script, so `import rusekit` resolves via the auto-added script dir; deep helpers are reached through
+# `ruse <cmd>` (e.g. lefthook/CI run `ruse docs check`, not `tools/docs/check.py`).
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -25,7 +25,10 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
 
 [tool.setuptools]
 package-dir = { "" = "tools" }
-packages = ["rusekit"]          # the installable shared lib; siblings stay script-invoked until the rusekit.* fold
+
+[tool.setuptools.packages.find]
+where = ["tools"]
+include = ["rusekit*"]          # rusekit + change/gov/verify/ai/arch/docs, now all folded under rusekit.*
 
 [tool.pytest.ini_options]
 pythonpath = ["tools"]          # resolve `from rusekit import …` (and siblings) without the runtime shim

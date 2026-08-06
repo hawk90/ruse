@@ -12,9 +12,8 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rusekit import repo, render, contract, model as model_mod  # noqa: E402
-from change.classify import classify_changeset  # noqa: E402
+from rusekit.change.classify import classify_changeset  # noqa: E402
 
 
 def _match_any(path: str, prefixes: list[str]) -> bool:

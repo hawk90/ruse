@@ -1,7 +1,7 @@
 import unittest
 
 from . import _support  # noqa: F401
-from docs.check import slugify, headings_slugs  # noqa: E402
+from rusekit.docs.check import slugify, headings_slugs  # noqa: E402
 
 
 class TestDocsCheckSlugs(unittest.TestCase):

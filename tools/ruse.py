@@ -176,31 +176,31 @@ def main() -> int:
             return 2
         sub, subrest = rest[0], rest[1:]
         if sub == "start":
-            from change import start
+            from rusekit.change import start
             return start.main(subrest)
         if sub == "classify":
-            from change import classify
+            from rusekit.change import classify
             return classify.main(subrest)
         render.fail(f"unknown: change {sub}")
         return 2
 
     if cmd == "impact":
-        from change import impact
+        from rusekit.change import impact
         return impact.main(rest)
 
     if cmd == "context":
-        from ai import context_pack
+        from rusekit.ai import context_pack
         return context_pack.main(rest)
 
     if cmd == "plan":
         if not rest or rest[0] != "validate":
             render.fail("usage: ruse plan validate [path]")
             return 2
-        from ai import plan_validate
+        from rusekit.ai import plan_validate
         return plan_validate.main(rest[1:])
 
     if cmd == "verify":
-        from verify import run
+        from rusekit.verify import run
         return run.main(rest)
 
     if cmd == "spec":
@@ -210,14 +210,14 @@ def main() -> int:
         if not rest or rest[0] != "check":
             render.fail("usage: ruse docs check")
             return 2
-        from docs import check
+        from rusekit.docs import check
         return check.main(rest[1:])
 
     if cmd == "arch":
         if not rest or rest[0] != "deps":
             render.fail("usage: ruse arch deps")
             return 2
-        from arch import dependencies
+        from rusekit.arch import dependencies
         return dependencies.main(rest[1:])
 
     if cmd == "phase":
@@ -232,7 +232,7 @@ def main() -> int:
         import glob
         import importlib
         names = sorted(os.path.splitext(os.path.basename(p))[0]
-                       for p in glob.glob(os.path.join(HERE, "gov", "*.py"))
+                       for p in glob.glob(os.path.join(HERE, "rusekit", "gov", "*.py"))
                        if not p.endswith("__init__.py"))
         if not rest or rest[0] not in (*names, "check"):
             render.fail(f"usage: ruse gov <{'|'.join(names)}|check>")
@@ -243,9 +243,9 @@ def main() -> int:
             print()
             rc = 0
             for n in names:
-                rc |= (importlib.import_module(f"gov.{n}").main([]) or 0)
+                rc |= (importlib.import_module(f"rusekit.gov.{n}").main([]) or 0)
             return rc
-        return importlib.import_module(f"gov.{rest[0]}").main(rest[1:])
+        return importlib.import_module(f"rusekit.gov.{rest[0]}").main(rest[1:])
 
     if cmd == "pr":
         if not rest or rest[0] not in ("render", "check"):
@@ -253,9 +253,9 @@ def main() -> int:
             return 2
         sub, subrest = rest[0], rest[1:]
         if sub == "render":
-            from change import pr_render
+            from rusekit.change import pr_render
             return pr_render.main(subrest)
-        from change import pr_check
+        from rusekit.change import pr_check
         return pr_check.main(subrest)
 
     if cmd == "status":

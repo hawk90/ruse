@@ -47,7 +47,7 @@ Author these for your repo (start with the first three; the rest are optional/in
 | `spec/contracts/*.yaml` | API/protocol/format contracts, declared contract-first | `ruse gov contracts` |
 
 Each file ships with a header comment documenting its schema; copy ruse's as a template and replace the
-entries. Governance checkers are **auto-discovered**: dropping a `tools/gov/<x>.py` module makes
+entries. Governance checkers are **auto-discovered**: dropping a `tools/rusekit/gov/<x>.py` module makes
 `ruse gov <x>` and `ruse gov check` pick it up with no wiring.
 
 ## Wiring the three surfaces

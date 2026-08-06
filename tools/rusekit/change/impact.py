@@ -15,7 +15,6 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rusekit import repo, render, model as model_mod  # noqa: E402
 
 KIND_GROUP = {

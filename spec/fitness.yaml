@@ -4,7 +4,7 @@
 # (build time, binary size, API breakage) are DECLARED now with metric/operator/threshold and go live once
 # code + a metrics source exist — the checker reports live vs planned honestly (never a silent pass).
 #
-# PORTABILITY (Repository Governance Plane): schema + tools/gov/fitness.py are the reusable engine; the
+# PORTABILITY (Repository Governance Plane): schema + tools/rusekit/gov/fitness.py are the reusable engine; the
 # functions are per-repo. Auto-discovered into `ruse gov check`.
 #
 # Per function: id (FIT-*) · metric · operator (equals | less_than | less_than_pct | no_new) · threshold ·

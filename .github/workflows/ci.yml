@@ -32,6 +32,6 @@ jobs:
         run: pip install pyyaml
       - name: dependency direction + cycle check
         if: steps.detect.outputs.have == '1'
-        run: python3 tools/arch/dependencies.py
+        run: python3 tools/ruse.py arch deps
       - if: steps.detect.outputs.have == '0'
         run: echo "No Cargo.toml with real code yet — spec-first phase."

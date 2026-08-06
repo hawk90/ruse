@@ -206,7 +206,6 @@ for f in mdfiles:
 
 # ---------- 8. review-axes catalog (single verification entry point — RA-CICD-002) ----------
 RA_COUNT = 0
-sys.path.insert(0, os.path.join(ROOT, "tools"))
 try:
     import review_axes as _ra
     _cat = _ra.load_catalog(os.path.join(ROOT, _ra.CATALOG))

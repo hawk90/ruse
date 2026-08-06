@@ -2,7 +2,7 @@
 # only) and ARCH-FORBID-001 (forbidden edges), enforced by ENG-ARCH-001. This is NOT a new decision — it is
 # the enforcement layer for existing ARCH-* rules, exactly as spec/change-kinds.yaml is for change-paths.md.
 #
-# PORTABILITY (Repository Governance Plane): this file is per-repo POLICY; tools/arch/dependencies.py is the
+# PORTABILITY (Repository Governance Plane): this file is per-repo POLICY; tools/rusekit/arch/dependencies.py is the
 # reusable ENGINE. Another repo adopts the checker and ships its own architecture.yaml. Checked by
 # `python3 tools/ruse.py arch deps`.
 #

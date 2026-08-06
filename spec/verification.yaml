@@ -1,19 +1,19 @@
 # Verification registry — the ONE source of verify steps that `ruse verify`, lefthook, and CI all read, so
-# the three surfaces cannot drift (RA-RUSE-006: CI == local verification). tools/verify/run.py iterates this.
+# the three surfaces cannot drift (RA-RUSE-006: CI == local verification). tools/rusekit/verify/run.py iterates this.
 #
 # PORTABILITY (Repository Governance Plane): this file is per-repo POLICY; the runner is the reusable ENGINE.
 # Fields — name · scope: spec_docs | rust · needs: tool that must exist · heavy: excluded from --changed
 # unless --heavy · gate_on: a file that must exist or the step is skipped · cmd: argv ("python3" → this
-# interpreter). `gov-check` fans out to every tools/gov/*.py checker (auto-discovered), so adding a governance
+# interpreter). `gov-check` fans out to every tools/rusekit/gov/*.py checker (auto-discovered), so adding a governance
 # checker needs NO edit here.
 
 version: 1
 
 steps:
   - { name: spec-validate,    scope: spec_docs, needs: python3, cmd: [python3, tools/spec-validate.py] }
-  - { name: docs-check,       scope: spec_docs, needs: python3, cmd: [python3, tools/docs/check.py] }
+  - { name: docs-check,       scope: spec_docs, needs: python3, cmd: [python3, tools/ruse.py, docs, check] }
   - { name: gov-check,        scope: spec_docs, needs: python3, cmd: [python3, tools/ruse.py, gov, check] }
-  - { name: dependency-check, scope: rust,      needs: cargo,   cmd: [python3, tools/arch/dependencies.py] }
+  - { name: dependency-check, scope: rust,      needs: cargo,   cmd: [python3, tools/ruse.py, arch, deps] }
   - { name: cargo-fmt,        scope: rust,      needs: cargo,   gate_on: Cargo.toml, cmd: [cargo, fmt, --all, --check] }
   - { name: cargo-clippy,     scope: rust,      needs: cargo,   heavy: true, gate_on: Cargo.toml, cmd: [cargo, clippy, --workspace, --all-targets, -q] }
   - { name: cargo-test,       scope: rust,      needs: cargo,   heavy: true, gate_on: Cargo.toml, cmd: [cargo, test, --workspace, -q] }

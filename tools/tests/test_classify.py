@@ -3,7 +3,7 @@ import unittest
 
 from . import _support  # noqa: F401  (sys.path side effect)
 from rusekit import repo  # noqa: E402
-from change.classify import classify_changeset  # noqa: E402
+from rusekit.change.classify import classify_changeset  # noqa: E402
 
 
 class TestClassify(unittest.TestCase):

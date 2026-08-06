@@ -1,7 +1,7 @@
 import unittest
 
 from . import _support  # noqa: F401
-from ai.context_pack import build  # noqa: E402
+from rusekit.ai.context_pack import build  # noqa: E402
 
 
 class TestContextPack(unittest.TestCase):

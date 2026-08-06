@@ -14,7 +14,6 @@ import sys
 from dataclasses import dataclass, field
 
 # Allow running both as `python -m` and as a plain path via ruse.py.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rusekit import repo, render, contract  # noqa: E402
 
 

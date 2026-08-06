@@ -13,7 +13,7 @@
 # Enums —
 #   risk: 0..3 monotonic ladder (higher = heavier required process)
 #   required_artifacts entries: issue | rfc | decision | impact | compat | spec_ref | migration
-#   evidence entries: names of verify steps (see tools/verify/run.py STEPS)
+#   evidence entries: names of verify steps (see tools/rusekit/verify/run.py STEPS)
 # LLM: patch one kind or one trigger; never renumber risk out of order.
 
 version: 1

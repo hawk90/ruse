@@ -2,7 +2,7 @@ import unittest
 
 from . import _support  # noqa: F401
 from rusekit import repo  # noqa: E402
-from arch.dependencies import _closure, _find_cycle  # noqa: E402
+from rusekit.arch.dependencies import _closure, _find_cycle  # noqa: E402
 
 import yaml  # noqa: E402
 

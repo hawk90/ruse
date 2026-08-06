@@ -1,7 +1,7 @@
 import unittest
 
 from . import _support  # noqa: F401
-from gov.contracts import load, validate  # noqa: E402
+from rusekit.gov.contracts import load, validate  # noqa: E402
 
 
 class TestContracts(unittest.TestCase):

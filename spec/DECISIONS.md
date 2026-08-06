@@ -362,4 +362,4 @@ related:
   derivations (D-021/D-022) applied to design-doc code.
 - **Re-evaluate if:** a generator makes doc type-blocks derivable FROM code (rustdoc extraction) — then they
   may return as generated, never hand-written.
-- Refs: [../docs/operations/governance-model.md](../docs/operations/governance-model.md), `tools/gov/design_code.py`, D-021, D-022.
+- Refs: [../docs/operations/governance-model.md](../docs/operations/governance-model.md), `tools/rusekit/gov/design_code.py`, D-021, D-022.

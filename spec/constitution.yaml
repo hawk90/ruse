@@ -3,7 +3,7 @@
 # until code makes it checkable. This is the one home for the standing rules; it REFERENCES POLICY.yaml
 # (ENG-*), architecture.yaml (crate contract), invariants (INV-*) and PROJECT.md — it never duplicates them.
 #
-# PORTABILITY (Repository Governance Plane): schema + tools/gov/constitution.py are the reusable engine;
+# PORTABILITY (Repository Governance Plane): schema + tools/rusekit/gov/constitution.py are the reusable engine;
 # the articles are per-repo. Checked by `ruse gov constitution` (auto-discovered into `ruse gov check`).
 #
 # Per article: id (CON-*) · statement · enforcement (check | review) · check (checker name, if enforcement

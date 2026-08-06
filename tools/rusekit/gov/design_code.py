@@ -19,7 +19,6 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rusekit import repo, render  # noqa: E402
 
 # Language-tagged fences that are actual code (not ascii diagrams / shell transcripts we don't govern).

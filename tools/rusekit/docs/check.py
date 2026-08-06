@@ -19,7 +19,6 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rusekit import repo, render, contract  # noqa: E402
 
 # Subtrees where normative words are legitimate (specs of contracts, not explanations).

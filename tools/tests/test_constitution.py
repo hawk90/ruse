@@ -1,7 +1,7 @@
 import unittest
 
 from . import _support  # noqa: F401
-from gov.constitution import load, validate  # noqa: E402
+from rusekit.gov.constitution import load, validate  # noqa: E402
 
 
 class TestConstitution(unittest.TestCase):

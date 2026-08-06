@@ -18,7 +18,7 @@ pre-commit:
       run: python3 tools/spec-validate.py
     docs-check:
       glob: "{docs,spec}/**/*.md"
-      run: python3 tools/docs/check.py
+      run: python3 tools/ruse.py docs check
     rustfmt:
       glob: "*.rs"
       run: cargo fmt --all --check

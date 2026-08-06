@@ -2,7 +2,7 @@ import datetime
 import unittest
 
 from . import _support  # noqa: F401
-from gov.waivers import validate  # noqa: E402
+from rusekit.gov.waivers import validate  # noqa: E402
 
 TODAY = datetime.date(2026, 8, 7)
 
