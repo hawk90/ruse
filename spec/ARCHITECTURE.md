@@ -1,3 +1,20 @@
+---
+doc: architecture-map
+project: ruse
+title: "ruse — Architecture Map (ARCH-*)"
+summary: >
+  Concise canonical map of layers, primary flow, ownership, forbidden dependencies, and open structural
+  decisions. Home of the stable ARCH-* IDs referenced from POLICY/PRD/DECISIONS. Depth lives under
+  docs/design/; invariants in docs/invariants/reference-invariants.md.
+audience: [maintainers, contributors, llm-agents]
+status: canonical
+related:
+  - ../docs/architecture/architecture.md
+  - ../docs/invariants/reference-invariants.md
+  - POLICY.yaml
+  - PRD.yaml
+---
+
 # Architecture
 
 > Concise canonical map: layers, primary flow, ownership, forbidden dependencies, open decisions. Stable

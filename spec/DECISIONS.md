@@ -1,3 +1,19 @@
+---
+doc: decisions
+project: ruse
+title: "ruse — Decisions (D-*)"
+summary: >
+  Registry of hard-to-reverse decisions, each with Decision · Reason · Re-evaluation condition and a
+  stable D-* ID. Small refactors and implementation choices live in Git history, not here. Decisions are
+  never deleted — a superseded one is kept and marked, replaced by a new ID.
+audience: [maintainers, contributors, llm-agents]
+status: canonical
+related:
+  - PROJECT.md
+  - ARCHITECTURE.md
+  - ../docs/rfc/README.md
+---
+
 # Decisions
 
 > Only decisions that are **hard to reverse**. Small refactors/impl choices live in Git commits/PRs, not

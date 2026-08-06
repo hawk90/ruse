@@ -1,3 +1,21 @@
+---
+doc: project
+project: ruse
+title: "ruse — Project (vision, principles, non-goals)"
+summary: >
+  Source of truth for the project vision, guiding principles, and non-goals. Stable and slow-changing.
+  Terminology lives in glossary.yaml; feature state in PRD.yaml; enforced rules in POLICY.yaml; hard-to-
+  reverse decisions in DECISIONS.md; the canonical structure map in ARCHITECTURE.md.
+audience: [maintainers, contributors, llm-agents]
+status: canonical
+related:
+  - glossary.yaml
+  - PRD.yaml
+  - POLICY.yaml
+  - DECISIONS.md
+  - ARCHITECTURE.md
+---
+
 # Project
 
 > Source of truth for **vision, principles, non-goals**. Stable and slow-changing. Terminology is in

@@ -1,3 +1,16 @@
+---
+doc: rfc
+project: ruse
+title: "RFC-XXXX: <Title>"
+summary: >
+  <1–3 sentences: the problem, and precisely what this RFC changes. This frontmatter is required —
+  RFCs live under docs/rfc/ where docs-check expects it; keep the fields in sync with the H1 below.>
+audience: [maintainers, contributors, llm-agents]
+status: proposed   # proposed | provisional | accepted | implemented | rejected | superseded
+related:
+  - <../../spec/... or ../ links this RFC touches; e.g. ../../spec/PRD.yaml>
+---
+
 # RFC-XXXX: <Title>
 
 - **Status:** proposed | accepted | rejected | superseded
