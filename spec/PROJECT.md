@@ -33,6 +33,11 @@ Not a Neovim port; a redesign that grows an ecosystem yet **breaks less than Neo
 
 ## Principles
 
+- **An editor, not an IDE.** The core stays fast, predictable, and fully usable with *every* plugin — and
+  the AI runtime — disabled. AI, LSP, Git, debugger, and remote are capabilities *layered on* the editor,
+  never the editor itself; AI assists editing, it does not drive it.
+- **Editor Core depends on nothing above it.** The kernel must not even know the Plugin Runtime
+  (ARCH-LAYER-001; enforced machine-side by [`architecture.yaml`](architecture.yaml) `core.may_depend_on: []`).
 - Document changes are tracked and reversible (Transaction is the only mutation path).
 - External feature failure never stops core editing (bounded blast radius, not hidden errors).
 - Primary execution flows are understandable by reading the code.
