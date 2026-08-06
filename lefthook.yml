@@ -19,9 +19,13 @@ pre-commit:
     docs-check:
       glob: "{docs,spec}/**/*.md"
       run: python3 tools/ruse.py docs check
+    # Formatting is mechanical, so the hook FIXES it rather than only failing: it runs rustfmt and
+    # re-stages the formatted Rust (stage_fixed), so a contributor never hits a fmt gate at commit time.
+    # `ruse verify` / CI still run `cargo fmt --all --check` as the safety net for a `--no-verify` bypass.
     rustfmt:
       glob: "*.rs"
-      run: cargo fmt --all --check
+      run: cargo fmt --all
+      stage_fixed: true
 
 # The heavier, complete gate before sharing — same as `ruse verify --full`.
 pre-push:
