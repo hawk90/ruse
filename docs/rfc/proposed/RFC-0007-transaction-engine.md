@@ -133,16 +133,23 @@ On an **editable** Document, applying a transaction:
 4. is the **only** way text changes — direct scattered insert/delete is forbidden (INV-TXN;
    assert-guarded per stability §1).
 
-Edits within a transaction are normalized: overlaps resolved, multiline edits handled, order made
-explicit (architecture.md §3.3). Anchors (cursors, decorations, diagnostics) update via the anchor
-store (INV-ANCHOR, D-023), not by re-scanning — anchor cost is not `O(anchors × edits)`.
+An **Edit** is one normalized replacement `Edit { pos: BytePos, del: usize, ins: Bytes }` — delete
+`del` bytes at `pos`, insert `ins` (RFC-0008 canonical unit = bytes; the same `(pos, del, ins)` shape
+the anchor store consumes, anchor-store.md §Terms). A transaction's `EditList` **must be disjoint and
+position-sorted**: preflight sorts by `pos` and **rejects** any overlap
+(`edits[i].pos + edits[i].del > edits[i+1].pos`) as an invariant-preserving refusal (atomic no-apply,
+§5) — a command that means to change overlapping ranges must compose them into disjoint edits before it
+builds the transaction. Multi-line edits need no special case: a newline is just a byte in `ins`/`del`.
+Anchors (cursors, decorations, diagnostics) then update via the anchor store (INV-ANCHOR, D-023), not by
+re-scanning — anchor cost is not `O(anchors × edits)`.
 
 ### 3. Undo model (INV-UNDO)
 
 - **Grouping:** by logical unit, not keystroke. The engine exposes group boundaries (open/extend/
-  close) so an Insert session or a compound operator collapses to one step. *Exact boundary rules
-  are open — see Open questions / D-005.* Vim's `:undojoin` and `i_CTRL-G_u` (VIM-UNDO) are surface
-  controls that map onto explicit group boundaries.
+  close) so an Insert session or a compound operator collapses to one step. *Exact boundary rules are
+  specified in persistence-and-recovery.md §6 (D-005 decided): a `group_hint` of
+  Continue | BreakBefore | JoinPrev per origin/correlation.* Vim's `:undojoin` and `i_CTRL-G_u`
+  (VIM-UNDO) are surface controls that map onto those explicit group boundaries.
 - **Branching history:** the history is a **tree** of states. A change after an undo adds a child
   branch; the prior redo path is retained, never lost (COM-8, VIM-UNDO). History consistency is an
   invariant: a node whose parent does not exist is an assert, not an error (stability §1 lists
@@ -335,14 +342,14 @@ it.
 
 ## Open questions
 
-1. **Undo-grouping boundaries (D-005, open).** The exact rules that open/extend/close a logical undo
-   group — Insert-session boundaries, operator compounds, multi-cursor edits, `:undojoin`/`C-g u`
-   mapping, time-based coalescing. Deferred to D-005 ("undo-grouping boundaries") and validated
-   against VIM-UNDO-1.
-2. **Chronological temporal-index format (D-005, open).** The concrete representation of the
-   sequence/time-ordered index over the history tree that backs `g-`/`g+` and `:earlier {N|5m|3f}`,
-   including how it is persisted alongside the recovery journal (D-005) and whether persistent-undo
-   (`undofile`) reuses it.
+1. **Undo-grouping boundaries — RESOLVED (D-005).** The open/extend/close rules — Insert-session
+   boundaries, operator compounds, multi-cursor edits, `:undojoin`/`C-g u` mapping, time-based
+   coalescing — are specified in persistence-and-recovery.md §6 (`group_hint` per origin/correlation)
+   and validated against VIM-UNDO-1.
+2. **Chronological temporal-index format — RESOLVED (D-005).** The seq/time-ordered index over the
+   history tree that backs `g-`/`g+` and `:earlier {N|5m|3f}` is specified in persistence-and-recovery.md
+   §7 (`MonotonicSeq` chronological index, appended once per node, persisted alongside the recovery
+   journal; persistent-undo `undofile` reuses it).
 3. **Change-intent IR (D-025, open, cross-RFC).** The re-parameterizable intent record for dot-repeat
    and `g@` lives in the editing-language engine (D-025); RFC-0007 only guarantees one grouped,
    origin-tagged transaction per intent execution. The intent↔transaction contract must stay aligned

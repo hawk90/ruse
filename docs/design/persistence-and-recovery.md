@@ -108,7 +108,9 @@ redefined here):
 
 ### 1. Four distinct tracked states — "dirty" is derived
 
-A Document tracks four monotonic quantities, never a `dirty: bool`:
+A Document tracks these quantities, never a `dirty: bool` — dirtiness is *derived*, and it is a
+**node-identity** test, not a revision-magnitude one (a monotonic `Revision` cannot serve: undo/redo advance
+the counter yet can return to identical bytes):
 
 ```rust
 /// Strictly-increasing per Document (INV-TXN). Opaque, comparable, not a wall clock.
@@ -121,6 +123,11 @@ struct DocumentPersistence {
     /// (B) The revision whose bytes we last durably wrote to the file (§3 atomic save).
     ///     None = never saved (scratch / new file).
     saved_revision: Option<Revision>,
+
+    /// (E) The undo-tree node (§7 `seq`) whose bytes are on disk — the identity behind `is_modified`.
+    ///     `document_revision` cannot serve: an undo applies an inverse (a new, higher revision — INV-TXN),
+    ///     so returning to identical bytes yields a different revision but the *same* node. None = never saved.
+    saved_node: Option<MonotonicSeq>,
 
     /// (C) What we last observed on disk: identity of the file bytes we believe are there,
     ///     independent of our own writes (§5 external-change detection).
@@ -145,8 +152,8 @@ struct DiskFingerprint {
 
 | Predicate | Definition |
 | --- | --- |
-| `is_modified` (dirty) | `saved_revision != Some(document_revision)` |
-| `is_durably_saved` | `saved_revision == Some(document_revision)` **and** `disk_observed.provenance == OurSave{ that revision }` |
+| `is_modified` (dirty) | `saved_node != Some(current_undo_node.seq)` — the current history node differs from the one on disk (node identity, **not** revision magnitude; see edge case) |
+| `is_durably_saved` | `saved_node == Some(current_undo_node.seq)` **and** `disk_observed.provenance == OurSave{ saved_revision }` |
 | `has_unjournaled_work` | `journal_position` does not cover `document_revision` |
 | `disk_changed_externally` | `disk_observed.provenance == ExternalObserved` **and** it differs from our last `OurSave` (§5) |
 | `recoverable_after_crash` | records exist in the journal beyond `saved_revision` |
@@ -156,10 +163,13 @@ or "saved to disk but the disk was since overwritten by another process". Each o
 distinct preflight ([stability §13](stability-and-observability.md)) decision. The status bar renders a *view*
 of these (INV-STATUS), e.g. `[+]` modified, `[✎ journaled]` unsaved-but-recoverable, `[⚠ disk changed]`.
 
-Edge cases: **undo across the save point** — after saving at revision *R* then undoing to *R−2*,
-`document_revision` moves to a revision `< R`; `is_modified` is true again (correct: buffer no longer matches
-disk). Because Revision is a tree position, not a counter of "distance", we compare identity, not magnitude —
-redoing back to exactly *R* makes `is_modified` false again. (Vim's `[+]` behaves the same via `undofile` seq.)
+Edge cases: **undo across the save point** — `Revision` is a strictly-monotonic counter (INV-TXN / RFC-0007
+§2: every apply, *including an undo's inverse*, increases it), so it is **not** the dirty test. The saved
+state is identified by the undo-tree **node** current when we wrote to disk (`saved_node`, a `MonotonicSeq`,
+§7). After saving at node *P* then undoing, `document_revision` keeps climbing but the current node differs
+from *P*, so `is_modified` is true (correct: buffer no longer matches disk); navigating back to *P* (redo)
+makes it false again — same bytes, same node, higher revision. We compare **node identity, not revision
+magnitude**. (Vim's `[+]` behaves the same via `undofile` seq.)
 
 ### 2. Append-only transaction journal
 
@@ -197,9 +207,13 @@ struct EditRecord {
     inverse: EditList,   // the exact inverse to restore base_revision
 }
 
+// Canonical core fields are defined once in stability §5 (transaction_id, correlation_id, origin,
+// command_id, base_revision, timestamp); the journal persists THOSE plus result_revision / seq /
+// group_hint below. This struct is that canonical metadata extended for persistence, not a second def.
 struct TransactionMetadata {
-    id: TransactionId,             // process-unique; ordering via monotonic seq, not wall clock (ID §7)
-    correlation: CorrelationId,    // ties a user gesture / LSP request / AI proposal to its transactions
+    id: TransactionId,             // = stability §5 transaction_id; process-unique, ordered by seq (ID §7)
+    correlation: CorrelationId,    // = stability §5 correlation_id (user gesture / LSP request / AI proposal)
+    command_id: CommandId,         // = stability §5 command_id — the semantic command (INV-CMD-SEMANTIC)
     origin: TransactionOrigin,     // UserInput | Macro | Plugin | Lsp | AiAgent | RemotePeer (INV-ORIGIN)
     base_revision: Revision,       // the revision this applied onto (INV-TXN)
     result_revision: Revision,     // = base_revision's successor; the revision after apply
@@ -277,7 +291,7 @@ directory), not a returned `write()`.
 7. rename(temp, target)                     # atomic replace on POSIX
 8. fsync(dir fd)                            # make the rename itself durable
 9. close dir fd.
-10. On success: saved_revision ← document_revision; disk_observed ← OurSave{revision, new hash/stat};
+10. On success: saved_revision ← document_revision; saved_node ← current_undo_node.seq; disk_observed ← OurSave{revision, new hash/stat};
       append a Meta(save-point) record; only THEN surface "Saved".
 ```
 
