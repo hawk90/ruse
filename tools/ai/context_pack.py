@@ -89,10 +89,17 @@ def build(issue: str | None, roots: list[str], depth: int,
         f = m.nodes[nid].file
         if f and not os.path.isdir(repo.path(f)):
             source_files.setdefault(f, None)
+    # A doc include may carry a `#anchor` naming the section to focus on (e.g. an
+    # anti-patterns category or an architecture.md subsection). Hash the whole file, but
+    # keep the anchor(s) as a reading hint so the pack points at the relevant slice.
+    doc_sections: dict[str, list[str]] = {}
     for d in extra_docs:
-        rel = os.path.normpath(os.path.join("spec", d.split("#")[0])).replace(os.sep, "/") \
-            if not d.startswith(("docs/", "spec/")) else d
+        base, _, anchor = d.partition("#")
+        rel = base if base.startswith(("docs/", "spec/")) \
+            else os.path.normpath(os.path.join("spec", base)).replace(os.sep, "/")
         source_files.setdefault(rel, None)
+        if anchor and anchor not in doc_sections.setdefault(rel, []):
+            doc_sections[rel].append(anchor)
     for f in source_files:
         source_files[f] = _sha(f)
 
@@ -134,7 +141,9 @@ def build(issue: str | None, roots: list[str], depth: int,
             L.append("")
     L.append("## Source files (read these; hashed in the lock)")
     for f in sorted(source_files):
-        L.append(f"- `{f}`")
+        secs = doc_sections.get(f)
+        focus = f"  — focus: {', '.join('#' + s for s in secs)}" if secs else ""
+        L.append(f"- `{f}`{focus}")
     L.append("")
     L.append("## Blast radius")
     L.append(f"- **Allowed paths:** {', '.join(allow) if allow else '_unset — set allow_paths_'}")

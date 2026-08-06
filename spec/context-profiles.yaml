@@ -2,6 +2,11 @@
 # A generator (xtask, D-022) will build .context/<name>.md by concatenating the referenced sources/IDs.
 # Until then this is just the manifest describing what each pack should contain.
 # include entries are file names or IDs (F-*, C-*, ENG-*, ARCH-*, D-*, INV-*, or doc paths).
+#
+# An include with a `#anchor` focuses the reader on a section without narrowing the hash — the whole
+# file is still tracked for staleness, but the pack lists the anchor as a "focus:" hint. This is how a
+# profile pulls only the RELEVANT anti-pattern categories (docs/anti-patterns/anti-patterns.md#<CODE>)
+# instead of all ~447. Anti-pattern IDs are not graph nodes, so they can only be referenced this way.
 
 version: 1
 
@@ -21,18 +26,31 @@ profiles:
       - D-001
       - D-005
       - ../docs/architecture/architecture.md#3
+      - ../docs/anti-patterns/anti-patterns.md#CORE
+      - ../docs/anti-patterns/anti-patterns.md#TEXT
+      - ../docs/anti-patterns/anti-patterns.md#ASYNC
+      - ../docs/anti-patterns/anti-patterns.md#DET
+      - ../docs/anti-patterns/anti-patterns.md#ID
 
   input-and-commands:
     purpose: Work on input profiles and the semantic command layer.
     include:
       - F-003
       - F-004
+      - C-CONFIG
       - ENG-CMD-001
       - ENG-PROFILE-001
       - D-006
       - D-008
       - ../docs/parity/vim.md
       - ../docs/architecture/architecture.md#1
+      - ../docs/design/config-model.md
+      - ../docs/anti-patterns/anti-patterns.md#VIM
+      - ../docs/anti-patterns/anti-patterns.md#EMACS
+      - ../docs/anti-patterns/anti-patterns.md#PROFILE
+      - ../docs/anti-patterns/anti-patterns.md#CMD
+      - ../docs/anti-patterns/anti-patterns.md#TERMIN
+      - ../docs/anti-patterns/anti-patterns.md#CFG
 
   rendering:
     purpose: Work on the Render IR, TUI backend, and terminal capability.
@@ -45,6 +63,12 @@ profiles:
       - D-015
       - ../docs/design/render-and-frontends.md
       - ../docs/parity/terminal.md
+      - ../docs/anti-patterns/anti-patterns.md#RENDER
+      - ../docs/anti-patterns/anti-patterns.md#RIR
+      - ../docs/anti-patterns/anti-patterns.md#TERMOUT
+      - ../docs/anti-patterns/anti-patterns.md#TUX
+      - ../docs/anti-patterns/anti-patterns.md#UI
+      - ../docs/anti-patterns/anti-patterns.md#PERF
 
   plugin-system:
     purpose: Work on the plugin protocol, host, and API lifecycle.
@@ -57,6 +81,11 @@ profiles:
       - D-010
       - ../docs/architecture/architecture.md#4
       - ../docs/protocols/versioning-and-evolution.md
+      - ../docs/anti-patterns/anti-patterns.md#PLUGIN
+      - ../docs/anti-patterns/anti-patterns.md#ECO
+      - ../docs/anti-patterns/anti-patterns.md#GOV
+      - ../docs/anti-patterns/anti-patterns.md#APIX
+      - ../docs/anti-patterns/anti-patterns.md#SEC
 
   remote:
     purpose: Work on client/runtime split and remote execution.
@@ -68,6 +97,10 @@ profiles:
       - D-013
       - ../docs/parity/remote.md
       - ../docs/architecture/architecture.md#5
+      - ../docs/anti-patterns/anti-patterns.md#REMOTE
+      - ../docs/anti-patterns/anti-patterns.md#TRUST
+      - ../docs/anti-patterns/anti-patterns.md#MULTI
+      - ../docs/anti-patterns/anti-patterns.md#XPLAT
 
   stability:
     purpose: Work on errors, logging, status, recovery, safe mode.
@@ -78,6 +111,20 @@ profiles:
       - D-016
       - D-017
       - ../docs/design/stability-and-observability.md
+      - ../docs/anti-patterns/anti-patterns.md#STAB
+      - ../docs/anti-patterns/anti-patterns.md#PERSIST
+      - ../docs/anti-patterns/anti-patterns.md#PERFS
+      - ../docs/anti-patterns/anti-patterns.md#SCHED
+      - ../docs/anti-patterns/anti-patterns.md#CACHE
+
+  config:
+    purpose: Work on the layered config model, config schema, keymap layering, and workspace trust.
+    include:
+      - C-CONFIG
+      - ../docs/design/config-model.md
+      - ../spec/config-schema.yaml
+      - ../docs/anti-patterns/anti-patterns.md#CFG
+      - ../docs/anti-patterns/anti-patterns.md#TRUST
 
   ci:
     purpose: Work on CI/CD, release, and quality gates.
@@ -87,3 +134,9 @@ profiles:
       - ENG-DOC-001
       - D-019
       - ../docs/operations/ci-cd-and-release.md
+      - ../docs/anti-patterns/anti-patterns.md#TEST
+      - ../docs/anti-patterns/anti-patterns.md#OPS
+      - ../docs/anti-patterns/anti-patterns.md#SPEC
+      - ../docs/anti-patterns/anti-patterns.md#PAR
+      - ../docs/anti-patterns/anti-patterns.md#CONTRIB
+      - ../docs/anti-patterns/anti-patterns.md#SCOPE
