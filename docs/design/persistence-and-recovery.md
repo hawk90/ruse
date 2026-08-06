@@ -23,6 +23,8 @@ related:
   - ../../spec/DECISIONS.md
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Persistence, Crash Recovery & the Undo Journal
 
 > This doc **resolves [D-005](../../spec/DECISIONS.md)** (was `open`): journal format details, incremental-

@@ -16,6 +16,8 @@ related:
   - ../parity/terminal.md
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Render Model & Frontend Separation
 
 ruse is structured as **core → command/query → render IR → multiple frontends**: a Rust core owns

@@ -348,3 +348,18 @@ related:
   structured, validated source with generated mirrors removes the drift and is a portable governance methodology.
 - **Re-evaluate if:** phases need per-feature (not per-phase) granularity, or a non-GitHub tracker is adopted.
 - Refs: `phases.yaml`, [../docs/operations/governance-model.md](../docs/operations/governance-model.md), [../docs/parity/roadmap.md](../docs/parity/roadmap.md), D-021, D-022.
+
+## D-038 — Design-doc code is non-normative; types live in code / spec/contracts · decided
+- **Decision:** A design doc specifies the CONTRACT — invariants (INV-*), field semantics, algorithms,
+  edge-case rules — not the concrete type. The authoritative home for a concrete type is **code** (internal
+  in-memory types) or **`spec/contracts/`** (cross-boundary formats/protocols). A design doc that shows code
+  marks it illustrative with a `code-blocks: illustrative` banner pointing at the real source; no fact is
+  hand-synced across a doc and code. Enforced by `ruse gov design_code` (warn-only now — the doc↔code
+  consistency check that extracts a block and diffs it against the real type succeeds it once the reference
+  implementation exists).
+- **Reason:** hand-written structs in prose are a drift liability — when the code or the design changes,
+  nobody chases the copies (the exact "when do you update them all?" trap). SSOT + generated/checked
+  derivations (D-021/D-022) applied to design-doc code.
+- **Re-evaluate if:** a generator makes doc type-blocks derivable FROM code (rustdoc extraction) — then they
+  may return as generated, never hand-written.
+- Refs: [../docs/operations/governance-model.md](../docs/operations/governance-model.md), `tools/gov/design_code.py`, D-021, D-022.

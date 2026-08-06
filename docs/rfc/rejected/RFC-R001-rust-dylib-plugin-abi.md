@@ -16,6 +16,8 @@ related:
   - ../../invariants/reference-invariants.md
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # RFC-R001: Rust Dynamic-Library Plugin ABI (Rejected)
 
 - **Status:** rejected

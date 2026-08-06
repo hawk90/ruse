@@ -63,6 +63,7 @@ Each methodology is tagged **[live]** (enforced now), **[partial]** (declared / 
 | Repository Constitution (agent-invariant principles) | **live** | [spec/constitution.yaml](../../spec/constitution.yaml) + `ruse gov constitution` (CON-* articles, 4 machine-enforced incl. editor-not-IDE → dependency-check); references POLICY.yaml/architecture.yaml, never duplicates |
 | Decision Records + revisit triggers | partial | spec/DECISIONS.md (Re-evaluate lines) → fitness-linked auto-revisit planned |
 | Contract-Driven Development | **live** | [spec/contracts/](../../spec/contracts/) + `ruse gov contracts` (plugin/remote/persistence declared contract-first, D-004/011/005); consumer-driven tests planned |
+| Documentation SSOT (design-doc code non-normative) | partial | [D-038](../../spec/DECISIONS.md) + `ruse gov design_code` (illustrative-banner enforced warn-only; doc↔code diff planned once code exists) |
 
 ### 2. Structural layer — *the shape must hold*
 | Methodology | Status | Where |

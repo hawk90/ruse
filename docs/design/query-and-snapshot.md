@@ -21,6 +21,8 @@ related:
   - ../../spec/DECISIONS.md            # D-012, D-018
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Query / Snapshot Layer (C-QUERY)
 
 `C-QUERY` is the **read side** of ruse's CQRS boundary. Command (mutation) is specified in

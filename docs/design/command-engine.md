@@ -22,6 +22,8 @@ related:
   - ../../spec/DECISIONS.md                     # D-006 (id stability), D-008 (keymap priority)
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Command Engine, Context Evaluator & Palette (C-COMMAND, C-CONTEXT)
 
 > Scope: the two kernel components `C-COMMAND` (Semantic Command Layer) and `C-CONTEXT`

@@ -20,6 +20,8 @@ related:
   - ../../spec/DECISIONS.md                      # D-018, D-002, D-001, D-019, D-034
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Background Scheduler (C-SCHEDULER)
 
 > One editor, one scheduler. Neovim's slow-with-many-plugins failure is not any single plugin — it is that

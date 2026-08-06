@@ -27,6 +27,8 @@ related:
 notation: "See parity/terminal.md for escape-sequence notation (ESC/CSI/OSC …); this doc does not re-emit sequences."
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Input Engine (C-INPUT)
 
 `C-INPUT` is the mechanical layer that turns **decoded input events into a resolved binding**, and hands that

@@ -21,6 +21,8 @@ related:
   - ../../spec/POLICY.yaml
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Configuration Model (C-CONFIG)
 
 > This is the design for component **C-CONFIG** (`Config/keymap loading + merge`, kernel layer). It

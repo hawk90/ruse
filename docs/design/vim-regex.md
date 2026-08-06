@@ -24,6 +24,8 @@ related:
   - ../../spec/dependencies.yaml
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Regex Abstraction & Vim-Dialect Engine
 
 Resolves **D-028** (open) and **V-8** (verification.md: "Vim regex dialect has no owning component or

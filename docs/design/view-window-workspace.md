@@ -29,6 +29,8 @@ related:
   - ../invariants/reference-invariants.md
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse View / Window / Layout & Workspace/Session Model
 
 > This doc specifies **C-VIEW** (View/Window/layout, `depends_on: C-RENDER, C-ANCHOR`) and

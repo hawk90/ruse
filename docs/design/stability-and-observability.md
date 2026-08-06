@@ -17,6 +17,8 @@ related:
   - ../anti-patterns/anti-patterns.md
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Stability & Observability Model
 
 > GoF patterns describe *structure*; in system software what matters more is: **it fails, but you

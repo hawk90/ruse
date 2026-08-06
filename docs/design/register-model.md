@@ -22,6 +22,8 @@ related:
   - ../../spec/DECISIONS.md
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Unified Register / Kill-Ring Model
 
 Resolves **D-026** (open, BLOCKING for COM-11). Closes the "one store, two surfaces" question for

@@ -27,6 +27,8 @@ related:
   - ../../spec/DECISIONS.md
 ---
 
+<!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+
 # ruse Unified Positions-History Model
 
 Resolves **D-027** (open, BLOCKING for Vim marks F-003 L2 and Native multi-selection NAT-5). Closes the
