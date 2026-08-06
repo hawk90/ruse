@@ -29,6 +29,29 @@ class TestClassify(unittest.TestCase):
         self.assertTrue(cl.ok)                 # no forced floor
         self.assertTrue(cl.notes)              # but a human-judgment note is emitted
 
+    def test_github_config_is_build(self):
+        cl = classify_changeset([".github/workflows/ci.yml"], "build")
+        self.assertEqual(cl.observed_kind, "build")
+        self.assertTrue(cl.ok)
+
+    def test_root_manifests_are_build(self):
+        for f in ("Cargo.toml", "Cargo.lock", "pyproject.toml", "lefthook.yml"):
+            cl = classify_changeset([f], "build")
+            self.assertEqual(cl.observed_kind, "build", f)
+            self.assertTrue(cl.ok, f)
+
+    def test_docs_editorial_below_build_fails(self):
+        # a CI change under-declared as docs-editorial (risk 0) must be raised to build (risk 1).
+        cl = classify_changeset([".github/labeler.yml"], "docs-editorial")
+        self.assertEqual(cl.observed_kind, "build")
+        self.assertFalse(cl.ok)
+
+    def test_crate_manifest_stays_implementation(self):
+        # a per-crate Cargo.toml is crate source territory, not a root build manifest.
+        cl = classify_changeset(["crates/core/Cargo.toml"], "build")
+        self.assertEqual(cl.observed_kind, "implementation")
+        self.assertFalse(cl.ok)
+
     def test_generated_file_edit_hard_fails(self):
         rel = ".ruse/test_generated.md"
         p = repo.path(rel)
