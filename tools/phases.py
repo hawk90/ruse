@@ -33,17 +33,30 @@ def load(path=PHASES):
         return yaml.safe_load(f)
 
 
-def load_features(path=PRD):
-    """Return {F-id: {stage, ...}} by finding the PRD mapping that holds the F-* entries."""
+CID_RE = re.compile(r"^C-[A-Z]+$")
+
+
+def _prd_map(pat, path):
     doc = yaml.safe_load(open(path)) or {}
     for v in doc.values():
-        if isinstance(v, dict) and any(FID_RE.match(str(k)) for k in v):
-            return {k: (val or {}) for k, val in v.items() if FID_RE.match(str(k))}
+        if isinstance(v, dict) and any(pat.match(str(k)) for k in v):
+            return {k: (val or {}) for k, val in v.items() if pat.match(str(k))}
     return {}
 
 
-def validate(cat, features):
-    """Return (errors, warnings): structure, referential integrity, partition, stage-refinement, order."""
+def load_features(path=PRD):
+    """Return {F-id: {stage, depends_on, ...}} from PRD."""
+    return _prd_map(FID_RE, path)
+
+
+def load_components(path=PRD):
+    """Return {C-id: {depends_on, ...}} from PRD."""
+    return _prd_map(CID_RE, path)
+
+
+def validate(cat, features, components=None):
+    """Return (errors, warnings): structure, referential integrity, partition, stage-refinement, order,
+    and (when components are given) cross-phase component forward-dependencies."""
     errors, warnings = [], []
     if cat is None:
         return (["spec/phases.yaml is empty / did not parse"], warnings)
@@ -84,12 +97,43 @@ def validate(cat, features):
     missing = sorted(all_fids - set(seen))
     if missing:
         errors.append(f"{len(missing)} feature(s) in no phase: {', '.join(missing)}")
+
+    # Cross-phase forward-dependency (components). A component's phase = the earliest phase whose features
+    # first require it; a component may not depend on one that only arrives in a later phase (that would make
+    # the earlier phase unbuildable). Legitimate cross-phase deps are allowlisted in `cross_phase_deps_allowed`.
+    if components is not None:
+        names = [p.get("id") for p in phases]
+        order = {p.get("id"): i for i, p in enumerate(phases)}
+        allow = {(a.get("from"), a.get("to")) for a in (cat.get("cross_phase_deps_allowed") or [])}
+        foundational = set(cat.get("foundational_components") or [])
+        comp_phase = {}
+        for fid, pid in seen.items():
+            for c in (features.get(fid, {}).get("depends_on") or []):
+                comp_phase[c] = min(comp_phase.get(c, 10 ** 9), order.get(pid, 10 ** 9))
+        for cid, meta in sorted(components.items()):
+            if cid not in comp_phase:
+                if cid not in foundational:
+                    warnings.append(f"component {cid} is required by no phased feature and is not in phases.yaml "
+                                    f"`foundational_components` — trace it to a feature or declare it foundational")
+                continue
+            for dep in (meta.get("depends_on") or []):
+                if dep in comp_phase and comp_phase[dep] > comp_phase[cid] and (cid, dep) not in allow:
+                    errors.append(
+                        f"forward-dep: {cid} ({names[comp_phase[cid]]}) depends on {dep} "
+                        f"({names[comp_phase[dep]]}) — a later phase. Fix the dep, re-phase, or add "
+                        f"{{from: {cid}, to: {dep}}} to phases.yaml `cross_phase_deps_allowed` with a reason.")
+        for cid in sorted(foundational):
+            if cid in comp_phase:
+                errors.append(f"`foundational_components` lists {cid}, but a feature requires it — remove it "
+                              f"(it belongs to that feature's phase, not to infrastructure)")
+            elif cid not in components:
+                errors.append(f"`foundational_components` lists unknown component {cid}")
     return (errors, warnings)
 
 
 def _cmd_default():
-    cat, feats = load(), load_features()
-    errors, warnings = validate(cat, feats)
+    cat, feats, comps = load(), load_features(), load_components()
+    errors, warnings = validate(cat, feats, comps)
     for w in warnings:
         print(f"WARN {w}")
     if errors:

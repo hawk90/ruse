@@ -108,7 +108,7 @@ features:
     stage: mvp
     priority: must
     status: planned
-    depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-REGISTER, C-CONFIG]
+    depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-REGISTER, C-CONFIG, C-POSHIST]
     summary: Vim-style input compiled to semantic commands.
     trace:
       parity: [VIM-MODE-1, VIM-MODE-2, VIM-MODE-4, VIM-MODE-6, VIM-OP-1, VIM-MOT-PROMOTE, VIM-TOBJ-1, VIM-TOBJ-3, VIM-CNT-INS, VIM-REG-1, VIM-REG-2, VIM-REPEAT-DOT]
@@ -258,7 +258,7 @@ features:
     stage: post-mvp
     priority: should
     status: planned
-    depends_on: [C-INPUT, C-COMMAND]
+    depends_on: [C-INPUT, C-COMMAND, C-POSHIST]
     summary: Prefix keys, M-x, mark/region, kill ring, universal argument, major/minor modes.
     trace:
       parity: [EMACS-KEYMAP-1, EMACS-KEYMAP-2, EMACS-CMD-1, EMACS-REGION-1, EMACS-KILL-1, EMACS-KILL-2, EMACS-ARG-1, EMACS-MODE-1, EMACS-MODE-2]

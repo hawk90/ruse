@@ -219,11 +219,42 @@ except FileNotFoundError:
 except Exception as e:
     err(f"review-axes: could not validate ({e})")
 
+# ---------- 9. delivery-phase ladder (must refine PRD F-* stage; single entry point) ----------
+PH_COUNT = 0
+try:
+    import phases as _ph
+    _pcat = _ph.load(os.path.join(ROOT, _ph.PHASES))
+    _pfeat = _ph.load_features(os.path.join(ROOT, _ph.PRD))
+    _pcomp = _ph.load_components(os.path.join(ROOT, _ph.PRD))
+    _pe, _pw = _ph.validate(_pcat, _pfeat, _pcomp)
+    for e in _pe: err(f"phases: {e}")
+    for w in _pw: warn(f"phases: {w}")
+    PH_COUNT = len(_pcat.get("phases") or [])
+except FileNotFoundError:
+    warn("phases: spec/phases.yaml not found (skipped)")
+except Exception as e:
+    err(f"phases: could not validate ({e})")
+
+# ---------- 10. generated roadmap phase table must stay current (no silent drift) ----------
+try:
+    import gen_roadmap as _gr
+    _rtext = open(os.path.join(ROOT, _gr.ROADMAP)).read()
+    _curblk = _gr._current(_rtext)
+    _fresh = f"{_gr.BEGIN}\n{_gr.table(os.path.join(ROOT, _gr.PHASES))}\n{_gr.END}"
+    if _curblk is None:
+        warn("roadmap: generated phase-table markers not found")
+    elif _curblk != _fresh:
+        err("roadmap: generated phase table is stale — run `python3 tools/gen_roadmap.py --write`")
+except FileNotFoundError:
+    pass
+except Exception as e:
+    warn(f"roadmap: could not check generated table ({e})")
+
 # ---------- report ----------
 print(f"registries: INV={len(INV)} ENG={len(ENG)} D={len(D)} ARCH={len(ARCH)} "
       f"F={len(FEAT)} C={len(COMP)} CAP={len(CAP)} DEP={len(DEP)} "
       f"anti-pattern-categories={len(AP)} glossary-terms={len(gloss.get('terms',{}))} "
-      f"review-axes={RA_COUNT}")
+      f"review-axes={RA_COUNT} phases={PH_COUNT}")
 print(f"anti-pattern severity: P0={AP_TIER['P0']} P1={AP_TIER['P1']} P2={AP_TIER['P2']} P3={AP_TIER['P3']} "
       f"(total {sum(AP_TIER.values())})")
 print(f"md files checked: {len(mdfiles)}")

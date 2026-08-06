@@ -100,6 +100,7 @@ Each methodology is tagged **[live]** (enforced now), **[partial]** (declared / 
 ### 6. Delivery layer — *safe past merge*
 | Methodology | Status | Where |
 | --- | --- | --- |
+| Phased delivery planning + milestone sync | **live** | [spec/phases.yaml](../../spec/phases.yaml) (ordered phase ladder, refines PRD `stage`) → `tools/phases.py` (validated in spec-validate) + `ruse phase sync` (one-way GitHub-milestone mirror, dry-run default); D-037 |
 | Progressive Delivery / canary / rollback | planned | needs release channels (nightly→beta→stable) |
 | Compatibility gates | partial | protocol versioning policy present; fixtures planned |
 | Continuous Verification (triggered/nightly/on-toolchain-change) | partial | PR/merge live via CI + lefthook; nightly/triggered planned |
