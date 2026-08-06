@@ -95,6 +95,22 @@ permissions and verification conditions the implementer (human or agent) works w
 └── evidence.json     # verify records real command results here
 ```
 
+### The gate: local preflight vs. the CI gate of record
+
+`.ruse/` is gitignored **on purpose**, and CI never trusts it — a self-reported `evidence.json` cannot be a
+merge gate (it is trivially fabricated). So the gate is two-tier:
+
+- **Local `ruse pr check`** — a *preflight*: it reads your `.ruse/` and tells you whether the gate will pass.
+  Convenience, not authority.
+- **CI `change-policy` job** — the *gate of record* ([`.github/workflows/change-policy.yml`](../../.github/workflows/change-policy.yml)).
+  It reads only the author's DECLARED contract from the `ruse-gate:v1` block that `ruse pr render` embeds in
+  the PR body, then **re-derives** the observed kind + blast radius from the real diff and relies on the
+  re-run verify jobs (`spec-check.yml`) for evidence:
+  `ruse pr check --pr-body <body> --base origin/<base>`. Nothing on the contributor's machine is trusted.
+
+The author declares; CI verifies against the diff. Under-declaring the kind, or straying outside
+`allow_paths`, fails in CI regardless of what the local run reported.
+
 ## Typical flows
 
 **Typo / editorial docs** — the light path:

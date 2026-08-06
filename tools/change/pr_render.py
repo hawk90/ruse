@@ -28,6 +28,28 @@ def _fmt_list(items, empty="_none_"):
     return ", ".join(str(i) for i in items) if items else empty
 
 
+GATE_MARKER = "ruse-gate:v1"
+
+
+def _machine_block(c: dict) -> str:
+    """A machine-readable gate block for CI. It carries the author's DECLARATION only — CI re-derives the
+    observed kind + blast radius from the actual diff and re-runs verify, so this block is never trusted as
+    evidence (`.ruse/` stays untrusted). Generated, not hand-authored (D-021 permits generated JSON)."""
+    gate = {
+        "v": 1,
+        "kind": c.get("kind"),
+        "goal": (c.get("goal") or "").strip(),
+        "affected": c.get("affected") or {},
+        "allow_paths": c.get("allow_paths") or [],
+        "forbid_paths": c.get("forbid_paths") or [],
+        "artifacts": c.get("artifacts") or {},
+        "contracts": c.get("contracts") or {},
+    }
+    return (f"<!-- {GATE_MARKER} — author-declared merge-gate contract. CI re-derives observed kind + blast\n"
+            f"     radius from the diff and re-runs verify; this block is NOT trusted as evidence. -->\n"
+            "```json\n" + json.dumps(gate, indent=2, sort_keys=True) + "\n```")
+
+
 def build(issue: str, base: str | None, files: list[str] | None) -> str:
     c = contract.load(issue) or {}
     cs = repo.resolve_changeset(base=base, files=files)
@@ -105,6 +127,8 @@ def build(issue: str, base: str | None, files: list[str] | None) -> str:
         L.append(f"- {ng}")
     L.append("")
     L.append(AI_BLOCK)
+    L.append("")
+    L.append(_machine_block(c))
     L.append("")
     return "\n".join(L)
 

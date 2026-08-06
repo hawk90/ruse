@@ -1,0 +1,29 @@
+# Server-side merge gate (RA-RUSE-006). The GATE OF RECORD lives HERE, not on the contributor's machine:
+# CI re-derives the observed change-kind + blast radius from the real PR diff, and the verify steps are
+# re-run from scratch by spec-check.yml (required jobs). The author's DECLARED contract is read from the
+# `ruse-gate:v1` block that `ruse pr render` embeds in the PR body — untrusted input, cross-checked against
+# the diff. `.ruse/` (local evidence.json / change.yaml) is gitignored ON PURPOSE and never trusted here:
+# a self-reported "tests passed" file cannot be the gate. See docs/operations/change-workflow.md.
+name: change-policy
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # TODO pin SHA
+        with:
+          fetch-depth: 0                   # need the base ref to diff the PR
+      - uses: actions/setup-python@v5      # TODO pin SHA
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Read the author-declared gate block from the PR body
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr view "${{ github.event.pull_request.number }}" --json body -q .body > /tmp/pr-body.md
+      - name: Change-policy gate (classify + artifacts + blast radius, re-derived from the diff)
+        run: python3 tools/ruse.py pr check --pr-body /tmp/pr-body.md --base "origin/${{ github.base_ref }}"

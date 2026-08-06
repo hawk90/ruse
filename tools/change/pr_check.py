@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,21 +37,47 @@ def _evidence_steps(issue: str) -> dict[str, int]:
     return steps
 
 
+def _contract_from_body(text: str) -> dict | None:
+    """Parse the author-declared gate block (```json after `ruse-gate:v1`) from a PR body. This is
+    UNTRUSTED input — the caller re-derives observed kind + blast radius from the real diff."""
+    m = re.search(r"ruse-gate:v1.*?```json\s*(\{.*?\})\s*```", text, re.S)
+    if not m:
+        return None
+    gate = json.loads(m.group(1))
+    gate.pop("v", None)   # block-format version, not a contract field
+    return gate
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ruse pr check")
     ap.add_argument("--issue", help="change workspace to check (default: active)")
     ap.add_argument("--base", help="git ref to diff against")
     ap.add_argument("--files", nargs="*", help="explicit file list")
+    ap.add_argument("--pr-body", help="CI mode: read the declared contract from a PR body file "
+                                      "(gate of record = diff + re-run verify; local .ruse is untrusted)")
     args = ap.parse_args(argv)
 
-    issue = args.issue or repo.active_issue()
-    if not issue:
-        render.fail("no change workspace found; run `ruse change start` first")
-        return 1
-    c = contract.load(issue)
-    if c is None:
-        render.fail(f"no change.yaml for issue {issue}")
-        return 1
+    ci = bool(args.pr_body)
+    if ci:
+        try:
+            body = open(args.pr_body, encoding="utf-8").read()
+        except OSError as e:
+            render.fail(f"cannot read --pr-body {args.pr_body}: {e}")
+            return 1
+        c = _contract_from_body(body)
+        if c is None:
+            render.fail("no `ruse-gate:v1` machine block in the PR body — regenerate it with `ruse pr render`")
+            return 1
+        issue = (c.get("artifacts") or {}).get("issue") or args.issue or "PR"
+    else:
+        issue = args.issue or repo.active_issue()
+        if not issue:
+            render.fail("no change workspace found; run `ruse change start` first")
+            return 1
+        c = contract.load(issue)
+        if c is None:
+            render.fail(f"no change.yaml for issue {issue}")
+            return 1
 
     m = model_mod.load()
     checks: list[tuple[bool, str]] = []          # (passed, message)
@@ -94,9 +121,12 @@ def main(argv: list[str]) -> int:
             checks.append((bool(rfc) and m.has(rfc),
                            f"artifact: RFC present & resolves ({rfc or 'missing'})"))
         elif req == "impact":
-            ip = os.path.join(repo.work_dir(issue), "impact.json")
-            has = os.path.isfile(ip) and bool((json.load(open(ip)) or {}).get("roots"))
-            checks.append((has, "artifact: impact.json recorded (run `ruse impact --out`)"))
+            if ci:
+                checks.append((bool(aff), "artifact: blast radius declared in gate block (affected IDs)"))
+            else:
+                ip = os.path.join(repo.work_dir(issue), "impact.json")
+                has = os.path.isfile(ip) and bool((json.load(open(ip)) or {}).get("roots"))
+                checks.append((has, "artifact: impact.json recorded (run `ruse impact --out`)"))
         elif req == "spec_ref":
             linked = bool(contract.affected_ids(c) or art.get("rfc") or art.get("decision"))
             checks.append((linked, "artifact: a spec/Decision ID is linked"))
@@ -124,7 +154,12 @@ def main(argv: list[str]) -> int:
     # evidence (risk >= 2). Recorded evidence must exist and NONE may be failing; a
     # required step that was never run is a warning (e.g. heavy cargo steps deferred),
     # not a hard block — the human decides whether the missing evidence is acceptable.
-    if eff_risk >= 2:
+    if eff_risk >= 2 and ci:
+        # Local evidence.json is fabricatable, so it is NEVER the server-side gate of record. In CI the
+        # required verify steps are separate REQUIRED JOBS (branch protection) that re-run from scratch.
+        checks.append((True, "evidence: gate of record is CI's own verify jobs "
+                             f"({', '.join(kspec.get('evidence', []) or ['verify'])}), not local evidence.json"))
+    elif eff_risk >= 2:
         steps = _evidence_steps(issue)
         required_ev = kspec.get("evidence", [])
         if not steps:
@@ -145,6 +180,7 @@ def main(argv: list[str]) -> int:
     render.field("Declared kind", declared or "—")
     render.field("Effective kind", f"{eff_kind} (risk {eff_risk})")
     render.field("Changed files", f"{len(cs.files)} (source: {cs.source})")
+    render.field("Mode", "CI — diff + PR body (local .ruse untrusted)" if ci else "local preflight")
     print()
     passed = True
     for ok_, msg in checks:
