@@ -22,6 +22,7 @@ related:
 ---
 
 <!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+<!-- design-code-ack: DocumentSnapshot — design ahead of code: the first vertical slice's DocumentSnapshot carries text + anchors + revision only; lines/diagnostics/syntax/kind land with C-QUERY / C-TS / buffer-kind, deliberately out of the kernel slice. -->
 
 # ruse Query / Snapshot Layer (C-QUERY)
 
