@@ -274,6 +274,7 @@ impl InputEngine {
                     self.motion(Motion::LastLine)
                 };
             }
+            KeyCode::Char('%') => return self.motion(Motion::MatchBracket),
             _ => {}
         }
         // Visual mode: the selection already exists, so operators act on it directly and motions extend it.
@@ -523,6 +524,15 @@ mod tests {
     }
 
     #[test]
+    fn bracket_match() {
+        assert_eq!(feed("%"), Feed::Cmd(Command::Move(1, Motion::MatchBracket)));
+        assert_eq!(
+            feed("d%"),
+            Feed::Cmd(Command::Delete(1, Motion::MatchBracket))
+        );
+    }
+
+    #[test]
     fn lone_g_is_pending_then_cancels_on_non_g() {
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
@@ -698,7 +708,7 @@ mod state_machine_props {
 
     /// A key drawn from the meaningful command alphabet, plus arbitrary chars (find targets) and specials.
     fn any_key() -> impl Strategy<Value = KeyEvent> {
-        let named = "0123456789hjklwbedcyiaxfFtT;,vVpPunN$/:gGr"
+        let named = "0123456789hjklwbedcyiaxfFtT;,vVpPunN$/:gGr%"
             .chars()
             .collect::<Vec<_>>();
         prop_oneof![
