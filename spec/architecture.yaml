@@ -16,21 +16,18 @@ version: 1
 # Crate dependency contract. `tier` = architecture-tier (ARCH-LAYER-001); frontends are clients, not crates.
 crates:
   core:              { tier: kernel,  may_depend_on: [] }                                  # Document/Transaction/Command/Query/Anchor/Undo/Health/Scheduler
-  plugin-protocol:   { tier: plugin,  may_depend_on: [] }                                  # trust boundary — MUST NOT reach core internals (INV-PLUGIN-NO-CORE)
-  render-model:      { tier: service, may_depend_on: [core] }                              # backend-neutral Render IR
-  terminal-platform: { tier: service, may_depend_on: [core, render-model] }               # lowers Render IR → ANSI/image
-  workspace:         { tier: service, may_depend_on: [core] }                              # LOCAL buffers/fs/save/recovery
-  workspace-runtime: { tier: service, may_depend_on: [core, workspace, plugin-protocol] } # process/remote/LSP/plugin-host
+# DEFERRED (D-039 / RFC-0012 — collapsed to a two-crate terminal modal editor): plugin-protocol,
+# render-model, terminal-platform, workspace, workspace-runtime are removed as crates and return, each as its
+# own crate + RFC, only when its re-boundary trigger fires (RFC-0012 §Re-evaluation). Their tiers/design live
+# in RFC-0012 and docs/design/. The v0 editor is `core` (kernel) + the `ruse` TUI binary (a client, not a crate).
 
 # Module-level forbidden edges (ARCH-FORBID-001). Checked by scanning source imports once crates have code;
 # declared now so the contract predates the code. Until sources exist the checker reports these as
 # `not-yet-enforceable` rather than passing silently.
 forbidden_module_edges:
   - { from: document, to: view,             reason: "Document must not know View (INV-DOC-VIEW)" }
-  - { from: kernel,   to: terminal-backend, reason: "Kernel must not depend on a terminal backend/frontend" }
-  - { from: renderer, to: command-executor, reason: "Renderer must not execute Commands" }
-  - { from: view,     to: backend-bytes,    reason: "Views/plugins emit Render nodes, never backend bytes" }
-  - { from: plugin,   to: document-mutate,  reason: "Plugins mutate only via CommandRequest → Transaction" }
+  - { from: kernel,   to: terminal-backend, reason: "Kernel must not depend on a terminal backend/frontend (core is IO-free)" }
+  # Renderer/plugin edges return with the deferred render-model / plugin-protocol boundaries (D-039).
 
 # What `ruse arch deps` enforces. Each rule reports live | not-yet-enforceable (needs source) so the gate is
 # honest about coverage in the spec-first phase.
