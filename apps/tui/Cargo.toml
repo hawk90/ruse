@@ -20,6 +20,8 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 [dev-dependencies]
 # Benchmarking harness (D-042). Lean features: keep cargo-bench integration, drop rayon + plotters/gnuplot.
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+# Property-based tests of the input-engine state machine (no pending leak, orthogonal-axis invariants).
+proptest = { version = "1", default-features = false, features = ["std"] }
 
 [[bench]]
 name = "highlight_parse"

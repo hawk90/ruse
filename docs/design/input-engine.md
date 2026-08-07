@@ -289,6 +289,30 @@ operator-pending sequence, C-INPUT hands `{operator, count1, count2, register, m
 which performs promotion, builds the Range, and emits the single Transaction (D-025). `<Esc>` clears all
 pending axes (aborts operator-pending with no change).
 
+#### v0 status — the TUI `InputEngine` (SHIPPED)
+
+The v0 frontend engine (`apps/tui/src/input.rs`) implements a **small** slice of this — no keymap resolution,
+timers, priority ABI, or profiles (all deferred) — but it holds the axes **orthogonally**, as the model
+requires, rather than as ad-hoc booleans with implicit precedence (the anti-pattern this doc's Problem names).
+Three transient axes plus sticky repeat state:
+
+- **count** — `u32`, the accumulating numeric prefix.
+- **operator-pending** — `Option<OpPending{op, count}>` (`d`/`c`/`y`; register-prefix is deferred with D-026).
+- **key-expectation** — `Awaiting::{ Nothing | FindTarget{fwd,till} | TextObjectChar{inner} }`: a single enum,
+  so awaiting two things at once is **unrepresentable** (the concrete leak the ad-hoc booleans risked).
+
+`feed` resolves in one **fixed precedence**, so the hierarchy is explicit, not encoded in statement order:
+**input-mode** (Insert consumes text) → **the key-expectation tier** (a pending `FindTarget`/`TextObjectChar`
+resolves first) → **base keys** (count, operators, motions, actions, and the shared `f`/`;`/`,` initiators that
+work in Normal *and* Visual while preserving the operator axis, so `dfx` composes). Every non-`Pending`
+outcome runs through `reset()`, and this is **enforced by a property test** (`no_pending_state_ever_leaks`):
+over random key/mode sequences, no partial command ever leaks past a completed/ignored/mode-open outcome, and
+`TextObjectChar` never holds without an operator. A second property pins `feed` determinism.
+
+Known v0 limitation (documented, not yet fixed): the `:`/`/` command line lives in `main.rs` as a separate
+ad-hoc line editor **outside** the engine; opening it goes through `reset()` (tested), but that second input
+path does not yet share this axis model. Unifying it is deferred to the full INPUT-RESOLVE work above.
+
 ### How a profile plugs in (INPUT-PROFILE)
 
 A profile supplies three things and nothing more:
