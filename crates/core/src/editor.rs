@@ -131,6 +131,14 @@ impl EditorState {
 /// The byte range a `delete` operator covers: linewise (whole lines incl. newline) for `Motion::Line`,
 /// else the motion's charwise span.
 fn op_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
+    // Line jumps (`dG`, `dgg`, `d{n}G`) are linewise across every line between the cursor and the target.
+    if matches!(m, Motion::GotoLine | Motion::LastLine) {
+        let t = motion::target(b, cur, m, count);
+        let start = line_start(b, cur.min(t));
+        let le = line_end(b, cur.max(t));
+        let end = if le < b.len() { le + 1 } else { le };
+        return (start, end);
+    }
     if m != Motion::Line {
         return motion::char_span(b, cur, m, count);
     }
@@ -151,6 +159,12 @@ fn op_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
 /// The byte range a `change` operator covers: for `Motion::Line` it is the *content* of the line(s) (the
 /// newline is kept so `cc` leaves an empty line to type into); else the same charwise span as delete.
 fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
+    // Line jumps under change keep the final newline, leaving an empty line to type into (as `cc` does).
+    if matches!(m, Motion::GotoLine | Motion::LastLine) {
+        let t = motion::target(b, cur, m, count);
+        let start = line_start(b, cur.min(t));
+        return (start, line_end(b, cur.max(t)));
+    }
     if m != Motion::Line {
         return motion::char_span(b, cur, m, count);
     }
@@ -312,7 +326,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             if s >= e {
                 nop(cur, st.mode)
             } else {
-                let reg = captured(s, e, *m == Motion::Line);
+                let reg = captured(
+                    s,
+                    e,
+                    matches!(m, Motion::Line | Motion::GotoLine | Motion::LastLine),
+                );
                 edit_yank(one(Edit::delete(s, e - s)), s, st.mode, hint, reg)
             }
         }
@@ -341,7 +359,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 nop(cur, st.mode)
             } else {
                 // Yank captures without editing; Vim leaves the cursor at the start of the yanked span.
-                let reg = captured(s, e, *m == Motion::Line);
+                let reg = captured(
+                    s,
+                    e,
+                    matches!(m, Motion::Line | Motion::GotoLine | Motion::LastLine),
+                );
                 Plan {
                     action: Action::Nop,
                     cursor: s,
@@ -648,6 +670,81 @@ mod register_tests {
         assert!(!st.register().is_linewise());
         let st = run("word\n", &[Command::Delete(1, Motion::Line)]);
         assert!(st.register().is_linewise());
+    }
+}
+
+#[cfg(test)]
+mod line_jump_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn gg_goes_to_first_line_first_non_blank() {
+        // Start on line 3; gg → first non-blank of line 1 (past the two spaces).
+        let st = run(
+            "  abc\ndef\nghi",
+            &[
+                Command::MoveDown,
+                Command::MoveDown,
+                Command::Move(1, Motion::GotoLine),
+            ],
+        );
+        assert_eq!(st.cursor(), 2, "gg lands on the first non-blank of line 1");
+    }
+
+    #[test]
+    fn cap_g_goes_to_last_line() {
+        let st = run("abc\ndef\nxyz", &[Command::Move(1, Motion::LastLine)]);
+        assert_eq!(
+            st.cursor(),
+            8,
+            "G lands on the start of the last line 'xyz'"
+        );
+    }
+
+    #[test]
+    fn count_g_goes_to_that_line() {
+        // {2}G → line 2 ('def' starts at byte 4).
+        let st = run("abc\ndef\nghi", &[Command::Move(2, Motion::GotoLine)]);
+        assert_eq!(st.cursor(), 4);
+    }
+
+    #[test]
+    fn dg_deletes_linewise_to_last_line() {
+        // On line 2; dG deletes lines 2..end.
+        let st = run(
+            "one\ntwo\nthree\n",
+            &[Command::MoveDown, Command::Delete(1, Motion::LastLine)],
+        );
+        assert_eq!(text(&st), "one\n");
+    }
+
+    #[test]
+    fn dgg_deletes_linewise_to_first_line() {
+        // On line 2; dgg deletes lines 1..=2.
+        let st = run(
+            "one\ntwo\nthree\n",
+            &[Command::MoveDown, Command::Delete(1, Motion::GotoLine)],
+        );
+        assert_eq!(text(&st), "three\n");
+    }
+
+    #[test]
+    fn count_beyond_end_clamps_to_last_line() {
+        let st = run("a\nb\n", &[Command::Move(99, Motion::GotoLine)]);
+        // line 99 doesn't exist → clamp to the last line (the empty line after the final newline).
+        assert_eq!(st.cursor(), 4);
     }
 }
 
