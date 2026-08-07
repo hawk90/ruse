@@ -18,7 +18,7 @@ version: 1
 
 dependencies:
   DEP-ROPE:      { purpose: text storage (rope/piece-table), usage: wrapped, tier: 3, criticality: critical, public_api_exposure: none, allowed_layers: [core], alternatives: [own piece-table, other rope crate], exit_strategy: TextStorage trait swap, review: {security: required, performance: benchmark, compatibility: conformance-test} }
-  DEP-TREESITTER: { purpose: incremental parsing + grammars, usage: wrapped, tier: 3, criticality: high, public_api_exposure: none, allowed_layers: [core], alternatives: [none practical], exit_strategy: parser-service adapter }
+  DEP-TREESITTER: { purpose: incremental parsing (TUI syntax highlighting; frontend-only in v0), usage: wrapped, tier: 3, criticality: high, public_api_exposure: none, allowed_layers: [], alternatives: [none practical], exit_strategy: parser-service adapter }
   DEP-REGEX:     { purpose: regex engine (non-Vim-dialect paths), usage: wrapped, tier: 3, criticality: high, public_api_exposure: none, allowed_layers: [core], alternatives: [own Vim-dialect engine (D-028)], exit_strategy: Regex trait; Vim dialect is own }
   DEP-WATCH:     { purpose: filesystem watcher, usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [], alternatives: [polling fallback (own), remote agent], exit_strategy: FileWatcher trait swap }
   DEP-IGNORE:    { purpose: gitignore/glob matching, usage: wrapped, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [], alternatives: [own matcher], exit_strategy: IgnoreEngine trait }
@@ -33,6 +33,8 @@ dependencies:
 
   # ---- frontend (the ruse TUI binary — a client, not a governed crate layer, so allowed_layers is empty) ----
   DEP-CROSSTERM: { purpose: terminal backend for the ruse TUI (raw mode, key events, render), usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [], alternatives: [termion, own termios+ANSI], exit_strategy: TerminalBackend trait; frontend-only, NEVER in editor-core (IO-free) }
+  DEP-TS-HIGHLIGHT: { purpose: tree-sitter highlight event stream for the TUI, usage: wrapped, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [], alternatives: [own query cursor], exit_strategy: highlighter adapter; frontend-only }
+  DEP-TS-RUST: { purpose: tree-sitter Rust grammar + highlights query, usage: wrapped, tier: 1, criticality: low, public_api_exposure: none, allowed_layers: [], alternatives: [other grammars per language], exit_strategy: grammar is data; swap per language; frontend-only }
 
   # ---- external tools (not linked; run as versioned processes under the supervisor) ----
   DEP-RIPGREP:   { purpose: fast workspace search, usage: external-process, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [], alternatives: [wrapped search lib], exit_strategy: search-service adapter }
