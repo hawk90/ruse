@@ -425,3 +425,22 @@ features:
       - AI edits arrive as proposals reviewed (accept/reject/edit) before any transaction applies.
       - Execute capability is distinct from propose capability and permission-gated (deny-by-default).
       - Chat / Proposal / Review surfaces are workspace buffers over the shared view model.
+
+  F-022:
+    title: Command traces & deterministic replay
+    stage: mvp
+    priority: must
+    status: active
+    depends_on: [C-COMMAND, C-DOCUMENT]
+    summary: >
+      Every edit session is a replayable list of semantic commands (a ruse-native v0 product pillar, RFC-0012;
+      no external-editor parity). Deterministic replay is the contract and the substrate for the test corpus.
+    trace:
+      parity: []
+      design: [../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md]
+      verify: [../crates/core/tests/editor_spine.rs, ../crates/core/tests/properties.rs]
+    acceptance:
+      - Same initial document + same command trace → byte-identical final state (determinism is the contract).
+      - "`:trace save` writes the session's command list; `ruse --replay <trace> <file>` reproduces the edits."
+      - A trace round-trips through its text form (to_text/from_text) without changing what it replays to.
+      - The trace records semantic Commands (not keystrokes), so it survives keymap changes.
