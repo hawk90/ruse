@@ -3,6 +3,7 @@
 //! binary performs. All IO lives here; the core stays pure, so `ruse --replay <trace> <file>` reproduces an
 //! edit session deterministically without a terminal.
 
+mod highlight;
 mod input;
 
 use std::fs;
@@ -94,18 +95,33 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
     let mut cmd_line: Option<(char, String)> = None; // ':' ex-line or '/' search-line + typed text
     let mut status = String::from("ruse — :q to quit");
 
+    // Syntax highlighting (Rust only for v0) lives in the frontend; core stays dep-free.
+    let mut highlighter = match path
+        .as_ref()
+        .and_then(|p| p.extension())
+        .and_then(|e| e.to_str())
+    {
+        Some("rs") => highlight::Highlight::rust(),
+        _ => None,
+    };
+
     let _guard = TermGuard::enter()?;
     let mut out = io::stdout();
     let mut engine = InputEngine::new();
     let mut quit = false;
 
     while !quit {
+        let spans = highlighter
+            .as_mut()
+            .map(|h| h.spans(st.bytes()))
+            .unwrap_or_default();
         render(
             &mut out,
             &st,
             path.as_ref(),
             cmd_line.as_ref().map(|(p, t)| (*p, t.as_str())),
             &status,
+            &spans,
         )?;
         let Event::Key(key) = event::read()? else {
             continue;
@@ -236,7 +252,10 @@ fn render(
     path: Option<&PathBuf>,
     cmd_line: Option<(char, &str)>,
     status: &str,
+    spans: &[highlight::Span],
 ) -> io::Result<()> {
+    use crossterm::style::{Color, ResetColor, SetForegroundColor};
+
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     let text_rows = rows.saturating_sub(1);
     queue!(
@@ -246,10 +265,38 @@ fn render(
         cursor::MoveTo(0, 0)
     )?;
 
-    let text = st.as_str().unwrap_or("<binary>");
-    for (i, line) in text.split('\n').take(text_rows as usize).enumerate() {
-        queue!(out, cursor::MoveTo(0, i as u16), Print(line))?;
+    let bytes = st.bytes();
+    // Flatten the highlight spans into a per-byte color, then walk the text applying it.
+    let mut byte_color = vec![Color::Reset; bytes.len()];
+    for s in spans {
+        for slot in byte_color
+            .iter_mut()
+            .take(s.end.min(bytes.len()))
+            .skip(s.start)
+        {
+            *slot = s.color;
+        }
     }
+    let text = st.as_str().unwrap_or("<binary>");
+    let mut row: u16 = 0;
+    let mut cur = Color::Reset;
+    for (i, ch) in text.char_indices() {
+        if ch == '\n' {
+            row += 1;
+            if row >= text_rows {
+                break;
+            }
+            queue!(out, cursor::MoveTo(0, row))?;
+            continue;
+        }
+        let c = byte_color.get(i).copied().unwrap_or(Color::Reset);
+        if c != cur {
+            queue!(out, SetForegroundColor(c))?;
+            cur = c;
+        }
+        queue!(out, Print(ch))?;
+    }
+    queue!(out, ResetColor)?;
 
     let bar = match cmd_line {
         Some((prefix, text)) => format!("{prefix}{text}"),
