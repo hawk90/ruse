@@ -16,18 +16,26 @@
 //! crash recovery. Those extend this in-memory core; the contracts here are their substrate.
 
 pub mod anchor;
+pub mod command;
 pub mod document;
 pub mod edit;
+pub mod editor;
+pub mod effect;
 pub mod pos;
 pub mod snapshot;
+pub mod trace;
 pub mod transaction;
 pub mod undo;
 
 pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
+pub use command::{Command, CommandParseError};
 pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
+pub use editor::{apply_command, commit, plan, EditorState, Mode, Plan};
+pub use effect::Effect;
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};
 pub use snapshot::{AnchorIndex, DocumentSnapshot};
+pub use trace::{doc_hash, Trace, TraceError, TRACE_FORMAT_VERSION};
 pub use transaction::{GroupHint, Transaction, TransactionOrigin};
 pub use undo::{MonotonicSeq, UndoHistory};
 
