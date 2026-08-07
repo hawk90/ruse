@@ -46,6 +46,18 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 - Not the Emacs/Native selection-editing path (that uses `editor.delete_selection` on an existing
   selection — a *sibling*, §7). Not the register data model (that is [register-model.md](register-model.md), D-026).
 
+## v0 — line-jump motions (SHIPPED)
+
+`gg` (first line), `G` (last line), and `{count}G` / `{count}gg` (go to line N) ship as motions, landing on
+the target line's **first non-blank** char (Vim). They are **linewise** under an operator: `dG` deletes from
+the cursor line through the last line, `dgg` through the first — `op_range`/`change_range` compute the
+whole-line span between the cursor and the target (`change` keeps the final newline, leaving a line to type
+into). `Motion::{GotoLine, LastLine}` carry no data (the line number rides in the command's count);
+`target` resolves them directly rather than via the repeat loop (a count is an absolute line, not a repeat).
+Input: bare `G` reads the count (or jumps to the last line when none); `gg` is a two-key prefix wired through
+the input engine's `Awaiting::GSecond` state (see input-engine.md v0). Deferred: `gj`/`gk` display-line
+motions, and the rest of the `g`-prefix family.
+
 ## v0 — char-search motions (SHIPPED)
 
 The v0 editor ships `f`/`F`/`t`/`T` char-search as ordinary motions, so they compose with the grammar for

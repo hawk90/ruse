@@ -64,6 +64,8 @@ enum Awaiting {
     /// After an operator then `i`/`a`: the next key is the text-object char (`w`). Only ever armed with an
     /// operator present (invariant, asserted in tests).
     TextObjectChar { inner: bool },
+    /// After `g`: a second `g` completes `gg` (jump to the first line / `{count}gg`).
+    GSecond,
 }
 
 /// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
@@ -201,6 +203,16 @@ impl InputEngine {
                     }
                 };
             }
+            Awaiting::GSecond => {
+                self.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    KeyCode::Char('g') => self.motion(Motion::GotoLine),
+                    _ => {
+                        self.reset();
+                        Feed::Ignored
+                    }
+                };
+            }
             Awaiting::Nothing => {}
         }
         // --- Shared initiators (char-search + `;`/`,`): work in Normal and Visual, preserving the operator
@@ -249,6 +261,18 @@ impl InputEngine {
                         till,
                     });
                 }
+            }
+            // Line jumps: `g` arms `gg`; `G` jumps to `{count}` (or the last line when no count).
+            KeyCode::Char('g') => {
+                self.awaiting = Awaiting::GSecond;
+                return Feed::Pending;
+            }
+            KeyCode::Char('G') => {
+                return if self.count > 0 {
+                    self.motion(Motion::GotoLine)
+                } else {
+                    self.motion(Motion::LastLine)
+                };
             }
             _ => {}
         }
@@ -488,6 +512,24 @@ mod tests {
     }
 
     #[test]
+    fn line_jumps() {
+        assert_eq!(feed("gg"), Feed::Cmd(Command::Move(1, Motion::GotoLine)));
+        assert_eq!(feed("5gg"), Feed::Cmd(Command::Move(5, Motion::GotoLine)));
+        assert_eq!(feed("G"), Feed::Cmd(Command::Move(1, Motion::LastLine)));
+        assert_eq!(feed("5G"), Feed::Cmd(Command::Move(5, Motion::GotoLine)));
+        // operator + line jump is linewise
+        assert_eq!(feed("dG"), Feed::Cmd(Command::Delete(1, Motion::LastLine)));
+        assert_eq!(feed("dgg"), Feed::Cmd(Command::Delete(1, Motion::GotoLine)));
+    }
+
+    #[test]
+    fn lone_g_is_pending_then_cancels_on_non_g() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('z'), Mode::Normal), Feed::Ignored);
+    }
+
+    #[test]
     fn char_search_extends_visual() {
         let mut e = InputEngine::new();
         let vis = Mode::Visual { line: false };
@@ -656,7 +698,7 @@ mod state_machine_props {
 
     /// A key drawn from the meaningful command alphabet, plus arbitrary chars (find targets) and specials.
     fn any_key() -> impl Strategy<Value = KeyEvent> {
-        let named = "0123456789hjklwbedcyiaxfFtT;,vVpPunN$/:gr"
+        let named = "0123456789hjklwbedcyiaxfFtT;,vVpPunN$/:gGr"
             .chars()
             .collect::<Vec<_>>();
         prop_oneof![

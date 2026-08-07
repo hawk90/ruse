@@ -30,6 +30,11 @@ pub enum Motion {
         forward: bool,
         till: bool,
     },
+    /// Go to the `count`-th line (1-based), landing on its first non-blank char (`gg`, `{count}G`). Linewise
+    /// under an operator.
+    GotoLine,
+    /// Go to the last line's first non-blank char (bare `G`). Linewise under an operator.
+    LastLine,
 }
 
 // --- shared byte / char-boundary / line helpers (one home; editor.rs reuses these) ---
@@ -232,6 +237,39 @@ fn find_char_target(
     }
 }
 
+/// First non-blank (non-space, non-tab) byte position on the line containing `line_start_pos`, or the line
+/// start itself if the whole line is blank. Where `gg`/`G` land (Vim).
+pub(crate) fn first_non_blank(b: &[u8], line_start_pos: usize) -> usize {
+    let ls = line_start(b, line_start_pos);
+    let le = line_end(b, ls);
+    let mut i = ls;
+    while i < le && (b[i] == b' ' || b[i] == b'\t') {
+        i = next_boundary(b, i);
+    }
+    i
+}
+
+/// Byte start of the `n`-th line (1-based), clamped to the last line.
+pub(crate) fn nth_line_start(b: &[u8], n: u32) -> usize {
+    let target = n.max(1) - 1; // 0-based
+    let mut seen = 0u32;
+    let mut ls = 0usize;
+    while seen < target {
+        let le = line_end(b, ls);
+        if le >= b.len() {
+            break; // no more lines; clamp to the last one
+        }
+        ls = le + 1;
+        seen += 1;
+    }
+    ls
+}
+
+/// Byte start of the last line.
+pub(crate) fn last_line_start(b: &[u8]) -> usize {
+    line_start(b, b.len())
+}
+
 /// The cursor target for a bare move (`w`, `3l`, `k`, …), applying `count`.
 #[must_use]
 pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
@@ -240,6 +278,13 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     // Char-search resolves the count-th match directly (repeating a single `t` step would stick in place).
     if let Motion::FindChar { ch, forward, till } = m {
         return find_char_target(b, cur0, ch, forward, till, count).unwrap_or(cur0);
+    }
+    // Line jumps use the count as an absolute line number (or the last line), not a repeat count.
+    if m == Motion::GotoLine {
+        return first_non_blank(b, nth_line_start(b, count));
+    }
+    if m == Motion::LastLine {
+        return first_non_blank(b, last_line_start(b));
     }
     let mut c = cur0;
     for _ in 0..n {
@@ -253,8 +298,14 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::WordFwd => next_word_start(b, c),
             Motion::WordBack => prev_word_start(b, c),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c)), // land ON the last char
-            // FindChar is resolved by the early return above; objects/linewise have no bare-move target.
-            Motion::FindChar { .. } | Motion::InnerWord | Motion::AWord | Motion::Line => c,
+            // FindChar / line-jumps are resolved by the early returns above; objects/linewise have no
+            // bare-move target.
+            Motion::FindChar { .. }
+            | Motion::GotoLine
+            | Motion::LastLine
+            | Motion::InnerWord
+            | Motion::AWord
+            | Motion::Line => c,
         };
     }
     c
@@ -291,7 +342,9 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // text objects: a range around the cursor (count ignored in v0)
         Motion::InnerWord => inner_word_span(b, cur),
         Motion::AWord => a_word_span(b, cur),
-        // vertical / linewise motions are not charwise — callers handle Line specially
-        Motion::Up | Motion::Down | Motion::Line => (cur, cur),
+        // vertical / linewise motions are not charwise — callers handle Line / line-jumps specially
+        Motion::Up | Motion::Down | Motion::Line | Motion::GotoLine | Motion::LastLine => {
+            (cur, cur)
+        }
     }
 }
