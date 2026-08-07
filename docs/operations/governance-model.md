@@ -60,6 +60,7 @@ Each methodology is tagged **[live]** (enforced now), **[partial]** (declared / 
 | Methodology | Status | Where |
 | --- | --- | --- |
 | Spec-Driven Development | live | [change-workflow.md](change-workflow.md), spec/PRD.yaml, spec-validate |
+| Parity → PRD derivation coverage | **live** | the parity catalog ([docs/parity/](../parity/)) is the upstream source; every *targeted* parity item (Target L1/L2, Compat not Unsupported/Intentionally-different) must be derived into a PRD `trace.parity` or tracked in [spec/parity-backlog.yaml](../../spec/parity-backlog.yaml). Enforced by `ruse gov parity_coverage` (D-007's "as parity CI matures"); the backlog is the visible burn-down ledger of uncovered debt. Stops the product spec silently drifting from the parity source. |
 | Repository Constitution (agent-invariant principles) | **live** | [spec/constitution.yaml](../../spec/constitution.yaml) + `ruse gov constitution` (CON-* articles, 4 machine-enforced incl. editor-not-IDE → dependency-check); references POLICY.yaml/architecture.yaml, never duplicates |
 | Decision Records + revisit triggers | partial | spec/DECISIONS.md (Re-evaluate lines) → fitness-linked auto-revisit planned |
 | Contract-Driven Development | **live** | [spec/contracts/](../../spec/contracts/) + `ruse gov contracts` (plugin/remote/persistence declared contract-first, D-004/011/005); consumer-driven tests planned |
