@@ -184,6 +184,38 @@ Maps to the repo layout in [../README.md](../README.md): `crates/*` = engine, `a
   `workspace-runtime`, `plugin-protocol`); keep `document/transaction/command/anchor` as modules inside
   `core` until a real boundary demands a split. (Guards CORE-11/12/13.)
 
+## v0 — TUI viewport & vertical scroll (SHIPPED, not the deferred IR above)
+
+> Sections 1–7 describe the **deferred** multi-frontend render-IR architecture (paused per RFC-0012 until a
+> second frontend is actually started). This section is the **live v0**: the single `ruse` TUI binary
+> renders a plain `Document` directly, with no IR. It exists so tall files are editable — the correctness
+> gap this slice closes (before it, `render` always started at buffer row 0, so the cursor could sit off
+> the bottom of the screen and its line was never drawn).
+
+**View state is frontend-only.** The core stays IO-free / view-free (INV-DOC-VIEW): it knows nothing of
+rows, columns, terminal size, or scroll. The viewport is a single `top` offset (the first visible buffer
+line) held in the TUI event loop, recomputed each frame from the cursor's row — never stored in `EditorState`.
+
+**Scroll-to-cursor (the one rule).** Before each draw, `top` is adjusted so the cursor stays visible with a
+`scrolloff` margin of context above and below (Vim's `scrolloff`). Given the cursor's buffer row, the text
+height (screen rows minus the status line), the current `top`, and the margin:
+
+- cursor above the top margin (`cursor_row < top + margin`) → scroll up: `top = cursor_row − margin`.
+- cursor below the bottom margin (`cursor_row + margin ≥ top + height`) → scroll down:
+  `top = cursor_row + margin + 1 − height`.
+- otherwise `top` is unchanged (no scroll on pure horizontal / in-viewport motion).
+
+All arithmetic saturates at 0, and the margin is clamped to `(height−1)/2` so it always fits (a 3-row window
+can't reserve 5 rows of context). The function is **pure and unit-tested** (`viewport::scroll_top`); the
+event loop owns only the `mut top` it threads through.
+
+**Rendering.** `render` draws the `height` buffer lines starting at `top`, and places the terminal cursor at
+`(cursor_row − top, col)`. Long lines are **truncated at the terminal width** (no wrap) so screen-row math
+stays exact; **horizontal scroll and soft-wrap are deferred** (daily-driver code lines fit; revisit when a
+real wide-line/wrap need appears). This is the same "over-invest in semantics, under-invest in structure"
+posture as the rest of v0 — the scroll *contract* is nailed down and tested; the *mechanism* is the simplest
+thing that renders a buffer.
+
 ## Reference Invariants (this doc)
 
 - **INV-RENDER-IR** — All output is produced by lowering a single semantic Render Tree; no view or plugin

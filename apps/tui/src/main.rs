@@ -17,6 +17,7 @@ mod highlight;
 mod input;
 mod log;
 mod recover;
+mod viewport;
 
 use std::fs;
 use std::io::{self, Write};
@@ -106,6 +107,9 @@ impl Drop for TermGuard {
     }
 }
 
+/// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
+const SCROLLOFF: usize = 3;
+
 fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
     let mut st = EditorState::new(initial.clone());
     let mut recorded: Vec<Command> = Vec::new();
@@ -126,10 +130,16 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
     let mut out = io::stdout();
     let mut engine = InputEngine::new();
     let mut quit = false;
+    let mut top: usize = 0; // first visible buffer row (frontend view state; core stays view-free)
 
     while !quit {
         // Keep the crash-recovery snapshot current so a core panic can rescue unsaved work (§6/§8).
         recover::update(path.as_ref(), st.bytes(), st.is_modified());
+        // Scroll so the cursor stays on screen with a scrolloff margin (view state, not core state).
+        let (_, term_rows) = terminal::size().unwrap_or((80, 24));
+        let text_rows = term_rows.saturating_sub(1) as usize;
+        let (cursor_row, _) = row_col(st.bytes(), st.cursor());
+        top = viewport::scroll_top(cursor_row, text_rows, SCROLLOFF, top);
         // Recompute highlight spans only when the buffer changed (keyed on revision, D-042 win A):
         // cursor motion, mode changes and scrolling reuse the cached parse.
         let spans: &[highlight::Span] = highlighter
@@ -143,6 +153,7 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
             cmd_line.as_ref().map(|(p, t)| (*p, t.as_str())),
             &status,
             spans,
+            top,
         )?;
         let Event::Key(key) = event::read()? else {
             continue;
@@ -279,6 +290,7 @@ fn render(
     cmd_line: Option<(char, &str)>,
     status: &str,
     spans: &[highlight::Span],
+    top: usize,
 ) -> io::Result<()> {
     use crossterm::style::{Color, ResetColor, SetForegroundColor};
 
@@ -304,16 +316,26 @@ fn render(
         }
     }
     let text = st.as_str().unwrap_or("<binary>");
-    let mut row: u16 = 0;
+    // Draw the `text_rows` buffer lines starting at `top`. `line` tracks the buffer row so we can skip
+    // everything above the viewport; `screen_row` is where it lands. Long lines are truncated at `cols`
+    // (no wrap) so screen-row math stays exact — horizontal scroll is deferred (see render doc, v0).
+    let mut line: usize = 0;
+    let mut col: u16 = 0;
     let mut cur = Color::Reset;
     for (i, ch) in text.char_indices() {
         if ch == '\n' {
-            row += 1;
-            if row >= text_rows {
-                break;
+            line += 1;
+            if line >= top + text_rows as usize {
+                break; // past the bottom of the viewport
             }
-            queue!(out, cursor::MoveTo(0, row))?;
+            if line >= top {
+                col = 0;
+                queue!(out, cursor::MoveTo(0, (line - top) as u16))?;
+            }
             continue;
+        }
+        if line < top || col >= cols {
+            continue; // above the viewport, or past the right edge (truncate)
         }
         let c = byte_color.get(i).copied().unwrap_or(Color::Reset);
         if c != cur {
@@ -321,6 +343,7 @@ fn render(
             cur = c;
         }
         queue!(out, Print(ch))?;
+        col += 1;
     }
     queue!(out, ResetColor)?;
 
@@ -348,8 +371,11 @@ fn render(
             cursor::Show
         )?;
     } else {
+        // Place the terminal cursor relative to the viewport top; clamp col to the truncation width.
         let (row, col) = row_col(st.bytes(), st.cursor());
-        queue!(out, cursor::MoveTo(col as u16, row as u16), cursor::Show)?;
+        let screen_row = row.saturating_sub(top) as u16;
+        let screen_col = (col as u16).min(cols.saturating_sub(1));
+        queue!(out, cursor::MoveTo(screen_col, screen_row), cursor::Show)?;
     }
     out.flush()
 }
