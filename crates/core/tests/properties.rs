@@ -33,6 +33,8 @@ fn motion() -> impl Strategy<Value = Motion> {
         Just(Motion::InnerWord),
         Just(Motion::AWord),
         Just(Motion::Line),
+        (any::<char>(), any::<bool>(), any::<bool>())
+            .prop_map(|(ch, forward, till)| Motion::FindChar { ch, forward, till }),
     ]
 }
 

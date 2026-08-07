@@ -46,6 +46,21 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 - Not the Emacs/Native selection-editing path (that uses `editor.delete_selection` on an existing
   selection — a *sibling*, §7). Not the register data model (that is [register-model.md](register-model.md), D-026).
 
+## v0 — char-search motions (SHIPPED)
+
+The v0 editor ships `f`/`F`/`t`/`T` char-search as ordinary motions, so they compose with the grammar for
+free — bare moves (`fx`), operator targets (`dtx`, `d2f)`), and Visual-mode extension all fall out of the
+same `Motion` plumbing. Semantics: `f`/`t` search forward, `F`/`T` backward; `f`/`F` land **on** the
+`count`-th match, `t`/`T` stop one char **short** of it; the operator range is inclusive *through* the landing
+for forward search (`dfx` removes `x`, `dtx` stops before it). Search is confined to the **current line**
+(never crosses a newline), matching Vim.
+
+The char argument rides inside the motion — `Motion::FindChar { ch, forward, till }` (still `Copy`) —
+resolved in `motion::target` / `motion::char_span`, and serialized in a trace as a single whitespace-free
+token `find_char:<codepoint>:<fwd>:<till>` so the `<count> <motion>` line form is unchanged. The input engine
+holds a one-key `pending_find` state (the key after `f` is the target) plus `last_find` for `;` (repeat) and
+`,` (repeat reversed). Deferred: Vim's `t`-repeat adjacency quirk, and search across a count that spans lines.
+
 ## Model
 
 ### Range — the typed motion result

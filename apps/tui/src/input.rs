@@ -51,6 +51,11 @@ pub struct InputEngine {
     op_count: u32,
     /// After an operator, `i`/`a` starts a text object; `Some(true)` = inner, `Some(false)` = around.
     textobj: Option<bool>,
+    /// After `f`/`F`/`t`/`T`, the next key is the target char: `(forward, till)`.
+    pending_find: Option<(bool, bool)>,
+    /// The last char-search `(ch, forward, till)`, for `;` (repeat) and `,` (repeat reversed). Persists
+    /// across commands (not cleared by `reset`).
+    last_find: Option<(char, bool, bool)>,
     /// The last search pattern, for `n`/`N`. Persists across commands (not cleared by `reset`).
     last_search: Option<String>,
 }
@@ -63,6 +68,8 @@ impl InputEngine {
             op: None,
             op_count: 1,
             textobj: None,
+            pending_find: None,
+            last_find: None,
             last_search: None,
         }
     }
@@ -77,6 +84,7 @@ impl InputEngine {
         self.op = None;
         self.op_count = 1;
         self.textobj = None;
+        self.pending_find = None;
     }
 
     fn mcount(&self) -> u32 {
@@ -132,6 +140,58 @@ impl InputEngine {
                 KeyCode::Char(c) => Feed::Cmd(Command::InsertChar(c)),
                 _ => Feed::Ignored,
             };
+        }
+        // Char-search: the key after `f`/`F`/`t`/`T` is the target char (in Normal or Visual).
+        if let Some((forward, till)) = self.pending_find.take() {
+            return match key.code {
+                KeyCode::Char(ch) => {
+                    self.last_find = Some((ch, forward, till));
+                    self.motion(Motion::FindChar { ch, forward, till })
+                }
+                _ => {
+                    self.reset();
+                    Feed::Ignored
+                }
+            };
+        }
+        // Char-search initiators and `;`/`,` repeat — shared by Normal and Visual (op state is preserved, so
+        // `dfx` works). `f`/`t` only arm the pending state; the resolution above emits the motion. Skipped
+        // while a text object is pending (`di` expects an object char, not a search).
+        if self.textobj.is_none() {
+            match key.code {
+                KeyCode::Char('f') => {
+                    self.pending_find = Some((true, false));
+                    return Feed::Pending;
+                }
+                KeyCode::Char('F') => {
+                    self.pending_find = Some((false, false));
+                    return Feed::Pending;
+                }
+                KeyCode::Char('t') => {
+                    self.pending_find = Some((true, true));
+                    return Feed::Pending;
+                }
+                KeyCode::Char('T') => {
+                    self.pending_find = Some((false, true));
+                    return Feed::Pending;
+                }
+                KeyCode::Char(';') => {
+                    if let Some((ch, forward, till)) = self.last_find {
+                        return self.motion(Motion::FindChar { ch, forward, till });
+                    }
+                }
+                KeyCode::Char(',') => {
+                    if let Some((ch, forward, till)) = self.last_find {
+                        // `,` repeats in the opposite direction.
+                        return self.motion(Motion::FindChar {
+                            ch,
+                            forward: !forward,
+                            till,
+                        });
+                    }
+                }
+                _ => {}
+            }
         }
         // Visual mode: the selection already exists, so operators act on it directly and motions extend it.
         if let Mode::Visual { line } = mode {
@@ -327,6 +387,79 @@ mod tests {
 
     fn esc() -> KeyEvent {
         KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+    }
+
+    fn fc(ch: char, forward: bool, till: bool) -> Motion {
+        Motion::FindChar { ch, forward, till }
+    }
+
+    #[test]
+    fn char_search_bare_and_operator() {
+        assert_eq!(
+            feed("fx"),
+            Feed::Cmd(Command::Move(1, fc('x', true, false)))
+        );
+        assert_eq!(feed("tx"), Feed::Cmd(Command::Move(1, fc('x', true, true))));
+        assert_eq!(
+            feed("Fx"),
+            Feed::Cmd(Command::Move(1, fc('x', false, false)))
+        );
+        assert_eq!(
+            feed("Tx"),
+            Feed::Cmd(Command::Move(1, fc('x', false, true)))
+        );
+        assert_eq!(
+            feed("2fx"),
+            Feed::Cmd(Command::Move(2, fc('x', true, false)))
+        );
+        // operator targets
+        assert_eq!(
+            feed("dtx"),
+            Feed::Cmd(Command::Delete(1, fc('x', true, true)))
+        );
+        assert_eq!(
+            feed("d2fx"),
+            Feed::Cmd(Command::Delete(2, fc('x', true, false)))
+        );
+    }
+
+    #[test]
+    fn char_search_is_pending_until_the_target() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('f'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('q'), Mode::Normal),
+            Feed::Cmd(Command::Move(1, fc('q', true, false)))
+        );
+    }
+
+    #[test]
+    fn semicolon_repeats_comma_reverses() {
+        let mut e = InputEngine::new();
+        e.feed(k('f'), Mode::Normal);
+        e.feed(k('x'), Mode::Normal); // last_find = (x, forward, not-till)
+        assert_eq!(
+            e.feed(k(';'), Mode::Normal),
+            Feed::Cmd(Command::Move(1, fc('x', true, false))),
+            "; repeats the last find"
+        );
+        assert_eq!(
+            e.feed(k(','), Mode::Normal),
+            Feed::Cmd(Command::Move(1, fc('x', false, false))),
+            ", repeats reversed"
+        );
+    }
+
+    #[test]
+    fn char_search_extends_visual() {
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual { line: false };
+        assert_eq!(e.feed(k('f'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k(')'), vis),
+            Feed::Cmd(Command::Move(1, fc(')', true, false))),
+            "f in Visual is a bare move that extends the selection"
+        );
     }
 
     #[test]
