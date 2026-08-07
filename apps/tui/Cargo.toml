@@ -4,4 +4,10 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "ruse"
+path = "src/main.rs"
+
 [dependencies]
+ruse-core = { path = "../../crates/core" }
+crossterm = "0.28"

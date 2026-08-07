@@ -31,6 +31,9 @@ dependencies:
   DEP-SSH:       { purpose: SSH transport for remote agent, usage: wrapped, tier: 4, criticality: critical, public_api_exposure: none, allowed_layers: [], alternatives: [external ssh executable], exit_strategy: Transport trait; may switch to external-process }
   DEP-GIT:       { purpose: git repository ops/diff/blame, usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [], alternatives: [git CLI (external-process)], exit_strategy: GitBackend trait (lib or CLI) }
 
+  # ---- frontend (the ruse TUI binary — a client, not a governed crate layer, so allowed_layers is empty) ----
+  DEP-CROSSTERM: { purpose: terminal backend for the ruse TUI (raw mode, key events, render), usage: wrapped, tier: 2, criticality: high, public_api_exposure: none, allowed_layers: [], alternatives: [termion, own termios+ANSI], exit_strategy: TerminalBackend trait; frontend-only, NEVER in editor-core (IO-free) }
+
   # ---- external tools (not linked; run as versioned processes under the supervisor) ----
   DEP-RIPGREP:   { purpose: fast workspace search, usage: external-process, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [], alternatives: [wrapped search lib], exit_strategy: search-service adapter }
   DEP-LSP-SERVER: { purpose: language servers (rust-analyzer, clangd, ...), usage: external-process, tier: 2, criticality: medium, public_api_exposure: none, allowed_layers: [], alternatives: [per-language], exit_strategy: managed vs user-provided }

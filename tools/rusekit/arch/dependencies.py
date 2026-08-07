@@ -42,11 +42,17 @@ def _cargo_metadata() -> dict | None:
 
 
 def _internal_graph(meta: dict) -> dict[str, list[str]]:
+    # Normalize cargo package names (`ruse-core`) to the short crate names architecture.yaml uses (`core`),
+    # so the direction check compares like-for-like.
     members = {pkg["name"] for pkg in meta.get("packages", [])}
+
+    def short(n: str) -> str:
+        return n[len("ruse-"):] if n.startswith("ruse-") else n
+
     graph: dict[str, list[str]] = {}
     for pkg in meta.get("packages", []):
-        deps = [d["name"] for d in pkg.get("dependencies", []) if d["name"] in members]
-        graph[pkg["name"]] = sorted(set(deps))
+        deps = [short(d["name"]) for d in pkg.get("dependencies", []) if d["name"] in members]
+        graph[short(pkg["name"])] = sorted(set(deps))
     return graph
 
 
@@ -141,6 +147,11 @@ def main(argv: list[str]) -> int:
         # crate dependency contract: cargo edges ⊆ transitive may_depend_on (ARCH-LAYER-001)
         if allowed_closure:
             for src in sorted(graph):
+                # Frontends (apps/*: the TUI/GUI binaries) are CLIENTS of the kernel, not part of the crate
+                # contract (architecture.yaml: "frontends are clients, not crates"). They may consume core;
+                # only crates IN the contract have their dependency direction enforced.
+                if src not in allowed_closure:
+                    continue
                 for dst in graph.get(src, []):
                     if dst not in allowed_closure.get(src, set()):
                         allowed = sorted(allowed_closure.get(src, set())) or ["nothing"]
