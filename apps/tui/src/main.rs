@@ -3,8 +3,20 @@
 //! binary performs. All IO lives here; the core stays pure, so `ruse --replay <trace> <file>` reproduces an
 //! edit session deterministically without a terminal.
 
+// D-041: diagnostics go through `tracing`, never the terminal. The only sanctioned stdout/stderr is the
+// headless CLI (`--replay`/startup), which carries a scoped `allow` on each such function. A non-test
+// `.unwrap()` is an unjustified panic (use `.expect("<why>")` or a `Result`); tests exempt via clippy.toml.
+#![deny(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::unwrap_used,
+    clippy::disallowed_methods
+)]
+
 mod highlight;
 mod input;
+mod log;
+mod recover;
 
 use std::fs;
 use std::io::{self, Write};
@@ -19,7 +31,11 @@ use crossterm::{cursor, queue, terminal};
 use input::{parse_ex, Ex, Feed, InputEngine};
 use ruse_core::{apply_command, Command, EditorState, Effect, Mode, Trace};
 
+// Headless CLI: stderr is the correct channel here (no TUI, no tracing sink yet). D-041 scoped allow.
+#[allow(clippy::print_stderr)]
 fn main() -> ExitCode {
+    log::init();
+    recover::install_hook();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--replay") {
         return replay(&args[1..]);
@@ -40,6 +56,7 @@ fn main() -> ExitCode {
 
 /// Headless: replay a trace onto a file and print the resulting document to stdout. Proves the determinism
 /// contract end-to-end (`ruse --replay t.trace file.rs`).
+#[allow(clippy::print_stderr)] // headless CLI: stderr is the correct channel (D-041).
 fn replay(args: &[String]) -> ExitCode {
     let (Some(tp), Some(fp)) = (args.first(), args.get(1)) else {
         eprintln!("usage: ruse --replay <trace> <file>");
@@ -111,6 +128,8 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
     let mut quit = false;
 
     while !quit {
+        // Keep the crash-recovery snapshot current so a core panic can rescue unsaved work (§6/§8).
+        recover::update(path.as_ref(), st.bytes(), st.is_modified());
         let spans = highlighter
             .as_mut()
             .map(|h| h.spans(st.bytes()))
@@ -240,9 +259,14 @@ fn save(st: &mut EditorState, path: &Option<PathBuf>, status: &mut String) {
     match fs::write(p, st.bytes()) {
         Ok(()) => {
             st.doc.mark_saved();
+            tracing::info!(event = "save", path = %p.display(), bytes = st.bytes().len());
             *status = format!("\"{}\" written", p.display());
         }
-        Err(e) => *status = format!("write failed: {e}"),
+        Err(e) => {
+            // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
+            tracing::warn!(event = "save.failed", path = %p.display(), error = %e);
+            *status = format!("write failed: {e}");
+        }
     }
 }
 

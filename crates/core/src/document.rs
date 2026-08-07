@@ -146,7 +146,15 @@ impl Document {
         let inverse = txn.edits.inverse(&self.text);
         let new_text = txn.edits.apply_to(&self.text);
         self.text = Arc::from(new_text);
+        let prev = self.revision;
         self.revision = self.revision.next();
+        // Internal invariant (INV-TXN §1): a successful apply strictly advances the revision. A debug_assert,
+        // not a Result — a violation here is a bug in Revision, not an expected input failure (stability §1).
+        debug_assert!(
+            self.revision > prev,
+            "apply must strictly advance revision ({prev:?} -> {:?})",
+            self.revision
+        );
         self.anchors.apply_edits(&txn.edits);
         let (origin, hint) = (txn.origin, txn.group_hint);
         self.undo

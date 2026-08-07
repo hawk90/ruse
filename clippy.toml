@@ -1,0 +1,14 @@
+# Clippy owns every AST-expressible rule of the stability decision table (D-041) — one rule, one mechanism,
+# the most accurate one. Enabled at the crate roots: `#![deny(clippy::unwrap_used, clippy::print_stdout,
+# clippy::print_stderr)]`. What clippy structurally CANNOT see (a `Result<_, String>` generic argument, a
+# Cargo `panic = "abort"` profile) is the ONLY thing left to the `ruse gov rust_discipline` checker.
+
+# A non-test `.unwrap()` is an unjustified panic (use `.expect("<invariant>")` or a typed `Result`); tests
+# panic on purpose, so exempt them natively rather than reimplementing the exemption in a checker.
+allow-unwrap-in-tests = true
+
+# Swallowing a panic hides corruption (STAB-6). v0 has no sanctioned isolation boundary; when one lands
+# (LSP/async slice) it gets an explicit `#[allow(clippy::disallowed_methods)]` with a justification.
+disallowed-methods = [
+    { path = "std::panic::catch_unwind", reason = "swallows panics + hides corruption; use the recovery hook (STAB-6, D-041)" },
+]

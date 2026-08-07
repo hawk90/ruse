@@ -78,6 +78,42 @@ all now would be exactly the "pattern names first" over-design warned against ab
   components (plugins, LSP, remote, terminal jobs) v0 does not have. They land with the LSP/async slice,
   where a supervisor + health registry first earn their place.
 
+### v0 decision table — which tool, where
+
+The one-glance binding of §1/§4.1/§3 to the two-crate code. When a situation matches a row, the tool is not
+a choice — drift is a defect ([D-041](../../spec/DECISIONS.md)).
+
+| Situation | Tool | Why |
+| --- | --- | --- |
+| Internal invariant — a state impossible if the code is correct (revision must advance; a live anchor slot; a planned edit is in range) | `debug_assert!` / `.expect("<invariant>")` | §1: assert, never a `Result`. The `.expect` message *is* the invariant statement. |
+| A planned transaction fails to apply in `commit` | `.expect(..)` (assert) + the panic-recovery hook rescues the buffer | The plan guarantees it applies; a failure is a core bug (§8), so it panics — safety comes from recovery (§6), **not** from swallowing (STAB-2 [P0]). |
+| Expected user/environment failure — file IO, trace parse, bad key, encoding | typed `Result` (`TxnError`/`EditError`/`TraceError`/`io::Error`) → status bar | §1: error, never an assert. Handled once at the boundary. |
+| Recording a diagnostic event (save, save-failed, panic, degrade) | `tracing::{warn,error,info}!` with a `RUSE_LOG` sink | §4: structured events, logged **once at the ownership boundary** (§3), levels per §4.1. |
+| The deterministic command record | `Trace` (a domain artifact) — **never** the logger | TRACE-1 [P2]: the replay `Trace` and the diagnostic log are different things. |
+| Any user-facing text | the status-bar view / stdout of `--replay` | §11.4: the view is not a source of truth. |
+
+### v0 enforcement — a gate, not a convention
+
+The rule above is dogfooded like every other spec: mechanically checked at merge, so it cannot rot into a
+review-time habit. Calibrated to hit only the real failure modes (no blanket bans — that would be the
+process-over-implementation anti-pattern RA-RUSE-003). **One rule → one mechanism → the most accurate one**,
+so nothing is enforced twice: every AST-expressible rule is clippy's; the checker owns only what clippy
+structurally cannot see.
+
+- **clippy (required `rust` check)** — configured once (crate-root `#![deny]` + `clippy.toml`):
+  - `print_stdout` / `print_stderr` `deny` — logs go through `tracing`; the only sanctioned stderr is the
+    headless `--replay`/startup CLI, carrying a commented `allow`.
+  - `clippy::unwrap_used` `deny` — a non-test `.unwrap()` is an unjustified panic (`.expect("why")` is the
+    justified form); `allow-unwrap-in-tests` exempts tests natively.
+  - `disallowed-methods = [catch_unwind]` — swallowing a panic hides corruption (STAB-6); a sanctioned
+    boundary later gets an explicit commented `allow`.
+- **`ruse gov rust_discipline` checker** — the two rules clippy can't express, and nothing more:
+  `Result<_, String>` (§2 — clippy has no lint for a specific generic argument) and `panic = "abort"` in a
+  manifest (STAB-5 — clippy lints Rust, not Cargo profiles).
+
+At adoption the code already satisfied every rule (0 non-test `unwrap`, 7 justified `expect`, 0 banned
+patterns), so the gate carries no annotation debt — it only catches future drift.
+
 ## 0. Three Failure Classes — never mixed
 
 ```

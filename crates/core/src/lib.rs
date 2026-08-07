@@ -15,6 +15,10 @@
 //! Out of scope for this slice (owned by F-008 persistence): the on-disk journal, atomic save, and
 //! crash recovery. Those extend this in-memory core; the contracts here are their substrate.
 
+// D-041: a non-test `.unwrap()` is an unjustified panic — use `.expect("<invariant>")` (the message IS the
+// invariant) or a typed `Result`. Tests are exempt via `allow-unwrap-in-tests` in clippy.toml.
+#![deny(clippy::unwrap_used, clippy::disallowed_methods)]
+
 pub mod anchor;
 pub mod command;
 pub mod document;
