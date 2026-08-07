@@ -7,7 +7,10 @@
 //! `proptest` is a dev-dependency only; the core crate stays dependency-free at build time.
 
 use proptest::prelude::*;
-use ruse_core::{apply_command, Command, Edit, EditList, EditorState, Motion, Trace};
+use ruse_core::{
+    apply_command, AnchorPolicy, Bias, Command, Document, DocumentId, Edit, EditList, EditorState,
+    Motion, Revision, Trace, Transaction, TransactionOrigin,
+};
 
 /// An arbitrary buffer: any sequence of Unicode scalars (incl. newlines / control chars) as UTF-8 bytes.
 fn text() -> impl Strategy<Value = Vec<u8>> {
@@ -84,6 +87,16 @@ fn edit() -> impl Strategy<Value = Edit> {
         )
             .prop_map(|(p, d, b)| Edit::replace(p, d, b)),
     ]
+}
+
+/// An arbitrary anchor gravity.
+fn bias() -> impl Strategy<Value = Bias> {
+    prop_oneof![Just(Bias::Before), Just(Bias::After)]
+}
+
+/// An arbitrary span-delete policy.
+fn policy() -> impl Strategy<Value = AnchorPolicy> {
+    prop_oneof![Just(AnchorPolicy::Clamp), Just(AnchorPolicy::Invalidate)]
 }
 
 proptest! {
@@ -194,5 +207,83 @@ proptest! {
         let inverse = list.inverse(&buf);
         let restored = inverse.apply_to(&after);
         prop_assert_eq!(restored, buf, "inverse(apply(buf)) must equal buf");
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(128))]
+
+    /// Transaction atomicity (INV-TXN / F-001): a transaction applies fully or not at all. A rejected apply
+    /// — stale base revision, or an edit out of range — leaves the document's bytes AND revision *exactly*
+    /// unchanged (no partial mutation, no revision bump); a successful apply strictly advances the revision.
+    #[test]
+    fn failed_transaction_leaves_document_untouched(
+        init in text(),
+        raw in prop::collection::vec(edit(), 0..5),
+        wrong_base in any::<bool>(),
+    ) {
+        let mut doc = Document::new(DocumentId(1), init);
+        let Ok(list) = EditList::new(raw) else { return Ok(()); };
+        let in_range = list.check_bounds(doc.len()).is_ok();
+
+        // A wrong base is any revision != current; the correct base is the document's own revision.
+        let base = if wrong_base {
+            Revision(doc.revision().0 + 1)
+        } else {
+            doc.revision()
+        };
+        let expected = if !wrong_base && in_range {
+            list.apply_to(doc.bytes())
+        } else {
+            doc.bytes().to_vec()
+        };
+        let txn = Transaction::new(base, list, TransactionOrigin::UserInput);
+
+        let bytes_before = doc.bytes().to_vec();
+        let rev_before = doc.revision();
+        match doc.apply(txn) {
+            Ok(_) => {
+                // Success is only possible with the correct base and in-range edits.
+                prop_assert!(!wrong_base && in_range, "apply succeeded on an invalid transaction");
+                prop_assert!(doc.revision() > rev_before, "a successful apply must advance the revision");
+                prop_assert_eq!(doc.bytes(), expected.as_slice(), "apply produced the wrong buffer");
+            }
+            Err(_) => {
+                // Atomicity: a rejected transaction changes nothing at all.
+                prop_assert_eq!(doc.bytes(), bytes_before.as_slice(), "failed apply mutated the buffer");
+                prop_assert_eq!(doc.revision(), rev_before, "failed apply advanced the revision");
+            }
+        }
+    }
+
+    /// Anchor-transform safety (INV-ANCHOR): after any in-range edit, every still-live anchor resolves to a
+    /// position inside the document — a transformed anchor never points past the end. (The full affinity /
+    /// span-delete semantics have their own example tests; this is the totality guarantee over random edits.)
+    #[test]
+    fn anchors_stay_in_bounds_across_edits(
+        init in text(),
+        specs in prop::collection::vec((0usize..40, bias(), policy()), 0..6),
+        raw in prop::collection::vec(edit(), 0..4),
+    ) {
+        let mut doc = Document::new(DocumentId(1), init);
+        let ids: Vec<_> = specs
+            .into_iter()
+            .map(|(off, b, p)| doc.create_anchor(off.min(doc.len()), b, p))
+            .collect();
+
+        let Ok(list) = EditList::new(raw) else { return Ok(()); };
+        prop_assume!(list.check_bounds(doc.len()).is_ok());
+        let txn = Transaction::new(doc.revision(), list, TransactionOrigin::UserInput);
+        doc.apply(txn).expect("in-range transaction on the current revision applies");
+
+        let len = doc.len();
+        for id in ids {
+            if let Some(r) = doc.resolve_anchor(id) {
+                prop_assert!(
+                    r.offset.0 <= len,
+                    "anchor resolved to {} past end {}", r.offset.0, len
+                );
+            }
+        }
     }
 }
