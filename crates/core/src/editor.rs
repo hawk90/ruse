@@ -674,6 +674,84 @@ mod register_tests {
 }
 
 #[cfg(test)]
+mod bracket_match_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    fn pct() -> Command {
+        Command::Move(1, Motion::MatchBracket)
+    }
+
+    #[test]
+    fn jumps_between_a_pair_both_ways() {
+        // "a(bc)d": '(' at 1, ')' at 4.
+        let st = run("a(bc)d", &[Command::MoveRight, pct()]);
+        assert_eq!(st.cursor(), 4, "from '(' to ')'");
+        let st = run(
+            "a(bc)d",
+            &[Command::Move(4, Motion::Right), pct()], // cursor onto ')'
+        );
+        assert_eq!(st.cursor(), 1, "from ')' back to '('");
+    }
+
+    #[test]
+    fn respects_nesting() {
+        // "((x))": outer '(' at 0 ↔ ')' at 4; inner '(' at 1 ↔ ')' at 3.
+        let st = run("((x))", &[pct()]);
+        assert_eq!(st.cursor(), 4);
+        let st = run("((x))", &[Command::MoveRight, pct()]);
+        assert_eq!(st.cursor(), 3);
+    }
+
+    #[test]
+    fn finds_first_bracket_forward_when_not_on_one() {
+        // cursor at 0 ('a'), first bracket forward is '(' at 2, its match ')' at 5.
+        let st = run("ab(cd)", &[pct()]);
+        assert_eq!(st.cursor(), 5);
+    }
+
+    #[test]
+    fn matches_across_lines() {
+        let st = run("(\n)", &[pct()]);
+        assert_eq!(st.cursor(), 2, "% matches across a newline");
+    }
+
+    #[test]
+    fn matches_by_type_ignoring_other_brackets() {
+        // "([)]": '(' at 0 matches ')' at 2, ignoring the '[' — same as Vim.
+        let st = run("([)]", &[pct()]);
+        assert_eq!(st.cursor(), 2);
+    }
+
+    #[test]
+    fn d_percent_is_inclusive() {
+        // On '(' (index 1); d% deletes "(bc)" inclusive → "ad".
+        let st = run(
+            "a(bc)d",
+            &[Command::MoveRight, Command::Delete(1, Motion::MatchBracket)],
+        );
+        assert_eq!(text(&st), "ad");
+    }
+
+    #[test]
+    fn unmatched_bracket_is_a_noop() {
+        let st = run("a(b", &[Command::MoveRight, pct()]);
+        assert_eq!(st.cursor(), 1, "no closer → no move");
+    }
+}
+
+#[cfg(test)]
 mod line_jump_tests {
     use super::*;
 

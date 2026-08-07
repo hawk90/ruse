@@ -35,6 +35,9 @@ pub enum Motion {
     GotoLine,
     /// Go to the last line's first non-blank char (bare `G`). Linewise under an operator.
     LastLine,
+    /// Jump to the matching bracket of `()`, `[]`, or `{}` (`%`). Nesting-aware; the match may be on another
+    /// line. If the cursor is not on a bracket, the first bracket forward on the line is matched instead.
+    MatchBracket,
 }
 
 // --- shared byte / char-boundary / line helpers (one home; editor.rs reuses these) ---
@@ -270,6 +273,59 @@ pub(crate) fn last_line_start(b: &[u8]) -> usize {
     line_start(b, b.len())
 }
 
+/// The bracket pairs `%` matches (v0: the three ASCII pairs; `matchpairs` config is deferred).
+const BRACKET_PAIRS: [(u8, u8); 3] = [(b'(', b')'), (b'[', b']'), (b'{', b'}')];
+
+/// The matching-bracket position for `%`, or `None` if there is nothing to match. If the byte at `cursor`
+/// is a bracket, its pair is found (nesting-aware, possibly on another line); otherwise the first bracket
+/// forward on the current line is matched (Vim). Brackets are ASCII, so byte scanning stays on boundaries.
+fn match_bracket(b: &[u8], cursor: usize) -> Option<usize> {
+    // Pick the bracket to match: the one under the cursor, else the first forward on this line.
+    let mut bp = cursor.min(b.len());
+    if bp >= b.len() || !BRACKET_PAIRS.iter().any(|&(o, c)| b[bp] == o || b[bp] == c) {
+        let le = line_end(b, cursor);
+        bp = cursor.min(b.len());
+        while bp < le && !BRACKET_PAIRS.iter().any(|&(o, c)| b[bp] == o || b[bp] == c) {
+            bp += 1;
+        }
+        if bp >= le {
+            return None;
+        }
+    }
+    let ch = b[bp];
+    // Opener → scan forward for the matching closer; closer → scan backward for the opener. Depth counts
+    // only the same pair type, so `([)]` matches `(`↔`)` exactly as Vim does.
+    if let Some(&(open, close)) = BRACKET_PAIRS.iter().find(|&&(o, _)| o == ch) {
+        let mut depth = 0i32;
+        for (i, &byte) in b.iter().enumerate().skip(bp) {
+            if byte == open {
+                depth += 1;
+            } else if byte == close {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+        }
+        None
+    } else if let Some(&(open, close)) = BRACKET_PAIRS.iter().find(|&&(_, c)| c == ch) {
+        let mut depth = 0i32;
+        for i in (0..=bp).rev() {
+            if b[i] == close {
+                depth += 1;
+            } else if b[i] == open {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+        }
+        None
+    } else {
+        None
+    }
+}
+
 /// The cursor target for a bare move (`w`, `3l`, `k`, …), applying `count`.
 #[must_use]
 pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
@@ -285,6 +341,10 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     }
     if m == Motion::LastLine {
         return first_non_blank(b, last_line_start(b));
+    }
+    // Bracket match jumps to a single computed position (count is not a repeat; `count%` is deferred).
+    if m == Motion::MatchBracket {
+        return match_bracket(b, cur0).unwrap_or(cur0);
     }
     let mut c = cur0;
     for _ in 0..n {
@@ -303,6 +363,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::FindChar { .. }
             | Motion::GotoLine
             | Motion::LastLine
+            | Motion::MatchBracket
             | Motion::InnerWord
             | Motion::AWord
             | Motion::Line => c,
@@ -339,6 +400,14 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
                 Some(t) => (t, cur),
             }
         }
+        // bracket match: inclusive of both brackets and everything between (Vim `d%`). No match → no-op.
+        Motion::MatchBracket => match match_bracket(b, cur) {
+            Some(m) if m != cur => {
+                let (lo, hi) = (cur.min(m), cur.max(m));
+                (lo, next_boundary(b, hi))
+            }
+            _ => (cur, cur),
+        },
         // text objects: a range around the cursor (count ignored in v0)
         Motion::InnerWord => inner_word_span(b, cur),
         Motion::AWord => a_word_span(b, cur),

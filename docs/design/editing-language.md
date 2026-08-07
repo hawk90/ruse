@@ -46,6 +46,16 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 - Not the Emacs/Native selection-editing path (that uses `editor.delete_selection` on an existing
   selection — a *sibling*, §7). Not the register data model (that is [register-model.md](register-model.md), D-026).
 
+## v0 — bracket-match motion `%` (SHIPPED)
+
+`%` (`Motion::MatchBracket`) jumps between the pairs `()`, `[]`, `{}`. It is **nesting-aware** (depth counted
+per pair type, so `([)]` matches `(`↔`)` exactly as Vim), and the match may be on **another line** (only the
+initial "which bracket" scan is line-local: if the cursor is not on a bracket, the first bracket forward on
+the current line is matched). As an operator target it is **charwise-inclusive** — `d%` deletes both brackets
+and everything between. `count%` (jump to a percentage of the file) is a *different* Vim feature and is
+**deferred**; bare `%` ignores any count for now. Deferred too: language-aware matching (strings/comments) and
+configurable `matchpairs`.
+
 ## v0 — line-jump motions (SHIPPED)
 
 `gg` (first line), `G` (last line), and `{count}G` / `{count}gg` (go to line N) ship as motions, landing on
