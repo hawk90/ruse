@@ -27,6 +27,14 @@
 # Decision), never as one concept-level "grammars are irreconcilable" that yields a Decision that never
 # closes. See spec/parity/concepts/irreconcilable.yaml#observables.
 #
+# `upstreams:` on a family is a claim about the UPSTREAM's census state, not about this family's coverage,
+# and it has exactly three values — machine-checked by `ruse gov parity_discovery` against which inventories
+# actually exist, because six families claimed `vim: pinned` while coverage.yaml said `not-surveyed` and no
+# gate could see the contradiction:
+#   pinned         in upstreams.yaml AND spec/parity/inventory/<editor>/ exists  (pinned and surveyed)
+#   not-surveyed   in upstreams.yaml but no inventory yet                        (pinned, not surveyed)
+#   not-in-census  not in upstreams.yaml at all                                  (asserted from docs only)
+#
 # LLM rules: `caps`/`prd`/`concepts` name real ids (spec/capabilities.yaml, spec/PRD.yaml, concepts/*.yaml).
 # `covers_surfaces` name real surfaces and appear ONLY on FAM-* (parity-fact). A PILLAR-* with no
 # `evidence_refs` is invalid. A POL-* with no `lint_id` is invalid. Any family citing only editors absent
@@ -86,7 +94,7 @@ families:
     axis: parity-fact
     layer: kernel
     covers_surfaces: [mode_key, map_mode]
-    upstreams: { vim: pinned, neovim: pinned }
+    upstreams: { vim: not-surveyed, neovim: pinned }
     census_status: measured
     caps: [CAP-EDIT-CORE, CAP-VIM-PROFILE]
     prd: [F-001, F-002, F-003, F-005, F-023, F-024, F-025, F-026, F-027]
@@ -156,8 +164,8 @@ families:
     title: Batch / scripting over the buffer — :g, :normal, ranges, :argdo/:bufdo, !filter
     axis: parity-fact
     layer: registry
-    covers_surfaces: [ex_command]
-    upstreams: { vim: pinned, neovim: pinned, emacs: not-surveyed }
+    covers_surfaces: [ex_command, command]
+    upstreams: { vim: not-surveyed, neovim: pinned, emacs: pinned }
     census_status: measured
     caps: [CAP-COMMAND-PALETTE]
     prd: [F-004]
@@ -188,7 +196,7 @@ families:
     axis: parity-fact
     layer: keymap
     covers_surfaces: [map_mode, keymap_tier, keymap]
-    upstreams: { vim: pinned, neovim: pinned, emacs: pinned }
+    upstreams: { vim: not-surveyed, neovim: pinned, emacs: pinned }
     census_status: measured
     caps: [CAP-VIM-PROFILE, CAP-NATIVE-PROFILE]
     prd: [F-003, F-013]
@@ -209,7 +217,7 @@ families:
     axis: parity-fact
     layer: keymap
     covers_surfaces: [event, hook]
-    upstreams: { vim: pinned, neovim: pinned, emacs: pinned }
+    upstreams: { vim: not-surveyed, neovim: pinned, emacs: pinned }
     census_status: measured
     caps: [CAP-VIM-PROFILE]
     prd: []
@@ -226,7 +234,7 @@ families:
     axis: parity-fact
     layer: host
     covers_surfaces: [mode_key, ex_command]
-    upstreams: { vim: pinned, neovim: pinned, helix: not-in-census }
+    upstreams: { vim: not-surveyed, neovim: pinned, helix: not-in-census }
     census_status: partial
     caps: [CAP-FILE-PICKER, CAP-SEARCH, CAP-DIAGNOSTICS]
     prd: [F-009]
@@ -244,7 +252,7 @@ families:
     axis: parity-fact
     layer: host
     covers_surfaces: [option, ex_command]
-    upstreams: { vim: pinned, neovim: pinned }
+    upstreams: { vim: not-surveyed, neovim: pinned }
     census_status: measured
     caps: [CAP-EDIT-CORE, CAP-RECOVERY]
     prd: [F-008]

@@ -48,6 +48,7 @@ import yaml
 from rusekit import render, repo  # noqa: E402
 
 UPSTREAMS = "spec/parity/upstreams.yaml"
+FAMILIES = "spec/parity/families.yaml"
 INV_GLOB = "spec/parity/inventory/*/*.yaml"
 PRD = "spec/PRD.yaml"
 LEGACY_GLOB = "docs/parity/*.md"
@@ -158,6 +159,23 @@ def check() -> dict:
         if classified and unclassified:
             partial.append((key, classified, unclassified))
 
+    # families.yaml declares, per family, what census state each upstream is in. That claim is what a
+    # reader trusts when they see `census_status: measured` — and it drifted: six families said
+    # `vim: pinned` while coverage.yaml said `not-surveyed`, because nothing compared the two files.
+    # A family asserting an upstream is surveyed when no inventory exists is the same defect class as
+    # the catalog reporting 100% coverage of a surface it never enumerated, one level up.
+    surveyed = {e for e, _, _ in invs}
+    family_claims = []
+    fam_doc = _load(FAMILIES)
+    for fid, fam in sorted((fam_doc.get("families") or {}).items()):
+        for editor, claim in sorted((fam.get("upstreams") or {}).items()):
+            if editor in ups:
+                want = "pinned" if editor in surveyed else "not-surveyed"
+            else:
+                want = "not-in-census"
+            if claim != want:
+                family_claims.append((fid, editor, str(claim), want))
+
     legacy_ids = set()
     for path in sorted(glob.glob(repo.path(LEGACY_GLOB))):
         for line in open(path, encoding="utf-8"):
@@ -174,6 +192,7 @@ def check() -> dict:
         "totals": totals,
         "pin_drift": pin_drift,
         "binary_drift": binary_drift,
+        "family_claims": family_claims,
         "bad_status": bad_status,
         "empty_surface": empty_surface,
         "partial": partial,
@@ -227,11 +246,15 @@ def main(argv=None) -> int:
         render.bullet(f"{key}: partially classified ({c} classified, {u} unclassified) — a surface is "
                       f"opened whole or not at all; the omission always lives in the part you skipped",
                       mark="!")
+    for fid, editor, claim, want in r["family_claims"]:
+        render.bullet(f"families.yaml {fid}: claims `{editor}: {claim}` but the evidence layer says "
+                      f"`{want}` — a family's upstreams map states the UPSTREAM's census state, and a "
+                      f"reader takes census_status: measured on faith from it", mark="!")
     for relpath, iid, st in r["orphan_gone"]:
         render.bullet(f"{relpath}: {iid} is '{st}' but vanished upstream and has no superseded_by", mark="!")
 
     blocking = (r["pin_drift"] or r["binary_drift"] or r["bad_status"] or r["empty_surface"]
-                or r["partial"] or r["orphan_gone"])
+                or r["partial"] or r["orphan_gone"] or r["family_claims"])
     if blocking:
         render.fail("the census is not answerable to its pin")
         return 1
