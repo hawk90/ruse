@@ -17,6 +17,10 @@ pub enum Motion {
     WordFwd,
     WordBack,
     WordEnd,
+    /// Text object: the word under the cursor (`iw`). Only meaningful under an operator.
+    InnerWord,
+    /// Text object: the word plus its adjacent whitespace (`aw`). Only meaningful under an operator.
+    AWord,
     /// Linewise (only meaningful under an operator: `dd` / `cc`).
     Line,
 }
@@ -130,6 +134,42 @@ fn word_end_excl(b: &[u8], pos: usize) -> usize {
     i
 }
 
+/// The run of same-class (word vs whitespace) bytes containing the cursor — Vim `iw`.
+fn inner_word_span(b: &[u8], cur: usize) -> (usize, usize) {
+    if b.is_empty() {
+        return (0, 0);
+    }
+    let c = cur.min(b.len() - 1);
+    let ws = is_ws(b[c]);
+    let mut s = c;
+    while s > 0 && is_ws(b[s - 1]) == ws {
+        s -= 1;
+    }
+    let mut e = c;
+    while e < b.len() && is_ws(b[e]) == ws {
+        e += 1;
+    }
+    (s, e)
+}
+
+/// The word plus its trailing whitespace (or leading, if there is no trailing) — Vim `aw`.
+fn a_word_span(b: &[u8], cur: usize) -> (usize, usize) {
+    let (s, e) = inner_word_span(b, cur);
+    let mut e2 = e;
+    while e2 < b.len() && is_ws(b[e2]) {
+        e2 += 1;
+    }
+    if e2 > e {
+        (s, e2)
+    } else {
+        let mut s2 = s;
+        while s2 > 0 && is_ws(b[s2 - 1]) {
+            s2 -= 1;
+        }
+        (s2, e)
+    }
+}
+
 fn up(b: &[u8], cur: usize) -> usize {
     let ls = line_start(b, cur);
     if ls == 0 {
@@ -164,7 +204,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::WordFwd => next_word_start(b, c),
             Motion::WordBack => prev_word_start(b, c),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c)), // land ON the last char
-            Motion::Line => c,
+            Motion::InnerWord | Motion::AWord | Motion::Line => c, // objects/linewise: no bare-move target
         };
     }
     c
@@ -189,6 +229,9 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         }
         // backward / leftward → [target, cursor)
         Motion::Left | Motion::WordBack | Motion::LineStart => (target(b, cur, m, n), cur),
+        // text objects: a range around the cursor (count ignored in v0)
+        Motion::InnerWord => inner_word_span(b, cur),
+        Motion::AWord => a_word_span(b, cur),
         // vertical / linewise motions are not charwise — callers handle Line specially
         Motion::Up | Motion::Down | Motion::Line => (cur, cur),
     }
