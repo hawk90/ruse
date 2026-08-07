@@ -674,6 +674,88 @@ mod register_tests {
 }
 
 #[cfg(test)]
+mod word_class_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn small_word_stops_at_punctuation() {
+        // "foo.bar baz": w → '.', w → 'bar', w → 'baz'.
+        let st = run("foo.bar baz", &[Command::Move(1, Motion::WordFwd)]);
+        assert_eq!(st.cursor(), 3, "w stops on the '.'");
+        let st = run(
+            "foo.bar baz",
+            &[
+                Command::Move(1, Motion::WordFwd),
+                Command::Move(1, Motion::WordFwd),
+            ],
+        );
+        assert_eq!(st.cursor(), 4, "second w → start of 'bar'");
+    }
+
+    #[test]
+    fn big_word_spans_punctuation() {
+        // "foo.bar baz": W → 'baz' (foo.bar is one WORD).
+        let st = run("foo.bar baz", &[Command::Move(1, Motion::BigWordFwd)]);
+        assert_eq!(st.cursor(), 8);
+    }
+
+    #[test]
+    fn small_word_back_treats_punct_as_a_word() {
+        // cursor on 'b' of bar (4); b → the '.' word at 3.
+        let st = run(
+            "foo.bar",
+            &[
+                Command::Move(4, Motion::Right),
+                Command::Move(1, Motion::WordBack),
+            ],
+        );
+        assert_eq!(st.cursor(), 3);
+    }
+
+    #[test]
+    fn dw_small_deletes_to_the_punctuation() {
+        let st = run("foo.bar", &[Command::Delete(1, Motion::WordFwd)]);
+        assert_eq!(text(&st), ".bar", "dw deletes 'foo' up to the '.'");
+    }
+
+    #[test]
+    fn dbigw_deletes_the_whole_word() {
+        let st = run("foo.bar baz", &[Command::Delete(1, Motion::BigWordFwd)]);
+        assert_eq!(text(&st), "baz", "dW deletes 'foo.bar ' entirely");
+    }
+
+    #[test]
+    fn multibyte_is_one_word() {
+        // "가나 다": w skips the Hangul word to the next.
+        let st = run("가나 다", &[Command::Move(1, Motion::WordFwd)]);
+        assert_eq!(
+            st.cursor(),
+            7,
+            "w lands on '다' after the multibyte word + space"
+        );
+    }
+
+    #[test]
+    fn whitespace_only_text_is_unchanged_from_word_style() {
+        // The pre-existing WORD behavior is preserved for plain words.
+        let st = run("foo bar baz", &[Command::Move(2, Motion::WordFwd)]);
+        assert_eq!(st.cursor(), 8);
+    }
+}
+
+#[cfg(test)]
 mod bracket_match_tests {
     use super::*;
 

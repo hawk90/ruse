@@ -2,8 +2,9 @@
 //! a target position (a bare move like `w`) or to a byte range (an operator like `dw`). It also owns the
 //! shared char-boundary / line helpers used across the editor.
 //!
-//! v0 word motions are **WORD-style** (whitespace-delimited); Vim's small-word punctuation split is a later
-//! refinement. All positions land on char boundaries.
+//! Word motions come in two flavors: small-word (`w`/`b`/`e`) split on Vim's three classes
+//! (whitespace / word = alnum+`_`+non-ASCII / punctuation), and WORD (`W`/`B`/`E`) split on whitespace only.
+//! All positions land on char boundaries.
 
 /// A motion in the editing grammar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -14,9 +15,15 @@ pub enum Motion {
     Down,
     LineStart,
     LineEnd,
+    /// Small-word motions (Vim `w`/`b`/`e`): three classes — whitespace, word (alnum + `_` + non-ASCII),
+    /// punctuation — so `foo.bar` is three words.
     WordFwd,
     WordBack,
     WordEnd,
+    /// WORD motions (Vim `W`/`B`/`E`): whitespace-delimited only, so `foo.bar` is one WORD.
+    BigWordFwd,
+    BigWordBack,
+    BigWordEnd,
     /// Text object: the word under the cursor (`iw`). Only meaningful under an operator.
     InnerWord,
     /// Text object: the word plus its adjacent whitespace (`aw`). Only meaningful under an operator.
@@ -111,39 +118,79 @@ fn is_ws(c: u8) -> bool {
     c == b' ' || c == b'\t' || c == b'\n'
 }
 
-fn next_word_start(b: &[u8], pos: usize) -> usize {
-    let mut i = pos.min(b.len());
-    while i < b.len() && !is_ws(b[i]) {
-        i += 1;
+/// The Vim character class of a byte for word motions. Non-ASCII bytes (`>= 0x80`) count as `Word` so a
+/// multibyte identifier (e.g. Hangul) is one word; class changes only ever fall on char boundaries.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Class {
+    Space,
+    Word,
+    Punct,
+}
+
+fn class(c: u8) -> Class {
+    if is_ws(c) {
+        Class::Space
+    } else if c == b'_' || c.is_ascii_alphanumeric() || c >= 0x80 {
+        Class::Word
+    } else {
+        Class::Punct
     }
-    while i < b.len() && is_ws(b[i]) {
+}
+
+/// Whether two bytes belong to the same word group. For WORD motions (`big`) any two non-space bytes share a
+/// group; for small-word motions the classes must also match (so a word↔punct transition is a boundary).
+fn same_group(a: Class, b: Class, big: bool) -> bool {
+    a != Class::Space && b != Class::Space && (big || a == b)
+}
+
+/// Start of the next (small-)word / WORD — Vim `w` / `W`.
+fn next_word_start(b: &[u8], pos: usize, big: bool) -> usize {
+    let mut i = pos.min(b.len());
+    if i < b.len() {
+        let c0 = class(b[i]);
+        if c0 != Class::Space {
+            while i < b.len() && same_group(c0, class(b[i]), big) {
+                i += 1;
+            }
+        }
+    }
+    while i < b.len() && class(b[i]) == Class::Space {
         i += 1;
     }
     i
 }
 
-fn prev_word_start(b: &[u8], pos: usize) -> usize {
+/// Start of the current/previous word / WORD — Vim `b` / `B`.
+fn prev_word_start(b: &[u8], pos: usize, big: bool) -> usize {
     let mut i = pos.min(b.len());
     if i == 0 {
         return 0;
     }
     i -= 1;
-    while i > 0 && is_ws(b[i]) {
+    while i > 0 && class(b[i]) == Class::Space {
         i -= 1;
     }
-    while i > 0 && !is_ws(b[i - 1]) {
+    if class(b[i]) == Class::Space {
+        return i;
+    }
+    let cw = class(b[i]);
+    while i > 0 && same_group(cw, class(b[i - 1]), big) {
         i -= 1;
     }
     i
 }
 
-/// One past the last non-ws byte of the current/next word (the exclusive end for `de`).
-fn word_end_excl(b: &[u8], pos: usize) -> usize {
+/// One past the last byte of the current/next word / WORD (the exclusive end for `de` / `dE`).
+fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
     let mut i = (pos + 1).min(b.len());
-    while i < b.len() && is_ws(b[i]) {
+    while i < b.len() && class(b[i]) == Class::Space {
         i += 1;
     }
-    while i < b.len() && !is_ws(b[i]) {
+    if i >= b.len() {
+        return b.len();
+    }
+    let cw = class(b[i]);
+    while i < b.len() && same_group(cw, class(b[i]), big) {
         i += 1;
     }
     i
@@ -355,9 +402,12 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::Down => down(b, c),
             Motion::LineStart => line_start(b, c),
             Motion::LineEnd => line_end(b, c),
-            Motion::WordFwd => next_word_start(b, c),
-            Motion::WordBack => prev_word_start(b, c),
-            Motion::WordEnd => prev_boundary(b, word_end_excl(b, c)), // land ON the last char
+            Motion::WordFwd => next_word_start(b, c, false),
+            Motion::WordBack => prev_word_start(b, c, false),
+            Motion::WordEnd => prev_boundary(b, word_end_excl(b, c, false)), // land ON the last char
+            Motion::BigWordFwd => next_word_start(b, c, true),
+            Motion::BigWordBack => prev_word_start(b, c, true),
+            Motion::BigWordEnd => prev_boundary(b, word_end_excl(b, c, true)),
             // FindChar / line-jumps are resolved by the early returns above; objects/linewise have no
             // bare-move target.
             Motion::FindChar { .. }
@@ -380,17 +430,22 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
     let n = count.max(1);
     match m {
         // forward / rightward → [cursor, target)
-        Motion::Right | Motion::WordFwd | Motion::LineEnd => (cur, target(b, cur, m, n)),
-        // inclusive end-of-word (Vim `de`)
-        Motion::WordEnd => {
+        Motion::Right | Motion::WordFwd | Motion::BigWordFwd | Motion::LineEnd => {
+            (cur, target(b, cur, m, n))
+        }
+        // inclusive end-of-word (Vim `de` / `dE`)
+        Motion::WordEnd | Motion::BigWordEnd => {
+            let big = m == Motion::BigWordEnd;
             let mut e = cur;
             for _ in 0..n {
-                e = word_end_excl(b, e);
+                e = word_end_excl(b, e, big);
             }
             (cur, e)
         }
         // backward / leftward → [target, cursor)
-        Motion::Left | Motion::WordBack | Motion::LineStart => (target(b, cur, m, n), cur),
+        Motion::Left | Motion::WordBack | Motion::BigWordBack | Motion::LineStart => {
+            (target(b, cur, m, n), cur)
+        }
         // char-search: forward includes through the landing char (`dfx` incl. x, `dtx` up to x); backward
         // spans from the landing to the cursor. A missing match is a no-op range.
         Motion::FindChar { ch, forward, till } => {
