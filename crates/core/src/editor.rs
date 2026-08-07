@@ -15,11 +15,14 @@ use crate::motion::{
 use crate::register::Register;
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 
-/// The editor mode (v0: the two that matter for the spine).
+/// The editor mode. `Visual { line }` is a selection mode: charwise (`v`) or linewise (`V`). Blockwise
+/// (`Ctrl-V`) is deferred. A selection is the pair `(anchor, cursor)`; a bare caret is the degenerate
+/// collapsed selection, so extending to multi-selection later needs no type rewrite (D-027 trajectory).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
     Normal,
     Insert,
+    Visual { line: bool },
 }
 
 /// Editor state over one document: the buffer, a byte cursor (always on a char boundary), and the mode.
@@ -34,6 +37,9 @@ pub struct EditorState {
     /// The v0 unnamed register: text yanked (`y`) or deleted (`d`/`c`/`x`) for a later paste (`p`/`P`).
     /// Named slots / the numbered ring are deferred (D-026; see `register.rs`).
     register: Register,
+    /// The Visual-mode selection anchor (the fixed end; the cursor is the moving end). `Some` exactly while
+    /// in `Mode::Visual`. The full anchor-store-backed `Selection` set is deferred (D-027).
+    anchor: Option<usize>,
 }
 
 enum Action {
@@ -65,6 +71,7 @@ impl EditorState {
             mode: Mode::Normal,
             last_was_edit: false,
             register: Register::default(),
+            anchor: None,
         }
     }
 
@@ -72,6 +79,22 @@ impl EditorState {
     #[must_use]
     pub fn register(&self) -> &Register {
         &self.register
+    }
+
+    /// The highlighted byte range `[start, end)` of the current Visual selection, or `None` in Normal/Insert.
+    /// Charwise includes the character under the active end; linewise spans whole lines. For the frontend to
+    /// paint the selection.
+    #[must_use]
+    pub fn selection_span(&self) -> Option<(usize, usize)> {
+        match self.mode {
+            Mode::Visual { line } => Some(selection_range(
+                self.bytes(),
+                self.anchor?,
+                self.cursor,
+                line,
+            )),
+            _ => None,
+        }
     }
 
     /// The document bytes.
@@ -142,6 +165,28 @@ fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
         }
     }
     (start, line_end(b, pos))
+}
+
+/// The byte range `[s, e)` a Visual selection covers, from its anchor and active (cursor) ends. Charwise
+/// includes the character under the higher end (Vim's inclusive selection); linewise spans whole lines
+/// including the trailing newline where present.
+fn selection_range(b: &[u8], anchor: usize, cursor: usize, line: bool) -> (usize, usize) {
+    let lo = anchor.min(cursor);
+    let hi = anchor.max(cursor);
+    if line {
+        let start = line_start(b, lo);
+        let le = line_end(b, hi);
+        let end = if le < b.len() { le + 1 } else { le };
+        (start, end)
+    } else {
+        // Inclusive of the char under `hi`.
+        let end = if hi < b.len() {
+            next_boundary(b, hi)
+        } else {
+            hi
+        };
+        (lo, end)
+    }
 }
 
 /// The pure decision for one command.
@@ -221,10 +266,15 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::EnterInsert => nop(cur, Mode::Insert),
         Command::EnterInsertAfter => nop(next_boundary(b, cur), Mode::Insert),
         Command::EnterNormal => {
-            // Vim: leaving Insert nudges the cursor left one, but never before the line start.
-            let ls = line_start(b, cur);
-            let c = if cur > ls { prev_boundary(b, cur) } else { cur };
-            nop(c, Mode::Normal)
+            // Vim: leaving Insert nudges the cursor left one, but never before the line start. Leaving Visual
+            // (Esc) just collapses the selection in place — no nudge.
+            if st.mode == Mode::Insert {
+                let ls = line_start(b, cur);
+                let c = if cur > ls { prev_boundary(b, cur) } else { cur };
+                nop(c, Mode::Normal)
+            } else {
+                nop(cur, Mode::Normal)
+            }
         }
         Command::InsertChar(c) => {
             let mut buf = [0u8; 4];
@@ -303,6 +353,36 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::Paste { after } => paste(b, cur, st.mode, &st.register, *after),
+        Command::EnterVisual { line } => nop(cur, Mode::Visual { line: *line }),
+        Command::YankSelection | Command::DeleteSelection | Command::ChangeSelection => {
+            let line = matches!(st.mode, Mode::Visual { line: true });
+            let Some(anchor) = st.anchor else {
+                // Not in a selection (or no anchor) — drop back to Normal, do nothing.
+                return nop(cur, Mode::Normal);
+            };
+            let (s, e) = selection_range(b, anchor, cur, line);
+            let reg = captured(s, e, line);
+            match cmd {
+                // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal.
+                Command::YankSelection => Plan {
+                    action: Action::Nop,
+                    cursor: s,
+                    mode: Mode::Normal,
+                    is_edit: false,
+                    effects: Vec::new(),
+                    set_register: Some(reg),
+                },
+                Command::DeleteSelection if s < e => {
+                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
+                }
+                Command::ChangeSelection if s < e => {
+                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+                }
+                // Empty selection: just leave Visual (Change still opens Insert).
+                Command::ChangeSelection => nop(s, Mode::Insert),
+                _ => nop(s, Mode::Normal),
+            }
+        }
         Command::SearchNext(pat) => {
             let m = crate::search::find_next(b, pat.as_bytes(), cur + 1).unwrap_or(cur);
             nop(m, st.mode)
@@ -414,6 +494,8 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool) -> Plan 
 
 /// Apply a plan to the state, returning the effects the frontend must perform.
 pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
+    let was_visual = matches!(st.mode, Mode::Visual { .. });
+    let entry_cursor = st.cursor;
     match plan.action {
         Action::Txn { edits, hint } => {
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
@@ -438,6 +520,13 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     st.last_was_edit = plan.is_edit;
     if let Some(reg) = plan.set_register {
         st.register = reg;
+    }
+    // Maintain the Visual selection anchor: set it when entering Visual (the fixed end is where the cursor
+    // was), keep it while staying in Visual, clear it on any exit to Normal/Insert.
+    match (was_visual, matches!(st.mode, Mode::Visual { .. })) {
+        (false, true) => st.anchor = Some(entry_cursor),
+        (_, false) => st.anchor = None,
+        (true, true) => {}
     }
     plan.effects
 }
@@ -552,5 +641,121 @@ mod register_tests {
         assert!(!st.register().is_linewise());
         let st = run("word\n", &[Command::Delete(1, Motion::Line)]);
         assert!(st.register().is_linewise());
+    }
+}
+
+#[cfg(test)]
+mod visual_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn entering_visual_sets_a_collapsed_selection() {
+        let st = run("hello", &[Command::EnterVisual { line: false }]);
+        assert_eq!(st.mode(), Mode::Visual { line: false });
+        // Anchor == cursor: the selection covers exactly the character under the caret (inclusive).
+        assert_eq!(st.selection_span(), Some((0, 1)));
+    }
+
+    #[test]
+    fn motion_extends_the_selection_and_stays_visual() {
+        let st = run(
+            "hello",
+            &[
+                Command::EnterVisual { line: false },
+                Command::MoveRight,
+                Command::MoveRight,
+            ],
+        );
+        assert_eq!(st.mode(), Mode::Visual { line: false });
+        assert_eq!(st.selection_span(), Some((0, 3)), "v + l + l selects 'hel'");
+    }
+
+    #[test]
+    fn charwise_delete_over_selection() {
+        let st = run(
+            "hello",
+            &[
+                Command::EnterVisual { line: false },
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "lo");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.register().text(), b"hel");
+        assert_eq!(st.selection_span(), None, "selection cleared on exit");
+    }
+
+    #[test]
+    fn charwise_yank_then_paste() {
+        let st = run(
+            "hello",
+            &[
+                Command::EnterVisual { line: false },
+                Command::MoveRight, // select "he"
+                Command::YankSelection,
+                Command::Paste { after: true },
+            ],
+        );
+        // Yank leaves the buffer, cursor at selection start (0); `p` inserts "he" after the cursor char.
+        assert_eq!(st.register().text(), b"he");
+        assert_eq!(text(&st), "hheello");
+    }
+
+    #[test]
+    fn linewise_delete_over_two_lines() {
+        let st = run(
+            "a\nb\nc\n",
+            &[
+                Command::EnterVisual { line: true },
+                Command::MoveDown, // extend selection to the second line
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "c\n");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"a\nb\n");
+    }
+
+    #[test]
+    fn change_selection_enters_insert() {
+        let st = run(
+            "hello",
+            &[
+                Command::EnterVisual { line: false },
+                Command::MoveRight,
+                Command::ChangeSelection,
+            ],
+        );
+        assert_eq!(text(&st), "llo");
+        assert_eq!(st.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn esc_leaves_visual_without_editing() {
+        let st = run(
+            "hello",
+            &[
+                Command::EnterVisual { line: false },
+                Command::MoveRight,
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "hello");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.selection_span(), None);
     }
 }

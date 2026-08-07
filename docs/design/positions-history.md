@@ -97,6 +97,28 @@ behavior is entirely **pluggable membership + traversal policies** over shared p
   detached coordinates, versioned" — the format doc is separate (persistence-and-recovery.md Non-goals).
 - Running Vimscript / Elisp (L3, D-007).
 
+## v0 scope — Visual-mode selection (shipped; the rest of this doc is the deferred target)
+
+The full model below is the unified anchor-store-backed `Selection` set (jumplist, mark-ring, Helix/Kakoune
+N-caret sets) — **deferred** (D-027, RFC-0012). What **ships in v0** is the single live selection that Visual
+mode needs, built on the model's load-bearing invariant (**G4**): a selection is a range with a fixed
+**anchor** and a moving **active** end, and a bare caret is the degenerate collapsed selection.
+
+- **`Mode::Visual { line }`** — charwise (`v`) and linewise (`V`). Blockwise (`Ctrl-V`) is deferred.
+- **The selection is `(anchor, cursor)`** — one `Option<usize>` anchor on the frontend `EditorState`; the
+  cursor is the active end. Entering Visual sets `anchor = cursor` (collapsed); motions move the cursor and
+  extend the range; any exit clears the anchor. Charwise includes the character under the higher end (Vim's
+  inclusive selection); linewise spans whole lines.
+- **Operators over the selection:** `d`/`x` delete, `y` yank, `c` change — each captures the span into the
+  unnamed register ([register-model.md](register-model.md) v0) and returns to Normal (Insert for `c`).
+
+**Deferred, and additive over this** (no rework of the `(anchor, active)` shape): the anchor-store-backed
+`Selection` type, N-caret multi-selection (a `Vec<Selection>` — v0's one range is `N = 1`), the jumplist /
+mark-ring / changelist containers, blockwise geometry, and Visual-mode `p` register-swap. The single range is
+already on the D-027 trajectory: growing to multi-selection changes *how many* selections exist, not the
+selection's type. Implementation: `Mode::Visual` + `EditorState::anchor` / `selection_span` in
+`crates/core/src/editor.rs`, keys in `apps/tui/src/input.rs`, reverse-video paint in `main.rs`.
+
 ## Terminology
 
 See [spec glossary](../../spec/glossary.yaml) and [PROJECT.md]. New local terms:

@@ -27,6 +27,22 @@ enum Op {
     Yank,
 }
 
+/// The motion a movement key names, shared by Normal (bare move / operator) and Visual (extend selection).
+/// `0` is deliberately excluded — it is a count digit unless the count is empty, so callers special-case it.
+fn motion_key(code: KeyCode) -> Option<Motion> {
+    Some(match code {
+        KeyCode::Char('h') | KeyCode::Left => Motion::Left,
+        KeyCode::Char('l') | KeyCode::Right => Motion::Right,
+        KeyCode::Char('j') | KeyCode::Down => Motion::Down,
+        KeyCode::Char('k') | KeyCode::Up => Motion::Up,
+        KeyCode::Char('w') => Motion::WordFwd,
+        KeyCode::Char('b') => Motion::WordBack,
+        KeyCode::Char('e') => Motion::WordEnd,
+        KeyCode::Char('$') => Motion::LineEnd,
+        _ => return None,
+    })
+}
+
 /// The Normal-mode pending state: an accumulating count and an awaiting operator.
 #[derive(Default)]
 pub struct InputEngine {
@@ -117,6 +133,44 @@ impl InputEngine {
                 _ => Feed::Ignored,
             };
         }
+        // Visual mode: the selection already exists, so operators act on it directly and motions extend it.
+        if let Mode::Visual { line } = mode {
+            match key.code {
+                KeyCode::Esc => return self.action(Command::EnterNormal),
+                // `v`/`V` toggle: same kind exits, the other switches charwise↔linewise.
+                KeyCode::Char('v') => {
+                    return self.action(if line {
+                        Command::EnterVisual { line: false }
+                    } else {
+                        Command::EnterNormal
+                    });
+                }
+                KeyCode::Char('V') => {
+                    return self.action(if line {
+                        Command::EnterNormal
+                    } else {
+                        Command::EnterVisual { line: true }
+                    });
+                }
+                KeyCode::Char('d') | KeyCode::Char('x') => {
+                    return self.action(Command::DeleteSelection)
+                }
+                KeyCode::Char('y') => return self.action(Command::YankSelection),
+                KeyCode::Char('c') | KeyCode::Char('s') => {
+                    return self.action(Command::ChangeSelection)
+                }
+                // Count digits and motions extend the selection; anything else is ignored in Visual.
+                KeyCode::Char('1'..='9') => {}
+                KeyCode::Char('0') if self.count > 0 => {}
+                KeyCode::Char('0') => return self.motion(Motion::LineStart),
+                _ if motion_key(key.code).is_some() => {}
+                _ => {
+                    self.reset();
+                    return Feed::Ignored;
+                }
+            }
+            // fall through to shared count/motion handling below (op is never set in Visual)
+        }
         // Completing a text object (`d` `i` then `w` = `diw`): only an object char is valid here.
         if let Some(inner) = self.textobj {
             return match key.code {
@@ -146,14 +200,11 @@ impl InputEngine {
                 Feed::Pending
             }
             KeyCode::Char('0') => self.motion(Motion::LineStart),
-            KeyCode::Char('$') => self.motion(Motion::LineEnd),
-            KeyCode::Char('h') | KeyCode::Left => self.motion(Motion::Left),
-            KeyCode::Char('l') | KeyCode::Right => self.motion(Motion::Right),
-            KeyCode::Char('j') | KeyCode::Down => self.motion(Motion::Down),
-            KeyCode::Char('k') | KeyCode::Up => self.motion(Motion::Up),
-            KeyCode::Char('w') => self.motion(Motion::WordFwd),
-            KeyCode::Char('b') => self.motion(Motion::WordBack),
-            KeyCode::Char('e') => self.motion(Motion::WordEnd),
+            code if motion_key(code).is_some() => {
+                self.motion(motion_key(code).expect("guarded by is_some"))
+            }
+            KeyCode::Char('v') => self.action(Command::EnterVisual { line: false }),
+            KeyCode::Char('V') => self.action(Command::EnterVisual { line: true }),
             KeyCode::Char('d') => {
                 self.operator(Op::Delete, Command::Delete(op_count, Motion::Line))
             }
@@ -272,6 +323,60 @@ mod tests {
     #[test]
     fn cw_is_ce() {
         assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordEnd)));
+    }
+
+    fn esc() -> KeyEvent {
+        KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn enters_visual_from_normal() {
+        assert_eq!(feed("v"), Feed::Cmd(Command::EnterVisual { line: false }));
+        assert_eq!(feed("V"), Feed::Cmd(Command::EnterVisual { line: true }));
+    }
+
+    #[test]
+    fn visual_operators_act_on_the_selection() {
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual { line: false };
+        assert_eq!(e.feed(k('d'), vis), Feed::Cmd(Command::DeleteSelection));
+        assert_eq!(e.feed(k('y'), vis), Feed::Cmd(Command::YankSelection));
+        assert_eq!(e.feed(k('c'), vis), Feed::Cmd(Command::ChangeSelection));
+        assert_eq!(e.feed(k('x'), vis), Feed::Cmd(Command::DeleteSelection));
+        assert_eq!(e.feed(esc(), vis), Feed::Cmd(Command::EnterNormal));
+    }
+
+    #[test]
+    fn visual_motion_extends_selection() {
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual { line: false };
+        // A bare motion in Visual is a Move (no operator) — the frontend re-plans it against the anchor.
+        assert_eq!(
+            e.feed(k('l'), vis),
+            Feed::Cmd(Command::Move(1, Motion::Right))
+        );
+        assert_eq!(
+            e.feed(k('w'), vis),
+            Feed::Cmd(Command::Move(1, Motion::WordFwd))
+        );
+    }
+
+    #[test]
+    fn visual_toggle_and_switch() {
+        let mut e = InputEngine::new();
+        // `v` in charwise Visual exits; `V` switches it to linewise.
+        assert_eq!(
+            e.feed(k('v'), Mode::Visual { line: false }),
+            Feed::Cmd(Command::EnterNormal)
+        );
+        assert_eq!(
+            e.feed(k('V'), Mode::Visual { line: false }),
+            Feed::Cmd(Command::EnterVisual { line: true })
+        );
+        assert_eq!(
+            e.feed(k('v'), Mode::Visual { line: true }),
+            Feed::Cmd(Command::EnterVisual { line: false })
+        );
     }
 
     #[test]
