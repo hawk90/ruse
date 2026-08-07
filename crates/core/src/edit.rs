@@ -87,6 +87,10 @@ impl EditList {
     /// (including two inserts at the same gap) is an [`EditError::Overlap`] because their order would be
     /// ambiguous.
     pub fn new(mut edits: Vec<Edit>) -> Result<EditList, EditError> {
+        // Drop no-op edits (delete nothing, insert nothing): they carry no information, and keeping one
+        // would let a later `inverse` emit two edits at the same position (which `from_sorted` rejects).
+        // The canonical list contains only edits that actually change the buffer.
+        edits.retain(|e| e.del != 0 || !e.ins.is_empty());
         edits.sort_by_key(|e| e.pos.0);
         for w in edits.windows(2) {
             let (a, b) = (&w[0], &w[1]);
@@ -103,10 +107,13 @@ impl EditList {
     /// Build from edits already known to be sorted and disjoint (e.g. a computed inverse). Debug-asserts
     /// the invariant rather than re-sorting.
     fn from_sorted(edits: Vec<Edit>) -> EditList {
+        // Same disjointness rule as `new`: ascending, non-overlapping, distinct start gaps — but *touching*
+        // (`w[1].pos == w[0].end()`) is allowed, exactly as `new` allows it. (An inverse of touching forward
+        // edits is itself touching; requiring a strict gap here would wrongly reject a valid list.)
         debug_assert!(
             edits
                 .windows(2)
-                .all(|w| w[1].pos.0 > w[0].end() && w[1].pos.0 != w[0].pos.0),
+                .all(|w| w[1].pos.0 >= w[0].end() && w[1].pos.0 != w[0].pos.0),
             "from_sorted given overlapping or unsorted edits"
         );
         EditList { edits }
@@ -161,20 +168,28 @@ impl EditList {
     /// that were deleted, at the position the insertion occupies in the *new* buffer.
     #[must_use]
     pub fn inverse(&self, buf: &[u8]) -> EditList {
-        let mut inv = Vec::with_capacity(self.edits.len());
+        let mut inv: Vec<Edit> = Vec::with_capacity(self.edits.len());
         let mut delta: isize = 0;
         for e in &self.edits {
             let new_pos = (e.pos.0 as isize + delta) as usize;
             let removed = buf[e.pos.0..e.end()].to_vec();
+            delta += e.delta();
+            // Forward edits that *touch* (the next starts exactly where the previous ends) invert to the
+            // same position — e.g. `delete[a,b)` then `insert@b`. Merging them into one edit keeps the
+            // inverse a valid disjoint list (a strict gap otherwise separates the inverse positions).
+            if let Some(last) = inv.last_mut() {
+                if last.pos.0 == new_pos {
+                    last.del += e.ins.len();
+                    last.ins.extend_from_slice(&removed);
+                    continue;
+                }
+            }
             inv.push(Edit {
                 pos: BytePos(new_pos),
                 del: e.ins.len(),
                 ins: removed,
             });
-            delta += e.delta();
         }
-        // `new_pos` is strictly increasing with a gap of at least `e.ins.len()`, so the inverse is
-        // already sorted and disjoint.
         EditList::from_sorted(inv)
     }
 }

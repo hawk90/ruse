@@ -152,6 +152,34 @@ guarding [anti-patterns](../anti-patterns/anti-patterns.md) TEST-5/6/7):
 
 Each failing case **must be reduced to a saved deterministic fixture** (§1.10), never left as a seed.
 
+#### v0 status — SHIPPED (`crates/core/tests/properties.rs`)
+
+The property layer is **live** for the v0 semantic core (the first mechanized test-quality layer beyond
+example tests). Five invariants run under `proptest` (dev-dependency only; the core crate stays dep-free):
+
+- **UTF-8 / cursor-boundary safety** — no command sequence, from any buffer, ever produces invalid UTF-8 or
+  leaves the cursor off a char boundary / out of bounds. (The headline totality property.)
+- **Undo/redo round-trip** — full undo restores the initial buffer, full redo the edited buffer, regardless
+  of undo-group coalescing.
+- **Trace replay determinism** — recording a command sequence and replaying it on the same initial document
+  reproduces the exact final state, and survives a serialize→parse round-trip (the RFC-0012 trace pillar).
+- **Edit inverse identity** — `inverse(apply(buf))  == buf` for any in-range edit list (the undo substrate).
+- **EditList canonical form** — a constructed list is sorted and pairwise disjoint (touching allowed).
+
+**This layer paid for itself immediately** — on first run it caught two latent core panics that every example
+test had missed:
+
+1. A stale Visual-mode selection anchor (a raw byte offset) sliced out of bounds when an edit shrank the
+   buffer under it → `EditorState::commit` now clamps the anchor each step (totality; the edit-tracking
+   anchor position is deferred to D-027).
+2. `EditList::inverse` panicked on *touching* forward edits — the inverse touches too, but `from_sorted`
+   demanded a strict gap, and a pure-delete-then-touch collapsed two inverse edits onto one position →
+   `inverse` now merges same-position inverse edits and `from_sorted` allows touching (matching `new`);
+   `new` also drops no-op edits so they can't seed the collision.
+
+Deferred (still target-state above): anchor-transform property tests (needs the D-027 anchor exposure),
+transaction-atomicity generative cases, the differential-parity / fault-injection / replay-corpus layers.
+
 ### 1.3 Differential parity — `tests/parity/<profile>/*.yaml`
 
 Vim/Emacs/Native behavior is encoded as **executable fixtures**, not doc tables

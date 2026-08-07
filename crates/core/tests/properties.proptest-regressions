@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6f71e52bf5cd3a006c195685c3a05d8a467a3e839bcff21cba018ef170e175ee # shrinks to init = [], cmds = [InsertChar('\0'), EnterVisual { line: false }, DeleteBack, DeleteSelection]
+cc b460d2cee629470266b21306f5139b4593d2ea57262baac65bb0d51260d56983 # shrinks to buf = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], raw = [Edit { pos: BytePos(23), del: 0, ins: [] }, Edit { pos: BytePos(21), del: 2, ins: [] }]
+cc 59cfe9a29b14782f56fcccec859928f83121232f8f3741296cefad0fd0235d5c # shrinks to init = [194, 161, 194, 161, 65, 65], cmds = [Move(1, WordEnd), EnterVisual { line: false }, DeleteBack, DeleteBack, DeleteSelection]
+cc 7a29ab1d295c2955fd097370c80441e9ff9ac07100f30b64444c33b6452275b5 # shrinks to buf = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], raw = [Edit { pos: BytePos(6), del: 5, ins: [0] }, Edit { pos: BytePos(11), del: 0, ins: [0] }]
