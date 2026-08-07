@@ -39,6 +39,75 @@ written under `trace.verify` are uniform, machine-checkable, and don't rot into 
 
 ---
 
+## v0 scope — measuring the two-crate editor ([D-042](../../spec/DECISIONS.md))
+
+The full methodology (§3) is written for the whole platform (plugins, remote, render IR). This scopes it to
+what the two-crate v0 ([D-039]) actually has, and — per RFC-0012's rule that perf choices are made *after*
+measurement, never by intuition — fixes **what we measure first** before any optimization lands.
+
+**The per-keystroke cost is O(n) in the buffer today, in four independent places.** Naming them (with code
+homes) so a regression localizes to one, and so the storage question is not confused with the others:
+
+| # | Hot spot | Where | Cost / key |
+| --- | --- | --- | --- |
+| 1 | `EditList::apply_to` builds a fresh `Vec` → `Arc::from` (a second copy), then `rebuild_index` | `crates/core/src/{edit,document}.rs` | O(n) |
+| 2 | **full tree-sitter re-parse every frame** — the `Tree` is not kept | `apps/tui/src/highlight.rs` | O(n) parse + query |
+| 3 | full per-byte color vec + walk from byte 0 (no viewport/scroll exists) | `apps/tui/src/main.rs` `render` | O(n) |
+| 4 | line-start index rebuilt whole | `crates/core/src/document.rs` `rebuild_index` | O(n) |
+
+**Hypothesis (to confirm with numbers, not assert):** at daily-driver sizes (hundreds–thousands of lines) a
+full buffer copy is tens of µs — negligible — so the *felt* latency is dominated by **#2 (re-parse) and #3
+(render)**, not #1 (buffer). A rope's `O(log n)` edit only pays off at MB scale. If the baseline confirms
+this, the storage rewrite is **not** the first move.
+
+**The v0 benchmark set** (criterion, `default-features = false`; percentiles per §3.1) isolates the two
+pure, terminal-free costs whose comparison answers the hypothesis:
+
+- `crates/core/benches/edit_apply.rs` — a single mid-buffer insert on N = {100, 1k, 10k, 100k} lines (#1).
+- `apps/tui/benches/highlight_parse.rs` — one full `spans()` re-parse on the same N (#2).
+
+`render` (#3) is terminal-coupled; its pure span-flatten cost is folded into a later viewport slice. The
+end-to-end input→render budget (§3.2, target < 16 ms) is the sum a human feels.
+
+**Optimization order (measure-first applies to *tradeoff* choices, not to every step):**
+1. **(A) highlight caching** — recompute `spans()` only when the revision changed; a no-op frame becomes
+   free. No tradeoff (pure removal of wasted work) — justified without a benchmark.
+2. **(B) viewport render + scroll** — a **missing feature / correctness gap** (a file taller than the screen
+   cannot be edited today), not an optimization. Needed for dogfood regardless of numbers.
+3. **(C) incremental tree-sitter** (keep the `Tree`, `tree.edit()` + re-parse) and **(D) incremental line
+   index** — real tradeoffs; **gated on the baseline** showing #2/#4 dominate.
+
+**Storage is deferred behind a seam, not chosen now.** `Arc<[u8]>` (flat bytes) stays until a benchmark
+shows buffer mutation actually dominates (MB files). When it does, the swap goes behind a `TextStorage`
+trait that seals the coordinate model to **byte offsets** (Edit/EditList/anchor/undo/snapshot already speak
+bytes; a rope's char/line coordinates must never leak past the trait). The concrete rope/gap-buffer impl is
+**injected from the frontend** so `editor-core` stays dependency-free (the compiler-enforced IO-free/dep-free
+invariant — `crates/core/Cargo.toml` has no `[dependencies]`); the trait alone lives in core. Rope vs an own
+gap buffer (amortized `O(1)` for the cursor-local edits a modal editor makes) is itself a measured choice at
+that point — neither is in the build today.
+
+### v0 baseline
+
+Captured on adoption so later slices prove they helped and cannot silently regress (absolute numbers are one
+dev machine's — a relative baseline, not a budget; the budget numbers live in ci-cd §10). Reproduce with
+`cargo bench`.
+
+| N (lines) | #1 apply (p50) | #2 re-parse (p50) | ratio #2/#1 |
+| --- | --- | --- | --- |
+| 100 | 0.59 µs | 794 µs | ~1350× |
+| 1 000 | 18.8 µs | 7.98 ms | ~425× |
+| 10 000 | 25.3 µs | 82 ms | ~3200× |
+| 100 000 | 1.13 ms | 841 ms | ~740× |
+
+**The hypothesis holds decisively:** the full re-parse (#2) is **~400–3200× the buffer cost (#1)**. At 10 000
+lines a single keystroke pays ~82 ms of re-parse *per frame* (≈12 fps, plainly laggy) against ~25 µs of
+buffer copy. So a rope would shave ~µs off a cost that is already three orders of magnitude below the one a
+human feels: **storage is confirmed the wrong first move.** The wins are **(A) caching** (skip the re-parse
+on frames where nothing changed) and **(C) incremental tree-sitter** (re-parse only the edited region) —
+exactly where the next slices go.
+
+---
+
 ## 1. Test taxonomy — the layers and their formats
 
 The layer *scopes* and *run-on* schedule are defined in [ci-cd-and-release.md §2](ci-cd-and-release.md)

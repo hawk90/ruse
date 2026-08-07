@@ -424,3 +424,25 @@ related:
 - **Re-evaluate if:** a sanctioned `catch_unwind` boundary lands (LSP/async slice) — extend the allowlist;
   or clippy gains a native lint that subsumes a checker rule.
 - Refs: [../docs/design/stability-and-observability.md](../docs/design/stability-and-observability.md), D-040, RFC-0012, INV-ERR-CLASS, STAB-2, STAB-5, STAB-6, TRACE-1, RA-RUSE-003.
+
+## D-042 — Perf is measure-first: benchmark, then optimize #2/#3 before storage; keep core dep-free · decided
+- **Decision:** The per-keystroke cost is O(n) in four independent places (see the [testing-and-benchmarks]
+  (../docs/operations/testing-and-benchmarks.md) "v0 scope"): #1 buffer copy+reindex, #2 full tree-sitter
+  re-parse per frame, #3 full render (no viewport), #4 line-index rebuild. A criterion baseline
+  (`edit_apply` for #1, `highlight_parse` for #2) is captured BEFORE optimizing. Order: **(A) highlight
+  caching** (recompute spans only on revision change — no tradeoff, no benchmark needed) and **(B) viewport
+  render + scroll** (a missing feature / correctness gap, not an optimization) land first; **(C) incremental
+  tree-sitter** and **(D) incremental line index** are gated on the baseline showing #2/#4 dominate. The text
+  store stays flat `Arc<[u8]>`; a rope/gap-buffer swap is deferred until a benchmark shows buffer mutation
+  actually dominates (MB files), and then goes behind a `TextStorage` trait that seals coordinates to **byte
+  offsets**, with the concrete impl **injected from the frontend** so `editor-core` stays dependency-free.
+- **Reason:** ropey is not in the build (core has no `[dependencies]`), so "keep ropey" was never the
+  question — and at daily-driver sizes a buffer copy is tens of µs while a full re-parse/redraw dominates, so
+  a storage rewrite is the wrong first move (RFC-0012: decide perf *after* measurement; anti-patterns PERFS).
+  Measure-first applies to *tradeoff* choices (C/D/storage); a pure-win cache (A) and a missing feature (B)
+  do not wait on numbers. Sealing coordinates in `TextStorage` keeps a future rope's char/line model from
+  leaking into Edit/anchor/undo semantics — the part [D-039] says to churn carefully.
+- **Re-evaluate if:** the baseline contradicts the hypothesis (buffer #1 dominates at daily-driver sizes), or
+  files routinely reach MB scale — then storage moves up and `TextStorage` + a measured rope-vs-gap-buffer
+  choice lands.
+- Refs: [../docs/operations/testing-and-benchmarks.md](../docs/operations/testing-and-benchmarks.md), [../docs/design/render-and-frontends.md](../docs/design/render-and-frontends.md), RFC-0012, D-039, DEP-ROPE.

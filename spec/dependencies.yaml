@@ -44,4 +44,4 @@ dependencies:
   DEP-FORMATTER: { purpose: formatters/linters (rustfmt, clang-format, prettier), usage: external-process, tier: 1, criticality: low, public_api_exposure: none, allowed_layers: [], alternatives: [per-tool], exit_strategy: formatter adapter }
 
   # ---- tooling only (never in shipped binaries) ----
-  DEP-TEST-UTIL: { purpose: test assertions / property testing / fixtures, usage: tooling, tier: 0, criticality: low, public_api_exposure: none, allowed_layers: [any-dev], alternatives: [std], exit_strategy: n/a }
+  DEP-TEST-UTIL: { purpose: "test assertions / property testing / fixtures / benchmarking (criterion, D-042)", usage: tooling, tier: 0, criticality: low, public_api_exposure: none, allowed_layers: [any-dev], alternatives: [std], exit_strategy: n/a }
