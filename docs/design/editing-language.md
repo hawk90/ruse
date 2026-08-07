@@ -46,6 +46,13 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 - Not the Emacs/Native selection-editing path (that uses `editor.delete_selection` on an existing
   selection — a *sibling*, §7). Not the register data model (that is [register-model.md](register-model.md), D-026).
 
+## v0 — insert-entry commands (SHIPPED)
+
+Beyond `i`/`a`, the common insert entries ship as their own semantic commands (so a trace records the intent):
+`o`/`O` open a new line below/above and enter Insert (an edit — insert `\n` at the line end / start), `A`
+appends at the line end, `I` inserts before the first non-blank. Deferred: autoindent (the new line copies no
+indentation yet), and the Visual-mode meanings of `o`/`I`/`A` (swap-ends / block-insert).
+
 ## v0 — small-word vs WORD motions (SHIPPED)
 
 Word motions now use Vim's character classes. Small-word `w`/`b`/`e` recognize **three classes** — whitespace,

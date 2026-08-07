@@ -19,10 +19,18 @@ pub enum Command {
     MoveDown,
     MoveLineStart,
     MoveLineEnd,
-    // mode
+    // mode / insert-entry
     EnterInsert,
     EnterInsertAfter,
     EnterNormal,
+    /// `I` — insert before the first non-blank char of the line.
+    InsertLineStart,
+    /// `A` — append at the end of the line.
+    AppendLineEnd,
+    /// `o` — open a new line below and insert.
+    OpenBelow,
+    /// `O` — open a new line above and insert.
+    OpenAbove,
     // edit
     InsertChar(char),
     InsertNewline,
@@ -34,9 +42,13 @@ pub enum Command {
     Change(u32, Motion),
     // registers (v0 unnamed slot): yank a motion range; paste after (`p`) or before (`P`) the cursor
     Yank(u32, Motion),
-    Paste { after: bool },
+    Paste {
+        after: bool,
+    },
     // visual mode: enter a selection (charwise `v` / linewise `V`); operate on the current selection
-    EnterVisual { line: bool },
+    EnterVisual {
+        line: bool,
+    },
     DeleteSelection,
     YankSelection,
     ChangeSelection,
@@ -154,6 +166,10 @@ impl Command {
             Command::EnterInsert => "enter_insert".into(),
             Command::EnterInsertAfter => "enter_insert_after".into(),
             Command::EnterNormal => "enter_normal".into(),
+            Command::InsertLineStart => "insert_line_start".into(),
+            Command::AppendLineEnd => "append_line_end".into(),
+            Command::OpenBelow => "open_below".into(),
+            Command::OpenAbove => "open_above".into(),
             Command::InsertChar(c) => {
                 let mut s = String::from("insert_char ");
                 let _ = write!(s, "{}", *c as u32);
@@ -214,6 +230,10 @@ impl Command {
             "enter_insert" => Command::EnterInsert,
             "enter_insert_after" => Command::EnterInsertAfter,
             "enter_normal" => Command::EnterNormal,
+            "insert_line_start" => Command::InsertLineStart,
+            "append_line_end" => Command::AppendLineEnd,
+            "open_below" => Command::OpenBelow,
+            "open_above" => Command::OpenAbove,
             "insert_char" => {
                 let cp: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -263,6 +283,10 @@ mod tests {
             Command::EnterInsert,
             Command::EnterInsertAfter,
             Command::EnterNormal,
+            Command::InsertLineStart,
+            Command::AppendLineEnd,
+            Command::OpenBelow,
+            Command::OpenAbove,
             Command::InsertChar('h'),
             Command::InsertChar('🎉'),
             Command::InsertChar(' '),

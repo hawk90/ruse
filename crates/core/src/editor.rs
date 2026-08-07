@@ -279,6 +279,26 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         Command::EnterInsert => nop(cur, Mode::Insert),
         Command::EnterInsertAfter => nop(next_boundary(b, cur), Mode::Insert),
+        Command::InsertLineStart => nop(motion::first_non_blank(b, cur), Mode::Insert),
+        Command::AppendLineEnd => nop(line_end(b, cur), Mode::Insert),
+        Command::OpenBelow => {
+            let le = line_end(b, cur);
+            edit(
+                one(Edit::insert(le, b"\n".to_vec())),
+                le + 1,
+                Mode::Insert,
+                hint,
+            )
+        }
+        Command::OpenAbove => {
+            let ls = line_start(b, cur);
+            edit(
+                one(Edit::insert(ls, b"\n".to_vec())),
+                ls,
+                Mode::Insert,
+                hint,
+            )
+        }
         Command::EnterNormal => {
             // Vim: leaving Insert nudges the cursor left one, but never before the line start. Leaving Visual
             // (Esc) just collapses the selection in place — no nudge.
@@ -670,6 +690,75 @@ mod register_tests {
         assert!(!st.register().is_linewise());
         let st = run("word\n", &[Command::Delete(1, Motion::Line)]);
         assert!(st.register().is_linewise());
+    }
+}
+
+#[cfg(test)]
+mod insert_entry_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn open_below_inserts_a_line_and_enters_insert() {
+        let st = run("ab\ncd", &[Command::OpenBelow, Command::InsertChar('X')]);
+        assert_eq!(text(&st), "ab\nX\ncd");
+        assert_eq!(st.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn open_below_on_last_line() {
+        let st = run("ab", &[Command::OpenBelow, Command::InsertChar('X')]);
+        assert_eq!(text(&st), "ab\nX");
+    }
+
+    #[test]
+    fn open_above_inserts_before_the_line() {
+        // On line 2 ('cd'); O opens a line above it.
+        let st = run(
+            "ab\ncd",
+            &[
+                Command::MoveDown,
+                Command::OpenAbove,
+                Command::InsertChar('X'),
+            ],
+        );
+        assert_eq!(text(&st), "ab\nX\ncd");
+    }
+
+    #[test]
+    fn append_goes_to_line_end() {
+        // On 'a' of "ab"; A appends at the end.
+        let st = run(
+            "ab\ncd",
+            &[Command::AppendLineEnd, Command::InsertChar('X')],
+        );
+        assert_eq!(text(&st), "abX\ncd");
+        assert_eq!(st.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn insert_line_start_goes_to_first_non_blank() {
+        // Cursor at end of a leading-blank line; I jumps to the first non-blank.
+        let st = run(
+            "  ab",
+            &[
+                Command::Move(1, Motion::LineEnd),
+                Command::InsertLineStart,
+                Command::InsertChar('X'),
+            ],
+        );
+        assert_eq!(text(&st), "  Xab", "I inserts before the first non-blank");
     }
 }
 
