@@ -340,6 +340,50 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 edit_yank(one(Edit::delete(cur, nb - cur)), cur, st.mode, hint, reg)
             }
         }
+        Command::ReplaceChar(c) => {
+            // Replace the char under the cursor; a no-op at end-of-line / empty buffer or over a newline.
+            if cur >= b.len() || b[cur] == b'\n' {
+                nop(cur, st.mode)
+            } else {
+                let nb = next_boundary(b, cur);
+                let mut buf = [0u8; 4];
+                let bytes = c.encode_utf8(&mut buf).as_bytes().to_vec();
+                edit(one(Edit::replace(cur, nb - cur, bytes)), cur, st.mode, hint)
+            }
+        }
+        Command::ToggleCase => {
+            // Toggle the ASCII case of the char under the cursor (if a letter), then move right (Vim `~`).
+            if cur >= b.len() || b[cur] == b'\n' {
+                nop(cur, st.mode)
+            } else {
+                let nb = next_boundary(b, cur);
+                if b[cur].is_ascii_alphabetic() {
+                    let flipped = vec![b[cur] ^ 0b0010_0000]; // ASCII case bit
+                    edit(one(Edit::replace(cur, 1, flipped)), nb, st.mode, hint)
+                } else {
+                    nop(nb, st.mode) // non-letter: `~` just moves right
+                }
+            }
+        }
+        Command::JoinLines => {
+            // Join the current line with the next on a single space (Vim `J`). No-op on the last line.
+            let le = line_end(b, cur);
+            if le >= b.len() {
+                nop(cur, st.mode)
+            } else {
+                // Delete the newline plus the next line's leading blanks, insert one space.
+                let mut ws_end = le + 1;
+                while ws_end < b.len() && (b[ws_end] == b' ' || b[ws_end] == b'\t') {
+                    ws_end += 1;
+                }
+                edit(
+                    one(Edit::replace(le, ws_end - le, b" ".to_vec())),
+                    le,
+                    st.mode,
+                    hint,
+                )
+            }
+        }
         Command::Move(count, m) => nop(motion::target(b, cur, *m, *count), st.mode),
         Command::Delete(count, m) => {
             let (s, e) = op_range(b, cur, *m, *count);
@@ -690,6 +734,70 @@ mod register_tests {
         assert!(!st.register().is_linewise());
         let st = run("word\n", &[Command::Delete(1, Motion::Line)]);
         assert!(st.register().is_linewise());
+    }
+}
+
+#[cfg(test)]
+mod single_key_edit_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn replace_char_keeps_the_cursor() {
+        let st = run("abc", &[Command::MoveRight, Command::ReplaceChar('X')]);
+        assert_eq!(text(&st), "aXc");
+        assert_eq!(st.cursor(), 1, "r leaves the cursor on the replaced char");
+        assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn replace_char_multibyte() {
+        let st = run("abc", &[Command::ReplaceChar('가')]);
+        assert_eq!(text(&st), "가bc");
+    }
+
+    #[test]
+    fn replace_over_newline_or_eol_is_noop() {
+        let st = run(
+            "ab\nc",
+            &[Command::Move(1, Motion::LineEnd), Command::ReplaceChar('X')],
+        );
+        assert_eq!(text(&st), "ab\nc", "r on the line-end newline does nothing");
+    }
+
+    #[test]
+    fn toggle_case_flips_and_moves_right() {
+        let st = run("aBc", &[Command::ToggleCase]);
+        assert_eq!(text(&st), "ABc");
+        assert_eq!(st.cursor(), 1);
+        // On a non-letter, `~` just moves right.
+        let st = run("1a", &[Command::ToggleCase]);
+        assert_eq!(text(&st), "1a");
+        assert_eq!(st.cursor(), 1);
+    }
+
+    #[test]
+    fn join_lines_uses_one_space_and_drops_indent() {
+        let st = run("foo\n   bar", &[Command::JoinLines]);
+        assert_eq!(text(&st), "foo bar");
+        assert_eq!(st.cursor(), 3, "cursor lands on the joined space");
+    }
+
+    #[test]
+    fn join_on_last_line_is_noop() {
+        let st = run("only", &[Command::JoinLines]);
+        assert_eq!(text(&st), "only");
     }
 }
 

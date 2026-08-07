@@ -46,6 +46,15 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 - Not the Emacs/Native selection-editing path (that uses `editor.delete_selection` on an existing
   selection — a *sibling*, §7). Not the register data model (that is [register-model.md](register-model.md), D-026).
 
+## v0 — single-key edits (SHIPPED)
+
+`r{char}` replaces the character under the cursor (via the input engine's `Awaiting::ReplaceChar` state — the
+key after `r` is the replacement; ctrl-r stays redo), leaving the cursor on it; it is a no-op at end-of-line
+or over a newline. `~` toggles the ASCII case of the char and moves right (a non-letter just moves). `J` joins
+the current line with the next on a single space, dropping the next line's leading indent (no-op on the last
+line). Deferred: counted `r`/`~`, non-ASCII case folding, and `J`'s Vim niceties (no space before `)`, keep
+existing trailing space).
+
 ## v0 — insert-entry commands (SHIPPED)
 
 Beyond `i`/`a`, the common insert entries ship as their own semantic commands (so a trace records the intent):
