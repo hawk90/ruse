@@ -404,3 +404,23 @@ related:
 - **Re-evaluate if:** the LSP/async or plugin slice lands — then the supervisor, health registry, and
   `ErrorCode` API are re-scoped live with their boundary.
 - Refs: [../docs/design/stability-and-observability.md](../docs/design/stability-and-observability.md), RFC-0012, D-039, INV-ERR-CLASS, INV-FAIL-BOUNDED, INV-STATUS.
+
+## D-041 — The assert/error/log discipline is a merge gate, not a review convention · decided
+- **Decision:** The [stability](../docs/design/stability-and-observability.md) "v0 decision table" (which of
+  `debug_assert!`/`expect` · typed `Result` · `tracing` · `Trace` applies to a given situation) is enforced
+  mechanically at merge. **One rule → one mechanism → the most accurate one** (no rule enforced twice):
+  every AST-expressible rule is clippy's, and the checker owns ONLY what clippy structurally cannot see.
+  **(1) clippy** (the required `rust` check), configured once via crate-root `#![deny]` + `clippy.toml`:
+  `print_stdout`/`print_stderr` (diagnostics go through `tracing`; headless CLI carries a commented
+  `allow`), `clippy::unwrap_used` (a non-test `.unwrap()` — `allow-unwrap-in-tests` exempts tests), and
+  `disallowed-methods = [catch_unwind]` (STAB-6). **(2) the `ruse gov rust_discipline` checker** — the two
+  clippy cannot express: `Result<_, String>` (§2, a specific generic argument) and `panic = "abort"` in a
+  manifest (STAB-5, a Cargo profile, not Rust).
+- **Reason:** the project dogfoods its governance; a rule that lives only in a design doc rots into a
+  review-time habit. The code already satisfied both layers at adoption (0 non-test `unwrap`, 7 justified
+  `expect`, 0 banned patterns), so the gate carries no annotation debt — it only catches future drift. The
+  set is deliberately narrow (no blanket `unwrap`/`panic` ban) to avoid the process-over-implementation
+  anti-pattern (RA-RUSE-003) — it targets only the failure modes §1/§2/§8 name.
+- **Re-evaluate if:** a sanctioned `catch_unwind` boundary lands (LSP/async slice) — extend the allowlist;
+  or clippy gains a native lint that subsumes a checker rule.
+- Refs: [../docs/design/stability-and-observability.md](../docs/design/stability-and-observability.md), D-040, RFC-0012, INV-ERR-CLASS, STAB-2, STAB-5, STAB-6, TRACE-1, RA-RUSE-003.
