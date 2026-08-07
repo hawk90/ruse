@@ -42,6 +42,23 @@ settings:
   # ---- input ----
   input.profile:        { type: enum,   default: vim,    scope: user,      merge: replace,   security_locked: false, enum: [vim, emacs, native], desc: "Active input profile (editing language + state machine, architecture section 1)." }
 
+  # ---- keymap (one namespace per Vim keymap mode; D-043 / contracts/vim-style.yaml) ----
+  # Upstream's own map.txt map-table declares EIGHT disjoint keymap namespaces, each addressed by its
+  # own `:*map` family — that is why these are eight keys and not one `keymap` map with a mode field:
+  # a binding that does not name its namespace is not expressible (VS-OBL-4). Merge is deep-merge so a
+  # layer can override ONE binding without replacing a whole namespace; the built-in profile bindings
+  # are not defaults here (they belong to the profile), so each default is the empty overlay.
+  # scope:user, not workspace: a binding invokes a command, so a workspace-supplied keymap is a
+  # remote-code-execution-shaped surface. Relaxing this to workspace needs its own Decision.
+  keymap.normal:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, desc: "Normal-namespace bindings (map_mode Norm). Unmatched key: ignore." }
+  keymap.operator_pending: { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, desc: "Operator-pending-namespace bindings (map_mode Opr). Unmatched key: abort the pending operator." }
+  keymap.insert:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, desc: "Insert-namespace bindings (map_mode Ins). Unmatched printable key: insert literally." }
+  keymap.cmdline:          { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, desc: "Command-line-namespace bindings (map_mode Cmd). Unmatched printable key: append to the line buffer." }
+  keymap.visual:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, desc: "Visual-namespace bindings (map_mode Vis). Unmatched key: ignore." }
+  keymap.select:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, desc: "Select-namespace bindings (map_mode Sel). Unmatched printable key: replace the selection and enter Insert." }
+  keymap.terminal:         { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, desc: "Terminal-namespace bindings (map_mode Term). Unmatched key: forward to the job, except the CTRL-\\ escape prefix." }
+  keymap.lang:             { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, desc: "Lang-Arg-namespace bindings (map_mode Lang). Unmatched key: translate via the active language map, then re-dispatch. Blocked on CONCEPT-LANG-ARG." }
+
   # ---- editor ----
   editor.tab_width:     { type: int,    default: 4,      scope: workspace, merge: replace,   security_locked: false, min: 1, max: 16, desc: Number of columns a tab renders/indents as. }
   editor.indent_style:  { type: enum,   default: space,  scope: workspace, merge: replace,   security_locked: false, enum: [space, tab], desc: Whether indentation uses spaces or tabs. }

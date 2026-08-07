@@ -1,0 +1,135 @@
+# GENERATED — regenerate with `python3 tools/parity/coverage.py`.
+# The number that matters is DISCOVERY, not implementation. `unsupported` and `deferred`
+# are honest outcomes; an item nobody knew existed is not. classification_pct is expected
+# to sit near zero for a long time and that is the design (classification is lazy).
+version: 1
+generated: true
+generator: tools/parity/coverage.py
+axes:
+  discovery: mechanical; every item in the declared census scope is enumerated. The census's only exit condition.
+  classification: human and deliberately LAZY; `unclassified` is a legitimate resting state. Locked at SURFACE granularity
+    by `ruse gov parity_discovery`.
+  verification: executed; `verified` requires a differential fixture that passed against the pinned oracle. Being
+    documented in two places is not verification.
+upstreams:
+  emacs:
+    revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
+    version_label: emacs-30.2
+    role: secondary
+    denominator_method: batch enumeration over the include list only; `mapatoms` + `commandp` scoped to symbols
+      whose file is in scope
+    denominator_baseline: emacs -Q --batch
+    census_scope_include:
+    - lisp/simple.el, lisp/subr.el, lisp/bindings.el, lisp/window.el, lisp/buffer.c
+    - lisp/isearch.el, lisp/register.el, lisp/rect.el, lisp/minibuffer.el, lisp/replace.el
+    - src/
+    census_excluded_surfaces: 4
+    status: not-surveyed
+    reason: 'UNRESOLVED and blocking for Emacs: the three plausible baselines (`emacs -Q` + mapatoms / full bundled
+      load / autoload cookies) differ by multiples. The number here is meaningless until one is fixed by decision.
+      Emacs census does not start before that decision.
+
+      '
+  neovim:
+    revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
+    version_label: v0.12.4
+    role: primary
+    denominator_method: static tables (options.lua/ex_cmds.lua/auevents.lua) + index.txt sections, cross-checked
+      against a headless `nvim -u NONE` introspection run
+    denominator_baseline: nvim --headless -u NONE -i NONE
+    census_scope_include:
+    - runtime/doc/index.txt
+    - runtime/doc/map.txt
+    - src/nvim/options.lua
+    - src/nvim/ex_cmds.lua
+    - src/nvim/auevents.lua
+    census_excluded_surfaces: 3
+    status: surveyed
+    surfaces:
+      event:
+        source_of_record: 'S: src/nvim/auevents.lua'
+        discovered: 141
+        by_status:
+          unclassified: 141
+        classified: 0
+        unclassified: 141
+        verified: 0
+      ex_command:
+        source_of_record: 'S: src/nvim/ex_cmds.lua'
+        discovered: 557
+        by_status:
+          unclassified: 557
+        classified: 0
+        unclassified: 557
+        verified: 0
+      map_mode:
+        source_of_record: 'D: runtime/doc/map.txt'
+        discovered: 8
+        by_status:
+          targeted: 8
+        classified: 8
+        unclassified: 0
+        verified: 0
+      mode_key:
+        source_of_record: 'D: runtime/doc/index.txt'
+        discovered: 708
+        by_status:
+          unclassified: 708
+        classified: 0
+        unclassified: 708
+        verified: 0
+        non_enumerable:
+        - nvim.key.terminal.__surface__
+      option:
+        source_of_record: 'R: nvim_get_all_options_info() (S: src/nvim/options.lua)'
+        discovered: 374
+        by_status:
+          unclassified: 374
+        classified: 0
+        unclassified: 374
+        verified: 0
+    totals:
+      discovered: 1788
+      classified: 8
+      unclassified: 1780
+      verified: 0
+      classification_pct: 0.4
+      verification_pct: 0.0
+    discovery:
+      scope_enumerated: complete
+      meaning: every surface in census_scope.include was enumerated, or declared non-enumerable with its upstream
+        prose recorded. This is NOT a claim about 100% of the editor — it is 100% of the declared scope.
+  vim:
+    revision: c5f312aad8e4179e437f81ad39a860cd0ef11970
+    version_label: v9.1.2148
+    role: baseline
+    denominator_method: same extractor as Neovim, run against the Vim tree; the Vim<->Neovim delta is COMPUTED by
+      diffing the two inventories
+    denominator_baseline: null
+    census_scope_include:
+    - runtime/doc/index.txt
+    - runtime/doc/map.txt
+    - src/optiondata.h
+    - src/ex_cmds.h
+    census_excluded_surfaces: 1
+    status: not-surveyed
+    reason: 'runtime/doc/vim_diff.txt is Neovim''s own STATED delta. By this file''s own logic (stated intent is
+      not observed behavior) it is a third witness used to VALIDATE the computed delta, never the source of it.
+      A disagreement between computed and stated delta is an investigation item.
+
+      '
+oracles:
+  emacs:
+    status: blocked
+    hazards: 4
+  neovim:
+    status: usable
+    hazards: 0
+  vim:
+    status: usable-with-hazard
+    hazards: 2
+behavioral:
+  fixtures: 0
+  verified_items: 0
+  note: 'No fixture corpus exists yet. `oracle_selftest` in upstreams.yaml must pass before any fixture is admitted:
+    three oracle harnesses were tried and three corrupted their own first observation.'

@@ -1,0 +1,160 @@
+# Upstream pins — the evidence layer that sits BENEATH the spec (D-043).
+#
+# Why this file exists: every governance gate we had (parity_coverage, capability_coverage,
+# design_backing) validates the spec's INTERNAL consistency. Nothing validated the spec against
+# external reality, so a hand-authored parity catalog could omit an entire dimension (the Vim mode
+# namespaces) and every gate stayed green. Parity is a census of upstream FACT; the PRD is ruse's
+# CHOICE. This file pins the facts to an exact revision so "we surveyed Neovim" is a checkable claim.
+#
+# Three rules this file encodes — each one is a lesson from the failure it prevents:
+#   1. PIN BY SHA, never by tag pattern. A floating `v0.12.x` silently mixes the Neovim we surveyed
+#      with the Neovim of six months from now, and the census stops meaning anything.
+#   2. DECLARE THE DENOMINATOR AND THE METHOD. A coverage number without its counting method is
+#      decoration. `getcompletion('','command')` yields 561 ex-commands where `ex_cmds.lua` yields
+#      564 — a method artifact, not drift. Emacs is worse by multiples: `emacs -Q` + mapatoms vs a
+#      full bundled load vs autoload cookies are three different denominators.
+#   3. SCOPE AT HARVEST, NOT AT CLASSIFICATION. Emacs exposes ~12k interactive commands; a census
+#      that "discovers 100%" of them buries the ~200 that are editor semantics under an application
+#      ecosystem (gnus/org/calc/erc/tramp). The boundary is an INPUT to the census and every
+#      exclusion carries a reason, so the cut is reviewable rather than invisible.
+#
+# `ruse parity fetch` clones each pin into .ruse/cache/parity/<editor>/ (gitignored — never vendored:
+# ruse is MIT, Vim is the Vim license, Emacs is GPL-3.0; we extract FACTS and never redistribute files).
+#
+# `revision` is the PEELED COMMIT sha (`git ls-remote <repo> 'refs/tags/<tag>^{}'`). All three
+# upstreams use annotated tags, so the bare `refs/tags/<tag>` sha is a tag OBJECT and checking it
+# out lands on a different id than the pin — fetch.py verifies HEAD == pin and fails on mismatch.
+#
+# LLM rules: bump `revision` only together with a regenerated inventory + coverage manifest; never
+# widen `census_scope.include` without adding the matching `exclude` reasons; never delete an
+# `exclude` entry without recording why the surface became in-scope.
+
+version: 1
+
+# Item types and their SOURCE OF RECORD. Sources are not interchangeable and their precision differs
+# per item type, so a uniform "4-source rule" would be wrong: each type names ONE authoritative
+# source; the others are corroboration recorded in the item's `attestation`.
+#   D = documentation   T = tests   S = source tree   R = runtime introspection
+# Empirically: R is authoritative for options (the running binary knows its own defaults) but WRONG
+# for ex-commands (`nvim_get_commands({builtin:true})` returns 1 item — a documented-but-unimplemented
+# API). D (index.txt) is authoritative for the per-mode key namespaces because it is the only source
+# that enumerates keys BY MODE, which is precisely the structure the hand-written catalog lost.
+source_of_record:
+  mode_key:    { primary: D, corroborate: [S, T], note: "runtime/doc/index.txt — the only per-mode key enumeration" }
+  option:      { primary: R, corroborate: [S, D], note: "nvim_get_all_options_info(); options.lua as the static cross-check" }
+  ex_command:  { primary: S, corroborate: [R, D], note: "ex_cmds.lua; the builtin=true API is unreliable" }
+  event:       { primary: R, corroborate: [S, D] }
+  map_mode:    { primary: D, corroborate: [S],    note: "runtime/doc/map.txt map-table — the 8 disjoint keymap namespaces" }
+  semantics:   { primary: T, corroborate: [D],    note: "behavior is only pinned by execution; see `oracles` below" }
+
+upstreams:
+  neovim:
+    repo: https://github.com/neovim/neovim.git
+    revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b   # v0.12.4
+    version_label: v0.12.4
+    role: primary            # ruse's editing-language reference; Vim is derived as a computed delta
+    census_scope:
+      include:
+        - runtime/doc/index.txt        # per-mode key namespaces (Insert/Normal/Visual/Op-pending/Cmdline/Terminal/Ex)
+        - runtime/doc/map.txt          # map-table: the 8 keymap namespaces
+        - src/nvim/options.lua         # static option table
+        - src/nvim/ex_cmds.lua         # static ex-command table
+        - src/nvim/auevents.lua        # autocommand events
+      exclude:
+        - path: runtime/pack/**
+          reason: "Bundled plugins are an ecosystem, not editor semantics. ruse's plugin story is its own API (D-009)."
+        - path: runtime/syntax/**, runtime/ftplugin/**, runtime/indent/**
+          reason: "Per-filetype data; ruse uses tree-sitter (F-015), so these are not a parity surface."
+        - path: runtime/doc/*.txt (except the include list)
+          reason: "Prose narration of surfaces already enumerated structurally. Re-reading it is how the hand-written catalog was produced."
+    denominator:
+      method: "static tables (options.lua/ex_cmds.lua/auevents.lua) + index.txt sections, cross-checked against a headless `nvim -u NONE` introspection run"
+      baseline: "nvim --headless -u NONE -i NONE"
+      note: "Counts differ by method by design; both numbers are recorded in coverage.yaml and the delta is the cross-check, not an error."
+
+  vim:
+    repo: https://github.com/vim/vim.git
+    revision: c5f312aad8e4179e437f81ad39a860cd0ef11970   # v9.1.2148
+    version_label: v9.1.2148
+    role: baseline           # the classic editing language; the Neovim delta is COMPUTED, not read
+    census_scope:
+      include: [runtime/doc/index.txt, runtime/doc/map.txt, src/optiondata.h, src/ex_cmds.h]
+      exclude:
+        - path: runtime/pack/**, runtime/syntax/**, runtime/ftplugin/**
+          reason: "Same as Neovim: ecosystem/filetype data, not editor semantics."
+    denominator:
+      method: "same extractor as Neovim, run against the Vim tree; the Vim<->Neovim delta is COMPUTED by diffing the two inventories"
+      note: >
+        runtime/doc/vim_diff.txt is Neovim's own STATED delta. By this file's own logic (stated intent
+        is not observed behavior) it is a third witness used to VALIDATE the computed delta, never the
+        source of it. A disagreement between computed and stated delta is an investigation item.
+
+  emacs:
+    repo: https://github.com/emacs-mirror/emacs.git
+    revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd   # emacs-30.2
+    version_label: emacs-30.2
+    role: secondary          # command/buffer/extension model; surveyed AFTER the pipeline is proven on Neovim
+    census_scope:
+      include:
+        - lisp/simple.el, lisp/subr.el, lisp/bindings.el, lisp/window.el, lisp/buffer.c
+        - lisp/isearch.el, lisp/register.el, lisp/rect.el, lisp/minibuffer.el, lisp/replace.el
+        - src/                          # the C core: command loop, buffers, markers, text properties
+      exclude:
+        - path: lisp/gnus/**, lisp/org/**, lisp/calc/**, lisp/erc/**, lisp/net/tramp*
+          reason: "Applications shipped inside Emacs, not editor semantics. ~12k interactive commands live here; including them makes the denominator meaningless."
+        - path: lisp/obsolete/**
+          reason: "Upstream-declared obsolete; parity to a deprecated surface is negative value."
+        - path: lisp/term/**
+          reason: "Terminal-specific glue; ruse owns its own terminal layer (docs/parity/terminal.md)."
+        - path: lisp/language/**, leim/**
+          reason: "Input methods / language environments — out of scope for MVP-1.0 (Non-goals)."
+    denominator:
+      method: "batch enumeration over the include list only; `mapatoms` + `commandp` scoped to symbols whose file is in scope"
+      baseline: "emacs -Q --batch"
+      note: >
+        UNRESOLVED and blocking for Emacs: the three plausible baselines (`emacs -Q` + mapatoms /
+        full bundled load / autoload cookies) differ by multiples. The number here is meaningless
+        until one is fixed by decision. Emacs census does not start before that decision.
+
+# Executable oracles — the ONLY thing that turns an asserted parity claim into a verified one.
+# Every hazard below was observed, not predicted: each harness corrupted its own observation on the
+# first attempt, which is why `oracle_selftest` gates the fixture corpus.
+oracles:
+  neovim:
+    binary: nvim
+    invoke: "nvim --headless -u NONE -i NONE -S <script>"
+    status: usable
+    observable: [text, cursor, mode, selection, registers, register_type, marks, undo_tree, errmsg, jumplist]
+  vim:
+    binary: vim
+    invoke: "vim -es -u NONE -i NONE -S <script>"
+    status: usable-with-hazard
+    observable: [text, cursor, selection, registers, register_type, marks, undo_tree, errmsg]
+    hazards:
+      - "`-es` runs Vim in Ex mode, so mode() reports the HARNESS's mode ('ce'), not the fixture's. `mode` is NOT observable through this invocation and is excluded above."
+      - "No msgpack RPC: state must be dumped by a generated script (writefile + json_encode), one run per fixture."
+    version_note: "The pinned revision is v9.1.2148; a developer's local `vim` will differ. The oracle records its own --version in every run and coverage.yaml carries the mismatch."
+  emacs:
+    binary: emacs
+    invoke: TBD
+    status: blocked
+    observable: [text, point, mark, kill_ring]      # NOT undo: see below
+    hazards:
+      - "`--batch` + execute-kbd-macro SILENTLY produces wrong buffer state: `M-d` on \"hello world\" leaves the buffer EMPTY while kill-ring is correctly \"hello\". Calling kill-word directly is correct. The batch command loop is not the interactive one."
+      - "`--batch` + read-from-minibuffer HANGS forever rather than erroring (no timeout, no diagnostic)."
+      - "redisplay-dependent commands (recenter, window scroll, isearch lazy-highlight) error or no-op under --batch."
+      - "buffer-undo-list is a list of change records ((1 . 2) (t . 0)) with no sequence identity; Vim/Neovim undotree() is a TREE with seq numbers. The two are NOT normalizable, so undo is comparable vim<->nvim ONLY."
+    resolution: "Requires a pty-hosted `emacs -nw` harness (expect-style). Prototype before any Emacs fixture is authored."
+
+# Fixture comparison is declared PER EDITOR PAIR, not globally — an observable that exists in one
+# oracle may have no comparable representation in another (see the undo hazard above).
+compare_matrix:
+  vim-neovim: [text, cursor, selection, registers, register_type, marks, undo_tree, errmsg]
+  vim-emacs:  [text, cursor]
+  neovim-emacs: [text, cursor]
+
+# A fixture corpus is only trusted after the harness proves it does not distort what it measures.
+oracle_selftest:
+  required: true
+  rule: "Before any fixture is admitted, the harness must reproduce N cases whose answer is known independently. A harness that fails selftest invalidates every fixture recorded through it."
+  rationale: "Three harnesses were tried; three corrupted their first observation (vim -es mode(), emacs --batch hang, emacs execute-kbd-macro wrong buffer). Oracle risk exceeds extractor risk."

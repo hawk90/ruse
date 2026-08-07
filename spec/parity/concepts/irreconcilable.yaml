@@ -1,0 +1,108 @@
+# Irreconcilable concepts — where Vim and Emacs cannot both be satisfied by one kernel (D-043).
+#
+# ruse runs two editing languages over ONE core. Most upstream concepts reconcile: a Vim register
+# and an Emacs kill-ring are two surfaces over one store. Some do not — and those are not a
+# documentation problem, they are the architecture's risk register. Every entry here forces a
+# Decision before the kernel commits to a shape, because the alternative is discovering the tension
+# while implementing and resolving it by accident in whichever profile was written first.
+#
+# This file is HAND-AUTHORED and that is correct: it records judgement, not enumeration. The census
+# (spec/parity/inventory/) supplies the facts; deciding that two facts cannot coexist is human work.
+# It is deliberately written BEFORE the census is complete — the tensions below are already known,
+# and waiting for 100% classification to start would delay the decisions that shape the kernel.
+#
+# `resolution` values:
+#   pending          no Decision yet — blocks any kernel commitment to the concept
+#   profile-scoped   both semantics ship, selected by the active input profile
+#   unified          one kernel concept, both surfaces project onto it
+#   dropped          one side is not provided (needs `intentionally-different` in the census)
+#
+# LLM rules: never mark `resolution: unified` without naming the kernel concept that unifies them;
+# a `pending` entry that gains a Decision must cite the D-id.
+
+version: 1
+
+concepts:
+  CONCEPT-OP-PENDING:
+    title: Operator-pending has no Emacs counterpart
+    vim: >
+      A first-class keymap namespace (`omap`) entered by an operator and exited by a motion or text
+      object; unmatched keys ABORT. Composition is grammar: operator x count x motion.
+    emacs: >
+      No equivalent state. `C-w`/`M-w` act on an already-established region (point + mark); there is
+      no pending-operator awaiting a motion, so nothing to map.
+    tension: >
+      The kernel's editing-language IR (C-EDITLANG) must express operator x motion composition for
+      Vim while the Emacs profile never produces a pending operator. Modelling op-pending as a
+      universal kernel state would impose a phantom stage on Emacs Style; modelling it only inside
+      the Vim profile risks re-creating the flag-on-one-state-machine mistake that lost the mode
+      namespaces in the first place.
+    resolution: pending
+    blocks: [C-EDITLANG, C-INPUT, F-003]
+    refs: [nvim.mapmode.opr, contracts/vim-style.yaml#namespaces.operator_pending]
+
+  CONCEPT-COUNT-VS-PREFIX:
+    title: Vim count and Emacs universal-argument are not the same mechanism
+    vim: >
+      `[count]` is a multiplier bound to the pending construct; `2d3w` multiplies to 6. Count is
+      owned by the Normal/operator-pending namespaces and is meaningless elsewhere.
+    emacs: >
+      `C-u` / `M-<digit>` is a prefix ARGUMENT passed to the command; it may mean repetition, but
+      commands are free to interpret it arbitrarily (`C-u C-SPC` pops the mark ring, no repetition
+      involved), and bare `C-u` means 4.
+    tension: >
+      One is a multiplier the engine applies; the other is an argument the command interprets. A
+      kernel that models "count" as a number folded into the command loses Emacs semantics; one that
+      passes it through as an opaque argument loses Vim's count1 x count2 multiplication rule.
+    resolution: pending
+    blocks: [C-COMMAND, C-EDITLANG]
+
+  CONCEPT-POSITION-HISTORY:
+    title: Jumplist and mark-ring are different data structures with different invariants
+    vim: >
+      A per-window jumplist (bounded, ordered, traversed with CTRL-O / CTRL-I) plus named marks.
+      Motion classes are defined to be "jumps" or not, so what enters the list is a property of the
+      MOTION.
+    emacs: >
+      A per-buffer mark ring plus a global mark ring, pushed explicitly (`C-SPC`) or as a side
+      effect, traversed by popping (`C-u C-SPC`). Region and history share the same mark.
+    tension: >
+      In Emacs the mark is simultaneously position history AND the selection anchor; in Vim those
+      are different objects (jumplist vs visual anchor). C-POSHIST cannot be one ring without
+      breaking one profile's invariants.
+    resolution: pending
+    blocks: [C-POSHIST, C-ANCHOR]
+
+  CONCEPT-REGISTER-STORE:
+    title: Registers and the kill ring — reconcilable, but only with typed entries
+    vim: >
+      Named / numbered / unnamed registers addressed explicitly (`"ay`), each carrying a TYPE
+      (charwise / linewise / blockwise) that changes how paste behaves (`dd` then `p` opens a line).
+    emacs: >
+      An unaddressed rotating kill ring; `C-y` yanks the head and `M-y` rotates. Entries are plain
+      text with no linewise/blockwise notion.
+    tension: >
+      Reconcilable as one store, but ONLY if entries are typed and the type survives round-tripping.
+      A store of plain strings silently drops Vim's register type — historically the single most
+      common emulation break, and the reason the fixture schema must observe register_type.
+    resolution: unified
+    kernel_concept: C-REGISTER
+    note: >
+      Unified in principle; the obligation is that C-REGISTER entries carry a shape, and that the
+      Emacs surface projects untyped text onto the charwise case rather than the store being untyped.
+
+  CONCEPT-LANG-ARG:
+    title: Vim's language-mapping layer has no ruse counterpart
+    vim: >
+      `lmap` defines a translation layer applied to Insert, Command-line, and single-character
+      command arguments (Lang-Arg), for non-Latin input. It is one of the eight keymap namespaces.
+    emacs: >
+      Input methods (`set-input-method`) occupy roughly the same space but are a different mechanism
+      with different scoping.
+    tension: >
+      The Lang namespace is targeted (product decision), yet ruse's input model has no re-dispatch
+      stage where a translation layer could sit, and the terminal itself may already apply an IME.
+      Promising the namespace without deciding the stage means the promise is unimplementable.
+    resolution: pending
+    blocks: [C-INPUT]
+    refs: [nvim.mapmode.lang, contracts/vim-style.yaml#namespaces.lang_arg]

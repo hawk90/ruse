@@ -1,0 +1,98 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py neovim && python3 tools/parity/extract_neovim.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+version: 1
+generated: true
+generator: tools/parity/extract_neovim.py
+upstream: neovim
+revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
+version_label: v0.12.4
+surface: map_mode
+source_of_record: 'D: runtime/doc/map.txt'
+items:
+- id: nvim.mapmode.norm
+  surface: map_mode
+  mode: Norm
+  map_commands:
+  - '[nore]map'
+  - n[nore]map
+  attestation:
+  - D
+  status: targeted
+  ruse: contracts/vim-style.yaml#namespaces.normal
+- id: nvim.mapmode.ins
+  surface: map_mode
+  mode: Ins
+  map_commands:
+  - '[nore]map!'
+  - i[nore]map
+  - l[nore]map
+  attestation:
+  - D
+  status: targeted
+  ruse: contracts/vim-style.yaml#namespaces.insert
+- id: nvim.mapmode.cmd
+  surface: map_mode
+  mode: Cmd
+  map_commands:
+  - '[nore]map!'
+  - c[nore]map
+  - l[nore]map
+  attestation:
+  - D
+  status: targeted
+  ruse: contracts/vim-style.yaml#namespaces.command_line
+- id: nvim.mapmode.vis
+  surface: map_mode
+  mode: Vis
+  map_commands:
+  - '[nore]map'
+  - v[nore]map
+  - x[nore]map
+  attestation:
+  - D
+  status: targeted
+  ruse: contracts/vim-style.yaml#namespaces.visual
+- id: nvim.mapmode.sel
+  surface: map_mode
+  mode: Sel
+  map_commands:
+  - '[nore]map'
+  - v[nore]map
+  - s[nore]map
+  attestation:
+  - D
+  status: targeted
+  ruse: contracts/vim-style.yaml#namespaces.select
+- id: nvim.mapmode.opr
+  surface: map_mode
+  mode: Opr
+  map_commands:
+  - '[nore]map'
+  - o[nore]map
+  attestation:
+  - D
+  status: targeted
+  ruse: contracts/vim-style.yaml#namespaces.operator_pending
+- id: nvim.mapmode.term
+  surface: map_mode
+  mode: Term
+  map_commands:
+  - t[nore]map
+  attestation:
+  - D
+  status: targeted
+  ruse: contracts/vim-style.yaml#namespaces.terminal
+- id: nvim.mapmode.lang
+  surface: map_mode
+  mode: Lang
+  map_commands:
+  - l[nore]map
+  attestation:
+  - D
+  status: targeted
+  ruse: contracts/vim-style.yaml#namespaces.lang_arg
+  note: Targeted by decision though ruse has no counterpart concept; the gap is tracked in concepts/irreconcilable.yaml#CONCEPT-LANG-ARG
+    and needs a Decision before implementation.

@@ -103,23 +103,126 @@ features:
       - Anchor gravity (left/right) is honored when an edit lands exactly at the anchor.
       - Byte, char, grapheme, and screen-cell coordinates are distinct types, not interchanged.
 
+  # --- Vim input profile (F-003 + F-023..F-027) ------------------------------------------------
+  # F-003 used to be ONE feature carrying 43 parity IDs — every mode, operator, motion, register and
+  # text object at once. Because the requirement was a single blob, the per-mode structure had nowhere
+  # to live, and the model beneath it (eight disjoint keymap namespaces, each with its own
+  # unmatched-key policy) never became a requirement at all. It is now split along the namespace
+  # boundary upstream itself declares (map.txt map-table), governed by spec/parity/contracts/vim-style.yaml.
+  # F-003 keeps the router and the mode stack; each namespace is its own deliverable with its own
+  # acceptance. IDs are never renumbered, so F-003 stays and the namespaces are appended.  # D-043
   F-003:
-    title: Vim input profile
+    title: Vim input profile — namespace router + mode stack
     stage: mvp
     priority: must
     status: planned
-    depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-REGISTER, C-CONFIG, C-POSHIST]
-    summary: Vim-style input compiled to semantic commands.
+    depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-CONFIG]
+    summary: >
+      The eight Vim keymap namespaces exist as namespaces, each with a declared unmatched-key policy,
+      its own owned state, and stack-based return — not one state machine with mode flags.
     trace:
-      parity: [VIM-MODE-1, VIM-MODE-2, VIM-MODE-4, VIM-MODE-6, VIM-MODE-7, VIM-OP-1, VIM-MOT-PROMOTE, VIM-TOBJ-1, VIM-TOBJ-3, VIM-CNT-INS, VIM-REG-1, VIM-REG-2, VIM-REPEAT-DOT, VIM-MODE-3, VIM-MODE-5, VIM-MODE-8, VIM-MOT-1, VIM-MOT-2, VIM-MOT-3, VIM-MOT-4, VIM-MOT-5, VIM-MOT-6, VIM-MOT-7, VIM-MOT-8, VIM-MOT-9, VIM-OP-2, VIM-OP-3, VIM-OP-4, VIM-OP-5, VIM-OP-6, VIM-OP-7, VIM-OP-8, VIM-OP-9, VIM-REG-3, VIM-REG-4, VIM-REG-5, VIM-REG-6, VIM-REG-7, VIM-REG-8, VIM-REG-9, VIM-TOBJ-2, VIM-TOBJ-4, VIM-TOBJ-5]
-      design: [../docs/design/input-engine.md, ../docs/design/editing-language.md, ../docs/design/register-model.md, ../docs/design/positions-history.md]
-      verify: [../tests/parity/vim/operator-motion.yaml, ../tests/parity/vim/text-objects.yaml, ../tests/parity/vim/registers.yaml, ../tests/parity/vim/command-line.yaml]
+      parity: [VIM-MODE-1, VIM-MODE-6]
+      contract: [../spec/parity/contracts/vim-style.yaml]
+      design: [../docs/design/input-engine.md, ../docs/design/editing-language.md]
+      verify: [../tests/parity/vim/namespaces.yaml, ../tests/parity/vim/mode-stack.yaml]
     acceptance:
-      - Normal, Insert, and Visual (char/line/block) modes with operator-pending as a transient state.
-      - "Command-line mode (VIM-MODE-7): ':'/'/' enter it, <CR> executes and <Esc> aborts; it is a real mode in the model (single mode owner, engine-routed), not an ad-hoc text buffer (anti-patterns command-line P2). History / q: / wildmenu / incsearch-UX are deferred."
+      - "Each of the eight namespaces (Norm/Opr/Ins/Cmd/Vis/Sel/Term/Lang) is addressable in its own right; a binding cannot be declared without naming its namespace (VS-OBL-4)."
+      - "Every namespace declares an unmatched-key policy and an `open` namespace never falls through to a shared ignore path (VS-OBL-3). The five open policies (insert/append/overwrite/replace-selection/forward) are each exercised."
+      - "Operator-pending is a namespace whose unmatched key ABORTS the pending operator, distinct from Normal's ignore — not a nullable field on Normal state."
+      - "Namespace transitions carry return addresses: `i_CTRL-O` and `t_CTRL-\\ CTRL-O` are the same one-shot-return construct, and `gv` restores a selection that outlived its namespace (VS-OBL-2)."
+      - "Mode is per-window/per-buffer: a terminal buffer is in the terminal namespace while a neighbouring window is in normal (VS-OBL-1)."
+
+  F-023:
+    title: Normal + Operator-pending namespaces — the editing grammar
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-INPUT, C-EDITLANG, C-REGISTER, C-POSHIST]
+    summary: Operator x count x motion composition, text objects, registers and dot-repeat.
+    trace:
+      parity: [VIM-OP-1, VIM-OP-2, VIM-OP-3, VIM-OP-4, VIM-OP-5, VIM-OP-6, VIM-OP-7, VIM-OP-8, VIM-OP-9, VIM-MOT-PROMOTE, VIM-MOT-1, VIM-MOT-2, VIM-MOT-3, VIM-MOT-4, VIM-MOT-5, VIM-MOT-6, VIM-MOT-7, VIM-MOT-8, VIM-MOT-9, VIM-TOBJ-1, VIM-TOBJ-2, VIM-TOBJ-3, VIM-TOBJ-4, VIM-TOBJ-5, VIM-REG-1, VIM-REG-2, VIM-REG-3, VIM-REG-4, VIM-REG-5, VIM-REG-6, VIM-REG-7, VIM-REG-8, VIM-REG-9, VIM-REPEAT-DOT]
+      contract: [../spec/parity/contracts/vim-style.yaml]
+      design: [../docs/design/editing-language.md, ../docs/design/register-model.md, ../docs/design/positions-history.md]
+      verify: [../tests/parity/vim/operator-motion.yaml, ../tests/parity/vim/text-objects.yaml, ../tests/parity/vim/registers.yaml]
+    acceptance:
       - "Operator+motion composes with count multiplication (2d3w deletes 6 words) and doubling goes linewise (dd/yy)."
-      - "Exclusive->inclusive->linewise motion promotion (VIM-MOT-PROMOTE) matches vim.md checklist item 1."
-      - 'diw / daw / di( / dd / yy / p and the unnamed + yank-only (reg 0) registers behave per the docs/parity/vim.md L2 checklist; dot-repeat replays the full change including inserted text.'
+      - "Exclusive->inclusive->linewise motion promotion (VIM-MOT-PROMOTE) matches the vim.md checklist item 1."
+      - "The three operator-pending keys of its own (`v`/`V`/`CTRL-V` force charwise/linewise/blockwise) apply to the pending operator; every other unbound key aborts it."
+      - "diw / daw / di( / dd / yy / p and the unnamed + yank-only (reg 0) registers behave per the L2 checklist; register entries carry a SHAPE (charwise/linewise/blockwise) that survives round-trip (CONCEPT-REGISTER-STORE)."
+      - "Dot-repeat replays the full change including inserted text."
+
+  F-024:
+    title: Insert namespace
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-INPUT, C-UNDO]
+    summary: The open/insert namespace — a printable key is text — with one-shot return and undo-group ownership.
+    trace:
+      parity: [VIM-MODE-2, VIM-MODE-3, VIM-CNT-INS]
+      contract: [../spec/parity/contracts/vim-style.yaml]
+      design: [../docs/design/input-engine.md, ../docs/design/persistence-and-recovery.md]
+      verify: [../tests/parity/vim/insert.yaml]
+    acceptance:
+      - "An unmatched printable key inserts literally; the control-key table is the exception, not the default path."
+      - "`CTRL-O` runs exactly one Normal command and resumes Insert at the same position (the shared one-shot-return construct)."
+      - "The namespace owns undo-grouping intent: `CTRL-G u` starts a new undoable edit mid-insert."
+      - "Replace / Virtual Replace (`R`/`gR`) use the overwrite policy and `<BS>` restores the original character."
+
+  F-025:
+    title: Visual + Select namespaces
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-INPUT, C-ANCHOR]
+    summary: Two namespaces over one selection state, separated by opposite unmatched-key policies.
+    trace:
+      parity: [VIM-MODE-4, VIM-MODE-5]
+      contract: [../spec/parity/contracts/vim-style.yaml]
+      design: [../docs/design/input-engine.md, ../docs/design/view-window-workspace.md]
+      verify: [../tests/parity/vim/visual.yaml]
+    acceptance:
+      - "Selection shape (charwise/linewise/blockwise) is namespace state, not a boolean; `v`/`V`/`CTRL-V` switch shape or leave the namespace."
+      - "`o` moves to the other corner and `gv` restores the PREVIOUS selection — anchor and shape outlive the namespace."
+      - "Select shares selection state with Visual but a printable key deletes the selection and enters Insert; the two are distinguished only by unmatched-key policy."
+
+  F-026:
+    title: Command-line namespace
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-INPUT, C-COMMAND]
+    summary: A real namespace with its own line editor, not an ad-hoc text buffer on the UI.
+    trace:
+      parity: [VIM-MODE-7, VIM-MODE-8]
+      contract: [../spec/parity/contracts/vim-style.yaml]
+      design: [../docs/design/input-engine.md, ../docs/design/command-engine.md]
+      verify: [../tests/parity/vim/command-line.yaml]
+    acceptance:
+      - "':' / '/' enter the namespace, <CR> executes and <Esc> aborts; it is engine-routed with a single mode owner, not an ad-hoc text buffer (anti-patterns command-line P2)."
+      - "An unmatched printable key appends to the line buffer (open/append); the namespace owns line buffer, cursor and history index."
+      - "Ex mode is entered by `gQ` only — `Q` is not an Ex-mode key at the pinned Neovim revision (see vim-style.yaml census_corrections). History / q: / wildmenu / incsearch-UX are deferred."
+
+  F-027:
+    title: Lang-Arg namespace
+    stage: mvp
+    priority: must
+    status: blocked
+    depends_on: [C-INPUT]
+    summary: The language-mapping namespace (`lmap`) applied to Insert, Command-line and single-character command arguments.
+    trace:
+      parity: []
+      contract: [../spec/parity/contracts/vim-style.yaml]
+      design: [../docs/design/input-engine.md]
+      verify: [../tests/parity/vim/lang-arg.yaml]
+    acceptance:
+      - "A translation stage exists in the input pipeline where a language map can rewrite a key before dispatch."
+      - "The stage applies to the Insert and Command-line namespaces and to commands reading a single character, and to nothing else."
+      - "Interaction with a terminal-side input method is defined rather than left to chance."
+    blocked_on: >
+      CONCEPT-LANG-ARG (spec/parity/concepts/irreconcilable.yaml) — ruse's input model has no
+      re-dispatch stage for a translation layer and the terminal may already apply an IME. The
+      namespace is targeted by decision; the stage it lives in needs a Decision first.
 
   F-004:
     title: Semantic command engine + palette

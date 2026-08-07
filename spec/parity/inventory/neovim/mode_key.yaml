@@ -1,0 +1,5887 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py neovim && python3 tools/parity/extract_neovim.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+version: 1
+generated: true
+generator: tools/parity/extract_neovim.py
+upstream: neovim
+revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
+version_label: v0.12.4
+surface: mode_key
+source_of_record: 'D: runtime/doc/index.txt'
+items:
+- id: nvim.key.insert.c_x40
+  surface: mode_key.insert
+  key: CTRL-@
+  desc: insert previously inserted text and stop insert
+  attestation:
+  - D
+  tag: i_CTRL-@
+  status: unclassified
+- id: nvim.key.insert.c_A
+  surface: mode_key.insert
+  key: CTRL-A
+  desc: insert previously inserted text
+  attestation:
+  - D
+  tag: i_CTRL-A
+  status: unclassified
+- id: nvim.key.insert.c_C
+  surface: mode_key.insert
+  key: CTRL-C
+  desc: quit insert mode, without checking for abbreviation
+  attestation:
+  - D
+  tag: i_CTRL-C
+  status: unclassified
+- id: nvim.key.insert.c_D
+  surface: mode_key.insert
+  key: CTRL-D
+  desc: delete one shiftwidth of indent in the current line
+  attestation:
+  - D
+  tag: i_CTRL-D
+  status: unclassified
+- id: nvim.key.insert.c_E
+  surface: mode_key.insert
+  key: CTRL-E
+  desc: insert the character which is below the cursor
+  attestation:
+  - D
+  tag: i_CTRL-E
+  status: unclassified
+- id: nvim.key.insert.c_F
+  surface: mode_key.insert
+  key: CTRL-F
+  desc: not used (but by default it's in 'cinkeys' to re-indent the current line)
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.insert.c_Gx20c_J
+  surface: mode_key.insert
+  key: CTRL-G CTRL-J
+  desc: line down, to column where inserting started
+  attestation:
+  - D
+  tag: i_CTRL-G_j
+  status: unclassified
+- id: nvim.key.insert.c_Gx20j
+  surface: mode_key.insert
+  key: CTRL-G j
+  desc: line down, to column where inserting started
+  attestation:
+  - D
+  tag: i_CTRL-G_j
+  status: unclassified
+- id: nvim.key.insert.c_Gx20Down
+  surface: mode_key.insert
+  key: CTRL-G <Down>
+  desc: line down, to column where inserting started
+  attestation:
+  - D
+  tag: i_CTRL-G_j
+  status: unclassified
+- id: nvim.key.insert.c_Gx20c_K
+  surface: mode_key.insert
+  key: CTRL-G CTRL-K
+  desc: line up, to column where inserting started
+  attestation:
+  - D
+  tag: i_CTRL-G_k
+  status: unclassified
+- id: nvim.key.insert.c_Gx20k
+  surface: mode_key.insert
+  key: CTRL-G k
+  desc: line up, to column where inserting started
+  attestation:
+  - D
+  tag: i_CTRL-G_k
+  status: unclassified
+- id: nvim.key.insert.c_Gx20Up
+  surface: mode_key.insert
+  key: CTRL-G <Up>
+  desc: line up, to column where inserting started
+  attestation:
+  - D
+  tag: i_CTRL-G_k
+  status: unclassified
+- id: nvim.key.insert.c_Gx20u
+  surface: mode_key.insert
+  key: CTRL-G u
+  desc: start new undoable edit
+  attestation:
+  - D
+  tag: i_CTRL-G_u
+  status: unclassified
+- id: nvim.key.insert.c_Gx20U
+  surface: mode_key.insert
+  key: CTRL-G U
+  desc: don't break undo with next cursor movement
+  attestation:
+  - D
+  tag: i_CTRL-G_U
+  status: unclassified
+- id: nvim.key.insert.BS
+  surface: mode_key.insert
+  key: <BS>
+  desc: delete character before the cursor
+  attestation:
+  - D
+  tag: i_<BS>
+  status: unclassified
+- id: nvim.key.insert.x7bchar1x7dBSx7bchar2x7d
+  surface: mode_key.insert
+  key: '{char1}<BS>{char2}'
+  desc: enter digraph (only when 'digraph' option set)
+  attestation:
+  - D
+  tag: i_digraph
+  status: unclassified
+- id: nvim.key.insert.c_H
+  surface: mode_key.insert
+  key: CTRL-H
+  desc: same as <BS>
+  attestation:
+  - D
+  tag: i_CTRL-H
+  status: unclassified
+- id: nvim.key.insert.Tab
+  surface: mode_key.insert
+  key: <Tab>
+  desc: insert a <Tab> character
+  attestation:
+  - D
+  tag: i_<Tab>
+  status: unclassified
+- id: nvim.key.insert.c_I
+  surface: mode_key.insert
+  key: CTRL-I
+  desc: same as <Tab>
+  attestation:
+  - D
+  tag: i_CTRL-I
+  status: unclassified
+- id: nvim.key.insert.NL
+  surface: mode_key.insert
+  key: <NL>
+  desc: same as <CR>
+  attestation:
+  - D
+  tag: i_<NL>
+  status: unclassified
+- id: nvim.key.insert.c_J
+  surface: mode_key.insert
+  key: CTRL-J
+  desc: same as <CR>
+  attestation:
+  - D
+  tag: i_CTRL-J
+  status: unclassified
+- id: nvim.key.insert.c_Kx20x7bchar1x7dx20x7bchar2x7d
+  surface: mode_key.insert
+  key: CTRL-K {char1} {char2}
+  desc: enter digraph
+  attestation:
+  - D
+  tag: i_CTRL-K
+  status: unclassified
+- id: nvim.key.insert.CR
+  surface: mode_key.insert
+  key: <CR>
+  desc: begin new line
+  attestation:
+  - D
+  tag: i_<CR>
+  status: unclassified
+- id: nvim.key.insert.c_M
+  surface: mode_key.insert
+  key: CTRL-M
+  desc: same as <CR>
+  attestation:
+  - D
+  tag: i_CTRL-M
+  status: unclassified
+- id: nvim.key.insert.c_N
+  surface: mode_key.insert
+  key: CTRL-N
+  desc: find next match for keyword in front of the cursor
+  attestation:
+  - D
+  tag: i_CTRL-N
+  status: unclassified
+- id: nvim.key.insert.c_O
+  surface: mode_key.insert
+  key: CTRL-O
+  desc: execute a single command and return to insert mode
+  attestation:
+  - D
+  tag: i_CTRL-O
+  status: unclassified
+- id: nvim.key.insert.c_P
+  surface: mode_key.insert
+  key: CTRL-P
+  desc: find previous match for keyword in front of the cursor
+  attestation:
+  - D
+  tag: i_CTRL-P
+  status: unclassified
+- id: nvim.key.insert.c_Q
+  surface: mode_key.insert
+  key: CTRL-Q
+  desc: same as CTRL-V, unless used for terminal control flow
+  attestation:
+  - D
+  tag: i_CTRL-Q
+  status: unclassified
+- id: nvim.key.insert.c_Rx20x7bregisterx7d
+  surface: mode_key.insert
+  key: CTRL-R {register}
+  desc: insert the contents of a register
+  attestation:
+  - D
+  tag: i_CTRL-R
+  status: unclassified
+- id: nvim.key.insert.c_S
+  surface: mode_key.insert
+  key: CTRL-S
+  desc: not used or used for terminal control flow
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.insert.c_T
+  surface: mode_key.insert
+  key: CTRL-T
+  desc: insert one shiftwidth of indent in current line
+  attestation:
+  - D
+  tag: i_CTRL-T
+  status: unclassified
+- id: nvim.key.insert.c_U
+  surface: mode_key.insert
+  key: CTRL-U
+  desc: delete all entered characters in the current line
+  attestation:
+  - D
+  tag: i_CTRL-U
+  status: unclassified
+- id: nvim.key.insert.c_Vx20x7bcharx7d
+  surface: mode_key.insert
+  key: CTRL-V {char}
+  desc: insert next non-digit literally
+  attestation:
+  - D
+  tag: i_CTRL-V
+  status: unclassified
+- id: nvim.key.insert.c_W
+  surface: mode_key.insert
+  key: CTRL-W
+  desc: delete word before the cursor
+  attestation:
+  - D
+  tag: i_CTRL-W
+  status: unclassified
+- id: nvim.key.insert.c_Xx20x7bmodex7d
+  surface: mode_key.insert
+  key: CTRL-X {mode}
+  desc: enter CTRL-X sub mode, see |i_CTRL-X_index|
+  attestation:
+  - D
+  tag: i_CTRL-X
+  status: unclassified
+- id: nvim.key.insert.c_Y
+  surface: mode_key.insert
+  key: CTRL-Y
+  desc: insert the character which is above the cursor
+  attestation:
+  - D
+  tag: i_CTRL-Y
+  status: unclassified
+- id: nvim.key.insert.Esc
+  surface: mode_key.insert
+  key: <Esc>
+  desc: end insert mode
+  attestation:
+  - D
+  tag: i_<Esc>
+  status: unclassified
+- id: nvim.key.insert.c_x5b
+  surface: mode_key.insert
+  key: CTRL-[
+  desc: same as <Esc>
+  attestation:
+  - D
+  tag: i_CTRL-[
+  status: unclassified
+- id: nvim.key.insert.c_x5cx20ax20-x20z
+  surface: mode_key.insert
+  key: CTRL-\ a - z
+  desc: reserved for extensions
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.insert.c_x5cx20others
+  surface: mode_key.insert
+  key: CTRL-\ others
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.insert.c_x5d
+  surface: mode_key.insert
+  key: CTRL-]
+  desc: trigger abbreviation
+  attestation:
+  - D
+  tag: i_CTRL-]
+  status: unclassified
+- id: nvim.key.insert.c_x5e
+  surface: mode_key.insert
+  key: CTRL-^
+  desc: toggle use of |:lmap| mappings
+  attestation:
+  - D
+  tag: i_CTRL-^
+  status: unclassified
+- id: nvim.key.insert.c__
+  surface: mode_key.insert
+  key: CTRL-_
+  desc: 'When ''allowrevins'' set: toggle ''revins'''
+  attestation:
+  - D
+  tag: i_CTRL-_
+  status: unclassified
+- id: nvim.key.insert.Spacex20tox20x27x7ex27
+  surface: mode_key.insert
+  key: <Space> to '~'
+  desc: not used, except '0' and '^' followed by CTRL-D
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.insert.0x20c_D
+  surface: mode_key.insert
+  key: 0 CTRL-D
+  desc: delete all indent in the current line
+  attestation:
+  - D
+  tag: i_0_CTRL-D
+  status: unclassified
+- id: nvim.key.insert.x5ex20c_D
+  surface: mode_key.insert
+  key: ^ CTRL-D
+  desc: delete all indent in the current line, restore it in the next line
+  attestation:
+  - D
+  tag: i_^_CTRL-D
+  status: unclassified
+- id: nvim.key.insert.Del
+  surface: mode_key.insert
+  key: <Del>
+  desc: delete character under the cursor
+  attestation:
+  - D
+  tag: i_<Del>
+  status: unclassified
+- id: nvim.key.insert.Metax20charactersx20x280x80x20tox200xffx2cx20128
+  surface: mode_key.insert
+  key: Meta characters (0x80 to 0xff, 128 to 255)
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.insert.Left
+  surface: mode_key.insert
+  key: <Left>
+  desc: cursor one character left
+  attestation:
+  - D
+  tag: i_<Left>
+  status: unclassified
+- id: nvim.key.insert.S-Left
+  surface: mode_key.insert
+  key: <S-Left>
+  desc: cursor one word left
+  attestation:
+  - D
+  tag: i_<S-Left>
+  status: unclassified
+- id: nvim.key.insert.C-Left
+  surface: mode_key.insert
+  key: <C-Left>
+  desc: cursor one word left
+  attestation:
+  - D
+  tag: i_<C-Left>
+  status: unclassified
+- id: nvim.key.insert.Right
+  surface: mode_key.insert
+  key: <Right>
+  desc: cursor one character right
+  attestation:
+  - D
+  tag: i_<Right>
+  status: unclassified
+- id: nvim.key.insert.S-Right
+  surface: mode_key.insert
+  key: <S-Right>
+  desc: cursor one word right
+  attestation:
+  - D
+  tag: i_<S-Right>
+  status: unclassified
+- id: nvim.key.insert.C-Right
+  surface: mode_key.insert
+  key: <C-Right>
+  desc: cursor one word right
+  attestation:
+  - D
+  tag: i_<C-Right>
+  status: unclassified
+- id: nvim.key.insert.Up
+  surface: mode_key.insert
+  key: <Up>
+  desc: cursor one line up
+  attestation:
+  - D
+  tag: i_<Up>
+  status: unclassified
+- id: nvim.key.insert.S-Up
+  surface: mode_key.insert
+  key: <S-Up>
+  desc: same as <PageUp>
+  attestation:
+  - D
+  tag: i_<S-Up>
+  status: unclassified
+- id: nvim.key.insert.Down
+  surface: mode_key.insert
+  key: <Down>
+  desc: cursor one line down
+  attestation:
+  - D
+  tag: i_<Down>
+  status: unclassified
+- id: nvim.key.insert.S-Down
+  surface: mode_key.insert
+  key: <S-Down>
+  desc: same as <PageDown>
+  attestation:
+  - D
+  tag: i_<S-Down>
+  status: unclassified
+- id: nvim.key.insert.Home
+  surface: mode_key.insert
+  key: <Home>
+  desc: cursor to start of line
+  attestation:
+  - D
+  tag: i_<Home>
+  status: unclassified
+- id: nvim.key.insert.C-Home
+  surface: mode_key.insert
+  key: <C-Home>
+  desc: cursor to start of file
+  attestation:
+  - D
+  tag: i_<C-Home>
+  status: unclassified
+- id: nvim.key.insert.End
+  surface: mode_key.insert
+  key: <End>
+  desc: cursor past end of line
+  attestation:
+  - D
+  tag: i_<End>
+  status: unclassified
+- id: nvim.key.insert.C-End
+  surface: mode_key.insert
+  key: <C-End>
+  desc: cursor past end of file
+  attestation:
+  - D
+  tag: i_<C-End>
+  status: unclassified
+- id: nvim.key.insert.PageUp
+  surface: mode_key.insert
+  key: <PageUp>
+  desc: one screenful backward
+  attestation:
+  - D
+  tag: i_<PageUp>
+  status: unclassified
+- id: nvim.key.insert.PageDown
+  surface: mode_key.insert
+  key: <PageDown>
+  desc: one screenful forward
+  attestation:
+  - D
+  tag: i_<PageDown>
+  status: unclassified
+- id: nvim.key.insert.F1
+  surface: mode_key.insert
+  key: <F1>
+  desc: same as <Help>
+  attestation:
+  - D
+  tag: i_<F1>
+  status: unclassified
+- id: nvim.key.insert.Help
+  surface: mode_key.insert
+  key: <Help>
+  desc: stop insert mode and display help window
+  attestation:
+  - D
+  tag: i_<Help>
+  status: unclassified
+- id: nvim.key.insert.Insert
+  surface: mode_key.insert
+  key: <Insert>
+  desc: toggle Insert/Replace mode
+  attestation:
+  - D
+  tag: i_<Insert>
+  status: unclassified
+- id: nvim.key.insert.LeftMouse
+  surface: mode_key.insert
+  key: <LeftMouse>
+  desc: cursor at mouse click
+  attestation:
+  - D
+  tag: i_<LeftMouse>
+  status: unclassified
+- id: nvim.key.insert.ScrollWheelDown
+  surface: mode_key.insert
+  key: <ScrollWheelDown>
+  desc: move window three lines down
+  attestation:
+  - D
+  tag: i_<ScrollWheelDown>
+  status: unclassified
+- id: nvim.key.insert.S-ScrollWheelDown
+  surface: mode_key.insert
+  key: <S-ScrollWheelDown>
+  desc: move window one page down
+  attestation:
+  - D
+  tag: i_<S-ScrollWheelDown>
+  status: unclassified
+- id: nvim.key.insert.ScrollWheelUp
+  surface: mode_key.insert
+  key: <ScrollWheelUp>
+  desc: move window three lines up
+  attestation:
+  - D
+  tag: i_<ScrollWheelUp>
+  status: unclassified
+- id: nvim.key.insert.S-ScrollWheelUp
+  surface: mode_key.insert
+  key: <S-ScrollWheelUp>
+  desc: move window one page up
+  attestation:
+  - D
+  tag: i_<S-ScrollWheelUp>
+  status: unclassified
+- id: nvim.key.insert.ScrollWheelLeft
+  surface: mode_key.insert
+  key: <ScrollWheelLeft>
+  desc: move window six columns left
+  attestation:
+  - D
+  tag: i_<ScrollWheelLeft>
+  status: unclassified
+- id: nvim.key.insert.S-ScrollWheelLeft
+  surface: mode_key.insert
+  key: <S-ScrollWheelLeft>
+  desc: move window one page left
+  attestation:
+  - D
+  tag: i_<S-ScrollWheelLeft>
+  status: unclassified
+- id: nvim.key.insert.ScrollWheelRight
+  surface: mode_key.insert
+  key: <ScrollWheelRight>
+  desc: move window six columns right
+  attestation:
+  - D
+  tag: i_<ScrollWheelRight>
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_D
+  surface: mode_key.insert
+  key: CTRL-X CTRL-D
+  desc: complete defined identifiers
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-D
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_E
+  surface: mode_key.insert
+  key: CTRL-X CTRL-E
+  desc: scroll up
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-E
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_F
+  surface: mode_key.insert
+  key: CTRL-X CTRL-F
+  desc: complete file names
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-F
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_I
+  surface: mode_key.insert
+  key: CTRL-X CTRL-I
+  desc: complete identifiers
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-I
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_K
+  surface: mode_key.insert
+  key: CTRL-X CTRL-K
+  desc: complete identifiers from dictionary
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-K
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_L
+  surface: mode_key.insert
+  key: CTRL-X CTRL-L
+  desc: complete whole lines
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-L
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_N
+  surface: mode_key.insert
+  key: CTRL-X CTRL-N
+  desc: next completion
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-N
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_O
+  surface: mode_key.insert
+  key: CTRL-X CTRL-O
+  desc: omni completion
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-O
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_P
+  surface: mode_key.insert
+  key: CTRL-X CTRL-P
+  desc: previous completion
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-P
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_R
+  surface: mode_key.insert
+  key: CTRL-X CTRL-R
+  desc: complete contents from registers
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-R
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_S
+  surface: mode_key.insert
+  key: CTRL-X CTRL-S
+  desc: spelling suggestions
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-S
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_T
+  surface: mode_key.insert
+  key: CTRL-X CTRL-T
+  desc: complete identifiers from thesaurus
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-T
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_Y
+  surface: mode_key.insert
+  key: CTRL-X CTRL-Y
+  desc: scroll down
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-Y
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_U
+  surface: mode_key.insert
+  key: CTRL-X CTRL-U
+  desc: complete with 'completefunc'
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-U
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_V
+  surface: mode_key.insert
+  key: CTRL-X CTRL-V
+  desc: 'complete like in : command line'
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-V
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_Z
+  surface: mode_key.insert
+  key: CTRL-X CTRL-Z
+  desc: stop completion, text is unchanged
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-Z
+  status: unclassified
+- id: nvim.key.insert.c_Xx20c_x5d
+  surface: mode_key.insert
+  key: CTRL-X CTRL-]
+  desc: complete tags
+  attestation:
+  - D
+  tag: i_CTRL-X_CTRL-]
+  status: unclassified
+- id: nvim.key.insert.c_Xx20s
+  surface: mode_key.insert
+  key: CTRL-X s
+  desc: spelling suggestions
+  attestation:
+  - D
+  tag: i_CTRL-X_s
+  status: unclassified
+- id: nvim.key.insert.c_L
+  surface: mode_key.insert
+  key: CTRL-L
+  desc: insert one character from the current match
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.insert.other
+  surface: mode_key.insert
+  key: other
+  desc: stop completion and insert the typed character
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.c_x40
+  surface: mode_key.normal
+  key: CTRL-@
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.c_A
+  surface: mode_key.normal
+  key: CTRL-A
+  desc: add N to number at/after cursor
+  attestation:
+  - D
+  tag: CTRL-A
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.c_B
+  surface: mode_key.normal
+  key: CTRL-B
+  desc: scroll N screens Backwards
+  attestation:
+  - D
+  tag: CTRL-B
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_C
+  surface: mode_key.normal
+  key: CTRL-C
+  desc: interrupt current (search) command
+  attestation:
+  - D
+  tag: CTRL-C
+  status: unclassified
+- id: nvim.key.normal.c_D
+  surface: mode_key.normal
+  key: CTRL-D
+  desc: 'scroll Down N lines (default: half a screen)'
+  attestation:
+  - D
+  tag: CTRL-D
+  status: unclassified
+- id: nvim.key.normal.c_E
+  surface: mode_key.normal
+  key: CTRL-E
+  desc: scroll N lines upwards (N lines Extra)
+  attestation:
+  - D
+  tag: CTRL-E
+  status: unclassified
+- id: nvim.key.normal.c_F
+  surface: mode_key.normal
+  key: CTRL-F
+  desc: scroll N screens Forward
+  attestation:
+  - D
+  tag: CTRL-F
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_G
+  surface: mode_key.normal
+  key: CTRL-G
+  desc: display current file name and position
+  attestation:
+  - D
+  tag: CTRL-G
+  status: unclassified
+- id: nvim.key.normal.BS
+  surface: mode_key.normal
+  key: <BS>
+  desc: same as "h"
+  attestation:
+  - D
+  tag: <BS>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_H
+  surface: mode_key.normal
+  key: CTRL-H
+  desc: same as "h"
+  attestation:
+  - D
+  tag: CTRL-H
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.Tab
+  surface: mode_key.normal
+  key: <Tab>
+  desc: go to N newer entry in jump list
+  attestation:
+  - D
+  tag: <Tab>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_I
+  surface: mode_key.normal
+  key: CTRL-I
+  desc: same as <Tab>
+  attestation:
+  - D
+  tag: CTRL-I
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.NL
+  surface: mode_key.normal
+  key: <NL>
+  desc: same as "j"
+  attestation:
+  - D
+  tag: <NL>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.S-NL
+  surface: mode_key.normal
+  key: <S-NL>
+  desc: same as CTRL-F
+  attestation:
+  - D
+  tag: <S-NL>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_J
+  surface: mode_key.normal
+  key: CTRL-J
+  desc: same as "j"
+  attestation:
+  - D
+  tag: CTRL-J
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_K
+  surface: mode_key.normal
+  key: CTRL-K
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.c_L
+  surface: mode_key.normal
+  key: CTRL-L
+  desc: redraw screen
+  attestation:
+  - D
+  tag: CTRL-L
+  status: unclassified
+- id: nvim.key.normal.CR
+  surface: mode_key.normal
+  key: <CR>
+  desc: cursor to the first CHAR N lines lower
+  attestation:
+  - D
+  tag: <CR>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.S-CR
+  surface: mode_key.normal
+  key: <S-CR>
+  desc: same as CTRL-F
+  attestation:
+  - D
+  tag: <S-CR>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_M
+  surface: mode_key.normal
+  key: CTRL-M
+  desc: same as <CR>
+  attestation:
+  - D
+  tag: CTRL-M
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_N
+  surface: mode_key.normal
+  key: CTRL-N
+  desc: same as "j"
+  attestation:
+  - D
+  tag: CTRL-N
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_O
+  surface: mode_key.normal
+  key: CTRL-O
+  desc: go to N older entry in jump list
+  attestation:
+  - D
+  tag: CTRL-O
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_P
+  surface: mode_key.normal
+  key: CTRL-P
+  desc: same as "k"
+  attestation:
+  - D
+  tag: CTRL-P
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.c_Q
+  surface: mode_key.normal
+  key: CTRL-Q
+  desc: not used, or used for terminal control flow
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.c_R
+  surface: mode_key.normal
+  key: CTRL-R
+  desc: redo changes which were undone with 'u'
+  attestation:
+  - D
+  tag: CTRL-R
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.c_S
+  surface: mode_key.normal
+  key: CTRL-S
+  desc: not used, or used for terminal control flow
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.c_T
+  surface: mode_key.normal
+  key: CTRL-T
+  desc: jump to N older Tag in tag list
+  attestation:
+  - D
+  tag: CTRL-T
+  status: unclassified
+- id: nvim.key.normal.c_U
+  surface: mode_key.normal
+  key: CTRL-U
+  desc: 'scroll N lines Upwards (default: half a'
+  attestation:
+  - D
+  tag: CTRL-U
+  status: unclassified
+- id: nvim.key.normal.c_V
+  surface: mode_key.normal
+  key: CTRL-V
+  desc: start blockwise Visual mode
+  attestation:
+  - D
+  tag: CTRL-V
+  status: unclassified
+- id: nvim.key.normal.c_Wx20x7bcharx7d
+  surface: mode_key.normal
+  key: CTRL-W {char}
+  desc: window commands, see |CTRL-W|
+  attestation:
+  - D
+  tag: CTRL-W
+  status: unclassified
+- id: nvim.key.normal.c_X
+  surface: mode_key.normal
+  key: CTRL-X
+  desc: subtract N from number at/after cursor
+  attestation:
+  - D
+  tag: CTRL-X
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.c_Y
+  surface: mode_key.normal
+  key: CTRL-Y
+  desc: scroll N lines downwards
+  attestation:
+  - D
+  tag: CTRL-Y
+  status: unclassified
+- id: nvim.key.normal.c_Z
+  surface: mode_key.normal
+  key: CTRL-Z
+  desc: suspend program (or start new shell)
+  attestation:
+  - D
+  tag: CTRL-Z
+  status: unclassified
+- id: nvim.key.normal.c_x5bx20Esc
+  surface: mode_key.normal
+  key: CTRL-[ <Esc>
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.c_x5cx20c_N
+  surface: mode_key.normal
+  key: CTRL-\ CTRL-N
+  desc: go to Normal mode (no-op)
+  attestation:
+  - D
+  tag: CTRL-\_CTRL-N
+  status: unclassified
+- id: nvim.key.normal.c_x5cx20c_G
+  surface: mode_key.normal
+  key: CTRL-\ CTRL-G
+  desc: go to Normal mode (no-op)
+  attestation:
+  - D
+  tag: CTRL-\_CTRL-G
+  status: unclassified
+- id: nvim.key.normal.c_x5cx20ax20-x20z
+  surface: mode_key.normal
+  key: CTRL-\ a - z
+  desc: reserved for extensions
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.c_x5cx20others
+  surface: mode_key.normal
+  key: CTRL-\ others
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.c_x5d
+  surface: mode_key.normal
+  key: CTRL-]
+  desc: :ta to ident under cursor
+  attestation:
+  - D
+  tag: CTRL-]
+  status: unclassified
+- id: nvim.key.normal.c_x5e
+  surface: mode_key.normal
+  key: CTRL-^
+  desc: edit Nth alternate file (equivalent to
+  attestation:
+  - D
+  tag: CTRL-^
+  status: unclassified
+- id: nvim.key.normal.c_Tab
+  surface: mode_key.normal
+  key: CTRL-<Tab>
+  desc: 'same as `g<Tab>` : go to last accessed tab'
+  attestation:
+  - D
+  tag: CTRL-<Tab>
+  status: unclassified
+- id: nvim.key.normal.c__
+  surface: mode_key.normal
+  key: CTRL-_
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.Space
+  surface: mode_key.normal
+  key: <Space>
+  desc: same as "l"
+  attestation:
+  - D
+  tag: <Space>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x21x7bmotionx7dx7bfilterx7d
+  surface: mode_key.normal
+  key: '!{motion}{filter}'
+  desc: 2  filter Nmove text through the {filter}
+  attestation:
+  - D
+  tag: '!'
+  status: unclassified
+- id: nvim.key.normal.x21x21x7bfilterx7d
+  surface: mode_key.normal
+  key: '!!{filter}'
+  desc: filter N lines through the {filter} command
+  attestation:
+  - D
+  tag: '!!'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x22x7bregisterx7d
+  surface: mode_key.normal
+  key: '"{register}'
+  desc: use {register} for next delete, yank or put
+  attestation:
+  - D
+  tag: quote
+  status: unclassified
+- id: nvim.key.normal.x23
+  surface: mode_key.normal
+  key: '#'
+  desc: search backward for the Nth occurrence of
+  attestation:
+  - D
+  tag: '#'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x24
+  surface: mode_key.normal
+  key: $
+  desc: cursor to the end of Nth next line
+  attestation:
+  - D
+  tag: $
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x25
+  surface: mode_key.normal
+  key: '%'
+  desc: find the next (curly/square) bracket on
+  attestation:
+  - D
+  tag: '%'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x7bcountx7dx25
+  surface: mode_key.normal
+  key: '{count}%'
+  desc: go to N percentage in the file
+  attestation:
+  - D
+  tag: N%
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x26
+  surface: mode_key.normal
+  key: '&'
+  desc: repeat last :s
+  attestation:
+  - D
+  tag: '&'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x27x7ba-zA-Z0-9x7d
+  surface: mode_key.normal
+  key: '''{a-zA-Z0-9}'
+  desc: cursor to the first CHAR on the line with
+  attestation:
+  - D
+  tag: ''''
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x27x27
+  surface: mode_key.normal
+  key: ''''''
+  desc: cursor to the first CHAR of the line where
+  attestation:
+  - D
+  tag: ''''''
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x27x28
+  surface: mode_key.normal
+  key: '''('
+  desc: cursor to the first CHAR on the line of the
+  attestation:
+  - D
+  tag: '''('
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x27x29
+  surface: mode_key.normal
+  key: ''')'
+  desc: cursor to the first CHAR on the line of the
+  attestation:
+  - D
+  tag: ''')'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x27
+  surface: mode_key.normal
+  key: '''<'
+  desc: cursor to the first CHAR of the line where
+  attestation:
+  - D
+  tag: '''<'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x27x5b
+  surface: mode_key.normal
+  key: '''['
+  desc: cursor to the first CHAR on the line of the
+  attestation:
+  - D
+  tag: '''['
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x27x5d
+  surface: mode_key.normal
+  key: ''']'
+  desc: cursor to the first CHAR on the line of the
+  attestation:
+  - D
+  tag: ''']'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x27x7b
+  surface: mode_key.normal
+  key: '''{'
+  desc: cursor to the first CHAR on the line of the
+  attestation:
+  - D
+  tag: '''{'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x27x7d
+  surface: mode_key.normal
+  key: '''}'
+  desc: cursor to the first CHAR on the line of the
+  attestation:
+  - D
+  tag: '''}'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x28
+  surface: mode_key.normal
+  key: (
+  desc: cursor N sentences backward
+  attestation:
+  - D
+  tag: (
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x29
+  surface: mode_key.normal
+  key: )
+  desc: cursor N sentences forward
+  attestation:
+  - D
+  tag: )
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x2a
+  surface: mode_key.normal
+  key: '*'
+  desc: search forward for the Nth occurrence of
+  attestation:
+  - D
+  tag: star
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x2b
+  surface: mode_key.normal
+  key: +
+  desc: same as <CR>
+  attestation:
+  - D
+  tag: +
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.S-x2b
+  surface: mode_key.normal
+  key: <S-+>
+  desc: same as CTRL-F
+  attestation:
+  - D
+  tag: <S-Plus>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x2c
+  surface: mode_key.normal
+  key: ','
+  desc: repeat latest f, t, F or T in opposite
+  attestation:
+  - D
+  tag: ','
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.-
+  surface: mode_key.normal
+  key: '-'
+  desc: cursor to the first CHAR N lines higher
+  attestation:
+  - D
+  tag: '-'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.S--
+  surface: mode_key.normal
+  key: <S-->
+  desc: same as CTRL-B
+  attestation:
+  - D
+  tag: <S-Minus>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal..
+  surface: mode_key.normal
+  key: .
+  desc: repeat last change with count replaced with
+  attestation:
+  - D
+  tag: .
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x2fx7bpatternx7dCR
+  surface: mode_key.normal
+  key: /{pattern}<CR>
+  desc: search forward for the Nth occurrence of
+  attestation:
+  - D
+  tag: /
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x2fCR
+  surface: mode_key.normal
+  key: /<CR>
+  desc: search forward for {pattern} of last search
+  attestation:
+  - D
+  tag: /<CR>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.0
+  surface: mode_key.normal
+  key: '0'
+  desc: cursor to the first char of the line
+  attestation:
+  - D
+  tag: '0'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.1
+  surface: mode_key.normal
+  key: '1'
+  desc: prepend to command to give a count
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.2
+  surface: mode_key.normal
+  key: '2'
+  desc: '"'
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.3
+  surface: mode_key.normal
+  key: '3'
+  desc: '"'
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.4
+  surface: mode_key.normal
+  key: '4'
+  desc: '"'
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.5
+  surface: mode_key.normal
+  key: '5'
+  desc: '"'
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.6
+  surface: mode_key.normal
+  key: '6'
+  desc: '"'
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.7
+  surface: mode_key.normal
+  key: '7'
+  desc: '"'
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.8
+  surface: mode_key.normal
+  key: '8'
+  desc: '"'
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.9
+  surface: mode_key.normal
+  key: '9'
+  desc: '"'
+  attestation:
+  - D
+  tag: count
+  status: unclassified
+- id: nvim.key.normal.x3a
+  surface: mode_key.normal
+  key: ':'
+  desc: start entering an Ex command
+  attestation:
+  - D
+  tag: ':'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x7bcountx7dx3a
+  surface: mode_key.normal
+  key: '{count}:'
+  desc: start entering an Ex command with range
+  attestation:
+  - D
+  tag: 'N:'
+  status: unclassified
+- id: nvim.key.normal.x3b
+  surface: mode_key.normal
+  key: ;
+  desc: repeat latest f, t, F or T N times
+  attestation:
+  - D
+  tag: ;
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x7bmotionx7d
+  surface: mode_key.normal
+  key: <{motion}
+  desc: shift Nmove lines one 'shiftwidth'
+  attestation:
+  - D
+  tag: <
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.empty
+  surface: mode_key.normal
+  key: '<<'
+  desc: shift N lines one 'shiftwidth' leftwards
+  attestation:
+  - D
+  tag: '<<'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x3dx7bmotionx7d
+  surface: mode_key.normal
+  key: ={motion}
+  desc: filter Nmove lines through "indent"
+  attestation:
+  - D
+  tag: '='
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x3dx3d
+  surface: mode_key.normal
+  key: ==
+  desc: filter N lines through "indent"
+  attestation:
+  - D
+  tag: ==
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x3fx7bpatternx7dCR
+  surface: mode_key.normal
+  key: ?{pattern}<CR>
+  desc: search backward for the Nth previous
+  attestation:
+  - D
+  tag: '?'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x3fCR
+  surface: mode_key.normal
+  key: ?<CR>
+  desc: search backward for {pattern} of last search
+  attestation:
+  - D
+  tag: ?<CR>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x40x7ba-zx7d
+  surface: mode_key.normal
+  key: '@{a-z}'
+  desc: execute the contents of register {a-z}
+  attestation:
+  - D
+  tag: '@'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x40x3a
+  surface: mode_key.normal
+  key: '@:'
+  desc: repeat the previous ":" command N times
+  attestation:
+  - D
+  tag: '@:'
+  status: unclassified
+- id: nvim.key.normal.x40x40
+  surface: mode_key.normal
+  key: '@@'
+  desc: repeat the previous @{a-z} N times
+  attestation:
+  - D
+  tag: '@@'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.A
+  surface: mode_key.normal
+  key: A
+  desc: append text after the end of the line N times
+  attestation:
+  - D
+  tag: A
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.B
+  surface: mode_key.normal
+  key: B
+  desc: cursor N WORDS backward
+  attestation:
+  - D
+  tag: B
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dC
+  surface: mode_key.normal
+  key: '["x]C'
+  desc: change from the cursor position to the end
+  attestation:
+  - D
+  tag: C
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dD
+  surface: mode_key.normal
+  key: '["x]D'
+  desc: delete the characters under the cursor
+  attestation:
+  - D
+  tag: D
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.E
+  surface: mode_key.normal
+  key: E
+  desc: cursor forward to the end of WORD N
+  attestation:
+  - D
+  tag: E
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.Fx7bcharx7d
+  surface: mode_key.normal
+  key: F{char}
+  desc: cursor to the Nth occurrence of {char} to
+  attestation:
+  - D
+  tag: F
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.G
+  surface: mode_key.normal
+  key: G
+  desc: cursor to line N, default last line
+  attestation:
+  - D
+  tag: G
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.H
+  surface: mode_key.normal
+  key: H
+  desc: cursor to line N from top of screen
+  attestation:
+  - D
+  tag: H
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.I
+  surface: mode_key.normal
+  key: I
+  desc: insert text before the first CHAR on the
+  attestation:
+  - D
+  tag: I
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.J
+  surface: mode_key.normal
+  key: J
+  desc: Join N lines; default is 2
+  attestation:
+  - D
+  tag: J
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.K
+  surface: mode_key.normal
+  key: K
+  desc: lookup Keyword under the cursor with
+  attestation:
+  - D
+  tag: K
+  status: unclassified
+- id: nvim.key.normal.L
+  surface: mode_key.normal
+  key: L
+  desc: cursor to line N from bottom of screen
+  attestation:
+  - D
+  tag: L
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.M
+  surface: mode_key.normal
+  key: M
+  desc: cursor to middle line of screen
+  attestation:
+  - D
+  tag: M
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.N
+  surface: mode_key.normal
+  key: N
+  desc: repeat the latest '/' or '?' N times in
+  attestation:
+  - D
+  tag: N
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.O
+  surface: mode_key.normal
+  key: O
+  desc: begin a new line above the cursor and
+  attestation:
+  - D
+  tag: O
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dP
+  surface: mode_key.normal
+  key: '["x]P'
+  desc: put the text [from register x] before the
+  attestation:
+  - D
+  tag: P
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.R
+  surface: mode_key.normal
+  key: R
+  desc: 'enter replace mode: overtype existing'
+  attestation:
+  - D
+  tag: R
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dS
+  surface: mode_key.normal
+  key: '["x]S'
+  desc: delete N lines [into register x] and start
+  attestation:
+  - D
+  tag: S
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.Tx7bcharx7d
+  surface: mode_key.normal
+  key: T{char}
+  desc: cursor till after Nth occurrence of {char}
+  attestation:
+  - D
+  tag: T
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.U
+  surface: mode_key.normal
+  key: U
+  desc: undo all latest changes on one line
+  attestation:
+  - D
+  tag: U
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.V
+  surface: mode_key.normal
+  key: V
+  desc: start linewise Visual mode
+  attestation:
+  - D
+  tag: V
+  status: unclassified
+- id: nvim.key.normal.W
+  surface: mode_key.normal
+  key: W
+  desc: cursor N WORDS forward
+  attestation:
+  - D
+  tag: W
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dX
+  surface: mode_key.normal
+  key: '["x]X'
+  desc: delete N characters before the cursor [into
+  attestation:
+  - D
+  tag: X
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dY
+  surface: mode_key.normal
+  key: '["x]Y'
+  desc: yank N lines [into register x]; synonym for
+  attestation:
+  - D
+  tag: Y
+  status: unclassified
+- id: nvim.key.normal.ZZ
+  surface: mode_key.normal
+  key: ZZ
+  desc: write if buffer changed and close window
+  attestation:
+  - D
+  tag: ZZ
+  status: unclassified
+- id: nvim.key.normal.ZQ
+  surface: mode_key.normal
+  key: ZQ
+  desc: close window without writing
+  attestation:
+  - D
+  tag: ZQ
+  status: unclassified
+- id: nvim.key.normal.x5bx7bcharx7d
+  surface: mode_key.normal
+  key: '[{char}'
+  desc: square bracket command (see |[| below)
+  attestation:
+  - D
+  tag: '['
+  status: unclassified
+- id: nvim.key.normal.x5c
+  surface: mode_key.normal
+  key: \
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.x5dx7bcharx7d
+  surface: mode_key.normal
+  key: ']{char}'
+  desc: square bracket command (see |]| below)
+  attestation:
+  - D
+  tag: ']'
+  status: unclassified
+- id: nvim.key.normal.x5e
+  surface: mode_key.normal
+  key: ^
+  desc: cursor to the first CHAR of the line
+  attestation:
+  - D
+  tag: ^
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal._
+  surface: mode_key.normal
+  key: _
+  desc: cursor to the first CHAR N - 1 lines lower
+  attestation:
+  - D
+  tag: _
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x60x7ba-zA-Z0-9x7d
+  surface: mode_key.normal
+  key: '`{a-zA-Z0-9}'
+  desc: cursor to the mark {a-zA-Z0-9}
+  attestation:
+  - D
+  tag: '`'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x60x28
+  surface: mode_key.normal
+  key: '`('
+  desc: cursor to the start of the current sentence
+  attestation:
+  - D
+  tag: '`('
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x60x29
+  surface: mode_key.normal
+  key: '`)'
+  desc: cursor to the end of the current sentence
+  attestation:
+  - D
+  tag: '`)'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x60
+  surface: mode_key.normal
+  key: '`<'
+  desc: cursor to the start of the highlighted area
+  attestation:
+  - D
+  tag: '`<'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x60x5b
+  surface: mode_key.normal
+  key: '`['
+  desc: cursor to the start of last operated text
+  attestation:
+  - D
+  tag: '`['
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x60x5d
+  surface: mode_key.normal
+  key: '`]'
+  desc: cursor to the end of last operated text or
+  attestation:
+  - D
+  tag: '`]'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x22x60x60x22
+  surface: mode_key.normal
+  key: '"``"'
+  desc: cursor to the position before latest jump
+  attestation:
+  - D
+  tag: '``'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x60x7b
+  surface: mode_key.normal
+  key: '`{'
+  desc: cursor to the start of the current paragraph
+  attestation:
+  - D
+  tag: '`{'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x60x7d
+  surface: mode_key.normal
+  key: '`}'
+  desc: cursor to the end of the current paragraph
+  attestation:
+  - D
+  tag: '`}'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.a
+  surface: mode_key.normal
+  key: a
+  desc: append text after the cursor N times
+  attestation:
+  - D
+  tag: a
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.b
+  surface: mode_key.normal
+  key: b
+  desc: cursor N words backward
+  attestation:
+  - D
+  tag: b
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dcx7bmotionx7d
+  surface: mode_key.normal
+  key: '["x]c{motion}'
+  desc: delete Nmove text [into register x] and
+  attestation:
+  - D
+  tag: c
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dcc
+  surface: mode_key.normal
+  key: '["x]cc'
+  desc: delete N lines [into register x] and start
+  attestation:
+  - D
+  tag: cc
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5ddx7bmotionx7d
+  surface: mode_key.normal
+  key: '["x]d{motion}'
+  desc: delete Nmove text [into register x]
+  attestation:
+  - D
+  tag: d
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5ddd
+  surface: mode_key.normal
+  key: '["x]dd'
+  desc: delete N lines [into register x]
+  attestation:
+  - D
+  tag: dd
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.do
+  surface: mode_key.normal
+  key: do
+  desc: same as ":diffget"
+  attestation:
+  - D
+  tag: do
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.dp
+  surface: mode_key.normal
+  key: dp
+  desc: same as ":diffput"
+  attestation:
+  - D
+  tag: dp
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.e
+  surface: mode_key.normal
+  key: e
+  desc: cursor forward to the end of word N
+  attestation:
+  - D
+  tag: e
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.fx7bcharx7d
+  surface: mode_key.normal
+  key: f{char}
+  desc: cursor to Nth occurrence of {char} to the
+  attestation:
+  - D
+  tag: f
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.gx7bcharx7d
+  surface: mode_key.normal
+  key: g{char}
+  desc: extended commands, see |g| below
+  attestation:
+  - D
+  tag: g
+  status: unclassified
+- id: nvim.key.normal.h
+  surface: mode_key.normal
+  key: h
+  desc: cursor N chars to the left
+  attestation:
+  - D
+  tag: h
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.i
+  surface: mode_key.normal
+  key: i
+  desc: insert text before the cursor N times
+  attestation:
+  - D
+  tag: i
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.j
+  surface: mode_key.normal
+  key: j
+  desc: cursor N lines downward
+  attestation:
+  - D
+  tag: j
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.k
+  surface: mode_key.normal
+  key: k
+  desc: cursor N lines upward
+  attestation:
+  - D
+  tag: k
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.l
+  surface: mode_key.normal
+  key: l
+  desc: cursor N chars to the right
+  attestation:
+  - D
+  tag: l
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.mx7bA-Za-zx7d
+  surface: mode_key.normal
+  key: m{A-Za-z}
+  desc: set mark {A-Za-z} at cursor position
+  attestation:
+  - D
+  tag: m
+  status: unclassified
+- id: nvim.key.normal.n
+  surface: mode_key.normal
+  key: n
+  desc: repeat the latest '/' or '?' N times
+  attestation:
+  - D
+  tag: n
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.o
+  surface: mode_key.normal
+  key: o
+  desc: begin a new line below the cursor and
+  attestation:
+  - D
+  tag: o
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dp
+  surface: mode_key.normal
+  key: '["x]p'
+  desc: put the text [from register x] after the
+  attestation:
+  - D
+  tag: p
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.qx7b0-9a-zA-Zx22x7d
+  surface: mode_key.normal
+  key: q{0-9a-zA-Z"}
+  desc: record typed characters into named register
+  attestation:
+  - D
+  tag: q
+  status: unclassified
+- id: nvim.key.normal.q
+  surface: mode_key.normal
+  key: q
+  desc: (while recording) stops recording
+  attestation:
+  - D
+  tag: q
+  status: unclassified
+- id: nvim.key.normal.Q
+  surface: mode_key.normal
+  key: Q
+  desc: replay last recorded register
+  attestation:
+  - D
+  tag: Q
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.qx3a
+  surface: mode_key.normal
+  key: 'q:'
+  desc: 'edit : command-line in command-line window'
+  attestation:
+  - D
+  tag: 'q:'
+  status: unclassified
+- id: nvim.key.normal.qx2f
+  surface: mode_key.normal
+  key: q/
+  desc: edit / command-line in command-line window
+  attestation:
+  - D
+  tag: q/
+  status: unclassified
+- id: nvim.key.normal.qx3f
+  surface: mode_key.normal
+  key: q?
+  desc: edit ? command-line in command-line window
+  attestation:
+  - D
+  tag: q?
+  status: unclassified
+- id: nvim.key.normal.rx7bcharx7d
+  surface: mode_key.normal
+  key: r{char}
+  desc: replace N chars with {char}
+  attestation:
+  - D
+  tag: r
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5ds
+  surface: mode_key.normal
+  key: '["x]s'
+  desc: (substitute) delete N characters [into
+  attestation:
+  - D
+  tag: s
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.tx7bcharx7d
+  surface: mode_key.normal
+  key: t{char}
+  desc: cursor till before Nth occurrence of {char}
+  attestation:
+  - D
+  tag: t
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.u
+  surface: mode_key.normal
+  key: u
+  desc: undo changes
+  attestation:
+  - D
+  tag: u
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.v
+  surface: mode_key.normal
+  key: v
+  desc: start charwise Visual mode
+  attestation:
+  - D
+  tag: v
+  status: unclassified
+- id: nvim.key.normal.w
+  surface: mode_key.normal
+  key: w
+  desc: cursor N words forward
+  attestation:
+  - D
+  tag: w
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dx
+  surface: mode_key.normal
+  key: '["x]x'
+  desc: delete N characters under and after the
+  attestation:
+  - D
+  tag: x
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dyx7bmotionx7d
+  surface: mode_key.normal
+  key: '["x]y{motion}'
+  desc: yank Nmove text [into register x]
+  attestation:
+  - D
+  tag: y
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dyy
+  surface: mode_key.normal
+  key: '["x]yy'
+  desc: yank N lines [into register x]
+  attestation:
+  - D
+  tag: yy
+  status: unclassified
+- id: nvim.key.normal.zx7bcharx7d
+  surface: mode_key.normal
+  key: z{char}
+  desc: commands starting with 'z', see |z| below
+  attestation:
+  - D
+  tag: z
+  status: unclassified
+- id: nvim.key.normal.x7b
+  surface: mode_key.normal
+  key: '{'
+  desc: cursor N paragraphs backward
+  attestation:
+  - D
+  tag: '{'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x7c
+  surface: mode_key.normal
+  key: '|'
+  desc: cursor to column N
+  attestation:
+  - D
+  tag: bar
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x7d
+  surface: mode_key.normal
+  key: '}'
+  desc: cursor N paragraphs forward
+  attestation:
+  - D
+  tag: '}'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.x7e
+  surface: mode_key.normal
+  key: '~'
+  desc: '''tildeop'' off: switch case of N characters'
+  attestation:
+  - D
+  tag: '~'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x7ex7bmotionx7d
+  surface: mode_key.normal
+  key: ~{motion}
+  desc: '''tildeop'' on: switch case of Nmove text'
+  attestation:
+  - D
+  tag: '~'
+  status: unclassified
+- id: nvim.key.normal.C-End
+  surface: mode_key.normal
+  key: <C-End>
+  desc: same as "G"
+  attestation:
+  - D
+  tag: <C-End>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.C-Home
+  surface: mode_key.normal
+  key: <C-Home>
+  desc: same as "gg"
+  attestation:
+  - D
+  tag: <C-Home>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.C-Left
+  surface: mode_key.normal
+  key: <C-Left>
+  desc: same as "b"
+  attestation:
+  - D
+  tag: <C-Left>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.C-LeftMouse
+  surface: mode_key.normal
+  key: <C-LeftMouse>
+  desc: '":ta" to the keyword at the mouse click'
+  attestation:
+  - D
+  tag: <C-LeftMouse>
+  status: unclassified
+- id: nvim.key.normal.C-Right
+  surface: mode_key.normal
+  key: <C-Right>
+  desc: same as "w"
+  attestation:
+  - D
+  tag: <C-Right>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.C-Tab
+  surface: mode_key.normal
+  key: <C-Tab>
+  desc: same as "g<Tab>"
+  attestation:
+  - D
+  tag: <C-Tab>
+  status: unclassified
+- id: nvim.key.normal.x5bx22xx5dDel
+  surface: mode_key.normal
+  key: '["x]<Del>'
+  desc: same as "x"
+  attestation:
+  - D
+  tag: <Del>
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.x7bcountx7dDel
+  surface: mode_key.normal
+  key: '{count}<Del>'
+  desc: remove the last digit from {count}
+  attestation:
+  - D
+  tag: N<Del>
+  status: unclassified
+- id: nvim.key.normal.Down
+  surface: mode_key.normal
+  key: <Down>
+  desc: same as "j"
+  attestation:
+  - D
+  tag: <Down>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.End
+  surface: mode_key.normal
+  key: <End>
+  desc: same as "$"
+  attestation:
+  - D
+  tag: <End>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.F1
+  surface: mode_key.normal
+  key: <F1>
+  desc: same as <Help>
+  attestation:
+  - D
+  tag: <F1>
+  status: unclassified
+- id: nvim.key.normal.Help
+  surface: mode_key.normal
+  key: <Help>
+  desc: open a help window
+  attestation:
+  - D
+  tag: <Help>
+  status: unclassified
+- id: nvim.key.normal.Home
+  surface: mode_key.normal
+  key: <Home>
+  desc: same as "0"
+  attestation:
+  - D
+  tag: <Home>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.Insert
+  surface: mode_key.normal
+  key: <Insert>
+  desc: same as "i"
+  attestation:
+  - D
+  tag: <Insert>
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.Left
+  surface: mode_key.normal
+  key: <Left>
+  desc: same as "h"
+  attestation:
+  - D
+  tag: <Left>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.LeftMouse
+  surface: mode_key.normal
+  key: <LeftMouse>
+  desc: move cursor to the mouse click position
+  attestation:
+  - D
+  tag: <LeftMouse>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.MiddleMouse
+  surface: mode_key.normal
+  key: <MiddleMouse>
+  desc: same as "gP" at the mouse click position
+  attestation:
+  - D
+  tag: <MiddleMouse>
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.PageDown
+  surface: mode_key.normal
+  key: <PageDown>
+  desc: same as CTRL-F
+  attestation:
+  - D
+  tag: <PageDown>
+  status: unclassified
+- id: nvim.key.normal.PageUp
+  surface: mode_key.normal
+  key: <PageUp>
+  desc: same as CTRL-B
+  attestation:
+  - D
+  tag: <PageUp>
+  status: unclassified
+- id: nvim.key.normal.Right
+  surface: mode_key.normal
+  key: <Right>
+  desc: same as "l"
+  attestation:
+  - D
+  tag: <Right>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.RightMouse
+  surface: mode_key.normal
+  key: <RightMouse>
+  desc: start Visual mode, move cursor to the mouse
+  attestation:
+  - D
+  tag: <RightMouse>
+  status: unclassified
+- id: nvim.key.normal.S-Down
+  surface: mode_key.normal
+  key: <S-Down>
+  desc: same as CTRL-F
+  attestation:
+  - D
+  tag: <S-Down>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.S-Left
+  surface: mode_key.normal
+  key: <S-Left>
+  desc: same as "b"
+  attestation:
+  - D
+  tag: <S-Left>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.S-LeftMouse
+  surface: mode_key.normal
+  key: <S-LeftMouse>
+  desc: same as "*" at the mouse click position
+  attestation:
+  - D
+  tag: <S-LeftMouse>
+  status: unclassified
+- id: nvim.key.normal.S-Right
+  surface: mode_key.normal
+  key: <S-Right>
+  desc: same as "w"
+  attestation:
+  - D
+  tag: <S-Right>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.S-Up
+  surface: mode_key.normal
+  key: <S-Up>
+  desc: same as CTRL-B
+  attestation:
+  - D
+  tag: <S-Up>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.Undo
+  surface: mode_key.normal
+  key: <Undo>
+  desc: same as "u"
+  attestation:
+  - D
+  tag: <Undo>
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.Up
+  surface: mode_key.normal
+  key: <Up>
+  desc: same as "k"
+  attestation:
+  - D
+  tag: <Up>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.text_object.ax22
+  surface: mode_key.text_object
+  key: a"
+  desc: double quoted string
+  attestation:
+  - D
+  tag: v_aquote
+  status: unclassified
+- id: nvim.key.text_object.ax27
+  surface: mode_key.text_object
+  key: a'
+  desc: single quoted string
+  attestation:
+  - D
+  tag: v_a'
+  status: unclassified
+- id: nvim.key.text_object.ax28
+  surface: mode_key.text_object
+  key: a(
+  desc: same as ab
+  attestation:
+  - D
+  tag: v_a(
+  status: unclassified
+- id: nvim.key.text_object.ax29
+  surface: mode_key.text_object
+  key: a)
+  desc: same as ab
+  attestation:
+  - D
+  tag: v_a)
+  status: unclassified
+- id: nvim.key.text_object.a
+  surface: mode_key.text_object
+  key: a<
+  desc: '"a <>" from ''<'' to the matching ''>'''
+  attestation:
+  - D
+  tag: v_a<
+  status: unclassified
+- id: nvim.key.text_object.aB
+  surface: mode_key.text_object
+  key: aB
+  desc: '"a Block" from `[{` to `]}` (with brackets)'
+  attestation:
+  - D
+  tag: v_aB
+  status: unclassified
+- id: nvim.key.text_object.aW
+  surface: mode_key.text_object
+  key: aW
+  desc: '"a WORD" (with white space)'
+  attestation:
+  - D
+  tag: v_aW
+  status: unclassified
+- id: nvim.key.text_object.ax5b
+  surface: mode_key.text_object
+  key: a[
+  desc: '"a []" from ''['' to the matching '']'''
+  attestation:
+  - D
+  tag: v_a[
+  status: unclassified
+- id: nvim.key.text_object.ax5d
+  surface: mode_key.text_object
+  key: a]
+  desc: same as a[
+  attestation:
+  - D
+  tag: v_a]
+  status: unclassified
+- id: nvim.key.text_object.ax60
+  surface: mode_key.text_object
+  key: a`
+  desc: string in backticks
+  attestation:
+  - D
+  tag: v_a`
+  status: unclassified
+- id: nvim.key.text_object.ab
+  surface: mode_key.text_object
+  key: ab
+  desc: '"a block" from "[(" to "])" (with braces)'
+  attestation:
+  - D
+  tag: v_ab
+  status: unclassified
+- id: nvim.key.text_object.ap
+  surface: mode_key.text_object
+  key: ap
+  desc: '"a paragraph" (with white space)'
+  attestation:
+  - D
+  tag: v_ap
+  status: unclassified
+- id: nvim.key.text_object.as
+  surface: mode_key.text_object
+  key: as
+  desc: '"a sentence" (with white space)'
+  attestation:
+  - D
+  tag: v_as
+  status: unclassified
+- id: nvim.key.text_object.at
+  surface: mode_key.text_object
+  key: at
+  desc: '"a tag block" (with white space)'
+  attestation:
+  - D
+  tag: v_at
+  status: unclassified
+- id: nvim.key.text_object.aw
+  surface: mode_key.text_object
+  key: aw
+  desc: '"a word" (with white space)'
+  attestation:
+  - D
+  tag: v_aw
+  status: unclassified
+- id: nvim.key.text_object.ax7b
+  surface: mode_key.text_object
+  key: a{
+  desc: same as aB
+  attestation:
+  - D
+  tag: v_a{
+  status: unclassified
+- id: nvim.key.text_object.ax7d
+  surface: mode_key.text_object
+  key: a}
+  desc: same as aB
+  attestation:
+  - D
+  tag: v_a}
+  status: unclassified
+- id: nvim.key.text_object.ix22
+  surface: mode_key.text_object
+  key: i"
+  desc: double quoted string without the quotes
+  attestation:
+  - D
+  tag: v_iquote
+  status: unclassified
+- id: nvim.key.text_object.ix27
+  surface: mode_key.text_object
+  key: i'
+  desc: single quoted string without the quotes
+  attestation:
+  - D
+  tag: v_i'
+  status: unclassified
+- id: nvim.key.text_object.ix28
+  surface: mode_key.text_object
+  key: i(
+  desc: same as ib
+  attestation:
+  - D
+  tag: v_i(
+  status: unclassified
+- id: nvim.key.text_object.ix29
+  surface: mode_key.text_object
+  key: i)
+  desc: same as ib
+  attestation:
+  - D
+  tag: v_i)
+  status: unclassified
+- id: nvim.key.text_object.i
+  surface: mode_key.text_object
+  key: i<
+  desc: '"inner <>" from ''<'' to the matching ''>'''
+  attestation:
+  - D
+  tag: v_i<
+  status: unclassified
+- id: nvim.key.text_object.iB
+  surface: mode_key.text_object
+  key: iB
+  desc: '"inner Block" from `[{` and `]}`'
+  attestation:
+  - D
+  tag: v_iB
+  status: unclassified
+- id: nvim.key.text_object.iW
+  surface: mode_key.text_object
+  key: iW
+  desc: '"inner WORD"'
+  attestation:
+  - D
+  tag: v_iW
+  status: unclassified
+- id: nvim.key.text_object.ix5b
+  surface: mode_key.text_object
+  key: i[
+  desc: '"inner []" from ''['' to the matching '']'''
+  attestation:
+  - D
+  tag: v_i[
+  status: unclassified
+- id: nvim.key.text_object.ix5d
+  surface: mode_key.text_object
+  key: i]
+  desc: same as i[
+  attestation:
+  - D
+  tag: v_i]
+  status: unclassified
+- id: nvim.key.text_object.ix60
+  surface: mode_key.text_object
+  key: i`
+  desc: string in backticks without the backticks
+  attestation:
+  - D
+  tag: v_i`
+  status: unclassified
+- id: nvim.key.text_object.ib
+  surface: mode_key.text_object
+  key: ib
+  desc: '"inner block" from "[(" to "])"'
+  attestation:
+  - D
+  tag: v_ib
+  status: unclassified
+- id: nvim.key.text_object.ip
+  surface: mode_key.text_object
+  key: ip
+  desc: '"inner paragraph"'
+  attestation:
+  - D
+  tag: v_ip
+  status: unclassified
+- id: nvim.key.text_object.is
+  surface: mode_key.text_object
+  key: is
+  desc: '"inner sentence"'
+  attestation:
+  - D
+  tag: v_is
+  status: unclassified
+- id: nvim.key.text_object.it
+  surface: mode_key.text_object
+  key: it
+  desc: '"inner tag block"'
+  attestation:
+  - D
+  tag: v_it
+  status: unclassified
+- id: nvim.key.text_object.iw
+  surface: mode_key.text_object
+  key: iw
+  desc: '"inner word"'
+  attestation:
+  - D
+  tag: v_iw
+  status: unclassified
+- id: nvim.key.text_object.ix7b
+  surface: mode_key.text_object
+  key: i{
+  desc: same as iB
+  attestation:
+  - D
+  tag: v_i{
+  status: unclassified
+- id: nvim.key.text_object.ix7d
+  surface: mode_key.text_object
+  key: i}
+  desc: same as iB
+  attestation:
+  - D
+  tag: v_i}
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_B
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-B
+  desc: same as "CTRL-W b"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-B
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_C
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-C
+  desc: no-op
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-C
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_D
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-D
+  desc: same as "CTRL-W d"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-D
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_F
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-F
+  desc: same as "CTRL-W f"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-F
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_G
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-G
+  desc: same as "CTRL-W g .."
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_H
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-H
+  desc: same as "CTRL-W h"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-H
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_I
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-I
+  desc: same as "CTRL-W i"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-I
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_J
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-J
+  desc: same as "CTRL-W j"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-J
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_K
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-K
+  desc: same as "CTRL-W k"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-K
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_L
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-L
+  desc: same as "CTRL-W l"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-L
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_N
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-N
+  desc: same as "CTRL-W n"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-N
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_O
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-O
+  desc: same as "CTRL-W o"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-O
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_P
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-P
+  desc: same as "CTRL-W p"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-P
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_Q
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-Q
+  desc: same as "CTRL-W q"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-Q
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_R
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-R
+  desc: same as "CTRL-W r"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-R
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_S
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-S
+  desc: same as "CTRL-W s"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-S
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_T
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-T
+  desc: same as "CTRL-W t"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-T
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_V
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-V
+  desc: same as "CTRL-W v"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-V
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_W
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-W
+  desc: same as "CTRL-W w"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-W
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_X
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-X
+  desc: same as "CTRL-W x"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-X
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_Z
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-Z
+  desc: same as "CTRL-W z"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-Z
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_x5d
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-]
+  desc: same as "CTRL-W ]"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-]
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c_x5e
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-^
+  desc: same as "CTRL-W ^"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-^
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c__
+  surface: mode_key.normal.window
+  key: CTRL-W CTRL-_
+  desc: same as "CTRL-W _"
+  attestation:
+  - D
+  tag: CTRL-W_CTRL-_
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20x2b
+  surface: mode_key.normal.window
+  key: CTRL-W +
+  desc: increase current window height N lines
+  attestation:
+  - D
+  tag: CTRL-W_+
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20-
+  surface: mode_key.normal.window
+  key: CTRL-W -
+  desc: decrease current window height N lines
+  attestation:
+  - D
+  tag: CTRL-W_-
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20
+  surface: mode_key.normal.window
+  key: CTRL-W <
+  desc: decrease current window width N columns
+  attestation:
+  - D
+  tag: CTRL-W_<
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20x3d
+  surface: mode_key.normal.window
+  key: CTRL-W =
+  desc: make all windows the same height & width
+  attestation:
+  - D
+  tag: CTRL-W_=
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20H
+  surface: mode_key.normal.window
+  key: CTRL-W H
+  desc: move current window to the far left
+  attestation:
+  - D
+  tag: CTRL-W_H
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20J
+  surface: mode_key.normal.window
+  key: CTRL-W J
+  desc: move current window to the very bottom
+  attestation:
+  - D
+  tag: CTRL-W_J
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20K
+  surface: mode_key.normal.window
+  key: CTRL-W K
+  desc: move current window to the very top
+  attestation:
+  - D
+  tag: CTRL-W_K
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20L
+  surface: mode_key.normal.window
+  key: CTRL-W L
+  desc: move current window to the far right
+  attestation:
+  - D
+  tag: CTRL-W_L
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20P
+  surface: mode_key.normal.window
+  key: CTRL-W P
+  desc: go to preview window
+  attestation:
+  - D
+  tag: CTRL-W_P
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20R
+  surface: mode_key.normal.window
+  key: CTRL-W R
+  desc: rotate windows upwards N times
+  attestation:
+  - D
+  tag: CTRL-W_R
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20S
+  surface: mode_key.normal.window
+  key: CTRL-W S
+  desc: same as "CTRL-W s"
+  attestation:
+  - D
+  tag: CTRL-W_S
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20T
+  surface: mode_key.normal.window
+  key: CTRL-W T
+  desc: move current window to a new tabpage
+  attestation:
+  - D
+  tag: CTRL-W_T
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20W
+  surface: mode_key.normal.window
+  key: CTRL-W W
+  desc: go to N previous window (wrap around)
+  attestation:
+  - D
+  tag: CTRL-W_W
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20x5d
+  surface: mode_key.normal.window
+  key: CTRL-W ]
+  desc: split window and jump to tag under cursor
+  attestation:
+  - D
+  tag: CTRL-W_]
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20x5e
+  surface: mode_key.normal.window
+  key: CTRL-W ^
+  desc: split current window and edit alternate
+  attestation:
+  - D
+  tag: CTRL-W_^
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20_
+  surface: mode_key.normal.window
+  key: CTRL-W _
+  desc: 'set current window height to N (default:'
+  attestation:
+  - D
+  tag: CTRL-W__
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20b
+  surface: mode_key.normal.window
+  key: CTRL-W b
+  desc: go to bottom window
+  attestation:
+  - D
+  tag: CTRL-W_b
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20c
+  surface: mode_key.normal.window
+  key: CTRL-W c
+  desc: close current window (like |:close|)
+  attestation:
+  - D
+  tag: CTRL-W_c
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20d
+  surface: mode_key.normal.window
+  key: CTRL-W d
+  desc: split window and jump to definition under
+  attestation:
+  - D
+  tag: CTRL-W_d
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20f
+  surface: mode_key.normal.window
+  key: CTRL-W f
+  desc: split window and edit file name under the
+  attestation:
+  - D
+  tag: CTRL-W_f
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20F
+  surface: mode_key.normal.window
+  key: CTRL-W F
+  desc: split window and edit file name under the
+  attestation:
+  - D
+  tag: CTRL-W_F
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20gx20x5d
+  surface: mode_key.normal.window
+  key: CTRL-W g ]
+  desc: split window and do |:tselect| for tag
+  attestation:
+  - D
+  tag: CTRL-W_g]
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20gx20x7d
+  surface: mode_key.normal.window
+  key: CTRL-W g }
+  desc: do a |:ptjump| to the tag under the cursor
+  attestation:
+  - D
+  tag: CTRL-W_g}
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20gx20f
+  surface: mode_key.normal.window
+  key: CTRL-W g f
+  desc: edit file name under the cursor in a new
+  attestation:
+  - D
+  tag: CTRL-W_gf
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20gx20F
+  surface: mode_key.normal.window
+  key: CTRL-W g F
+  desc: edit file name under the cursor in a new
+  attestation:
+  - D
+  tag: CTRL-W_gF
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20gx20t
+  surface: mode_key.normal.window
+  key: CTRL-W g t
+  desc: 'same as `gt`: go to next tabpage'
+  attestation:
+  - D
+  tag: CTRL-W_gt
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20gx20T
+  surface: mode_key.normal.window
+  key: CTRL-W g T
+  desc: 'same as `gT`: go to previous tabpage'
+  attestation:
+  - D
+  tag: CTRL-W_gT
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20gx20Tab
+  surface: mode_key.normal.window
+  key: CTRL-W g <Tab>
+  desc: 'same as |g<Tab>|: go to last accessed tab'
+  attestation:
+  - D
+  tag: CTRL-W_g<Tab>
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20h
+  surface: mode_key.normal.window
+  key: CTRL-W h
+  desc: go to Nth left window (stop at first window)
+  attestation:
+  - D
+  tag: CTRL-W_h
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20i
+  surface: mode_key.normal.window
+  key: CTRL-W i
+  desc: split window and jump to declaration of
+  attestation:
+  - D
+  tag: CTRL-W_i
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20j
+  surface: mode_key.normal.window
+  key: CTRL-W j
+  desc: go N windows down (stop at last window)
+  attestation:
+  - D
+  tag: CTRL-W_j
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20k
+  surface: mode_key.normal.window
+  key: CTRL-W k
+  desc: go N windows up (stop at first window)
+  attestation:
+  - D
+  tag: CTRL-W_k
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20l
+  surface: mode_key.normal.window
+  key: CTRL-W l
+  desc: go to Nth right window (stop at last window)
+  attestation:
+  - D
+  tag: CTRL-W_l
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20n
+  surface: mode_key.normal.window
+  key: CTRL-W n
+  desc: open new window, N lines high
+  attestation:
+  - D
+  tag: CTRL-W_n
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20o
+  surface: mode_key.normal.window
+  key: CTRL-W o
+  desc: close all but current window (like |:only|)
+  attestation:
+  - D
+  tag: CTRL-W_o
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20p
+  surface: mode_key.normal.window
+  key: CTRL-W p
+  desc: go to previous (last accessed) window
+  attestation:
+  - D
+  tag: CTRL-W_p
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20q
+  surface: mode_key.normal.window
+  key: CTRL-W q
+  desc: quit current window (like |:quit|)
+  attestation:
+  - D
+  tag: CTRL-W_q
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20r
+  surface: mode_key.normal.window
+  key: CTRL-W r
+  desc: rotate windows downwards N times
+  attestation:
+  - D
+  tag: CTRL-W_r
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20s
+  surface: mode_key.normal.window
+  key: CTRL-W s
+  desc: split current window in two parts, new
+  attestation:
+  - D
+  tag: CTRL-W_s
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20t
+  surface: mode_key.normal.window
+  key: CTRL-W t
+  desc: go to top window
+  attestation:
+  - D
+  tag: CTRL-W_t
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20v
+  surface: mode_key.normal.window
+  key: CTRL-W v
+  desc: split current window vertically, new window
+  attestation:
+  - D
+  tag: CTRL-W_v
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20w
+  surface: mode_key.normal.window
+  key: CTRL-W w
+  desc: go to N next window (wrap around)
+  attestation:
+  - D
+  tag: CTRL-W_w
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20x
+  surface: mode_key.normal.window
+  key: CTRL-W x
+  desc: exchange current window with window N
+  attestation:
+  - D
+  tag: CTRL-W_x
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20z
+  surface: mode_key.normal.window
+  key: CTRL-W z
+  desc: close preview window
+  attestation:
+  - D
+  tag: CTRL-W_z
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20x7c
+  surface: mode_key.normal.window
+  key: CTRL-W |
+  desc: set window width to N columns
+  attestation:
+  - D
+  tag: CTRL-W_bar
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20x7d
+  surface: mode_key.normal.window
+  key: CTRL-W }
+  desc: show tag under cursor in preview window
+  attestation:
+  - D
+  tag: CTRL-W_}
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20Down
+  surface: mode_key.normal.window
+  key: CTRL-W <Down>
+  desc: same as "CTRL-W j"
+  attestation:
+  - D
+  tag: CTRL-W_<Down>
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20Up
+  surface: mode_key.normal.window
+  key: CTRL-W <Up>
+  desc: same as "CTRL-W k"
+  attestation:
+  - D
+  tag: CTRL-W_<Up>
+  status: unclassified
+- id: nvim.key.normal.window.c_Wx20Left
+  surface: mode_key.normal.window
+  key: CTRL-W <Left>
+  desc: same as "CTRL-W h"
+  attestation:
+  - D
+  tag: CTRL-W_<Left>
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx20c_D
+  surface: mode_key.normal.bracket
+  key: '[ CTRL-D'
+  desc: 'jump to first #define found in current and'
+  attestation:
+  - D
+  tag: '[_CTRL-D'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx20c_I
+  surface: mode_key.normal.bracket
+  key: '[ CTRL-I'
+  desc: jump to first line in current and included
+  attestation:
+  - D
+  tag: '[_CTRL-I'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx23
+  surface: mode_key.normal.bracket
+  key: '[#'
+  desc: 'cursor to N previous unmatched #if, #else'
+  attestation:
+  - D
+  tag: '[#'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx27
+  surface: mode_key.normal.bracket
+  key: '['''
+  desc: cursor to previous lowercase mark, on first
+  attestation:
+  - D
+  tag: '['''
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx28
+  surface: mode_key.normal.bracket
+  key: '[('
+  desc: cursor N times back to unmatched '('
+  attestation:
+  - D
+  tag: '[('
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx2a
+  surface: mode_key.normal.bracket
+  key: '[*'
+  desc: same as "[/"
+  attestation:
+  - D
+  tag: '[star'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx60
+  surface: mode_key.normal.bracket
+  key: '[`'
+  desc: cursor to previous lowercase mark
+  attestation:
+  - D
+  tag: '[`'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx2f
+  surface: mode_key.normal.bracket
+  key: '[/'
+  desc: cursor to N previous start of a C comment
+  attestation:
+  - D
+  tag: '[/'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bD
+  surface: mode_key.normal.bracket
+  key: '[D'
+  desc: list all defines found in current and
+  attestation:
+  - D
+  tag: '[D'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bI
+  surface: mode_key.normal.bracket
+  key: '[I'
+  desc: list all lines found in current and
+  attestation:
+  - D
+  tag: '[I'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bP
+  surface: mode_key.normal.bracket
+  key: '[P'
+  desc: same as "[p"
+  attestation:
+  - D
+  tag: '[P'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx5b
+  surface: mode_key.normal.bracket
+  key: '[['
+  desc: cursor N sections backward
+  attestation:
+  - D
+  tag: '[['
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx5d
+  surface: mode_key.normal.bracket
+  key: '[]'
+  desc: cursor N SECTIONS backward
+  attestation:
+  - D
+  tag: '[]'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bc
+  surface: mode_key.normal.bracket
+  key: '[c'
+  desc: cursor N times backwards to start of change
+  attestation:
+  - D
+  tag: '[c'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bd
+  surface: mode_key.normal.bracket
+  key: '[d'
+  desc: 'show first #define found in current and'
+  attestation:
+  - D
+  tag: '[d'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bf
+  surface: mode_key.normal.bracket
+  key: '[f'
+  desc: same as "gf"
+  attestation:
+  - D
+  tag: '[f'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bi
+  surface: mode_key.normal.bracket
+  key: '[i'
+  desc: show first line found in current and
+  attestation:
+  - D
+  tag: '[i'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bm
+  surface: mode_key.normal.bracket
+  key: '[m'
+  desc: cursor N times back to start of member
+  attestation:
+  - D
+  tag: '[m'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bp
+  surface: mode_key.normal.bracket
+  key: '[p'
+  desc: like "P", but adjust indent to current line
+  attestation:
+  - D
+  tag: '[p'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bs
+  surface: mode_key.normal.bracket
+  key: '[s'
+  desc: move to the previous misspelled word
+  attestation:
+  - D
+  tag: '[s'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bz
+  surface: mode_key.normal.bracket
+  key: '[z'
+  desc: move to start of open fold
+  attestation:
+  - D
+  tag: '[z'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5bx7b
+  surface: mode_key.normal.bracket
+  key: '[{'
+  desc: cursor N times back to unmatched '{'
+  attestation:
+  - D
+  tag: '[{'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx20c_D
+  surface: mode_key.normal.bracket
+  key: '] CTRL-D'
+  desc: 'jump to first #define found in current and'
+  attestation:
+  - D
+  tag: ']_CTRL-D'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx20c_I
+  surface: mode_key.normal.bracket
+  key: '] CTRL-I'
+  desc: jump to first line in current and included
+  attestation:
+  - D
+  tag: ']_CTRL-I'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx23
+  surface: mode_key.normal.bracket
+  key: ']#'
+  desc: 'cursor to N next unmatched #endif or #else'
+  attestation:
+  - D
+  tag: ']#'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx27
+  surface: mode_key.normal.bracket
+  key: ']'''
+  desc: cursor to next lowercase mark, on first
+  attestation:
+  - D
+  tag: ']'''
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx29
+  surface: mode_key.normal.bracket
+  key: '])'
+  desc: cursor N times forward to unmatched ')'
+  attestation:
+  - D
+  tag: '])'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx2a
+  surface: mode_key.normal.bracket
+  key: ']*'
+  desc: same as "]/"
+  attestation:
+  - D
+  tag: ']star'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx60
+  surface: mode_key.normal.bracket
+  key: ']`'
+  desc: cursor to next lowercase mark
+  attestation:
+  - D
+  tag: ']`'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx2f
+  surface: mode_key.normal.bracket
+  key: ']/'
+  desc: cursor to N next end of a C comment
+  attestation:
+  - D
+  tag: ']/'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dD
+  surface: mode_key.normal.bracket
+  key: ']D'
+  desc: 'list all #defines found in current and'
+  attestation:
+  - D
+  tag: ']D'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dI
+  surface: mode_key.normal.bracket
+  key: ']I'
+  desc: list all lines found in current and
+  attestation:
+  - D
+  tag: ']I'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dP
+  surface: mode_key.normal.bracket
+  key: ']P'
+  desc: same as "[p"
+  attestation:
+  - D
+  tag: ']P'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx5b
+  surface: mode_key.normal.bracket
+  key: ']['
+  desc: cursor N SECTIONS forward
+  attestation:
+  - D
+  tag: ']['
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx5d
+  surface: mode_key.normal.bracket
+  key: ']]'
+  desc: cursor N sections forward
+  attestation:
+  - D
+  tag: ']]'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dc
+  surface: mode_key.normal.bracket
+  key: ']c'
+  desc: cursor N times forward to start of change
+  attestation:
+  - D
+  tag: ']c'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dd
+  surface: mode_key.normal.bracket
+  key: ']d'
+  desc: 'show first #define found in current and'
+  attestation:
+  - D
+  tag: ']d'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5df
+  surface: mode_key.normal.bracket
+  key: ']f'
+  desc: same as "gf"
+  attestation:
+  - D
+  tag: ']f'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5di
+  surface: mode_key.normal.bracket
+  key: ']i'
+  desc: show first line found in current and
+  attestation:
+  - D
+  tag: ']i'
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dm
+  surface: mode_key.normal.bracket
+  key: ']m'
+  desc: cursor N times forward to end of member
+  attestation:
+  - D
+  tag: ']m'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dp
+  surface: mode_key.normal.bracket
+  key: ']p'
+  desc: like "p", but adjust indent to current line
+  attestation:
+  - D
+  tag: ']p'
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5ds
+  surface: mode_key.normal.bracket
+  key: ']s'
+  desc: move to next misspelled word
+  attestation:
+  - D
+  tag: ']s'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dz
+  surface: mode_key.normal.bracket
+  key: ']z'
+  desc: move to end of open fold
+  attestation:
+  - D
+  tag: ']z'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.bracket.x5dx7d
+  surface: mode_key.normal.bracket
+  key: ']}'
+  desc: cursor N times forward to unmatched '}'
+  attestation:
+  - D
+  tag: ']}'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gx20c_G
+  surface: mode_key.normal.g
+  key: g CTRL-G
+  desc: show information about current cursor
+  attestation:
+  - D
+  tag: g_CTRL-G
+  status: unclassified
+- id: nvim.key.normal.g.gx20c_H
+  surface: mode_key.normal.g
+  key: g CTRL-H
+  desc: start Select block mode
+  attestation:
+  - D
+  tag: g_CTRL-H
+  status: unclassified
+- id: nvim.key.normal.g.gx20c_x5d
+  surface: mode_key.normal.g
+  key: g CTRL-]
+  desc: '|:tjump| to the tag under the cursor'
+  attestation:
+  - D
+  tag: g_CTRL-]
+  status: unclassified
+- id: nvim.key.normal.g.gx23
+  surface: mode_key.normal.g
+  key: g#
+  desc: like "#", but without using "\<" and "\>"
+  attestation:
+  - D
+  tag: g#
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gx24
+  surface: mode_key.normal.g
+  key: g$
+  desc: when 'wrap' off go to rightmost character of
+  attestation:
+  - D
+  tag: g$
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gx26
+  surface: mode_key.normal.g
+  key: g&
+  desc: repeat last ":s" on all lines
+  attestation:
+  - D
+  tag: g&
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gx27x7bmarkx7d
+  surface: mode_key.normal.g
+  key: g'{mark}
+  desc: like |'| but without changing the jumplist
+  attestation:
+  - D
+  tag: g'
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gx60x7bmarkx7d
+  surface: mode_key.normal.g
+  key: g`{mark}
+  desc: like |`| but without changing the jumplist
+  attestation:
+  - D
+  tag: g`
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gx2a
+  surface: mode_key.normal.g
+  key: g*
+  desc: like "*", but without using "\<" and "\>"
+  attestation:
+  - D
+  tag: gstar
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gx2b
+  surface: mode_key.normal.g
+  key: g+
+  desc: go to newer text state N times
+  attestation:
+  - D
+  tag: g+
+  status: unclassified
+- id: nvim.key.normal.g.gx2c
+  surface: mode_key.normal.g
+  key: g,
+  desc: go to N newer position in change list
+  attestation:
+  - D
+  tag: g,
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.g-
+  surface: mode_key.normal.g
+  key: g-
+  desc: go to older text state N times
+  attestation:
+  - D
+  tag: g-
+  status: unclassified
+- id: nvim.key.normal.g.g0
+  surface: mode_key.normal.g
+  key: g0
+  desc: when 'wrap' off go to leftmost character of
+  attestation:
+  - D
+  tag: g0
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.g8
+  surface: mode_key.normal.g
+  key: g8
+  desc: print hex value of bytes used in UTF-8
+  attestation:
+  - D
+  tag: g8
+  status: unclassified
+- id: nvim.key.normal.g.gx3b
+  surface: mode_key.normal.g
+  key: g;
+  desc: go to N older position in change list
+  attestation:
+  - D
+  tag: g;
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.g
+  surface: mode_key.normal.g
+  key: g<
+  desc: display previous command output
+  attestation:
+  - D
+  tag: g<
+  status: unclassified
+- id: nvim.key.normal.g.gx3f
+  surface: mode_key.normal.g
+  key: g?
+  desc: Rot13 encoding operator
+  attestation:
+  - D
+  tag: g?
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gx3fx3f
+  surface: mode_key.normal.g
+  key: g??
+  desc: Rot13 encode current line
+  attestation:
+  - D
+  tag: g?g?
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gx3fgx3f
+  surface: mode_key.normal.g
+  key: g?g?
+  desc: Rot13 encode current line
+  attestation:
+  - D
+  tag: g?g?
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gD
+  surface: mode_key.normal.g
+  key: gD
+  desc: go to definition of word under the cursor
+  attestation:
+  - D
+  tag: gD
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gE
+  surface: mode_key.normal.g
+  key: gE
+  desc: go backwards to the end of the previous
+  attestation:
+  - D
+  tag: gE
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gH
+  surface: mode_key.normal.g
+  key: gH
+  desc: start Select line mode
+  attestation:
+  - D
+  tag: gH
+  status: unclassified
+- id: nvim.key.normal.g.gI
+  surface: mode_key.normal.g
+  key: gI
+  desc: like "I", but always start in column 1
+  attestation:
+  - D
+  tag: gI
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gJ
+  surface: mode_key.normal.g
+  key: gJ
+  desc: join lines without inserting space
+  attestation:
+  - D
+  tag: gJ
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gN
+  surface: mode_key.normal.g
+  key: gN
+  desc: 1,2  find the previous match with the last used
+  attestation:
+  - D
+  tag: gN
+  status: unclassified
+- id: nvim.key.normal.g.x5bx22xx5dgP
+  surface: mode_key.normal.g
+  key: '["x]gP'
+  desc: put the text [from register x] before the
+  attestation:
+  - D
+  tag: gP
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gQ
+  surface: mode_key.normal.g
+  key: gQ
+  desc: switch to "Ex" mode with Vim editing
+  attestation:
+  - D
+  tag: gQ
+  status: unclassified
+- id: nvim.key.normal.g.gR
+  surface: mode_key.normal.g
+  key: gR
+  desc: enter Virtual Replace mode
+  attestation:
+  - D
+  tag: gR
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gT
+  surface: mode_key.normal.g
+  key: gT
+  desc: go to the previous tabpage
+  attestation:
+  - D
+  tag: gT
+  status: unclassified
+- id: nvim.key.normal.g.gUx7bmotionx7d
+  surface: mode_key.normal.g
+  key: gU{motion}
+  desc: make Nmove text uppercase
+  attestation:
+  - D
+  tag: gU
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gV
+  surface: mode_key.normal.g
+  key: gV
+  desc: don't reselect the previous Visual area
+  attestation:
+  - D
+  tag: gV
+  status: unclassified
+- id: nvim.key.normal.g.gx5d
+  surface: mode_key.normal.g
+  key: g]
+  desc: :tselect on the tag under the cursor
+  attestation:
+  - D
+  tag: g]
+  status: unclassified
+- id: nvim.key.normal.g.gx5e
+  surface: mode_key.normal.g
+  key: g^
+  desc: when 'wrap' off go to leftmost non-white
+  attestation:
+  - D
+  tag: g^
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.g_
+  surface: mode_key.normal.g
+  key: g_
+  desc: cursor to the last CHAR N - 1 lines lower
+  attestation:
+  - D
+  tag: g_
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.ga
+  surface: mode_key.normal.g
+  key: ga
+  desc: print ascii value of character under the
+  attestation:
+  - D
+  tag: ga
+  status: unclassified
+- id: nvim.key.normal.g.gd
+  surface: mode_key.normal.g
+  key: gd
+  desc: go to definition of word under the cursor
+  attestation:
+  - D
+  tag: gd
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.ge
+  surface: mode_key.normal.g
+  key: ge
+  desc: go backwards to the end of the previous
+  attestation:
+  - D
+  tag: ge
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gf
+  surface: mode_key.normal.g
+  key: gf
+  desc: start editing the file whose name is under
+  attestation:
+  - D
+  tag: gf
+  status: unclassified
+- id: nvim.key.normal.g.gF
+  surface: mode_key.normal.g
+  key: gF
+  desc: start editing the file whose name is under
+  attestation:
+  - D
+  tag: gF
+  status: unclassified
+- id: nvim.key.normal.g.gg
+  surface: mode_key.normal.g
+  key: gg
+  desc: cursor to line N, default first line
+  attestation:
+  - D
+  tag: gg
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gh
+  surface: mode_key.normal.g
+  key: gh
+  desc: start Select mode
+  attestation:
+  - D
+  tag: gh
+  status: unclassified
+- id: nvim.key.normal.g.gi
+  surface: mode_key.normal.g
+  key: gi
+  desc: like "i", but first move to the |'^| mark
+  attestation:
+  - D
+  tag: gi
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gj
+  surface: mode_key.normal.g
+  key: gj
+  desc: like "j", but when 'wrap' on go N screen
+  attestation:
+  - D
+  tag: gj
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gk
+  surface: mode_key.normal.g
+  key: gk
+  desc: like "k", but when 'wrap' on go N screen
+  attestation:
+  - D
+  tag: gk
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gm
+  surface: mode_key.normal.g
+  key: gm
+  desc: go to character at middle of the screenline
+  attestation:
+  - D
+  tag: gm
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gM
+  surface: mode_key.normal.g
+  key: gM
+  desc: go to character at middle of the text line
+  attestation:
+  - D
+  tag: gM
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gn
+  surface: mode_key.normal.g
+  key: gn
+  desc: 1,2  find the next match with the last used
+  attestation:
+  - D
+  tag: gn
+  status: unclassified
+- id: nvim.key.normal.g.go
+  surface: mode_key.normal.g
+  key: go
+  desc: cursor to byte N in the buffer
+  attestation:
+  - D
+  tag: go
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.x5bx22xx5dgp
+  surface: mode_key.normal.g
+  key: '["x]gp'
+  desc: put the text [from register x] after the
+  attestation:
+  - D
+  tag: gp
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gqx7bmotionx7d
+  surface: mode_key.normal.g
+  key: gq{motion}
+  desc: format Nmove text
+  attestation:
+  - D
+  tag: gq
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.grx7bcharx7d
+  surface: mode_key.normal.g
+  key: gr{char}
+  desc: virtual replace N chars with {char}
+  attestation:
+  - D
+  tag: gr
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gs
+  surface: mode_key.normal.g
+  key: gs
+  desc: go to sleep for N seconds (default 1)
+  attestation:
+  - D
+  tag: gs
+  status: unclassified
+- id: nvim.key.normal.g.gt
+  surface: mode_key.normal.g
+  key: gt
+  desc: go to the next tabpage
+  attestation:
+  - D
+  tag: gt
+  status: unclassified
+- id: nvim.key.normal.g.gux7bmotionx7d
+  surface: mode_key.normal.g
+  key: gu{motion}
+  desc: make Nmove text lowercase
+  attestation:
+  - D
+  tag: gu
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gv
+  surface: mode_key.normal.g
+  key: gv
+  desc: reselect the previous Visual area
+  attestation:
+  - D
+  tag: gv
+  status: unclassified
+- id: nvim.key.normal.g.gwx7bmotionx7d
+  surface: mode_key.normal.g
+  key: gw{motion}
+  desc: format Nmove text and keep cursor
+  attestation:
+  - D
+  tag: gw
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gx
+  surface: mode_key.normal.g
+  key: gx
+  desc: execute application for filepath at cursor
+  attestation:
+  - D
+  tag: gx
+  status: unclassified
+- id: nvim.key.normal.g.gx40x7bmotionx7d
+  surface: mode_key.normal.g
+  key: g@{motion}
+  desc: call 'operatorfunc'
+  attestation:
+  - D
+  tag: g@
+  status: unclassified
+- id: nvim.key.normal.g.gx7ex7bmotionx7d
+  surface: mode_key.normal.g
+  key: g~{motion}
+  desc: swap case for Nmove text
+  attestation:
+  - D
+  tag: g~
+  undoable: true
+  status: unclassified
+- id: nvim.key.normal.g.gDown
+  surface: mode_key.normal.g
+  key: g<Down>
+  desc: same as "gj"
+  attestation:
+  - D
+  tag: g<Down>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gEnd
+  surface: mode_key.normal.g
+  key: g<End>
+  desc: same as "g$" but go to the rightmost
+  attestation:
+  - D
+  tag: g<End>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gHome
+  surface: mode_key.normal.g
+  key: g<Home>
+  desc: same as "g0"
+  attestation:
+  - D
+  tag: g<Home>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.g.gLeftMouse
+  surface: mode_key.normal.g
+  key: g<LeftMouse>
+  desc: same as <C-LeftMouse>
+  attestation:
+  - D
+  tag: g<LeftMouse>
+  status: unclassified
+- id: nvim.key.normal.g.gMiddleMouse
+  surface: mode_key.normal.g
+  key: g<MiddleMouse>
+  desc: same as <C-MiddleMouse>
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.normal.g.gRightMouse
+  surface: mode_key.normal.g
+  key: g<RightMouse>
+  desc: same as <C-RightMouse>
+  attestation:
+  - D
+  tag: g<RightMouse>
+  status: unclassified
+- id: nvim.key.normal.g.gTab
+  surface: mode_key.normal.g
+  key: g<Tab>
+  desc: go to last accessed tabpage
+  attestation:
+  - D
+  tag: g<Tab>
+  status: unclassified
+- id: nvim.key.normal.g.gUp
+  surface: mode_key.normal.g
+  key: g<Up>
+  desc: same as "gk"
+  attestation:
+  - D
+  tag: g<Up>
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.z.zCR
+  surface: mode_key.normal.z
+  key: z<CR>
+  desc: redraw, cursor line to top of window,
+  attestation:
+  - D
+  tag: z<CR>
+  status: unclassified
+- id: nvim.key.normal.z.zx7bheightx7dCR
+  surface: mode_key.normal.z
+  key: z{height}<CR>
+  desc: redraw, make window {height} lines high
+  attestation:
+  - D
+  tag: zN<CR>
+  status: unclassified
+- id: nvim.key.normal.z.zx2b
+  surface: mode_key.normal.z
+  key: z+
+  desc: cursor on line N (default line below
+  attestation:
+  - D
+  tag: z+
+  status: unclassified
+- id: nvim.key.normal.z.z-
+  surface: mode_key.normal.z
+  key: z-
+  desc: redraw, cursor line at bottom of window,
+  attestation:
+  - D
+  tag: z-
+  status: unclassified
+- id: nvim.key.normal.z.z.
+  surface: mode_key.normal.z
+  key: z.
+  desc: redraw, cursor line to center of window,
+  attestation:
+  - D
+  tag: z.
+  status: unclassified
+- id: nvim.key.normal.z.zx3d
+  surface: mode_key.normal.z
+  key: z=
+  desc: give spelling suggestions
+  attestation:
+  - D
+  tag: z=
+  status: unclassified
+- id: nvim.key.normal.z.zA
+  surface: mode_key.normal.z
+  key: zA
+  desc: open a closed fold or close an open fold
+  attestation:
+  - D
+  tag: zA
+  status: unclassified
+- id: nvim.key.normal.z.zC
+  surface: mode_key.normal.z
+  key: zC
+  desc: close folds recursively
+  attestation:
+  - D
+  tag: zC
+  status: unclassified
+- id: nvim.key.normal.z.zD
+  surface: mode_key.normal.z
+  key: zD
+  desc: delete folds recursively
+  attestation:
+  - D
+  tag: zD
+  status: unclassified
+- id: nvim.key.normal.z.zE
+  surface: mode_key.normal.z
+  key: zE
+  desc: eliminate all folds
+  attestation:
+  - D
+  tag: zE
+  status: unclassified
+- id: nvim.key.normal.z.zF
+  surface: mode_key.normal.z
+  key: zF
+  desc: create a fold for N lines
+  attestation:
+  - D
+  tag: zF
+  status: unclassified
+- id: nvim.key.normal.z.zG
+  surface: mode_key.normal.z
+  key: zG
+  desc: temporarily mark word as correctly spelled
+  attestation:
+  - D
+  tag: zG
+  status: unclassified
+- id: nvim.key.normal.z.zH
+  surface: mode_key.normal.z
+  key: zH
+  desc: when 'wrap' off scroll half a screenwidth
+  attestation:
+  - D
+  tag: zH
+  status: unclassified
+- id: nvim.key.normal.z.zL
+  surface: mode_key.normal.z
+  key: zL
+  desc: when 'wrap' off scroll half a screenwidth
+  attestation:
+  - D
+  tag: zL
+  status: unclassified
+- id: nvim.key.normal.z.zM
+  surface: mode_key.normal.z
+  key: zM
+  desc: set 'foldlevel' to zero
+  attestation:
+  - D
+  tag: zM
+  status: unclassified
+- id: nvim.key.normal.z.zN
+  surface: mode_key.normal.z
+  key: zN
+  desc: set 'foldenable'
+  attestation:
+  - D
+  tag: zN
+  status: unclassified
+- id: nvim.key.normal.z.zO
+  surface: mode_key.normal.z
+  key: zO
+  desc: open folds recursively
+  attestation:
+  - D
+  tag: zO
+  status: unclassified
+- id: nvim.key.normal.z.zR
+  surface: mode_key.normal.z
+  key: zR
+  desc: set 'foldlevel' to the deepest fold
+  attestation:
+  - D
+  tag: zR
+  status: unclassified
+- id: nvim.key.normal.z.zW
+  surface: mode_key.normal.z
+  key: zW
+  desc: temporarily mark word as incorrectly spelled
+  attestation:
+  - D
+  tag: zW
+  status: unclassified
+- id: nvim.key.normal.z.zX
+  surface: mode_key.normal.z
+  key: zX
+  desc: re-apply 'foldlevel'
+  attestation:
+  - D
+  tag: zX
+  status: unclassified
+- id: nvim.key.normal.z.zx5e
+  surface: mode_key.normal.z
+  key: z^
+  desc: cursor on line N (default line above
+  attestation:
+  - D
+  tag: z^
+  status: unclassified
+- id: nvim.key.normal.z.za
+  surface: mode_key.normal.z
+  key: za
+  desc: open a closed fold, close an open fold
+  attestation:
+  - D
+  tag: za
+  status: unclassified
+- id: nvim.key.normal.z.zb
+  surface: mode_key.normal.z
+  key: zb
+  desc: redraw, cursor line at bottom of window
+  attestation:
+  - D
+  tag: zb
+  status: unclassified
+- id: nvim.key.normal.z.zc
+  surface: mode_key.normal.z
+  key: zc
+  desc: close a fold
+  attestation:
+  - D
+  tag: zc
+  status: unclassified
+- id: nvim.key.normal.z.zd
+  surface: mode_key.normal.z
+  key: zd
+  desc: delete a fold
+  attestation:
+  - D
+  tag: zd
+  status: unclassified
+- id: nvim.key.normal.z.ze
+  surface: mode_key.normal.z
+  key: ze
+  desc: when 'wrap' off scroll horizontally to
+  attestation:
+  - D
+  tag: ze
+  status: unclassified
+- id: nvim.key.normal.z.zfx7bmotionx7d
+  surface: mode_key.normal.z
+  key: zf{motion}
+  desc: create a fold for Nmove text
+  attestation:
+  - D
+  tag: zf
+  status: unclassified
+- id: nvim.key.normal.z.zg
+  surface: mode_key.normal.z
+  key: zg
+  desc: permanently mark word as correctly spelled
+  attestation:
+  - D
+  tag: zg
+  status: unclassified
+- id: nvim.key.normal.z.zh
+  surface: mode_key.normal.z
+  key: zh
+  desc: when 'wrap' off scroll screen N characters
+  attestation:
+  - D
+  tag: zh
+  status: unclassified
+- id: nvim.key.normal.z.zi
+  surface: mode_key.normal.z
+  key: zi
+  desc: toggle 'foldenable'
+  attestation:
+  - D
+  tag: zi
+  status: unclassified
+- id: nvim.key.normal.z.zj
+  surface: mode_key.normal.z
+  key: zj
+  desc: move to the start of the next fold
+  attestation:
+  - D
+  tag: zj
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.z.zk
+  surface: mode_key.normal.z
+  key: zk
+  desc: move to the end of the previous fold
+  attestation:
+  - D
+  tag: zk
+  moves_cursor: true
+  status: unclassified
+- id: nvim.key.normal.z.zl
+  surface: mode_key.normal.z
+  key: zl
+  desc: when 'wrap' off scroll screen N characters
+  attestation:
+  - D
+  tag: zl
+  status: unclassified
+- id: nvim.key.normal.z.zm
+  surface: mode_key.normal.z
+  key: zm
+  desc: subtract one from 'foldlevel'
+  attestation:
+  - D
+  tag: zm
+  status: unclassified
+- id: nvim.key.normal.z.zn
+  surface: mode_key.normal.z
+  key: zn
+  desc: reset 'foldenable'
+  attestation:
+  - D
+  tag: zn
+  status: unclassified
+- id: nvim.key.normal.z.zo
+  surface: mode_key.normal.z
+  key: zo
+  desc: open fold
+  attestation:
+  - D
+  tag: zo
+  status: unclassified
+- id: nvim.key.normal.z.zp
+  surface: mode_key.normal.z
+  key: zp
+  desc: paste in block-mode without trailing spaces
+  attestation:
+  - D
+  tag: zp
+  status: unclassified
+- id: nvim.key.normal.z.zP
+  surface: mode_key.normal.z
+  key: zP
+  desc: paste in block-mode without trailing spaces
+  attestation:
+  - D
+  tag: zP
+  status: unclassified
+- id: nvim.key.normal.z.zr
+  surface: mode_key.normal.z
+  key: zr
+  desc: add one to 'foldlevel'
+  attestation:
+  - D
+  tag: zr
+  status: unclassified
+- id: nvim.key.normal.z.zs
+  surface: mode_key.normal.z
+  key: zs
+  desc: when 'wrap' off scroll horizontally to
+  attestation:
+  - D
+  tag: zs
+  status: unclassified
+- id: nvim.key.normal.z.zt
+  surface: mode_key.normal.z
+  key: zt
+  desc: redraw, cursor line at top of window
+  attestation:
+  - D
+  tag: zt
+  status: unclassified
+- id: nvim.key.normal.z.zuw
+  surface: mode_key.normal.z
+  key: zuw
+  desc: undo |zw|
+  attestation:
+  - D
+  tag: zuw
+  status: unclassified
+- id: nvim.key.normal.z.zug
+  surface: mode_key.normal.z
+  key: zug
+  desc: undo |zg|
+  attestation:
+  - D
+  tag: zug
+  status: unclassified
+- id: nvim.key.normal.z.zuW
+  surface: mode_key.normal.z
+  key: zuW
+  desc: undo |zW|
+  attestation:
+  - D
+  tag: zuW
+  status: unclassified
+- id: nvim.key.normal.z.zuG
+  surface: mode_key.normal.z
+  key: zuG
+  desc: undo |zG|
+  attestation:
+  - D
+  tag: zuG
+  status: unclassified
+- id: nvim.key.normal.z.zv
+  surface: mode_key.normal.z
+  key: zv
+  desc: open enough folds to view the cursor line
+  attestation:
+  - D
+  tag: zv
+  status: unclassified
+- id: nvim.key.normal.z.zw
+  surface: mode_key.normal.z
+  key: zw
+  desc: permanently mark word as incorrectly spelled
+  attestation:
+  - D
+  tag: zw
+  status: unclassified
+- id: nvim.key.normal.z.zx
+  surface: mode_key.normal.z
+  key: zx
+  desc: re-apply 'foldlevel' and do "zv"
+  attestation:
+  - D
+  tag: zx
+  status: unclassified
+- id: nvim.key.normal.z.zy
+  surface: mode_key.normal.z
+  key: zy
+  desc: yank without trailing spaces
+  attestation:
+  - D
+  tag: zy
+  status: unclassified
+- id: nvim.key.normal.z.zz
+  surface: mode_key.normal.z
+  key: zz
+  desc: redraw, cursor line at center of window
+  attestation:
+  - D
+  tag: zz
+  status: unclassified
+- id: nvim.key.normal.z.zLeft
+  surface: mode_key.normal.z
+  key: z<Left>
+  desc: same as "zh"
+  attestation:
+  - D
+  tag: z<Left>
+  status: unclassified
+- id: nvim.key.normal.z.zRight
+  surface: mode_key.normal.z
+  key: z<Right>
+  desc: same as "zl"
+  attestation:
+  - D
+  tag: z<Right>
+  status: unclassified
+- id: nvim.key.operator_pending.v
+  surface: mode_key.operator_pending
+  key: v
+  desc: force operator to work charwise
+  attestation:
+  - D
+  tag: o_v
+  status: unclassified
+- id: nvim.key.operator_pending.V
+  surface: mode_key.operator_pending
+  key: V
+  desc: force operator to work linewise
+  attestation:
+  - D
+  tag: o_V
+  status: unclassified
+- id: nvim.key.operator_pending.c_V
+  surface: mode_key.operator_pending
+  key: CTRL-V
+  desc: force operator to work blockwise
+  attestation:
+  - D
+  tag: o_CTRL-V
+  status: unclassified
+- id: nvim.key.visual.c_A
+  surface: mode_key.visual
+  key: CTRL-A
+  desc: add N to number in highlighted text
+  attestation:
+  - D
+  tag: v_CTRL-A
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.c_C
+  surface: mode_key.visual
+  key: CTRL-C
+  desc: stop Visual mode
+  attestation:
+  - D
+  tag: v_CTRL-C
+  status: unclassified
+- id: nvim.key.visual.c_G
+  surface: mode_key.visual
+  key: CTRL-G
+  desc: toggle between Visual mode and Select mode
+  attestation:
+  - D
+  tag: v_CTRL-G
+  status: unclassified
+- id: nvim.key.visual.BS
+  surface: mode_key.visual
+  key: <BS>
+  desc: 'Select mode: delete highlighted area'
+  attestation:
+  - D
+  tag: v_<BS>
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.c_H
+  surface: mode_key.visual
+  key: CTRL-H
+  desc: same as <BS>
+  attestation:
+  - D
+  tag: v_CTRL-H
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.c_O
+  surface: mode_key.visual
+  key: CTRL-O
+  desc: switch from Select to Visual mode for one
+  attestation:
+  - D
+  tag: v_CTRL-O
+  status: unclassified
+- id: nvim.key.visual.c_V
+  surface: mode_key.visual
+  key: CTRL-V
+  desc: make Visual mode blockwise or stop Visual
+  attestation:
+  - D
+  tag: v_CTRL-V
+  status: unclassified
+- id: nvim.key.visual.c_X
+  surface: mode_key.visual
+  key: CTRL-X
+  desc: subtract N from number in highlighted text
+  attestation:
+  - D
+  tag: v_CTRL-X
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.Esc
+  surface: mode_key.visual
+  key: <Esc>
+  desc: stop Visual mode
+  attestation:
+  - D
+  tag: v_<Esc>
+  status: unclassified
+- id: nvim.key.visual.c_x5d
+  surface: mode_key.visual
+  key: CTRL-]
+  desc: jump to highlighted tag
+  attestation:
+  - D
+  tag: v_CTRL-]
+  status: unclassified
+- id: nvim.key.visual.x21x7bfilterx7d
+  surface: mode_key.visual
+  key: '!{filter}'
+  desc: filter the highlighted lines through the
+  attestation:
+  - D
+  tag: v_!
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.x3a
+  surface: mode_key.visual
+  key: ':'
+  desc: start a command-line with the highlighted
+  attestation:
+  - D
+  tag: 'v_:'
+  status: unclassified
+- id: nvim.key.visual.empty
+  surface: mode_key.visual
+  key: <
+  desc: shift the highlighted lines one
+  attestation:
+  - D
+  tag: v_<
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.x3d
+  surface: mode_key.visual
+  key: '='
+  desc: filter the highlighted lines through the
+  attestation:
+  - D
+  tag: v_=
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.A
+  surface: mode_key.visual
+  key: A
+  desc: 'block mode: append same text in all lines,'
+  attestation:
+  - D
+  tag: v_b_A
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.C
+  surface: mode_key.visual
+  key: C
+  desc: delete the highlighted lines and start
+  attestation:
+  - D
+  tag: v_C
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.D
+  surface: mode_key.visual
+  key: D
+  desc: delete the highlighted lines
+  attestation:
+  - D
+  tag: v_D
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.I
+  surface: mode_key.visual
+  key: I
+  desc: 'block mode: insert same text in all lines,'
+  attestation:
+  - D
+  tag: v_b_I
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.J
+  surface: mode_key.visual
+  key: J
+  desc: join the highlighted lines
+  attestation:
+  - D
+  tag: v_J
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.K
+  surface: mode_key.visual
+  key: K
+  desc: run 'keywordprg' on the highlighted area
+  attestation:
+  - D
+  tag: v_K
+  status: unclassified
+- id: nvim.key.visual.O
+  surface: mode_key.visual
+  key: O
+  desc: move horizontally to other corner of area
+  attestation:
+  - D
+  tag: v_O
+  status: unclassified
+- id: nvim.key.visual.P
+  surface: mode_key.visual
+  key: P
+  desc: replace highlighted area with register
+  attestation:
+  - D
+  tag: v_P
+  status: unclassified
+- id: nvim.key.visual.R
+  surface: mode_key.visual
+  key: R
+  desc: delete the highlighted lines and start
+  attestation:
+  - D
+  tag: v_R
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.S
+  surface: mode_key.visual
+  key: S
+  desc: delete the highlighted lines and start
+  attestation:
+  - D
+  tag: v_S
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.U
+  surface: mode_key.visual
+  key: U
+  desc: make highlighted area uppercase
+  attestation:
+  - D
+  tag: v_U
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.V
+  surface: mode_key.visual
+  key: V
+  desc: make Visual mode linewise or stop Visual
+  attestation:
+  - D
+  tag: v_V
+  status: unclassified
+- id: nvim.key.visual.X
+  surface: mode_key.visual
+  key: X
+  desc: delete the highlighted lines
+  attestation:
+  - D
+  tag: v_X
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.Y
+  surface: mode_key.visual
+  key: Y
+  desc: yank the highlighted lines
+  attestation:
+  - D
+  tag: v_Y
+  status: unclassified
+- id: nvim.key.visual.ax22
+  surface: mode_key.visual
+  key: a"
+  desc: extend highlighted area with a double
+  attestation:
+  - D
+  tag: v_aquote
+  status: unclassified
+- id: nvim.key.visual.ax27
+  surface: mode_key.visual
+  key: a'
+  desc: extend highlighted area with a single
+  attestation:
+  - D
+  tag: v_a'
+  status: unclassified
+- id: nvim.key.visual.ax28
+  surface: mode_key.visual
+  key: a(
+  desc: same as ab
+  attestation:
+  - D
+  tag: v_a(
+  status: unclassified
+- id: nvim.key.visual.ax29
+  surface: mode_key.visual
+  key: a)
+  desc: same as ab
+  attestation:
+  - D
+  tag: v_a)
+  status: unclassified
+- id: nvim.key.visual.a
+  surface: mode_key.visual
+  key: a<
+  desc: extend highlighted area with a <> block
+  attestation:
+  - D
+  tag: v_a<
+  status: unclassified
+- id: nvim.key.visual.aB
+  surface: mode_key.visual
+  key: aB
+  desc: extend highlighted area with a {} block
+  attestation:
+  - D
+  tag: v_aB
+  status: unclassified
+- id: nvim.key.visual.aW
+  surface: mode_key.visual
+  key: aW
+  desc: extend highlighted area with "a WORD"
+  attestation:
+  - D
+  tag: v_aW
+  status: unclassified
+- id: nvim.key.visual.ax5b
+  surface: mode_key.visual
+  key: a[
+  desc: extend highlighted area with a [] block
+  attestation:
+  - D
+  tag: v_a[
+  status: unclassified
+- id: nvim.key.visual.ax5d
+  surface: mode_key.visual
+  key: a]
+  desc: same as a[
+  attestation:
+  - D
+  tag: v_a]
+  status: unclassified
+- id: nvim.key.visual.ax60
+  surface: mode_key.visual
+  key: a`
+  desc: extend highlighted area with a backtick
+  attestation:
+  - D
+  tag: v_a`
+  status: unclassified
+- id: nvim.key.visual.ab
+  surface: mode_key.visual
+  key: ab
+  desc: extend highlighted area with a () block
+  attestation:
+  - D
+  tag: v_ab
+  status: unclassified
+- id: nvim.key.visual.ap
+  surface: mode_key.visual
+  key: ap
+  desc: extend highlighted area with a paragraph
+  attestation:
+  - D
+  tag: v_ap
+  status: unclassified
+- id: nvim.key.visual.as
+  surface: mode_key.visual
+  key: as
+  desc: extend highlighted area with a sentence
+  attestation:
+  - D
+  tag: v_as
+  status: unclassified
+- id: nvim.key.visual.at
+  surface: mode_key.visual
+  key: at
+  desc: extend highlighted area with a tag block
+  attestation:
+  - D
+  tag: v_at
+  status: unclassified
+- id: nvim.key.visual.aw
+  surface: mode_key.visual
+  key: aw
+  desc: extend highlighted area with "a word"
+  attestation:
+  - D
+  tag: v_aw
+  status: unclassified
+- id: nvim.key.visual.ax7b
+  surface: mode_key.visual
+  key: a{
+  desc: same as aB
+  attestation:
+  - D
+  tag: v_a{
+  status: unclassified
+- id: nvim.key.visual.ax7d
+  surface: mode_key.visual
+  key: a}
+  desc: same as aB
+  attestation:
+  - D
+  tag: v_a}
+  status: unclassified
+- id: nvim.key.visual.c
+  surface: mode_key.visual
+  key: c
+  desc: delete highlighted area and start insert
+  attestation:
+  - D
+  tag: v_c
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.d
+  surface: mode_key.visual
+  key: d
+  desc: delete highlighted area
+  attestation:
+  - D
+  tag: v_d
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.gx20c_A
+  surface: mode_key.visual
+  key: g CTRL-A
+  desc: add N to number in highlighted text
+  attestation:
+  - D
+  tag: v_g_CTRL-A
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.gx20c_X
+  surface: mode_key.visual
+  key: g CTRL-X
+  desc: subtract N from number in highlighted text
+  attestation:
+  - D
+  tag: v_g_CTRL-X
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.gJ
+  surface: mode_key.visual
+  key: gJ
+  desc: join the highlighted lines without
+  attestation:
+  - D
+  tag: v_gJ
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.gq
+  surface: mode_key.visual
+  key: gq
+  desc: format the highlighted lines
+  attestation:
+  - D
+  tag: v_gq
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.gv
+  surface: mode_key.visual
+  key: gv
+  desc: exchange current and previous highlighted
+  attestation:
+  - D
+  tag: v_gv
+  status: unclassified
+- id: nvim.key.visual.ix22
+  surface: mode_key.visual
+  key: i"
+  desc: extend highlighted area with a double
+  attestation:
+  - D
+  tag: v_iquote
+  status: unclassified
+- id: nvim.key.visual.ix27
+  surface: mode_key.visual
+  key: i'
+  desc: extend highlighted area with a single
+  attestation:
+  - D
+  tag: v_i'
+  status: unclassified
+- id: nvim.key.visual.ix28
+  surface: mode_key.visual
+  key: i(
+  desc: same as ib
+  attestation:
+  - D
+  tag: v_i(
+  status: unclassified
+- id: nvim.key.visual.ix29
+  surface: mode_key.visual
+  key: i)
+  desc: same as ib
+  attestation:
+  - D
+  tag: v_i)
+  status: unclassified
+- id: nvim.key.visual.i
+  surface: mode_key.visual
+  key: i<
+  desc: extend highlighted area with inner <> block
+  attestation:
+  - D
+  tag: v_i<
+  status: unclassified
+- id: nvim.key.visual.iB
+  surface: mode_key.visual
+  key: iB
+  desc: extend highlighted area with inner {} block
+  attestation:
+  - D
+  tag: v_iB
+  status: unclassified
+- id: nvim.key.visual.iW
+  surface: mode_key.visual
+  key: iW
+  desc: extend highlighted area with "inner WORD"
+  attestation:
+  - D
+  tag: v_iW
+  status: unclassified
+- id: nvim.key.visual.ix5b
+  surface: mode_key.visual
+  key: i[
+  desc: extend highlighted area with inner [] block
+  attestation:
+  - D
+  tag: v_i[
+  status: unclassified
+- id: nvim.key.visual.ix5d
+  surface: mode_key.visual
+  key: i]
+  desc: same as i[
+  attestation:
+  - D
+  tag: v_i]
+  status: unclassified
+- id: nvim.key.visual.ix60
+  surface: mode_key.visual
+  key: i`
+  desc: extend highlighted area with a backtick
+  attestation:
+  - D
+  tag: v_i`
+  status: unclassified
+- id: nvim.key.visual.ib
+  surface: mode_key.visual
+  key: ib
+  desc: extend highlighted area with inner () block
+  attestation:
+  - D
+  tag: v_ib
+  status: unclassified
+- id: nvim.key.visual.ip
+  surface: mode_key.visual
+  key: ip
+  desc: extend highlighted area with inner paragraph
+  attestation:
+  - D
+  tag: v_ip
+  status: unclassified
+- id: nvim.key.visual.is
+  surface: mode_key.visual
+  key: is
+  desc: extend highlighted area with inner sentence
+  attestation:
+  - D
+  tag: v_is
+  status: unclassified
+- id: nvim.key.visual.it
+  surface: mode_key.visual
+  key: it
+  desc: extend highlighted area with inner tag block
+  attestation:
+  - D
+  tag: v_it
+  status: unclassified
+- id: nvim.key.visual.iw
+  surface: mode_key.visual
+  key: iw
+  desc: extend highlighted area with "inner word"
+  attestation:
+  - D
+  tag: v_iw
+  status: unclassified
+- id: nvim.key.visual.ix7b
+  surface: mode_key.visual
+  key: i{
+  desc: same as iB
+  attestation:
+  - D
+  tag: v_i{
+  status: unclassified
+- id: nvim.key.visual.ix7d
+  surface: mode_key.visual
+  key: i}
+  desc: same as iB
+  attestation:
+  - D
+  tag: v_i}
+  status: unclassified
+- id: nvim.key.visual.o
+  surface: mode_key.visual
+  key: o
+  desc: move cursor to other corner of area
+  attestation:
+  - D
+  tag: v_o
+  status: unclassified
+- id: nvim.key.visual.p
+  surface: mode_key.visual
+  key: p
+  desc: replace highlighted area with register
+  attestation:
+  - D
+  tag: v_p
+  status: unclassified
+- id: nvim.key.visual.r
+  surface: mode_key.visual
+  key: r
+  desc: replace highlighted area with a character
+  attestation:
+  - D
+  tag: v_r
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.s
+  surface: mode_key.visual
+  key: s
+  desc: delete highlighted area and start insert
+  attestation:
+  - D
+  tag: v_s
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.u
+  surface: mode_key.visual
+  key: u
+  desc: make highlighted area lowercase
+  attestation:
+  - D
+  tag: v_u
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.v
+  surface: mode_key.visual
+  key: v
+  desc: make Visual mode charwise or stop
+  attestation:
+  - D
+  tag: v_v
+  status: unclassified
+- id: nvim.key.visual.x
+  surface: mode_key.visual
+  key: x
+  desc: delete the highlighted area
+  attestation:
+  - D
+  tag: v_x
+  undoable: true
+  status: unclassified
+- id: nvim.key.visual.y
+  surface: mode_key.visual
+  key: y
+  desc: yank the highlighted area
+  attestation:
+  - D
+  tag: v_y
+  status: unclassified
+- id: nvim.key.visual.x7e
+  surface: mode_key.visual
+  key: '~'
+  desc: swap case for the highlighted area
+  attestation:
+  - D
+  tag: v_~
+  undoable: true
+  status: unclassified
+- id: nvim.key.cmdline.c_x40
+  surface: mode_key.cmdline
+  key: CTRL-@
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.c_A
+  surface: mode_key.cmdline
+  key: CTRL-A
+  desc: do completion on the pattern in front of the cursor and insert all matches
+  attestation:
+  - D
+  tag: c_CTRL-A
+  status: unclassified
+- id: nvim.key.cmdline.c_B
+  surface: mode_key.cmdline
+  key: CTRL-B
+  desc: cursor to begin of command-line
+  attestation:
+  - D
+  tag: c_CTRL-B
+  status: unclassified
+- id: nvim.key.cmdline.c_C
+  surface: mode_key.cmdline
+  key: CTRL-C
+  desc: same as <Esc>
+  attestation:
+  - D
+  tag: c_CTRL-C
+  status: unclassified
+- id: nvim.key.cmdline.c_D
+  surface: mode_key.cmdline
+  key: CTRL-D
+  desc: list completions that match the pattern in front of the cursor
+  attestation:
+  - D
+  tag: c_CTRL-D
+  status: unclassified
+- id: nvim.key.cmdline.c_E
+  surface: mode_key.cmdline
+  key: CTRL-E
+  desc: cursor to end of command-line
+  attestation:
+  - D
+  tag: c_CTRL-E
+  status: unclassified
+- id: nvim.key.cmdline.c_G
+  surface: mode_key.cmdline
+  key: CTRL-G
+  desc: next match when 'incsearch' is active
+  attestation:
+  - D
+  tag: c_CTRL-G
+  status: unclassified
+- id: nvim.key.cmdline.BS
+  surface: mode_key.cmdline
+  key: <BS>
+  desc: delete the character in front of the cursor
+  attestation:
+  - D
+  tag: c_<BS>
+  status: unclassified
+- id: nvim.key.cmdline.x7bchar1x7dx20BSx20x7bchar2x7d
+  surface: mode_key.cmdline
+  key: '{char1} <BS> {char2}'
+  desc: enter digraph when 'digraph' is on
+  attestation:
+  - D
+  tag: c_digraph
+  status: unclassified
+- id: nvim.key.cmdline.c_H
+  surface: mode_key.cmdline
+  key: CTRL-H
+  desc: same as <BS>
+  attestation:
+  - D
+  tag: c_CTRL-H
+  status: unclassified
+- id: nvim.key.cmdline.Tab
+  surface: mode_key.cmdline
+  key: <Tab>
+  desc: 'if ''wildchar'' is <Tab>: Do completion on the pattern in front of the cursor'
+  attestation:
+  - D
+  tag: c_<Tab>
+  status: unclassified
+- id: nvim.key.cmdline.S-Tab
+  surface: mode_key.cmdline
+  key: <S-Tab>
+  desc: same as CTRL-P
+  attestation:
+  - D
+  tag: c_<S-Tab>
+  status: unclassified
+- id: nvim.key.cmdline.x27wildcharx27
+  surface: mode_key.cmdline
+  key: '''wildchar'''
+  desc: 'Do completion on the pattern in front of the cursor (default: <Tab>)'
+  attestation:
+  - D
+  tag: c_wildchar
+  status: unclassified
+- id: nvim.key.cmdline.c_I
+  surface: mode_key.cmdline
+  key: CTRL-I
+  desc: same as <Tab>
+  attestation:
+  - D
+  tag: c_CTRL-I
+  status: unclassified
+- id: nvim.key.cmdline.NL
+  surface: mode_key.cmdline
+  key: <NL>
+  desc: same as <CR>
+  attestation:
+  - D
+  tag: c_<NL>
+  status: unclassified
+- id: nvim.key.cmdline.c_J
+  surface: mode_key.cmdline
+  key: CTRL-J
+  desc: same as <CR>
+  attestation:
+  - D
+  tag: c_CTRL-J
+  status: unclassified
+- id: nvim.key.cmdline.c_Kx20x7bchar1x7dx20x7bchar2x7d
+  surface: mode_key.cmdline
+  key: CTRL-K {char1} {char2}
+  desc: enter digraph
+  attestation:
+  - D
+  tag: c_CTRL-K
+  status: unclassified
+- id: nvim.key.cmdline.c_L
+  surface: mode_key.cmdline
+  key: CTRL-L
+  desc: do completion on the pattern in front of the cursor and insert the longest common part
+  attestation:
+  - D
+  tag: c_CTRL-L
+  status: unclassified
+- id: nvim.key.cmdline.CR
+  surface: mode_key.cmdline
+  key: <CR>
+  desc: execute entered command
+  attestation:
+  - D
+  tag: c_<CR>
+  status: unclassified
+- id: nvim.key.cmdline.c_M
+  surface: mode_key.cmdline
+  key: CTRL-M
+  desc: same as <CR>
+  attestation:
+  - D
+  tag: c_CTRL-M
+  status: unclassified
+- id: nvim.key.cmdline.c_N
+  surface: mode_key.cmdline
+  key: CTRL-N
+  desc: 'after using ''wildchar'' with multiple matches: go to next match, otherwise: recall older command-line from history.'
+  attestation:
+  - D
+  tag: c_CTRL-N
+  status: unclassified
+- id: nvim.key.cmdline.c_O
+  surface: mode_key.cmdline
+  key: CTRL-O
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.c_P
+  surface: mode_key.cmdline
+  key: CTRL-P
+  desc: 'after using ''wildchar'' with multiple matches: go to previous match, otherwise: recall older command-line from history.'
+  attestation:
+  - D
+  tag: c_CTRL-P
+  status: unclassified
+- id: nvim.key.cmdline.c_Q
+  surface: mode_key.cmdline
+  key: CTRL-Q
+  desc: same as CTRL-V, unless it's used for terminal control flow
+  attestation:
+  - D
+  tag: c_CTRL-Q
+  status: unclassified
+- id: nvim.key.cmdline.c_Rx20x7bregnamex7d
+  surface: mode_key.cmdline
+  key: CTRL-R {regname}
+  desc: insert the contents of a register or object under the cursor as if typed
+  attestation:
+  - D
+  tag: c_CTRL-R
+  status: unclassified
+- id: nvim.key.cmdline.c_S
+  surface: mode_key.cmdline
+  key: CTRL-S
+  desc: not used, or used for terminal control flow
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.c_T
+  surface: mode_key.cmdline
+  key: CTRL-T
+  desc: previous match when 'incsearch' is active
+  attestation:
+  - D
+  tag: c_CTRL-T
+  status: unclassified
+- id: nvim.key.cmdline.c_U
+  surface: mode_key.cmdline
+  key: CTRL-U
+  desc: remove all characters between the cursor and beginning of command-line
+  attestation:
+  - D
+  tag: c_CTRL-U
+  status: unclassified
+- id: nvim.key.cmdline.c_V
+  surface: mode_key.cmdline
+  key: CTRL-V
+  desc: insert next non-digit literally, insert three digit decimal number as a single byte.
+  attestation:
+  - D
+  tag: c_CTRL-V
+  status: unclassified
+- id: nvim.key.cmdline.c_W
+  surface: mode_key.cmdline
+  key: CTRL-W
+  desc: delete the word in front of the cursor
+  attestation:
+  - D
+  tag: c_CTRL-W
+  status: unclassified
+- id: nvim.key.cmdline.c_X
+  surface: mode_key.cmdline
+  key: CTRL-X
+  desc: not used (reserved for completion)
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.c_Y
+  surface: mode_key.cmdline
+  key: CTRL-Y
+  desc: copy (yank) modeless selection
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.c_Z
+  surface: mode_key.cmdline
+  key: CTRL-Z
+  desc: not used (reserved for suspend)
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.Esc
+  surface: mode_key.cmdline
+  key: <Esc>
+  desc: abandon command-line without executing it
+  attestation:
+  - D
+  tag: c_<Esc>
+  status: unclassified
+- id: nvim.key.cmdline.c_x5b
+  surface: mode_key.cmdline
+  key: CTRL-[
+  desc: same as <Esc>
+  attestation:
+  - D
+  tag: c_CTRL-[
+  status: unclassified
+- id: nvim.key.cmdline.c_x5cx20ax20-x20d
+  surface: mode_key.cmdline
+  key: CTRL-\ a - d
+  desc: reserved for extensions
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.c_x5cx20ex20x7bexprx7dx20replacex20thex20command
+  surface: mode_key.cmdline
+  key: CTRL-\ e {expr} replace the command line with the result of
+  desc: '{expr}'
+  attestation:
+  - D
+  tag: c_CTRL-\_e
+  status: unclassified
+- id: nvim.key.cmdline.c_x5cx20fx20-x20z
+  surface: mode_key.cmdline
+  key: CTRL-\ f - z
+  desc: reserved for extensions
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.c_x5cx20others
+  surface: mode_key.cmdline
+  key: CTRL-\ others
+  desc: not used
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.cmdline.c_x5d
+  surface: mode_key.cmdline
+  key: CTRL-]
+  desc: trigger abbreviation
+  attestation:
+  - D
+  tag: c_CTRL-]
+  status: unclassified
+- id: nvim.key.cmdline.c_x5e
+  surface: mode_key.cmdline
+  key: CTRL-^
+  desc: toggle use of |:lmap| mappings
+  attestation:
+  - D
+  tag: c_CTRL-^
+  status: unclassified
+- id: nvim.key.cmdline.Del
+  surface: mode_key.cmdline
+  key: <Del>
+  desc: delete the character under the cursor
+  attestation:
+  - D
+  tag: c_<Del>
+  status: unclassified
+- id: nvim.key.cmdline.Left
+  surface: mode_key.cmdline
+  key: <Left>
+  desc: cursor left
+  attestation:
+  - D
+  tag: c_<Left>
+  status: unclassified
+- id: nvim.key.cmdline.S-Left
+  surface: mode_key.cmdline
+  key: <S-Left>
+  desc: cursor one word left
+  attestation:
+  - D
+  tag: c_<S-Left>
+  status: unclassified
+- id: nvim.key.cmdline.C-Left
+  surface: mode_key.cmdline
+  key: <C-Left>
+  desc: cursor one word left
+  attestation:
+  - D
+  tag: c_<C-Left>
+  status: unclassified
+- id: nvim.key.cmdline.Right
+  surface: mode_key.cmdline
+  key: <Right>
+  desc: cursor right
+  attestation:
+  - D
+  tag: c_<Right>
+  status: unclassified
+- id: nvim.key.cmdline.S-Right
+  surface: mode_key.cmdline
+  key: <S-Right>
+  desc: cursor one word right
+  attestation:
+  - D
+  tag: c_<S-Right>
+  status: unclassified
+- id: nvim.key.cmdline.C-Right
+  surface: mode_key.cmdline
+  key: <C-Right>
+  desc: cursor one word right
+  attestation:
+  - D
+  tag: c_<C-Right>
+  status: unclassified
+- id: nvim.key.cmdline.Up
+  surface: mode_key.cmdline
+  key: <Up>
+  desc: recall previous command-line from history that matches pattern in front of the cursor
+  attestation:
+  - D
+  tag: c_<Up>
+  status: unclassified
+- id: nvim.key.cmdline.S-Up
+  surface: mode_key.cmdline
+  key: <S-Up>
+  desc: recall previous command-line from history
+  attestation:
+  - D
+  tag: c_<S-Up>
+  status: unclassified
+- id: nvim.key.cmdline.Down
+  surface: mode_key.cmdline
+  key: <Down>
+  desc: recall next command-line from history that matches pattern in front of the cursor
+  attestation:
+  - D
+  tag: c_<Down>
+  status: unclassified
+- id: nvim.key.cmdline.S-Down
+  surface: mode_key.cmdline
+  key: <S-Down>
+  desc: recall next command-line from history
+  attestation:
+  - D
+  tag: c_<S-Down>
+  status: unclassified
+- id: nvim.key.cmdline.Home
+  surface: mode_key.cmdline
+  key: <Home>
+  desc: cursor to start of command-line
+  attestation:
+  - D
+  tag: c_<Home>
+  status: unclassified
+- id: nvim.key.cmdline.End
+  surface: mode_key.cmdline
+  key: <End>
+  desc: cursor to end of command-line
+  attestation:
+  - D
+  tag: c_<End>
+  status: unclassified
+- id: nvim.key.cmdline.PageDown
+  surface: mode_key.cmdline
+  key: <PageDown>
+  desc: same as <S-Down>
+  attestation:
+  - D
+  tag: c_<PageDown>
+  status: unclassified
+- id: nvim.key.cmdline.PageUp
+  surface: mode_key.cmdline
+  key: <PageUp>
+  desc: same as <S-Up>
+  attestation:
+  - D
+  tag: c_<PageUp>
+  status: unclassified
+- id: nvim.key.cmdline.Insert
+  surface: mode_key.cmdline
+  key: <Insert>
+  desc: toggle insert/overstrike mode
+  attestation:
+  - D
+  tag: c_<Insert>
+  status: unclassified
+- id: nvim.key.cmdline.LeftMouse
+  surface: mode_key.cmdline
+  key: <LeftMouse>
+  desc: cursor at mouse click
+  attestation:
+  - D
+  tag: c_<LeftMouse>
+  status: unclassified
+- id: nvim.key.cmdline.other
+  surface: mode_key.cmdline
+  key: other
+  desc: stop completion and insert the typed character
+  attestation:
+  - D
+  status: unclassified
+- id: nvim.key.terminal.__surface__
+  surface: mode_key.terminal
+  enumerable: false
+  reason: 'index.txt states the namespace as a forwarding rule, not a key table: all keys except CTRL-\ go to the job. Enumeration
+    is impossible by construction; the policy is the content. Classification must capture it as an unmatched-key policy.'
+  evidence_prose: "In a |terminal| buffer all keys except CTRL-\\ are forwarded to the terminal job.  If CTRL-\\ is pressed,\
+    \ the next key is forwarded unless it is CTRL-N or CTRL-O. Use |CTRL-\\_CTRL-N| to go to Normal mode. Use |t_CTRL-\\_CTRL-O|\
+    \ to execute one normal mode command and then return to terminal mode. You found it, Arthur!\t\t\t\t*holy-grail*"
+  attestation:
+  - D
+  status: unclassified

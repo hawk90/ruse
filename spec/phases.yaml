@@ -45,7 +45,7 @@ phases:
     goal: >
       A real editor: key → command → transaction → document → render, on the proven core. Vim profile,
       command palette, buffers/windows, file open/save + recovery, search/substitute, terminal detection.
-    includes: [F-003, F-004, F-006, F-007, F-008, F-009, F-010, F-022]
+    includes: [F-003, F-004, F-006, F-007, F-008, F-009, F-010, F-022, F-023, F-024, F-025, F-026, F-027]
 
   - id: ide-grade
     title: "IDE-grade — language intelligence"

@@ -15,6 +15,28 @@ related:
 
 # ruse Feature-Parity Reference — Index
 
+> **⚠️ Source of truth moved (D-043).** The files in this directory are **hand-authored and were
+> never checked against a pinned upstream revision**. They are retained as human *annotation* —
+> reading, grouping, intent — and are migrating onto census IDs. The parity source is now:
+>
+> | Layer | Location | Authored by |
+> | --- | --- | --- |
+> | Upstream pins (peeled commit SHAs, census scope, oracles) | [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml) | human (scope decisions) |
+> | **Inventory — the census of upstream fact** | [`spec/parity/inventory/`](../../spec/parity/inventory/) | **machine only** |
+> | Coverage manifest (discovery / classification / verification, with method) | [`spec/parity/coverage.yaml`](../../spec/parity/coverage.yaml) | machine |
+> | Concepts — cross-editor semantic reconciliation | `spec/parity/concepts/` | human |
+> | Compatibility contracts — what ruse promises per profile | `spec/parity/contracts/` | human |
+>
+> **Humans classify; they do not enumerate.** Do not add a row to these tables to record a newly
+> discovered upstream feature — regenerate the census (`tools/parity/fetch.py` then
+> `tools/parity/extract_*.py`) and classify the item there.
+>
+> Why: this catalog reported 100% coverage of 211 hand-written IDs while the first machine census of
+> Neovim v0.12.4 alone found **1,788 items** — and the gap was not only size. Modes were tabulated as
+> *transitions* (enter/exit keys) rather than as the eight disjoint keymap namespaces upstream's own
+> `map.txt` declares, so the unmatched-key policy, state ownership and return semantics had nowhere
+> to live, and that omission propagated into `F-003` and the input engine.
+
 The product goal: **inherit the editing language and dev features of Vim/Neovim, and the
 command/buffer/extension model of Emacs, as feature-parity targets. Do NOT replicate their internal
 structures or script runtimes.** Nano is not a compatibility target — it is only a reference for a

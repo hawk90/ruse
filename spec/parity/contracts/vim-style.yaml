@@ -1,0 +1,167 @@
+# Compatibility contract — Vim Style input profile (D-043).
+#
+# This layer exists because parity is FACT and the PRD is CHOICE, and collapsing them is what
+# produced F-003: forty-three parity IDs — nine modes, every operator, motion, register and text
+# object — crammed into one feature, after which no per-mode structure had anywhere to live.
+# A contract sits between: it reads the census and states what ruse PROMISES, so a later reader can
+# tell "Vim does this" from "we decided this".
+#
+# Scope of this file: the KEYMAP NAMESPACES of the Vim Style profile. Not the keys inside them —
+# those are the `mode_key.*` census surfaces and are classified per pillar as they are implemented.
+#
+# The fact this contract is built on: upstream's own `runtime/doc/map.txt` map-table declares eight
+# DISJOINT namespaces (Norm/Ins/Cmd/Vis/Sel/Opr/Term/Lang), each addressed by its own `:*map`
+# command family. The hand-authored catalog rendered modes as a transition table (enter key / exit
+# key) instead, which cannot express a namespace — and so three dimensions were lost:
+#
+#   1. UNMATCHED-KEY POLICY — what a key that matches nothing does. This is the axis that actually
+#      distinguishes the modes, and it was absent from every row. Five of the eight namespaces are
+#      `open` (the key still does something); the shipped engine models only `closed` via a single
+#      `Feed::Ignored` fallthrough, which is why Insert had to be special-cased ahead of it.
+#   2. STATE OWNERSHIP — which namespace owns count / pending operator / selection / cmdline buffer.
+#      The engine currently holds one flat state and calls reset() on entering Insert, conflating
+#      "the Normal machine's state" with "the engine's state".
+#   3. RETURN SEMANTICS — `i_CTRL-O` and `t_CTRL-\_CTRL-O` are the SAME construct: run one Normal
+#      command, then return whence you came. That is a stack with a return address, not an edge in
+#      a flat transition table.
+#
+# `unmatched_key` values:
+#   closed/ignore            no binding -> nothing happens (a bell at most)
+#   closed/abort             no binding -> cancel the pending construct and return to Normal
+#   open/insert              printable -> inserted literally
+#   open/append              printable -> appended to the command line
+#   open/overwrite           printable -> overwrites; <BS> restores the original
+#   open/replace-selection   printable -> delete selection, insert, enter Insert
+#   open/forward             key -> forwarded verbatim to the job, except one escape prefix
+#   open/translate           key -> rewritten by the active language map, then re-dispatched
+#
+# LLM rules: `derives_from` must name real census ids (spec/parity/inventory/neovim/*.yaml) — a
+# contract that cites nothing is an opinion. Never add a namespace here that the census does not
+# show; never silently drop one.
+
+version: 1
+profile: vim-style
+upstream: neovim
+revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b   # v0.12.4
+derives_from_surface: map_mode
+status: draft
+
+namespaces:
+  normal:
+    map_mode: Norm
+    derives_from: [nvim.mapmode.norm]
+    config: keymap.normal
+    unmatched_key: closed/ignore
+    owns_state: [count, pending_register, pending_operator_arm]
+    enters_from: {insert: "<Esc>", visual: "<Esc>", operator_pending: "motion completes or aborts", terminal: "CTRL-\\ CTRL-N"}
+    note: >
+      The only namespace whose unmatched-key policy is plain ignore. Distinguishing it from
+      operator_pending (which ABORTS) is the distinction the engine currently cannot express,
+      because operator-pending is a field on the Normal state rather than a namespace.
+
+  operator_pending:
+    map_mode: Opr
+    derives_from: [nvim.mapmode.opr, nvim.key.operator_pending.v, nvim.key.operator_pending.V, nvim.key.operator_pending.c_V]
+    config: keymap.operator_pending
+    unmatched_key: closed/abort
+    owns_state: [armed_operator, operator_count, forced_motion_shape]
+    accepts: [motion, text_object, forced_motion_modifier]
+    note: >
+      A real namespace, not a flag. Upstream enumerates exactly three keys of its own (`v`/`V`/
+      `CTRL-V` = force charwise/linewise/blockwise) and inherits motions and text objects; every
+      other key aborts. The shipped engine represents this as `op: Option<OpPending>` on one shared
+      state machine, which is the proximate cause of the whole mode-structure gap (C-INPUT).
+
+  insert:
+    map_mode: Ins
+    derives_from: [nvim.mapmode.ins, nvim.key.insert.c_O, nvim.key.insert.c_Gx20u]
+    config: keymap.insert
+    unmatched_key: open/insert
+    owns_state: [insert_repeat_record, completion_state, one_shot_return]
+    returns_to:
+      normal: {key: "CTRL-O", semantics: "run exactly one Normal command, then resume Insert at the same position"}
+    note: >
+      95 keys of its own, but its defining property is the default: a printable key is TEXT.
+      `CTRL-G u` (start a new undoable edit) shows the namespace also owns undo-grouping intent,
+      which the transition table had no column for.
+
+  command_line:
+    map_mode: Cmd
+    derives_from: [nvim.mapmode.cmd, nvim.key.cmdline.CR, nvim.key.cmdline.Esc]
+    config: keymap.cmdline
+    unmatched_key: open/append
+    owns_state: [line_buffer, line_cursor, history_index, completion_state]
+    note: >
+      A real mode with its own 59-key line editor, not an ad-hoc text field grafted onto the UI.
+      Shares the `[nore]map!` family with Insert, which is upstream's own statement that the two
+      open/append-ish namespaces are related but distinct.
+
+  visual:
+    map_mode: Vis
+    derives_from: [nvim.mapmode.vis, nvim.key.visual.v, nvim.key.visual.V, nvim.key.visual.c_V, nvim.key.visual.o, nvim.key.visual.gv]
+    config: keymap.visual
+    unmatched_key: closed/ignore
+    owns_state: [selection_anchor, selection_shape, active_corner]
+    note: >
+      Shape (charwise/linewise/blockwise) is namespace state, not a boolean. `gv` restores the
+      PREVIOUS selection, which means the shape and anchor outlive the mode — a lifetime the flat
+      table could not record.
+
+  select:
+    map_mode: Sel
+    derives_from: [nvim.mapmode.sel]
+    config: keymap.select
+    unmatched_key: open/replace-selection
+    owns_state: [selection_anchor, selection_shape]
+    note: >
+      Shares selection state with Visual and toggles with it, but has the OPPOSITE unmatched-key
+      policy: a printable key destroys the selection and enters Insert. Two modes over identical
+      state, distinguished only by the dimension the catalog lacked.
+
+  terminal:
+    map_mode: Term
+    derives_from: [nvim.mapmode.term, nvim.key.terminal.__surface__]
+    config: keymap.terminal
+    unmatched_key: open/forward
+    owns_state: [job_handle, escape_prefix_pending]
+    escape_prefix: "CTRL-\\"
+    returns_to:
+      normal: {key: "CTRL-\\ CTRL-N", semantics: "leave terminal mode"}
+      one_shot: {key: "CTRL-\\ CTRL-O", semantics: "run one Normal command, then resume terminal mode"}
+    note: >
+      The proof that unmatched-key policy is the primary axis: upstream cannot express this
+      namespace as a key table at all and drops to prose ("all keys except CTRL-\\ are forwarded"),
+      so the census records it as non-enumerable with the prose preserved. Note `CTRL-\\ CTRL-O` is
+      the same one-shot-return construct as `i_CTRL-O` — the mode stack is shared machinery.
+
+  lang_arg:
+    map_mode: Lang
+    derives_from: [nvim.mapmode.lang]
+    config: keymap.lang
+    unmatched_key: open/translate
+    owns_state: [active_language_map]
+    open_question: CONCEPT-LANG-ARG
+    note: >
+      Targeted by decision, but ruse has NO counterpart concept: `lmap` is Vim's language-mapping
+      layer for non-Latin input, applied inside Insert / Command-line / and when a command reads a
+      single character. ruse's model has no such re-dispatch stage, and terminal input methods
+      overlap it. Recorded as irreconcilable (spec/parity/concepts/irreconcilable.yaml) so the gap
+      is a tracked Decision rather than an implicit promise.
+
+# Contract-level obligations that fall out of the namespace model and belong to no single namespace.
+obligations:
+  - id: VS-OBL-1
+    text: "Mode is per-window/per-buffer, not global: a terminal buffer is in terminal namespace while a neighbouring window is in normal."
+  - id: VS-OBL-2
+    text: "Namespace transitions form a STACK with return addresses (CTRL-O from insert and terminal, gv for visual), not a flat edge set."
+  - id: VS-OBL-3
+    text: "Every namespace declares an unmatched-key policy; a namespace whose policy is `open` must not fall through to a shared ignore path."
+  - id: VS-OBL-4
+    text: "Keymap configuration is per-namespace (config: keymap.<ns>); a binding may not be declared without naming its namespace."
+
+# Facts recorded against the pin that contradict the hand-authored catalog. Kept here rather than
+# silently corrected upstream in docs/parity/vim.md, so the correction has provenance.
+census_corrections:
+  - claim: "docs/parity/vim.md VIM-MODE-8 — Ex mode is entered by `Q` or `gQ`."
+    fact: "At neovim v0.12.4 `Q` is `replay last recorded register` (nvim.key.normal.Q); only `gQ` enters Ex mode (nvim.key.normal.g.gQ)."
+    impact: "A row flagged as a commonly-omitted mode carried a wrong entry key for the primary reference editor. Vim-vs-Neovim delta, invisible without a pin."

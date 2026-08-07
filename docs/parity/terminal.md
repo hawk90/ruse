@@ -10,6 +10,8 @@ summary: >
   sequences and detection/fallback cited from primary specs.
 audience: [maintainers, contributors, llm-agents]
 status: draft
+source_of_truth: false
+verified_against_upstream: false
 related:
   - README.md
   - ../architecture/architecture.md
@@ -18,6 +20,14 @@ notation: "ESC=\\x1b; CSI=ESC [; OSC=ESC ]; DCS=ESC P; ST=ESC \\; DECSET/RST = C
 ---
 
 # Parity: Terminal Capability (Input & Rendering)
+
+> **⚠️ NOT THE SOURCE OF TRUTH (D-043).** This file is hand-authored and has never been checked
+> against a pinned upstream revision. The parity source is the machine-derived census in
+> [`spec/parity/inventory/`](../../spec/parity/inventory/), generated from the SHA pins in
+> [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml). These tables survive as *human
+> annotation* — reading, grouping and intent — and are migrating onto census IDs. Do not add rows
+> here to record a newly discovered upstream feature: humans classify, they do not enumerate.
+
 
 ruse is TUI-first, so terminal capability *is* product surface. The governing rule (architecture §6):
 **never identify a terminal by `TERM` alone; actively probe, keep a per-capability confidence ledger,
