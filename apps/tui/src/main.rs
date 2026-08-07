@@ -15,7 +15,7 @@ use crossterm::style::Print;
 use crossterm::terminal::{Clear, ClearType};
 use crossterm::{cursor, queue, terminal};
 
-use input::{map_key, parse_ex, Ex, Input};
+use input::{parse_ex, Ex, Feed, InputEngine};
 use ruse_core::{apply_command, Command, EditorState, Effect, Mode, Trace};
 
 fn main() -> ExitCode {
@@ -96,6 +96,7 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
 
     let _guard = TermGuard::enter()?;
     let mut out = io::stdout();
+    let mut engine = InputEngine::new();
     let mut quit = false;
 
     while !quit {
@@ -129,10 +130,10 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
-        match map_key(key, st.mode()) {
-            Input::OpenExLine => ex_line = Some(String::new()),
-            Input::Ignored => {}
-            Input::Cmd(cmd) => {
+        match engine.feed(key, st.mode()) {
+            Feed::OpenExLine => ex_line = Some(String::new()),
+            Feed::Pending | Feed::Ignored => {}
+            Feed::Cmd(cmd) => {
                 recorded.push(cmd.clone());
                 for eff in apply_command(&mut st, &cmd) {
                     apply_effect(eff, &mut st, &path, &mut status, &mut quit);
