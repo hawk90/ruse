@@ -38,7 +38,7 @@ related:
 - **Re-evaluate if:** never expected; would require a new invariant.
 - Refs: INV-DOC-VIEW, ARCH-OWN-001.
 
-## D-004 — Plugins use WASM/process protocol, not a Rust dylib ABI · decided
+## D-004 — Plugins use WASM/process protocol, not a Rust dylib ABI · decided (DEFERRED by D-039)
 - **Decision:** Extension transport is a versioned protocol over WASM or an external process.
 - **Reason:** Rust ABI is unstable; need crash isolation and a language-independent SDK.
 - **Re-evaluate if:** a stable native-component ABI with isolation becomes established.
@@ -93,7 +93,7 @@ related:
 - **Re-evaluate if:** never expected.
 - Refs: INV-PROMOTION, docs/protocols/versioning-and-evolution.md.
 
-## D-011 — Client ⁄ Workspace-runtime boundary is first-class · decided
+## D-011 — Client ⁄ Workspace-runtime boundary is first-class · decided (DEFERRED by D-039)
 - **Decision:** Local path ≠ workspace path (typed); remote runtime negotiates version; boundary present
   from the start (even single-TUI).
 - **Reason:** Retrofitting remote is the classic failure.
@@ -110,7 +110,7 @@ related:
 - **Open:** on remote disconnect — continue editing, go read-only, or local journal + conflict resolution.
 - **Re-evaluate:** before F-017.
 
-## D-014 — Semantic View vs Render IR boundary · decided
+## D-014 — Semantic View vs Render IR boundary · decided (DEFERRED by D-039)
 - **Decision:** Plugins see the semantic view model; the low-level Render IR is backend-neutral (not the
   union of backends); backend-specific bits isolated in a capability namespace.
 - **Reason:** Prevent the IR from becoming an unbounded legacy DOM.
@@ -363,3 +363,25 @@ related:
 - **Re-evaluate if:** a generator makes doc type-blocks derivable FROM code (rustdoc extraction) — then they
   may return as generated, never hand-written.
 - Refs: [../docs/operations/governance-model.md](../docs/operations/governance-model.md), `tools/rusekit/gov/design_code.py`, D-021, D-022.
+
+## D-039 — Collapse to a two-crate terminal modal editor; defer remote/plugin/render boundaries · decided
+- **Decision:** ruse is, first and only, a **terminal-based modal text editor**. The workspace collapses to
+  two crates — `editor-core` (pure, IO-free) and `ruse` (the crossterm TUI binary) — via same-process
+  function calls, **no RPC/process split**. The remote/plugin/render boundaries are **deferred** (not
+  deleted): their stub crates are removed and their design docs kept as notes, reintroduced only when an
+  explicit re-boundary trigger fires (RFC-0012 §Re-evaluation). `spec/review-axes.yaml` is **frozen** at 566
+  axes — a manual checklist, never a merge gate — until a product need reopens it. Command-level edit
+  **traces** (record/replay/share) are a first-class product feature, designed with the input engine.
+  Governance stays as the *dogfooded methodology*, secondary to the editor.
+- **Deferred by this decision (paused; triggers in RFC-0012):** INV-REMOTE-FIRST (downgraded from an active
+  invariant to a deferred commitment), D-011/D-029/D-030/D-031 (remote), D-004/D-009 (plugin protocol),
+  D-014/D-015 (render IR). They remain recorded — the thinking is retained — but do not constrain v0.
+- **Reason:** the planned architecture was xi-editor's (core/frontend RPC seam + remote-first + versioned
+  protocol), and xi-editor failed at exactly that shape (Raph Levien's retrospective). Boundaries drawn
+  before a second consumer are unverified commitments; a wrong boundary costs more to remove than an absent
+  one costs to add. The repo's own RA-RUSE-003/004 already say this. Over-invest in semantics
+  (transaction/undo/trace) which cannot be fixed later; under-invest in structure (crate boundaries,
+  protocols) which is normal to fix later.
+- **Re-evaluate if:** a re-boundary trigger fires (RFC-0012 §Re-evaluation) — then that boundary returns as
+  its own RFC + crate.
+- Refs: [../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md](../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md), RA-RUSE-003, RA-RUSE-004, D-004, D-011, D-014.
