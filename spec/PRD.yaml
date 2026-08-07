@@ -56,7 +56,7 @@ components:
   # tui (stage 3)
   C-RENDER:     { title: Render IR + lowering, build_stage: tui, depends_on: [C-QUERY], status: planned, ref: ../docs/design/render-and-frontends.md }
   C-VIEW:       { title: View/Window/layout, build_stage: tui, depends_on: [C-RENDER, C-ANCHOR], status: planned, ref: ../docs/design/view-window-workspace.md }
-  C-TERMINAL:   { title: Terminal platform (input+capability), build_stage: tui, depends_on: [], status: planned, ref: ../docs/parity/terminal.md }
+  C-TERMINAL:   { title: Terminal platform (input+capability), build_stage: tui, depends_on: [], status: planned, ref: ../docs/architecture/architecture.md#6 }
   # workspace (stage 4)
   C-WORKSPACE:  { title: Workspace + buffers, build_stage: workspace, depends_on: [C-DOCUMENT, C-VIEW], status: planned, ref: ../docs/design/view-window-workspace.md }
   C-PERSIST:    { title: Persistence + recovery journal, build_stage: workspace, depends_on: [C-DOCUMENT, C-WORKSPACE], status: planned, ref: ../docs/design/persistence-and-recovery.md }  # D-005
@@ -230,7 +230,7 @@ features:
     summary: Active probing with a confidence ledger and user override; not TERM-only.
     trace:
       parity: [TERM-PROBE-1, TERM-PROBE-2, TERM-KBD-1, TERM-COLOR-1, TERM-GFX-4, TERM-KBD-2, TERM-KBD-3, TERM-KBD-4, TERM-MOUSE-1, TERM-MOUSE-2, TERM-OSC52-1, TERM-PASTE-1, TERM-PROBE-3]
-      design: [../docs/architecture/architecture.md#6, ../docs/parity/terminal.md]
+      design: [../docs/architecture/architecture.md#6]
       verify: [../tests/unit/capability-ledger, ../tests/integration/da1-probe]
     acceptance:
       - Capabilities are probed via queries fenced by DA1 (no arbitrary timeouts), not judged by TERM alone.
@@ -246,7 +246,7 @@ features:
     summary: A terminal emulator as a first-class buffer (Unix PTY + Windows ConPTY).
     trace:
       parity: [TERM-PTY-1, TERM-PTY-2, WS-5, EMACS-PROC-2, VIM-JOB-1, EMACS-PROC-1, VIM-MODE-9]
-      design: [../docs/architecture/architecture.md#8, ../docs/parity/terminal.md]
+      design: [../docs/architecture/architecture.md#8]
       verify: [../tests/integration/pty-unix, ../tests/integration/conpty-windows]
     acceptance:
       - A shell runs in an ordinary workspace buffer with Terminal and Terminal-Normal modes.
