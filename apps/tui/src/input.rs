@@ -54,9 +54,10 @@ struct OpPending {
 /// and count axes (per input-engine.md, these are **orthogonal** and must not be crammed into one enum).
 /// Exactly one variant holds between keystrokes, so illegal combinations (awaiting a find-target *and* a
 /// text-object char at once) are unrepresentable — the class of hierarchy bug that ad-hoc booleans invite.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum Awaiting {
     /// A fresh key: a count digit, operator, motion, action, or a pending-initiator (`f`/`F`/`t`/`T`).
+    #[default]
     Nothing,
     /// After `f`/`F`/`t`/`T`: the next key is the search target char.
     FindTarget { forward: bool, till: bool },
@@ -80,12 +81,6 @@ pub struct InputEngine {
     last_find: Option<(char, bool, bool)>,
     /// Sticky: the last search pattern, for `n`/`N`.
     last_search: Option<String>,
-}
-
-impl Default for Awaiting {
-    fn default() -> Self {
-        Awaiting::Nothing
-    }
 }
 
 impl InputEngine {
