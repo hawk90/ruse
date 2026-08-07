@@ -254,3 +254,30 @@ fn ciw_changes_inner_word() {
     apply_command(&mut st, &Command::InsertChar('X'));
     assert_eq!(st.as_str(), Some("foo X"));
 }
+
+// --- search (Phase D-3) ---
+
+#[test]
+fn search_next_prev_with_wrap() {
+    let mut st = EditorState::new(b"foo bar foo baz".to_vec());
+    apply_command(&mut st, &Command::SearchNext("foo".into()));
+    assert_eq!(st.cursor(), 8, "next foo after the cursor");
+    apply_command(&mut st, &Command::SearchNext("foo".into()));
+    assert_eq!(st.cursor(), 0, "wraps to the first");
+    apply_command(&mut st, &Command::SearchPrev("foo".into()));
+    assert_eq!(st.cursor(), 8, "prev wraps to the last");
+}
+
+#[test]
+fn search_is_replayable() {
+    let trace = Trace::record(b"a foo b foo", vec![Command::SearchNext("foo".into())]);
+    let st = trace
+        .replay(b"a foo b foo")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(st.cursor(), 2, "moved to the first foo");
+    assert_eq!(
+        Trace::from_text(&trace.to_text()).unwrap(),
+        trace,
+        "pattern survives the text format"
+    );
+}

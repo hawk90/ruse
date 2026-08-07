@@ -242,6 +242,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 edit(one(Edit::delete(s, e - s)), s, Mode::Insert, hint)
             }
         }
+        Command::SearchNext(pat) => {
+            let m = crate::search::find_next(b, pat.as_bytes(), cur + 1).unwrap_or(cur);
+            nop(m, st.mode)
+        }
+        Command::SearchPrev(pat) => {
+            let m = crate::search::find_prev(b, pat.as_bytes(), cur).unwrap_or(cur);
+            nop(m, st.mode)
+        }
         Command::Undo => Plan {
             action: Action::Undo,
             cursor: cur,

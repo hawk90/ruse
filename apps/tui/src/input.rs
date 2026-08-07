@@ -12,6 +12,8 @@ pub enum Feed {
     Cmd(Command),
     /// `:` — open the ex command line.
     OpenExLine,
+    /// `/` — open the search line.
+    OpenSearch,
     /// The key was consumed but the command is not complete yet (a count digit or a pending operator).
     Pending,
     /// Nothing bound.
@@ -32,6 +34,8 @@ pub struct InputEngine {
     op_count: u32,
     /// After an operator, `i`/`a` starts a text object; `Some(true)` = inner, `Some(false)` = around.
     textobj: Option<bool>,
+    /// The last search pattern, for `n`/`N`. Persists across commands (not cleared by `reset`).
+    last_search: Option<String>,
 }
 
 impl InputEngine {
@@ -42,7 +46,13 @@ impl InputEngine {
             op: None,
             op_count: 1,
             textobj: None,
+            last_search: None,
         }
+    }
+
+    /// Remember the pattern from a `/search` so `n`/`N` can repeat it.
+    pub fn set_last_search(&mut self, pattern: String) {
+        self.last_search = Some(pattern);
     }
 
     fn reset(&mut self) {
@@ -161,6 +171,24 @@ impl InputEngine {
             KeyCode::Char('x') => self.action(Command::DeleteUnder),
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Char('r') if ctrl => self.action(Command::Redo),
+            KeyCode::Char('n') => match self.last_search.clone() {
+                Some(p) => self.action(Command::SearchNext(p)),
+                None => {
+                    self.reset();
+                    Feed::Ignored
+                }
+            },
+            KeyCode::Char('N') => match self.last_search.clone() {
+                Some(p) => self.action(Command::SearchPrev(p)),
+                None => {
+                    self.reset();
+                    Feed::Ignored
+                }
+            },
+            KeyCode::Char('/') => {
+                self.reset();
+                Feed::OpenSearch
+            }
             KeyCode::Char(':') => {
                 self.reset();
                 Feed::OpenExLine
@@ -292,6 +320,28 @@ mod textobj_tests {
         assert_eq!(
             e.feed(k('i'), Mode::Normal),
             Feed::Cmd(Command::EnterInsert)
+        );
+    }
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::tests::k;
+    use super::*;
+
+    #[test]
+    fn slash_opens_search_and_n_repeats() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        assert_eq!(e.feed(k('n'), Mode::Normal), Feed::Ignored); // no prior search yet
+        e.set_last_search("foo".into());
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::Cmd(Command::SearchNext("foo".into()))
+        );
+        assert_eq!(
+            e.feed(k('N'), Mode::Normal),
+            Feed::Cmd(Command::SearchPrev("foo".into()))
         );
     }
 }

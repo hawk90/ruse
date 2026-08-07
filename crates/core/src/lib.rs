@@ -23,6 +23,7 @@ pub mod editor;
 pub mod effect;
 pub mod motion;
 pub mod pos;
+pub mod search;
 pub mod snapshot;
 pub mod trace;
 pub mod transaction;
