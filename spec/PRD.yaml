@@ -94,7 +94,7 @@ features:
     depends_on: [C-DOCUMENT, C-ANCHOR]
     summary: Typed byte/char/grapheme/screen-cell coordinates; positions tracked as anchors.
     trace:
-      parity: [TERM-WIDTH-1, TERM-WIDTH-2, NVIM-EXT-1, NVIM-EXT-6]
+      parity: [TERM-WIDTH-1, TERM-WIDTH-2, NVIM-EXT-1, NVIM-EXT-6, EMACS-EDIT-2, NVIM-EXT-3, NVIM-EXT-4, NVIM-EXT-5, NVIM-EXT-7, TERM-WIDTH-3]
       design: [../docs/architecture/architecture.md#3, ../docs/design/positions-history.md]
       verify: [../tests/property/anchor-stability, ../tests/unit/coordinate-widths]
     acceptance:
@@ -111,7 +111,7 @@ features:
     depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-REGISTER, C-CONFIG, C-POSHIST]
     summary: Vim-style input compiled to semantic commands.
     trace:
-      parity: [VIM-MODE-1, VIM-MODE-2, VIM-MODE-4, VIM-MODE-6, VIM-MODE-7, VIM-OP-1, VIM-MOT-PROMOTE, VIM-TOBJ-1, VIM-TOBJ-3, VIM-CNT-INS, VIM-REG-1, VIM-REG-2, VIM-REPEAT-DOT]
+      parity: [VIM-MODE-1, VIM-MODE-2, VIM-MODE-4, VIM-MODE-6, VIM-MODE-7, VIM-OP-1, VIM-MOT-PROMOTE, VIM-TOBJ-1, VIM-TOBJ-3, VIM-CNT-INS, VIM-REG-1, VIM-REG-2, VIM-REPEAT-DOT, VIM-MODE-3, VIM-MODE-5, VIM-MODE-8, VIM-MOT-1, VIM-MOT-2, VIM-MOT-3, VIM-MOT-4, VIM-MOT-5, VIM-MOT-6, VIM-MOT-7, VIM-MOT-8, VIM-MOT-9, VIM-OP-2, VIM-OP-3, VIM-OP-4, VIM-OP-5, VIM-OP-6, VIM-OP-7, VIM-OP-8, VIM-OP-9, VIM-REG-3, VIM-REG-4, VIM-REG-5, VIM-REG-6, VIM-REG-7, VIM-REG-8, VIM-REG-9, VIM-TOBJ-2, VIM-TOBJ-4, VIM-TOBJ-5]
       design: [../docs/design/input-engine.md, ../docs/design/editing-language.md, ../docs/design/register-model.md, ../docs/design/positions-history.md]
       verify: [../tests/parity/vim/operator-motion.yaml, ../tests/parity/vim/text-objects.yaml, ../tests/parity/vim/registers.yaml, ../tests/parity/vim/command-line.yaml]
     acceptance:
@@ -129,7 +129,7 @@ features:
     depends_on: [C-COMMAND, C-CONTEXT, C-QUERY]
     summary: Namespaced typed commands decoupled from keybindings; context-aware palette.
     trace:
-      parity: [EMACS-CMD-1, EMACS-CMD-3, ECO-1, ECO-6]
+      parity: [EMACS-CMD-1, EMACS-CMD-3, ECO-1, ECO-6, COM-10, EMACS-CMD-2, EMACS-HELP-1, EMACS-HELP-2, EMACS-MINI-1]
       design: [../docs/architecture/architecture.md#2, ../docs/design/render-and-frontends.md]
       verify: [../tests/unit/command-registry, ../tests/integration/palette-context]
     acceptance:
@@ -161,7 +161,7 @@ features:
     depends_on: [C-RENDER, C-TERMINAL]
     summary: Render-diff output on the compatibility path; grapheme-correct widths.
     trace:
-      parity: [TERM-SYNC-1, TERM-COLOR-1, TERM-WIDTH-1, NVIM-UI-2]
+      parity: [TERM-SYNC-1, TERM-COLOR-1, TERM-WIDTH-1, NVIM-UI-2, TERM-GFX-1, TERM-GFX-2, TERM-GFX-3]
       design: [../docs/design/render-and-frontends.md, ../docs/architecture/architecture.md#6]
       verify: [../tests/unit/render-diff, ../tests/integration/render-profile-pin]
     acceptance:
@@ -178,7 +178,7 @@ features:
     depends_on: [C-VIEW, C-WORKSPACE]
     summary: Same buffer openable in multiple views; view-local state stays in the view.
     trace:
-      parity: [COM-2, COM-3, COM-4, VIM-WIN-1, EMACS-BUFFER-2]
+      parity: [COM-2, COM-3, COM-4, VIM-WIN-1, EMACS-BUFFER-2, EMACS-BUFFER-1, WS-1, WS-2, WS-6, WS-9]
       design: [../docs/architecture/architecture.md#7, ../docs/design/render-and-frontends.md]
       verify: [../tests/integration/split-independent-cursors, ../tests/unit/view-local-state]
     acceptance:
@@ -195,7 +195,7 @@ features:
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only recovery journal.
     trace:
-      parity: [COM-1, COM-9, COM-13, VIM-STATE-1]
+      parity: [COM-1, COM-9, COM-13, VIM-STATE-1, COM-12]
       design: [../docs/design/persistence-and-recovery.md]
       verify: [../tests/fault-injection/truncated-journal, ../tests/unit/save-atomic]
     acceptance:
@@ -212,7 +212,7 @@ features:
     depends_on: [C-DOCUMENT, C-COMMAND, C-REGEX, C-QUERY]
     summary: Incremental search and range substitution.
     trace:
-      parity: [COM-5, COM-6, VIM-SEARCH-1, VIM-EX-GLOBAL]
+      parity: [COM-5, COM-6, VIM-SEARCH-1, VIM-EX-GLOBAL, EMACS-MINI-2, EMACS-MINI-3, WS-3]
       design: [../docs/design/vim-regex.md]
       verify: [../tests/parity/vim/search-substitute.yaml]
     acceptance:
@@ -229,7 +229,7 @@ features:
     depends_on: [C-TERMINAL]
     summary: Active probing with a confidence ledger and user override; not TERM-only.
     trace:
-      parity: [TERM-PROBE-1, TERM-PROBE-2, TERM-KBD-1, TERM-COLOR-1]
+      parity: [TERM-PROBE-1, TERM-PROBE-2, TERM-KBD-1, TERM-COLOR-1, TERM-GFX-4, TERM-KBD-2, TERM-KBD-3, TERM-KBD-4, TERM-MOUSE-1, TERM-MOUSE-2, TERM-OSC52-1, TERM-PASTE-1, TERM-PROBE-3]
       design: [../docs/architecture/architecture.md#6, ../docs/parity/terminal.md]
       verify: [../tests/unit/capability-ledger, ../tests/integration/da1-probe]
     acceptance:
@@ -245,7 +245,7 @@ features:
     depends_on: [C-TERMINAL, C-WORKSPACE, C-SCHEDULER]
     summary: A terminal emulator as a first-class buffer (Unix PTY + Windows ConPTY).
     trace:
-      parity: [TERM-PTY-1, TERM-PTY-2, WS-5, EMACS-PROC-2, VIM-JOB-1]
+      parity: [TERM-PTY-1, TERM-PTY-2, WS-5, EMACS-PROC-2, VIM-JOB-1, EMACS-PROC-1, VIM-MODE-9]
       design: [../docs/architecture/architecture.md#8, ../docs/parity/terminal.md]
       verify: [../tests/integration/pty-unix, ../tests/integration/conpty-windows]
     acceptance:
@@ -262,7 +262,7 @@ features:
     depends_on: [C-INPUT, C-COMMAND, C-POSHIST]
     summary: Prefix keys, M-x, mark/region, kill ring, universal argument, major/minor modes.
     trace:
-      parity: [EMACS-KEYMAP-1, EMACS-KEYMAP-2, EMACS-CMD-1, EMACS-REGION-1, EMACS-KILL-1, EMACS-KILL-2, EMACS-ARG-1, EMACS-MODE-1, EMACS-MODE-2]
+      parity: [EMACS-KEYMAP-1, EMACS-KEYMAP-2, EMACS-CMD-1, EMACS-REGION-1, EMACS-KILL-1, EMACS-KILL-2, EMACS-ARG-1, EMACS-MODE-1, EMACS-MODE-2, EMACS-ARG-2, EMACS-EDIT-3, EMACS-EDIT-4, EMACS-EDIT-5, EMACS-KEYMAP-3, EMACS-KILL-3, EMACS-KILL-4, EMACS-MACRO-1, EMACS-MACRO-2, EMACS-MACRO-3, EMACS-MODE-3, EMACS-REGION-2, EMACS-REGION-3, EMACS-TRANSIENT-1, EMACS-VAR-1, EMACS-VAR-2]
       design: [../docs/design/editing-language.md, ../docs/design/register-model.md, ../docs/design/positions-history.md]
       verify: [../tests/parity/emacs/kill-ring.yaml, ../tests/parity/emacs/prefix-keys.yaml, ../tests/parity/emacs/universal-arg.yaml]
     acceptance:
@@ -279,7 +279,7 @@ features:
     depends_on: [C-INPUT, C-COMMAND]
     summary: The third input language (modal text, command discovery, transient special views).
     trace:
-      parity: [NAT-1, NAT-2, NAT-3, NAT-4, NAT-5]
+      parity: [NAT-1, NAT-2, NAT-3, NAT-4, NAT-5, EMACS-TRANSIENT-2, EMACS-TRANSIENT-3]
       design: [../docs/design/editing-language.md, ../docs/architecture/architecture.md#1]
       verify: [../tests/parity/native/modal-text.yaml, ../tests/parity/native/leader-discovery.yaml]
     acceptance:
@@ -298,7 +298,7 @@ features:
       Language Service host manages LSP processes and normalizes results into one model (mergeable with
       tree-sitter/compiler diagnostics); UI is local, server runs where the code is (remote via C-AGENT).
     trace:
-      parity: [NVIM-LSP-1, NVIM-LSP-2, NVIM-LSP-5, NVIM-DIAG-1, REM-SERVICE-4]
+      parity: [NVIM-LSP-1, NVIM-LSP-2, NVIM-LSP-5, NVIM-DIAG-1, REM-SERVICE-4, NVIM-DIAG-2, NVIM-DIAG-3, NVIM-DIAG-4, NVIM-LSP-3, NVIM-LSP-4, WS-4]
       design: [../docs/design/remote-runtime.md, ../docs/design/render-and-frontends.md]
       verify: [../tests/integration/lsp-remote, ../tests/unit/language-service-model]
     acceptance:
@@ -315,7 +315,7 @@ features:
     depends_on: [C-DOCUMENT, C-RENDER, C-SCHEDULER]
     summary: Incremental structural highlighting from snapshots; injections; TS folds/indent.
     trace:
-      parity: [NVIM-TS-1, NVIM-TS-2, NVIM-TS-3, NVIM-TS-5, NVIM-EXT-2]
+      parity: [NVIM-TS-1, NVIM-TS-2, NVIM-TS-3, NVIM-TS-5, NVIM-EXT-2, NVIM-TS-4]
       design: [../docs/design/render-and-frontends.md, ../docs/architecture/architecture.md#3]
       verify: [../tests/integration/treesitter-highlight, ../tests/property/incremental-reparse]
     acceptance:
@@ -332,7 +332,7 @@ features:
     depends_on: [C-PLUGIN, C-COMMAND, C-RENDER]
     summary: Isolated plugins over a versioned protocol (WASM/process); stable/experimental/internal layers.
     trace:
-      parity: [ECO-2, ECO-3, ECO-4, ECO-8, ECO-14]
+      parity: [ECO-2, ECO-3, ECO-4, ECO-8, ECO-14, ECO-5, ECO-7]
       design: [../docs/architecture/architecture.md#4, ../docs/protocols/versioning-and-evolution.md]
       verify: [../tests/integration/plugin-panic-isolation, ../tests/integration/plugin-sdk-conformance]
     acceptance:
@@ -352,7 +352,7 @@ features:
       Agent supervises remote fs/watch, lazy file tree, search, Git, PTY, port-forward, toolchain discovery;
       UI local, execution remote. Version negotiation; capability negotiation with degradation.
     trace:
-      parity: [REM-SPLIT-1, REM-SPLIT-2, REM-SERVICE-1, REM-RESUME-1, REM-VERSION-1, REM-PATH-1, REM-SEC-1]
+      parity: [REM-SPLIT-1, REM-SPLIT-2, REM-SERVICE-1, REM-RESUME-1, REM-VERSION-1, REM-PATH-1, REM-SEC-1, ECO-9, REM-PATH-2, REM-RESUME-2, REM-SEC-2, REM-SERVICE-2, REM-SERVICE-6, REM-WATCH-1, REM-WATCH-2, WS-11]
       design: [../docs/design/remote-runtime.md]
       verify: [../tests/remote-scenarios/first-connect-bootstrap, ../tests/remote-scenarios/reconnect-resume]
     acceptance:
