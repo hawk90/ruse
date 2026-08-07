@@ -1,0 +1,4567 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/extract_emacs.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
+# `require` of exactly the census_scope.include libraries. Changing that load set changes
+# the denominator, so it lives in upstreams.yaml where it needs a reason.
+version: 1
+generated: true
+generator: tools/parity/extract_emacs.py
+upstream: emacs
+revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
+version_label: emacs-30.2
+derived_from: runtime-binary
+binary_version: '30.2'
+binary_identity: unverified-build
+baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
+  project)
+surface: option
+source_of_record: 'R: custom-variable-p, scoped to census_scope.include'
+items:
+- id: emacs.option.after-save-hook
+  surface: option
+  name: after-save-hook
+  defined_in: files.elc
+  type: hook
+  default: nil
+  desc: Normal hook that is run after a buffer is saved to its file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.async-shell-command-buffer
+  surface: option
+  name: async-shell-command-buffer
+  defined_in: simple.elc
+  type: (choice (const :tag "Confirm killing of running command" confirm-kill-process) (const :tag "Confirm creation of a
+    new buffer" confirm-new-buffer) (const :tag "Create a new buffer" new-buffer) (const :tag "Confirm renaming of existing
+    buffer" confirm-rename-buffer) (const :tag "Rename the existing buffer" rename-buffer))
+  default: confirm-new-buffer
+  desc: What to do when the output buffer is used by another shell command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.async-shell-command-display-buffer
+  surface: option
+  name: async-shell-command-display-buffer
+  defined_in: simple.elc
+  type: (choice (const :tag "Display buffer immediately" t) (const :tag "Display buffer on output" nil))
+  default: t
+  desc: Whether to display the command buffer immediately.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.async-shell-command-width
+  surface: option
+  name: async-shell-command-width
+  defined_in: simple.elc
+  type: (choice (const :tag "Use system limit" nil) (integer :tag "Fixed width" :value 80))
+  default: nil
+  desc: Number of display columns available for asynchronous shell command output.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-fill-inhibit-regexp
+  surface: option
+  name: auto-fill-inhibit-regexp
+  defined_in: simple.elc
+  type: (choice (const :tag "None" nil) regexp)
+  default: nil
+  desc: Regexp to match lines that should not be auto-filled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-fill-mode-hook
+  surface: option
+  name: auto-fill-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘auto-fill-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-mode-case-fold
+  surface: option
+  name: auto-mode-case-fold
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil means to try second pass through ‘auto-mode-alist’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-save-default
+  surface: option
+  name: auto-save-default
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil says by default do auto-saving of every file-visiting buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-save-file-name-transforms
+  surface: option
+  name: auto-save-file-name-transforms
+  defined_in: files.elc
+  type: (repeat (list (regexp :tag "Regexp") (string :tag "Replacement") (choice (const :tag "Uniquify" t) (const md5) (const
+    sha1) (const sha224) (const sha256) (const sha384) (const sha512))))
+  default: (("\\`/[^/]*:\\([^/]*/\\)*\\([^/]*\\)\\'" "/var/folders/62/1n0w6tvd2j53zx21hzdrz1xw0000gn/T/\\2" t))
+  desc: Transforms to apply to buffer file name before making auto-save file name.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-save-mode-hook
+  surface: option
+  name: auto-save-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘auto-save-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-save-visited-interval
+  surface: option
+  name: auto-save-visited-interval
+  defined_in: files.elc
+  type: number
+  default: '5'
+  desc: Interval in seconds for ‘auto-save-visited-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-save-visited-mode
+  surface: option
+  name: auto-save-visited-mode
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Non-nil if Auto-Save-Visited mode is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-save-visited-mode-hook
+  surface: option
+  name: auto-save-visited-mode-hook
+  defined_in: files.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘auto-save-visited-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.auto-save-visited-predicate
+  surface: option
+  name: auto-save-visited-predicate
+  defined_in: files.elc
+  type: (choice :tag "Function:" (const :tag "No extra predicate" :value nil) (function :tag "Predicate function" :value always))
+  default: nil
+  desc: Predicate function for ‘auto-save-visited-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.backup-by-copying
+  surface: option
+  name: backup-by-copying
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means always use copying to create backup files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.backup-by-copying-when-linked
+  surface: option
+  name: backup-by-copying-when-linked
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means use copying to create backups for files with multiple names.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.backup-by-copying-when-mismatch
+  surface: option
+  name: backup-by-copying-when-mismatch
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil means create backups by copying if this preserves owner or group.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.backup-by-copying-when-privileged-mismatch
+  surface: option
+  name: backup-by-copying-when-privileged-mismatch
+  defined_in: files.elc
+  type: (choice (const nil) integer)
+  default: '200'
+  desc: Non-nil means create backups by copying to preserve a privileged owner.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.backup-directory-alist
+  surface: option
+  name: backup-directory-alist
+  defined_in: files.elc
+  type: (repeat (cons (regexp :tag "Regexp matching filename") (directory :tag "Backup directory name")))
+  default: nil
+  desc: Alist of file name patterns and backup directory names.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.backward-delete-char-untabify-method
+  surface: option
+  name: backward-delete-char-untabify-method
+  defined_in: simple.elc
+  type: (choice (const untabify) (const hungry) (const all) (const nil))
+  default: untabify
+  desc: The method for untabifying when deleting backward.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.before-save-hook
+  surface: option
+  name: before-save-hook
+  defined_in: files.elc
+  type: hook
+  default: nil
+  desc: Normal hook that is run before a buffer is saved to its file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.binary-overwrite-mode-hook
+  surface: option
+  name: binary-overwrite-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘binary-overwrite-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.blink-matching-delay
+  surface: option
+  name: blink-matching-delay
+  defined_in: simple.elc
+  type: number
+  default: '1'
+  desc: Time in seconds to delay after showing a matching paren.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.blink-matching-paren
+  surface: option
+  name: blink-matching-paren
+  defined_in: simple.elc
+  type: (choice (const :tag "Disable" nil) (const :tag "Highlight open-paren if visible" t) (const :tag "Move cursor to open-paren
+    if visible" jump) (const :tag "Move cursor even if it's off screen" jump-offscreen))
+  default: t
+  desc: Non-nil means show matching open-paren when close-paren is inserted.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.blink-matching-paren-distance
+  surface: option
+  name: blink-matching-paren-distance
+  defined_in: simple.elc
+  type: (choice (const nil) integer)
+  default: '102400'
+  desc: If non-nil, maximum distance to search backwards for matching open-paren.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.blink-matching-paren-dont-ignore-comments
+  surface: option
+  name: blink-matching-paren-dont-ignore-comments
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If nil, ‘blink-matching-paren’ ignores comments.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.blink-matching-paren-highlight-offscreen
+  surface: option
+  name: blink-matching-paren-highlight-offscreen
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, highlight matched off-screen open paren in the echo area.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.blink-matching-paren-on-screen
+  surface: option
+  name: blink-matching-paren-on-screen
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: Non-nil means show matching open-paren when it is on screen.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-automatically-show-annotations
+  surface: option
+  name: bookmark-automatically-show-annotations
+  defined_in: bookmark.elc
+  type: boolean
+  default: t
+  desc: Non-nil means show annotations when jumping to a bookmark.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-bmenu-file-column
+  surface: option
+  name: bookmark-bmenu-file-column
+  defined_in: bookmark.elc
+  type: natnum
+  default: '30'
+  desc: Column at which to display filenames in a buffer listing bookmarks.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-bmenu-toggle-filenames
+  surface: option
+  name: bookmark-bmenu-toggle-filenames
+  defined_in: bookmark.elc
+  type: boolean
+  default: t
+  desc: Non-nil means show filenames when listing bookmarks.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-completion-ignore-case
+  surface: option
+  name: bookmark-completion-ignore-case
+  defined_in: bookmark.elc
+  type: boolean
+  default: t
+  desc: Non-nil means bookmark functions ignore case in completion.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-default-file
+  surface: option
+  name: bookmark-default-file
+  defined_in: bookmark.elc
+  type: file
+  default: '"~/.emacs.d/bookmarks"'
+  desc: File in which to save bookmarks by default.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-file
+  surface: option
+  name: bookmark-file
+  defined_in: bookmark.elc
+  type: sexp
+  default: '"~/.emacs.d/bookmarks"'
+  desc: File in which to save bookmarks by default.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-fringe-mark
+  surface: option
+  name: bookmark-fringe-mark
+  defined_in: bookmark.elc
+  type: (choice (const nil) fringe-bitmap)
+  default: bookmark-mark
+  desc: The fringe bitmap to mark bookmarked lines with.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-inhibit-context-functions
+  surface: option
+  name: bookmark-inhibit-context-functions
+  defined_in: bookmark.elc
+  type: hook
+  default: (auth-source-file-name-p epa-file-name-p)
+  desc: List of functions to call before making a bookmark record.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-menu-confirm-deletion
+  surface: option
+  name: bookmark-menu-confirm-deletion
+  defined_in: bookmark.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means confirm before deleting bookmarks in a bookmark menu buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-menu-length
+  surface: option
+  name: bookmark-menu-length
+  defined_in: bookmark.elc
+  type: natnum
+  default: '70'
+  desc: Maximum length of a bookmark name displayed on a popup menu.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-old-default-file
+  surface: option
+  name: bookmark-old-default-file
+  defined_in: bookmark.elc
+  type: sexp
+  default: '"~/.emacs.d/bookmarks"'
+  desc: File in which to save bookmarks by default.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-save-flag
+  surface: option
+  name: bookmark-save-flag
+  defined_in: bookmark.elc
+  type: (choice (const nil) integer (other t))
+  default: t
+  desc: Controls when Emacs saves bookmarks to a file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-search-delay
+  surface: option
+  name: bookmark-search-delay
+  defined_in: bookmark.elc
+  type: number
+  default: '0.2'
+  desc: Time before ‘bookmark-bmenu-search’ updates the display.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-set-fringe-mark
+  surface: option
+  name: bookmark-set-fringe-mark
+  defined_in: bookmark.elc
+  type: sexp
+  default: bookmark-mark
+  desc: The fringe bitmap to mark bookmarked lines with.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-sort-flag
+  surface: option
+  name: bookmark-sort-flag
+  defined_in: bookmark.elc
+  type: (choice (const :tag "By name" t) (const :tag "By modified time" last-modified) (const :tag "By creation time" nil))
+  default: t
+  desc: This controls the bookmark display sorting.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-use-annotations
+  surface: option
+  name: bookmark-use-annotations
+  defined_in: bookmark.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, setting a bookmark queries for an annotation in a buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-version-control
+  surface: option
+  name: bookmark-version-control
+  defined_in: bookmark.elc
+  type: (choice (const :tag "If existing" nil) (const :tag "Never" never) (const :tag "Use value of option `version-control'"
+    nospecial) (other :tag "Always" t))
+  default: nospecial
+  desc: Whether or not to make numbered backups of the bookmark file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.bookmark-watch-bookmark-file
+  surface: option
+  name: bookmark-watch-bookmark-file
+  defined_in: bookmark.elc
+  type: (choice (const :tag "Suggest to reload bookmark file if changed" t) (const :tag "Silently reload bookmark file if
+    changed" silent) (const :tag "Ignore changes of bookmark file" nil))
+  default: t
+  desc: If non-nil reload the default bookmark file if it was changed.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.break-hardlink-on-save
+  surface: option
+  name: break-hardlink-on-save
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Whether to allow breaking hardlinks when saving files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.buffer-offer-save
+  surface: option
+  name: buffer-offer-save
+  defined_in: files.elc
+  type: (choice (const :tag "Never" nil) (const :tag "On Emacs exit" t) (const :tag "Whenever save-some-buffers is called"
+    always))
+  default: nil
+  desc: Non-nil in a buffer means always offer to save buffer on exiting Emacs.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.byte-count-to-string-function
+  surface: option
+  name: byte-count-to-string-function
+  defined_in: files.elc
+  type: (radio (function-item file-size-human-readable-iec) (function-item file-size-human-readable) (function :tag "Custom
+    function" :value number-to-string))
+  default: file-size-human-readable-iec
+  desc: Function that turns a number of bytes into a human-readable string.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.case-replace
+  surface: option
+  name: case-replace
+  defined_in: replace.elc
+  type: boolean
+  default: t
+  desc: Non-nil means ‘query-replace’ should preserve case in replacements.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.change-major-mode-with-file-name
+  surface: option
+  name: change-major-mode-with-file-name
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil means C-x C-w should set the major mode from the file name.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.column-number-indicator-zero-based
+  surface: option
+  name: column-number-indicator-zero-based
+  defined_in: bindings.elc
+  type: boolean
+  default: t
+  desc: When non-nil, mode line displays column numbers zero-based.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.column-number-mode
+  surface: option
+  name: column-number-mode
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Non-nil if Column-Number mode is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.column-number-mode-hook
+  surface: option
+  name: column-number-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘column-number-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-auto-deselect
+  surface: option
+  name: completion-auto-deselect
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "Candidates in *Completions* stay selected as you type" nil) (const :tag "Typing deselects any
+    completion candidate in *Completions*" t))
+  default: t
+  desc: If non-nil, deselect current completion candidate when you type in minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-auto-help
+  surface: option
+  name: completion-auto-help
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "Don't show" nil) (const :tag "Show only when cannot complete" t) (const :tag "Show after second
+    failed completion attempt" lazy) (const :tag "Leave visible after first failed completion" visible) (const :tag "Always
+    visible" always))
+  default: t
+  desc: Non-nil means automatically provide help for invalid completion input.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-auto-select
+  surface: option
+  name: completion-auto-select
+  defined_in: simple.elc
+  type: (choice (const :tag "Don't auto-select completions window" nil) (const :tag "Select completions window on first TAB"
+    t) (const :tag "Select completions window on second TAB" second-tab))
+  default: nil
+  desc: If non-nil, automatically select the window showing the *Completions* buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-auto-wrap
+  surface: option
+  name: completion-auto-wrap
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: Non-nil means to wrap around when selecting completion candidates.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-category-overrides
+  surface: option
+  name: completion-category-overrides
+  defined_in: minibuffer.elc
+  type: (alist :key-type (choice :tag "Category" (const buffer) (const file) (const unicode-name) (const bookmark) symbol)
+    :value-type (set :tag "Properties to override" (cons :tag "Completion Styles" (const :tag "Select a style from the menu;"
+    styles) (repeat :tag "insert a new menu to add more styles" (choice :convert-widget completion--update-styles-options)))
+    (cons :tag "Completion Cycling" (const :tag "Select one value from the menu." cycle) (choice (const :tag "No cycling"
+    nil) (const :tag "Always cycle" t) (integer :tag "Threshold"))) (cons :tag "Cycle Sorting" (const :tag "Select one value
+    from the menu." cycle-sort-function) (choice (function :tag "Custom function"))) (cons :tag "Completion Sorting" (const
+    :tag "Select one value from the menu." display-sort-function) (choice (const :tag "Use default" nil) (const :tag "No sorting"
+    identity) (const :tag "Alphabetical sorting" minibuffer-sort-alphabetically) (const :tag "Historical sorting" minibuffer-sort-by-history)
+    (function :tag "Custom function"))) (cons :tag "Completion Groups" (const :tag "Select one value from the menu." group-function)
+    (choice (function :tag "Custom function"))) (cons :tag "Completion Annotation" (const :tag "Select one value from the
+    menu." annotation-function) (choice (function :tag "Custom function"))) (cons :tag "Completion Affixation" (const :tag
+    "Select one value from the menu." affixation-function) (choice (function :tag "Custom function")))))
+  default: nil
+  desc: List of category-specific user overrides for completion metadata.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-cycle-threshold
+  surface: option
+  name: completion-cycle-threshold
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "No cycling" nil) (const :tag "Always cycle" t) (integer :tag "Threshold"))
+  default: nil
+  desc: Number of completion candidates below which cycling is used.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-flex-nospace
+  surface: option
+  name: completion-flex-nospace
+  defined_in: minibuffer.elc
+  type: boolean
+  default: nil
+  desc: Non-nil if ‘flex’ completion rejects spaces in search pattern.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-in-region-mode-hook
+  surface: option
+  name: completion-in-region-mode-hook
+  defined_in: minibuffer.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘completion-in-region-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-pcm-complete-word-inserts-delimiters
+  surface: option
+  name: completion-pcm-complete-word-inserts-delimiters
+  defined_in: minibuffer.elc
+  type: boolean
+  default: nil
+  desc: Treat the SPC or - inserted by ‘minibuffer-complete-word’ as delimiters.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-pcm-word-delimiters
+  surface: option
+  name: completion-pcm-word-delimiters
+  defined_in: minibuffer.elc
+  type: string
+  default: '"-_./:| "'
+  desc: A string of characters treated as word delimiters for completion.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-show-help
+  surface: option
+  name: completion-show-help
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: Non-nil means show help message in *Completions* buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-styles
+  surface: option
+  name: completion-styles
+  defined_in: minibuffer.elc
+  type: (repeat :tag "insert a new menu to add more styles" (choice :convert-widget completion--update-styles-options))
+  default: (basic partial-completion emacs22)
+  desc: List of completion styles to use.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-detailed
+  surface: option
+  name: completions-detailed
+  defined_in: minibuffer.elc
+  type: boolean
+  default: nil
+  desc: When non-nil, display completions with details added as prefix/suffix.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-format
+  surface: option
+  name: completions-format
+  defined_in: minibuffer.elc
+  type: (choice (const horizontal) (const vertical) (const one-column))
+  default: horizontal
+  desc: Define the appearance and sorting of completions.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-group
+  surface: option
+  name: completions-group
+  defined_in: minibuffer.elc
+  type: boolean
+  default: nil
+  desc: Enable grouping of completion candidates in the *Completions* buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-group-format
+  surface: option
+  name: completions-group-format
+  defined_in: minibuffer.elc
+  type: string
+  default: '#("     %s  " 0 4 (face completions-group-separator) 4 8 (face completions-group-title) 8 9 (display (space :align-to
+    right) face completions-group-separator))'
+  desc: Format string used for the group title.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-group-sort
+  surface: option
+  name: completions-group-sort
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "No sorting" nil) (const :tag "Alphabetical sorting" alphabetical) function)
+  default: nil
+  desc: Sort groups in the *Completions* buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-header-format
+  surface: option
+  name: completions-header-format
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "No heading line" nil) (string :tag "Format string for heading line"))
+  default: '#("%s possible completions:
+
+    " 0 25 (face shadow))'
+  desc: If non-nil, the format string for completions heading line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-highlight-face
+  surface: option
+  name: completions-highlight-face
+  defined_in: minibuffer.elc
+  type: (choice (const nil) face)
+  default: completions-highlight
+  desc: A face name to highlight the current completion candidate.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-max-height
+  surface: option
+  name: completions-max-height
+  defined_in: minibuffer.elc
+  type: (choice (const nil) natnum)
+  default: nil
+  desc: Maximum height for *Completions* buffer window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completions-sort
+  surface: option
+  name: completions-sort
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "No sorting" nil) (const :tag "Alphabetical sorting" alphabetical) (const :tag "Historical sorting"
+    historical) (function :tag "Custom function"))
+  default: alphabetical
+  desc: Sort candidates in the *Completions* buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.compose-mail-user-agent-warnings
+  surface: option
+  name: compose-mail-user-agent-warnings
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: If non-nil, ‘compose-mail’ warns about changes in ‘mail-user-agent’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.confirm-kill-emacs
+  surface: option
+  name: confirm-kill-emacs
+  defined_in: files.elc
+  type: (choice (const :tag "Ask with yes-or-no-p" yes-or-no-p) (const :tag "Ask with y-or-n-p" y-or-n-p) (const :tag "Don't
+    confirm" nil) (function :tag "Predicate function"))
+  default: nil
+  desc: How to ask for confirmation when leaving Emacs.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.confirm-kill-processes
+  surface: option
+  name: confirm-kill-processes
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil if Emacs should confirm killing processes on exit.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.confirm-nonexistent-file-or-buffer
+  surface: option
+  name: confirm-nonexistent-file-or-buffer
+  defined_in: files.elc
+  type: (choice (const :tag "After completion" after-completion) (const :tag "Never" nil) (other :tag "Always" t))
+  default: after-completion
+  desc: Whether confirmation is requested before visiting a new file or buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.copy-directory-create-symlink
+  surface: option
+  name: copy-directory-create-symlink
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: This option influences the handling of symbolic links in ‘copy-directory’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.copy-region-blink-delay
+  surface: option
+  name: copy-region-blink-delay
+  defined_in: simple.elc
+  type: number
+  default: '1'
+  desc: Time in seconds to delay after showing the other end of the region.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.copy-region-blink-predicate
+  surface: option
+  name: copy-region-blink-predicate
+  defined_in: simple.elc
+  type: (radio (function-item region-indistinguishable-p) (function-item :doc "Always blink point and mark." always) (function-item
+    :doc "Never blink point and mark." ignore) (function :tag "Other predicate function"))
+  default: region-indistinguishable-p
+  desc: Whether the cursor must be blinked after a copy.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.cursor-face-highlight-mode-hook
+  surface: option
+  name: cursor-face-highlight-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘cursor-face-highlight-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.cursor-face-highlight-nonselected-window
+  surface: option
+  name: cursor-face-highlight-nonselected-window
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means highlight text with ‘cursor-face’ even in nonselected windows.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.cycle-spacing-actions
+  surface: option
+  name: cycle-spacing-actions
+  defined_in: simple.elc
+  type: (repeat (choice (const :tag "Just N (prefix arg) spaces" just-one-space) (const :tag "Delete spaces after point" delete-space-after)
+    (const :tag "Delete spaces before point" delete-space-before) (const :tag "Delete all spaces around point" delete-all-space)
+    (function :tag "Function receiving a numeric arg") (list :tag "Action with modified arg" (choice (const :tag "Just N (prefix
+    arg) spaces" just-one-space) (const :tag "Delete spaces after point" delete-space-after) (const :tag "Delete spaces before
+    point" delete-space-before) (const :tag "Delete all spaces around point" delete-all-space) (function :tag "Function receiving
+    a numeric arg")) (choice (const :tag "Inverted prefix arg" inverted-arg) (integer :tag "Fixed numeric arg") (const :tag
+    "Negative arg" -))) (const :tag "Restore the original spacing" restore)))
+  default: (just-one-space delete-all-space restore)
+  desc: List of actions cycled through by ‘cycle-spacing’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.delete-old-versions
+  surface: option
+  name: delete-old-versions
+  defined_in: files.elc
+  type: (choice (const :tag "Delete" t) (const :tag "Ask" nil) (other :tag "Leave" other))
+  default: nil
+  desc: If t, delete excess numbered backup files silently.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.delete-trailing-lines
+  surface: option
+  name: delete-trailing-lines
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: If non-nil, M-x delete-trailing-whitespace deletes trailing lines.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.delete-window-choose-selected
+  surface: option
+  name: delete-window-choose-selected
+  defined_in: window.elc
+  type: (choice (const :tag "Most recently used" mru) (const :tag "At position of deleted" pos) (const :tag "Frame's first
+    " nil))
+  default: mru
+  desc: How to choose a frame’s selected window after window deletion.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.directory-abbrev-alist
+  surface: option
+  name: directory-abbrev-alist
+  defined_in: files.elc
+  type: (repeat (cons :format "%v" :value ("\\`" . "") (regexp :tag "From") (string :tag "To")))
+  default: nil
+  desc: Alist of abbreviations for file directories.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.directory-free-space-args
+  surface: option
+  name: directory-free-space-args
+  defined_in: files.elc
+  type: string
+  default: '"-k"'
+  desc: Options to use when running ‘directory-free-space-program’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.directory-free-space-program
+  surface: option
+  name: directory-free-space-program
+  defined_in: files.elc
+  type: (choice (string :tag "Program") (const :tag "None" nil))
+  default: '"df"'
+  desc: Program to get the amount of free space on a file system.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-after-readin-hook
+  surface: option
+  name: dired-after-readin-hook
+  defined_in: dired.elc
+  type: hook
+  default: nil
+  desc: Hook run after each time a file or directory is read by Dired.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-always-read-filesystem
+  surface: option
+  name: dired-always-read-filesystem
+  defined_in: dired.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means revert buffers visiting files before searching them.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-auto-revert-buffer
+  surface: option
+  name: dired-auto-revert-buffer
+  defined_in: dired.elc
+  type: (choice (const :tag "Don't revert" nil) (const :tag "Always revert visited Dired buffer" t) (const :tag "Revert changed
+    Dired buffer" dired-directory-changed-p) (function :tag "Predicate function"))
+  default: nil
+  desc: Automatically revert Dired buffers on revisiting their directory.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-before-readin-hook
+  surface: option
+  name: dired-before-readin-hook
+  defined_in: dired.elc
+  type: hook
+  default: nil
+  desc: This hook is run before a Dired buffer is read in (created or reverted).
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-chown-program
+  surface: option
+  name: dired-chown-program
+  defined_in: dired.elc
+  type: file
+  default: '"chown"'
+  desc: Name of chown command (usually ‘chown’).
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-clean-confirm-killing-deleted-buffers
+  surface: option
+  name: dired-clean-confirm-killing-deleted-buffers
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: If nil, don’t ask whether to kill buffers visiting deleted files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-clean-up-buffers-too
+  surface: option
+  name: dired-clean-up-buffers-too
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: Non-nil means offer to kill buffers visiting files and dirs deleted in Dired.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-click-to-select-mode-hook
+  surface: option
+  name: dired-click-to-select-mode-hook
+  defined_in: dired.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘dired-click-to-select-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-copy-dereference
+  surface: option
+  name: dired-copy-dereference
+  defined_in: dired.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, Dired dereferences symlinks when copying them.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-copy-preserve-time
+  surface: option
+  name: dired-copy-preserve-time
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: If non-nil, Dired preserves the last-modified time in a file copy.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-dnd-protocol-alist
+  surface: option
+  name: dired-dnd-protocol-alist
+  defined_in: dired.elc
+  type: (choice (repeat (cons (regexp) (function))) (const :tag "Behave as in other buffers" nil))
+  default: (("^file:///" . dired-dnd-handle-local-file) ("^file://" . dired-dnd-handle-file) ("^file:" . dired-dnd-handle-local-file))
+  desc: The functions to call when a drop in ‘dired-mode’ is made.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-dwim-target
+  surface: option
+  name: dired-dwim-target
+  defined_in: dired.elc
+  type: (choice (const :tag "No guess" nil) (function-item :tag "Prefer next windows on the same frame" dired-dwim-target-next)
+    (function-item :tag "Prefer next windows on visible frames" dired-dwim-target-next-visible) (function-item :tag "Prefer
+    most recently used windows" dired-dwim-target-recent) (function :tag "Custom function") (other :tag "Try to guess" t))
+  default: nil
+  desc: If non-nil, Dired tries to guess a default target directory.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-filename-display-length
+  surface: option
+  name: dired-filename-display-length
+  defined_in: dired.elc
+  type: (choice (const :tag "No restriction" nil) (const :tag "Window" window) (integer :tag "Integer"))
+  default: nil
+  desc: If non-nil, restrict the display length of filenames.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-free-space
+  surface: option
+  name: dired-free-space
+  defined_in: dired.elc
+  type: (choice (const :tag "On separate line, display both used and free space" separate) (const :tag "On first line, after
+    directory name, display only free space" first) (const :tag "Don't display disk space usage" nil))
+  default: first
+  desc: Whether and how to display the disk space usage info in Dired buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-free-space-args
+  surface: option
+  name: dired-free-space-args
+  defined_in: dired.elc
+  type: sexp
+  default: '"-k"'
+  desc: Options to use when running ‘directory-free-space-program’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-free-space-program
+  surface: option
+  name: dired-free-space-program
+  defined_in: dired.elc
+  type: sexp
+  default: '"df"'
+  desc: Program to get the amount of free space on a file system.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-garbage-files-regexp
+  surface: option
+  name: dired-garbage-files-regexp
+  defined_in: dired.elc
+  type: regexp
+  default: '"\\(?:\\.\\(?:aux\\|bak\\|dvi\\|log\\|orig\\|rej\\|toc\\)\\)\\''"'
+  desc: Regular expression to match "garbage" files for ‘dired-flag-garbage-files’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-guess-shell-alist-user
+  surface: option
+  name: dired-guess-shell-alist-user
+  defined_in: dired.elc
+  type: (alist :key-type regexp :value-type (repeat sexp))
+  default: nil
+  desc: User-defined alist of rules for suggested commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-guess-shell-case-fold-search
+  surface: option
+  name: dired-guess-shell-case-fold-search
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: If non-nil, ‘dired-guess-shell-alist-default’ and
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-guess-shell-gnutar
+  surface: option
+  name: dired-guess-shell-gnutar
+  defined_in: dired.elc
+  type: (choice (const :tag "Not GNU tar" nil) (string :tag "Command name"))
+  default: nil
+  desc: If non-nil, name of GNU tar executable.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-guess-shell-gzip-quiet
+  surface: option
+  name: dired-guess-shell-gzip-quiet
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: Non-nil says pass -q to gzip overriding verbose GZIP environment.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-guess-shell-znew-switches
+  surface: option
+  name: dired-guess-shell-znew-switches
+  defined_in: dired.elc
+  type: (choice (const :tag "None" nil) (string :tag "Switches"))
+  default: nil
+  desc: 'If non-nil, then string of switches passed to ‘znew’, example: "-K".'
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-hide-details-hide-information-lines
+  surface: option
+  name: dired-hide-details-hide-information-lines
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: Non-nil means ‘dired-hide-details-mode’ hides all but header and file lines.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-hide-details-hide-symlink-targets
+  surface: option
+  name: dired-hide-details-hide-symlink-targets
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: Non-nil means ‘dired-hide-details-mode’ hides symbolic link targets.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-hide-details-mode-hook
+  surface: option
+  name: dired-hide-details-mode-hook
+  defined_in: dired.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘dired-hide-details-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-hide-details-preserved-columns
+  surface: option
+  name: dired-hide-details-preserved-columns
+  defined_in: dired.elc
+  type: (repeat integer)
+  default: nil
+  desc: List of columns which are not hidden in ‘dired-hide-details-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-initial-position-hook
+  surface: option
+  name: dired-initial-position-hook
+  defined_in: dired.elc
+  type: hook
+  default: nil
+  desc: Hook used to position point in a new Dired listing display.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-keep-marker-copy
+  surface: option
+  name: dired-keep-marker-copy
+  defined_in: dired.elc
+  type: (choice (const :tag "Keep" t) (character :tag "Mark"))
+  default: '67'
+  desc: Controls marking of copied files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-keep-marker-hardlink
+  surface: option
+  name: dired-keep-marker-hardlink
+  defined_in: dired.elc
+  type: (choice (const :tag "Keep" t) (character :tag "Mark"))
+  default: '72'
+  desc: Controls marking of newly made hard links.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-keep-marker-rename
+  surface: option
+  name: dired-keep-marker-rename
+  defined_in: dired.elc
+  type: (choice (const :tag "Keep" t) (character :tag "Mark" :value 82))
+  default: t
+  desc: Controls marking of renamed files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-keep-marker-symlink
+  surface: option
+  name: dired-keep-marker-symlink
+  defined_in: dired.elc
+  type: (choice (const :tag "Keep" t) (character :tag "Mark"))
+  default: '89'
+  desc: Controls marking of newly made symbolic links.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-kept-versions
+  surface: option
+  name: dired-kept-versions
+  defined_in: files.elc
+  type: natnum
+  default: '2'
+  desc: When cleaning directory, number of versions of numbered backups to keep.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-kill-when-opening-new-dired-buffer
+  surface: option
+  name: dired-kill-when-opening-new-dired-buffer
+  defined_in: dired.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, kill the current buffer when selecting a new directory.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-listing-switches
+  surface: option
+  name: dired-listing-switches
+  defined_in: dired.elc
+  type: string
+  default: '"-al"'
+  desc: Switches passed to ‘ls’ for Dired.  MUST contain the ‘l’ option.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-load-hook
+  surface: option
+  name: dired-load-hook
+  defined_in: dired.elc
+  type: hook
+  default: nil
+  desc: Run after loading Dired.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-ls-f-marks-symlinks
+  surface: option
+  name: dired-ls-F-marks-symlinks
+  defined_in: dired.elc
+  type: boolean
+  default: nil
+  desc: Informs Dired about how ‘ls -lF’ marks symbolic links.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-make-directory-clickable
+  surface: option
+  name: dired-make-directory-clickable
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: When non-nil, make the directory at the start of the Dired buffer clickable.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-mark-region
+  surface: option
+  name: dired-mark-region
+  defined_in: dired.elc
+  type: (choice (const :tag "Don't mark files in active region" nil) (const :tag "Exclude file name outside of region" file)
+    (const :tag "Include the file at region end line" line))
+  default: file
+  desc: Defines what commands that mark files do with the active region.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-maybe-use-globstar
+  surface: option
+  name: dired-maybe-use-globstar
+  defined_in: dired.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, enable globstar if the shell supports it.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-mode-hook
+  surface: option
+  name: dired-mode-hook
+  defined_in: dired.elc
+  type: hook
+  default: nil
+  desc: Run at the very end of ‘dired-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-mouse-drag-files
+  surface: option
+  name: dired-mouse-drag-files
+  defined_in: dired.elc
+  type: (choice (const :tag "Don't allow dragging" nil) (const :tag "Copy file to new location" t) (const :tag "Move file
+    to new location" move) (const :tag "Create symbolic link to file" link))
+  default: nil
+  desc: If non-nil, allow the mouse to drag files from inside a Dired buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-movement-style
+  surface: option
+  name: dired-movement-style
+  defined_in: dired.elc
+  type: (choice (const :tag "Move to any line" nil) (const :tag "Cycle through non-empty lines" cycle) (const :tag "Cycle
+    through file lines" cycle-files) (const :tag "Stop on last/first non-empty line" bounded) (const :tag "Stop on last/first
+    file line" bounded-files))
+  default: nil
+  desc: Non-nil means point skips empty lines when moving in Dired buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-no-confirm
+  surface: option
+  name: dired-no-confirm
+  defined_in: dired.elc
+  type: (choice (const :tag "Affected files never shown" t) (set (const byte-compile) (const chgrp) (const chmod) (const chown)
+    (const compress) (const copy) (const delete) (const hardlink) (const load) (const move) (const print) (const shell) (const
+    symlink) (const touch) (const uncompress)))
+  default: nil
+  desc: Dired commands for which Dired should not popup list of affected files, or t.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-recursive-copies
+  surface: option
+  name: dired-recursive-copies
+  defined_in: dired.elc
+  type: (choice :tag "Copy directories" (const :tag "No recursive copies" nil) (const :tag "Ask for each directory" t) (const
+    :tag "Ask for each top directory only" top) (const :tag "Copy directories without asking" always))
+  default: top
+  desc: Whether Dired copies directories recursively.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-recursive-deletes
+  surface: option
+  name: dired-recursive-deletes
+  defined_in: dired.elc
+  type: (choice :tag "Delete non-empty directories" (const :tag "Yes" always) (const :tag "No--only delete empty directories"
+    nil) (const :tag "Confirm for each directory" t) (const :tag "Confirm for each top directory only" top))
+  default: top
+  desc: Whether Dired deletes directories recursively.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-subdir-switches
+  surface: option
+  name: dired-subdir-switches
+  defined_in: dired.elc
+  type: (choice (const :tag "Use dired-listing-switches" nil) (string :tag "Switches"))
+  default: nil
+  desc: If non-nil, switches passed to ‘ls’ for inserting subdirectories.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-switches-in-mode-line
+  surface: option
+  name: dired-switches-in-mode-line
+  defined_in: dired.elc
+  type: (choice (const :tag "Indicate by name or date, else full" nil) (const :tag "Show full switches" as-is) (integer :tag
+    "Show first N chars of switches" :value 10) (function :tag "Format with function" :value identity))
+  default: nil
+  desc: How to indicate ‘dired-actual-switches’ in mode-line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-touch-program
+  surface: option
+  name: dired-touch-program
+  defined_in: dired.elc
+  type: file
+  default: '"touch"'
+  desc: Name of touch command (usually ‘touch’).
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-trivial-filenames
+  surface: option
+  name: dired-trivial-filenames
+  defined_in: dired.elc
+  type: (choice (const :tag "Move to subdir" nil) (const :tag "Move to first" t) regexp)
+  default: '"\\`\\.\\.?\\''\\|\\`\\.?#"'
+  desc: Regexp of files to skip when finding first file of a directory.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-use-ls-dired
+  surface: option
+  name: dired-use-ls-dired
+  defined_in: dired.elc
+  type: (choice (const :tag "Use --dired only if `ls' supports it" unspecified) (const :tag "Do not use --dired" nil) (other
+    :tag "Always use --dired" t))
+  default: unspecified
+  desc: Non-nil means Dired should pass the "--dired" option to "ls".
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.display-buffer-alist
+  surface: option
+  name: display-buffer-alist
+  defined_in: window.elc
+  type: (alist :key-type (choice :tag "Condition" regexp (function :tag "Matcher function")) :value-type (cons :tag "Action"
+    (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window) (const
+    display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
+    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
+    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
+    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
+    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
+    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
+    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
+    :value-type (sexp :tag "Value"))))
+  default: nil
+  desc: Alist of user-defined conditional actions for ‘display-buffer’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.display-buffer-base-action
+  surface: option
+  name: display-buffer-base-action
+  defined_in: window.elc
+  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
+    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
+    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
+    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
+    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
+    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
+    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
+    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
+    :value-type (sexp :tag "Value")))
+  default: (nil)
+  desc: User-specified default action for ‘display-buffer’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.display-buffer-reuse-frames
+  surface: option
+  name: display-buffer-reuse-frames
+  defined_in: window.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means ‘display-buffer’ should reuse frames.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.display-comint-buffer-action
+  surface: option
+  name: display-comint-buffer-action
+  defined_in: window.elc
+  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
+    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
+    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
+    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
+    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
+    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
+    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
+    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
+    :value-type (sexp :tag "Value")))
+  default: (display-buffer-same-window (inhibit-same-window) (category . comint))
+  desc: ‘display-buffer’ action for displaying comint buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.display-tex-shell-buffer-action
+  surface: option
+  name: display-tex-shell-buffer-action
+  defined_in: window.elc
+  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
+    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
+    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
+    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
+    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
+    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
+    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
+    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
+    :value-type (sexp :tag "Value")))
+  default: (display-buffer-in-previous-window (inhibit-same-window . t) (category . tex-shell))
+  desc: ‘display-buffer’ action for displaying TeX shell buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.enable-local-eval
+  surface: option
+  name: enable-local-eval
+  defined_in: files.elc
+  type: (choice (const :tag "Obey" t) (const :tag "Ignore" nil) (other :tag "Query" other))
+  default: maybe
+  desc: Control processing of the "variable" ‘eval’ in a file’s local variables.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.enable-local-variables
+  surface: option
+  name: enable-local-variables
+  defined_in: files.elc
+  type: (choice (const :tag "Query Unsafe" t) (const :tag "Safe Only" :safe) (const :tag "Do all" :all) (const :tag "Ignore"
+    nil) (other :tag "Query" other))
+  default: t
+  desc: Control use of local variables in files you visit.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.enable-remote-dir-locals
+  surface: option
+  name: enable-remote-dir-locals
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means dir-local variables will be applied to remote files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.eval-expression-debug-on-error
+  surface: option
+  name: eval-expression-debug-on-error
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: If non-nil set ‘debug-on-error’ to t in ‘eval-expression’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.eval-expression-print-length
+  surface: option
+  name: eval-expression-print-length
+  defined_in: simple.elc
+  type: (choice (const :tag "No Limit" nil) integer)
+  default: '12'
+  desc: Value for ‘print-length’ while printing value in ‘eval-expression’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.eval-expression-print-level
+  surface: option
+  name: eval-expression-print-level
+  defined_in: simple.elc
+  type: (choice (const :tag "No Limit" nil) integer)
+  default: '4'
+  desc: Value for ‘print-level’ while printing value in ‘eval-expression’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.eval-expression-print-maximum-character
+  surface: option
+  name: eval-expression-print-maximum-character
+  defined_in: simple.elc
+  type: (choice (const :tag "ASCII characters" 127) (const :tag "All characters" 4194303) (integer :tag "Max codepoint to
+    display as character"))
+  default: '127'
+  desc: The largest integer that will be displayed as a character.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.even-window-heights
+  surface: option
+  name: even-window-heights
+  defined_in: window.elc
+  type: sexp
+  default: t
+  desc: If non-nil ‘display-buffer’ will try to even window sizes.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.even-window-sizes
+  surface: option
+  name: even-window-sizes
+  defined_in: window.elc
+  type: (choice (const :tag "Never" nil) (const :tag "Side-by-side windows only" width-only) (const :tag "Windows above or
+    below only" height-only) (const :tag "Always" t))
+  default: t
+  desc: If non-nil ‘display-buffer’ will try to even window sizes.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.exec-path
+  surface: option
+  name: exec-path
+  defined_in: files.elc
+  type: sexp
+  default: ("/Users/hawk/.cargo/bin" "/Users/hawk/.local/state/fnm_multishells/46772_1786088320410/bin" "/opt/homebrew/bin"
+    "/opt/homebrew/sbin" "/usr/local/bin" "/System/Cryptexes/App/usr/bin" "/usr/bin" "/bin" "/usr/sbin" "/sbin" "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin"
+    "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin" ...)
+  desc: List of directories to search programs to run in subprocesses.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.extended-command-suggest-shorter
+  surface: option
+  name: extended-command-suggest-shorter
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: If non-nil, show a shorter M-x invocation when there is one.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.file-name-at-point-functions
+  surface: option
+  name: file-name-at-point-functions
+  defined_in: files.elc
+  type: (hook :options (ffap-guess-file-name-at-point))
+  default: (ffap-guess-file-name-at-point)
+  desc: List of functions to try in sequence to get a file name at point.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.file-precious-flag
+  surface: option
+  name: file-precious-flag
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means protect against I/O errors while saving files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.file-preserve-symlinks-on-save
+  surface: option
+  name: file-preserve-symlinks-on-save
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, saving a buffer visited via a symlink won’t overwrite the symlink.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.fill-prefix
+  surface: option
+  name: fill-prefix
+  defined_in: simple.elc
+  type: (choice (const :tag "None" nil) string)
+  default: nil
+  desc: String for filling to insert at front of new line, or nil for none.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-directory-functions
+  surface: option
+  name: find-directory-functions
+  defined_in: files.elc
+  type: (hook :options (cvs-dired-noselect dired-noselect))
+  default: (cvs-dired-noselect dired-noselect)
+  desc: List of functions to try in sequence to visit a directory.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-file-existing-other-name
+  surface: option
+  name: find-file-existing-other-name
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil means find a file under alternative names, in existing buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-file-hook
+  surface: option
+  name: find-file-hook
+  defined_in: files.elc
+  type: hook
+  default: (url-handlers-set-buffer-mode epa-file-find-file-hook vc-refresh-state)
+  desc: List of functions to be called after a buffer is loaded from a file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-file-hooks
+  surface: option
+  name: find-file-hooks
+  defined_in: files.elc
+  type: sexp
+  default: (url-handlers-set-buffer-mode epa-file-find-file-hook vc-refresh-state)
+  desc: List of functions to be called after a buffer is loaded from a file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-file-run-dired
+  surface: option
+  name: find-file-run-dired
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil means allow ‘find-file’ to visit directories.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-file-suppress-same-file-warnings
+  surface: option
+  name: find-file-suppress-same-file-warnings
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means suppress warning messages for symlinked files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-file-visit-truename
+  surface: option
+  name: find-file-visit-truename
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means visiting a file uses its truename as the visited-file name.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-file-wildcards
+  surface: option
+  name: find-file-wildcards
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil means file-visiting commands should handle wildcards.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.find-sibling-rules
+  surface: option
+  name: find-sibling-rules
+  defined_in: files.elc
+  type: (alist :key-type (regexp :tag "Match") :value-type (repeat (string :tag "Expansion")))
+  default: nil
+  desc: Rules for finding "sibling" files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.fit-frame-to-buffer
+  surface: option
+  name: fit-frame-to-buffer
+  defined_in: window.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means ‘fit-window-to-buffer’ can fit a frame to its buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.fit-frame-to-buffer-margins
+  surface: option
+  name: fit-frame-to-buffer-margins
+  defined_in: window.elc
+  type: (list (choice :tag "Left" :value nil :format "%[LeftMargin%] %v  " (const :tag "None" :format "%t" nil) (integer :tag
+    "Pixels" :size 5)) (choice :tag "Top" :value nil :format "%[TopMargin%] %v  " (const :tag "None" :format "%t" nil) (integer
+    :tag "Pixels" :size 5)) (choice :tag "Right" :value nil :format "%[RightMargin%] %v  " (const :tag "None" :format "%t"
+    nil) (integer :tag "Pixels" :size 5)) (choice :tag "Bottom" :value nil :format "%[BottomMargin%] %v  " (const :tag "None"
+    :format "%t" nil) (integer :tag "Pixels" :size 5)))
+  default: (nil nil nil nil)
+  desc: Margins around frame for ‘fit-frame-to-buffer’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.fit-frame-to-buffer-sizes
+  surface: option
+  name: fit-frame-to-buffer-sizes
+  defined_in: window.elc
+  type: '(list (choice :tag "Maximum Height" :value nil :format "%[MaxHeight%] %v  " (const :tag "None" :format "%t" nil)
+    (integer :tag "Lines" :size 5)) (choice :tag "Minimum Height" :value nil :format "%[MinHeight%] %v  " (const :tag "None"
+    :format "%t" nil) (integer :tag "Lines" :size 5)) (choice :tag "Maximum Width" :value nil :format "%[MaxWidth%] %v  "
+    (const :tag "None" :format "%t" nil) (integer :tag "Columns" :size 5)) (choice :tag "Minimum Width" :value nil :format
+    "%[MinWidth%] %v
+
+    " (const :tag "None" :format "%t" nil) (integer :tag "Columns" :size 5)))'
+  default: (nil nil nil nil)
+  desc: Size boundaries of frame for ‘fit-frame-to-buffer’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.fit-window-to-buffer-horizontally
+  surface: option
+  name: fit-window-to-buffer-horizontally
+  defined_in: window.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means ‘fit-window-to-buffer’ can resize windows horizontally.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.frame-auto-hide-function
+  surface: option
+  name: frame-auto-hide-function
+  defined_in: window.elc
+  type: (choice (const :tag "Iconify" iconify-frame) (const :tag "Make invisible" make-frame-invisible) (const :tag "Delete"
+    delete-frame) (const :tag "Do nothing" ignore) function)
+  default: iconify-frame
+  desc: Function called to automatically hide frames.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.global-mark-ring-max
+  surface: option
+  name: global-mark-ring-max
+  defined_in: simple.elc
+  type: natnum
+  default: '16'
+  desc: Maximum size of global mark ring.  Start discarding off end if gets this big.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.global-visual-line-mode
+  surface: option
+  name: global-visual-line-mode
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Non-nil if Global Visual-Line mode is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.global-visual-line-mode-hook
+  surface: option
+  name: global-visual-line-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘global-visual-line-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.goal-column
+  surface: option
+  name: goal-column
+  defined_in: simple.elc
+  type: (choice integer (const :tag "None" nil))
+  default: nil
+  desc: Semipermanent goal column for vertical motion, as set by C-x C-n, or nil.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.goto-line-history-local
+  surface: option
+  name: goto-line-history-local
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If this option is nil, ‘goto-line-history’ is shared between all buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.idle-update-delay
+  surface: option
+  name: idle-update-delay
+  defined_in: simple.elc
+  type: number
+  default: '0.5'
+  desc: Idle time delay before updating various things on the screen.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.ignored-local-variable-values
+  surface: option
+  name: ignored-local-variable-values
+  defined_in: files.elc
+  type: alist
+  default: nil
+  desc: List of variable-value pairs that should always be ignored.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.indent-tabs-mode
+  surface: option
+  name: indent-tabs-mode
+  defined_in: simple.elc
+  type: sexp
+  default: t
+  desc: Indentation can insert tabs if this is non-nil.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.indent-tabs-mode-hook
+  surface: option
+  name: indent-tabs-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘indent-tabs-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.indicate-unused-lines
+  surface: option
+  name: indicate-unused-lines
+  defined_in: simple.elc
+  type: sexp
+  default: nil
+  desc: Visually indicate unused ("empty") screen lines after the buffer end.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.inhibit-message-regexps
+  surface: option
+  name: inhibit-message-regexps
+  defined_in: minibuffer.elc
+  type: (repeat regexp)
+  default: nil
+  desc: List of regexps that inhibit messages by the function ‘inhibit-message’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.insert-default-directory
+  surface: option
+  name: insert-default-directory
+  defined_in: minibuffer.elc
+  type: boolean
+  default: t
+  desc: Non-nil means when reading a filename start with default dir in minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.insert-directory-program
+  surface: option
+  name: insert-directory-program
+  defined_in: files.elc
+  type: string
+  default: '"gls"'
+  desc: Absolute or relative name of the ‘ls’-like program.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-allow-motion
+  surface: option
+  name: isearch-allow-motion
+  defined_in: isearch.elc
+  type: (choice (const :tag "Off" nil) (const :tag "On" t))
+  default: nil
+  desc: Whether to allow movement between isearch matches by cursor motion commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-allow-prefix
+  surface: option
+  name: isearch-allow-prefix
+  defined_in: isearch.elc
+  type: boolean
+  default: t
+  desc: Whether prefix arguments are allowed during incremental search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-allow-scroll
+  surface: option
+  name: isearch-allow-scroll
+  defined_in: isearch.elc
+  type: (choice (const :tag "Scrolling exits Isearch" nil) (const :tag "Scrolling with current match on screen" t) (const
+    :tag "Scrolling with current match off screen" unlimited))
+  default: nil
+  desc: Whether scrolling is allowed during incremental search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-fold-quotes-mode-hook
+  surface: option
+  name: isearch-fold-quotes-mode-hook
+  defined_in: isearch.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘isearch-fold-quotes-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-forward-thing-at-point
+  surface: option
+  name: isearch-forward-thing-at-point
+  defined_in: isearch.elc
+  type: (repeat (symbol :tag "Thing symbol"))
+  default: (region url symbol sexp)
+  desc: A list of symbols to try to get the "thing" at point.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-hide-immediately
+  surface: option
+  name: isearch-hide-immediately
+  defined_in: isearch.elc
+  type: boolean
+  default: t
+  desc: If non-nil, re-hide an invisible match right away.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-lax-whitespace
+  surface: option
+  name: isearch-lax-whitespace
+  defined_in: isearch.elc
+  type: boolean
+  default: t
+  desc: If non-nil, a space will match a sequence of whitespace chars.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-lazy-count
+  surface: option
+  name: isearch-lazy-count
+  defined_in: isearch.elc
+  type: boolean
+  default: nil
+  desc: Show match numbers in the search prompt.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-lazy-highlight
+  surface: option
+  name: isearch-lazy-highlight
+  defined_in: isearch.elc
+  type: (choice (const :tag "Off" nil) (const :tag "On, and applied to current window" t) (const :tag "On, and applied to
+    all windows" all-windows))
+  default: t
+  desc: Controls the lazy-highlighting during incremental search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-motion-changes-direction
+  surface: option
+  name: isearch-motion-changes-direction
+  defined_in: isearch.elc
+  type: (choice (const :tag "Off" nil) (const :tag "On" t))
+  default: nil
+  desc: Whether motion commands during incremental search change search direction.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-repeat-on-direction-change
+  surface: option
+  name: isearch-repeat-on-direction-change
+  defined_in: isearch.elc
+  type: (choice (const :tag "Remain on the same match" nil) (const :tag "Move to another match" t))
+  default: nil
+  desc: Whether a direction change should move to another match.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-resume-in-command-history
+  surface: option
+  name: isearch-resume-in-command-history
+  defined_in: isearch.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, ‘isearch-resume’ commands are added to the command history.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-wrap-pause
+  surface: option
+  name: isearch-wrap-pause
+  defined_in: isearch.elc
+  type: (choice (const :tag "Pause before wrapping" t) (const :tag "No pause before wrapping" no) (const :tag "No pause and
+    no flashing" no-ding) (const :tag "Disable wrapping" nil))
+  default: t
+  desc: Define the behavior of wrapping when there are no more matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.isearch-yank-on-move
+  surface: option
+  name: isearch-yank-on-move
+  defined_in: isearch.elc
+  type: (choice (const :tag "Motion keys exit Isearch" nil) (const :tag "Motion keys extend the search string" t) (const :tag
+    "Shifted motion keys extend the search string" shift))
+  default: nil
+  desc: Motion keys yank text to the search string while you move the cursor.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kept-new-versions
+  surface: option
+  name: kept-new-versions
+  defined_in: files.elc
+  type: natnum
+  default: '2'
+  desc: Number of newest versions to keep when a new numbered backup is made.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kept-old-versions
+  surface: option
+  name: kept-old-versions
+  defined_in: files.elc
+  type: natnum
+  default: '2'
+  desc: Number of oldest versions to keep when a new numbered backup is made.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kill-append-merge-undo
+  surface: option
+  name: kill-append-merge-undo
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Amalgamate appending kills with the last kill for undo.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kill-do-not-save-duplicates
+  surface: option
+  name: kill-do-not-save-duplicates
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, don’t add a string to ‘kill-ring’ if it duplicates the last one.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kill-emacs-query-functions
+  surface: option
+  name: kill-emacs-query-functions
+  defined_in: files.elc
+  type: hook
+  default: nil
+  desc: Functions to call with no arguments to query about killing Emacs.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kill-read-only-ok
+  surface: option
+  name: kill-read-only-ok
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means don’t signal an error for killing read-only text.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kill-ring-max
+  surface: option
+  name: kill-ring-max
+  defined_in: simple.elc
+  type: natnum
+  default: '120'
+  desc: Maximum length of kill ring before oldest elements are thrown away.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kill-transform-function
+  surface: option
+  name: kill-transform-function
+  defined_in: simple.elc
+  type: (choice (const :tag "No transform" nil) function)
+  default: nil
+  desc: Function to call to transform a string before it’s put on the kill ring.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kill-whole-line
+  surface: option
+  name: kill-whole-line
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, ‘kill-line’ with no arg at start of line kills the whole line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kmacro-call-mouse-event
+  surface: option
+  name: kmacro-call-mouse-event
+  defined_in: kmacro.elc
+  type: symbol
+  default: S-mouse-3
+  desc: The mouse event used by kmacro to call a macro.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kmacro-call-repeat-key
+  surface: option
+  name: kmacro-call-repeat-key
+  defined_in: kmacro.elc
+  type: (choice (const :tag "Disabled" nil) (const :tag "Last key" t) (character :tag "Character" :value 101) (symbol :tag
+    "Key symbol" :value RET))
+  default: t
+  desc: Allow repeating macro call using last key or a specific key.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kmacro-call-repeat-with-arg
+  surface: option
+  name: kmacro-call-repeat-with-arg
+  defined_in: kmacro.elc
+  type: boolean
+  default: nil
+  desc: Repeat macro call with original arg when non-nil; repeat once if nil.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kmacro-execute-before-append
+  surface: option
+  name: kmacro-execute-before-append
+  defined_in: kmacro.elc
+  type: boolean
+  default: t
+  desc: Controls whether appending to a macro starts by executing the macro.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kmacro-repeat-no-prefix
+  surface: option
+  name: kmacro-repeat-no-prefix
+  defined_in: kmacro.elc
+  type: boolean
+  default: t
+  desc: Allow repeating certain macro commands without entering the C-x C-k prefix.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kmacro-ring-max
+  surface: option
+  name: kmacro-ring-max
+  defined_in: kmacro.elc
+  type: natnum
+  default: '8'
+  desc: Maximum number of keyboard macros to save in macro ring.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kmacro-step-edit-mini-window-height
+  surface: option
+  name: kmacro-step-edit-mini-window-height
+  defined_in: kmacro.elc
+  type: number
+  default: '0.75'
+  desc: Override ‘max-mini-window-height’ when step edit keyboard macro.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.large-file-warning-threshold
+  surface: option
+  name: large-file-warning-threshold
+  defined_in: files.elc
+  type: (choice integer (const :tag "Never request confirmation" nil))
+  default: '10000000'
+  desc: Maximum size of file above which a confirmation is requested.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-count-prefix-format
+  surface: option
+  name: lazy-count-prefix-format
+  defined_in: isearch.elc
+  type: (choice (const :tag "No prefix" nil) (string :tag "Prefix format string" "%s/%s "))
+  default: '"%s/%s "'
+  desc: Format of the current/total number of matches for the prompt prefix.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-count-suffix-format
+  surface: option
+  name: lazy-count-suffix-format
+  defined_in: isearch.elc
+  type: (choice (const :tag "No suffix" nil) (string :tag "Suffix format string" " [%s of %s]"))
+  default: nil
+  desc: Format of the current/total number of matches for the prompt suffix.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-highlight-buffer
+  surface: option
+  name: lazy-highlight-buffer
+  defined_in: isearch.elc
+  type: boolean
+  default: nil
+  desc: Controls the lazy-highlighting of the full buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-highlight-buffer-max-at-a-time
+  surface: option
+  name: lazy-highlight-buffer-max-at-a-time
+  defined_in: isearch.elc
+  type: (choice (const :tag "All" nil) (integer :tag "Some"))
+  default: '200'
+  desc: Maximum matches to highlight at a time (for ‘lazy-highlight-buffer’).
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-highlight-cleanup
+  surface: option
+  name: lazy-highlight-cleanup
+  defined_in: isearch.elc
+  type: boolean
+  default: t
+  desc: Controls whether to remove extra highlighting after a search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-highlight-initial-delay
+  surface: option
+  name: lazy-highlight-initial-delay
+  defined_in: isearch.elc
+  type: number
+  default: '0.25'
+  desc: Seconds to wait before beginning to lazily highlight all matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-highlight-interval
+  surface: option
+  name: lazy-highlight-interval
+  defined_in: isearch.elc
+  type: number
+  default: '0'
+  desc: Seconds between lazily highlighting successive matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-highlight-max-at-a-time
+  surface: option
+  name: lazy-highlight-max-at-a-time
+  defined_in: isearch.elc
+  type: (choice (const :tag "All" nil) (integer :tag "Some"))
+  default: nil
+  desc: Maximum matches to highlight at a time (for ‘lazy-highlight’).
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lazy-highlight-no-delay-length
+  surface: option
+  name: lazy-highlight-no-delay-length
+  defined_in: isearch.elc
+  type: integer
+  default: '3'
+  desc: For search strings at least this long, lazy highlight starts immediately.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.line-move-ignore-invisible
+  surface: option
+  name: line-move-ignore-invisible
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: Non-nil means commands that move by lines ignore invisible newlines.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.line-move-visual
+  surface: option
+  name: line-move-visual
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: When non-nil, ‘line-move’ moves point by visual lines.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.line-number-mode
+  surface: option
+  name: line-number-mode
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: Non-nil if Line-Number mode is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.line-number-mode-hook
+  surface: option
+  name: line-number-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘line-number-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.list-directory-brief-switches
+  surface: option
+  name: list-directory-brief-switches
+  defined_in: files.elc
+  type: string
+  default: '"-CF"'
+  desc: Switches for ‘list-directory’ to pass to ‘ls’ for brief listing.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.list-directory-verbose-switches
+  surface: option
+  name: list-directory-verbose-switches
+  defined_in: files.elc
+  type: string
+  default: '"-l"'
+  desc: Switches for ‘list-directory’ to pass to ‘ls’ for verbose listing.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.list-matching-lines-buffer-name-face
+  surface: option
+  name: list-matching-lines-buffer-name-face
+  defined_in: replace.elc
+  type: (choice (const :tag "Don't highlight buffer names" nil) face)
+  default: underline
+  desc: Face used by M-x list-matching-lines to show the names of buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.list-matching-lines-current-line-face
+  surface: option
+  name: list-matching-lines-current-line-face
+  defined_in: replace.elc
+  type: face
+  default: lazy-highlight
+  desc: Face used by M-x list-matching-lines to highlight the current line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.list-matching-lines-default-context-lines
+  surface: option
+  name: list-matching-lines-default-context-lines
+  defined_in: replace.elc
+  type: integer
+  default: '0'
+  desc: Default number of context lines included around ‘list-matching-lines’ matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.list-matching-lines-face
+  surface: option
+  name: list-matching-lines-face
+  defined_in: replace.elc
+  type: (choice (const :tag "Don't highlight matching portions" nil) face)
+  default: match
+  desc: Face used by M-x list-matching-lines to show the text that matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.list-matching-lines-jump-to-current-line
+  surface: option
+  name: list-matching-lines-jump-to-current-line
+  defined_in: replace.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, M-x list-matching-lines shows the current line highlighted.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.list-matching-lines-prefix-face
+  surface: option
+  name: list-matching-lines-prefix-face
+  defined_in: replace.elc
+  type: face
+  default: shadow
+  desc: Face used by M-x list-matching-lines to show the prefix column.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lock-file-mode-hook
+  surface: option
+  name: lock-file-mode-hook
+  defined_in: files.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘lock-file-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.lock-file-name-transforms
+  surface: option
+  name: lock-file-name-transforms
+  defined_in: files.elc
+  type: (repeat (list (regexp :tag "Regexp") (string :tag "Replacement") (boolean :tag "Uniquify")))
+  default: nil
+  desc: Transforms to apply to buffer file name before making a lock file name.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mail-user-agent
+  surface: option
+  name: mail-user-agent
+  defined_in: simple.elc
+  type: '(radio (function-item :tag "Message package" :format "%t
+
+    " message-user-agent) (function-item :tag "Mail package" :format "%t
+
+    " sendmail-user-agent) (function-item :tag "Emacs interface to MH" :format "%t
+
+    " mh-e-user-agent) (function-item :tag "Message with full Gnus features" :format "%t
+
+    " gnus-user-agent) (symbol :tag "Other"))'
+  default: message-user-agent
+  desc: Your preference for a mail composition package.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.major-mode-remap-alist
+  surface: option
+  name: major-mode-remap-alist
+  defined_in: files.elc
+  type: (alist (symbol) (function))
+  default: nil
+  desc: Alist mapping file-specified modes to alternative modes.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.make-backup-file-name-function
+  surface: option
+  name: make-backup-file-name-function
+  defined_in: files.elc
+  type: (choice (const :tag "Deprecated way to get the default function" nil) (function :tag "Function"))
+  default: make-backup-file-name--default-function
+  desc: A function that ‘make-backup-file-name’ uses to create backup file names.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.make-backup-files
+  surface: option
+  name: make-backup-files
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil means make a backup of a file the first time it is saved.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mark-ring-max
+  surface: option
+  name: mark-ring-max
+  defined_in: simple.elc
+  type: natnum
+  default: '16'
+  desc: Maximum size of mark ring.  Start discarding off end if gets this big.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.messages-buffer-max-lines
+  surface: option
+  name: messages-buffer-max-lines
+  defined_in: subr.elc
+  type: sexp
+  default: '1000'
+  desc: Maximum number of lines to keep in the message log buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-beginning-of-buffer-movement
+  surface: option
+  name: minibuffer-beginning-of-buffer-movement
+  defined_in: minibuffer.elc
+  type: boolean
+  default: nil
+  desc: Control how the M-< command in the minibuffer behaves.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-completion-auto-choose
+  surface: option
+  name: minibuffer-completion-auto-choose
+  defined_in: minibuffer.elc
+  type: boolean
+  default: t
+  desc: Non-nil means to automatically insert completions to the minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-default-prompt-format
+  surface: option
+  name: minibuffer-default-prompt-format
+  defined_in: minibuffer.elc
+  type: string
+  default: '" (default %s)"'
+  desc: Format string used to output "default" values.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-history-case-insensitive-variables
+  surface: option
+  name: minibuffer-history-case-insensitive-variables
+  defined_in: simple.elc
+  type: (repeat variable)
+  default: nil
+  desc: Minibuffer history variables for which matching should ignore case.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-lazy-count-format
+  surface: option
+  name: minibuffer-lazy-count-format
+  defined_in: isearch.elc
+  type: (choice (const :tag "Don't display a count" nil) (string :tag "Display match count" "%s "))
+  default: '"%s "'
+  desc: Format of the total number of matches for the prompt prefix.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-message-clear-timeout
+  surface: option
+  name: minibuffer-message-clear-timeout
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "Never time out" nil) (integer :tag "Wait for the number of seconds" 2))
+  default: nil
+  desc: How long to display an echo-area message when the minibuffer is active.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-regexp-mode
+  surface: option
+  name: minibuffer-regexp-mode
+  defined_in: minibuffer.elc
+  type: boolean
+  default: t
+  desc: Non-nil if Minibuffer-Regexp mode is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-regexp-mode-hook
+  surface: option
+  name: minibuffer-regexp-mode-hook
+  defined_in: minibuffer.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘minibuffer-regexp-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-regexp-prompts
+  surface: option
+  name: minibuffer-regexp-prompts
+  defined_in: minibuffer.elc
+  type: (repeat (string :tag "Prompt"))
+  default: ("Posix search" "RE search" "Search for regexp" "Query replace regexp")
+  desc: List of regular expressions that trigger ‘minibuffer-regexp-mode’ features.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-visible-completions
+  surface: option
+  name: minibuffer-visible-completions
+  defined_in: minibuffer.elc
+  type: boolean
+  default: nil
+  desc: Whether candidates shown in *Completions* can be navigated from minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-default-help-echo
+  surface: option
+  name: mode-line-default-help-echo
+  defined_in: bindings.elc
+  type: '(choice (const :tag "No help" :value nil) function (string :value "mouse-1: Select (drag to resize)
+
+    mouse-2: Make current window occupy the whole frame
+
+    mouse-3: Remove current window from display"))'
+  default: mode-line-default-help-echo
+  desc: Default help text for the mode line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-percent-position
+  surface: option
+  name: mode-line-percent-position
+  defined_in: bindings.elc
+  type: '(radio (const :tag "nil:  No offset is displayed" nil) (const :tag "\"%o\": Proportion of \"travel\" of the window
+    through the buffer" (-3 "%o")) (const :tag "\"%p\": Percentage offset of top of window" (-3 "%p")) (const :tag "\"%P\":
+    Percentage offset of bottom of window" (-3 "%P")) (const :tag "\"%q\": Offsets of both top and bottom of window" (6 "%q")))'
+  default: (-3 "%p")
+  desc: Specification of "percentage offset" of window through buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-position-column-format
+  surface: option
+  name: mode-line-position-column-format
+  defined_in: bindings.elc
+  type: (list string)
+  default: (" C%c")
+  desc: Format used to display column numbers in the mode line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-position-column-line-format
+  surface: option
+  name: mode-line-position-column-line-format
+  defined_in: bindings.elc
+  type: (list string)
+  default: (" (%l,%c)")
+  desc: Format used to display combined line/column numbers in the mode line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-position-line-format
+  surface: option
+  name: mode-line-position-line-format
+  defined_in: bindings.elc
+  type: (list string)
+  default: (" L%l")
+  desc: Format used to display line numbers in the mode line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-right-align-edge
+  surface: option
+  name: mode-line-right-align-edge
+  defined_in: bindings.elc
+  type: (choice (const right-margin) (const right-fringe) (const window))
+  default: window
+  desc: Where function ‘mode-line-format-right-align’ should align to.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-require-final-newline
+  surface: option
+  name: mode-require-final-newline
+  defined_in: files.elc
+  type: (choice (const :tag "When visiting" visit) (const :tag "When saving" t) (const :tag "When visiting or saving" visit-save)
+    (const :tag "Don't add newlines" nil) (other :tag "Ask each time" ask))
+  default: t
+  desc: Whether to add a newline at end of file, in certain major modes.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mounted-file-systems
+  surface: option
+  name: mounted-file-systems
+  defined_in: files.elc
+  type: regexp
+  default: '"^\\(?:/\\(?:afs/\\|m\\(?:edia/\\|nt\\)\\|\\(?:ne\\|tmp_mn\\)t/\\)\\)"'
+  desc: File systems that ought to be mounted.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.multi-message-max
+  surface: option
+  name: multi-message-max
+  defined_in: minibuffer.elc
+  type: number
+  default: '8'
+  desc: Max size of the list of accumulated messages.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.multi-message-timeout
+  surface: option
+  name: multi-message-timeout
+  defined_in: minibuffer.elc
+  type: number
+  default: '2'
+  desc: Number of seconds between messages before clearing the accumulated list.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-find-buffer-function
+  surface: option
+  name: next-error-find-buffer-function
+  defined_in: simple.elc
+  type: (choice (const :tag "No default" ignore) (const :tag "Single next-error capable buffer on selected frame" next-error-buffer-on-selected-frame)
+    (const :tag "Current buffer if next-error capable and outside navigation" next-error-buffer-unnavigated-current) (function
+    :tag "Other function"))
+  default: ignore
+  desc: Function called to find a ‘next-error’ capable buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-follow-minor-mode-hook
+  surface: option
+  name: next-error-follow-minor-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘next-error-follow-minor-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-found-function
+  surface: option
+  name: next-error-found-function
+  defined_in: simple.elc
+  type: (choice (const :tag "No default" ignore) (const :tag "Quit previous window with M-0" next-error-quit-window) (function
+    :tag "Other function"))
+  default: ignore
+  desc: Function called when a next locus is found and displayed.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-highlight
+  surface: option
+  name: next-error-highlight
+  defined_in: simple.elc
+  type: (choice (number :tag "Highlight for specified time") (const :tag "Semipermanent highlighting" t) (const :tag "No highlighting"
+    nil) (const :tag "Fringe arrow" fringe-arrow))
+  default: '0.5'
+  desc: Highlighting of locations in the selected buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-highlight-no-select
+  surface: option
+  name: next-error-highlight-no-select
+  defined_in: simple.elc
+  type: (choice (number :tag "Highlight for specified time") (const :tag "Semipermanent highlighting" t) (const :tag "No highlighting"
+    nil) (const :tag "Fringe arrow" fringe-arrow))
+  default: '0.5'
+  desc: Highlighting of locations in non-selected source buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-hook
+  surface: option
+  name: next-error-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: List of hook functions run by ‘next-error’ after visiting source file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-message-highlight
+  surface: option
+  name: next-error-message-highlight
+  defined_in: simple.elc
+  type: (choice (const :tag "Highlight the current error" t) (const :tag "Highlight all visited errors" keep) (const :tag
+    "No highlighting" nil))
+  default: nil
+  desc: If non-nil, highlight the current error message in the ‘next-error’ buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-recenter
+  surface: option
+  name: next-error-recenter
+  defined_in: simple.elc
+  type: (choice (integer :tag "Line to recenter to") (const :tag "Center of window" (4)) (const :tag "No recentering" nil))
+  default: nil
+  desc: Display the line in the visited source file recentered as specified.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-error-verbose
+  surface: option
+  name: next-error-verbose
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: If non-nil, ‘next-error’ always outputs the current error buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.next-line-add-newlines
+  surface: option
+  name: next-line-add-newlines
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, ‘next-line’ inserts newline to avoid ‘end of buffer’ error.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.normal-erase-is-backspace
+  surface: option
+  name: normal-erase-is-backspace
+  defined_in: simple.elc
+  type: (choice (const :tag "Off" nil) (const :tag "Maybe" maybe) (other :tag "On" t))
+  default: maybe
+  desc: Set the default behavior of the Delete and Backspace keys.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.normal-erase-is-backspace-mode-hook
+  surface: option
+  name: normal-erase-is-backspace-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘normal-erase-is-backspace-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.occur-excluded-properties
+  surface: option
+  name: occur-excluded-properties
+  defined_in: replace.elc
+  type: (choice (const :tag "All" t) (repeat symbol))
+  default: (read-only invisible intangible field mouse-face help-echo local-map keymap yank-handler follow-link)
+  desc: Text properties to discard when copying lines to the *Occur* buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.occur-hook
+  surface: option
+  name: occur-hook
+  defined_in: replace.elc
+  type: hook
+  default: nil
+  desc: Hook run by Occur when there are any matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.occur-mode-find-occurrence-hook
+  surface: option
+  name: occur-mode-find-occurrence-hook
+  defined_in: replace.elc
+  type: hook
+  default: nil
+  desc: Hook run by Occur after locating an occurrence.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.occur-mode-hook
+  surface: option
+  name: occur-mode-hook
+  defined_in: replace.elc
+  type: hook
+  default: (turn-on-font-lock)
+  desc: Hook run when entering Occur mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.out-of-memory-warning-percentage
+  surface: option
+  name: out-of-memory-warning-percentage
+  defined_in: files.elc
+  type: (choice integer (const :tag "Never issue warning" nil))
+  default: nil
+  desc: Warn if file size exceeds this percentage of available free memory.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.overwrite-mode-hook
+  surface: option
+  name: overwrite-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘overwrite-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.page-delimiter
+  surface: option
+  name: page-delimiter
+  defined_in: paragraphs.elc
+  type: regexp
+  default: "\"^\f\""
+  desc: Regexp describing line-beginnings that separate pages.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.paragraph-ignore-fill-prefix
+  surface: option
+  name: paragraph-ignore-fill-prefix
+  defined_in: paragraphs.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means the paragraph commands are not affected by ‘fill-prefix’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.paragraph-separate
+  surface: option
+  name: paragraph-separate
+  defined_in: paragraphs.elc
+  type: regexp
+  default: "\"[ \t\f]*$\""
+  desc: Regexp for beginning of a line that separates paragraphs.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.paragraph-start
+  surface: option
+  name: paragraph-start
+  defined_in: paragraphs.elc
+  type: regexp
+  default: "\"\f\\\\|[ \t]*$\""
+  desc: Regexp for beginning of a line that starts OR separates paragraphs.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.pop-up-frame-alist
+  surface: option
+  name: pop-up-frame-alist
+  defined_in: window.elc
+  type: (repeat (cons :format "%v" (symbol :tag "Parameter") (sexp :tag "Value")))
+  default: nil
+  desc: Alist of parameters for automatically generated new frames.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.pop-up-frame-function
+  surface: option
+  name: pop-up-frame-function
+  defined_in: window.elc
+  type: function
+  default: "#[0 \"\\301\b!\\207\" [pop-up-frame-alist make-frame] 2]"
+  desc: Function used by ‘display-buffer’ for creating a new frame.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.pop-up-frames
+  surface: option
+  name: pop-up-frames
+  defined_in: window.elc
+  type: (choice (const :tag "Never" nil) (const :tag "On graphic displays only" graphic-only) (const :tag "Always" t))
+  default: nil
+  desc: Whether ‘display-buffer’ should make a separate frame.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.pop-up-windows
+  surface: option
+  name: pop-up-windows
+  defined_in: window.elc
+  type: boolean
+  default: t
+  desc: Non-nil means ‘display-buffer’ should make a new window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.process-file-return-signal-string
+  surface: option
+  name: process-file-return-signal-string
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Whether to return a string describing the signal interrupting a process.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-buffers-viewer
+  surface: option
+  name: project-buffers-viewer
+  defined_in: project.elc
+  type: (radio (function-item project-list-buffers-buffer-menu) (function-item project-list-buffers-ibuffer))
+  default: project-list-buffers-buffer-menu
+  desc: Function to use in ‘project-list-buffers’ to render the list.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-compilation-buffer-name-function
+  surface: option
+  name: project-compilation-buffer-name-function
+  defined_in: project.elc
+  type: (choice (const :tag "Default" nil) (const :tag "Prefixed with project name" project-prefixed-buffer-name) (function
+    :tag "Custom function"))
+  default: nil
+  desc: Function to compute the name of a project compilation buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-file-history-behavior
+  surface: option
+  name: project-file-history-behavior
+  defined_in: project.elc
+  type: (choice (const :tag "Default behavior" t) (const :tag "Adjust to be relative to current" relativize))
+  default: t
+  desc: If ‘relativize’, entries in ‘file-name-history’ are adjusted.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-ignore-buffer-conditions
+  surface: option
+  name: project-ignore-buffer-conditions
+  defined_in: project.elc
+  type: (repeat (choice regexp function symbol (cons :tag "Major mode" (const major-mode) symbol) (cons :tag "Derived mode"
+    (const derived-mode) symbol) (cons :tag "Negation" (const not) sexp) (cons :tag "Conjunction" (const and) sexp) (cons
+    :tag "Disjunction" (const or) sexp)))
+  default: nil
+  desc: List of conditions to filter the buffers to be switched to.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-key-prompt-style
+  surface: option
+  name: project-key-prompt-style
+  defined_in: project.elc
+  type: (choice (const :tag "Using help-key-binding face" t) (const :tag "Using bold face and brackets" brackets))
+  default: t
+  desc: Which presentation to use when asking to choose a command by key.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-kill-buffer-conditions
+  surface: option
+  name: project-kill-buffer-conditions
+  defined_in: project.elc
+  type: (repeat (choice regexp function symbol (cons :tag "Major mode" (const major-mode) symbol) (cons :tag "Derived mode"
+    (const derived-mode) symbol) (cons :tag "Negation" (const not) sexp) (cons :tag "Conjunction" (const and) sexp) (cons
+    :tag "Disjunction" (const or) sexp)))
+  default: (buffer-file-name (and (major-mode . fundamental-mode) "\\`[^ ]") (and (derived-mode . special-mode) (not ...)
+    (not ...)) (derived-mode . compilation-mode) (derived-mode . dired-mode) (derived-mode . diff-mode) (derived-mode . comint-mode)
+    (derived-mode . eshell-mode) (derived-mode . change-log-mode))
+  desc: List of conditions to kill buffers related to a project.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-kill-buffers-display-buffer-list
+  surface: option
+  name: project-kill-buffers-display-buffer-list
+  defined_in: project.elc
+  type: boolean
+  default: nil
+  desc: Non-nil to display list of buffers to kill before killing project buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-list-file
+  surface: option
+  name: project-list-file
+  defined_in: project.elc
+  type: file
+  default: '"~/.emacs.d/projects"'
+  desc: File in which to save the list of known projects.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-mode-line
+  surface: option
+  name: project-mode-line
+  defined_in: project.elc
+  type: boolean
+  default: nil
+  desc: Whether to show current project name and Project menu on the mode line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-prompter
+  surface: option
+  name: project-prompter
+  defined_in: project.elc
+  type: (choice (const :tag "Prompt for a project directory" project-prompt-project-dir) (const :tag "Prompt for a project
+    name" project-prompt-project-name) (function :tag "Custom function" nil))
+  default: project-prompt-project-dir
+  desc: Function to call to prompt for a project.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-read-file-name-function
+  surface: option
+  name: project-read-file-name-function
+  defined_in: project.elc
+  type: (choice (const :tag "Read with completion from relative names" project--read-file-cpd-relative) (const :tag "Read
+    with completion from absolute names" project--read-file-absolute) (function :tag "Custom function" nil))
+  default: project--read-file-cpd-relative
+  desc: Function to call to read a file name from a list.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-switch-commands
+  surface: option
+  name: project-switch-commands
+  defined_in: project.elc
+  type: (choice (repeat :tag "Commands menu" (list (symbol :tag "Command") (string :tag "Label") (choice :tag "Key to press"
+    (const :tag "Infer from the keymap" nil) (character :tag "Explicit key")))) (const :tag "Use both short keys and global
+    bindings" project-prefix-or-any-command) (symbol :tag "Custom command"))
+  default: ((project-find-file "Find file") (project-find-regexp "Find regexp") (project-find-dir "Find directory") (project-vc-dir
+    "VC-Dir") (project-eshell "Eshell") (project-any-command "Other"))
+  desc: Alist mapping commands to descriptions.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-switch-use-entire-map
+  surface: option
+  name: project-switch-use-entire-map
+  defined_in: project.elc
+  type: boolean
+  default: nil
+  desc: Whether ‘project-switch-project’ will use the entire ‘project-prefix-map’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-vc-extra-root-markers
+  surface: option
+  name: project-vc-extra-root-markers
+  defined_in: project.elc
+  type: (repeat string)
+  default: nil
+  desc: List of additional markers to signal project roots.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-vc-ignores
+  surface: option
+  name: project-vc-ignores
+  defined_in: project.elc
+  type: (repeat string)
+  default: nil
+  desc: List of patterns to add to ‘project-ignores’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-vc-include-untracked
+  surface: option
+  name: project-vc-include-untracked
+  defined_in: project.elc
+  type: boolean
+  default: t
+  desc: When non-nil, the VC-aware project backend includes untracked files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-vc-merge-submodules
+  surface: option
+  name: project-vc-merge-submodules
+  defined_in: project.elc
+  type: boolean
+  default: t
+  desc: Non-nil to consider submodules part of the parent project.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.project-vc-name
+  surface: option
+  name: project-vc-name
+  defined_in: project.elc
+  type: (choice (const :tag "Default to the base name" nil) (string :tag "Custom name"))
+  default: nil
+  desc: When non-nil, the name of the current VC-aware project.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-about-changed-file
+  surface: option
+  name: query-about-changed-file
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: If non-nil, query the user when re-visiting a file that has changed.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-replace-from-history-variable
+  surface: option
+  name: query-replace-from-history-variable
+  defined_in: replace.elc
+  type: symbol
+  default: query-replace-history
+  desc: History list to use for the FROM argument of ‘query-replace’ commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-replace-from-to-separator
+  surface: option
+  name: query-replace-from-to-separator
+  defined_in: replace.elc
+  type: (choice (const :tag "Disabled" nil) string)
+  default: '" → "'
+  desc: String that separates FROM and TO in the history of replacement pairs.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-replace-highlight
+  surface: option
+  name: query-replace-highlight
+  defined_in: replace.elc
+  type: boolean
+  default: t
+  desc: Non-nil means to highlight matches during query replacement.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-replace-highlight-submatches
+  surface: option
+  name: query-replace-highlight-submatches
+  defined_in: replace.elc
+  type: boolean
+  default: t
+  desc: Whether to highlight regexp subexpressions during query replacement.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-replace-lazy-highlight
+  surface: option
+  name: query-replace-lazy-highlight
+  defined_in: replace.elc
+  type: boolean
+  default: t
+  desc: Controls the lazy-highlighting during query replacements.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-replace-show-replacement
+  surface: option
+  name: query-replace-show-replacement
+  defined_in: replace.elc
+  type: boolean
+  default: t
+  desc: Non-nil means show substituted replacement text in the minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-replace-skip-read-only
+  surface: option
+  name: query-replace-skip-read-only
+  defined_in: replace.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means ‘query-replace’ and friends ignore read-only matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.query-replace-to-history-variable
+  surface: option
+  name: query-replace-to-history-variable
+  defined_in: replace.elc
+  type: symbol
+  default: query-replace-history
+  desc: History list to use for the TO argument of ‘query-replace’ commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.quit-window-hook
+  surface: option
+  name: quit-window-hook
+  defined_in: window.elc
+  type: hook
+  default: nil
+  desc: Hook run before performing any other actions in the ‘quit-window’ command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.read-extended-command-mode-hook
+  surface: option
+  name: read-extended-command-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘read-extended-command-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.read-extended-command-predicate
+  surface: option
+  name: read-extended-command-predicate
+  defined_in: simple.elc
+  type: (choice (const :tag "Don't exclude any commands" nil) (const :tag "Exclude commands irrelevant to current buffer's
+    mode" command-completion-default-include-p) (const :tag "Include only commands relevant to current buffer's mode" command-completion-using-modes-p)
+    (const :tag "Commands relevant to current buffer's mode or bound in its keymaps" command-completion-using-modes-and-keymaps-p)
+    (function :tag "Other predicate function"))
+  default: transient-command-completion-not-suffix-only-p
+  desc: Predicate to use to determine which commands to include when completing.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.read-file-name-completion-ignore-case
+  surface: option
+  name: read-file-name-completion-ignore-case
+  defined_in: minibuffer.elc
+  type: boolean
+  default: t
+  desc: Non-nil means when reading a file name completion ignores case.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.read-mail-command
+  surface: option
+  name: read-mail-command
+  defined_in: simple.elc
+  type: '(radio (function-item :tag "Rmail" :format "%t
+
+    " rmail) (function-item :tag "Gnus" :format "%t
+
+    " gnus) (function-item :tag "Emacs interface to MH" :format "%t
+
+    " mh-rmail) (function :tag "Other"))'
+  default: rmail
+  desc: Your preference for a mail reading package.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.read-only-mode-hook
+  surface: option
+  name: read-only-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘read-only-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.read-quoted-char-radix
+  surface: option
+  name: read-quoted-char-radix
+  defined_in: simple.elc
+  type: (choice (const 8) (const 10) (const 16))
+  default: '8'
+  desc: Radix for C-q and other uses of ‘read-quoted-char’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.read-regexp-defaults-function
+  surface: option
+  name: read-regexp-defaults-function
+  defined_in: replace.elc
+  type: (choice (const :tag "No default regexp reading function" nil) (const :tag "Latest regexp history" regexp-history-last)
+    (function-item :tag "Tag at point" find-tag-default) (function-item :tag "Tag at point as regexp" find-tag-default-as-regexp)
+    (function-item :tag "Tag at point as symbol regexp" find-tag-default-as-symbol-regexp) (function :tag "Your choice of
+    function"))
+  default: nil
+  desc: Function that provides default regexp(s) for ‘read-regexp’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.recenter-positions
+  surface: option
+  name: recenter-positions
+  defined_in: window.elc
+  type: (repeat (choice (const :tag "Top" top) (const :tag "Middle" middle) (const :tag "Bottom" bottom) (integer :tag "Line
+    number") (float :tag "Percentage")))
+  default: (middle top bottom)
+  desc: Cycling order for ‘recenter-top-bottom’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.rectangle-mark-mode-hook
+  surface: option
+  name: rectangle-mark-mode-hook
+  defined_in: rect.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘rectangle-mark-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.rectangle-preview
+  surface: option
+  name: rectangle-preview
+  defined_in: rect.elc
+  type: boolean
+  default: t
+  desc: If non-nil, ‘string-rectangle’ will show an on-the-fly preview.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.regexp-search-ring-max
+  surface: option
+  name: regexp-search-ring-max
+  defined_in: isearch.elc
+  type: integer
+  default: '16'
+  desc: Maximum length of regexp search ring before oldest elements are thrown away.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.register-preview-default-keys
+  surface: option
+  name: register-preview-default-keys
+  defined_in: register.elc
+  type: (repeat string)
+  default: ("a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "k" "l" ...)
+  desc: Default keys for setting a new register.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.register-preview-delay
+  surface: option
+  name: register-preview-delay
+  defined_in: register.elc
+  type: (choice number (const :tag "No preview unless requested" nil))
+  default: '1'
+  desc: If non-nil, time to wait in seconds before popping up register preview window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.register-preview-display-buffer-alist
+  surface: option
+  name: register-preview-display-buffer-alist
+  defined_in: register.elc
+  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
+    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
+    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
+    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
+    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
+    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
+    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
+    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
+    :value-type (sexp :tag "Value")))
+  default: (display-buffer-at-bottom (window-height . fit-window-to-buffer) (preserve-size nil . t))
+  desc: Window configuration for the register preview buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.register-separator
+  surface: option
+  name: register-separator
+  defined_in: register.elc
+  type: (choice (const :tag "None" nil) (character :tag "Use register" :value 43))
+  default: nil
+  desc: Register containing the text to put between collected texts, or nil if none.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.register-use-preview
+  surface: option
+  name: register-use-preview
+  defined_in: register.elc
+  type: (choice (const :tag "Use preview" t) (const :tag "Use preview and exit by pressing register name" insist) (const :tag
+    "Use quick preview" nil) (const :tag "Never use preview" never) (const :tag "Basic preview like Emacs-29" traditional))
+  default: traditional
+  desc: Whether register commands show preview of registers with non-nil values.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.remote-file-name-access-timeout
+  surface: option
+  name: remote-file-name-access-timeout
+  defined_in: files.elc
+  type: (choice (natnum :tag "Timeout (seconds)") (const :tag "Do not use timeout" nil))
+  default: nil
+  desc: Timeout (in seconds) for ‘access-file’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.remote-file-name-inhibit-auto-save
+  surface: option
+  name: remote-file-name-inhibit-auto-save
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: When nil, ‘auto-save-mode’ will auto-save remote files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.remote-file-name-inhibit-auto-save-visited
+  surface: option
+  name: remote-file-name-inhibit-auto-save-visited
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: When nil, ‘auto-save-visited-mode’ will auto-save remote files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.remote-file-name-inhibit-cache
+  surface: option
+  name: remote-file-name-inhibit-cache
+  defined_in: files.elc
+  type: '(choice (const :tag "Do not cache remote file attributes" t) (const :tag "Cache remote file attributes" nil) (integer
+    :tag "Cache remote file attributes with expiration" :format "Cache expiry in seconds: %v" :value 10))'
+  default: '10'
+  desc: Whether to use the remote file-name cache for read access.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.remote-file-name-inhibit-delete-by-moving-to-trash
+  surface: option
+  name: remote-file-name-inhibit-delete-by-moving-to-trash
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Whether remote files shall be moved to the Trash.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.remote-file-name-inhibit-locks
+  surface: option
+  name: remote-file-name-inhibit-locks
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Whether to create file locks for remote files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.remote-shell-program
+  surface: option
+  name: remote-shell-program
+  defined_in: files.elc
+  type: file
+  default: '"/usr/bin/ssh"'
+  desc: Program to use to execute commands on a remote host (i.e. ssh).
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.replace-char-fold
+  surface: option
+  name: replace-char-fold
+  defined_in: replace.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means replacement commands should do character folding in matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.replace-lax-whitespace
+  surface: option
+  name: replace-lax-whitespace
+  defined_in: replace.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means ‘query-replace’ matches a sequence of whitespace chars.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.replace-regexp-lax-whitespace
+  surface: option
+  name: replace-regexp-lax-whitespace
+  defined_in: replace.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means ‘query-replace-regexp’ matches a sequence of whitespace chars.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.require-final-newline
+  surface: option
+  name: require-final-newline
+  defined_in: files.elc
+  type: (choice (const :tag "When visiting" visit) (const :tag "When saving" t) (const :tag "When visiting or saving" visit-save)
+    (const :tag "Don't add newlines" nil) (other :tag "Ask each time" ask))
+  default: nil
+  desc: Whether to add a newline automatically at the end of the file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.revert-buffer-quick-short-answers
+  surface: option
+  name: revert-buffer-quick-short-answers
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: How much confirmation to be done by the ‘revert-buffer-quick’ command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.revert-without-query
+  surface: option
+  name: revert-without-query
+  defined_in: files.elc
+  type: (repeat regexp)
+  default: nil
+  desc: Specify which files should be reverted without query.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.safe-local-eval-forms
+  surface: option
+  name: safe-local-eval-forms
+  defined_in: files.elc
+  type: (repeat sexp)
+  default: ((add-hook 'write-file-hooks 'time-stamp) (add-hook 'write-file-functions 'time-stamp) (add-hook 'before-save-hook
+    'time-stamp nil t) (add-hook 'before-save-hook 'delete-trailing-whitespace nil t))
+  desc: Expressions that are considered safe in an ‘eval:’ local variable.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.safe-local-variable-directories
+  surface: option
+  name: safe-local-variable-directories
+  defined_in: files.elc
+  type: (repeat string)
+  default: nil
+  desc: A list of directories where local variables are always enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.safe-local-variable-values
+  surface: option
+  name: safe-local-variable-values
+  defined_in: files.elc
+  type: alist
+  default: nil
+  desc: List of variable-value pairs that are considered safe.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.same-window-buffer-names
+  surface: option
+  name: same-window-buffer-names
+  defined_in: window.elc
+  type: (repeat (string :format "%v"))
+  default: nil
+  desc: List of names of buffers that should appear in the "same" window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.same-window-regexps
+  surface: option
+  name: same-window-regexps
+  defined_in: window.elc
+  type: (repeat (regexp :format "%v"))
+  default: nil
+  desc: List of regexps saying which buffers should appear in the "same" window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.save-abbrevs
+  surface: option
+  name: save-abbrevs
+  defined_in: files.elc
+  type: (choice (const t) (const nil) (const silently))
+  default: t
+  desc: Non-nil means save word abbrevs too when files are saved.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.save-interprogram-paste-before-kill
+  surface: option
+  name: save-interprogram-paste-before-kill
+  defined_in: simple.elc
+  type: (choice (const nil) number (other :tag "Always" t))
+  default: nil
+  desc: Whether to save existing clipboard text into kill ring before replacing it.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.save-some-buffers-default-predicate
+  surface: option
+  name: save-some-buffers-default-predicate
+  defined_in: files.elc
+  type: (choice (const :tag "Default" nil) (function :tag "Only in subdirs of current project" save-some-buffers-root) (function
+    :tag "Custom function"))
+  default: nil
+  desc: Default predicate for ‘save-some-buffers’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.scroll-error-top-bottom
+  surface: option
+  name: scroll-error-top-bottom
+  defined_in: window.elc
+  type: boolean
+  default: nil
+  desc: Move point to top/bottom of buffer before signaling a scrolling error.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-default-mode
+  surface: option
+  name: search-default-mode
+  defined_in: isearch.elc
+  type: (choice (const :tag "Char-Fold Search" char-fold-to-regexp) (const :tag "Symbol Search" isearch-symbol-regexp) (const
+    :tag "Word Search" word-search-regexp) (const :tag "Literal search" nil) (const :tag "Regexp search" t) (function :tag
+    "Other"))
+  default: nil
+  desc: Default mode to use when starting isearch.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-exit-option
+  surface: option
+  name: search-exit-option
+  defined_in: isearch.elc
+  type: (choice (const :tag "Terminate incremental search" t) (const :tag "Edit the search string" edit) (const :tag "Append
+    control characters to the search string" append) (const :tag "Don't terminate incremental search" nil))
+  default: t
+  desc: Defines what control characters do in incremental search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-highlight
+  surface: option
+  name: search-highlight
+  defined_in: isearch.elc
+  type: boolean
+  default: t
+  desc: Non-nil means incremental search highlights the current match.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-highlight-submatches
+  surface: option
+  name: search-highlight-submatches
+  defined_in: isearch.elc
+  type: boolean
+  default: t
+  desc: Whether to highlight regexp subexpressions of the current regexp match.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-invisible
+  surface: option
+  name: search-invisible
+  defined_in: isearch.elc
+  type: (choice (const :tag "Match hidden text" t) (const :tag "Open overlays" open) (const :tag "Don't match hidden text"
+    nil))
+  default: open
+  desc: If t incremental search/query-replace can match hidden text.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-nonincremental-instead
+  surface: option
+  name: search-nonincremental-instead
+  defined_in: isearch.elc
+  type: boolean
+  default: t
+  desc: If non-nil, do a nonincremental search instead of exiting immediately.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-ring-max
+  surface: option
+  name: search-ring-max
+  defined_in: isearch.elc
+  type: integer
+  default: '16'
+  desc: Maximum length of search ring before oldest elements are thrown away.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-ring-update
+  surface: option
+  name: search-ring-update
+  defined_in: isearch.elc
+  type: boolean
+  default: nil
+  desc: Non-nil if advancing or retreating in the search ring should cause search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-slow-speed
+  surface: option
+  name: search-slow-speed
+  defined_in: isearch.elc
+  type: integer
+  default: '1200'
+  desc: Highest terminal speed at which to use "slow" style incremental search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-slow-window-lines
+  surface: option
+  name: search-slow-window-lines
+  defined_in: isearch.elc
+  type: integer
+  default: '1'
+  desc: Number of lines in slow search display windows.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-upper-case
+  surface: option
+  name: search-upper-case
+  defined_in: isearch.elc
+  type: (choice (const :tag "off" nil) (const not-yanks) (other :tag "on" t))
+  default: not-yanks
+  desc: If non-nil, upper case chars disable case fold searching.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.search-whitespace-regexp
+  surface: option
+  name: search-whitespace-regexp
+  defined_in: isearch.elc
+  type: "(choice (const :tag \"Match Spaces Literally\" nil) (const :tag \"Tabs and spaces\" \"[ \t]+\") (const :tag \"Tabs,\
+    \ spaces and line breaks\" \"[ \t\n]+\") regexp)"
+  default: "\"[ \t]+\""
+  desc: If non-nil, regular expression to match a sequence of whitespace chars.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.sentence-end
+  surface: option
+  name: sentence-end
+  defined_in: paragraphs.elc
+  type: (choice regexp (const :tag "Use default value" nil))
+  default: nil
+  desc: Regexp describing the end of a sentence.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.sentence-end-base
+  surface: option
+  name: sentence-end-base
+  defined_in: paragraphs.elc
+  type: regexp
+  default: '"[.?!…‽][]\"''”’)}»›]*"'
+  desc: Regexp matching the basic end of a sentence, not including following space.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.sentence-end-double-space
+  surface: option
+  name: sentence-end-double-space
+  defined_in: paragraphs.elc
+  type: boolean
+  default: t
+  desc: Non-nil means a single space does not end a sentence.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.sentence-end-without-period
+  surface: option
+  name: sentence-end-without-period
+  defined_in: paragraphs.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means a sentence will end without a period.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.sentence-end-without-space
+  surface: option
+  name: sentence-end-without-space
+  defined_in: paragraphs.elc
+  type: string
+  default: '"。．？！"'
+  desc: String of characters that end sentence without following spaces.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.set-mark-command-repeat-pop
+  surface: option
+  name: set-mark-command-repeat-pop
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means repeating C-SPC after popping mark pops it again.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.set-message-functions
+  surface: option
+  name: set-message-functions
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "No special message handling" nil) (repeat (choice (function-item :tag "Inhibit some messages"
+    inhibit-message) (function-item :tag "Accumulate messages" set-multi-message) (function-item :tag "Handle minibuffer"
+    set-minibuffer-message) (function :tag "Custom function"))))
+  default: (set-minibuffer-message)
+  desc: List of functions to handle display of echo-area messages.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.shell-command-dont-erase-buffer
+  surface: option
+  name: shell-command-dont-erase-buffer
+  defined_in: simple.elc
+  type: (choice (const :tag "Erase output buffer if not the current one" nil) (const :tag "Always erase output buffer" erase)
+    (const :tag "Set point to beginning of last output" beg-last-out) (const :tag "Set point to end of last output" end-last-out)
+    (const :tag "Save point" save-point))
+  default: nil
+  desc: Whether to erase the output buffer before executing shell command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.shell-command-prompt-show-cwd
+  surface: option
+  name: shell-command-prompt-show-cwd
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, show current directory when prompting for a shell command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.shift-select-mode
+  surface: option
+  name: shift-select-mode
+  defined_in: simple.elc
+  type: (choice (const :tag "Off" nil) (const :tag "Permanent" permanent) (other :tag "On" t))
+  default: t
+  desc: When non-nil, shifted motion keys activate the mark momentarily.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.size-indication-mode
+  surface: option
+  name: size-indication-mode
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Non-nil if Size-Indication mode is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.size-indication-mode-hook
+  surface: option
+  name: size-indication-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘size-indication-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.small-temporary-file-directory
+  surface: option
+  name: small-temporary-file-directory
+  defined_in: files.elc
+  type: (choice (const nil) directory)
+  default: nil
+  desc: The directory for writing small temporary files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.special-display-buffer-names
+  surface: option
+  name: special-display-buffer-names
+  defined_in: window.elc
+  type: (repeat (choice :tag "Buffer" :value "" (string :format "%v") (cons :tag "With parameters" :format "%v" :value ("")
+    (string :format "%v") (repeat :tag "Parameters" (cons :format "%v" (symbol :tag "Parameter") (sexp :tag "Value")))) (list
+    :tag "With function" :format "%v" :value ("") (string :format "%v") (function :tag "Function") (repeat :tag "Arguments"
+    (sexp)))))
+  default: nil
+  desc: List of names of buffers that should be displayed specially.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.special-display-frame-alist
+  surface: option
+  name: special-display-frame-alist
+  defined_in: window.elc
+  type: (repeat (cons :format "%v" (symbol :tag "Parameter") (sexp :tag "Value")))
+  default: ((height . 14) (width . 80) (unsplittable . t))
+  desc: Alist of parameters for special frames.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.special-display-function
+  surface: option
+  name: special-display-function
+  defined_in: window.elc
+  type: function
+  default: special-display-popup-frame
+  desc: Function to call for displaying special buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.special-display-regexps
+  surface: option
+  name: special-display-regexps
+  defined_in: window.elc
+  type: (repeat (choice :tag "Buffer" :value "" (regexp :format "%v") (cons :tag "With parameters" :format "%v" :value ("")
+    (regexp :format "%v") (repeat :tag "Parameters" (cons :format "%v" (symbol :tag "Parameter") (sexp :tag "Value")))) (list
+    :tag "With function" :format "%v" :value ("") (regexp :format "%v") (function :tag "Function") (repeat :tag "Arguments"
+    (sexp)))))
+  default: nil
+  desc: List of regexps saying which buffers should be displayed specially.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.split-height-threshold
+  surface: option
+  name: split-height-threshold
+  defined_in: window.elc
+  type: (choice (const nil) (integer :tag "lines"))
+  default: '80'
+  desc: Minimum height for splitting windows sensibly.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.split-width-threshold
+  surface: option
+  name: split-width-threshold
+  defined_in: window.elc
+  type: (choice (const nil) (integer :tag "columns"))
+  default: '160'
+  desc: Minimum width for splitting windows sensibly.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.split-window-keep-point
+  surface: option
+  name: split-window-keep-point
+  defined_in: window.elc
+  type: boolean
+  default: t
+  desc: If non-nil, C-x 2 preserves point in the new window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.split-window-preferred-function
+  surface: option
+  name: split-window-preferred-function
+  defined_in: window.elc
+  type: function
+  default: split-window-sensibly
+  desc: Function called by ‘display-buffer’ routines to split a window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.standard-indent
+  surface: option
+  name: standard-indent
+  defined_in: indent.elc
+  type: integer
+  default: '4'
+  desc: Default number of columns for margin-changing functions to indent.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.suggest-key-bindings
+  surface: option
+  name: suggest-key-bindings
+  defined_in: simple.elc
+  type: (choice (const :tag "off" nil) (natnum :tag "time" 2) (other :tag "on" t))
+  default: t
+  desc: Non-nil means show the equivalent keybinding when M-x has one.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.switch-to-buffer-in-dedicated-window
+  surface: option
+  name: switch-to-buffer-in-dedicated-window
+  defined_in: window.elc
+  type: (choice (const :tag "Disallow" nil) (const :tag "Prompt" prompt) (const :tag "Pop" pop) (const :tag "Allow" t))
+  default: nil
+  desc: Allow switching to buffer in strongly dedicated windows.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.switch-to-buffer-obey-display-actions
+  surface: option
+  name: switch-to-buffer-obey-display-actions
+  defined_in: window.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, ‘switch-to-buffer’ runs ‘pop-to-buffer-same-window’ instead.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.switch-to-buffer-preserve-window-point
+  surface: option
+  name: switch-to-buffer-preserve-window-point
+  defined_in: window.elc
+  type: (choice (const :tag "Never" nil) (const :tag "If already displayed elsewhere" already-displayed) (const :tag "Always"
+    t))
+  default: t
+  desc: If non-nil, ‘switch-to-buffer’ tries to preserve ‘window-point’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.switch-to-prev-buffer-skip
+  surface: option
+  name: switch-to-prev-buffer-skip
+  defined_in: window.elc
+  type: (choice (const :tag "Never" nil) (const :tag "This frame" this) (const :tag "Visible frames" visible) (const :tag
+    "Visible and iconified frames" 0) (const :tag "Any frame" t) (function :tag "Function"))
+  default: nil
+  desc: Buffers ‘switch-to-prev-buffer’ should skip.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.switch-to-prev-buffer-skip-regexp
+  surface: option
+  name: switch-to-prev-buffer-skip-regexp
+  defined_in: window.elc
+  type: (choice regexp (repeat regexp))
+  default: nil
+  desc: Buffers that ‘switch-to-prev-buffer’ and ‘switch-to-next-buffer’ should skip.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.switch-to-visible-buffer
+  surface: option
+  name: switch-to-visible-buffer
+  defined_in: window.elc
+  type: boolean
+  default: t
+  desc: If non-nil, allow switching to an already visible buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.tab-always-indent
+  surface: option
+  name: tab-always-indent
+  defined_in: indent.elc
+  type: (choice (const :tag "Always indent" t) (const :tag "Indent if inside indentation, else TAB" nil) (const :tag "Indent,
+    or if already indented complete" complete))
+  default: t
+  desc: Controls the operation of the TAB key.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.tab-first-completion
+  surface: option
+  name: tab-first-completion
+  defined_in: indent.elc
+  type: (choice (const :tag "Always complete" nil) (const :tag "Only complete at the end of a line" eol) (const :tag "Unless
+    looking at a word" word) (const :tag "Unless at a word or parenthesis" word-or-paren) (const :tag "Unless at a word, parenthesis,
+    or punctuation." word-or-paren-or-punct))
+  default: nil
+  desc: Governs the behavior of TAB completion on the first press of the key.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.tab-stop-list
+  surface: option
+  name: tab-stop-list
+  defined_in: indent.elc
+  type: (repeat integer)
+  default: nil
+  desc: List of tab stop positions used by ‘tab-to-tab-stop’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.temporary-file-directory
+  surface: option
+  name: temporary-file-directory
+  defined_in: files.elc
+  type: sexp
+  default: '"/var/folders/62/1n0w6tvd2j53zx21hzdrz1xw0000gn/T/"'
+  desc: The directory for writing temporary files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.toggle-window-dedicated-flag
+  surface: option
+  name: toggle-window-dedicated-flag
+  defined_in: window.elc
+  type: (choice (const :tag "Strongly dedicated" t) (const :tag "Dedicated" interactive))
+  default: interactive
+  desc: What dedicated flag should ‘toggle-window-dedicated’ use by default.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.track-eol
+  surface: option
+  name: track-eol
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means vertical motion starting at end of line keeps to ends of lines.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.transient-mark-mode
+  surface: option
+  name: transient-mark-mode
+  defined_in: simple.elc
+  type: sexp
+  default: nil
+  desc: Non-nil if Transient Mark mode is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.transient-mark-mode-hook
+  surface: option
+  name: transient-mark-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘transient-mark-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.trash-directory
+  surface: option
+  name: trash-directory
+  defined_in: files.elc
+  type: (choice (const nil) directory)
+  default: nil
+  desc: Directory for ‘move-file-to-trash’ to move files and directories to.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.trusted-content
+  surface: option
+  name: trusted-content
+  defined_in: files.elc
+  type: (choice (repeat :tag "List" file) (const :tag "Trust everything (DANGEROUS!)" :all))
+  default: nil
+  desc: List of files and directories whose content we trust.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.undo-ask-before-discard
+  surface: option
+  name: undo-ask-before-discard
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If non-nil ask about discarding undo info for the current command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.undo-no-redo
+  surface: option
+  name: undo-no-redo
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: If t, ‘undo’ doesn’t go through redo entries.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.use-empty-active-region
+  surface: option
+  name: use-empty-active-region
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Whether "region-aware" commands should act on empty regions.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.use-hard-newlines-hook
+  surface: option
+  name: use-hard-newlines-hook
+  defined_in: paragraphs.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘use-hard-newlines’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.user-emacs-directory-warning
+  surface: option
+  name: user-emacs-directory-warning
+  defined_in: files.elc
+  type: boolean
+  default: t
+  desc: Non-nil means warn if unable to access or create ‘user-emacs-directory’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.version-control
+  surface: option
+  name: version-control
+  defined_in: files.elc
+  type: (choice (const :tag "Never" never) (const :tag "If numbered backups exist" nil) (other :tag "Always" t))
+  default: nil
+  desc: Control use of version-numbered backup files.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.view-read-only
+  surface: option
+  name: view-read-only
+  defined_in: files.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means buffers visiting files read-only do so in view mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.visible-mode-hook
+  surface: option
+  name: visible-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘visible-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.visual-line-fringe-indicators
+  surface: option
+  name: visual-line-fringe-indicators
+  defined_in: simple.elc
+  type: (list (choice (const :tag "Hide left indicator" nil) (const :tag "Left curly arrow" left-curly-arrow) (symbol :tag
+    "Other bitmap")) (choice (const :tag "Hide right indicator" nil) (const :tag "Right curly arrow" right-curly-arrow) (symbol
+    :tag "Other bitmap")))
+  default: (nil nil)
+  desc: How fringe indicators are shown for wrapped lines in ‘visual-line-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.visual-line-mode-hook
+  surface: option
+  name: visual-line-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: (visual-line-mode-set-explicitly)
+  desc: Hook run after entering or leaving ‘visual-line-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.visual-order-cursor-movement
+  surface: option
+  name: visual-order-cursor-movement
+  defined_in: bindings.elc
+  type: (choice (const :tag "Logical-order cursor movement" nil) (const :tag "Visual-order cursor movement" t))
+  default: nil
+  desc: If non-nil, moving cursor with arrow keys follows the visual order.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.what-cursor-show-names
+  surface: option
+  name: what-cursor-show-names
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Whether to show character names in ‘what-cursor-position’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.window-adjust-process-window-size-function
+  surface: option
+  name: window-adjust-process-window-size-function
+  defined_in: window.elc
+  type: (choice (const :tag "Minimum area of any window" window-adjust-process-window-size-smallest) (const :tag "Maximum
+    area of any window" window-adjust-process-window-size-largest) (const :tag "Do not adjust process window sizes" ignore)
+    function)
+  default: window-adjust-process-window-size-smallest
+  desc: Control how Emacs chooses inferior process window sizes.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.window-min-height
+  surface: option
+  name: window-min-height
+  defined_in: window.elc
+  type: natnum
+  default: '4'
+  desc: The minimum total height, in lines, of any window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.window-min-width
+  surface: option
+  name: window-min-width
+  defined_in: window.elc
+  type: natnum
+  default: '10'
+  desc: The minimum total width, in columns, of any window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.window-sides-reversed
+  surface: option
+  name: window-sides-reversed
+  defined_in: window.elc
+  type: (choice (const :tag "Never" nil) (const :tag "Bidi" bidi) (const :tag "Always" t))
+  default: nil
+  desc: Whether top/bottom side windows appear in reverse order.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.window-sides-slots
+  surface: option
+  name: window-sides-slots
+  defined_in: window.elc
+  type: '(list :value (nil nil nil nil) (choice :tag "Left" :help-echo "Maximum number of left side windows." :value nil :format
+    "%[Left%] %v
+
+    " (const :tag "Unlimited" :format "%t" nil) (integer :tag "Number" :value 2 :size 5)) (choice :tag "Top" :help-echo "Maximum
+    number of top side windows." :value nil :format "%[Top%] %v
+
+    " (const :tag "Unlimited" :format "%t" nil) (integer :tag "Number" :value 3 :size 5)) (choice :tag "Right" :help-echo
+    "Maximum number of right side windows." :value nil :format "%[Right%] %v
+
+    " (const :tag "Unlimited" :format "%t" nil) (integer :tag "Number" :value 2 :size 5)) (choice :tag "Bottom" :help-echo
+    "Maximum number of bottom side windows." :value nil :format "%[Bottom%] %v
+
+    " (const :tag "Unlimited" :format "%t" nil) (integer :tag "Number" :value 3 :size 5)))'
+  default: (nil nil nil nil)
+  desc: Number of available side window slots on each side of a frame.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.window-sides-vertical
+  surface: option
+  name: window-sides-vertical
+  defined_in: window.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, left and right side windows occupy full frame height.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.yank-excluded-properties
+  surface: option
+  name: yank-excluded-properties
+  defined_in: simple.elc
+  type: (choice (const :tag "All" t) (repeat symbol))
+  default: (category field follow-link fontified font-lock-face help-echo intangible invisible keymap local-map mouse-face
+    read-only ...)
+  desc: Text properties to discard when yanking.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.yank-from-kill-ring-rotate
+  surface: option
+  name: yank-from-kill-ring-rotate
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: Whether using ‘yank-from-kill-ring’ should rotate ‘kill-ring-yank-pointer’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.yank-handled-properties
+  surface: option
+  name: yank-handled-properties
+  defined_in: simple.elc
+  type: (repeat (cons (symbol :tag "property symbol") function))
+  default: ((font-lock-face . yank-handle-font-lock-face-property) (category . yank-handle-category-property))
+  desc: List of special text property handling conditions for yanking.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.yank-pop-change-selection
+  surface: option
+  name: yank-pop-change-selection
+  defined_in: simple.elc
+  type: boolean
+  default: nil
+  desc: Whether rotating the kill ring changes the window system selection.
+  attestation:
+  - R
+  status: unclassified

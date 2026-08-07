@@ -17,8 +17,17 @@
 #   unified          one kernel concept, both surfaces project onto it
 #   dropped          one side is not provided (needs `intentionally-different` in the census)
 #
+# UNIT OF IRRECONCILABILITY IS THE OBSERVABLE, NOT THE CONCEPT. "The grammars are irreconcilable" is
+# almost always an overclaim: a (selection-set, operation) kernel primitive expresses Vim's operator-pending
+# as a deferred, invisible selection build (evil-mode already ships this), so the CONCEPT reconciles. What
+# does not reconcile is a small set of externally OBSERVABLE behaviours, each a testable contract. Recording
+# the tension at concept granularity yields one Decision that never closes; recording it as N observables
+# yields N Decisions that each close. When a concept turns out to be reconcilable-by-primitive, mark it
+# `unified` and move the genuine residue into `observables:` below.
+#
 # LLM rules: never mark `resolution: unified` without naming the kernel concept that unifies them;
-# a `pending` entry that gains a Decision must cite the D-id.
+# a `pending` entry that gains a Decision must cite the D-id; an `observables:` entry must state the
+# Vim value, the selection-first value, and be phrased as something a fixture can OBSERVE (not model).
 
 version: 1
 
@@ -32,13 +41,16 @@ concepts:
       No equivalent state. `C-w`/`M-w` act on an already-established region (point + mark); there is
       no pending-operator awaiting a motion, so nothing to map.
     tension: >
-      The kernel's editing-language IR (C-EDITLANG) must express operator x motion composition for
-      Vim while the Emacs profile never produces a pending operator. Modelling op-pending as a
-      universal kernel state would impose a phantom stage on Emacs Style; modelling it only inside
-      the Vim profile risks re-creating the flag-on-one-state-machine mistake that lost the mode
-      namespaces in the first place.
-    resolution: pending
-    blocks: [C-EDITLANG, C-INPUT, F-003]
+      The earlier framing — "op-pending as a universal kernel state imposes a phantom stage on Emacs" — was
+      an overclaim. If the kernel primitive is (selection-set, operation), operator-pending is just the
+      window between naming an operation and the motion that RESOLVES its selection; Emacs's already-
+      established region is the same primitive with the selection resolved first. evil-mode demonstrates the
+      reconciliation in practice. So the CONCEPT is unified; the irreconcilable residue is not here but in
+      the three OBSERVABLES below (Vim vs selection-first editing), each a fixture-checkable contract.
+    resolution: unified
+    kernel_concept: C-EDITLANG        # primitive = (selection-set, operation); op-pending = deferred selection build
+    residual_observables: [OBS-BARE-MOTION, OBS-SELECTION-PERSISTENCE, OBS-DOT-REPEAT-UNIT]
+    blocks: [C-INPUT, F-003]           # C-EDITLANG no longer blocked at concept level; it is blocked per-observable
     refs: [nvim.mapmode.opr, contracts/vim-style.yaml#namespaces.operator_pending]
 
   CONCEPT-COUNT-VS-PREFIX:
@@ -105,4 +117,86 @@ concepts:
       Promising the namespace without deciding the stage means the promise is unimplementable.
     resolution: pending
     blocks: [C-INPUT]
+
+  CONCEPT-KEYMAP-DISPATCH:
+    title: Vim namespaces are disjoint and state-selected; Emacs keymaps are a layered buffer-selected stack
+    vim: >
+      Eight DISJOINT keymap namespaces (Norm|Ins|Cmd|Vis|Sel|Opr|Term|Lang, runtime/doc/map.txt).
+      Exactly one is active, selected by editor STATE, and each declares its own unmatched-key
+      policy. A key is resolved by one lookup in one namespace.
+    emacs: >
+      A LAYERED precedence stack, all tiers consulted in order until one binds:
+      overriding-terminal-local-map > overriding-local-map > text/overlay `keymap` property >
+      emulation-mode-map-alists > minor-mode-overriding-map-alist > minor-mode-map-alist >
+      `local-map` property > current-local-map (the major mode) > global-map. The active set is
+      selected by what the BUFFER is, not by what state the editor is in.
+    tension: >
+      Measured at the pin, this is not a subtlety: of 1,952 keyboard bindings in the Emacs census,
+      613 live in MAJOR-MODE maps (dired-mode-map 138, bookmark-bmenu-mode-map 64,
+      kmacro-menu-mode-map 44, ...) — bindings for which Vim's model has no seat at all, because
+      Vim has no "the keymap depends on what this buffer is" tier. A router built on eight disjoint
+      namespaces cannot express them; a `Mode` enum with a flag per special case is exactly how the
+      original mode defect was produced (crates/core/src/editor.rs:22 still has three variants).
+    resolution: unified
+    kernel_concept: >
+      An ORDERED STACK OF KEYMAP LAYERS is the kernel primitive, because the layered model strictly
+      CONTAINS the disjoint one: Vim's eight namespaces are the depth-1 case, where the active layer
+      is chosen by editor state and no lower layer is consulted. Building the router layered and
+      deriving Vim from it is one implementation; building it disjoint and bolting on major-mode
+      maps later is two, and the second one loses. This is the concrete form of "absorb the strength
+      of each upstream" — not two parities, one general model with Vim as a special case.
+    obligations:
+      - "A layer declares its own unmatched-key policy (contracts/vim-style.yaml VS-OBL-1..4 stay
+         valid; they become properties of a layer instead of properties of a mode)."
+      - "The Vim profile MUST configure the stack so that exactly one layer is consulted — the
+         depth-1 constraint is the profile's obligation, not the kernel's, or Vim's `closed/ignore`
+         policy silently leaks into a lower layer."
+      - "`config-schema` keymap.<namespace> ×8 are Vim-profile layer overlays, not the kernel's
+         layer model; an Emacs profile adds its own without renaming these."
+    blocks: [C-INPUT, F-003]
+    decides: D-KEYMAP-DISPATCH        # to be assigned a real D-id when opened
+    refs:
+      - emacs.keymaptier.*            # the 9 tiers, D-sourced from (elisp) Searching the Active Keymaps
+      - nvim.mapmode.*                # the 8 disjoint namespaces
+      - contracts/vim-style.yaml
+    note: >
+      Filed here despite `resolution: unified` on purpose. This file is the architecture's risk
+      register, and the risk is not that the two models conflict — it is that the general model is
+      cheap to adopt NOW and expensive after F-003 ships a disjoint router. Recording it only once a
+      Decision closes would put it here after the cost has already been paid.
+
+# Observable-granularity irreconcilables (Vim vs selection-first editing, Kakoune/Helix). These are what
+# actually resist a single primitive once CONCEPT-OP-PENDING is unified. Each is a contract a differential
+# fixture can OBSERVE, and each closes exactly ONE Decision — the reason to record them here rather than as
+# one grammar-sized concept. Referenced by spec/parity/families.yaml#PILLAR-HYBRID-GRAMMAR.
+# `decides` names the Decision the observable closes (assigned a real D-id when opened). Kakoune/Helix are
+# NOT yet pinned upstreams (census_holes#HOLE-SELECTION-FIRST) — until they are, the selection-first column
+# is asserted from documentation, not observed against a pin.
+observables:
+  OBS-BARE-MOTION:
+    title: What a bare motion does
+    vim: moves the cursor; selection is untouched.
+    selection_first: extends/replaces the primary selection as it moves (motion IS a selection verb).
+    observe: fixture presses `w` from a clean state and reads whether a selection now exists.
+    decides: D-EDITLANG-PRIMITIVE
+    note: the cheapest of the three to observe and the one that forces the primitive's default.
+
+  OBS-SELECTION-PERSISTENCE:
+    title: Whether a selection survives the operation applied to it
+    vim: an operator consumes the (implicit) motion-span and leaves no selection behind.
+    selection_first: the selection remains after the edit, ready for the next operation.
+    observe: fixture runs an operation over a span, then reads whether a live selection remains.
+    decides: D-EDITLANG-PRIMITIVE
+    note: determines whether the kernel's post-operation state carries a selection — a lifetime question.
+
+  OBS-DOT-REPEAT-UNIT:
+    title: What the repeat command re-applies
+    vim: the last (operator, motion/text-object, count) tuple, replayed at the new cursor.
+    selection_first: the last edit re-applied to EACH current selection independently.
+    observe: fixture makes an edit, moves/creates selections, triggers repeat, reads the resulting buffers.
+    decides: D-EDITLANG-DOT-REPEAT
+    note: >
+      The hardest. Macro recording compounds it — a recorded macro is a repeat unit at a larger grain, so
+      whatever answers this observable must also answer "what does a macro replay against". Split from
+      OBS-BARE-MOTION's Decision precisely so this one can stay open while the cheaper two close.
     refs: [nvim.mapmode.lang, contracts/vim-style.yaml#namespaces.lang_arg]

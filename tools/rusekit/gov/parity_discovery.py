@@ -24,6 +24,14 @@ look at. So once a surface is opened, it is opened whole.
 FAILS on: inventory/pin drift, an unknown status value, a silently empty surface, a partially
 classified surface, or an upstream-removed item that ruse had already committed to without a
 `superseded_by`. WARNS on the legacy hand-authored catalog still acting as a PRD source.
+
+One upstream cannot be checked the same way. Neovim publishes its surfaces as tables in-tree, so
+its census is a parse and `revision` is a real check. Emacs publishes nothing equivalent — its
+surfaces exist only in a running image — so its census is a probe against an installed binary, and
+`revision` alone would be decorative: the document could name any sha. Such documents declare
+`derived_from: runtime-binary` + `binary_version`, and that version must match the pin's
+`version_label`. Same discipline ("a census is answerable to its pin"), applied to the artifact
+that actually produced the numbers.
 Auto-discovered into `ruse gov check`.
 """
 from __future__ import annotations
@@ -48,6 +56,12 @@ STATUSES = {"unclassified", "targeted", "deferred", "unsupported", "intentionall
 # Statuses that mean "ruse committed to this item" — losing one upstream is a migration event.
 COMMITTED = {"targeted", "intentionally-different"}
 LEGACY_ID_RE = re.compile(r"^(?:VIM|NVIM|EMACS|COM|TERM|WS|REM|ECO|NAT)-[A-Z0-9][A-Z0-9-]*$")
+
+
+def _norm_version(s: str) -> str:
+    """`emacs-30.2`, `v30.2` and `30.2` name the same release; compare the numeric core only."""
+    m = re.search(r"\d+(?:\.\d+)*", str(s))
+    return m.group(0) if m else str(s)
 
 
 def _load(path: str) -> dict:
@@ -92,6 +106,7 @@ def check() -> dict:
     invs = inventories()
 
     pin_drift, bad_status, empty_surface, partial, orphan_gone = [], [], [], [], []
+    binary_drift = []
     totals = Counter()
     per_surface: dict[str, Counter] = defaultdict(Counter)
 
@@ -100,6 +115,19 @@ def check() -> dict:
         got = doc.get("revision")
         if want and got and want != got:
             pin_drift.append((relpath, str(got)[:12], str(want)[:12]))
+
+        # A RUNTIME-DERIVED census has no tree to diff against, so `revision` alone proves nothing:
+        # the document could name any sha and be probed from any build. Emacs is censused this way
+        # (its surfaces exist only in a running image — upstreams.yaml#source_of_record). So such a
+        # document must declare the binary it came from, and that binary must be the pinned release.
+        # Without this, the pin discipline that catches Neovim drift is decorative for Emacs.
+        if doc.get("derived_from") == "runtime-binary":
+            label = (ups.get(editor) or {}).get("version_label") or doc.get("version_label") or ""
+            binver = doc.get("binary_version")
+            if not binver:
+                binary_drift.append((relpath, "(absent)", label))
+            elif _norm_version(binver) != _norm_version(label):
+                binary_drift.append((relpath, str(binver), label))
 
         items = doc.get("items") or []
         surface = doc.get("surface") or relpath
@@ -145,6 +173,7 @@ def check() -> dict:
         "files": len(invs),
         "totals": totals,
         "pin_drift": pin_drift,
+        "binary_drift": binary_drift,
         "bad_status": bad_status,
         "empty_surface": empty_surface,
         "partial": partial,
@@ -185,6 +214,10 @@ def main(argv=None) -> int:
     for relpath, got, want in r["pin_drift"]:
         render.bullet(f"{relpath}: generated from {got} but upstreams.yaml pins {want} — "
                       f"regenerate; a census against an unpinned revision proves nothing", mark="!")
+    for relpath, got, want in r["binary_drift"]:
+        render.bullet(f"{relpath}: runtime-derived census probed from binary {got} but the pin is "
+                      f"{want} — an R-primary surface is only as pinned as the binary it came from; "
+                      f"install {want} and regenerate, or bump the pin", mark="!")
     for relpath, iid, st in r["bad_status"]:
         render.bullet(f"{relpath}: {iid} has status '{st}' — must be one of {sorted(STATUSES)}", mark="!")
     for relpath in r["empty_surface"]:
@@ -197,7 +230,7 @@ def main(argv=None) -> int:
     for relpath, iid, st in r["orphan_gone"]:
         render.bullet(f"{relpath}: {iid} is '{st}' but vanished upstream and has no superseded_by", mark="!")
 
-    blocking = (r["pin_drift"] or r["bad_status"] or r["empty_surface"]
+    blocking = (r["pin_drift"] or r["binary_drift"] or r["bad_status"] or r["empty_surface"]
                 or r["partial"] or r["orphan_gone"])
     if blocking:
         render.fail("the census is not answerable to its pin")

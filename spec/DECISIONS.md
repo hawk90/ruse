@@ -472,10 +472,50 @@ related:
   **1,788 items at v0.12.4** against those 211, which is the size of the gap the old gate could not express.
   Per-item-type sourcing is empirical, not stylistic: `nvim_get_commands({builtin:true})` returns 1 item
   (documented but unimplemented), while options agree exactly between runtime and static table.
-- **Re-evaluate if:** the Emacs denominator decision lands (`emacs -Q` + mapatoms vs full bundled load vs
-  autoload cookies differ by multiples, so the Emacs census is blocked until one baseline is fixed); or the
-  oracle layer proves unworkable — three harnesses were prototyped and three corrupted their own first
+- **Re-evaluate if:** the oracle layer proves unworkable — three harnesses were prototyped and three corrupted their own first
   observation (`vim -es` reports the harness's Ex mode from `mode()`; `emacs --batch` hangs forever on
   `read-from-minibuffer`; `execute-kbd-macro` under `--batch` silently empties the buffer on a plain `M-d`),
-  so `oracle_selftest` gates the fixture corpus and `undo` is comparable vim↔nvim only.
-- Refs: [parity/upstreams.yaml](parity/upstreams.yaml), [parity/coverage.yaml](parity/coverage.yaml), [../docs/parity/README.md](../docs/parity/README.md), D-007, D-033, F-003, C-INPUT, VIM-MODE-6.
+  so `oracle_selftest` gates the fixture corpus and `undo` is comparable vim↔nvim only. (The Emacs
+  *denominator*, listed here as blocking when this decision was taken, was resolved by **D-044**; the Emacs
+  *oracle* remains blocked and still needs a pty-hosted `emacs -nw` — the two were separate problems and
+  only the second was ever about batch mode.)
+- Refs: [parity/upstreams.yaml](parity/upstreams.yaml), [parity/coverage.yaml](parity/coverage.yaml), [../docs/parity/README.md](../docs/parity/README.md), D-007, D-033, D-044, F-003, C-INPUT, VIM-MODE-6.
+
+## D-044 — The Emacs census baseline is the scope list itself; its commands are derived, not enumerated · decided
+- **Decision:** the Emacs denominator that D-043 left blocking is resolved as follows. The baseline is
+  **`emacs -Q --batch` plus `require` of exactly the libraries in `census_scope.include`** — the load set IS
+  the scope list, so it is deterministic and reviewable, and widening it means editing a list that already
+  requires a per-path reason. The **command** surface has *no independent denominator*: it is DERIVED from
+  `key_binding` (a command reachable from no bound key in an in-scope keymap is not a parity surface), and
+  every item carries `derived_from: key_binding` to keep that visible. Emacs surfaces are `R`-primary
+  (`keymap`, `key_binding`, `command`, `option`, `hook`) with one `D`-primary exception, `keymap_tier`,
+  because no runtime call returns the active-keymap precedence as an ordered list. Since an `R`-primary
+  census has no tree to diff against, each generated document declares `derived_from: runtime-binary` +
+  `binary_version`, and `ruse gov parity_discovery` FAILS when that version does not match the pin's
+  `version_label`; the build is not byte-identical to the pinned commit and says so
+  (`binary_identity: unverified-build`). Pseudo-events (`<menu-bar>`, `<tool-bar>`, mouse, `<remap>`) are
+  enumerated, never dropped — discovery is strict — but carry `event_class` so a family claiming *keyboard*
+  parity selects `key` alone. Every binding also carries `namespace_group` ∈ {core, minibuffer, major-mode}.
+- **Reason:** D-043 recorded three candidate baselines differing by multiples (`emacs -Q` + mapatoms = 3,011
+  commands; `(interactive` across the tree = 12,087; defcustom = 9,371) and concluded no number was
+  defensible. Both halves were the wrong question. The three candidates were three guesses at "how much
+  Emacs is Emacs" — a question `census_scope.include` already answers — and "how many commands exist" is
+  unanswerable *because* a command nobody can reach is not a surface. Asking instead which commands a key
+  reaches yields one number, 803. The check that this cut is honest rather than convenient is that every
+  Emacs surface then lands beside its Neovim counterpart instead of dwarfing it: core keyboard namespaces
+  1,106 vs `mode_key` 708, minibuffer 233 vs `cmdline` 59, commands 803 vs `ex_command` 557, options 434 vs
+  374, hooks 106 vs `event` 141. Editor semantics is about the same size in both editors, which the 12k
+  figure made impossible to see. Two guards earned their place immediately: the load-failure check caught
+  that `indent.el`/`paragraphs.el` carry no `provide` form and cannot be required (a silent short
+  denominator), and the basename-set scope replaced a regex because elisp treats `(` and `|` as literals, so
+  a PCRE-shaped pattern would have censused zero and looked successful.
+- **Consequence:** the census produced a structural finding, not just counts. **613 keyboard bindings live
+  in major-mode maps and have no Vim counterpart at all** — Vim selects a namespace by editor STATE, Emacs
+  by what the BUFFER is. That is recorded as CONCEPT-KEYMAP-DISPATCH, and unlike the other entries in
+  `concepts/irreconcilable.yaml` it resolves toward **absorption**: the layered model strictly contains the
+  disjoint one, so a router built layered yields Vim's eight namespaces as the depth-1 case.
+- **Re-evaluate if:** ruse targets Emacs *applications* rather than Emacs editor semantics (Org, Magit,
+  Gnus), at which point the scope exclusions — not the baseline — are what must change, and the question
+  becomes substrate adequacy rather than parity (HOLE-SUBSTRATE-UNTESTED); or the pinned tree is fetched and
+  `S`-corroboration contradicts an `R`-derived surface.
+- Refs: [parity/upstreams.yaml](parity/upstreams.yaml), [parity/families.yaml](parity/families.yaml), [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), D-043, F-016, C-INPUT.

@@ -1,0 +1,718 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/extract_emacs.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
+# `require` of exactly the census_scope.include libraries. Changing that load set changes
+# the denominator, so it lives in upstreams.yaml where it needs a reason.
+version: 1
+generated: true
+generator: tools/parity/extract_emacs.py
+upstream: emacs
+revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
+version_label: emacs-30.2
+derived_from: runtime-binary
+binary_version: '30.2'
+binary_identity: unverified-build
+baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
+  project)
+surface: keymap
+source_of_record: 'R: mapatoms + keymapp, scoped to census_scope.include'
+items:
+- id: emacs.keymap.abbrev-map
+  surface: keymap
+  name: abbrev-map
+  defined_in: bindings.elc
+  desc: Keymap for abbrev commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.bookmark-bmenu-mode-map
+  surface: keymap
+  name: bookmark-bmenu-mode-map
+  defined_in: bookmark.elc
+  desc: Keymap for ‘bookmark-bmenu-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.bookmark-edit-annotation-mode-map
+  surface: keymap
+  name: bookmark-edit-annotation-mode-map
+  defined_in: bookmark.elc
+  desc: Keymap for editing an annotation of a bookmark.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.bookmark-map
+  surface: keymap
+  name: bookmark-map
+  defined_in: bookmark.elc
+  desc: Keymap containing bindings to bookmark functions.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.bookmark-menu
+  surface: keymap
+  name: bookmark-menu
+  defined_in: bookmark.elc
+  desc: Menu for ‘bookmark-bmenu’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.bookmark-minibuffer-read-name-map
+  surface: keymap
+  name: bookmark-minibuffer-read-name-map
+  defined_in: bookmark.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.buffer-navigation-repeat-map
+  surface: keymap
+  name: buffer-navigation-repeat-map
+  defined_in: bindings.elc
+  desc: Keymap to repeat ‘next-buffer’ and ‘previous-buffer’.  Used in ‘repeat-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.clean-mode-map
+  surface: keymap
+  name: clean-mode-map
+  defined_in: simple.elc
+  desc: Keymap for ‘clean-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.completion-in-region-mode-map
+  surface: keymap
+  name: completion-in-region-mode-map
+  defined_in: minibuffer.elc
+  desc: Keymap activated during ‘completion-in-region’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.completion-list-mode-map
+  surface: keymap
+  name: completion-list-mode-map
+  defined_in: simple.elc
+  desc: Local map for completion list buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.ctl-x-4-map
+  surface: keymap
+  name: ctl-x-4-map
+  defined_in: subr.elc
+  desc: Keymap for subcommands of C-x 4.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.ctl-x-5-map
+  surface: keymap
+  name: ctl-x-5-map
+  defined_in: subr.elc
+  desc: Keymap for frame commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.ctl-x-map
+  surface: keymap
+  name: ctl-x-map
+  defined_in: subr.elc
+  desc: Default keymap for C-x commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.ctl-x-r-map
+  surface: keymap
+  name: ctl-x-r-map
+  defined_in: bindings.elc
+  desc: Keymap for subcommands of C-x r.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.ctl-x-x-map
+  surface: keymap
+  name: ctl-x-x-map
+  defined_in: bindings.elc
+  desc: Keymap for subcommands of C-x x.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-click-to-select-map
+  surface: keymap
+  name: dired-click-to-select-map
+  defined_in: dired.elc
+  desc: Keymap placed on files under ‘dired-click-to-select’ mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-jump-map
+  surface: keymap
+  name: dired-jump-map
+  defined_in: dired.elc
+  desc: Keymap to repeat ‘dired-jump’.  Used in ‘repeat-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-mode-immediate-menu
+  surface: keymap
+  name: dired-mode-immediate-menu
+  defined_in: dired.elc
+  desc: Immediate menu for Dired mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-mode-map
+  surface: keymap
+  name: dired-mode-map
+  defined_in: dired.elc
+  desc: Local keymap for Dired mode buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-mode-mark-menu
+  surface: keymap
+  name: dired-mode-mark-menu
+  defined_in: dired.elc
+  desc: Mark menu for Dired mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-mode-operate-menu
+  surface: keymap
+  name: dired-mode-operate-menu
+  defined_in: dired.elc
+  desc: Operate menu for Dired mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-mode-regexp-menu
+  surface: keymap
+  name: dired-mode-regexp-menu
+  defined_in: dired.elc
+  desc: Regexp menu for Dired mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-mode-subdir-menu
+  surface: keymap
+  name: dired-mode-subdir-menu
+  defined_in: dired.elc
+  desc: Subdir menu for Dired mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.dired-mouse-drag-files-map
+  surface: keymap
+  name: dired-mouse-drag-files-map
+  defined_in: dired.elc
+  desc: Keymap applied to file names when ‘dired-mouse-drag-files’ is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.edit-tab-stops-map
+  surface: keymap
+  name: edit-tab-stops-map
+  defined_in: indent.elc
+  desc: Keymap used in ‘edit-tab-stops’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.esc-map
+  surface: keymap
+  name: esc-map
+  defined_in: subr.elc
+  desc: Default keymap for ESC (meta) commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.global-map
+  surface: keymap
+  name: global-map
+  defined_in: subr.elc
+  desc: Default global keymap mapping Emacs keyboard input into commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.goto-map
+  surface: keymap
+  name: goto-map
+  defined_in: bindings.elc
+  desc: Keymap for navigation commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.indent-rigidly-map
+  surface: keymap
+  name: indent-rigidly-map
+  defined_in: indent.elc
+  desc: Transient keymap for adjusting indentation interactively.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.isearch-help-map
+  surface: keymap
+  name: isearch-help-map
+  defined_in: isearch.elc
+  desc: Keymap for characters following the Help key for Isearch mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.isearch-menu-bar-map
+  surface: keymap
+  name: isearch-menu-bar-map
+  defined_in: isearch.elc
+  desc: Menu for ‘isearch-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.isearch-mode-map
+  surface: keymap
+  name: isearch-mode-map
+  defined_in: isearch.elc
+  desc: Keymap for ‘isearch-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.isearch-tool-bar-map
+  surface: keymap
+  name: isearch-tool-bar-map
+  defined_in: isearch.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.kmacro-keymap
+  surface: keymap
+  name: kmacro-keymap
+  defined_in: kmacro.elc
+  desc: Keymap for keyboard macro commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.kmacro-menu-mode-map
+  surface: keymap
+  name: kmacro-menu-mode-map
+  defined_in: kmacro.elc
+  desc: Keymap for ‘kmacro-menu-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.kmacro-step-edit-map
+  surface: keymap
+  name: kmacro-step-edit-map
+  defined_in: kmacro.elc
+  desc: Keymap that defines the responses to questions in ‘kmacro-step-edit-macro’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.menu-bar-bookmark-map
+  surface: keymap
+  name: menu-bar-bookmark-map
+  defined_in: bookmark.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.messages-buffer-mode-map
+  surface: keymap
+  name: messages-buffer-mode-map
+  defined_in: simple.elc
+  desc: Keymap for ‘messages-buffer-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-inactive-mode-map
+  surface: keymap
+  name: minibuffer-inactive-mode-map
+  defined_in: minibuffer.elc
+  desc: Keymap for use in the minibuffer when it is not active.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-local-completion-map
+  surface: keymap
+  name: minibuffer-local-completion-map
+  defined_in: minibuffer.elc
+  desc: Local keymap for minibuffer input with completion.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-local-filename-completion-map
+  surface: keymap
+  name: minibuffer-local-filename-completion-map
+  defined_in: minibuffer.elc
+  desc: Local keymap for minibuffer input with completion for filenames.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-local-isearch-map
+  surface: keymap
+  name: minibuffer-local-isearch-map
+  defined_in: isearch.elc
+  desc: Keymap for editing Isearch strings in the minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-local-must-match-map
+  surface: keymap
+  name: minibuffer-local-must-match-map
+  defined_in: minibuffer.elc
+  desc: Local keymap for minibuffer input with completion, for exact match.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-local-ns-map
+  surface: keymap
+  name: minibuffer-local-ns-map
+  defined_in: minibuffer.elc
+  desc: Local keymap for the minibuffer when spaces are not allowed.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-local-shell-command-map
+  surface: keymap
+  name: minibuffer-local-shell-command-map
+  defined_in: simple.elc
+  desc: Keymap used for completing shell commands in minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-mode-map
+  surface: keymap
+  name: minibuffer-mode-map
+  defined_in: minibuffer.elc
+  desc: Keymap for ‘minibuffer-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.minibuffer-visible-completions-map
+  surface: keymap
+  name: minibuffer-visible-completions-map
+  defined_in: minibuffer.elc
+  desc: Local keymap for minibuffer input with visible completions.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-line-buffer-identification-keymap
+  surface: keymap
+  name: mode-line-buffer-identification-keymap
+  defined_in: bindings.elc
+  desc: Keymap for what is displayed by ‘mode-line-buffer-identification’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-line-coding-system-map
+  surface: keymap
+  name: mode-line-coding-system-map
+  defined_in: bindings.elc
+  desc: Local keymap for the coding-system part of the mode line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-line-column-line-number-mode-map
+  surface: keymap
+  name: mode-line-column-line-number-mode-map
+  defined_in: bindings.elc
+  desc: Keymap to display on column and line numbers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-line-input-method-map
+  surface: keymap
+  name: mode-line-input-method-map
+  defined_in: bindings.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-line-major-mode-keymap
+  surface: keymap
+  name: mode-line-major-mode-keymap
+  defined_in: bindings.elc
+  desc: Keymap to display on major mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-line-minor-mode-keymap
+  surface: keymap
+  name: mode-line-minor-mode-keymap
+  defined_in: bindings.elc
+  desc: Keymap to display on minor modes.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-line-mode-menu
+  surface: keymap
+  name: mode-line-mode-menu
+  defined_in: bindings.elc
+  desc: Menu of mode operations in the mode line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-line-window-dedicated-keymap
+  surface: keymap
+  name: mode-line-window-dedicated-keymap
+  defined_in: bindings.elc
+  desc: Keymap for what is displayed by ‘mode-line-window-dedicated’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.mode-specific-map
+  surface: keymap
+  name: mode-specific-map
+  defined_in: bindings.elc
+  desc: Keymap for characters following C-c.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.multi-query-replace-map
+  surface: keymap
+  name: multi-query-replace-map
+  defined_in: replace.elc
+  desc: Keymap that defines additional bindings for multi-buffer replacements.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.narrow-map
+  surface: keymap
+  name: narrow-map
+  defined_in: bindings.elc
+  desc: Keymap for narrowing commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.next-error-repeat-map
+  surface: keymap
+  name: next-error-repeat-map
+  defined_in: bindings.elc
+  desc: Keymap to repeat ‘next-error’ and ‘previous-error’.  Used in ‘repeat-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.occur-edit-mode-map
+  surface: keymap
+  name: occur-edit-mode-map
+  defined_in: replace.elc
+  desc: Keymap for ‘occur-edit-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.occur-menu-map
+  surface: keymap
+  name: occur-menu-map
+  defined_in: replace.elc
+  desc: Menu for ‘occur-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.occur-mode-map
+  surface: keymap
+  name: occur-mode-map
+  defined_in: replace.elc
+  desc: Keymap for ‘occur-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.other-window-repeat-map
+  surface: keymap
+  name: other-window-repeat-map
+  defined_in: window.elc
+  desc: Keymap to repeat ‘other-window’.  Used in ‘repeat-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.page-navigation-repeat-map
+  surface: keymap
+  name: page-navigation-repeat-map
+  defined_in: bindings.elc
+  desc: Keymap to repeat ‘forward-page’ and ‘backward-page’.  Used in ‘repeat-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.process-menu-mode-map
+  surface: keymap
+  name: process-menu-mode-map
+  defined_in: simple.elc
+  desc: Keymap for ‘process-menu-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.project-mode-line-map
+  surface: keymap
+  name: project-mode-line-map
+  defined_in: project.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.project-other-frame-map
+  surface: keymap
+  name: project-other-frame-map
+  defined_in: project.elc
+  desc: Keymap for project commands that display buffers in other frames.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.project-other-window-map
+  surface: keymap
+  name: project-other-window-map
+  defined_in: project.elc
+  desc: Keymap for project commands that display buffers in other windows.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.project-prefix-map
+  surface: keymap
+  name: project-prefix-map
+  defined_in: project.elc
+  desc: Keymap for project commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.query-replace-map
+  surface: keymap
+  name: query-replace-map
+  defined_in: replace.elc
+  desc: Keymap of responses to questions posed by commands like ‘query-replace’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.read-expression-map
+  surface: keymap
+  name: read--expression-map
+  defined_in: simple.elc
+  desc: Keymap used by ‘read--expression’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.read-char-from-minibuffer-map
+  surface: keymap
+  name: read-char-from-minibuffer-map
+  defined_in: subr.elc
+  desc: Keymap for the ‘read-char-from-minibuffer’ function.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.read-expression-map
+  surface: keymap
+  name: read-expression-map
+  defined_in: simple.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.read-extended-command-mode-map
+  surface: keymap
+  name: read-extended-command-mode-map
+  defined_in: simple.elc
+  desc: Local keymap added to the current map when reading an extended command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.read-key-empty-map
+  surface: keymap
+  name: read-key-empty-map
+  defined_in: subr.elc
+  desc: Used internally by ‘read-key’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.read-key-full-map
+  surface: keymap
+  name: read-key-full-map
+  defined_in: subr.elc
+  desc: Used internally by ‘read-key’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.read-regexp-map
+  surface: keymap
+  name: read-regexp-map
+  defined_in: replace.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.rectangle-mark-mode-map
+  surface: keymap
+  name: rectangle-mark-mode-map
+  defined_in: rect.elc
+  desc: Keymap used while marking a rectangular region.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.resize-window-repeat-map
+  surface: keymap
+  name: resize-window-repeat-map
+  defined_in: window.elc
+  desc: Keymap to repeat window resizing commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.search-map
+  surface: keymap
+  name: search-map
+  defined_in: bindings.elc
+  desc: Keymap for search related commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.special-mode-map
+  surface: keymap
+  name: special-mode-map
+  defined_in: simple.elc
+  desc: Keymap for ‘special-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.tab-prefix-map
+  surface: keymap
+  name: tab-prefix-map
+  defined_in: subr.elc
+  desc: Keymap for tab-bar related commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.undo-repeat-map
+  surface: keymap
+  name: undo-repeat-map
+  defined_in: bindings.elc
+  desc: Keymap to repeat ‘undo’ commands.  Used in ‘repeat-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.universal-argument-map
+  surface: keymap
+  name: universal-argument-map
+  defined_in: simple.elc
+  desc: Keymap used while processing C-u.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.visual-line-mode-map
+  surface: keymap
+  name: visual-line-mode-map
+  defined_in: simple.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.window-prefix-map
+  surface: keymap
+  name: window-prefix-map
+  defined_in: window.elc
+  desc: Keymap for subcommands of C-x w.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.y-or-n-p-map
+  surface: keymap
+  name: y-or-n-p-map
+  defined_in: subr.elc
+  desc: Keymap that defines additional bindings for ‘y-or-n-p’ answers.
+  attestation:
+  - R
+  status: unclassified

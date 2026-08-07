@@ -16,20 +16,78 @@ upstreams:
     revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
     version_label: emacs-30.2
     role: secondary
-    denominator_method: batch enumeration over the include list only; `mapatoms` + `commandp` scoped to symbols
-      whose file is in scope
-    denominator_baseline: emacs -Q --batch
+    denominator_method: runtime introspection at the baseline below; commands DERIVED from key_binding, never enumerated
+      independently
+    denominator_baseline: emacs -Q --batch + require of the load_set
     census_scope_include:
     - lisp/simple.el, lisp/subr.el, lisp/bindings.el, lisp/window.el, lisp/buffer.c
     - lisp/isearch.el, lisp/register.el, lisp/rect.el, lisp/minibuffer.el, lisp/replace.el
+    - lisp/files.el, lisp/paragraphs.el, lisp/indent.el, lisp/kmacro.el, lisp/macros.el
+    - lisp/dired.el, lisp/bookmark.el, lisp/progmodes/project.el
     - src/
-    census_excluded_surfaces: 4
-    status: not-surveyed
-    reason: 'UNRESOLVED and blocking for Emacs: the three plausible baselines (`emacs -Q` + mapatoms / full bundled
-      load / autoload cookies) differ by multiples. The number here is meaningless until one is fixed by decision.
-      Emacs census does not start before that decision.
-
-      '
+    census_excluded_surfaces: 5
+    status: surveyed
+    surfaces:
+      command:
+        source_of_record: 'R: DERIVED from key_binding (no independent denominator)'
+        discovered: 803
+        by_status:
+          unclassified: 803
+        classified: 0
+        unclassified: 803
+        verified: 0
+      hook:
+        source_of_record: 'R: -hook/-functions defvars, scoped to census_scope.include'
+        discovered: 106
+        by_status:
+          unclassified: 106
+        classified: 0
+        unclassified: 106
+        verified: 0
+      key_binding:
+        source_of_record: 'R: map-keymap walk, partitioned at named-keymap boundaries'
+        discovered: 2083
+        by_status:
+          unclassified: 2083
+        classified: 0
+        unclassified: 2083
+        verified: 0
+      keymap:
+        source_of_record: 'R: mapatoms + keymapp, scoped to census_scope.include'
+        discovered: 87
+        by_status:
+          unclassified: 87
+        classified: 0
+        unclassified: 87
+        verified: 0
+      keymap_tier:
+        source_of_record: 'D: (elisp) Searching the Active Keymaps + src/keyboard.c (R: each symbol bound at the
+          pin)'
+        discovered: 9
+        by_status:
+          unclassified: 9
+        classified: 0
+        unclassified: 9
+        verified: 0
+      option:
+        source_of_record: 'R: custom-variable-p, scoped to census_scope.include'
+        discovered: 434
+        by_status:
+          unclassified: 434
+        classified: 0
+        unclassified: 434
+        verified: 0
+    totals:
+      discovered: 3522
+      classified: 0
+      unclassified: 3522
+      verified: 0
+      classification_pct: 0.0
+      verification_pct: 0.0
+    discovery:
+      scope_enumerated: complete
+      meaning: every surface in census_scope.include was enumerated, or declared non-enumerable with its upstream
+        prose recorded. This is NOT a claim about 100% of the editor — it is 100% of the declared scope.
   neovim:
     revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
     version_label: v0.12.4

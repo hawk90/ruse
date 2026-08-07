@@ -1,0 +1,418 @@
+# Capability families — the classification vocabulary BETWEEN the census and the PRD (D-043).
+#
+# The census (spec/parity/inventory/) enumerates 5,310 upstream FACTS (Neovim 1,788 + Emacs 3,522), nearly
+# all resting at `unclassified`
+# because there was nowhere to classify them INTO. This file supplies that vocabulary. But a family is not
+# a free-form bucket — it is constrained by TWO orthogonal axes, and getting those axes right is the whole
+# value of the file. Pressing them into one axis is what produced the two defects this redesign fixes:
+# a "decision living inside a family" (#1) and families that overlap (#2 vs #5).
+#
+# AXIS 1 — completion axis (id prefix encodes it). Each kind COMPLETES differently; this is not a label,
+# it is the exit condition, and mixing them manufactures fake coverage numbers:
+#   FAM-*    parity-fact.  Has an upstream DENOMINATOR. Completion = coverage_ratio over a census surface.
+#   PILLAR-* ruse-choice.  NO denominator. Completion = PRD signed off. REQUIRES `evidence_refs` — which
+#            census items TRIGGERED the choice — or it degrades into a wishlist of "things we'd like".
+#   POL-*    policy.       Not countable at all. Completion = a CI rule is green. REQUIRES `lint_id`
+#            ("every registered command carries a hint", "every CAP declares a zero-config default").
+#
+# AXIS 2 — layer. A user-facing capability passes THROUGH layers; the layer is not the capability. #2's
+# "unified command registry" and #5's "keymap" overlapped because both were written as families when they
+# are LAYERS every family traverses. `:w` is family FAM-FILE-PROJECT, layer `registry`, surface `ex_command`
+# — one seat, no overlap. multi-selection is layer `kernel`; navigation is a family; they stop colliding.
+#   layers: kernel | registry | keymap | presentation | host
+#
+# THE DECISION IS NOT IN THE FAMILY. Where Vim and selection-first editing genuinely diverge, that is a
+# ruse-choice PILLAR that REFERENCES two parity-fact families as its evidence and names the Decisions it
+# blocks. The irreconcilability is recorded at OBSERVABLE granularity (testable contracts that each close a
+# Decision), never as one concept-level "grammars are irreconcilable" that yields a Decision that never
+# closes. See spec/parity/concepts/irreconcilable.yaml#observables.
+#
+# LLM rules: `caps`/`prd`/`concepts` name real ids (spec/capabilities.yaml, spec/PRD.yaml, concepts/*.yaml).
+# `covers_surfaces` name real surfaces and appear ONLY on FAM-* (parity-fact). A PILLAR-* with no
+# `evidence_refs` is invalid. A POL-* with no `lint_id` is invalid. Any family citing only editors absent
+# from spec/parity/upstreams.yaml carries census_status: not-in-census.
+
+schema_version: 1
+status: draft
+
+axes:
+  parity-fact: { prefix: FAM,    completion: coverage_ratio, requires: denominator }
+  ruse-choice: { prefix: PILLAR, completion: prd_signed,     requires: evidence_refs }
+  policy:      { prefix: POL,    completion: ci_rule_green,   requires: lint_id }
+
+layers: [kernel, registry, keymap, presentation, host]
+
+# --- cover validation (distinct from coverage.yaml classification_pct) -------------------------------
+# classification_pct in coverage.yaml stays near 0 forever BY DESIGN (classification is lazy). This is a
+# DIFFERENT measurement: are the covers well-formed? Answered by a stratified SAMPLE, never a full census
+# — demanding all 5,310 be classified would resurrect the eager-classification mistake. The real output is
+# not a ratio but the RESIDUAL TRIAGE: each sampled item that fits no family is adjudicated into one of
+# three, and that adjudication is written back into a family's `excludes`, so the file becomes a
+# self-growing classification ruleset and the next pass is cheaper.
+cover_validation:
+  metric: cover_validated            # reported as e.g. 150/150; NOT the same number as classification_pct
+  method: stratified-sample
+  sample:
+    # nvim surfaces
+    mode_key: 40
+    ex_command: 40
+    option: 30
+    event: 20
+    map_mode: 20
+    # emacs surfaces (D-044). key_binding is sampled at the same size as mode_key even though it is
+    # ~3x larger, because the point is to estimate the COVER, not the surface — and the sample is
+    # drawn from event_class=key only, since the pseudo-event bindings (menu/tool-bar/chrome/mouse)
+    # are enumerated for honesty, not because a family claims them.
+    key_binding: 40
+    command: 30
+    keymap: 20
+    hook: 15
+    keymap_tier: 9                   # all nine — the surface is smaller than any sane sample
+  constraints:
+    primary_is_partition: true       # each item -> exactly ONE family; everything else is a secondary tag
+    forbid_family_ids: [misc, other, general]   # a catch-all makes any cover trivially 100% — banned
+    max_primary_share: 0.40          # one family eating >40% of a sample is a signal to SPLIT it
+  residual_triage:                   # an item fitting no family is exactly one of:
+    - missing-family                 #   the cover has a real hole -> add a family
+    - explicit-non-goal              #   ruse will not do it -> status intentionally-different / unsupported
+    - upstream-noise                 #   not a classifiable capability (internal/debug/deprecated upstream cruft)
+
+families:
+
+  # ============================ KERNEL LAYER ============================
+
+  FAM-EDIT-VIM-GRAMMAR:
+    title: Vim editing grammar — operator×motion, text objects, registers, dot-repeat, macros
+    axis: parity-fact
+    layer: kernel
+    covers_surfaces: [mode_key, map_mode]
+    upstreams: { vim: pinned, neovim: pinned }
+    census_status: measured
+    caps: [CAP-EDIT-CORE, CAP-VIM-PROFILE]
+    prd: [F-001, F-002, F-003, F-005, F-023, F-024, F-025, F-026, F-027]
+    contract: contracts/vim-style.yaml
+    concepts: [CONCEPT-OP-PENDING, CONCEPT-COUNT-VS-PREFIX, CONCEPT-REGISTER-STORE]
+    excludes:
+      - "selection-first primitives (multi-cursor, regex split/filter, structural expand/shrink) -> FAM-EDIT-SELECTION"
+      - "which primitive the kernel actually uses -> PILLAR-HYBRID-GRAMMAR (a choice, not a fact)"
+    tension: >
+      The measurable half of #1: operator×motion IS enumerable against the nvim census. Kept separate from
+      the selection half so each is measured against its own denominator.
+
+  FAM-EDIT-SELECTION:
+    title: Selection-first editing — multi-cursor, regex split/filter, structural (tree-sitter) expand/shrink
+    axis: parity-fact
+    layer: kernel
+    covers_surfaces: [mode_key]
+    upstreams: { kakoune: not-in-census, helix: not-in-census }
+    census_status: not-in-census
+    caps: [CAP-EDIT-CORE]
+    prd: []
+    excludes:
+      - "operator×motion composition -> FAM-EDIT-VIM-GRAMMAR"
+    tension: >
+      Kakoune and Helix are NOT pinned upstreams, so this surface has zero census backing today. It is a
+      real parity-fact family (it WOULD be enumerable) but census_status stays not-in-census until those
+      editors enter upstreams.yaml. Do not cite it as measured parity meanwhile.
+
+  PILLAR-HYBRID-GRAMMAR:
+    title: One kernel primitive under both editing grammars
+    axis: ruse-choice
+    layer: kernel
+    evidence_refs: [FAM-EDIT-VIM-GRAMMAR, FAM-EDIT-SELECTION]
+    decisions: [D-EDITLANG-PRIMITIVE]   # to be assigned a real D-id when opened; blocks C-EDITLANG, C-INPUT
+    caps: [CAP-EDIT-CORE]
+    irreconcilable_observables:         # each is a testable contract that closes ONE Decision (not one giant one)
+      - OBS-BARE-MOTION                 #   bare motion = move (Vim) | select+extend (Kakoune/Helix)
+      - OBS-SELECTION-PERSISTENCE       #   selection after an operation: absent (Vim) | retained (Kak/Helix)
+      - OBS-DOT-REPEAT-UNIT             #   repeat target: (operator,motion) tuple (Vim) | per-selection last edit
+    tension: >
+      NOT "the grammars are irreconcilable" — a (selection-set, operation) kernel primitive expresses Vim's
+      operator-pending as a deferred, invisible selection build (evil-mode already does this). What is
+      genuinely irreconcilable is the three OBSERVABLES above, each a closable contract. Recording them as
+      three observables yields three Decisions that close; recording them as one concept yields a Decision
+      that never does. OBS-DOT-REPEAT-UNIT is the hardest, and macro recording compounds it.
+
+  FAM-BUFFER-MODEL:
+    title: Buffer model — file ≠ buffer; terminal/REPL/debugger/compilation are all buffers
+    axis: parity-fact
+    layer: kernel
+    covers_surfaces: [ex_command, command, keymap]
+    upstreams: { emacs: pinned, neovim: pinned }
+    census_status: measured
+    caps: [CAP-RESOURCE, CAP-TERMINAL, CAP-PROCESS]
+    prd: []
+    concepts: []
+    tension: >
+      The defining claim is Emacs's and Emacs is now surveyed (D-044): dired-mode-map alone contributes 138
+      keyboard bindings to a buffer that IS an editable directory, which is the model this family asserts,
+      measured rather than asserted. Still no unifying C- component (HOLE-NO-CAP-HOME) — the census closed
+      the evidence gap, not the architecture gap. Window/frame SPLIT layout is layer:host (UI), not this
+      family — this family owns the object model, not the pane geometry.
+
+  # ============================ REGISTRY LAYER ============================
+
+  FAM-BATCH-EX:
+    title: Batch / scripting over the buffer — :g, :normal, ranges, :argdo/:bufdo, !filter
+    axis: parity-fact
+    layer: registry
+    covers_surfaces: [ex_command]
+    upstreams: { vim: pinned, neovim: pinned, emacs: not-surveyed }
+    census_status: measured
+    caps: [CAP-COMMAND-PALETTE]
+    prd: [F-004]
+    excludes:
+      - "the palette/minibuffer UI that surfaces commands -> layer:host, not a family"
+      - "the principle that every action IS a command -> PILLAR-UNIFIED-REGISTRY"
+    tension: >
+      557 ex_commands are the denominator. This family is the SCRIPTING capability (apply an edit across a
+      range/selection/args), distinct from the registry-plumbing principle below.
+
+  PILLAR-UNIFIED-REGISTRY:
+    title: Every action is one dispatchable command (M-x / palette / keymap all bottom out here)
+    axis: ruse-choice
+    layer: registry
+    evidence_refs: [ex_command]        # nvim ex_commands + the Emacs M-x model (once surveyed)
+    decisions: [D-COMMAND-REGISTRY]
+    caps: [CAP-COMMAND-PALETTE]
+    prd: [F-004]
+    tension: >
+      An architecture principle, not a census count — this is why #2 and #5 appeared to overlap. Keymaps
+      (layer:keymap) BIND surfaces to entries in this registry; the registry is not itself a keymap. Keep
+      the 557 ex_commands (FAM-BATCH-EX) from being quoted as if they proved this principle.
+
+  # ============================ KEYMAP LAYER ============================
+
+  FAM-KEYMAP-MODEL:
+    title: Keymap resolution — 8 Vim namespaces vs layered major/minor mode stack
+    axis: parity-fact
+    layer: keymap
+    covers_surfaces: [map_mode, keymap_tier, keymap]
+    upstreams: { vim: pinned, neovim: pinned, emacs: pinned }
+    census_status: measured
+    caps: [CAP-VIM-PROFILE, CAP-NATIVE-PROFILE]
+    prd: [F-003, F-013]
+    contract: contracts/vim-style.yaml
+    concepts: [CONCEPT-LANG-ARG, CONCEPT-KEYMAP-DISPATCH]
+    excludes:
+      - "the keys INSIDE each namespace -> their capability family (mode_key items), not here"
+      - "autocmd/hooks -> FAM-EVENT-HOOKS"
+    tension: >
+      Vim = 8 disjoint namespaces (already contracted); Emacs = a 9-tier precedence STACK (keymap_tier). Same
+      words, opposite resolution — and no longer a symmetric standoff, because the Emacs census measured the
+      asymmetry: 613 of 1,952 keyboard bindings sit in major-mode maps, a tier Vim's model has no seat for.
+      CONCEPT-KEYMAP-DISPATCH resolves it as `unified` toward the LAYERED model, since depth-1 layering is
+      exactly Vim's disjoint model. This family owns the resolution MODEL; it does not own the bound keys.
+
+  FAM-EVENT-HOOKS:
+    title: Event hooks — autocmd events (Vim) / hook variables (Emacs)
+    axis: parity-fact
+    layer: keymap
+    covers_surfaces: [event, hook]
+    upstreams: { vim: pinned, neovim: pinned, emacs: pinned }
+    census_status: measured
+    caps: [CAP-VIM-PROFILE]
+    prd: []
+    tension: >
+      141 autocmd events are the Vim-side denominator; 106 declared `-hook`/`-functions` variables are the
+      Emacs side. The two are NOT the same kind of fact and the census says so: auevents.lua is closed and
+      complete, while an Emacs hook is any variable someone runs `run-hooks` on, so `hook` enumerates the
+      DECLARED ones and cannot claim completeness. Compare the numbers, never equate the guarantees.
+
+  # ============================ HOST LAYER (navigation, dev, persistence, remote, files) ============================
+
+  FAM-NAVIGATION:
+    title: Navigation — marks/jumps/changelist, quickfix+errorformat, folding, diff mode
+    axis: parity-fact
+    layer: host
+    covers_surfaces: [mode_key, ex_command]
+    upstreams: { vim: pinned, neovim: pinned, helix: not-in-census }
+    census_status: partial
+    caps: [CAP-FILE-PICKER, CAP-SEARCH, CAP-DIAGNOSTICS]
+    prd: [F-009]
+    concepts: [CONCEPT-POSITION-HISTORY]
+    excludes:
+      - "multi-cursor motion is kernel-layer selection -> FAM-EDIT-SELECTION, not navigation"
+      - "picker-AS-primary-navigation (Helix) is not-in-census -> aspirational"
+    tension: >
+      Jumplist (motion-classified, per-window) vs Emacs mark-ring — CONCEPT-POSITION-HISTORY (pending). The
+      #6/#1 overlap the previous draft worried about dissolves under layer: multi-selection is kernel,
+      navigation is host.
+
+  FAM-PERSISTENCE:
+    title: Persistence — undo tree + persistent undo, session/workspace save
+    axis: parity-fact
+    layer: host
+    covers_surfaces: [option, ex_command]
+    upstreams: { vim: pinned, neovim: pinned }
+    census_status: measured
+    caps: [CAP-EDIT-CORE, CAP-RECOVERY]
+    prd: [F-008]
+    tension: >
+      Undo comparable vim↔nvim ONLY (undotree seq-tree vs Emacs pair-list); behavioral fixtures declared per
+      editor pair, never global. 'undofile'/'undodir'/'undolevels' + :mksession give a clean denominator.
+
+  FAM-FILE-PROJECT:
+    title: File / project — dired-style editable file manager, project abstraction, kill ring, bookmarks
+    axis: parity-fact
+    layer: host
+    covers_surfaces: [ex_command, command, keymap]
+    upstreams: { emacs: pinned, neovim: pinned }
+    census_status: measured
+    caps: [CAP-FILE-PICKER, CAP-FILE-TREE-UI, CAP-GIT-PRIMITIVE, CAP-RESOURCE]
+    prd: [F-009, F-017]
+    concepts: [CONCEPT-REGISTER-STORE]
+    excludes:
+      - "kill ring is the SAME kernel object as Vim registers -> classify once under FAM-EDIT-VIM-GRAMMAR;
+         the secondary link here exists so the cover check flags the overlap instead of double-counting"
+    tension: >
+      dired/project/bookmarks are Emacs-model and now in scope by name (D-044 widened census_scope.include
+      to lisp/dired.el, lisp/bookmark.el, lisp/progmodes/project.el — one core file each; dired-aux/dired-x
+      stay out as application surface). Kill ring is CONCEPT-REGISTER-STORE (resolution: unified) — one
+      store, two surfaces; primary classification lives with the registers.
+
+  # ============================ RUSE-CHOICE PILLARS (host/presentation) ============================
+
+  PILLAR-RICH-PRESENTATION:
+    title: Rich presentation — variable fonts, proportional+mono mix, inline image/SVG/LaTeX/Mermaid, overlays
+    axis: ruse-choice
+    layer: presentation
+    evidence_refs: [option]            # Emacs overlay/text-property/display-spec is prior art; census subset only
+    decisions: [D-PRESENTATION-MODEL]
+    caps: [CAP-SYNTAX, CAP-THEME]
+    prd: [F-006, F-015]
+    tension: >
+      The stated differentiator. Must NOT get a parity ratio — measuring it against Emacs would imply Emacs
+      is the target when it is prior art. Needs its own design docs + a CAP it lacks; the risk is it stays a
+      bullet because, unlike FAM-*, no census pressure forces it.
+
+  PILLAR-BUILTIN-DEV:
+    title: Built-in development — LSP & tree-sitter first-class (no plugin), standardized language config
+    axis: ruse-choice
+    layer: host
+    evidence_refs: [option]            # lsp/treesitter tuning knobs; the real denominator is the LSP/DAP specs (contracts)
+    decisions: [D-DEV-BUILTIN]
+    caps: [CAP-LSP-COORD, CAP-LSP-CODEC, CAP-SYNTAX, CAP-DIAGNOSTICS, CAP-COMPLETION]
+    prd: [F-014, F-015]
+    tension: >
+      "Built in, zero plugin" (Helix's stance) is a product decision; LSP/tree-sitter are external protocols,
+      not editor keymaps. The honest denominator is the protocol specs, tracked as contracts — not the nvim
+      census. Strongly CAP-backed already.
+
+  PILLAR-REMOTE-ARCH:
+    title: Remote / architecture — client-session split, headless, RPC, one core for TUI/GUI
+    axis: ruse-choice
+    layer: host
+    evidence_refs: []                  # architecture leaves no keymap/option surface; evidence is the contracts
+    decisions: [D-REMOTE-ARCH]
+    caps: [CAP-REMOTE-RUNTIME, CAP-TRACE, CAP-PROCESS]
+    prd: [F-017, F-022]
+    contract: contracts/remote-runtime.yaml
+    tension: >
+      nvim --headless + msgpack-RPC and Kakoune's client/server are prior art, but this is an architecture
+      shape with no enumerable surface — it belongs to the remote-runtime contract and the F-022 trace
+      pillar. Marking it parity-fact would be a category error.
+
+  # ============================ POLICIES (cross-cutting, CI-linted) ============================
+
+  POL-DISCOVERABILITY:
+    title: Discoverability — persistent hints, key-hint popups, describe-key/function, hypertext help
+    axis: policy
+    applies_to: "*"
+    lint_id: LINT-CMD-HAS-HINT         # every registered command carries a human hint string
+    inspiration: [nano, helix, emacs]
+    caps: [CAP-COMMAND-PALETTE]
+    prd: []
+    tension: >
+      A property of the whole UI ("every binding is discoverable at the moment of use"), not a countable
+      feature. Verified by a CI rule, reviewed via fitness/review-axes — never a parity ratio. Currently has
+      neither the lint nor a fitness entry; LINT-CMD-HAS-HINT is proposed here.
+
+  POL-ZERO-CONFIG:
+    title: UX defaults — zero-config instant edit, non-modal fallback, obvious save/exit
+    axis: policy
+    applies_to: "*"
+    lint_id: LINT-CAP-HAS-DEFAULT      # every CAP declares a working zero-config default
+    inspiration: [nano]
+    caps: [CAP-NATIVE-PROFILE]
+    prd: [F-013]
+    tension: >
+      Nano (the reference) is not a pinned upstream, so these are design assertions by definition. An
+      onboarding/default policy ("edit and save without a manual"), enforced by a lint over CAPs, not
+      counted. Either pin Nano as a small upstream or accept these as assertions — do not read them as parity.
+
+# --- surface_cover -----------------------------------------------------------------------------------
+# Which FAM-* partition each census surface. `primary` families partition (item -> exactly one); a surface
+# item may carry `secondary` family tags but is counted once. Validated by the 150-item stratified sample
+# above, NOT by full enumeration. options are deliberately unowned — they are covered by the config-schema
+# derivation (D-042), each option classified by the subsystem it tunes, so expect wide correct spread.
+surface_cover:
+  # --- neovim ---
+  map_mode:    { primary: [FAM-KEYMAP-MODEL], secondary: [FAM-EDIT-VIM-GRAMMAR], note: "8/8 classified via vim-style.yaml — the one real cover today" }
+  mode_key:    { primary: [FAM-EDIT-VIM-GRAMMAR, FAM-EDIT-SELECTION, FAM-NAVIGATION], note: "each key by PRIMARY role; residuals triage to non-goal or FAM-EDIT-SELECTION (not-in-census)" }
+  ex_command:  { primary: [FAM-BATCH-EX, FAM-FILE-PROJECT, FAM-PERSISTENCE, FAM-BUFFER-MODEL], note: "most FAM-BATCH-EX; file/session/window subsets peel off" }
+  option:      { primary: [], classified_by: subsystem, note: "unowned by families; covered by config-schema derivation (D-042)" }
+  event:       { primary: [FAM-EVENT-HOOKS], note: "Vim-side hook denominator only" }
+  # --- emacs (D-044) ---
+  keymap_tier: { primary: [FAM-KEYMAP-MODEL], note: "the 9-tier precedence stack; the Emacs counterpart of map_mode and the evidence for CONCEPT-KEYMAP-DISPATCH" }
+  keymap:      { primary: [FAM-KEYMAP-MODEL], secondary: [FAM-BUFFER-MODEL, FAM-FILE-PROJECT], note: "87 named keymap variables; a major-mode map is BOTH a namespace (this family) and evidence that a buffer carries its own command surface (FAM-BUFFER-MODEL)" }
+  key_binding: { primary: [FAM-EDIT-VIM-GRAMMAR, FAM-FILE-PROJECT, FAM-NAVIGATION], filter: "event_class == key", note: "partition applies to the 1,952 keyboard bindings; menu/tool-bar/chrome/mouse/remap are enumerated for discovery honesty and owned by NO family — that is correct, not a hole" }
+  command:     { primary: [FAM-BATCH-EX, FAM-FILE-PROJECT, FAM-BUFFER-MODEL, FAM-PERSISTENCE], note: "derived from key_binding, so an item's family should agree with the family of the key that reaches it — a disagreement is a cover bug worth investigating, not a tie to break arbitrarily" }
+  hook:        { primary: [FAM-EVENT-HOOKS], note: "declared -hook/-functions only; unlike auevents.lua this surface cannot claim completeness" }
+
+# --- census_holes ------------------------------------------------------------------------------------
+census_holes:
+  - id: HOLE-SELECTION-FIRST
+    families: [FAM-EDIT-SELECTION, FAM-NAVIGATION]
+    gap: Kakoune and Helix drive the selection-first grammar (#1) and picker-first navigation (#6) but are
+      not pinned upstreams — ZERO census backing.
+    resolve_by: pin them in spec/parity/upstreams.yaml, or accept the claims as aspirational and stop citing
+      them as parity.
+  # HOLE-EMACS-BLOCKED — CLOSED by D-044. Kept as a closed row rather than deleted: the reason it was
+  # blocked (three candidate denominators differing by multiples) was a real diagnosis, and the way it
+  # closed (the question was wrong, not the answer unknown) is the reusable lesson. Deleting it would
+  # leave families.yaml claiming Emacs was always measured.
+  - id: HOLE-EMACS-BLOCKED
+    status: closed
+    families: [FAM-BUFFER-MODEL, FAM-FILE-PROJECT, FAM-KEYMAP-MODEL]
+    gap: the Emacs-model families rested on an upstream whose denominator decision was unresolved.
+    resolved_by: D-044 — the load set IS the scope list, and commands are DERIVED from key_binding
+      rather than enumerated. 3,522 items across 6 surfaces; every surface lands beside its Neovim
+      counterpart instead of dwarfing it, which is the evidence the scope cut was honest.
+    residue: >
+      PILLAR-RICH-PRESENTATION was listed here and should NOT have been — it is a ruse-choice pillar
+      and pillars have no denominator by definition (axes.ruse-choice). Being "blocked on a census"
+      was a category error, not a gap; it is now tracked only by its own Decision.
+
+  - id: HOLE-EMACS-ORACLE
+    status: open
+    families: [FAM-BUFFER-MODEL, FAM-FILE-PROJECT, FAM-KEYMAP-MODEL, FAM-EVENT-HOOKS]
+    gap: >
+      The Emacs census is DISCOVERED but nothing about it is VERIFIED. D-043 reserves `verified` for
+      an item a differential fixture proved against the pinned oracle, and the Emacs oracle is still
+      broken: `emacs --batch` + `execute-kbd-macro` silently empties the buffer on a plain `M-d`
+      while the kill-ring reads correct, so a kill-ring-only comparison would PASS a wrong fixture.
+      Introspection was safe precisely because it never executes a command; behaviour is not.
+    resolve_by: a pty-hosted `emacs -nw` harness, gated by oracle_selftest before any fixture counts.
+    note: distinct from the denominator problem — only this half was ever about batch mode.
+
+  - id: HOLE-SUBSTRATE-UNTESTED
+    status: open
+    families: [FAM-BUFFER-MODEL]
+    gap: >
+      lisp/org, lisp/gnus, lisp/net/tramp are correctly EXCLUDED from the census (applications, not
+      editor semantics), and that leaves what ruse actually wants from them with no home. The value
+      of Org is not its ~700 commands; it is the proof that the substrate can host an outline tree
+      as document structure, tables with formulas, executable source blocks and an export AST —
+      i.e. a claim about ruse's kernel, tested by whether such an application COULD be written on
+      it. docs/parity/emacs.md tabulates Org under "Capability-kind targets" in the one table with
+      no ID column, so parity_coverage cannot see it, nothing in the PRD derives from it, and the
+      substrate claim has never been checked. Same defect class as the mode-namespace failure: a
+      dimension with nowhere to live.
+    resolve_by: spec/parity/concepts/substrate-adequacy.yaml — hand-authored (it is judgement, not
+      enumeration), one entry per application class, each naming the kernel capability it demands
+      and the PRD/CAP that owes it. Does NOT wait on any census.
+  - id: HOLE-NO-CAP-HOME
+    families: [FAM-BUFFER-MODEL, FAM-NAVIGATION]
+    gap: buffer≠file model and folding/diff have census witnesses but no coherent CAP-*/C- home.
+    resolve_by: a capability/component entry, or an explicit decision that they compose existing CAPs.

@@ -39,12 +39,26 @@ version: 1
 # for ex-commands (`nvim_get_commands({builtin:true})` returns 1 item — a documented-but-unimplemented
 # API). D (index.txt) is authoritative for the per-mode key namespaces because it is the only source
 # that enumerates keys BY MODE, which is precisely the structure the hand-written catalog lost.
+#
+# The two upstreams do not share a surface vocabulary, and forcing them to would be the same
+# category error that stalled the Emacs census: Neovim PUBLISHES its surfaces as tables in-tree, so
+# its census is a parse (S/D primary); Emacs publishes nothing equivalent and its surfaces exist
+# only in a running image, so its census is a probe (R primary). Same rule — one authoritative
+# source per item type — applied to two upstreams that answer to different sources.
 source_of_record:
+  # --- neovim surfaces (parse) ---
   mode_key:    { primary: D, corroborate: [S, T], note: "runtime/doc/index.txt — the only per-mode key enumeration" }
-  option:      { primary: R, corroborate: [S, D], note: "nvim_get_all_options_info(); options.lua as the static cross-check" }
+  option:      { primary: R, corroborate: [S, D], note: "nvim: nvim_get_all_options_info(), options.lua as the static cross-check. emacs: custom-variable-p scoped to the load set" }
   ex_command:  { primary: S, corroborate: [R, D], note: "ex_cmds.lua; the builtin=true API is unreliable" }
   event:       { primary: R, corroborate: [S, D] }
   map_mode:    { primary: D, corroborate: [S],    note: "runtime/doc/map.txt map-table — the 8 disjoint keymap namespaces" }
+  # --- emacs surfaces (probe) ---
+  keymap_tier: { primary: D, corroborate: [R],    note: "(elisp) Searching the Active Keymaps + src/keyboard.c. The ORDER is not returned by any runtime call — current-active-maps reports what is live now, which in batch is a degenerate 2 — so D is primary and R only confirms each symbol is bound. This is the Emacs counterpart of map_mode and the two are NOT the same shape: map_mode is a disjoint set, keymap_tier is an ordered stack (concepts/irreconcilable.yaml#CONCEPT-KEYMAP-DISPATCH)" }
+  keymap:      { primary: R, corroborate: [S],    note: "mapatoms + keymapp, scoped to the load set; named keymap variables are the namespace inventory" }
+  key_binding: { primary: R, corroborate: [D],    note: "map-keymap walk, PARTITIONED at named-keymap boundaries so a nested named map (ctl-x-map inside global-map) is a prefix pointer rather than a double count" }
+  command:     { primary: R, corroborate: [D],    note: "DERIVED from key_binding, never enumerated independently — see the emacs denominator block below for why that is the resolution and not a shortcut" }
+  hook:        { primary: R, corroborate: [D],    note: "-hook/-functions defvars scoped to the load set; the Emacs counterpart of nvim `event`. Not equivalent: hooks are arbitrary lisp on any variable, so this enumerates the DECLARED ones only and cannot claim completeness the way auevents.lua can" }
+  # --- behavior (both) ---
   semantics:   { primary: T, corroborate: [D],    note: "behavior is only pinned by execution; see `oracles` below" }
 
 upstreams:
@@ -98,23 +112,75 @@ upstreams:
       include:
         - lisp/simple.el, lisp/subr.el, lisp/bindings.el, lisp/window.el, lisp/buffer.c
         - lisp/isearch.el, lisp/register.el, lisp/rect.el, lisp/minibuffer.el, lisp/replace.el
+        - lisp/files.el, lisp/paragraphs.el, lisp/indent.el, lisp/kmacro.el, lisp/macros.el
+        - lisp/dired.el, lisp/bookmark.el, lisp/progmodes/project.el
         - src/                          # the C core: command loop, buffers, markers, text properties
+      # Every widening below names the family it exists to give a denominator to. A family whose
+      # census_status is `partial` because its libraries were never in scope is not a measured
+      # family — it is an unmeasured one wearing a number.
+      include_reasons:
+        - path: lisp/files.el
+          reason: "find-file/save-buffer/backup/auto-save are editor semantics and the denominator for FAM-FILE-PROJECT and FAM-PERSISTENCE. Excluding it left both families citing only nvim ex_commands."
+        - path: lisp/paragraphs.el, lisp/indent.el
+          reason: "Paragraph/sentence motion and indentation are the Emacs counterparts of Vim motions and 'shiftwidth' — FAM-EDIT-VIM-GRAMMAR needs both sides to compare."
+        - path: lisp/kmacro.el, lisp/macros.el
+          reason: "Keyboard macros are the Emacs half of CONCEPT-DOT-REPEAT / macro recording (PILLAR-HYBRID-GRAMMAR#OBS-DOT-REPEAT-UNIT); without them that observable has one side only."
+        - path: lisp/dired.el, lisp/bookmark.el, lisp/progmodes/project.el
+          reason: "FAM-FILE-PROJECT names dired/project/bookmarks by name as its content. One core file each — dired-aux/dired-x stay out (they are the application, not the model)."
       exclude:
         - path: lisp/gnus/**, lisp/org/**, lisp/calc/**, lisp/erc/**, lisp/net/tramp*
-          reason: "Applications shipped inside Emacs, not editor semantics. ~12k interactive commands live here; including them makes the denominator meaningless."
+          reason: "Applications shipped inside Emacs, not editor semantics. ~12k interactive commands live here; including them makes the denominator meaningless. What ruse wants from these is not their commands but what they PROVE the substrate can host — that claim belongs in concepts/, not in a census (see HOLE-SUBSTRATE-UNTESTED in families.yaml)."
         - path: lisp/obsolete/**
           reason: "Upstream-declared obsolete; parity to a deprecated surface is negative value."
         - path: lisp/term/**
           reason: "Terminal-specific glue; ruse owns its own terminal layer (docs/parity/terminal.md)."
         - path: lisp/language/**, leim/**
           reason: "Input methods / language environments — out of scope for MVP-1.0 (Non-goals)."
+        - path: lisp/dired-aux.el, lisp/dired-x.el
+          reason: "dired's application surface (compress, chmod, omit-mode). dired.el alone gives the buffer-as-editable-directory MODEL, which is what FAM-FILE-PROJECT actually claims."
     denominator:
-      method: "batch enumeration over the include list only; `mapatoms` + `commandp` scoped to symbols whose file is in scope"
-      baseline: "emacs -Q --batch"
+      # RESOLVED (was: blocking). The old note recorded three candidate baselines — `emacs -Q` +
+      # mapatoms (3,011 commands) / full bundled load / autoload cookies (12,087 `(interactive`) —
+      # and concluded no number was defensible. Both halves of that were the wrong question:
+      #
+      #   1. THE LOAD SET IS THE SCOPE LIST. The three candidates were three guesses at "how much
+      #      Emacs is Emacs", but census_scope.include already answers that. So the baseline is
+      #      `emacs -Q --batch` + `require` of exactly the in-scope libraries. Deterministic, and
+      #      reviewable because widening it means editing the list above, which needs a reason.
+      #   2. COMMANDS ARE DERIVED. "How many commands exist" has no defensible answer because a
+      #      command no key reaches is not a surface. "Which commands are reachable from a bound key
+      #      in an in-scope keymap" has exactly one, and it is the number parity cares about.
+      #
+      # The check that this cut is honest rather than convenient: every Emacs surface lands in the
+      # same order of magnitude as its Neovim counterpart — key_binding 1,021 vs mode_key 708,
+      # command 565 vs ex_command 557, option 347 vs 374, hook 99 vs event 141. Editor semantics is
+      # about the same size in both editors, which is what you would expect and what the 12k figure
+      # made impossible to see.
+      method: "runtime introspection at the baseline below; commands DERIVED from key_binding, never enumerated independently"
+      baseline: "emacs -Q --batch + require of the load_set"
+      # Scope is matched on `file-name-base`, not a regex: elisp regexp syntax makes `(` and `|`
+      # literals, so a PCRE-looking pattern here would silently match nothing and report a census of
+      # zero as if it were a census. A basename set cannot fail that way.
+      scope_files: [simple, subr, bindings, window, isearch, register, rect, minibuffer, replace,
+                    files, paragraphs, indent, kmacro, macros, dired, bookmark, project]
+      # What to `require`. Shorter than scope_files, for two different reasons that must not be
+      # conflated: (a) most of these libraries are preloaded in a bare image, and (b) `indent` and
+      # `paragraphs` are preloaded AND carry no `provide` form, so requiring them ERRORS. They stay
+      # in scope_files — their symbols are present and in scope — but they cannot be required.
+      # The extractor fails loudly on any load failure rather than quietly censusing a short
+      # denominator; that guard is what surfaced (b).
+      load_set: [simple, window, files, replace, minibuffer,
+                 isearch, register, rect, kmacro, macros, dired, bookmark, project]
+      resolved_by: D-044
       note: >
-        UNRESOLVED and blocking for Emacs: the three plausible baselines (`emacs -Q` + mapatoms /
-        full bundled load / autoload cookies) differ by multiples. The number here is meaningless
-        until one is fixed by decision. Emacs census does not start before that decision.
+        The source tree is NOT fetched for this upstream: R-primary surfaces come from the installed
+        binary. That would let an inventory claim a revision it was never generated from, so each
+        emitted document carries `derived_from: runtime-binary` + `binary_version`, and
+        `gov parity_discovery` FAILS when that version does not match `version_label`. The build is
+        still not byte-identical to the pinned commit — recorded as `binary_identity:
+        unverified-build`, not hidden. Fetching the tree remains worthwhile for S-corroboration
+        (and for a future extract of surfaces the runtime does not expose); it is deferred, not
+        cancelled.
 
 # Executable oracles — the ONLY thing that turns an asserted parity claim into a verified one.
 # Every hazard below was observed, not predicted: each harness corrupted its own observation on the
