@@ -113,8 +113,7 @@ def active_issue() -> str | None:
 # ---- crate layout ---------------------------------------------------------------
 
 # Layer names used by dependencies.yaml `allowed_layers` are the crate dir names.
-CRATES = ["core", "plugin-protocol", "render-model", "terminal-platform",
-          "workspace", "workspace-runtime"]
+CRATES = ["core"]  # collapsed to a two-crate editor (D-039 / RFC-0012); deferred boundaries return with their crate
 
 
 def crate_of(relpath: str) -> str | None:
