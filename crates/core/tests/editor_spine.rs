@@ -1,7 +1,7 @@
 //! Headless tests for the editor spine (RFC-0012 Phase C1): the plan/commit command pipeline and the
 //! command-level trace with its determinism contract. No terminal — the crossterm TUI is C2.
 
-use ruse_core::{apply_command, Command, EditorState, Effect, Mode, Trace, TraceError};
+use ruse_core::{apply_command, Command, EditorState, Effect, Mode, Motion, Trace, TraceError};
 
 /// The command sequence for "type ` world` at end of line, then leave insert" — reused across tests.
 fn insert_world() -> Vec<Command> {
@@ -139,4 +139,85 @@ fn trace_refuses_a_mismatched_initial_document() {
         matches!(err, TraceError::HashMismatch { .. }),
         "a trace only replays on its recorded document"
     );
+}
+
+// --- editing grammar (Phase D): count + operator + motion ---
+
+#[test]
+fn word_motions() {
+    let mut st = EditorState::new(b"foo bar baz".to_vec());
+    apply_command(&mut st, &Command::Move(1, Motion::WordFwd));
+    assert_eq!(st.cursor(), 4, "start of bar");
+    apply_command(&mut st, &Command::Move(1, Motion::WordFwd));
+    assert_eq!(st.cursor(), 8, "start of baz");
+    apply_command(&mut st, &Command::Move(1, Motion::WordBack));
+    assert_eq!(st.cursor(), 4);
+}
+
+#[test]
+fn dw_and_counted_dw() {
+    let mut a = EditorState::new(b"foo bar".to_vec());
+    apply_command(&mut a, &Command::Delete(1, Motion::WordFwd));
+    assert_eq!(
+        a.as_str(),
+        Some("bar"),
+        "dw deletes a word (with its trailing space)"
+    );
+
+    let mut b = EditorState::new(b"foo bar baz".to_vec());
+    apply_command(&mut b, &Command::Delete(2, Motion::WordFwd));
+    assert_eq!(b.as_str(), Some("baz"), "d2w deletes two words");
+}
+
+#[test]
+fn de_is_inclusive() {
+    let mut st = EditorState::new(b"foobar baz".to_vec());
+    apply_command(&mut st, &Command::Delete(1, Motion::WordEnd));
+    assert_eq!(
+        st.as_str(),
+        Some(" baz"),
+        "de deletes to end-of-word inclusive"
+    );
+}
+
+#[test]
+fn change_deletes_and_enters_insert() {
+    let mut st = EditorState::new(b"foo bar".to_vec());
+    apply_command(&mut st, &Command::Change(1, Motion::WordFwd));
+    assert_eq!(st.mode(), Mode::Insert);
+    apply_command(&mut st, &Command::InsertChar('X'));
+    assert_eq!(st.as_str(), Some("Xbar"));
+}
+
+#[test]
+fn dd_deletes_a_line() {
+    let mut st = EditorState::new(b"aaa\nbbb\nccc".to_vec());
+    apply_command(&mut st, &Command::Move(1, Motion::Down)); // onto bbb
+    apply_command(&mut st, &Command::Delete(1, Motion::Line));
+    assert_eq!(st.as_str(), Some("aaa\nccc"));
+}
+
+#[test]
+fn cc_changes_line_content_keeps_the_line() {
+    let mut st = EditorState::new(b"aaa\nbbb\nccc".to_vec());
+    apply_command(&mut st, &Command::Move(1, Motion::Down)); // onto bbb
+    apply_command(&mut st, &Command::Change(1, Motion::Line));
+    assert_eq!(st.as_str(), Some("aaa\n\nccc"));
+    assert_eq!(st.mode(), Mode::Insert);
+    apply_command(&mut st, &Command::InsertChar('Z'));
+    assert_eq!(st.as_str(), Some("aaa\nZ\nccc"));
+}
+
+#[test]
+fn operator_is_one_undo_and_traces() {
+    let trace = Trace::record(b"foo bar", vec![Command::Delete(1, Motion::WordFwd)]);
+    let st = trace.replay(b"foo bar").unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(st.as_str(), Some("bar"));
+    // one undo reverts the whole operator
+    let mut d = EditorState::new(b"foo bar".to_vec());
+    apply_command(&mut d, &Command::Delete(1, Motion::WordFwd));
+    apply_command(&mut d, &Command::Undo);
+    assert_eq!(d.as_str(), Some("foo bar"));
+    // the new command variants round-trip through the trace text format
+    assert_eq!(Trace::from_text(&trace.to_text()).unwrap(), trace);
 }

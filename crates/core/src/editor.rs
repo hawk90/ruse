@@ -9,6 +9,9 @@ use crate::command::Command;
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
 use crate::effect::Effect;
+use crate::motion::{
+    self, at_col, col_of, line_end, line_start, next_boundary, prev_boundary, snap, Motion,
+};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 
 /// The editor mode (v0: the two that matter for the spine).
@@ -89,73 +92,43 @@ impl EditorState {
     }
 }
 
-// --- char-boundary + line helpers over the byte buffer (assumed valid UTF-8) ---
-
-fn prev_boundary(b: &[u8], pos: usize) -> usize {
-    let mut i = pos.min(b.len());
-    while i > 0 {
-        i -= 1;
-        if is_boundary(b, i) {
-            return i;
-        }
+/// The byte range a `delete` operator covers: linewise (whole lines incl. newline) for `Motion::Line`,
+/// else the motion's charwise span.
+fn op_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
+    if m != Motion::Line {
+        return motion::char_span(b, cur, m, count);
     }
-    0
-}
-
-fn next_boundary(b: &[u8], pos: usize) -> usize {
-    let mut i = (pos + 1).min(b.len());
-    while i < b.len() && !is_boundary(b, i) {
-        i += 1;
-    }
-    i
-}
-
-fn is_boundary(b: &[u8], i: usize) -> bool {
-    i == 0 || i == b.len() || (b[i] & 0xC0) != 0x80
-}
-
-fn snap(b: &[u8], pos: usize) -> usize {
-    let p = pos.min(b.len());
-    if is_boundary(b, p) {
-        p
-    } else {
-        prev_boundary(b, p)
-    }
-}
-
-fn line_start(b: &[u8], pos: usize) -> usize {
-    b[..pos.min(b.len())]
-        .iter()
-        .rposition(|&c| c == b'\n')
-        .map_or(0, |i| i + 1)
-}
-
-fn line_end(b: &[u8], pos: usize) -> usize {
-    let p = pos.min(b.len());
-    b[p..]
-        .iter()
-        .position(|&c| c == b'\n')
-        .map_or(b.len(), |i| p + i)
-}
-
-/// Char count from `start` to `pos` (the column when `start` is a line start).
-fn col_of(b: &[u8], start: usize, pos: usize) -> usize {
-    std::str::from_utf8(&b[start..pos])
-        .map(|s| s.chars().count())
-        .unwrap_or(0)
-}
-
-/// The byte offset `col` chars into the line beginning at `start`, clamped to the line's end.
-fn at_col(b: &[u8], start: usize, col: usize) -> usize {
-    let end = line_end(b, start);
-    let mut i = start;
-    for _ in 0..col {
-        if i >= end {
+    let start = line_start(b, cur);
+    let mut end = start;
+    for _ in 0..count.max(1) {
+        let le = line_end(b, end);
+        if le < b.len() {
+            end = le + 1;
+        } else {
+            end = le;
             break;
         }
-        i = next_boundary(b, i);
     }
-    i.min(end)
+    (start, end)
+}
+
+/// The byte range a `change` operator covers: for `Motion::Line` it is the *content* of the line(s) (the
+/// newline is kept so `cc` leaves an empty line to type into); else the same charwise span as delete.
+fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
+    if m != Motion::Line {
+        return motion::char_span(b, cur, m, count);
+    }
+    let start = line_start(b, cur);
+    let mut pos = cur;
+    for _ in 1..count.max(1) {
+        let le = line_end(b, pos);
+        if le < b.len() {
+            pos = le + 1;
+        } else {
+            break;
+        }
+    }
+    (start, line_end(b, pos))
 }
 
 /// The pure decision for one command.
@@ -244,6 +217,29 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             } else {
                 let nb = next_boundary(b, cur);
                 edit(one(Edit::delete(cur, nb - cur)), cur, st.mode, hint)
+            }
+        }
+        Command::Move(count, m) => nop(motion::target(b, cur, *m, *count), st.mode),
+        Command::Delete(count, m) => {
+            let (s, e) = op_range(b, cur, *m, *count);
+            if s >= e {
+                nop(cur, st.mode)
+            } else {
+                edit(one(Edit::delete(s, e - s)), s, st.mode, hint)
+            }
+        }
+        Command::Change(count, m) => {
+            let (s, e) = change_range(b, cur, *m, *count);
+            if s >= e {
+                Plan {
+                    action: Action::Nop,
+                    cursor: s,
+                    mode: Mode::Insert,
+                    is_edit: false,
+                    effects: Vec::new(),
+                }
+            } else {
+                edit(one(Edit::delete(s, e - s)), s, Mode::Insert, hint)
             }
         }
         Command::Undo => Plan {

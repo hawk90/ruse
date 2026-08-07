@@ -6,8 +6,10 @@
 
 use std::fmt::Write as _;
 
-/// A semantic command. This is the v0 set — motions, mode switches, single edits, undo/redo, file/control.
-/// Counts, operators, and text objects (Vim `d`/`w`/`iw`) arrive in Phase D on top of this.
+use crate::motion::Motion;
+
+/// A semantic command — the granularity a trace records. Beyond single motions/edits it carries the editing
+/// grammar: a counted move, and the `delete`/`change` operators over a motion range (`dw`, `d2w`, `cc`).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Command {
     // motion
@@ -26,11 +28,64 @@ pub enum Command {
     InsertNewline,
     DeleteBack,
     DeleteUnder,
+    // editing grammar: count + motion / operator (Phase D)
+    Move(u32, Motion),
+    Delete(u32, Motion),
+    Change(u32, Motion),
     // history / file / control
     Undo,
     Redo,
     Save,
     Quit,
+}
+
+fn motion_token(m: Motion) -> &'static str {
+    match m {
+        Motion::Left => "left",
+        Motion::Right => "right",
+        Motion::Up => "up",
+        Motion::Down => "down",
+        Motion::LineStart => "line_start",
+        Motion::LineEnd => "line_end",
+        Motion::WordFwd => "word_fwd",
+        Motion::WordBack => "word_back",
+        Motion::WordEnd => "word_end",
+        Motion::Line => "line",
+    }
+}
+
+fn motion_from_token(s: &str) -> Option<Motion> {
+    Some(match s {
+        "left" => Motion::Left,
+        "right" => Motion::Right,
+        "up" => Motion::Up,
+        "down" => Motion::Down,
+        "line_start" => Motion::LineStart,
+        "line_end" => Motion::LineEnd,
+        "word_fwd" => Motion::WordFwd,
+        "word_back" => Motion::WordBack,
+        "word_end" => Motion::WordEnd,
+        "line" => Motion::Line,
+        _ => return None,
+    })
+}
+
+/// Parse an operator/move argument `"<count> <motion>"` into a command via `ctor`.
+fn op_cmd(
+    arg: Option<&str>,
+    ctor: fn(u32, Motion) -> Command,
+) -> Result<Command, CommandParseError> {
+    let a = arg.ok_or_else(|| CommandParseError::BadArgument("missing count/motion".into()))?;
+    let mut it = a.split_whitespace();
+    let count: u32 = it
+        .next()
+        .and_then(|s| s.parse().ok())
+        .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+    let motion = it
+        .next()
+        .and_then(motion_from_token)
+        .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+    Ok(ctor(count, motion))
 }
 
 /// Why a trace line could not be parsed into a [`Command`].
@@ -64,6 +119,9 @@ impl Command {
             Command::InsertNewline => "insert_newline".into(),
             Command::DeleteBack => "delete_back".into(),
             Command::DeleteUnder => "delete_under".into(),
+            Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
+            Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
+            Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
             Command::Undo => "undo".into(),
             Command::Redo => "redo".into(),
             Command::Save => "save".into(),
@@ -102,6 +160,9 @@ impl Command {
             "insert_newline" => Command::InsertNewline,
             "delete_back" => Command::DeleteBack,
             "delete_under" => Command::DeleteUnder,
+            "move" => return op_cmd(arg, Command::Move),
+            "delete" => return op_cmd(arg, Command::Delete),
+            "change" => return op_cmd(arg, Command::Change),
             "undo" => Command::Undo,
             "redo" => Command::Redo,
             "save" => Command::Save,
@@ -133,6 +194,9 @@ mod tests {
             Command::InsertNewline,
             Command::DeleteBack,
             Command::DeleteUnder,
+            Command::Move(2, Motion::WordFwd),
+            Command::Delete(1, Motion::Line),
+            Command::Change(3, Motion::WordEnd),
             Command::Undo,
             Command::Redo,
             Command::Save,
