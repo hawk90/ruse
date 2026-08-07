@@ -210,6 +210,19 @@ A plugin cannot escalate its own settings to security-locked: the host validates
 marks keys `security_locked` within a bounded allowlist (network/credential/exec-touching), and never
 un-locks a core-locked key.
 
+### Deriving config keys from parity — depth-first, never bulk
+
+Config keys are **concrete commitments** (a type, a default, a scope, a merge strategy, security semantics),
+so they are derived from the parity catalog **depth-first**: a `:set`-style option becomes a `config-schema`
+key **only once its behavior is analyzed and shipped/designed** — never bulk-materialized from the option
+*prose* in the parity docs (`docs/parity/vim.md` lists e.g. `ignorecase smartcase incsearch hlsearch wrapscan
+gdefault` as a checklist, not as typed keys). Materializing a typed key with a guessed default from an
+un-analyzed option is exactly the "shaky derivation" the breadth→depth split guards against. The key arrives
+**with its feature's design**, alongside the runtime that honors it. Example: `editor.scrolloff` exists
+because the viewport behavior it configures shipped (its margin was a constant); the Vim search options do
+**not** yet have keys because that search behavior is not built. So `config-schema.yaml` grows one analyzed
+option at a time, and completeness-vs-parity is a *per-feature* obligation, not a one-time backfill.
+
 ### CFG schema — types/defaults/enums driving tooling
 
 The machine-managed schema ([`spec/config-schema.yaml`](../../spec/config-schema.yaml)) is the single source

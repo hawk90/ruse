@@ -46,6 +46,7 @@ settings:
   editor.tab_width:     { type: int,    default: 4,      scope: workspace, merge: replace,   security_locked: false, min: 1, max: 16, desc: Number of columns a tab renders/indents as. }
   editor.indent_style:  { type: enum,   default: space,  scope: workspace, merge: replace,   security_locked: false, enum: [space, tab], desc: Whether indentation uses spaces or tabs. }
   editor.line_endings:  { type: enum,   default: auto,   scope: workspace, merge: replace,   security_locked: false, enum: [lf, crlf, auto], desc: Line-ending policy on save (auto = preserve/detect per file). }
+  editor.scrolloff:     { type: int,    default: 3,      scope: user,      merge: replace,   security_locked: false, min: 0, max: 99, desc: "Minimum lines of context kept above/below the cursor when scrolling (Vim scrolloff). Derived from the shipped viewport behavior; not yet runtime-wired." }
 
   # ---- files ----
   files.watcher:        { type: enum,   default: native, scope: workspace, merge: replace,   security_locked: false, enum: [native, poll, off], desc: File-watch backend (native OS events, polling fallback, or disabled). }
