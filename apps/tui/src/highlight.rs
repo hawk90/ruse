@@ -3,6 +3,7 @@
 //! frame; incremental parsing on a rope is a later optimization.
 
 use crossterm::style::Color;
+use ruse_core::Revision;
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
 /// The capture names we ask tree-sitter for, in a fixed order (the index maps to a color).
@@ -88,6 +89,39 @@ impl Highlight {
     }
 }
 
+/// A [`Highlight`] that recomputes spans only when the document revision changes (D-042 win A).
+///
+/// Re-parsing dominates the per-keystroke cost (~400–3200× the buffer copy at daily-driver sizes;
+/// see `docs/operations/testing-and-benchmarks.md`), yet most frames — cursor motion, mode changes,
+/// scrolling — leave the buffer untouched. [`Revision`] is a sound cache key: every buffer mutation
+/// (apply/undo/redo) strictly advances it, and nothing else changes the bytes (INV-TXN).
+pub struct CachedHighlight {
+    hl: Highlight,
+    rev: Option<Revision>,
+    spans: Vec<Span>,
+}
+
+impl CachedHighlight {
+    /// A cached Rust highlighter, or `None` if the grammar/query fails to load.
+    pub fn rust() -> Option<CachedHighlight> {
+        Some(CachedHighlight {
+            hl: Highlight::rust()?,
+            rev: None,
+            spans: Vec::new(),
+        })
+    }
+
+    /// Spans for the document at `rev`. Recomputes only when `rev` differs from the cached revision;
+    /// otherwise returns the previously computed spans untouched.
+    pub fn spans(&mut self, rev: Revision, src: &[u8]) -> &[Span] {
+        if self.rev != Some(rev) {
+            self.spans = self.hl.spans(src);
+            self.rev = Some(rev);
+        }
+        &self.spans
+    }
+}
+
 fn color_for(name: &str) -> Color {
     match name.split('.').next().unwrap_or(name) {
         "keyword" => Color::Magenta,
@@ -116,6 +150,30 @@ mod tests {
                 .iter()
                 .any(|s| s.start == 0 && s.color == Color::Magenta),
             "the `fn` keyword is colored",
+        );
+    }
+
+    #[test]
+    fn cache_recomputes_only_on_revision_change() {
+        let mut h = CachedHighlight::rust().expect("rust grammar loads");
+        let r0 = Revision(0);
+        let r1 = Revision(1);
+
+        let n0 = h.spans(r0, b"fn main() {}").len();
+        assert!(n0 > 0, "first call at r0 parses");
+
+        // Same revision but *different* bytes: a cache hit must return the stale spans (proves no reparse).
+        let stale = h.spans(r0, b"this is not rust at all !!!").len();
+        assert_eq!(
+            stale, n0,
+            "same revision reuses the cached spans, ignoring new bytes"
+        );
+
+        // A new revision forces a recompute against the bytes actually supplied (empty → no spans).
+        let n1 = h.spans(r1, b"").len();
+        assert_eq!(
+            n1, 0,
+            "a changed revision reparses; empty source yields no spans"
         );
     }
 }

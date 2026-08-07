@@ -118,7 +118,7 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
         .and_then(|p| p.extension())
         .and_then(|e| e.to_str())
     {
-        Some("rs") => highlight::Highlight::rust(),
+        Some("rs") => highlight::CachedHighlight::rust(),
         _ => None,
     };
 
@@ -130,17 +130,19 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
     while !quit {
         // Keep the crash-recovery snapshot current so a core panic can rescue unsaved work (§6/§8).
         recover::update(path.as_ref(), st.bytes(), st.is_modified());
-        let spans = highlighter
+        // Recompute highlight spans only when the buffer changed (keyed on revision, D-042 win A):
+        // cursor motion, mode changes and scrolling reuse the cached parse.
+        let spans: &[highlight::Span] = highlighter
             .as_mut()
-            .map(|h| h.spans(st.bytes()))
-            .unwrap_or_default();
+            .map(|h| h.spans(st.doc.revision(), st.bytes()))
+            .unwrap_or(&[]);
         render(
             &mut out,
             &st,
             path.as_ref(),
             cmd_line.as_ref().map(|(p, t)| (*p, t.as_str())),
             &status,
-            &spans,
+            spans,
         )?;
         let Event::Key(key) = event::read()? else {
             continue;
