@@ -20,16 +20,13 @@ class TestArchitectureContract(unittest.TestCase):
     def test_kernel_depends_on_nothing(self):
         self.assertEqual(self.crates["core"].get("may_depend_on"), [])
 
-    def test_plugin_protocol_is_isolated(self):
-        # trust boundary — must not reach core (INV-PLUGIN-NO-CORE)
-        self.assertEqual(self.crates["plugin-protocol"].get("may_depend_on"), [])
+    def test_collapsed_to_core_only(self):
+        # D-039 / RFC-0012: the workspace is a single crate (core); deferred boundaries are not crates.
+        self.assertEqual(set(self.crates), {"core"})
 
     def test_transitive_closure(self):
         cl = _closure(self.crates)
         self.assertEqual(cl["core"], set())
-        self.assertEqual(cl["render-model"], {"core"})
-        self.assertEqual(cl["terminal-platform"], {"core", "render-model"})
-        self.assertEqual(cl["workspace-runtime"], {"core", "workspace", "plugin-protocol"})
 
     def test_declared_contract_is_acyclic(self):
         g = {c: list(v.get("may_depend_on") or []) for c, v in self.crates.items()}
