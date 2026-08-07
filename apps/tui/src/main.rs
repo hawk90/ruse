@@ -91,7 +91,7 @@ impl Drop for TermGuard {
 fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
     let mut st = EditorState::new(initial.clone());
     let mut recorded: Vec<Command> = Vec::new();
-    let mut ex_line: Option<String> = None;
+    let mut cmd_line: Option<(char, String)> = None; // ':' ex-line or '/' search-line + typed text
     let mut status = String::from("ruse — :q to quit");
 
     let _guard = TermGuard::enter()?;
@@ -100,48 +100,79 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
     let mut quit = false;
 
     while !quit {
-        render(&mut out, &st, path.as_ref(), ex_line.as_deref(), &status)?;
+        render(
+            &mut out,
+            &st,
+            path.as_ref(),
+            cmd_line.as_ref().map(|(p, t)| (*p, t.as_str())),
+            &status,
+        )?;
         let Event::Key(key) = event::read()? else {
             continue;
         };
         if key.kind == KeyEventKind::Release {
             continue;
         }
-        if let Some(line) = ex_line.as_mut() {
+        if let Some((_, line)) = cmd_line.as_mut() {
             match key.code {
-                KeyCode::Esc => ex_line = None,
+                KeyCode::Esc => cmd_line = None,
                 KeyCode::Backspace => {
                     line.pop();
                 }
                 KeyCode::Char(c) => line.push(c),
                 KeyCode::Enter => {
-                    let cmd = ex_line.take().unwrap_or_default();
-                    run_ex(
-                        &parse_ex(&cmd),
-                        &mut st,
-                        &path,
-                        &initial,
-                        &recorded,
-                        &mut status,
-                        &mut quit,
-                    );
+                    let (prefix, text) = cmd_line.take().unwrap_or((':', String::new()));
+                    if prefix == ':' {
+                        run_ex(
+                            &parse_ex(&text),
+                            &mut st,
+                            &path,
+                            &initial,
+                            &recorded,
+                            &mut status,
+                            &mut quit,
+                        );
+                    } else {
+                        engine.set_last_search(text.clone());
+                        if !text.is_empty() {
+                            run_cmd(
+                                Command::SearchNext(text),
+                                &mut st,
+                                &path,
+                                &mut recorded,
+                                &mut status,
+                                &mut quit,
+                            );
+                        }
+                    }
                 }
                 _ => {}
             }
             continue;
         }
         match engine.feed(key, st.mode()) {
-            Feed::OpenExLine => ex_line = Some(String::new()),
+            Feed::OpenExLine => cmd_line = Some((':', String::new())),
+            Feed::OpenSearch => cmd_line = Some(('/', String::new())),
             Feed::Pending | Feed::Ignored => {}
-            Feed::Cmd(cmd) => {
-                recorded.push(cmd.clone());
-                for eff in apply_command(&mut st, &cmd) {
-                    apply_effect(eff, &mut st, &path, &mut status, &mut quit);
-                }
-            }
+            Feed::Cmd(cmd) => run_cmd(cmd, &mut st, &path, &mut recorded, &mut status, &mut quit),
         }
     }
     Ok(())
+}
+
+/// Record a command and apply it, performing any effects.
+fn run_cmd(
+    cmd: Command,
+    st: &mut EditorState,
+    path: &Option<PathBuf>,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    recorded.push(cmd.clone());
+    for eff in apply_command(st, &cmd) {
+        apply_effect(eff, st, path, status, quit);
+    }
 }
 
 fn run_ex(
@@ -203,7 +234,7 @@ fn render(
     out: &mut io::Stdout,
     st: &EditorState,
     path: Option<&PathBuf>,
-    ex_line: Option<&str>,
+    cmd_line: Option<(char, &str)>,
     status: &str,
 ) -> io::Result<()> {
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
@@ -220,8 +251,8 @@ fn render(
         queue!(out, cursor::MoveTo(0, i as u16), Print(line))?;
     }
 
-    let bar = match ex_line {
-        Some(ex) => format!(":{ex}"),
+    let bar = match cmd_line {
+        Some((prefix, text)) => format!("{prefix}{text}"),
         None => {
             let mode = match st.mode() {
                 Mode::Normal => "NORMAL",
@@ -237,10 +268,10 @@ fn render(
     let bar: String = bar.chars().take(cols as usize).collect();
     queue!(out, cursor::MoveTo(0, rows.saturating_sub(1)), Print(bar))?;
 
-    if let Some(ex) = ex_line {
+    if let Some((_, text)) = cmd_line {
         queue!(
             out,
-            cursor::MoveTo((ex.len() + 1) as u16, rows.saturating_sub(1)),
+            cursor::MoveTo((text.len() + 1) as u16, rows.saturating_sub(1)),
             cursor::Show
         )?;
     } else {

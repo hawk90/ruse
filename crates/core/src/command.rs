@@ -32,6 +32,9 @@ pub enum Command {
     Move(u32, Motion),
     Delete(u32, Motion),
     Change(u32, Motion),
+    // search (literal substring for v0; the pattern is carried so traces replay deterministically)
+    SearchNext(String),
+    SearchPrev(String),
     // history / file / control
     Undo,
     Redo,
@@ -126,6 +129,8 @@ impl Command {
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
+            Command::SearchNext(p) => format!("search_next {p}"),
+            Command::SearchPrev(p) => format!("search_prev {p}"),
             Command::Undo => "undo".into(),
             Command::Redo => "redo".into(),
             Command::Save => "save".into(),
@@ -143,6 +148,8 @@ impl Command {
             Some((v, a)) => (v, Some(a.trim())),
             None => (line, None),
         };
+        // The raw remainder (untrimmed) — search patterns may contain spaces.
+        let raw = line.split_once(' ').map(|(_, r)| r).unwrap_or("");
         Ok(match verb {
             "move_left" => Command::MoveLeft,
             "move_right" => Command::MoveRight,
@@ -167,6 +174,8 @@ impl Command {
             "move" => return op_cmd(arg, Command::Move),
             "delete" => return op_cmd(arg, Command::Delete),
             "change" => return op_cmd(arg, Command::Change),
+            "search_next" => Command::SearchNext(raw.to_string()),
+            "search_prev" => Command::SearchPrev(raw.to_string()),
             "undo" => Command::Undo,
             "redo" => Command::Redo,
             "save" => Command::Save,
@@ -203,6 +212,8 @@ mod tests {
             Command::Delete(1, Motion::InnerWord),
             Command::Change(1, Motion::AWord),
             Command::Change(3, Motion::WordEnd),
+            Command::SearchNext("foo bar".into()),
+            Command::SearchPrev("x".into()),
             Command::Undo,
             Command::Redo,
             Command::Save,
