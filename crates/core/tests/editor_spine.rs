@@ -221,3 +221,36 @@ fn operator_is_one_undo_and_traces() {
     // the new command variants round-trip through the trace text format
     assert_eq!(Trace::from_text(&trace.to_text()).unwrap(), trace);
 }
+
+// --- text objects (Phase D-2): iw / aw ---
+
+#[test]
+fn diw_removes_just_the_word() {
+    let mut st = EditorState::new(b"foo bar baz".to_vec());
+    apply_command(&mut st, &Command::Move(1, Motion::WordFwd)); // start of bar
+    apply_command(&mut st, &Command::Move(1, Motion::Right)); // inside bar
+    apply_command(&mut st, &Command::Delete(1, Motion::InnerWord));
+    assert_eq!(
+        st.as_str(),
+        Some("foo  baz"),
+        "diw leaves both surrounding spaces"
+    );
+}
+
+#[test]
+fn daw_removes_word_and_trailing_space() {
+    let mut st = EditorState::new(b"foo bar baz".to_vec());
+    apply_command(&mut st, &Command::Move(1, Motion::WordFwd)); // at bar
+    apply_command(&mut st, &Command::Delete(1, Motion::AWord));
+    assert_eq!(st.as_str(), Some("foo baz"));
+}
+
+#[test]
+fn ciw_changes_inner_word() {
+    let mut st = EditorState::new(b"foo bar".to_vec());
+    apply_command(&mut st, &Command::Move(1, Motion::WordFwd)); // at bar
+    apply_command(&mut st, &Command::Change(1, Motion::InnerWord));
+    assert_eq!(st.mode(), Mode::Insert);
+    apply_command(&mut st, &Command::InsertChar('X'));
+    assert_eq!(st.as_str(), Some("foo X"));
+}

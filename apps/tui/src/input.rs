@@ -30,6 +30,8 @@ pub struct InputEngine {
     count: u32,
     op: Option<Op>,
     op_count: u32,
+    /// After an operator, `i`/`a` starts a text object; `Some(true)` = inner, `Some(false)` = around.
+    textobj: Option<bool>,
 }
 
 impl InputEngine {
@@ -39,6 +41,7 @@ impl InputEngine {
             count: 0,
             op: None,
             op_count: 1,
+            textobj: None,
         }
     }
 
@@ -46,6 +49,7 @@ impl InputEngine {
         self.count = 0;
         self.op = None;
         self.op_count = 1;
+        self.textobj = None;
     }
 
     fn mcount(&self) -> u32 {
@@ -101,6 +105,23 @@ impl InputEngine {
                 _ => Feed::Ignored,
             };
         }
+        // Completing a text object (`d` `i` then `w` = `diw`): only an object char is valid here.
+        if let Some(inner) = self.textobj {
+            return match key.code {
+                KeyCode::Char('w') => {
+                    self.textobj = None;
+                    self.motion(if inner {
+                        Motion::InnerWord
+                    } else {
+                        Motion::AWord
+                    })
+                }
+                _ => {
+                    self.reset();
+                    Feed::Ignored
+                }
+            };
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let op_count = self.op_count;
         match key.code {
@@ -126,6 +147,14 @@ impl InputEngine {
             }
             KeyCode::Char('c') => {
                 self.operator(Op::Change, Command::Change(op_count, Motion::Line))
+            }
+            KeyCode::Char('i') if self.op.is_some() => {
+                self.textobj = Some(true);
+                Feed::Pending
+            }
+            KeyCode::Char('a') if self.op.is_some() => {
+                self.textobj = Some(false);
+                Feed::Pending
             }
             KeyCode::Char('i') => self.action(Command::EnterInsert),
             KeyCode::Char('a') => self.action(Command::EnterInsertAfter),
@@ -173,10 +202,10 @@ pub fn parse_ex(line: &str) -> Ex {
 mod tests {
     use super::*;
 
-    fn k(c: char) -> KeyEvent {
+    pub(super) fn k(c: char) -> KeyEvent {
         KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
     }
-    fn feed(seq: &str) -> Feed {
+    pub(super) fn feed(seq: &str) -> Feed {
         let mut e = InputEngine::new();
         let mut last = Feed::Ignored;
         for c in seq.chars() {
@@ -235,6 +264,34 @@ mod tests {
         assert_eq!(
             parse_ex("trace save t.trace"),
             Ex::SaveTrace("t.trace".into())
+        );
+    }
+}
+
+#[cfg(test)]
+mod textobj_tests {
+    use super::tests::*;
+    use super::*;
+
+    #[test]
+    fn text_objects_compose() {
+        assert_eq!(
+            feed("diw"),
+            Feed::Cmd(Command::Delete(1, Motion::InnerWord))
+        );
+        assert_eq!(
+            feed("ciw"),
+            Feed::Cmd(Command::Change(1, Motion::InnerWord))
+        );
+        assert_eq!(feed("daw"), Feed::Cmd(Command::Delete(1, Motion::AWord)));
+    }
+
+    #[test]
+    fn bare_i_still_enters_insert() {
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('i'), Mode::Normal),
+            Feed::Cmd(Command::EnterInsert)
         );
     }
 }

@@ -50,6 +50,8 @@ fn motion_token(m: Motion) -> &'static str {
         Motion::WordFwd => "word_fwd",
         Motion::WordBack => "word_back",
         Motion::WordEnd => "word_end",
+        Motion::InnerWord => "inner_word",
+        Motion::AWord => "a_word",
         Motion::Line => "line",
     }
 }
@@ -65,6 +67,8 @@ fn motion_from_token(s: &str) -> Option<Motion> {
         "word_fwd" => Motion::WordFwd,
         "word_back" => Motion::WordBack,
         "word_end" => Motion::WordEnd,
+        "inner_word" => Motion::InnerWord,
+        "a_word" => Motion::AWord,
         "line" => Motion::Line,
         _ => return None,
     })
@@ -196,6 +200,8 @@ mod tests {
             Command::DeleteUnder,
             Command::Move(2, Motion::WordFwd),
             Command::Delete(1, Motion::Line),
+            Command::Delete(1, Motion::InnerWord),
+            Command::Change(1, Motion::AWord),
             Command::Change(3, Motion::WordEnd),
             Command::Undo,
             Command::Redo,
