@@ -73,6 +73,27 @@ surfaces are reproducible over it.
 - Rectangles/blockwise **editing** grammar (D-025); this doc only stores the `Block` geometry and defines its
   paste, not how a blockwise range is produced.
 
+## v0 scope — what ships now (the rest of this doc is the deferred target)
+
+Everything below the Goals is the **full** unified model (all ~40 Vim slots, the numbered ring, the Emacs
+kill ring, the clipboard bridge). Per RFC-0012 that superset is **deferred**; building it before the editor
+is used daily is exactly the over-investment the pivot rejects. What **ships in v0** is the smallest slice
+that gets the *hard-to-retrofit* semantics right:
+
+- **One unnamed register** (`""`), held on the frontend `EditorState` — not the per-workspace store yet.
+- **A charwise/linewise type** governing **paste geometry**. This is the load-bearing decision: charwise
+  pastes insert inline next to the cursor; linewise pastes open a whole new line below (`p`) / above (`P`).
+  Getting this type wrong later would mean re-recording every trace, so it is pinned and tested now.
+- **Operations:** `y{motion}` / `yy` yank; `d` / `c` / `x` capture the removed span (Vim's unnamed-register
+  fill); `p` / `P` paste. Linewise content is normalized to end with a newline so paste is uniform even for a
+  last-line yank with no trailing newline.
+
+**Deferred, and purely additive over the v0 `Register` type** (no rework of the above): named slots
+(`"a`–`"z` / append `"A`–`"Z`), the numbered delete-ring (`"0`–`"9`, `"-`), the blackhole `"_`, the Emacs
+kill ring + `yank-pop` + consecutive-kill coalescing, blockwise geometry, and the OS-clipboard / OSC-52
+bridge. The store grows from "one typed slot" to "many addressable typed slots + policy views"; the type and
+its paste geometry stay. Implementation: `crates/core/src/register.rs`, wired through `editor::plan`/`commit`.
+
 ## Terminology
 
 See [spec glossary](../../spec/glossary.yaml) and [PROJECT.md]. New local terms:
