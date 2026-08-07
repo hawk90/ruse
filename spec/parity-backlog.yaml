@@ -70,7 +70,6 @@ backlog:
   - { id: TERM-WIDTH-3, source: terminal.md }
   - { id: VIM-MODE-3, source: vim.md }
   - { id: VIM-MODE-5, source: vim.md }
-  - { id: VIM-MODE-7, source: vim.md }
   - { id: VIM-MODE-8, source: vim.md }
   - { id: VIM-MODE-9, source: vim.md }
   - { id: VIM-MOT-1, source: vim.md }

@@ -309,9 +309,24 @@ outcome runs through `reset()`, and this is **enforced by a property test** (`no
 over random key/mode sequences, no partial command ever leaks past a completed/ignored/mode-open outcome, and
 `TextObjectChar` never holds without an operator. A second property pins `feed` determinism.
 
-Known v0 limitation (documented, not yet fixed): the `:`/`/` command line lives in `main.rs` as a separate
-ad-hoc line editor **outside** the engine; opening it goes through `reset()` (tested), but that second input
-path does not yet share this axis model. Unifying it is deferred to the full INPUT-RESOLVE work above.
+**v0 Command-line mode (VIM-MODE-7) — the design to build toward** (PRD F-003). Today the `:`/`/` line lives
+in `main.rs` as a separate ad-hoc line editor **outside** the engine (opening it goes through `reset()`,
+tested) — that is the shipped stub, and it is exactly anti-pattern "command-line as an ordinary text buffer"
+(P2). The v0 target reconciles it into the same model:
+
+- **Command-line is a real input-mode**, the `Cmdline` value already listed in the Mode-axes table above —
+  one mode owner, not a hidden 4th state split into `main.rs`. It carries a *prompt* (`:` ex vs `/`/`?`
+  search) and the line buffer + a caret within the line.
+- **The engine routes it**, like Insert: a `Cmdline` branch in the resolver turns keys into command-line
+  edits (printable → insert at caret; Backspace/Delete; Left/Right/Home/End; `<CR>` → dispatch the ex/search
+  command; `<Esc>`/`C-c` → abort). No parallel editor in the frontend; the frontend only renders the prompt
+  + buffer + caret.
+- **Precedence** stays the fixed ladder (input-mode → key-expectation tier → base keys); `Cmdline` sits at
+  the input-mode level beside Insert, so it is total and testable by the same no-leak property.
+
+**Deferred (not v0):** command-line history + `q:`/`q/` windows, `wildmenu`/`wildmode` completion, `C-r`
+register insertion, and the incsearch **UX** (the regex/decoration side is [vim-regex.md](vim-regex.md)); the
+full INPUT-RESOLVE keymap/timeout/priority machinery above. v0 ships the mode + basic in-line editing only.
 
 ### How a profile plugs in (INPUT-PROFILE)
 
