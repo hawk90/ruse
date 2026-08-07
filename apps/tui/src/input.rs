@@ -69,6 +69,8 @@ enum Awaiting {
     TextObjectChar { inner: bool },
     /// After `g`: a second `g` completes `gg` (jump to the first line / `{count}gg`).
     GSecond,
+    /// After `r`: the next key is the replacement char.
+    ReplaceChar,
 }
 
 /// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
@@ -216,6 +218,16 @@ impl InputEngine {
                     }
                 };
             }
+            Awaiting::ReplaceChar => {
+                self.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    KeyCode::Char(c) => self.action(Command::ReplaceChar(c)),
+                    _ => {
+                        self.reset();
+                        Feed::Ignored
+                    }
+                };
+            }
             Awaiting::Nothing => {}
         }
         // --- Shared initiators (char-search + `;`/`,`): work in Normal and Visual, preserving the operator
@@ -356,6 +368,12 @@ impl InputEngine {
             KeyCode::Char('x') => self.action(Command::DeleteUnder),
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Char('r') if ctrl => self.action(Command::Redo),
+            KeyCode::Char('r') => {
+                self.awaiting = Awaiting::ReplaceChar;
+                Feed::Pending
+            }
+            KeyCode::Char('~') => self.action(Command::ToggleCase),
+            KeyCode::Char('J') => self.action(Command::JoinLines),
             KeyCode::Char('n') => match self.last_search.clone() {
                 Some(p) => self.action(Command::SearchNext(p)),
                 None => {
@@ -528,6 +546,27 @@ mod tests {
         // operator + line jump is linewise
         assert_eq!(feed("dG"), Feed::Cmd(Command::Delete(1, Motion::LastLine)));
         assert_eq!(feed("dgg"), Feed::Cmd(Command::Delete(1, Motion::GotoLine)));
+    }
+
+    #[test]
+    fn single_key_edits() {
+        // `r` is pending until the replacement char; ctrl-r is still redo.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('r'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('z'), Mode::Normal),
+            Feed::Cmd(Command::ReplaceChar('z'))
+        );
+        assert_eq!(feed("~"), Feed::Cmd(Command::ToggleCase));
+        assert_eq!(feed("J"), Feed::Cmd(Command::JoinLines));
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL),
+                Mode::Normal
+            ),
+            Feed::Cmd(Command::Redo)
+        );
     }
 
     #[test]
@@ -739,7 +778,7 @@ mod state_machine_props {
 
     /// A key drawn from the meaningful command alphabet, plus arbitrary chars (find targets) and specials.
     fn any_key() -> impl Strategy<Value = KeyEvent> {
-        let named = "0123456789hjklwbeWBEdcyiaoOAIxfFtT;,vVpPunN$/:gGr%"
+        let named = "0123456789hjklwbeWBEdcyiaoOAIxfFtT;,vVpPunN$/:gGrJ~%"
             .chars()
             .collect::<Vec<_>>();
         prop_oneof![

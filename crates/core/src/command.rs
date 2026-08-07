@@ -36,6 +36,12 @@ pub enum Command {
     InsertNewline,
     DeleteBack,
     DeleteUnder,
+    /// `r{char}` — replace the character under the cursor.
+    ReplaceChar(char),
+    /// `~` — toggle the case of the character under the cursor, then move right.
+    ToggleCase,
+    /// `J` — join the current line with the next on a single space.
+    JoinLines,
     // editing grammar: count + motion / operator (Phase D)
     Move(u32, Motion),
     Delete(u32, Motion),
@@ -178,6 +184,13 @@ impl Command {
             Command::InsertNewline => "insert_newline".into(),
             Command::DeleteBack => "delete_back".into(),
             Command::DeleteUnder => "delete_under".into(),
+            Command::ReplaceChar(c) => {
+                let mut s = String::from("replace_char ");
+                let _ = write!(s, "{}", *c as u32);
+                s
+            }
+            Command::ToggleCase => "toggle_case".into(),
+            Command::JoinLines => "join_lines".into(),
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
@@ -245,6 +258,16 @@ impl Command {
             "insert_newline" => Command::InsertNewline,
             "delete_back" => Command::DeleteBack,
             "delete_under" => Command::DeleteUnder,
+            "replace_char" => {
+                let cp: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::ReplaceChar(c)
+            }
+            "toggle_case" => Command::ToggleCase,
+            "join_lines" => Command::JoinLines,
             "move" => return op_cmd(arg, Command::Move),
             "delete" => return op_cmd(arg, Command::Delete),
             "change" => return op_cmd(arg, Command::Change),
@@ -288,6 +311,10 @@ mod tests {
             Command::OpenBelow,
             Command::OpenAbove,
             Command::InsertChar('h'),
+            Command::ReplaceChar('z'),
+            Command::ReplaceChar('가'),
+            Command::ToggleCase,
+            Command::JoinLines,
             Command::InsertChar('🎉'),
             Command::InsertChar(' '),
             Command::InsertNewline,
