@@ -32,6 +32,9 @@ pub enum Command {
     Move(u32, Motion),
     Delete(u32, Motion),
     Change(u32, Motion),
+    // registers (v0 unnamed slot): yank a motion range; paste after (`p`) or before (`P`) the cursor
+    Yank(u32, Motion),
+    Paste { after: bool },
     // search (literal substring for v0; the pattern is carried so traces replay deterministically)
     SearchNext(String),
     SearchPrev(String),
@@ -129,6 +132,14 @@ impl Command {
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
+            Command::Yank(n, m) => format!("yank {n} {}", motion_token(*m)),
+            Command::Paste { after } => {
+                if *after {
+                    "paste_after".into()
+                } else {
+                    "paste_before".into()
+                }
+            }
             Command::SearchNext(p) => format!("search_next {p}"),
             Command::SearchPrev(p) => format!("search_prev {p}"),
             Command::Undo => "undo".into(),
@@ -174,6 +185,9 @@ impl Command {
             "move" => return op_cmd(arg, Command::Move),
             "delete" => return op_cmd(arg, Command::Delete),
             "change" => return op_cmd(arg, Command::Change),
+            "yank" => return op_cmd(arg, Command::Yank),
+            "paste_after" => Command::Paste { after: true },
+            "paste_before" => Command::Paste { after: false },
             "search_next" => Command::SearchNext(raw.to_string()),
             "search_prev" => Command::SearchPrev(raw.to_string()),
             "undo" => Command::Undo,
@@ -212,6 +226,10 @@ mod tests {
             Command::Delete(1, Motion::InnerWord),
             Command::Change(1, Motion::AWord),
             Command::Change(3, Motion::WordEnd),
+            Command::Yank(1, Motion::Line),
+            Command::Yank(2, Motion::WordFwd),
+            Command::Paste { after: true },
+            Command::Paste { after: false },
             Command::SearchNext("foo bar".into()),
             Command::SearchPrev("x".into()),
             Command::Undo,

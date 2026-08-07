@@ -24,6 +24,7 @@ pub enum Feed {
 enum Op {
     Delete,
     Change,
+    Yank,
 }
 
 /// The Normal-mode pending state: an accumulating count and an awaiting operator.
@@ -80,6 +81,7 @@ impl InputEngine {
                     m
                 },
             ),
+            Some(Op::Yank) => Command::Yank(total, m),
             None => Command::Move(self.mcount(), m),
         };
         self.reset();
@@ -158,6 +160,9 @@ impl InputEngine {
             KeyCode::Char('c') => {
                 self.operator(Op::Change, Command::Change(op_count, Motion::Line))
             }
+            KeyCode::Char('y') => self.operator(Op::Yank, Command::Yank(op_count, Motion::Line)),
+            KeyCode::Char('p') => self.action(Command::Paste { after: true }),
+            KeyCode::Char('P') => self.action(Command::Paste { after: false }),
             KeyCode::Char('i') if self.op.is_some() => {
                 self.textobj = Some(true);
                 Feed::Pending
@@ -267,6 +272,17 @@ mod tests {
     #[test]
     fn cw_is_ce() {
         assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordEnd)));
+    }
+
+    #[test]
+    fn yank_operator_and_paste() {
+        assert_eq!(feed("yw"), Feed::Cmd(Command::Yank(1, Motion::WordFwd)));
+        assert_eq!(feed("y2w"), Feed::Cmd(Command::Yank(2, Motion::WordFwd)));
+        assert_eq!(feed("yy"), Feed::Cmd(Command::Yank(1, Motion::Line)));
+        assert_eq!(feed("2yy"), Feed::Cmd(Command::Yank(2, Motion::Line)));
+        assert_eq!(feed("yiw"), Feed::Cmd(Command::Yank(1, Motion::InnerWord)));
+        assert_eq!(feed("p"), Feed::Cmd(Command::Paste { after: true }));
+        assert_eq!(feed("P"), Feed::Cmd(Command::Paste { after: false }));
     }
 
     #[test]
