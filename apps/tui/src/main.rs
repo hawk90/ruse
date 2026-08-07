@@ -292,7 +292,7 @@ fn render(
     spans: &[highlight::Span],
     top: usize,
 ) -> io::Result<()> {
-    use crossterm::style::{Color, ResetColor, SetForegroundColor};
+    use crossterm::style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor};
 
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     let text_rows = rows.saturating_sub(1);
@@ -319,9 +319,12 @@ fn render(
     // Draw the `text_rows` buffer lines starting at `top`. `line` tracks the buffer row so we can skip
     // everything above the viewport; `screen_row` is where it lands. Long lines are truncated at `cols`
     // (no wrap) so screen-row math stays exact — horizontal scroll is deferred (see render doc, v0).
+    // The Visual selection byte range, painted in reverse video.
+    let sel = st.selection_span();
     let mut line: usize = 0;
     let mut col: u16 = 0;
     let mut cur = Color::Reset;
+    let mut reversed = false;
     for (i, ch) in text.char_indices() {
         if ch == '\n' {
             line += 1;
@@ -337,6 +340,18 @@ fn render(
         if line < top || col >= cols {
             continue; // above the viewport, or past the right edge (truncate)
         }
+        let selected = sel.is_some_and(|(s, e)| i >= s && i < e);
+        if selected != reversed {
+            queue!(
+                out,
+                SetAttribute(if selected {
+                    Attribute::Reverse
+                } else {
+                    Attribute::NoReverse
+                })
+            )?;
+            reversed = selected;
+        }
         let c = byte_color.get(i).copied().unwrap_or(Color::Reset);
         if c != cur {
             queue!(out, SetForegroundColor(c))?;
@@ -344,6 +359,9 @@ fn render(
         }
         queue!(out, Print(ch))?;
         col += 1;
+    }
+    if reversed {
+        queue!(out, SetAttribute(Attribute::NoReverse))?;
     }
     queue!(out, ResetColor)?;
 
@@ -353,6 +371,8 @@ fn render(
             let mode = match st.mode() {
                 Mode::Normal => "NORMAL",
                 Mode::Insert => "INSERT",
+                Mode::Visual { line: false } => "VISUAL",
+                Mode::Visual { line: true } => "V-LINE",
             };
             let name = path
                 .map(|p| p.display().to_string())

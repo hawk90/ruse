@@ -35,6 +35,11 @@ pub enum Command {
     // registers (v0 unnamed slot): yank a motion range; paste after (`p`) or before (`P`) the cursor
     Yank(u32, Motion),
     Paste { after: bool },
+    // visual mode: enter a selection (charwise `v` / linewise `V`); operate on the current selection
+    EnterVisual { line: bool },
+    DeleteSelection,
+    YankSelection,
+    ChangeSelection,
     // search (literal substring for v0; the pattern is carried so traces replay deterministically)
     SearchNext(String),
     SearchPrev(String),
@@ -140,6 +145,16 @@ impl Command {
                     "paste_before".into()
                 }
             }
+            Command::EnterVisual { line } => {
+                if *line {
+                    "enter_visual_line".into()
+                } else {
+                    "enter_visual".into()
+                }
+            }
+            Command::DeleteSelection => "delete_selection".into(),
+            Command::YankSelection => "yank_selection".into(),
+            Command::ChangeSelection => "change_selection".into(),
             Command::SearchNext(p) => format!("search_next {p}"),
             Command::SearchPrev(p) => format!("search_prev {p}"),
             Command::Undo => "undo".into(),
@@ -188,6 +203,11 @@ impl Command {
             "yank" => return op_cmd(arg, Command::Yank),
             "paste_after" => Command::Paste { after: true },
             "paste_before" => Command::Paste { after: false },
+            "enter_visual" => Command::EnterVisual { line: false },
+            "enter_visual_line" => Command::EnterVisual { line: true },
+            "delete_selection" => Command::DeleteSelection,
+            "yank_selection" => Command::YankSelection,
+            "change_selection" => Command::ChangeSelection,
             "search_next" => Command::SearchNext(raw.to_string()),
             "search_prev" => Command::SearchPrev(raw.to_string()),
             "undo" => Command::Undo,
@@ -230,6 +250,11 @@ mod tests {
             Command::Yank(2, Motion::WordFwd),
             Command::Paste { after: true },
             Command::Paste { after: false },
+            Command::EnterVisual { line: false },
+            Command::EnterVisual { line: true },
+            Command::DeleteSelection,
+            Command::YankSelection,
+            Command::ChangeSelection,
             Command::SearchNext("foo bar".into()),
             Command::SearchPrev("x".into()),
             Command::Undo,
