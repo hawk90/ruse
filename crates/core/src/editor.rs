@@ -528,6 +528,13 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         (_, false) => st.anchor = None,
         (true, true) => {}
     }
+    // Keep the raw-offset anchor valid: an edit applied while in Visual mode can resize the buffer under it,
+    // and a stale anchor past the new end would make `selection_range` slice out of bounds (a core panic).
+    // Snapping clamps it into range and onto a char boundary. The edit-tracking anchor-store position that
+    // would move the anchor *semantically* with the edit is deferred (D-027); v0 only guarantees totality.
+    if let Some(a) = st.anchor {
+        st.anchor = Some(snap(st.doc.bytes(), a));
+    }
     plan.effects
 }
 
