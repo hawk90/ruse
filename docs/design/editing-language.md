@@ -46,6 +46,16 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 - Not the Emacs/Native selection-editing path (that uses `editor.delete_selection` on an existing
   selection — a *sibling*, §7). Not the register data model (that is [register-model.md](register-model.md), D-026).
 
+## v0 — small-word vs WORD motions (SHIPPED)
+
+Word motions now use Vim's character classes. Small-word `w`/`b`/`e` recognize **three classes** — whitespace,
+*word* (ASCII alphanumeric + `_`, plus all non-ASCII bytes so a multibyte identifier is one word), and
+*punctuation* — so `foo.bar` is three words (`foo`, `.`, `bar`). `W`/`B`/`E` are the **WORD** motions: two
+classes (whitespace vs not), so `foo.bar` is one WORD. Both share one class-parameterized scanner (`big:
+bool`); class changes only fall on char boundaries, so positions stay valid. `cw`/`cW` still behave like
+`ce`/`cE` (don't eat the trailing whitespace). Deferred: text objects (`iw`/`aw`) are still 2-class
+(whitespace vs not) — upgrading them to the same three classes is a follow-up.
+
 ## v0 — bracket-match motion `%` (SHIPPED)
 
 `%` (`Motion::MatchBracket`) jumps between the pairs `()`, `[]`, `{}`. It is **nesting-aware** (depth counted

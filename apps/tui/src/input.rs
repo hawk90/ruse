@@ -38,6 +38,9 @@ fn motion_key(code: KeyCode) -> Option<Motion> {
         KeyCode::Char('w') => Motion::WordFwd,
         KeyCode::Char('b') => Motion::WordBack,
         KeyCode::Char('e') => Motion::WordEnd,
+        KeyCode::Char('W') => Motion::BigWordFwd,
+        KeyCode::Char('B') => Motion::BigWordBack,
+        KeyCode::Char('E') => Motion::BigWordEnd,
         KeyCode::Char('$') => Motion::LineEnd,
         _ => return None,
     })
@@ -121,13 +124,13 @@ impl InputEngine {
                 let total = count.max(1) * self.mcount();
                 match op {
                     Op::Delete => Command::Delete(total, m),
-                    // Vim `cw` behaves like `ce` (does not eat the trailing space).
+                    // Vim `cw`/`cW` behave like `ce`/`cE` (do not eat the trailing space).
                     Op::Change => Command::Change(
                         total,
-                        if m == Motion::WordFwd {
-                            Motion::WordEnd
-                        } else {
-                            m
+                        match m {
+                            Motion::WordFwd => Motion::WordEnd,
+                            Motion::BigWordFwd => Motion::BigWordEnd,
+                            other => other,
                         },
                     ),
                     Op::Yank => Command::Yank(total, m),
@@ -524,6 +527,22 @@ mod tests {
     }
 
     #[test]
+    fn big_word_motions_and_cw_is_ce() {
+        assert_eq!(feed("W"), Feed::Cmd(Command::Move(1, Motion::BigWordFwd)));
+        assert_eq!(feed("B"), Feed::Cmd(Command::Move(1, Motion::BigWordBack)));
+        assert_eq!(
+            feed("dE"),
+            Feed::Cmd(Command::Delete(1, Motion::BigWordEnd))
+        );
+        // `cw`/`cW` behave like `ce`/`cE`.
+        assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordEnd)));
+        assert_eq!(
+            feed("cW"),
+            Feed::Cmd(Command::Change(1, Motion::BigWordEnd))
+        );
+    }
+
+    #[test]
     fn bracket_match() {
         assert_eq!(feed("%"), Feed::Cmd(Command::Move(1, Motion::MatchBracket)));
         assert_eq!(
@@ -708,7 +727,7 @@ mod state_machine_props {
 
     /// A key drawn from the meaningful command alphabet, plus arbitrary chars (find targets) and specials.
     fn any_key() -> impl Strategy<Value = KeyEvent> {
-        let named = "0123456789hjklwbedcyiaxfFtT;,vVpPunN$/:gGr%"
+        let named = "0123456789hjklwbeWBEdcyiaxfFtT;,vVpPunN$/:gGr%"
             .chars()
             .collect::<Vec<_>>();
         prop_oneof![
