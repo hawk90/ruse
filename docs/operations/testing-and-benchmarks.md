@@ -155,7 +155,7 @@ Each failing case **must be reduced to a saved deterministic fixture** (§1.10),
 #### v0 status — SHIPPED (`crates/core/tests/properties.rs`)
 
 The property layer is **live** for the v0 semantic core (the first mechanized test-quality layer beyond
-example tests). Five invariants run under `proptest` (dev-dependency only; the core crate stays dep-free):
+example tests). Seven invariants run under `proptest` (dev-dependency only; the core crate stays dep-free):
 
 - **UTF-8 / cursor-boundary safety** — no command sequence, from any buffer, ever produces invalid UTF-8 or
   leaves the cursor off a char boundary / out of bounds. (The headline totality property.)
@@ -165,6 +165,10 @@ example tests). Five invariants run under `proptest` (dev-dependency only; the c
   reproduces the exact final state, and survives a serialize→parse round-trip (the RFC-0012 trace pillar).
 - **Edit inverse identity** — `inverse(apply(buf))  == buf` for any in-range edit list (the undo substrate).
 - **EditList canonical form** — a constructed list is sorted and pairwise disjoint (touching allowed).
+- **Transaction atomicity** — a rejected transaction (stale base revision / out-of-range edit) leaves bytes
+  **and** revision exactly unchanged; a successful one strictly advances the revision (INV-TXN / F-001).
+- **Anchor-transform in-bounds** — after any in-range edit, every still-live anchor resolves inside the
+  document, never past the end (INV-ANCHOR totality).
 
 **This layer paid for itself immediately** — on first run it caught two latent core panics that every example
 test had missed:
@@ -177,8 +181,9 @@ test had missed:
    `inverse` now merges same-position inverse edits and `from_sorted` allows touching (matching `new`);
    `new` also drops no-op edits so they can't seed the collision.
 
-Deferred (still target-state above): anchor-transform property tests (needs the D-027 anchor exposure),
-transaction-atomicity generative cases, the differential-parity / fault-injection / replay-corpus layers.
+Deferred (still target-state above): anchor **affinity/span-delete** semantics as properties (bias direction,
+`Invalidate` flag correctness — only in-bounds totality is covered now), the O(A+E) cost bound as a
+performance property, and the differential-parity / fault-injection / replay-corpus / fuzzing layers.
 
 ### 1.3 Differential parity — `tests/parity/<profile>/*.yaml`
 
