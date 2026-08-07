@@ -385,3 +385,22 @@ related:
 - **Re-evaluate if:** a re-boundary trigger fires (RFC-0012 §Re-evaluation) — then that boundary returns as
   its own RFC + crate.
 - Refs: [../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md](../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md), RA-RUSE-003, RA-RUSE-004, D-004, D-011, D-014.
+
+## D-040 — v0 stability/observability scope: assert-vs-error + panic-recovery + tracing; supervisor/health deferred · decided
+- **Decision:** For the two-crate v0 editor ([D-039]), the [stability-and-observability](../docs/design/stability-and-observability.md)
+  contract is scoped (see its "v0 scope" section). **Live:** the three failure classes / assert-vs-error
+  discipline (`debug_assert!` for internal invariants; typed `Result` errors for expected failures);
+  loss-safe preflight (`Document::apply` is atomic — no partial state); external-failure graceful degrade
+  (tree-sitter/IO drop feature level, never crash); a panic hook that saves `<file>.ruse-recovered` then
+  unwinds (NO `catch_unwind`-swallow, NO blanket `panic=abort`); and structured `tracing` logging
+  (frontend, `RUSE_LOG`) kept SEPARATE from the replay `Trace`. **Deferred to the LSP/async slice:** the
+  `ErrorCode` ecosystem API, the service supervisor, the multi-component Health Registry (INV-STATUS state
+  machine + `SystemHealth`), the diagnostic bundle, and distributed transaction-ID trace propagation —
+  they need the failure-prone components v0 lacks.
+- **Reason:** the stability doc assumes the full architecture (plugins/LSP/remote/supervisor); building it
+  all now is the "pattern names first is over-design" the doc itself warns against, and pre-speccing
+  unbuilt boundaries (RFC-0012). Scope to what the 2-crate editor actually has so v0 code is built against
+  the real contract — heeding anti-patterns STAB-1/2/5/6 and TRACE-1.
+- **Re-evaluate if:** the LSP/async or plugin slice lands — then the supervisor, health registry, and
+  `ErrorCode` API are re-scoped live with their boundary.
+- Refs: [../docs/design/stability-and-observability.md](../docs/design/stability-and-observability.md), RFC-0012, D-039, INV-ERR-CLASS, INV-FAIL-BOUNDED, INV-STATUS.

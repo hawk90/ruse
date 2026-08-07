@@ -35,6 +35,49 @@ Invariants → Ownership → Error model → Failure boundaries → Observabilit
 Patterns (Command, State, Observer, Strategy, Adapter, Supervisor) emerge where needed — do not pick
 pattern names first; that is over-design.
 
+## v0 scope — the two-crate editor ([D-040](../../spec/DECISIONS.md))
+
+This model was written for the *full* architecture (plugins, LSP, remote runtime, terminal jobs, a service
+supervisor, a multi-component Health Registry). RFC-0012 collapsed ruse to a **two-crate editor**
+(`editor-core` + the `ruse` TUI); most of those components do not exist yet. This section scopes which of
+the contract is **live now** and which is **deferred with the boundary that needs it** — it changes no rule,
+it records what applies today so v0 code is built against the real contract, not the full one. (Building it
+all now would be exactly the "pattern names first" over-design warned against above.)
+
+**Live now (v0 code is built against this):**
+- **§0/§1 three failure classes; assert vs error.** `editor-core` uses `debug_assert!` for internal
+  invariants (revision strictly increases, a delete range within bounds, a freed-generation handle — §1's
+  exact examples) and typed `Result` errors for expected failures (`TxnError`, `EditError`, `TraceError`,
+  file IO). The two are never swapped (anti-pattern **STAB-2 [P0]** — swallowing an assert as an error and
+  continuing on corrupted state).
+- **§2 typed, structured errors**, never `Err(String)` (anti-pattern **STAB-1**). The `ErrorReport` /
+  `ErrorCode` *ecosystem-API* scheme (§2.1) is **deferred** — v0 keeps the typed enums.
+- **§6/§8 recovery on a core-invariant break + panic policy.** A core panic *is* an invariant violation
+  (§8). The TUI installs a panic hook that first saves the unsaved buffer to `<file>.ruse-recovered` (a
+  recovery snapshot, §6) and then lets the panic unwind (`TermGuard` restores the terminal) — it does
+  **not** `catch_unwind`-swallow (anti-pattern **STAB-6 [P1]**) nor blanket `panic=abort` (**STAB-5 [P1]**).
+- **§7 fail-fast (internal) vs graceful (external).** Internal bad state → fail-fast (assert). External
+  failure only lowers the feature level: a tree-sitter parse failure drops to no highlighting; a file-IO
+  failure surfaces a status message; neither crashes editing.
+- **§13 loss-safe preflight** — already upheld: `Document::apply` checks `base_revision` and range bounds
+  *before* any mutation and rejects atomically, so there is no partial-apply state (anti-pattern
+  **CORE-16 [P1]**). This is §13's "transaction preflight" for the editor.
+- **§3/§4 structured logging via `tracing`** (in the frontend), logged **once at the ownership boundary**:
+  the TUI logs errors / panics / recoveries as structured events when `RUSE_LOG` is set. The diagnostic log
+  is kept **separate from the replay `Trace`** (anti-pattern **TRACE-1 [P2]**): the `Trace` is a domain
+  record/replay artifact, not the debug log.
+- **§11.4 the status bar is a view.** v0 renders one status line; it is not the source of truth for any
+  subsystem state (INV-STATUS holds trivially with ~one component).
+
+**Deferred (returns with its boundary — RFC-0012 re-boundary triggers):**
+- §2.1 the `ErrorCode` ecosystem API — with the plugin protocol (asserting-on-a-code needs an ecosystem).
+- §5 full transaction/correlation-ID *trace propagation* — with async/LSP (v0 records the metadata but does
+  not propagate a distributed trace).
+- §6 isolation boundaries, §9 the **supervisor**, §11 the full **Health Registry** (per-component state
+  machine + `SystemHealth` aggregate), §10 the **diagnostic bundle** — all need the failure-prone
+  components (plugins, LSP, remote, terminal jobs) v0 does not have. They land with the LSP/async slice,
+  where a supervisor + health registry first earn their place.
+
 ## 0. Three Failure Classes — never mixed
 
 ```
