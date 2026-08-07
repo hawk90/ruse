@@ -349,6 +349,10 @@ impl InputEngine {
             }
             KeyCode::Char('i') => self.action(Command::EnterInsert),
             KeyCode::Char('a') => self.action(Command::EnterInsertAfter),
+            KeyCode::Char('I') => self.action(Command::InsertLineStart),
+            KeyCode::Char('A') => self.action(Command::AppendLineEnd),
+            KeyCode::Char('o') => self.action(Command::OpenBelow),
+            KeyCode::Char('O') => self.action(Command::OpenAbove),
             KeyCode::Char('x') => self.action(Command::DeleteUnder),
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Char('r') if ctrl => self.action(Command::Redo),
@@ -524,6 +528,14 @@ mod tests {
         // operator + line jump is linewise
         assert_eq!(feed("dG"), Feed::Cmd(Command::Delete(1, Motion::LastLine)));
         assert_eq!(feed("dgg"), Feed::Cmd(Command::Delete(1, Motion::GotoLine)));
+    }
+
+    #[test]
+    fn insert_entry_keys() {
+        assert_eq!(feed("o"), Feed::Cmd(Command::OpenBelow));
+        assert_eq!(feed("O"), Feed::Cmd(Command::OpenAbove));
+        assert_eq!(feed("A"), Feed::Cmd(Command::AppendLineEnd));
+        assert_eq!(feed("I"), Feed::Cmd(Command::InsertLineStart));
     }
 
     #[test]
@@ -727,7 +739,7 @@ mod state_machine_props {
 
     /// A key drawn from the meaningful command alphabet, plus arbitrary chars (find targets) and specials.
     fn any_key() -> impl Strategy<Value = KeyEvent> {
-        let named = "0123456789hjklwbeWBEdcyiaxfFtT;,vVpPunN$/:gGr%"
+        let named = "0123456789hjklwbeWBEdcyiaoOAIxfFtT;,vVpPunN$/:gGr%"
             .chars()
             .collect::<Vec<_>>();
         prop_oneof![
