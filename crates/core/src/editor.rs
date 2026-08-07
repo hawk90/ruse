@@ -652,6 +652,83 @@ mod register_tests {
 }
 
 #[cfg(test)]
+mod find_char_tests {
+    use super::*;
+
+    fn find(ch: char, forward: bool, till: bool) -> Motion {
+        Motion::FindChar { ch, forward, till }
+    }
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn f_lands_on_the_char_t_stops_before() {
+        // "abcxef", cursor 0.
+        let st = run("abcxef", &[Command::Move(1, find('x', true, false))]);
+        assert_eq!(st.cursor(), 3, "fx lands on x");
+        let st = run("abcxef", &[Command::Move(1, find('x', true, true))]);
+        assert_eq!(st.cursor(), 2, "tx stops one before x");
+    }
+
+    #[test]
+    fn count_finds_the_nth() {
+        let st = run("axbxcx", &[Command::Move(2, find('x', true, false))]);
+        assert_eq!(st.cursor(), 3, "2fx lands on the second x");
+    }
+
+    #[test]
+    fn backward_find() {
+        // "abxde", cursor at end (4). F x → lands on x (index 2).
+        let st = run(
+            "abxde",
+            &[
+                Command::MoveLineEnd,
+                Command::Move(1, find('x', false, false)),
+            ],
+        );
+        assert_eq!(st.cursor(), 2, "Fx searches backward onto x");
+    }
+
+    #[test]
+    fn dfx_deletes_through_the_char_dtx_up_to_it() {
+        let st = run("abcxef", &[Command::Delete(1, find('x', true, false))]);
+        assert_eq!(text(&st), "ef", "dfx deletes through x");
+        let st = run("abcxef", &[Command::Delete(1, find('x', true, true))]);
+        assert_eq!(text(&st), "xef", "dtx deletes up to but not including x");
+    }
+
+    #[test]
+    fn stays_within_the_line() {
+        // The x on the next line must not be found from line 1.
+        let st = run("abc\nxyz", &[Command::Move(1, find('x', true, false))]);
+        assert_eq!(st.cursor(), 0, "f does not cross the newline");
+    }
+
+    #[test]
+    fn multibyte_target() {
+        // "a가b" — find the multibyte '가' (bytes 1..4).
+        let st = run("a가b", &[Command::Move(1, find('가', true, false))]);
+        assert_eq!(st.cursor(), 1, "lands on the multibyte char boundary");
+    }
+
+    #[test]
+    fn missing_target_is_a_noop() {
+        let st = run("abc", &[Command::Move(1, find('z', true, false))]);
+        assert_eq!(st.cursor(), 0);
+    }
+}
+
+#[cfg(test)]
 mod visual_tests {
     use super::*;
 

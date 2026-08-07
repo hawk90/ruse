@@ -23,6 +23,13 @@ pub enum Motion {
     AWord,
     /// Linewise (only meaningful under an operator: `dd` / `cc`).
     Line,
+    /// Char-search within the current line: `f`/`F` land on the `count`-th `ch`; `t`/`T` stop one char
+    /// short of it. `forward` picks the direction, `till` picks find-vs-till. Repeated by `;`/`,`.
+    FindChar {
+        ch: char,
+        forward: bool,
+        till: bool,
+    },
 }
 
 // --- shared byte / char-boundary / line helpers (one home; editor.rs reuses these) ---
@@ -188,11 +195,53 @@ fn down(b: &[u8], cur: usize) -> usize {
     }
 }
 
+/// The bare-move landing for a char-search (`f`/`F`/`t`/`T`), or `None` if the `count`-th match does not
+/// exist on the current line. `f`/`F` land on the char; `t`/`T` land one boundary short of it. Search is
+/// confined to the current line (Vim never crosses a newline for these).
+fn find_char_target(
+    b: &[u8],
+    cursor: usize,
+    ch: char,
+    forward: bool,
+    till: bool,
+    count: u32,
+) -> Option<usize> {
+    let n = count.max(1) as usize;
+    let ls = line_start(b, cursor);
+    let le = line_end(b, cursor); // newline / end position for this line
+    let line = std::str::from_utf8(b.get(ls..le)?).ok()?;
+    if forward {
+        // Matches strictly after the cursor, in order; take the n-th.
+        let hit = line
+            .char_indices()
+            .map(|(i, c)| (ls + i, c))
+            .filter(|&(pos, c)| pos > cursor && c == ch)
+            .nth(n - 1)?
+            .0;
+        Some(if till { prev_boundary(b, hit) } else { hit })
+    } else {
+        // Matches strictly before the cursor; take the n-th counting backward.
+        let hit = line
+            .char_indices()
+            .map(|(i, c)| (ls + i, c))
+            .filter(|&(pos, c)| pos < cursor && c == ch)
+            .rev()
+            .nth(n - 1)?
+            .0;
+        Some(if till { next_boundary(b, hit) } else { hit })
+    }
+}
+
 /// The cursor target for a bare move (`w`, `3l`, `k`, …), applying `count`.
 #[must_use]
 pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     let n = count.max(1);
-    let mut c = cursor.min(b.len());
+    let cur0 = cursor.min(b.len());
+    // Char-search resolves the count-th match directly (repeating a single `t` step would stick in place).
+    if let Motion::FindChar { ch, forward, till } = m {
+        return find_char_target(b, cur0, ch, forward, till, count).unwrap_or(cur0);
+    }
+    let mut c = cur0;
     for _ in 0..n {
         c = match m {
             Motion::Left => prev_boundary(b, c),
@@ -204,7 +253,8 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::WordFwd => next_word_start(b, c),
             Motion::WordBack => prev_word_start(b, c),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c)), // land ON the last char
-            Motion::InnerWord | Motion::AWord | Motion::Line => c, // objects/linewise: no bare-move target
+            // FindChar is resolved by the early return above; objects/linewise have no bare-move target.
+            Motion::FindChar { .. } | Motion::InnerWord | Motion::AWord | Motion::Line => c,
         };
     }
     c
@@ -229,6 +279,15 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         }
         // backward / leftward → [target, cursor)
         Motion::Left | Motion::WordBack | Motion::LineStart => (target(b, cur, m, n), cur),
+        // char-search: forward includes through the landing char (`dfx` incl. x, `dtx` up to x); backward
+        // spans from the landing to the cursor. A missing match is a no-op range.
+        Motion::FindChar { ch, forward, till } => {
+            match find_char_target(b, cur, ch, forward, till, n) {
+                None => (cur, cur),
+                Some(t) if forward => (cur, next_boundary(b, t)),
+                Some(t) => (t, cur),
+            }
+        }
         // text objects: a range around the cursor (count ignored in v0)
         Motion::InnerWord => inner_word_span(b, cur),
         Motion::AWord => a_word_span(b, cur),

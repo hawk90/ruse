@@ -50,8 +50,8 @@ pub enum Command {
     Quit,
 }
 
-fn motion_token(m: Motion) -> &'static str {
-    match m {
+fn motion_token(m: Motion) -> String {
+    let s = match m {
         Motion::Left => "left",
         Motion::Right => "right",
         Motion::Up => "up",
@@ -64,10 +64,26 @@ fn motion_token(m: Motion) -> &'static str {
         Motion::InnerWord => "inner_word",
         Motion::AWord => "a_word",
         Motion::Line => "line",
-    }
+        // A single whitespace-free token so the `<count> <motion>` split still works: the char is its decimal
+        // scalar value; `f`/`t` and forward/back are flags. e.g. `find_char:120:1:0` = `fx`.
+        Motion::FindChar { ch, forward, till } => {
+            return format!("find_char:{}:{}:{}", ch as u32, forward as u8, till as u8)
+        }
+    };
+    s.to_string()
 }
 
 fn motion_from_token(s: &str) -> Option<Motion> {
+    if let Some(rest) = s.strip_prefix("find_char:") {
+        let mut it = rest.split(':');
+        let ch = char::from_u32(it.next()?.parse().ok()?)?;
+        let forward = it.next()? == "1";
+        let till = it.next()? == "1";
+        if it.next().is_some() {
+            return None; // trailing garbage
+        }
+        return Some(Motion::FindChar { ch, forward, till });
+    }
     Some(match s {
         "left" => Motion::Left,
         "right" => Motion::Right,
@@ -246,6 +262,30 @@ mod tests {
             Command::Delete(1, Motion::InnerWord),
             Command::Change(1, Motion::AWord),
             Command::Change(3, Motion::WordEnd),
+            Command::Move(
+                1,
+                Motion::FindChar {
+                    ch: 'x',
+                    forward: true,
+                    till: false,
+                },
+            ),
+            Command::Delete(
+                2,
+                Motion::FindChar {
+                    ch: ')',
+                    forward: true,
+                    till: true,
+                },
+            ),
+            Command::Move(
+                1,
+                Motion::FindChar {
+                    ch: '가',
+                    forward: false,
+                    till: false,
+                },
+            ),
             Command::Yank(1, Motion::Line),
             Command::Yank(2, Motion::WordFwd),
             Command::Paste { after: true },
