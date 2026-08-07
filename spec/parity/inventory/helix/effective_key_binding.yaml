@@ -1,0 +1,3358 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py helix && python3 tools/parity/extract_helix.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# role: reference — see `not_a_parity_target` below before quoting any number from here.
+version: 1
+generated: true
+generator: tools/parity/extract_helix.py
+upstream: helix
+revision: a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b
+version_label: 25.07.1
+role: reference
+not_a_parity_target: Pinned as EVIDENCE for concepts/irreconcilable.yaml#observables (D-EDITLANG-PRIMITIVE). ruse declares
+  no helix input profile; these counts are never a coverage ratio.
+surface: effective_key_binding
+source_of_record: 'S: helix-term/src/keymap/default.rs (COMPUTED: normal + select overrides)'
+items:
+- id: helix.effkey.select.r
+  surface: effective_key_binding
+  mode: select
+  key: r
+  kind: command
+  binds: replace
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.r~2
+  surface: effective_key_binding
+  mode: select
+  key: R
+  kind: command
+  binds: replace_with_yanked
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a
+  surface: effective_key_binding
+  mode: select
+  key: A-.
+  kind: command
+  binds: repeat_last_motion
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x
+  surface: effective_key_binding
+  mode: select
+  key: '~'
+  kind: command
+  binds: switch_case
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~2
+  surface: effective_key_binding
+  mode: select
+  key: '`'
+  kind: command
+  binds: switch_to_lowercase
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~2
+  surface: effective_key_binding
+  mode: select
+  key: A-`
+  kind: command
+  binds: switch_to_uppercase
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g
+  surface: effective_key_binding
+  mode: select
+  key: G
+  kind: command
+  binds: goto_line
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-f
+  surface: effective_key_binding
+  mode: select
+  key: g f
+  kind: command
+  binds: goto_file
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-h
+  surface: effective_key_binding
+  mode: select
+  key: g h
+  kind: command
+  binds: goto_line_start
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-l
+  surface: effective_key_binding
+  mode: select
+  key: g l
+  kind: command
+  binds: goto_line_end
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-s
+  surface: effective_key_binding
+  mode: select
+  key: g s
+  kind: command
+  binds: goto_first_nonwhitespace
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-d
+  surface: effective_key_binding
+  mode: select
+  key: g d
+  kind: command
+  binds: goto_definition
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-d~2
+  surface: effective_key_binding
+  mode: select
+  key: g D
+  kind: command
+  binds: goto_declaration
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-y
+  surface: effective_key_binding
+  mode: select
+  key: g y
+  kind: command
+  binds: goto_type_definition
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-r
+  surface: effective_key_binding
+  mode: select
+  key: g r
+  kind: command
+  binds: goto_reference
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-i
+  surface: effective_key_binding
+  mode: select
+  key: g i
+  kind: command
+  binds: goto_implementation
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-t
+  surface: effective_key_binding
+  mode: select
+  key: g t
+  kind: command
+  binds: goto_window_top
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-c
+  surface: effective_key_binding
+  mode: select
+  key: g c
+  kind: command
+  binds: goto_window_center
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-b
+  surface: effective_key_binding
+  mode: select
+  key: g b
+  kind: command
+  binds: goto_window_bottom
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-a
+  surface: effective_key_binding
+  mode: select
+  key: g a
+  kind: command
+  binds: goto_last_accessed_file
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-m
+  surface: effective_key_binding
+  mode: select
+  key: g m
+  kind: command
+  binds: goto_last_modified_file
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-n
+  surface: effective_key_binding
+  mode: select
+  key: g n
+  kind: command
+  binds: goto_next_buffer
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-p
+  surface: effective_key_binding
+  mode: select
+  key: g p
+  kind: command
+  binds: goto_previous_buffer
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g~2
+  surface: effective_key_binding
+  mode: select
+  key: g .
+  kind: command
+  binds: goto_last_modification
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~3
+  surface: effective_key_binding
+  mode: select
+  key: ':'
+  kind: command
+  binds: command_mode
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.i
+  surface: effective_key_binding
+  mode: select
+  key: i
+  kind: command
+  binds: insert_mode
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.i~2
+  surface: effective_key_binding
+  mode: select
+  key: I
+  kind: command
+  binds: insert_at_line_start
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~3
+  surface: effective_key_binding
+  mode: select
+  key: a
+  kind: command
+  binds: append_mode
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~4
+  surface: effective_key_binding
+  mode: select
+  key: A
+  kind: command
+  binds: insert_at_line_end
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.o
+  surface: effective_key_binding
+  mode: select
+  key: o
+  kind: command
+  binds: open_below
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.o~2
+  surface: effective_key_binding
+  mode: select
+  key: O
+  kind: command
+  binds: open_above
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.d
+  surface: effective_key_binding
+  mode: select
+  key: d
+  kind: command
+  binds: delete_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-d
+  surface: effective_key_binding
+  mode: select
+  key: A-d
+  kind: command
+  binds: delete_selection_noyank
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c
+  surface: effective_key_binding
+  mode: select
+  key: c
+  kind: command
+  binds: change_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-c
+  surface: effective_key_binding
+  mode: select
+  key: A-c
+  kind: command
+  binds: change_selection_noyank
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c~2
+  surface: effective_key_binding
+  mode: select
+  key: C
+  kind: command
+  binds: copy_selection_on_next_line
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-c~2
+  surface: effective_key_binding
+  mode: select
+  key: A-C
+  kind: command
+  binds: copy_selection_on_prev_line
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.s
+  surface: effective_key_binding
+  mode: select
+  key: s
+  kind: command
+  binds: select_regex
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-s
+  surface: effective_key_binding
+  mode: select
+  key: A-s
+  kind: command
+  binds: split_selection_on_newline
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-minus
+  surface: effective_key_binding
+  mode: select
+  key: A-minus
+  kind: command
+  binds: merge_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~5
+  surface: effective_key_binding
+  mode: select
+  key: A-_
+  kind: command
+  binds: merge_consecutive_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.s~2
+  surface: effective_key_binding
+  mode: select
+  key: S
+  kind: command
+  binds: split_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~4
+  surface: effective_key_binding
+  mode: select
+  key: ;
+  kind: command
+  binds: collapse_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~6
+  surface: effective_key_binding
+  mode: select
+  key: A-;
+  kind: command
+  binds: flip_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-o
+  surface: effective_key_binding
+  mode: select
+  key: A-o
+  kind: command
+  binds: expand_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-up
+  surface: effective_key_binding
+  mode: select
+  key: A-up
+  kind: command
+  binds: expand_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-i
+  surface: effective_key_binding
+  mode: select
+  key: A-i
+  kind: command
+  binds: shrink_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-down
+  surface: effective_key_binding
+  mode: select
+  key: A-down
+  kind: command
+  binds: shrink_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-i~2
+  surface: effective_key_binding
+  mode: select
+  key: A-I
+  kind: command
+  binds: select_all_children
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-s-down
+  surface: effective_key_binding
+  mode: select
+  key: A-S-down
+  kind: command
+  binds: select_all_children
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-p
+  surface: effective_key_binding
+  mode: select
+  key: A-p
+  kind: command
+  binds: select_prev_sibling
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-left
+  surface: effective_key_binding
+  mode: select
+  key: A-left
+  kind: command
+  binds: select_prev_sibling
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-n
+  surface: effective_key_binding
+  mode: select
+  key: A-n
+  kind: command
+  binds: select_next_sibling
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-right
+  surface: effective_key_binding
+  mode: select
+  key: A-right
+  kind: command
+  binds: select_next_sibling
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-a
+  surface: effective_key_binding
+  mode: select
+  key: A-a
+  kind: command
+  binds: select_all_siblings
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~5
+  surface: effective_key_binding
+  mode: select
+  key: '%'
+  kind: command
+  binds: select_all
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~6
+  surface: effective_key_binding
+  mode: select
+  key: x
+  kind: command
+  binds: extend_line_below
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~7
+  surface: effective_key_binding
+  mode: select
+  key: X
+  kind: command
+  binds: extend_to_line_bounds
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-x
+  surface: effective_key_binding
+  mode: select
+  key: A-x
+  kind: command
+  binds: shrink_to_line_bounds
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.m
+  surface: effective_key_binding
+  mode: select
+  key: m
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.m-m
+  surface: effective_key_binding
+  mode: select
+  key: m m
+  kind: command
+  binds: match_brackets
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.m-s
+  surface: effective_key_binding
+  mode: select
+  key: m s
+  kind: command
+  binds: surround_add
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.m-r
+  surface: effective_key_binding
+  mode: select
+  key: m r
+  kind: command
+  binds: surround_replace
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.m-d
+  surface: effective_key_binding
+  mode: select
+  key: m d
+  kind: command
+  binds: surround_delete
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.m-a
+  surface: effective_key_binding
+  mode: select
+  key: m a
+  kind: command
+  binds: select_textobject_around
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.m-i
+  surface: effective_key_binding
+  mode: select
+  key: m i
+  kind: command
+  binds: select_textobject_inner
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~8
+  surface: effective_key_binding
+  mode: select
+  key: '['
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.d~2
+  surface: effective_key_binding
+  mode: select
+  key: '[ d'
+  kind: command
+  binds: goto_prev_diag
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.d~3
+  surface: effective_key_binding
+  mode: select
+  key: '[ D'
+  kind: command
+  binds: goto_first_diag
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g~3
+  surface: effective_key_binding
+  mode: select
+  key: '[ g'
+  kind: command
+  binds: goto_prev_change
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g~4
+  surface: effective_key_binding
+  mode: select
+  key: '[ G'
+  kind: command
+  binds: goto_first_change
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.f
+  surface: effective_key_binding
+  mode: select
+  key: '[ f'
+  kind: command
+  binds: goto_prev_function
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.t
+  surface: effective_key_binding
+  mode: select
+  key: '[ t'
+  kind: command
+  binds: goto_prev_class
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~7
+  surface: effective_key_binding
+  mode: select
+  key: '[ a'
+  kind: command
+  binds: goto_prev_parameter
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c~3
+  surface: effective_key_binding
+  mode: select
+  key: '[ c'
+  kind: command
+  binds: goto_prev_comment
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.e
+  surface: effective_key_binding
+  mode: select
+  key: '[ e'
+  kind: command
+  binds: goto_prev_entry
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.t~2
+  surface: effective_key_binding
+  mode: select
+  key: '[ T'
+  kind: command
+  binds: goto_prev_test
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.p
+  surface: effective_key_binding
+  mode: select
+  key: '[ p'
+  kind: command
+  binds: goto_prev_paragraph
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space
+  surface: effective_key_binding
+  mode: select
+  key: '[ space'
+  kind: command
+  binds: add_newline_above
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~9
+  surface: effective_key_binding
+  mode: select
+  key: ']'
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.d~4
+  surface: effective_key_binding
+  mode: select
+  key: '] d'
+  kind: command
+  binds: goto_next_diag
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.d~5
+  surface: effective_key_binding
+  mode: select
+  key: '] D'
+  kind: command
+  binds: goto_last_diag
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g~5
+  surface: effective_key_binding
+  mode: select
+  key: '] g'
+  kind: command
+  binds: goto_next_change
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g~6
+  surface: effective_key_binding
+  mode: select
+  key: '] G'
+  kind: command
+  binds: goto_last_change
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.f~2
+  surface: effective_key_binding
+  mode: select
+  key: '] f'
+  kind: command
+  binds: goto_next_function
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.t~3
+  surface: effective_key_binding
+  mode: select
+  key: '] t'
+  kind: command
+  binds: goto_next_class
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~8
+  surface: effective_key_binding
+  mode: select
+  key: '] a'
+  kind: command
+  binds: goto_next_parameter
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c~4
+  surface: effective_key_binding
+  mode: select
+  key: '] c'
+  kind: command
+  binds: goto_next_comment
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.e~2
+  surface: effective_key_binding
+  mode: select
+  key: '] e'
+  kind: command
+  binds: goto_next_entry
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.t~4
+  surface: effective_key_binding
+  mode: select
+  key: '] T'
+  kind: command
+  binds: goto_next_test
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.p~2
+  surface: effective_key_binding
+  mode: select
+  key: '] p'
+  kind: command
+  binds: goto_next_paragraph
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space~2
+  surface: effective_key_binding
+  mode: select
+  key: '] space'
+  kind: command
+  binds: add_newline_below
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~10
+  surface: effective_key_binding
+  mode: select
+  key: /
+  kind: command
+  binds: search
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~11
+  surface: effective_key_binding
+  mode: select
+  key: '?'
+  kind: command
+  binds: rsearch
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~12
+  surface: effective_key_binding
+  mode: select
+  key: '*'
+  kind: command
+  binds: search_selection_detect_word_boundaries
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~9
+  surface: effective_key_binding
+  mode: select
+  key: A-*
+  kind: command
+  binds: search_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.u
+  surface: effective_key_binding
+  mode: select
+  key: u
+  kind: command
+  binds: undo
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.u~2
+  surface: effective_key_binding
+  mode: select
+  key: U
+  kind: command
+  binds: redo
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-u
+  surface: effective_key_binding
+  mode: select
+  key: A-u
+  kind: command
+  binds: earlier
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-u~2
+  surface: effective_key_binding
+  mode: select
+  key: A-U
+  kind: command
+  binds: later
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.y
+  surface: effective_key_binding
+  mode: select
+  key: y
+  kind: command
+  binds: yank
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.p~3
+  surface: effective_key_binding
+  mode: select
+  key: p
+  kind: command
+  binds: paste_after
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.p~4
+  surface: effective_key_binding
+  mode: select
+  key: P
+  kind: command
+  binds: paste_before
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.q
+  surface: effective_key_binding
+  mode: select
+  key: Q
+  kind: command
+  binds: record_macro
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.q~2
+  surface: effective_key_binding
+  mode: select
+  key: q
+  kind: command
+  binds: replay_macro
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~13
+  surface: effective_key_binding
+  mode: select
+  key: '>'
+  kind: command
+  binds: indent
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~14
+  surface: effective_key_binding
+  mode: select
+  key: <
+  kind: command
+  binds: unindent
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~15
+  surface: effective_key_binding
+  mode: select
+  key: '='
+  kind: command
+  binds: format_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.j
+  surface: effective_key_binding
+  mode: select
+  key: J
+  kind: command
+  binds: join_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-j
+  surface: effective_key_binding
+  mode: select
+  key: A-J
+  kind: command
+  binds: join_selections_space
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.k
+  surface: effective_key_binding
+  mode: select
+  key: K
+  kind: command
+  binds: keep_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-k
+  surface: effective_key_binding
+  mode: select
+  key: A-K
+  kind: command
+  binds: remove_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~16
+  surface: effective_key_binding
+  mode: select
+  key: ','
+  kind: command
+  binds: keep_primary_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~10
+  surface: effective_key_binding
+  mode: select
+  key: A-,
+  kind: command
+  binds: remove_primary_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~17
+  surface: effective_key_binding
+  mode: select
+  key: '&'
+  kind: command
+  binds: align_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~18
+  surface: effective_key_binding
+  mode: select
+  key: _
+  kind: command
+  binds: trim_selections
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~19
+  surface: effective_key_binding
+  mode: select
+  key: (
+  kind: command
+  binds: rotate_selections_backward
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~20
+  surface: effective_key_binding
+  mode: select
+  key: )
+  kind: command
+  binds: rotate_selections_forward
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~11
+  surface: effective_key_binding
+  mode: select
+  key: A-(
+  kind: command
+  binds: rotate_selection_contents_backward
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~12
+  surface: effective_key_binding
+  mode: select
+  key: A-)
+  kind: command
+  binds: rotate_selection_contents_forward
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~13
+  surface: effective_key_binding
+  mode: select
+  key: 'A-:'
+  kind: command
+  binds: ensure_selections_forward
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-b
+  surface: effective_key_binding
+  mode: select
+  key: C-b
+  kind: command
+  binds: page_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.pageup
+  surface: effective_key_binding
+  mode: select
+  key: pageup
+  kind: command
+  binds: page_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-f
+  surface: effective_key_binding
+  mode: select
+  key: C-f
+  kind: command
+  binds: page_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.pagedown
+  surface: effective_key_binding
+  mode: select
+  key: pagedown
+  kind: command
+  binds: page_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-u
+  surface: effective_key_binding
+  mode: select
+  key: C-u
+  kind: command
+  binds: page_cursor_half_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-d
+  surface: effective_key_binding
+  mode: select
+  key: C-d
+  kind: command
+  binds: page_cursor_half_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w
+  surface: effective_key_binding
+  mode: select
+  key: C-w
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-w
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-w
+  kind: command
+  binds: rotate_view
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-w
+  surface: effective_key_binding
+  mode: select
+  key: C-w w
+  kind: command
+  binds: rotate_view
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-s
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-s
+  kind: command
+  binds: hsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-s
+  surface: effective_key_binding
+  mode: select
+  key: C-w s
+  kind: command
+  binds: hsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-v
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-v
+  kind: command
+  binds: vsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-v
+  surface: effective_key_binding
+  mode: select
+  key: C-w v
+  kind: command
+  binds: vsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-t
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-t
+  kind: command
+  binds: transpose_view
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-t
+  surface: effective_key_binding
+  mode: select
+  key: C-w t
+  kind: command
+  binds: transpose_view
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-f
+  surface: effective_key_binding
+  mode: select
+  key: C-w f
+  kind: command
+  binds: goto_file_hsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-f~2
+  surface: effective_key_binding
+  mode: select
+  key: C-w F
+  kind: command
+  binds: goto_file_vsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-q
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-q
+  kind: command
+  binds: wclose
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-q
+  surface: effective_key_binding
+  mode: select
+  key: C-w q
+  kind: command
+  binds: wclose
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-o
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-o
+  kind: command
+  binds: wonly
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-o
+  surface: effective_key_binding
+  mode: select
+  key: C-w o
+  kind: command
+  binds: wonly
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-h
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-h
+  kind: command
+  binds: jump_view_left
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-h
+  surface: effective_key_binding
+  mode: select
+  key: C-w h
+  kind: command
+  binds: jump_view_left
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-left
+  surface: effective_key_binding
+  mode: select
+  key: C-w left
+  kind: command
+  binds: jump_view_left
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-j
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-j
+  kind: command
+  binds: jump_view_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-j
+  surface: effective_key_binding
+  mode: select
+  key: C-w j
+  kind: command
+  binds: jump_view_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-down
+  surface: effective_key_binding
+  mode: select
+  key: C-w down
+  kind: command
+  binds: jump_view_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-k
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-k
+  kind: command
+  binds: jump_view_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-k
+  surface: effective_key_binding
+  mode: select
+  key: C-w k
+  kind: command
+  binds: jump_view_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-up
+  surface: effective_key_binding
+  mode: select
+  key: C-w up
+  kind: command
+  binds: jump_view_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-c-l
+  surface: effective_key_binding
+  mode: select
+  key: C-w C-l
+  kind: command
+  binds: jump_view_right
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-l
+  surface: effective_key_binding
+  mode: select
+  key: C-w l
+  kind: command
+  binds: jump_view_right
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-right
+  surface: effective_key_binding
+  mode: select
+  key: C-w right
+  kind: command
+  binds: jump_view_right
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-l~2
+  surface: effective_key_binding
+  mode: select
+  key: C-w L
+  kind: command
+  binds: swap_view_right
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-k~2
+  surface: effective_key_binding
+  mode: select
+  key: C-w K
+  kind: command
+  binds: swap_view_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-h~2
+  surface: effective_key_binding
+  mode: select
+  key: C-w H
+  kind: command
+  binds: swap_view_left
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-j~2
+  surface: effective_key_binding
+  mode: select
+  key: C-w J
+  kind: command
+  binds: swap_view_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-n
+  surface: effective_key_binding
+  mode: select
+  key: C-w n
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-n-c-s
+  surface: effective_key_binding
+  mode: select
+  key: C-w n C-s
+  kind: command
+  binds: hsplit_new
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-n-s
+  surface: effective_key_binding
+  mode: select
+  key: C-w n s
+  kind: command
+  binds: hsplit_new
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-n-c-v
+  surface: effective_key_binding
+  mode: select
+  key: C-w n C-v
+  kind: command
+  binds: vsplit_new
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-w-n-v
+  surface: effective_key_binding
+  mode: select
+  key: C-w n v
+  kind: command
+  binds: vsplit_new
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-c
+  surface: effective_key_binding
+  mode: select
+  key: C-c
+  kind: command
+  binds: toggle_comments
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-i
+  surface: effective_key_binding
+  mode: select
+  key: C-i
+  kind: command
+  binds: jump_forward
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.tab
+  surface: effective_key_binding
+  mode: select
+  key: tab
+  kind: command
+  binds: jump_forward
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-o
+  surface: effective_key_binding
+  mode: select
+  key: C-o
+  kind: command
+  binds: jump_backward
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-s
+  surface: effective_key_binding
+  mode: select
+  key: C-s
+  kind: command
+  binds: save_selection
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space~3
+  surface: effective_key_binding
+  mode: select
+  key: space
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-f
+  surface: effective_key_binding
+  mode: select
+  key: space f
+  kind: command
+  binds: file_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-f~2
+  surface: effective_key_binding
+  mode: select
+  key: space F
+  kind: command
+  binds: file_picker_in_current_directory
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-e
+  surface: effective_key_binding
+  mode: select
+  key: space e
+  kind: command
+  binds: file_explorer
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-e~2
+  surface: effective_key_binding
+  mode: select
+  key: space E
+  kind: command
+  binds: file_explorer_in_current_buffer_directory
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-b
+  surface: effective_key_binding
+  mode: select
+  key: space b
+  kind: command
+  binds: buffer_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-j
+  surface: effective_key_binding
+  mode: select
+  key: space j
+  kind: command
+  binds: jumplist_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-s
+  surface: effective_key_binding
+  mode: select
+  key: space s
+  kind: command
+  binds: symbol_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-s~2
+  surface: effective_key_binding
+  mode: select
+  key: space S
+  kind: command
+  binds: workspace_symbol_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-d
+  surface: effective_key_binding
+  mode: select
+  key: space d
+  kind: command
+  binds: diagnostics_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-d~2
+  surface: effective_key_binding
+  mode: select
+  key: space D
+  kind: command
+  binds: workspace_diagnostics_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g
+  surface: effective_key_binding
+  mode: select
+  key: space g
+  kind: command
+  binds: changed_file_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-a
+  surface: effective_key_binding
+  mode: select
+  key: space a
+  kind: command
+  binds: code_action
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space~4
+  surface: effective_key_binding
+  mode: select
+  key: space '
+  kind: command
+  binds: last_picker
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g~2
+  surface: effective_key_binding
+  mode: select
+  key: space G
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-l
+  surface: effective_key_binding
+  mode: select
+  key: space G l
+  kind: command
+  binds: dap_launch
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-r
+  surface: effective_key_binding
+  mode: select
+  key: space G r
+  kind: command
+  binds: dap_restart
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-b
+  surface: effective_key_binding
+  mode: select
+  key: space G b
+  kind: command
+  binds: dap_toggle_breakpoint
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-c
+  surface: effective_key_binding
+  mode: select
+  key: space G c
+  kind: command
+  binds: dap_continue
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-h
+  surface: effective_key_binding
+  mode: select
+  key: space G h
+  kind: command
+  binds: dap_pause
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-i
+  surface: effective_key_binding
+  mode: select
+  key: space G i
+  kind: command
+  binds: dap_step_in
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-o
+  surface: effective_key_binding
+  mode: select
+  key: space G o
+  kind: command
+  binds: dap_step_out
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-n
+  surface: effective_key_binding
+  mode: select
+  key: space G n
+  kind: command
+  binds: dap_next
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-v
+  surface: effective_key_binding
+  mode: select
+  key: space G v
+  kind: command
+  binds: dap_variables
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-t
+  surface: effective_key_binding
+  mode: select
+  key: space G t
+  kind: command
+  binds: dap_terminate
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-c-c
+  surface: effective_key_binding
+  mode: select
+  key: space G C-c
+  kind: command
+  binds: dap_edit_condition
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-c-l
+  surface: effective_key_binding
+  mode: select
+  key: space G C-l
+  kind: command
+  binds: dap_edit_log
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-s
+  surface: effective_key_binding
+  mode: select
+  key: space G s
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-s-t
+  surface: effective_key_binding
+  mode: select
+  key: space G s t
+  kind: command
+  binds: dap_switch_thread
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-s-f
+  surface: effective_key_binding
+  mode: select
+  key: space G s f
+  kind: command
+  binds: dap_switch_stack_frame
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-e
+  surface: effective_key_binding
+  mode: select
+  key: space G e
+  kind: command
+  binds: dap_enable_exceptions
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-g-e~2
+  surface: effective_key_binding
+  mode: select
+  key: space G E
+  kind: command
+  binds: dap_disable_exceptions
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w
+  surface: effective_key_binding
+  mode: select
+  key: space w
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-w
+  surface: effective_key_binding
+  mode: select
+  key: space w C-w
+  kind: command
+  binds: rotate_view
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-w
+  surface: effective_key_binding
+  mode: select
+  key: space w w
+  kind: command
+  binds: rotate_view
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-s
+  surface: effective_key_binding
+  mode: select
+  key: space w C-s
+  kind: command
+  binds: hsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-s
+  surface: effective_key_binding
+  mode: select
+  key: space w s
+  kind: command
+  binds: hsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-v
+  surface: effective_key_binding
+  mode: select
+  key: space w C-v
+  kind: command
+  binds: vsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-v
+  surface: effective_key_binding
+  mode: select
+  key: space w v
+  kind: command
+  binds: vsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-t
+  surface: effective_key_binding
+  mode: select
+  key: space w C-t
+  kind: command
+  binds: transpose_view
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-t
+  surface: effective_key_binding
+  mode: select
+  key: space w t
+  kind: command
+  binds: transpose_view
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-f
+  surface: effective_key_binding
+  mode: select
+  key: space w f
+  kind: command
+  binds: goto_file_hsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-f~2
+  surface: effective_key_binding
+  mode: select
+  key: space w F
+  kind: command
+  binds: goto_file_vsplit
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-q
+  surface: effective_key_binding
+  mode: select
+  key: space w C-q
+  kind: command
+  binds: wclose
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-q
+  surface: effective_key_binding
+  mode: select
+  key: space w q
+  kind: command
+  binds: wclose
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-o
+  surface: effective_key_binding
+  mode: select
+  key: space w C-o
+  kind: command
+  binds: wonly
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-o
+  surface: effective_key_binding
+  mode: select
+  key: space w o
+  kind: command
+  binds: wonly
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-h
+  surface: effective_key_binding
+  mode: select
+  key: space w C-h
+  kind: command
+  binds: jump_view_left
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-h
+  surface: effective_key_binding
+  mode: select
+  key: space w h
+  kind: command
+  binds: jump_view_left
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-left
+  surface: effective_key_binding
+  mode: select
+  key: space w left
+  kind: command
+  binds: jump_view_left
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-j
+  surface: effective_key_binding
+  mode: select
+  key: space w C-j
+  kind: command
+  binds: jump_view_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-j
+  surface: effective_key_binding
+  mode: select
+  key: space w j
+  kind: command
+  binds: jump_view_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-down
+  surface: effective_key_binding
+  mode: select
+  key: space w down
+  kind: command
+  binds: jump_view_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-k
+  surface: effective_key_binding
+  mode: select
+  key: space w C-k
+  kind: command
+  binds: jump_view_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-k
+  surface: effective_key_binding
+  mode: select
+  key: space w k
+  kind: command
+  binds: jump_view_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-up
+  surface: effective_key_binding
+  mode: select
+  key: space w up
+  kind: command
+  binds: jump_view_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-c-l
+  surface: effective_key_binding
+  mode: select
+  key: space w C-l
+  kind: command
+  binds: jump_view_right
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-l
+  surface: effective_key_binding
+  mode: select
+  key: space w l
+  kind: command
+  binds: jump_view_right
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-right
+  surface: effective_key_binding
+  mode: select
+  key: space w right
+  kind: command
+  binds: jump_view_right
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-h~2
+  surface: effective_key_binding
+  mode: select
+  key: space w H
+  kind: command
+  binds: swap_view_left
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-j~2
+  surface: effective_key_binding
+  mode: select
+  key: space w J
+  kind: command
+  binds: swap_view_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-k~2
+  surface: effective_key_binding
+  mode: select
+  key: space w K
+  kind: command
+  binds: swap_view_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-l~2
+  surface: effective_key_binding
+  mode: select
+  key: space w L
+  kind: command
+  binds: swap_view_right
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-n
+  surface: effective_key_binding
+  mode: select
+  key: space w n
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-n-c-s
+  surface: effective_key_binding
+  mode: select
+  key: space w n C-s
+  kind: command
+  binds: hsplit_new
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-n-s
+  surface: effective_key_binding
+  mode: select
+  key: space w n s
+  kind: command
+  binds: hsplit_new
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-n-c-v
+  surface: effective_key_binding
+  mode: select
+  key: space w n C-v
+  kind: command
+  binds: vsplit_new
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-w-n-v
+  surface: effective_key_binding
+  mode: select
+  key: space w n v
+  kind: command
+  binds: vsplit_new
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-y
+  surface: effective_key_binding
+  mode: select
+  key: space y
+  kind: command
+  binds: yank_to_clipboard
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-y~2
+  surface: effective_key_binding
+  mode: select
+  key: space Y
+  kind: command
+  binds: yank_main_selection_to_clipboard
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-p
+  surface: effective_key_binding
+  mode: select
+  key: space p
+  kind: command
+  binds: paste_clipboard_after
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-p~2
+  surface: effective_key_binding
+  mode: select
+  key: space P
+  kind: command
+  binds: paste_clipboard_before
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-r
+  surface: effective_key_binding
+  mode: select
+  key: space R
+  kind: command
+  binds: replace_selections_with_clipboard
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space~5
+  surface: effective_key_binding
+  mode: select
+  key: space /
+  kind: command
+  binds: global_search
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-k
+  surface: effective_key_binding
+  mode: select
+  key: space k
+  kind: command
+  binds: hover
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-r~2
+  surface: effective_key_binding
+  mode: select
+  key: space r
+  kind: command
+  binds: rename_symbol
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-h
+  surface: effective_key_binding
+  mode: select
+  key: space h
+  kind: command
+  binds: select_references_to_symbol_under_cursor
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-c
+  surface: effective_key_binding
+  mode: select
+  key: space c
+  kind: command
+  binds: toggle_comments
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-c~2
+  surface: effective_key_binding
+  mode: select
+  key: space C
+  kind: command
+  binds: toggle_block_comments
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space-a-c
+  surface: effective_key_binding
+  mode: select
+  key: space A-c
+  kind: command
+  binds: toggle_line_comments
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.space~6
+  surface: effective_key_binding
+  mode: select
+  key: space ?
+  kind: command
+  binds: command_palette
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z
+  surface: effective_key_binding
+  mode: select
+  key: z
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-z
+  surface: effective_key_binding
+  mode: select
+  key: z z
+  kind: command
+  binds: align_view_center
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c
+  surface: effective_key_binding
+  mode: select
+  key: z c
+  kind: command
+  binds: align_view_center
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-t
+  surface: effective_key_binding
+  mode: select
+  key: z t
+  kind: command
+  binds: align_view_top
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-b
+  surface: effective_key_binding
+  mode: select
+  key: z b
+  kind: command
+  binds: align_view_bottom
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-m
+  surface: effective_key_binding
+  mode: select
+  key: z m
+  kind: command
+  binds: align_view_middle
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-k
+  surface: effective_key_binding
+  mode: select
+  key: z k
+  kind: command
+  binds: scroll_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-up
+  surface: effective_key_binding
+  mode: select
+  key: z up
+  kind: command
+  binds: scroll_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-j
+  surface: effective_key_binding
+  mode: select
+  key: z j
+  kind: command
+  binds: scroll_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-down
+  surface: effective_key_binding
+  mode: select
+  key: z down
+  kind: command
+  binds: scroll_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c-b
+  surface: effective_key_binding
+  mode: select
+  key: z C-b
+  kind: command
+  binds: page_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-pageup
+  surface: effective_key_binding
+  mode: select
+  key: z pageup
+  kind: command
+  binds: page_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c-f
+  surface: effective_key_binding
+  mode: select
+  key: z C-f
+  kind: command
+  binds: page_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-pagedown
+  surface: effective_key_binding
+  mode: select
+  key: z pagedown
+  kind: command
+  binds: page_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c-u
+  surface: effective_key_binding
+  mode: select
+  key: z C-u
+  kind: command
+  binds: page_cursor_half_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-backspace
+  surface: effective_key_binding
+  mode: select
+  key: z backspace
+  kind: command
+  binds: page_cursor_half_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c-d
+  surface: effective_key_binding
+  mode: select
+  key: z C-d
+  kind: command
+  binds: page_cursor_half_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-space
+  surface: effective_key_binding
+  mode: select
+  key: z space
+  kind: command
+  binds: page_cursor_half_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z~2
+  surface: effective_key_binding
+  mode: select
+  key: z /
+  kind: command
+  binds: search
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z~3
+  surface: effective_key_binding
+  mode: select
+  key: z ?
+  kind: command
+  binds: rsearch
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-n
+  surface: effective_key_binding
+  mode: select
+  key: z n
+  kind: command
+  binds: search_next
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-n~2
+  surface: effective_key_binding
+  mode: select
+  key: z N
+  kind: command
+  binds: search_prev
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z~4
+  surface: effective_key_binding
+  mode: select
+  key: Z
+  kind: prefix
+  binds: ''
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-z~2
+  surface: effective_key_binding
+  mode: select
+  key: Z z
+  kind: command
+  binds: align_view_center
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c~2
+  surface: effective_key_binding
+  mode: select
+  key: Z c
+  kind: command
+  binds: align_view_center
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-t~2
+  surface: effective_key_binding
+  mode: select
+  key: Z t
+  kind: command
+  binds: align_view_top
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-b~2
+  surface: effective_key_binding
+  mode: select
+  key: Z b
+  kind: command
+  binds: align_view_bottom
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-m~2
+  surface: effective_key_binding
+  mode: select
+  key: Z m
+  kind: command
+  binds: align_view_middle
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-k~2
+  surface: effective_key_binding
+  mode: select
+  key: Z k
+  kind: command
+  binds: scroll_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-up~2
+  surface: effective_key_binding
+  mode: select
+  key: Z up
+  kind: command
+  binds: scroll_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-j~2
+  surface: effective_key_binding
+  mode: select
+  key: Z j
+  kind: command
+  binds: scroll_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-down~2
+  surface: effective_key_binding
+  mode: select
+  key: Z down
+  kind: command
+  binds: scroll_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c-b~2
+  surface: effective_key_binding
+  mode: select
+  key: Z C-b
+  kind: command
+  binds: page_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-pageup~2
+  surface: effective_key_binding
+  mode: select
+  key: Z pageup
+  kind: command
+  binds: page_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c-f~2
+  surface: effective_key_binding
+  mode: select
+  key: Z C-f
+  kind: command
+  binds: page_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-pagedown~2
+  surface: effective_key_binding
+  mode: select
+  key: Z pagedown
+  kind: command
+  binds: page_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c-u~2
+  surface: effective_key_binding
+  mode: select
+  key: Z C-u
+  kind: command
+  binds: page_cursor_half_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-backspace~2
+  surface: effective_key_binding
+  mode: select
+  key: Z backspace
+  kind: command
+  binds: page_cursor_half_up
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-c-d~2
+  surface: effective_key_binding
+  mode: select
+  key: Z C-d
+  kind: command
+  binds: page_cursor_half_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-space~2
+  surface: effective_key_binding
+  mode: select
+  key: Z space
+  kind: command
+  binds: page_cursor_half_down
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z~5
+  surface: effective_key_binding
+  mode: select
+  key: Z /
+  kind: command
+  binds: search
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z~6
+  surface: effective_key_binding
+  mode: select
+  key: Z ?
+  kind: command
+  binds: rsearch
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-n~3
+  surface: effective_key_binding
+  mode: select
+  key: Z n
+  kind: command
+  binds: search_next
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.z-n~4
+  surface: effective_key_binding
+  mode: select
+  key: Z N
+  kind: command
+  binds: search_prev
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.bar
+  surface: effective_key_binding
+  mode: select
+  key: '|'
+  kind: command
+  binds: shell_pipe
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-bar
+  surface: effective_key_binding
+  mode: select
+  key: A-|
+  kind: command
+  binds: shell_pipe_to
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~21
+  surface: effective_key_binding
+  mode: select
+  key: '!'
+  kind: command
+  binds: shell_insert_output
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a~14
+  surface: effective_key_binding
+  mode: select
+  key: A-!
+  kind: command
+  binds: shell_append_output
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.x~22
+  surface: effective_key_binding
+  mode: select
+  key: $
+  kind: command
+  binds: shell_keep_pipe
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-z
+  surface: effective_key_binding
+  mode: select
+  key: C-z
+  kind: command
+  binds: suspend
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-a
+  surface: effective_key_binding
+  mode: select
+  key: C-a
+  kind: command
+  binds: increment
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.c-x
+  surface: effective_key_binding
+  mode: select
+  key: C-x
+  kind: command
+  binds: decrement
+  inherited: true
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.h
+  surface: effective_key_binding
+  mode: select
+  key: h
+  kind: command
+  binds: extend_char_left
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.left
+  surface: effective_key_binding
+  mode: select
+  key: left
+  kind: command
+  binds: extend_char_left
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.j~2
+  surface: effective_key_binding
+  mode: select
+  key: j
+  kind: command
+  binds: extend_visual_line_down
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.down
+  surface: effective_key_binding
+  mode: select
+  key: down
+  kind: command
+  binds: extend_visual_line_down
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.k~2
+  surface: effective_key_binding
+  mode: select
+  key: k
+  kind: command
+  binds: extend_visual_line_up
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.up
+  surface: effective_key_binding
+  mode: select
+  key: up
+  kind: command
+  binds: extend_visual_line_up
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.l
+  surface: effective_key_binding
+  mode: select
+  key: l
+  kind: command
+  binds: extend_char_right
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.right
+  surface: effective_key_binding
+  mode: select
+  key: right
+  kind: command
+  binds: extend_char_right
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.w
+  surface: effective_key_binding
+  mode: select
+  key: w
+  kind: command
+  binds: extend_next_word_start
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.b
+  surface: effective_key_binding
+  mode: select
+  key: b
+  kind: command
+  binds: extend_prev_word_start
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.e~3
+  surface: effective_key_binding
+  mode: select
+  key: e
+  kind: command
+  binds: extend_next_word_end
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.w~2
+  surface: effective_key_binding
+  mode: select
+  key: W
+  kind: command
+  binds: extend_next_long_word_start
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.b~2
+  surface: effective_key_binding
+  mode: select
+  key: B
+  kind: command
+  binds: extend_prev_long_word_start
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.e~4
+  surface: effective_key_binding
+  mode: select
+  key: E
+  kind: command
+  binds: extend_next_long_word_end
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-e
+  surface: effective_key_binding
+  mode: select
+  key: A-e
+  kind: command
+  binds: extend_parent_node_end
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.a-b
+  surface: effective_key_binding
+  mode: select
+  key: A-b
+  kind: command
+  binds: extend_parent_node_start
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.n
+  surface: effective_key_binding
+  mode: select
+  key: n
+  kind: command
+  binds: extend_search_next
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.n~2
+  surface: effective_key_binding
+  mode: select
+  key: N
+  kind: command
+  binds: extend_search_prev
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.t~5
+  surface: effective_key_binding
+  mode: select
+  key: t
+  kind: command
+  binds: extend_till_char
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.f~3
+  surface: effective_key_binding
+  mode: select
+  key: f
+  kind: command
+  binds: extend_next_char
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.t~6
+  surface: effective_key_binding
+  mode: select
+  key: T
+  kind: command
+  binds: extend_till_prev_char
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.f~4
+  surface: effective_key_binding
+  mode: select
+  key: F
+  kind: command
+  binds: extend_prev_char
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.home
+  surface: effective_key_binding
+  mode: select
+  key: home
+  kind: command
+  binds: extend_to_line_start
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.end
+  surface: effective_key_binding
+  mode: select
+  key: end
+  kind: command
+  binds: extend_to_line_end
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.esc
+  surface: effective_key_binding
+  mode: select
+  key: esc
+  kind: command
+  binds: exit_select_mode
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.v
+  surface: effective_key_binding
+  mode: select
+  key: v
+  kind: command
+  binds: normal_mode
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g~7
+  surface: effective_key_binding
+  mode: select
+  key: g
+  kind: prefix
+  binds: ''
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-g
+  surface: effective_key_binding
+  mode: select
+  key: g g
+  kind: command
+  binds: extend_to_file_start
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-bar
+  surface: effective_key_binding
+  mode: select
+  key: g |
+  kind: command
+  binds: extend_to_column
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-e
+  surface: effective_key_binding
+  mode: select
+  key: g e
+  kind: command
+  binds: extend_to_last_line
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-k
+  surface: effective_key_binding
+  mode: select
+  key: g k
+  kind: command
+  binds: extend_line_up
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-j
+  surface: effective_key_binding
+  mode: select
+  key: g j
+  kind: command
+  binds: extend_line_down
+  inherited: false
+  attestation:
+  - S
+  status: unclassified
+- id: helix.effkey.select.g-w
+  surface: effective_key_binding
+  mode: select
+  key: g w
+  kind: command
+  binds: extend_to_word
+  inherited: false
+  attestation:
+  - S
+  status: unclassified

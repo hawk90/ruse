@@ -1,0 +1,2153 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py helix && python3 tools/parity/extract_helix.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# role: reference — see `not_a_parity_target` below before quoting any number from here.
+version: 1
+generated: true
+generator: tools/parity/extract_helix.py
+upstream: helix
+revision: a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b
+version_label: 25.07.1
+role: reference
+not_a_parity_target: Pinned as EVIDENCE for concepts/irreconcilable.yaml#observables (D-EDITLANG-PRIMITIVE). ruse declares
+  no helix input profile; these counts are never a coverage ratio.
+surface: command
+source_of_record: 'S: helix-term/src/commands.rs static_commands!'
+items:
+- id: helix.command.no-op
+  surface: command
+  name: no_op
+  desc: Do nothing
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-char-left
+  surface: command
+  name: move_char_left
+  desc: Move left
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-char-right
+  surface: command
+  name: move_char_right
+  desc: Move right
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-line-up
+  surface: command
+  name: move_line_up
+  desc: Move up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-line-down
+  surface: command
+  name: move_line_down
+  desc: Move down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-visual-line-up
+  surface: command
+  name: move_visual_line_up
+  desc: Move up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-visual-line-down
+  surface: command
+  name: move_visual_line_down
+  desc: Move down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-char-left
+  surface: command
+  name: extend_char_left
+  desc: Extend left
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-char-right
+  surface: command
+  name: extend_char_right
+  desc: Extend right
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-line-up
+  surface: command
+  name: extend_line_up
+  desc: Extend up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-line-down
+  surface: command
+  name: extend_line_down
+  desc: Extend down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-visual-line-up
+  surface: command
+  name: extend_visual_line_up
+  desc: Extend up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-visual-line-down
+  surface: command
+  name: extend_visual_line_down
+  desc: Extend down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.copy-selection-on-next-line
+  surface: command
+  name: copy_selection_on_next_line
+  desc: Copy selection on next line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.copy-selection-on-prev-line
+  surface: command
+  name: copy_selection_on_prev_line
+  desc: Copy selection on previous line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-next-word-start
+  surface: command
+  name: move_next_word_start
+  desc: Move to start of next word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-prev-word-start
+  surface: command
+  name: move_prev_word_start
+  desc: Move to start of previous word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-next-word-end
+  surface: command
+  name: move_next_word_end
+  desc: Move to end of next word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-prev-word-end
+  surface: command
+  name: move_prev_word_end
+  desc: Move to end of previous word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-next-long-word-start
+  surface: command
+  name: move_next_long_word_start
+  desc: Move to start of next long word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-prev-long-word-start
+  surface: command
+  name: move_prev_long_word_start
+  desc: Move to start of previous long word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-next-long-word-end
+  surface: command
+  name: move_next_long_word_end
+  desc: Move to end of next long word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-prev-long-word-end
+  surface: command
+  name: move_prev_long_word_end
+  desc: Move to end of previous long word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-next-sub-word-start
+  surface: command
+  name: move_next_sub_word_start
+  desc: Move to start of next sub word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-prev-sub-word-start
+  surface: command
+  name: move_prev_sub_word_start
+  desc: Move to start of previous sub word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-next-sub-word-end
+  surface: command
+  name: move_next_sub_word_end
+  desc: Move to end of next sub word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-prev-sub-word-end
+  surface: command
+  name: move_prev_sub_word_end
+  desc: Move to end of previous sub word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-parent-node-end
+  surface: command
+  name: move_parent_node_end
+  desc: Move to end of the parent node
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.move-parent-node-start
+  surface: command
+  name: move_parent_node_start
+  desc: Move to beginning of the parent node
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-next-word-start
+  surface: command
+  name: extend_next_word_start
+  desc: Extend to start of next word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-prev-word-start
+  surface: command
+  name: extend_prev_word_start
+  desc: Extend to start of previous word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-next-word-end
+  surface: command
+  name: extend_next_word_end
+  desc: Extend to end of next word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-prev-word-end
+  surface: command
+  name: extend_prev_word_end
+  desc: Extend to end of previous word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-next-long-word-start
+  surface: command
+  name: extend_next_long_word_start
+  desc: Extend to start of next long word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-prev-long-word-start
+  surface: command
+  name: extend_prev_long_word_start
+  desc: Extend to start of previous long word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-next-long-word-end
+  surface: command
+  name: extend_next_long_word_end
+  desc: Extend to end of next long word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-prev-long-word-end
+  surface: command
+  name: extend_prev_long_word_end
+  desc: Extend to end of prev long word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-next-sub-word-start
+  surface: command
+  name: extend_next_sub_word_start
+  desc: Extend to start of next sub word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-prev-sub-word-start
+  surface: command
+  name: extend_prev_sub_word_start
+  desc: Extend to start of previous sub word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-next-sub-word-end
+  surface: command
+  name: extend_next_sub_word_end
+  desc: Extend to end of next sub word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-prev-sub-word-end
+  surface: command
+  name: extend_prev_sub_word_end
+  desc: Extend to end of prev sub word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-parent-node-end
+  surface: command
+  name: extend_parent_node_end
+  desc: Extend to end of the parent node
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-parent-node-start
+  surface: command
+  name: extend_parent_node_start
+  desc: Extend to beginning of the parent node
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.find-till-char
+  surface: command
+  name: find_till_char
+  desc: Move till next occurrence of char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.find-next-char
+  surface: command
+  name: find_next_char
+  desc: Move to next occurrence of char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-till-char
+  surface: command
+  name: extend_till_char
+  desc: Extend till next occurrence of char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-next-char
+  surface: command
+  name: extend_next_char
+  desc: Extend to next occurrence of char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.till-prev-char
+  surface: command
+  name: till_prev_char
+  desc: Move till previous occurrence of char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.find-prev-char
+  surface: command
+  name: find_prev_char
+  desc: Move to previous occurrence of char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-till-prev-char
+  surface: command
+  name: extend_till_prev_char
+  desc: Extend till previous occurrence of char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-prev-char
+  surface: command
+  name: extend_prev_char
+  desc: Extend to previous occurrence of char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.repeat-last-motion
+  surface: command
+  name: repeat_last_motion
+  desc: Repeat last motion
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.replace
+  surface: command
+  name: replace
+  desc: Replace with new char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.switch-case
+  surface: command
+  name: switch_case
+  desc: Switch (toggle) case
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.switch-to-uppercase
+  surface: command
+  name: switch_to_uppercase
+  desc: Switch to uppercase
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.switch-to-lowercase
+  surface: command
+  name: switch_to_lowercase
+  desc: Switch to lowercase
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.page-up
+  surface: command
+  name: page_up
+  desc: Move page up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.page-down
+  surface: command
+  name: page_down
+  desc: Move page down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.half-page-up
+  surface: command
+  name: half_page_up
+  desc: Move half page up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.half-page-down
+  surface: command
+  name: half_page_down
+  desc: Move half page down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.page-cursor-up
+  surface: command
+  name: page_cursor_up
+  desc: Move page and cursor up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.page-cursor-down
+  surface: command
+  name: page_cursor_down
+  desc: Move page and cursor down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.page-cursor-half-up
+  surface: command
+  name: page_cursor_half_up
+  desc: Move page and cursor half up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.page-cursor-half-down
+  surface: command
+  name: page_cursor_half_down
+  desc: Move page and cursor half down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-all
+  surface: command
+  name: select_all
+  desc: Select whole document
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-regex
+  surface: command
+  name: select_regex
+  desc: Select all regex matches inside selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.split-selection
+  surface: command
+  name: split_selection
+  desc: Split selections on regex matches
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.split-selection-on-newline
+  surface: command
+  name: split_selection_on_newline
+  desc: Split selection on newlines
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.merge-selections
+  surface: command
+  name: merge_selections
+  desc: Merge selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.merge-consecutive-selections
+  surface: command
+  name: merge_consecutive_selections
+  desc: Merge consecutive selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.search
+  surface: command
+  name: search
+  desc: Search for regex pattern
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rsearch
+  surface: command
+  name: rsearch
+  desc: Reverse search for regex pattern
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.search-next
+  surface: command
+  name: search_next
+  desc: Select next search match
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.search-prev
+  surface: command
+  name: search_prev
+  desc: Select previous search match
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-search-next
+  surface: command
+  name: extend_search_next
+  desc: Add next search match to selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-search-prev
+  surface: command
+  name: extend_search_prev
+  desc: Add previous search match to selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.search-selection
+  surface: command
+  name: search_selection
+  desc: Use current selection as search pattern
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.search-selection-detect-word-boundaries
+  surface: command
+  name: search_selection_detect_word_boundaries
+  desc: Use current selection as the search pattern, automatically wrapping with `\\b` on word boundaries
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.make-search-word-bounded
+  surface: command
+  name: make_search_word_bounded
+  desc: Modify current search to make it word bounded
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.global-search
+  surface: command
+  name: global_search
+  desc: Global search in workspace folder
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-line
+  surface: command
+  name: extend_line
+  desc: Select current line, if already selected, extend to another line based on the anchor
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-line-below
+  surface: command
+  name: extend_line_below
+  desc: Select current line, if already selected, extend to next line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-line-above
+  surface: command
+  name: extend_line_above
+  desc: Select current line, if already selected, extend to previous line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-line-above
+  surface: command
+  name: select_line_above
+  desc: Select current line, if already selected, extend or shrink line above based on the anchor
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-line-below
+  surface: command
+  name: select_line_below
+  desc: Select current line, if already selected, extend or shrink line below based on the anchor
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-line-bounds
+  surface: command
+  name: extend_to_line_bounds
+  desc: Extend selection to line bounds
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.shrink-to-line-bounds
+  surface: command
+  name: shrink_to_line_bounds
+  desc: Shrink selection to line bounds
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.delete-selection
+  surface: command
+  name: delete_selection
+  desc: Delete selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.delete-selection-noyank
+  surface: command
+  name: delete_selection_noyank
+  desc: Delete selection without yanking
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.change-selection
+  surface: command
+  name: change_selection
+  desc: Change selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.change-selection-noyank
+  surface: command
+  name: change_selection_noyank
+  desc: Change selection without yanking
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.collapse-selection
+  surface: command
+  name: collapse_selection
+  desc: Collapse selection into single cursor
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.flip-selections
+  surface: command
+  name: flip_selections
+  desc: Flip selection cursor and anchor
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.ensure-selections-forward
+  surface: command
+  name: ensure_selections_forward
+  desc: Ensure all selections face forward
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.insert-mode
+  surface: command
+  name: insert_mode
+  desc: Insert before selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.append-mode
+  surface: command
+  name: append_mode
+  desc: Append after selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.command-mode
+  surface: command
+  name: command_mode
+  desc: Enter command mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.file-picker
+  surface: command
+  name: file_picker
+  desc: Open file picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.file-picker-in-current-buffer-directory
+  surface: command
+  name: file_picker_in_current_buffer_directory
+  desc: Open file picker at current buffer's directory
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.file-picker-in-current-directory
+  surface: command
+  name: file_picker_in_current_directory
+  desc: Open file picker at current working directory
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.file-explorer
+  surface: command
+  name: file_explorer
+  desc: Open file explorer in workspace root
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.file-explorer-in-current-buffer-directory
+  surface: command
+  name: file_explorer_in_current_buffer_directory
+  desc: Open file explorer at current buffer's directory
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.file-explorer-in-current-directory
+  surface: command
+  name: file_explorer_in_current_directory
+  desc: Open file explorer at current working directory
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.code-action
+  surface: command
+  name: code_action
+  desc: Perform code action
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.buffer-picker
+  surface: command
+  name: buffer_picker
+  desc: Open buffer picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.jumplist-picker
+  surface: command
+  name: jumplist_picker
+  desc: Open jumplist picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.symbol-picker
+  surface: command
+  name: symbol_picker
+  desc: Open symbol picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.changed-file-picker
+  surface: command
+  name: changed_file_picker
+  desc: Open changed file picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-references-to-symbol-under-cursor
+  surface: command
+  name: select_references_to_symbol_under_cursor
+  desc: Select symbol references
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.workspace-symbol-picker
+  surface: command
+  name: workspace_symbol_picker
+  desc: Open workspace symbol picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.diagnostics-picker
+  surface: command
+  name: diagnostics_picker
+  desc: Open diagnostic picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.workspace-diagnostics-picker
+  surface: command
+  name: workspace_diagnostics_picker
+  desc: Open workspace diagnostic picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.last-picker
+  surface: command
+  name: last_picker
+  desc: Open last picker
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.insert-at-line-start
+  surface: command
+  name: insert_at_line_start
+  desc: Insert at start of line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.insert-at-line-end
+  surface: command
+  name: insert_at_line_end
+  desc: Insert at end of line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.open-below
+  surface: command
+  name: open_below
+  desc: Open new line below selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.open-above
+  surface: command
+  name: open_above
+  desc: Open new line above selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.normal-mode
+  surface: command
+  name: normal_mode
+  desc: Enter normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-mode
+  surface: command
+  name: select_mode
+  desc: Enter selection extend mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.exit-select-mode
+  surface: command
+  name: exit_select_mode
+  desc: Exit selection mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-definition
+  surface: command
+  name: goto_definition
+  desc: Goto definition
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-declaration
+  surface: command
+  name: goto_declaration
+  desc: Goto declaration
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.add-newline-above
+  surface: command
+  name: add_newline_above
+  desc: Add newline above
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.add-newline-below
+  surface: command
+  name: add_newline_below
+  desc: Add newline below
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-type-definition
+  surface: command
+  name: goto_type_definition
+  desc: Goto type definition
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-implementation
+  surface: command
+  name: goto_implementation
+  desc: Goto implementation
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-file-start
+  surface: command
+  name: goto_file_start
+  desc: Goto line number <n> else file start
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-file-end
+  surface: command
+  name: goto_file_end
+  desc: Goto file end
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-file-start
+  surface: command
+  name: extend_to_file_start
+  desc: Extend to line number<n> else file start
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-file-end
+  surface: command
+  name: extend_to_file_end
+  desc: Extend to file end
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-file
+  surface: command
+  name: goto_file
+  desc: Goto files/URLs in selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-file-hsplit
+  surface: command
+  name: goto_file_hsplit
+  desc: Goto files in selections (hsplit)
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-file-vsplit
+  surface: command
+  name: goto_file_vsplit
+  desc: Goto files in selections (vsplit)
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-reference
+  surface: command
+  name: goto_reference
+  desc: Goto references
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-window-top
+  surface: command
+  name: goto_window_top
+  desc: Goto window top
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-window-center
+  surface: command
+  name: goto_window_center
+  desc: Goto window center
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-window-bottom
+  surface: command
+  name: goto_window_bottom
+  desc: Goto window bottom
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-last-accessed-file
+  surface: command
+  name: goto_last_accessed_file
+  desc: Goto last accessed file
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-last-modified-file
+  surface: command
+  name: goto_last_modified_file
+  desc: Goto last modified file
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-last-modification
+  surface: command
+  name: goto_last_modification
+  desc: Goto last modification
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-line
+  surface: command
+  name: goto_line
+  desc: Goto line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-last-line
+  surface: command
+  name: goto_last_line
+  desc: Goto last line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-last-line
+  surface: command
+  name: extend_to_last_line
+  desc: Extend to last line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-first-diag
+  surface: command
+  name: goto_first_diag
+  desc: Goto first diagnostic
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-last-diag
+  surface: command
+  name: goto_last_diag
+  desc: Goto last diagnostic
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-diag
+  surface: command
+  name: goto_next_diag
+  desc: Goto next diagnostic
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-diag
+  surface: command
+  name: goto_prev_diag
+  desc: Goto previous diagnostic
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-change
+  surface: command
+  name: goto_next_change
+  desc: Goto next change
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-change
+  surface: command
+  name: goto_prev_change
+  desc: Goto previous change
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-first-change
+  surface: command
+  name: goto_first_change
+  desc: Goto first change
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-last-change
+  surface: command
+  name: goto_last_change
+  desc: Goto last change
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-line-start
+  surface: command
+  name: goto_line_start
+  desc: Goto line start
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-line-end
+  surface: command
+  name: goto_line_end
+  desc: Goto line end
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-column
+  surface: command
+  name: goto_column
+  desc: Goto column
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-column
+  surface: command
+  name: extend_to_column
+  desc: Extend to column
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-buffer
+  surface: command
+  name: goto_next_buffer
+  desc: Goto next buffer
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-previous-buffer
+  surface: command
+  name: goto_previous_buffer
+  desc: Goto previous buffer
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-line-end-newline
+  surface: command
+  name: goto_line_end_newline
+  desc: Goto newline at line end
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-first-nonwhitespace
+  surface: command
+  name: goto_first_nonwhitespace
+  desc: Goto first non-blank in line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.trim-selections
+  surface: command
+  name: trim_selections
+  desc: Trim whitespace from selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-line-start
+  surface: command
+  name: extend_to_line_start
+  desc: Extend to line start
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-first-nonwhitespace
+  surface: command
+  name: extend_to_first_nonwhitespace
+  desc: Extend to first non-blank in line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-line-end
+  surface: command
+  name: extend_to_line_end
+  desc: Extend to line end
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-line-end-newline
+  surface: command
+  name: extend_to_line_end_newline
+  desc: Extend to line end
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.signature-help
+  surface: command
+  name: signature_help
+  desc: Show signature help
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.smart-tab
+  surface: command
+  name: smart_tab
+  desc: Insert tab if all cursors have all whitespace to their left; otherwise, run a separate command.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.insert-tab
+  surface: command
+  name: insert_tab
+  desc: Insert tab char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.insert-newline
+  surface: command
+  name: insert_newline
+  desc: Insert newline char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.delete-char-backward
+  surface: command
+  name: delete_char_backward
+  desc: Delete previous char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.delete-char-forward
+  surface: command
+  name: delete_char_forward
+  desc: Delete next char
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.delete-word-backward
+  surface: command
+  name: delete_word_backward
+  desc: Delete previous word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.delete-word-forward
+  surface: command
+  name: delete_word_forward
+  desc: Delete next word
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.kill-to-line-start
+  surface: command
+  name: kill_to_line_start
+  desc: Delete till start of line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.kill-to-line-end
+  surface: command
+  name: kill_to_line_end
+  desc: Delete till end of line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.undo
+  surface: command
+  name: undo
+  desc: Undo change
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.redo
+  surface: command
+  name: redo
+  desc: Redo change
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.earlier
+  surface: command
+  name: earlier
+  desc: Move backward in history
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.later
+  surface: command
+  name: later
+  desc: Move forward in history
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.commit-undo-checkpoint
+  surface: command
+  name: commit_undo_checkpoint
+  desc: Commit changes to new checkpoint
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.yank
+  surface: command
+  name: yank
+  desc: Yank selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.yank-to-clipboard
+  surface: command
+  name: yank_to_clipboard
+  desc: Yank selections to clipboard
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.yank-to-primary-clipboard
+  surface: command
+  name: yank_to_primary_clipboard
+  desc: Yank selections to primary clipboard
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.yank-joined
+  surface: command
+  name: yank_joined
+  desc: Join and yank selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.yank-joined-to-clipboard
+  surface: command
+  name: yank_joined_to_clipboard
+  desc: Join and yank selections to clipboard
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.yank-main-selection-to-clipboard
+  surface: command
+  name: yank_main_selection_to_clipboard
+  desc: Yank main selection to clipboard
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.yank-joined-to-primary-clipboard
+  surface: command
+  name: yank_joined_to_primary_clipboard
+  desc: Join and yank selections to primary clipboard
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.yank-main-selection-to-primary-clipboard
+  surface: command
+  name: yank_main_selection_to_primary_clipboard
+  desc: Yank main selection to primary clipboard
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.replace-with-yanked
+  surface: command
+  name: replace_with_yanked
+  desc: Replace with yanked text
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.replace-selections-with-clipboard
+  surface: command
+  name: replace_selections_with_clipboard
+  desc: Replace selections by clipboard content
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.replace-selections-with-primary-clipboard
+  surface: command
+  name: replace_selections_with_primary_clipboard
+  desc: Replace selections by primary clipboard
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.paste-after
+  surface: command
+  name: paste_after
+  desc: Paste after selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.paste-before
+  surface: command
+  name: paste_before
+  desc: Paste before selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.paste-clipboard-after
+  surface: command
+  name: paste_clipboard_after
+  desc: Paste clipboard after selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.paste-clipboard-before
+  surface: command
+  name: paste_clipboard_before
+  desc: Paste clipboard before selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.paste-primary-clipboard-after
+  surface: command
+  name: paste_primary_clipboard_after
+  desc: Paste primary clipboard after selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.paste-primary-clipboard-before
+  surface: command
+  name: paste_primary_clipboard_before
+  desc: Paste primary clipboard before selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.indent
+  surface: command
+  name: indent
+  desc: Indent selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.unindent
+  surface: command
+  name: unindent
+  desc: Unindent selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.format-selections
+  surface: command
+  name: format_selections
+  desc: Format selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.join-selections
+  surface: command
+  name: join_selections
+  desc: Join lines inside selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.join-selections-space
+  surface: command
+  name: join_selections_space
+  desc: Join lines inside selection and select spaces
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.keep-selections
+  surface: command
+  name: keep_selections
+  desc: Keep selections matching regex
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.remove-selections
+  surface: command
+  name: remove_selections
+  desc: Remove selections matching regex
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.align-selections
+  surface: command
+  name: align_selections
+  desc: Align selections in column
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.keep-primary-selection
+  surface: command
+  name: keep_primary_selection
+  desc: Keep primary selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.remove-primary-selection
+  surface: command
+  name: remove_primary_selection
+  desc: Remove primary selection
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.completion
+  surface: command
+  name: completion
+  desc: Invoke completion popup
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.hover
+  surface: command
+  name: hover
+  desc: Show docs for item under cursor
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.toggle-comments
+  surface: command
+  name: toggle_comments
+  desc: Comment/uncomment selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.toggle-line-comments
+  surface: command
+  name: toggle_line_comments
+  desc: Line comment/uncomment selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.toggle-block-comments
+  surface: command
+  name: toggle_block_comments
+  desc: Block comment/uncomment selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rotate-selections-forward
+  surface: command
+  name: rotate_selections_forward
+  desc: Rotate selections forward
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rotate-selections-backward
+  surface: command
+  name: rotate_selections_backward
+  desc: Rotate selections backward
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rotate-selection-contents-forward
+  surface: command
+  name: rotate_selection_contents_forward
+  desc: Rotate selection contents forward
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rotate-selection-contents-backward
+  surface: command
+  name: rotate_selection_contents_backward
+  desc: Rotate selections contents backward
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.reverse-selection-contents
+  surface: command
+  name: reverse_selection_contents
+  desc: Reverse selections contents
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.expand-selection
+  surface: command
+  name: expand_selection
+  desc: Expand selection to parent syntax node
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.shrink-selection
+  surface: command
+  name: shrink_selection
+  desc: Shrink selection to previously expanded syntax node
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-next-sibling
+  surface: command
+  name: select_next_sibling
+  desc: Select next sibling in the syntax tree
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-prev-sibling
+  surface: command
+  name: select_prev_sibling
+  desc: Select previous sibling the in syntax tree
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-all-siblings
+  surface: command
+  name: select_all_siblings
+  desc: Select all siblings of the current node
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-all-children
+  surface: command
+  name: select_all_children
+  desc: Select all children of the current node
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.jump-forward
+  surface: command
+  name: jump_forward
+  desc: Jump forward on jumplist
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.jump-backward
+  surface: command
+  name: jump_backward
+  desc: Jump backward on jumplist
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.save-selection
+  surface: command
+  name: save_selection
+  desc: Save current selection to jumplist
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.jump-view-right
+  surface: command
+  name: jump_view_right
+  desc: Jump to right split
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.jump-view-left
+  surface: command
+  name: jump_view_left
+  desc: Jump to left split
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.jump-view-up
+  surface: command
+  name: jump_view_up
+  desc: Jump to split above
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.jump-view-down
+  surface: command
+  name: jump_view_down
+  desc: Jump to split below
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.swap-view-right
+  surface: command
+  name: swap_view_right
+  desc: Swap with right split
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.swap-view-left
+  surface: command
+  name: swap_view_left
+  desc: Swap with left split
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.swap-view-up
+  surface: command
+  name: swap_view_up
+  desc: Swap with split above
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.swap-view-down
+  surface: command
+  name: swap_view_down
+  desc: Swap with split below
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.transpose-view
+  surface: command
+  name: transpose_view
+  desc: Transpose splits
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rotate-view
+  surface: command
+  name: rotate_view
+  desc: Goto next window
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rotate-view-reverse
+  surface: command
+  name: rotate_view_reverse
+  desc: Goto previous window
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.hsplit
+  surface: command
+  name: hsplit
+  desc: Horizontal bottom split
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.hsplit-new
+  surface: command
+  name: hsplit_new
+  desc: Horizontal bottom split scratch buffer
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.vsplit
+  surface: command
+  name: vsplit
+  desc: Vertical right split
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.vsplit-new
+  surface: command
+  name: vsplit_new
+  desc: Vertical right split scratch buffer
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.wclose
+  surface: command
+  name: wclose
+  desc: Close window
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.wonly
+  surface: command
+  name: wonly
+  desc: Close windows except current
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-register
+  surface: command
+  name: select_register
+  desc: Select register
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.insert-register
+  surface: command
+  name: insert_register
+  desc: Insert register
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.copy-between-registers
+  surface: command
+  name: copy_between_registers
+  desc: Copy between two registers
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.align-view-middle
+  surface: command
+  name: align_view_middle
+  desc: Align view middle
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.align-view-top
+  surface: command
+  name: align_view_top
+  desc: Align view top
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.align-view-center
+  surface: command
+  name: align_view_center
+  desc: Align view center
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.align-view-bottom
+  surface: command
+  name: align_view_bottom
+  desc: Align view bottom
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.scroll-up
+  surface: command
+  name: scroll_up
+  desc: Scroll view up
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.scroll-down
+  surface: command
+  name: scroll_down
+  desc: Scroll view down
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.match-brackets
+  surface: command
+  name: match_brackets
+  desc: Goto matching bracket
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.surround-add
+  surface: command
+  name: surround_add
+  desc: Surround add
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.surround-replace
+  surface: command
+  name: surround_replace
+  desc: Surround replace
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.surround-delete
+  surface: command
+  name: surround_delete
+  desc: Surround delete
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-textobject-around
+  surface: command
+  name: select_textobject_around
+  desc: Select around object
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.select-textobject-inner
+  surface: command
+  name: select_textobject_inner
+  desc: Select inside object
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-function
+  surface: command
+  name: goto_next_function
+  desc: Goto next function
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-function
+  surface: command
+  name: goto_prev_function
+  desc: Goto previous function
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-class
+  surface: command
+  name: goto_next_class
+  desc: Goto next type definition
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-class
+  surface: command
+  name: goto_prev_class
+  desc: Goto previous type definition
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-parameter
+  surface: command
+  name: goto_next_parameter
+  desc: Goto next parameter
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-parameter
+  surface: command
+  name: goto_prev_parameter
+  desc: Goto previous parameter
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-comment
+  surface: command
+  name: goto_next_comment
+  desc: Goto next comment
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-comment
+  surface: command
+  name: goto_prev_comment
+  desc: Goto previous comment
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-test
+  surface: command
+  name: goto_next_test
+  desc: Goto next test
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-test
+  surface: command
+  name: goto_prev_test
+  desc: Goto previous test
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-entry
+  surface: command
+  name: goto_next_entry
+  desc: Goto next pairing
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-entry
+  surface: command
+  name: goto_prev_entry
+  desc: Goto previous pairing
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-paragraph
+  surface: command
+  name: goto_next_paragraph
+  desc: Goto next paragraph
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-paragraph
+  surface: command
+  name: goto_prev_paragraph
+  desc: Goto previous paragraph
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-launch
+  surface: command
+  name: dap_launch
+  desc: Launch debug target
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-restart
+  surface: command
+  name: dap_restart
+  desc: Restart debugging session
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-toggle-breakpoint
+  surface: command
+  name: dap_toggle_breakpoint
+  desc: Toggle breakpoint
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-continue
+  surface: command
+  name: dap_continue
+  desc: Continue program execution
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-pause
+  surface: command
+  name: dap_pause
+  desc: Pause program execution
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-step-in
+  surface: command
+  name: dap_step_in
+  desc: Step in
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-step-out
+  surface: command
+  name: dap_step_out
+  desc: Step out
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-next
+  surface: command
+  name: dap_next
+  desc: Step to next
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-variables
+  surface: command
+  name: dap_variables
+  desc: List variables
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-terminate
+  surface: command
+  name: dap_terminate
+  desc: End debug session
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-edit-condition
+  surface: command
+  name: dap_edit_condition
+  desc: Edit breakpoint condition on current line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-edit-log
+  surface: command
+  name: dap_edit_log
+  desc: Edit breakpoint log message on current line
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-switch-thread
+  surface: command
+  name: dap_switch_thread
+  desc: Switch current thread
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-switch-stack-frame
+  surface: command
+  name: dap_switch_stack_frame
+  desc: Switch stack frame
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-enable-exceptions
+  surface: command
+  name: dap_enable_exceptions
+  desc: Enable exception breakpoints
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.dap-disable-exceptions
+  surface: command
+  name: dap_disable_exceptions
+  desc: Disable exception breakpoints
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.shell-pipe
+  surface: command
+  name: shell_pipe
+  desc: Pipe selections through shell command
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.shell-pipe-to
+  surface: command
+  name: shell_pipe_to
+  desc: Pipe selections into shell command ignoring output
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.shell-insert-output
+  surface: command
+  name: shell_insert_output
+  desc: Insert shell command output before selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.shell-append-output
+  surface: command
+  name: shell_append_output
+  desc: Append shell command output after selections
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.shell-keep-pipe
+  surface: command
+  name: shell_keep_pipe
+  desc: Filter selections with shell predicate
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.suspend
+  surface: command
+  name: suspend
+  desc: Suspend and return to shell
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rename-symbol
+  surface: command
+  name: rename_symbol
+  desc: Rename symbol
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.increment
+  surface: command
+  name: increment
+  desc: Increment item under cursor
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.decrement
+  surface: command
+  name: decrement
+  desc: Decrement item under cursor
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.record-macro
+  surface: command
+  name: record_macro
+  desc: Record macro
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.replay-macro
+  surface: command
+  name: replay_macro
+  desc: Replay macro
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.command-palette
+  surface: command
+  name: command_palette
+  desc: Open command palette
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-word
+  surface: command
+  name: goto_word
+  desc: Jump to a two-character label
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.extend-to-word
+  surface: command
+  name: extend_to_word
+  desc: Extend to a two-character label
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-next-tabstop
+  surface: command
+  name: goto_next_tabstop
+  desc: Goto next snippet placeholder
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.goto-prev-tabstop
+  surface: command
+  name: goto_prev_tabstop
+  desc: Goto next snippet placeholder
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rotate-selections-first
+  surface: command
+  name: rotate_selections_first
+  desc: Make the first selection your primary one
+  attestation:
+  - S
+  status: unclassified
+- id: helix.command.rotate-selections-last
+  surface: command
+  name: rotate_selections_last
+  desc: Make the last selection your primary one
+  attestation:
+  - S
+  status: unclassified

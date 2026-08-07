@@ -40,11 +40,15 @@ version: 1
 # API). D (index.txt) is authoritative for the per-mode key namespaces because it is the only source
 # that enumerates keys BY MODE, which is precisely the structure the hand-written catalog lost.
 #
-# The two upstreams do not share a surface vocabulary, and forcing them to would be the same
-# category error that stalled the Emacs census: Neovim PUBLISHES its surfaces as tables in-tree, so
-# its census is a parse (S/D primary); Emacs publishes nothing equivalent and its surfaces exist
-# only in a running image, so its census is a probe (R primary). Same rule — one authoritative
-# source per item type — applied to two upstreams that answer to different sources.
+# The upstreams do not share a surface vocabulary, and forcing them to would be the same category
+# error that stalled the Emacs census. Three upstreams, three methods, one rule:
+#   neovim  PUBLISHES its surfaces as tables in-tree            -> parse (S/D primary)
+#   emacs   publishes nothing; surfaces exist only in an image  -> probe (R primary)
+#   helix   publishes neither; surfaces are Rust literals       -> parse (S primary)
+# The rule is unchanged — one authoritative source per item type — applied to editors that answer to
+# different sources. What differs per method is what it CANNOT see, and that is recorded per upstream
+# rather than left for a reader to infer: a static parse cannot observe behaviour, which is precisely
+# what Helix was pinned for (families.yaml#HOLE-SELECTION-BEHAVIOUR).
 source_of_record:
   # --- neovim surfaces (parse) ---
   mode_key:    { primary: D, corroborate: [S, T], note: "runtime/doc/index.txt — the only per-mode key enumeration" }
@@ -58,7 +62,14 @@ source_of_record:
   key_binding: { primary: R, corroborate: [D],    note: "map-keymap walk, PARTITIONED at named-keymap boundaries so a nested named map (ctl-x-map inside global-map) is a prefix pointer rather than a double count" }
   command:     { primary: R, corroborate: [D],    note: "DERIVED from key_binding, never enumerated independently — see the emacs denominator block below for why that is the resolution and not a shortcut" }
   hook:        { primary: R, corroborate: [D],    note: "-hook/-functions defvars scoped to the load set; the Emacs counterpart of nvim `event`. Not equivalent: hooks are arbitrary lisp on any variable, so this enumerates the DECLARED ones only and cannot claim completeness the way auevents.lua can" }
-  # --- behavior (both) ---
+  # --- helix surfaces (static parse; role reference, never a parity ratio) ---
+  mode:                  { primary: S, corroborate: [],  note: "helix-term/src/keymap/default.rs. Three modes against nvim's 8 and emacs's 9 — and the COUNT is the least interesting part: Helix's Select is `normal.clone()` + `merge_nodes`, a DERIVED mode, which is a third dispatch model beside Vim-disjoint and Emacs-layered" }
+  key_binding_helix:     { primary: S, corroborate: [],  note: "the three keymap! blocks as written. The select block is the OVERRIDE set (33), not the mode" }
+  effective_key_binding: { primary: S, corroborate: [],  note: "COMPUTED, not parsed: normal minus overridden plus overrides. Emitted separately so the derived-mode diff stays visible instead of being flattened into one number" }
+  command_helix:         { primary: S, corroborate: [],  note: "static_commands! — note the macro nests with PARENTHESES while keymap! uses braces; assuming braces censused 0 and the empty-surface rule caught it" }
+  typed_command:         { primary: S, corroborate: [],  note: "TYPABLE_COMMAND_LIST. `line-ending` carries #[cfg] attributes and TWO doc strings selected by the unicode-lines feature — recorded as cfg_dependent rather than flattened" }
+
+  # --- behavior (all) ---
   semantics:   { primary: T, corroborate: [D],    note: "behavior is only pinned by execution; see `oracles` below" }
 
 upstreams:
@@ -102,6 +113,53 @@ upstreams:
         runtime/doc/vim_diff.txt is Neovim's own STATED delta. By this file's own logic (stated intent
         is not observed behavior) it is a third witness used to VALIDATE the computed delta, never the
         source of it. A disagreement between computed and stated delta is an investigation item.
+
+  helix:
+    repo: https://github.com/helix-editor/helix.git
+    revision: a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b   # 25.07.1
+    version_label: "25.07.1"
+    # NOT primary/baseline/secondary — those three roles all mean "ruse intends compatibility". This
+    # one does not. Helix is pinned to make three OBSERVABLES observable
+    # (concepts/irreconcilable.yaml#observables: OBS-BARE-MOTION, OBS-SELECTION-PERSISTENCE,
+    # OBS-DOT-REPEAT-UNIT), whose selection-first column was asserted from documentation because no
+    # selection-first editor was pinned. Those observables decide D-EDITLANG-PRIMITIVE, which blocks
+    # C-EDITLANG and C-INPUT — and F-003 ships in the `usable-vim-tui` MVP phase, so the kernel
+    # primitive gets chosen either way; the only question is whether on observed or asserted evidence.
+    #
+    # THE CONSEQUENCE OF role: reference — a helix count is NEVER a parity ratio. ruse's
+    # `input.profile` enum is [vim, emacs, native]; there is no helix profile and FAM-EDIT-SELECTION
+    # carries `prd: []`. Reading these numbers as coverage would invent a compatibility promise that
+    # no Decision has made. coverage.yaml must report this upstream as evidence, not as parity.
+    role: reference
+    census_scope:
+      include:
+        - helix-term/src/keymap/default.rs   # the default keymap, per mode — the map_mode counterpart
+        - helix-term/src/commands.rs         # static commands (the things keys are bound to)
+        - helix-term/src/commands/typed.rs   # typable `:` commands — the ex_command counterpart
+        - helix-view/src/editor.rs           # the Config struct — the option counterpart
+      exclude:
+        - path: helix-term/src/ui/**
+          reason: "Widget/rendering layer; ruse owns its own presentation (PILLAR-RICH-PRESENTATION is a choice, not parity to Helix)."
+        - path: helix-lsp/**, helix-dap/**
+          reason: "LSP/DAP are external PROTOCOLS with their own specs; those specs are the denominator (PILLAR-BUILTIN-DEV), not Helix's client."
+        - path: runtime/queries/**, runtime/themes/**
+          reason: "tree-sitter query and theme DATA, not editor semantics — same cut as nvim runtime/syntax."
+        - path: helix-core/src/**
+          reason: >
+            Helix's kernel (Rope/Transaction/Selection) is prior art for ruse's own kernel, not a
+            surface ruse enumerates. Reading it as a census surface would make ruse's kernel design
+            look like Helix parity, which no Decision has chosen. It informs the observables by
+            BEHAVIOUR (the oracle), not by item count.
+    denominator:
+      method: "static parse of the four in-scope Rust files; no runtime introspection (Helix exposes no equivalent of nvim's API or Emacs's mapatoms)"
+      baseline: "the pinned tree; `hx` need not be installed to enumerate"
+      note: >
+        Helix is source-parsed rather than probed because it has neither Neovim's published tables
+        nor Emacs's live image — its surfaces are Rust literals. That makes S the source of record
+        for every surface here, with one consequence worth stating: a static parse cannot observe
+        BEHAVIOUR, and behaviour is the whole reason this upstream is pinned. The census answers
+        "what exists"; the three observables still need an oracle run (`hx` in a pty), which is
+        tracked as its own hole and is NOT satisfied by this census.
 
   emacs:
     repo: https://github.com/emacs-mirror/emacs.git

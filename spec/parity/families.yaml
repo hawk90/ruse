@@ -1,6 +1,7 @@
 # Capability families — the classification vocabulary BETWEEN the census and the PRD (D-043).
 #
-# The census (spec/parity/inventory/) enumerates 5,310 upstream FACTS (Neovim 1,788 + Emacs 3,522), nearly
+# The census (spec/parity/inventory/) enumerates 6,539 upstream FACTS (Neovim 1,788 + Emacs 3,522 +
+# Helix 1,229), nearly
 # all resting at `unclassified`
 # because there was nowhere to classify them INTO. This file supplies that vocabulary. But a family is not
 # a free-form bucket — it is constrained by TWO orthogonal axes, and getting those axes right is the whole
@@ -53,7 +54,7 @@ layers: [kernel, registry, keymap, presentation, host]
 # --- cover validation (distinct from coverage.yaml classification_pct) -------------------------------
 # classification_pct in coverage.yaml stays near 0 forever BY DESIGN (classification is lazy). This is a
 # DIFFERENT measurement: are the covers well-formed? Answered by a stratified SAMPLE, never a full census
-# — demanding all 5,310 be classified would resurrect the eager-classification mistake. The real output is
+# — demanding all 6,539 be classified would resurrect the eager-classification mistake. The real output is
 # not a ratio but the RESIDUAL TRIAGE: each sampled item that fits no family is adjudicated into one of
 # three, and that adjudication is written back into a family's `excludes`, so the file becomes a
 # self-growing classification ruleset and the next pass is cheaper.
@@ -76,6 +77,13 @@ cover_validation:
     keymap: 20
     hook: 15
     keymap_tier: 9                   # all nine — the surface is smaller than any sane sample
+    # helix surfaces (role: reference). Sampled like any other surface, but a residual here triages
+    # differently: `explicit-non-goal` is the EXPECTED outcome for much of it, because ruse has made
+    # no selection-first commitment. A helix cover that came out near 100% would be the warning sign.
+    key_binding_helix: 30
+    command_helix: 25
+    typed_command: 20
+    mode: 3
   constraints:
     primary_is_partition: true       # each item -> exactly ONE family; everything else is a secondary tag
     forbid_family_ids: [misc, other, general]   # a catch-all makes any cover trivially 100% — banned
@@ -111,17 +119,22 @@ families:
     title: Selection-first editing — multi-cursor, regex split/filter, structural (tree-sitter) expand/shrink
     axis: parity-fact
     layer: kernel
-    covers_surfaces: [mode_key]
-    upstreams: { kakoune: not-in-census, helix: not-in-census }
-    census_status: not-in-census
+    covers_surfaces: [mode, key_binding, effective_key_binding, command]
+    upstreams: { kakoune: not-in-census, helix: pinned }
+    census_status: partial
     caps: [CAP-EDIT-CORE]
-    prd: []
+    prd: []                              # deliberately empty — see `tension`; a census is not a promise
     excludes:
       - "operator×motion composition -> FAM-EDIT-VIM-GRAMMAR"
     tension: >
-      Kakoune and Helix are NOT pinned upstreams, so this surface has zero census backing today. It is a
-      real parity-fact family (it WOULD be enumerable) but census_status stays not-in-census until those
-      editors enter upstreams.yaml. Do not cite it as measured parity meanwhile.
+      Helix is now pinned (25.07.1) with `role: reference`, so this family has real census backing for the
+      first time — 1,229 items. Kakoune, which ORIGINATED the model Helix inherited, is still absent, hence
+      `partial` rather than `measured`. Two cautions that must survive: (1) `prd: []` is correct and stays
+      correct — pinning an upstream gathers evidence, it does not create a compatibility promise, and ruse's
+      input.profile enum has no helix entry; a helix count is never a coverage ratio. (2) The census is a
+      STATIC PARSE, so it enumerates what exists and cannot observe behaviour — and behaviour is what the
+      three observables need. It found the structure (Select is normal.clone()+merge_nodes: 301 inherited
+      bindings, 33 overridden) and located the divergence precisely, but OBS-* still await an oracle.
 
   PILLAR-HYBRID-GRAMMAR:
     title: One kernel primitive under both editing grammars
@@ -234,14 +247,14 @@ families:
     axis: parity-fact
     layer: host
     covers_surfaces: [mode_key, ex_command]
-    upstreams: { vim: not-surveyed, neovim: pinned, helix: not-in-census }
+    upstreams: { vim: not-surveyed, neovim: pinned, helix: pinned }
     census_status: partial
     caps: [CAP-FILE-PICKER, CAP-SEARCH, CAP-DIAGNOSTICS]
     prd: [F-009]
     concepts: [CONCEPT-POSITION-HISTORY]
     excludes:
       - "multi-cursor motion is kernel-layer selection -> FAM-EDIT-SELECTION, not navigation"
-      - "picker-AS-primary-navigation (Helix) is not-in-census -> aspirational"
+      - "picker-AS-primary-navigation is a ruse-choice, not parity to Helix -> keep it out of the ratio"
     tension: >
       Jumplist (motion-classified, per-window) vs Emacs mark-ring — CONCEPT-POSITION-HISTORY (pending). The
       #6/#1 overlap the previous draft worried about dissolves under layer: multi-selection is kernel,
@@ -367,15 +380,42 @@ surface_cover:
   key_binding: { primary: [FAM-EDIT-VIM-GRAMMAR, FAM-FILE-PROJECT, FAM-NAVIGATION], filter: "event_class == key", note: "partition applies to the 1,952 keyboard bindings; menu/tool-bar/chrome/mouse/remap are enumerated for discovery honesty and owned by NO family — that is correct, not a hole" }
   command:     { primary: [FAM-BATCH-EX, FAM-FILE-PROJECT, FAM-BUFFER-MODEL, FAM-PERSISTENCE], note: "derived from key_binding, so an item's family should agree with the family of the key that reaches it — a disagreement is a cover bug worth investigating, not a tie to break arbitrarily" }
   hook:        { primary: [FAM-EVENT-HOOKS], note: "declared -hook/-functions only; unlike auevents.lua this surface cannot claim completeness" }
+  # --- helix (D-043; role reference — a cover here proves the evidence is classified, NOT that ruse
+  # promises any of it. FAM-EDIT-SELECTION carries prd: [] and that is the whole point.) ---
+  mode:                  { primary: [FAM-KEYMAP-MODEL], secondary: [FAM-EDIT-SELECTION], note: "3 modes, one of them DERIVED — the third dispatch model; belongs with map_mode/keymap_tier under the resolution-model family" }
+  key_binding_helix:     { primary: [FAM-EDIT-SELECTION, FAM-NAVIGATION], note: "the three keymap! blocks as written; the select block is the 33-binding override, not a namespace" }
+  effective_key_binding: { primary: [], classified_by: computed, note: "COMPUTED from the two above — classifying it would double-count the same upstream fact; it exists to keep the derived-mode diff visible" }
+  command_helix:         { primary: [FAM-EDIT-SELECTION, FAM-NAVIGATION, FAM-EDIT-VIM-GRAMMAR], note: "305 static commands; the vim-grammar share is the interesting one — where Helix names the same operation, the naming difference is evidence about the primitive" }
+  typed_command:         { primary: [FAM-BATCH-EX, FAM-FILE-PROJECT], note: "89 `:` commands vs nvim's 557 — a real asymmetry, not a parse shortfall (asserted: the count is checked against the declared block count and fails on a shortfall)" }
 
 # --- census_holes ------------------------------------------------------------------------------------
 census_holes:
   - id: HOLE-SELECTION-FIRST
+    status: partial
     families: [FAM-EDIT-SELECTION, FAM-NAVIGATION]
-    gap: Kakoune and Helix drive the selection-first grammar (#1) and picker-first navigation (#6) but are
-      not pinned upstreams — ZERO census backing.
-    resolve_by: pin them in spec/parity/upstreams.yaml, or accept the claims as aspirational and stop citing
-      them as parity.
+    gap: Kakoune and Helix drove the selection-first grammar and picker-first navigation with ZERO census
+      backing.
+    resolved_so_far: Helix pinned at 25.07.1 (role reference) — 1,229 items. The structural half of
+      OBS-BARE-MOTION is now pinned fact rather than assertion - Normal binds `h` to move_char_left while
+      Select binds it to extend_char_left, and Select is built as normal.clone() + merge_nodes so the
+      divergence is exactly the 33-binding override set.
+    remaining: >
+      Kakoune is unpinned. It is not a duplicate of Helix - it is where the model came from, so a
+      Helix-Kakoune disagreement would be evidence about which parts of selection-first are essential
+      versus incidental. Pin it only if such a disagreement appears; one witness is enough to stop the
+      three observables being asserted from documentation, which was the actual defect.
+
+  - id: HOLE-SELECTION-BEHAVIOUR
+    status: open
+    families: [FAM-EDIT-SELECTION]
+    gap: >
+      The Helix census is a static parse of four Rust files. It cannot see whether a bare motion in
+      NORMAL mode creates a selection - that lives in helix-core's Selection type, which is excluded
+      from census scope as prior art for ruse's kernel rather than a surface to enumerate. So
+      OBS-BARE-MOTION is half-attested, and OBS-SELECTION-PERSISTENCE / OBS-DOT-REPEAT-UNIT are not
+      attested at all: both are questions about state AFTER an operation, which no keymap encodes.
+    resolve_by: an `hx` oracle in a pty, gated by oracle_selftest like every other harness - three of
+      three prototypes corrupted their own first observation, so this one is assumed broken until proven.
   # HOLE-EMACS-BLOCKED — CLOSED by D-044. Kept as a closed row rather than deleted: the reason it was
   # blocked (three candidate denominators differing by multiples) was a real diagnosis, and the way it
   # closed (the question was wrong, not the answer unknown) is the reusable lesson. Deleting it would

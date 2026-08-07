@@ -88,6 +88,80 @@ upstreams:
       scope_enumerated: complete
       meaning: every surface in census_scope.include was enumerated, or declared non-enumerable with its upstream
         prose recorded. This is NOT a claim about 100% of the editor — it is 100% of the declared scope.
+  helix:
+    revision: a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b
+    version_label: 25.07.1
+    role: reference
+    denominator_method: static parse of the four in-scope Rust files; no runtime introspection (Helix exposes no
+      equivalent of nvim's API or Emacs's mapatoms)
+    denominator_baseline: the pinned tree; `hx` need not be installed to enumerate
+    census_scope_include:
+    - helix-term/src/keymap/default.rs
+    - helix-term/src/commands.rs
+    - helix-term/src/commands/typed.rs
+    - helix-view/src/editor.rs
+    census_excluded_surfaces: 4
+    status: surveyed
+    surfaces:
+      command:
+        source_of_record: 'S: helix-term/src/commands.rs static_commands!'
+        discovered: 305
+        by_status:
+          unclassified: 305
+        classified: 0
+        unclassified: 305
+        verified: 0
+      effective_key_binding:
+        source_of_record: 'S: helix-term/src/keymap/default.rs (COMPUTED: normal + select overrides)'
+        discovered: 334
+        by_status:
+          unclassified: 334
+        classified: 0
+        unclassified: 334
+        verified: 0
+      key_binding:
+        source_of_record: 'S: helix-term/src/keymap/default.rs'
+        discovered: 394
+        by_status:
+          unclassified: 394
+        classified: 0
+        unclassified: 394
+        verified: 0
+      mode:
+        source_of_record: 'S: helix-term/src/keymap/default.rs'
+        discovered: 3
+        by_status:
+          unclassified: 3
+        classified: 0
+        unclassified: 3
+        verified: 0
+      option:
+        source_of_record: 'S: helix-view/src/editor.rs Config (dotted through nested structs)'
+        discovered: 104
+        by_status:
+          unclassified: 104
+        classified: 0
+        unclassified: 104
+        verified: 0
+      typed_command:
+        source_of_record: 'S: helix-term/src/commands/typed.rs TYPABLE_COMMAND_LIST'
+        discovered: 89
+        by_status:
+          unclassified: 89
+        classified: 0
+        unclassified: 89
+        verified: 0
+    totals:
+      discovered: 1229
+      classified: 0
+      unclassified: 1229
+      verified: 0
+      classification_pct: 0.0
+      verification_pct: 0.0
+    discovery:
+      scope_enumerated: complete
+      meaning: every surface in census_scope.include was enumerated, or declared non-enumerable with its upstream
+        prose recorded. This is NOT a claim about 100% of the editor — it is 100% of the declared scope.
   neovim:
     revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
     version_label: v0.12.4
