@@ -530,6 +530,7 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "crossterm",
+ "proptest",
  "ruse-core",
  "tracing",
  "tracing-subscriber",

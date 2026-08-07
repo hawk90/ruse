@@ -43,20 +43,43 @@ fn motion_key(code: KeyCode) -> Option<Motion> {
     })
 }
 
-/// The Normal-mode pending state: an accumulating count and an awaiting operator.
+/// The operator-pending axis: an armed operator (`d`/`c`/`y`) plus the count that preceded it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct OpPending {
+    op: Op,
+    count: u32,
+}
+
+/// The one-shot key-expectation axis — what the *next* key must supply. Held separately from the operator
+/// and count axes (per input-engine.md, these are **orthogonal** and must not be crammed into one enum).
+/// Exactly one variant holds between keystrokes, so illegal combinations (awaiting a find-target *and* a
+/// text-object char at once) are unrepresentable — the class of hierarchy bug that ad-hoc booleans invite.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum Awaiting {
+    /// A fresh key: a count digit, operator, motion, action, or a pending-initiator (`f`/`F`/`t`/`T`).
+    #[default]
+    Nothing,
+    /// After `f`/`F`/`t`/`T`: the next key is the search target char.
+    FindTarget { forward: bool, till: bool },
+    /// After an operator then `i`/`a`: the next key is the text-object char (`w`). Only ever armed with an
+    /// operator present (invariant, asserted in tests).
+    TextObjectChar { inner: bool },
+}
+
+/// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
+/// and the one-shot `awaiting` key-expectation — plus sticky repeat state. `feed` resolves them in a fixed
+/// precedence (mode → awaiting tier → base keys), so the hierarchy is explicit, not encoded in field order.
 #[derive(Default)]
 pub struct InputEngine {
+    /// Count axis: the accumulating numeric prefix for the next motion/operator.
     count: u32,
-    op: Option<Op>,
-    op_count: u32,
-    /// After an operator, `i`/`a` starts a text object; `Some(true)` = inner, `Some(false)` = around.
-    textobj: Option<bool>,
-    /// After `f`/`F`/`t`/`T`, the next key is the target char: `(forward, till)`.
-    pending_find: Option<(bool, bool)>,
-    /// The last char-search `(ch, forward, till)`, for `;` (repeat) and `,` (repeat reversed). Persists
-    /// across commands (not cleared by `reset`).
+    /// Operator axis: an armed operator awaiting its motion (`None` = none).
+    op: Option<OpPending>,
+    /// Key-expectation axis: what the next key must supply (the top-priority resolution tier).
+    awaiting: Awaiting,
+    /// Sticky (survives command completion): the last char-search `(ch, forward, till)`, for `;`/`,`.
     last_find: Option<(char, bool, bool)>,
-    /// The last search pattern, for `n`/`N`. Persists across commands (not cleared by `reset`).
+    /// Sticky: the last search pattern, for `n`/`N`.
     last_search: Option<String>,
 }
 
@@ -66,9 +89,7 @@ impl InputEngine {
         InputEngine {
             count: 0,
             op: None,
-            op_count: 1,
-            textobj: None,
-            pending_find: None,
+            awaiting: Awaiting::Nothing,
             last_find: None,
             last_search: None,
         }
@@ -79,33 +100,37 @@ impl InputEngine {
         self.last_search = Some(pattern);
     }
 
+    /// Clear the transient command state (count, operator, key-expectation). Sticky repeat state survives.
+    /// Every non-`Pending` outcome runs through here, so no partial sequence ever leaks into the next command.
     fn reset(&mut self) {
         self.count = 0;
         self.op = None;
-        self.op_count = 1;
-        self.textobj = None;
-        self.pending_find = None;
+        self.awaiting = Awaiting::Nothing;
     }
 
     fn mcount(&self) -> u32 {
         self.count.max(1)
     }
 
-    /// Emit a motion — either as an operator command (if one is pending) or a bare move.
+    /// Emit `m` — an operator command if one is armed, else a bare move — then clear the transient state.
     fn motion(&mut self, m: Motion) -> Feed {
-        let total = self.op_count * self.mcount();
         let cmd = match self.op {
-            Some(Op::Delete) => Command::Delete(total, m),
-            // Vim `cw` behaves like `ce` (does not eat the trailing space).
-            Some(Op::Change) => Command::Change(
-                total,
-                if m == Motion::WordFwd {
-                    Motion::WordEnd
-                } else {
-                    m
-                },
-            ),
-            Some(Op::Yank) => Command::Yank(total, m),
+            Some(OpPending { op, count }) => {
+                let total = count.max(1) * self.mcount();
+                match op {
+                    Op::Delete => Command::Delete(total, m),
+                    // Vim `cw` behaves like `ce` (does not eat the trailing space).
+                    Op::Change => Command::Change(
+                        total,
+                        if m == Motion::WordFwd {
+                            Motion::WordEnd
+                        } else {
+                            m
+                        },
+                    ),
+                    Op::Yank => Command::Yank(total, m),
+                }
+            }
             None => Command::Move(self.mcount(), m),
         };
         self.reset();
@@ -117,14 +142,20 @@ impl InputEngine {
         Feed::Cmd(cmd)
     }
 
-    /// Set (or double) an operator. A repeated operator (`dd`/`cc`) is a linewise command.
-    fn operator(&mut self, op: Op, linewise: Command) -> Feed {
-        if self.op == Some(op) {
-            self.reset();
-            return Feed::Cmd(linewise);
+    /// Arm an operator, or emit its linewise form when doubled (`dd`/`cc`/`yy`). `linewise` builds the
+    /// linewise command from the operator's count.
+    fn operator(&mut self, op: Op, linewise: fn(u32, Motion) -> Command) -> Feed {
+        if let Some(OpPending { op: armed, count }) = self.op {
+            if armed == op {
+                let n = count.max(1);
+                self.reset();
+                return Feed::Cmd(linewise(n, Motion::Line));
+            }
         }
-        self.op = Some(op);
-        self.op_count = self.mcount();
+        self.op = Some(OpPending {
+            op,
+            count: self.mcount(),
+        });
         self.count = 0;
         Feed::Pending
     }
@@ -141,57 +172,85 @@ impl InputEngine {
                 _ => Feed::Ignored,
             };
         }
-        // Char-search: the key after `f`/`F`/`t`/`T` is the target char (in Normal or Visual).
-        if let Some((forward, till)) = self.pending_find.take() {
-            return match key.code {
-                KeyCode::Char(ch) => {
-                    self.last_find = Some((ch, forward, till));
-                    self.motion(Motion::FindChar { ch, forward, till })
-                }
-                _ => {
-                    self.reset();
-                    Feed::Ignored
-                }
-            };
-        }
-        // Char-search initiators and `;`/`,` repeat — shared by Normal and Visual (op state is preserved, so
-        // `dfx` works). `f`/`t` only arm the pending state; the resolution above emits the motion. Skipped
-        // while a text object is pending (`di` expects an object char, not a search).
-        if self.textobj.is_none() {
-            match key.code {
-                KeyCode::Char('f') => {
-                    self.pending_find = Some((true, false));
-                    return Feed::Pending;
-                }
-                KeyCode::Char('F') => {
-                    self.pending_find = Some((false, false));
-                    return Feed::Pending;
-                }
-                KeyCode::Char('t') => {
-                    self.pending_find = Some((true, true));
-                    return Feed::Pending;
-                }
-                KeyCode::Char('T') => {
-                    self.pending_find = Some((false, true));
-                    return Feed::Pending;
-                }
-                KeyCode::Char(';') => {
-                    if let Some((ch, forward, till)) = self.last_find {
-                        return self.motion(Motion::FindChar { ch, forward, till });
+        // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
+        match self.awaiting {
+            Awaiting::FindTarget { forward, till } => {
+                self.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    KeyCode::Char(ch) => {
+                        self.last_find = Some((ch, forward, till));
+                        self.motion(Motion::FindChar { ch, forward, till })
                     }
-                }
-                KeyCode::Char(',') => {
-                    if let Some((ch, forward, till)) = self.last_find {
-                        // `,` repeats in the opposite direction.
-                        return self.motion(Motion::FindChar {
-                            ch,
-                            forward: !forward,
-                            till,
-                        });
+                    _ => {
+                        self.reset();
+                        Feed::Ignored
                     }
-                }
-                _ => {}
+                };
             }
+            Awaiting::TextObjectChar { inner } => {
+                self.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    KeyCode::Char('w') => self.motion(if inner {
+                        Motion::InnerWord
+                    } else {
+                        Motion::AWord
+                    }),
+                    _ => {
+                        self.reset();
+                        Feed::Ignored
+                    }
+                };
+            }
+            Awaiting::Nothing => {}
+        }
+        // --- Shared initiators (char-search + `;`/`,`): work in Normal and Visual, preserving the operator
+        // axis (so `dfx` / `d;` work). Reachable only with `awaiting == Nothing` — the tier above already
+        // returned for the pending cases — so a text object in flight can never be hijacked by `f`/`t`. ---
+        match key.code {
+            KeyCode::Char('f') => {
+                self.awaiting = Awaiting::FindTarget {
+                    forward: true,
+                    till: false,
+                };
+                return Feed::Pending;
+            }
+            KeyCode::Char('F') => {
+                self.awaiting = Awaiting::FindTarget {
+                    forward: false,
+                    till: false,
+                };
+                return Feed::Pending;
+            }
+            KeyCode::Char('t') => {
+                self.awaiting = Awaiting::FindTarget {
+                    forward: true,
+                    till: true,
+                };
+                return Feed::Pending;
+            }
+            KeyCode::Char('T') => {
+                self.awaiting = Awaiting::FindTarget {
+                    forward: false,
+                    till: true,
+                };
+                return Feed::Pending;
+            }
+            KeyCode::Char(';') => {
+                if let Some((ch, forward, till)) = self.last_find {
+                    return self.motion(Motion::FindChar { ch, forward, till });
+                }
+            }
+            KeyCode::Char(',') => {
+                if let Some((ch, forward, till)) = self.last_find {
+                    // `,` repeats in the opposite direction.
+                    return self.motion(Motion::FindChar {
+                        ch,
+                        forward: !forward,
+                        till,
+                    });
+                }
+            }
+            _ => {}
         }
         // Visual mode: the selection already exists, so operators act on it directly and motions extend it.
         if let Mode::Visual { line } = mode {
@@ -231,25 +290,7 @@ impl InputEngine {
             }
             // fall through to shared count/motion handling below (op is never set in Visual)
         }
-        // Completing a text object (`d` `i` then `w` = `diw`): only an object char is valid here.
-        if let Some(inner) = self.textobj {
-            return match key.code {
-                KeyCode::Char('w') => {
-                    self.textobj = None;
-                    self.motion(if inner {
-                        Motion::InnerWord
-                    } else {
-                        Motion::AWord
-                    })
-                }
-                _ => {
-                    self.reset();
-                    Feed::Ignored
-                }
-            };
-        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let op_count = self.op_count;
         match key.code {
             KeyCode::Char(d @ '1'..='9') => {
                 self.count = self.count.saturating_mul(10) + (d as u32 - '0' as u32);
@@ -265,21 +306,17 @@ impl InputEngine {
             }
             KeyCode::Char('v') => self.action(Command::EnterVisual { line: false }),
             KeyCode::Char('V') => self.action(Command::EnterVisual { line: true }),
-            KeyCode::Char('d') => {
-                self.operator(Op::Delete, Command::Delete(op_count, Motion::Line))
-            }
-            KeyCode::Char('c') => {
-                self.operator(Op::Change, Command::Change(op_count, Motion::Line))
-            }
-            KeyCode::Char('y') => self.operator(Op::Yank, Command::Yank(op_count, Motion::Line)),
+            KeyCode::Char('d') => self.operator(Op::Delete, Command::Delete),
+            KeyCode::Char('c') => self.operator(Op::Change, Command::Change),
+            KeyCode::Char('y') => self.operator(Op::Yank, Command::Yank),
             KeyCode::Char('p') => self.action(Command::Paste { after: true }),
             KeyCode::Char('P') => self.action(Command::Paste { after: false }),
             KeyCode::Char('i') if self.op.is_some() => {
-                self.textobj = Some(true);
+                self.awaiting = Awaiting::TextObjectChar { inner: true };
                 Feed::Pending
             }
             KeyCode::Char('a') if self.op.is_some() => {
-                self.textobj = Some(false);
+                self.awaiting = Awaiting::TextObjectChar { inner: false };
                 Feed::Pending
             }
             KeyCode::Char('i') => self.action(Command::EnterInsert),
@@ -597,5 +634,87 @@ mod search_tests {
             e.feed(k('N'), Mode::Normal),
             Feed::Cmd(Command::SearchPrev("foo".into()))
         );
+    }
+
+    #[test]
+    fn opening_a_command_line_clears_a_pending_operator() {
+        // The `:`/`/` boundary to main.rs's cmd_line must not carry a half-typed operator across.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        assert!(e.op.is_none() && e.awaiting == Awaiting::Nothing && e.count == 0);
+    }
+}
+
+/// Property tests over the input state machine: the hierarchy is explicit, so verify it has no holes —
+/// no key sequence leaks a partial command, `awaiting` and the operator axis stay consistent, and `feed`
+/// is deterministic. This is the mechanical guard against the "ad-hoc resolution order" class of bug.
+#[cfg(test)]
+mod state_machine_props {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// A key drawn from the meaningful command alphabet, plus arbitrary chars (find targets) and specials.
+    fn any_key() -> impl Strategy<Value = KeyEvent> {
+        let named = "0123456789hjklwbedcyiaxfFtT;,vVpPunN$/:gr"
+            .chars()
+            .collect::<Vec<_>>();
+        prop_oneof![
+            proptest::sample::select(named)
+                .prop_map(|c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)),
+            any::<char>().prop_map(|c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)),
+            Just(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+            Just(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Just(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            Just(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)),
+        ]
+    }
+
+    fn any_mode() -> impl Strategy<Value = Mode> {
+        prop_oneof![
+            Just(Mode::Normal),
+            Just(Mode::Insert),
+            Just(Mode::Visual { line: false }),
+            Just(Mode::Visual { line: true }),
+        ]
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// No key sequence ever leaves a partial command dangling: after any outcome that is not
+        /// `Feed::Pending`, every transient axis (count, operator, key-expectation) is cleared. And a
+        /// text-object expectation is only ever armed with an operator present. (Never panics — implicit.)
+        #[test]
+        fn no_pending_state_ever_leaks(steps in prop::collection::vec((any_key(), any_mode()), 0..80)) {
+            let mut e = InputEngine::new();
+            for (key, mode) in steps {
+                let feed = e.feed(key, mode);
+                // Orthogonal-axis invariant: TextObjectChar implies an armed operator.
+                if let Awaiting::TextObjectChar { .. } = e.awaiting {
+                    prop_assert!(e.op.is_some(), "text object awaited with no operator armed");
+                }
+                if feed == Feed::Pending {
+                    // A pending outcome must correspond to real accumulated state.
+                    let has_state = e.count > 0 || e.op.is_some() || e.awaiting != Awaiting::Nothing;
+                    prop_assert!(has_state, "Feed::Pending but the engine is idle");
+                } else {
+                    prop_assert_eq!(e.count, 0, "count leaked after {:?}", feed);
+                    prop_assert!(e.op.is_none(), "operator leaked after {:?}", feed);
+                    prop_assert!(e.awaiting == Awaiting::Nothing, "key-expectation leaked after {:?}", feed);
+                }
+            }
+        }
+
+        /// `feed` is a pure function of (state, key, mode): two engines fed the same sequence agree at
+        /// every step. Determinism is what makes trace replay sound.
+        #[test]
+        fn feed_is_deterministic(steps in prop::collection::vec((any_key(), any_mode()), 0..40)) {
+            let mut a = InputEngine::new();
+            let mut b = InputEngine::new();
+            for (key, mode) in steps {
+                prop_assert_eq!(a.feed(key, mode), b.feed(key, mode));
+            }
+        }
     }
 }
