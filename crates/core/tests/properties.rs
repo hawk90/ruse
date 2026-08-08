@@ -35,6 +35,20 @@ fn motion() -> impl Strategy<Value = Motion> {
         Just(Motion::BigWordEnd),
         Just(Motion::InnerWord),
         Just(Motion::AWord),
+        Just(Motion::InnerBigWord),
+        Just(Motion::ABigWord),
+        Just(Motion::InnerParagraph),
+        Just(Motion::AParagraph),
+        Just(Motion::InnerSentence),
+        Just(Motion::ASentence),
+        (any::<char>(), any::<char>(), any::<bool>()).prop_map(|(open, close, around)| {
+            Motion::Pair {
+                open,
+                close,
+                around,
+            }
+        }),
+        (any::<char>(), any::<bool>()).prop_map(|(ch, around)| Motion::Quote { ch, around }),
         Just(Motion::Line),
         Just(Motion::GotoLine),
         Just(Motion::LastLine),

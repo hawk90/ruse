@@ -47,6 +47,40 @@ fn motion_key(code: KeyCode) -> Option<Motion> {
     })
 }
 
+/// The text object a char names after `i`/`a`, or `None` if the char is not a text-object selector. `inner`
+/// picks `i…` (interior) vs `a…` (around). Aliases collapse per Vim: `b`≡`(`≡`)`, `B`≡`{`≡`}`, `]`≡`[`, etc.
+///
+/// DEFERRED — `it`/`at` (tag objects): matching an HTML/XML tag needs a syntax/tree-sitter facility, which
+/// is a FRONTEND concern (see `highlight.rs`) and is NOT wired into the dependency-free editor core. There is
+/// no honest way to compute a tag range here, so `t`/`T` return `None` and route to the operator-pending
+/// abort policy (a clean no-op) rather than a faked match. Re-enable once the core exposes a syntax tree.
+fn text_object(ch: char, inner: bool) -> Option<Motion> {
+    let around = !inner;
+    let pair = |open, close| Motion::Pair {
+        open,
+        close,
+        around,
+    };
+    Some(match ch {
+        'w' if inner => Motion::InnerWord,
+        'w' => Motion::AWord,
+        'W' if inner => Motion::InnerBigWord,
+        'W' => Motion::ABigWord,
+        'p' if inner => Motion::InnerParagraph,
+        'p' => Motion::AParagraph,
+        's' if inner => Motion::InnerSentence,
+        's' => Motion::ASentence,
+        '(' | ')' | 'b' => pair('(', ')'),
+        '{' | '}' | 'B' => pair('{', '}'),
+        '[' | ']' => pair('[', ']'),
+        '<' | '>' => pair('<', '>'),
+        '"' => Motion::Quote { ch: '"', around },
+        '\'' => Motion::Quote { ch: '\'', around },
+        '`' => Motion::Quote { ch: '`', around },
+        _ => return None,
+    })
+}
+
 /// The Vim keymap namespaces this engine currently implements, as LAYERS of the D-045 stack.
 ///
 /// Not all eight yet — Cmdline/Select/Terminal/Lang are not reachable from this engine — but the four
@@ -163,8 +197,8 @@ enum Awaiting {
     Nothing,
     /// After `f`/`F`/`t`/`T`: the next key is the search target char.
     FindTarget { forward: bool, till: bool },
-    /// After an operator then `i`/`a`: the next key is the text-object char (`w`). Only ever armed with an
-    /// operator present (invariant, asserted in tests).
+    /// After `i`/`a`: the next key is the text-object selector (`w`, `(`, `"`, …). Armed only with an
+    /// operator present (`diw`) OR in a selection mode (`viw`) — never bare in Normal (invariant, tested).
     TextObjectChar { inner: bool },
     /// After `g`: a second `g` completes `gg` (jump to the first line / `{count}gg`).
     GSecond,
@@ -351,13 +385,13 @@ impl InputEngine {
             Awaiting::TextObjectChar { inner } => {
                 self.awaiting = Awaiting::Nothing;
                 return match key.code {
-                    KeyCode::Char('w') => self.motion(if inner {
-                        Motion::InnerWord
-                    } else {
-                        Motion::AWord
-                    }),
-                    // A pending construct is in flight, so this is `closed/abort` — the policy
-                    // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    // Under an operator this composes (`diw`/`da(`/`ci"`); in a selection `self.motion`
+                    // emits a bare `Move` whose text-object shape the core turns into a selection (`viw`).
+                    KeyCode::Char(ch) if text_object(ch, inner).is_some() => {
+                        self.motion(text_object(ch, inner).expect("guarded by is_some"))
+                    }
+                    // Not a text object (includes the deferred `t`/`T` tag objects): a pending construct is
+                    // in flight, so this is `closed/abort` — the operator-pending policy (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
@@ -488,6 +522,16 @@ impl InputEngine {
                 KeyCode::Char('y') => return self.action(Command::YankSelection),
                 KeyCode::Char('c') | KeyCode::Char('s') => {
                     return self.action(Command::ChangeSelection)
+                }
+                // In a selection, `i`/`a` always begin a text object (there is no insert here); the next key
+                // is its selector. The completed object re-spans the selection (see the core's `Move` arm).
+                KeyCode::Char('i') => {
+                    self.awaiting = Awaiting::TextObjectChar { inner: true };
+                    return Feed::Pending;
+                }
+                KeyCode::Char('a') => {
+                    self.awaiting = Awaiting::TextObjectChar { inner: false };
+                    return Feed::Pending;
                 }
                 // Count digits and motions extend the selection; an unmatched key hits the namespace's
                 // own policy — `closed/ignore` for Visual, `open/replace-selection` for Select.
@@ -961,6 +1005,14 @@ mod textobj_tests {
     use super::tests::*;
     use super::*;
 
+    fn pair(open: char, close: char, around: bool) -> Motion {
+        Motion::Pair {
+            open,
+            close,
+            around,
+        }
+    }
+
     #[test]
     fn text_objects_compose() {
         assert_eq!(
@@ -972,6 +1024,145 @@ mod textobj_tests {
             Feed::Cmd(Command::Change(1, Motion::InnerWord))
         );
         assert_eq!(feed("daw"), Feed::Cmd(Command::Delete(1, Motion::AWord)));
+    }
+
+    #[test]
+    fn word_and_bigword_objects() {
+        assert_eq!(
+            feed("diW"),
+            Feed::Cmd(Command::Delete(1, Motion::InnerBigWord))
+        );
+        assert_eq!(feed("daW"), Feed::Cmd(Command::Delete(1, Motion::ABigWord)));
+    }
+
+    #[test]
+    fn paragraph_and_sentence_objects() {
+        assert_eq!(
+            feed("yip"),
+            Feed::Cmd(Command::Yank(1, Motion::InnerParagraph))
+        );
+        assert_eq!(
+            feed("dap"),
+            Feed::Cmd(Command::Delete(1, Motion::AParagraph))
+        );
+        assert_eq!(
+            feed("dis"),
+            Feed::Cmd(Command::Delete(1, Motion::InnerSentence))
+        );
+        assert_eq!(
+            feed("das"),
+            Feed::Cmd(Command::Delete(1, Motion::ASentence))
+        );
+    }
+
+    #[test]
+    fn delimiter_pair_objects_and_aliases() {
+        // Inner vs around.
+        assert_eq!(
+            feed("di("),
+            Feed::Cmd(Command::Delete(1, pair('(', ')', false)))
+        );
+        assert_eq!(
+            feed("da("),
+            Feed::Cmd(Command::Delete(1, pair('(', ')', true)))
+        );
+        // Closer and `b` alias to the same `()` object as the opener.
+        assert_eq!(
+            feed("di)"),
+            Feed::Cmd(Command::Delete(1, pair('(', ')', false)))
+        );
+        assert_eq!(
+            feed("dab"),
+            Feed::Cmd(Command::Delete(1, pair('(', ')', true)))
+        );
+        // Braces: `{`/`}`/`B` collapse.
+        assert_eq!(
+            feed("ci{"),
+            Feed::Cmd(Command::Change(1, pair('{', '}', false)))
+        );
+        assert_eq!(
+            feed("daB"),
+            Feed::Cmd(Command::Delete(1, pair('{', '}', true)))
+        );
+        // Brackets and angles.
+        assert_eq!(
+            feed("di["),
+            Feed::Cmd(Command::Delete(1, pair('[', ']', false)))
+        );
+        assert_eq!(
+            feed("da]"),
+            Feed::Cmd(Command::Delete(1, pair('[', ']', true)))
+        );
+        assert_eq!(
+            feed("di<"),
+            Feed::Cmd(Command::Delete(1, pair('<', '>', false)))
+        );
+    }
+
+    #[test]
+    fn quote_objects() {
+        assert_eq!(
+            feed("da\""),
+            Feed::Cmd(Command::Delete(
+                1,
+                Motion::Quote {
+                    ch: '"',
+                    around: true
+                }
+            ))
+        );
+        assert_eq!(
+            feed("ci'"),
+            Feed::Cmd(Command::Change(
+                1,
+                Motion::Quote {
+                    ch: '\'',
+                    around: false
+                }
+            ))
+        );
+        assert_eq!(
+            feed("yi`"),
+            Feed::Cmd(Command::Yank(
+                1,
+                Motion::Quote {
+                    ch: '`',
+                    around: false
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn text_object_extends_a_visual_selection() {
+        // In Visual, `i`/`a` begin a text object; it completes as a bare `Move` the core turns into a span.
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual { line: false };
+        assert_eq!(e.feed(k('i'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('w'), vis),
+            Feed::Cmd(Command::Move(1, Motion::InnerWord))
+        );
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('i'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('('), vis),
+            Feed::Cmd(Command::Move(1, pair('(', ')', false)))
+        );
+    }
+
+    #[test]
+    fn tag_objects_are_deferred_and_abort_cleanly() {
+        // `it`/`at` are carved out (no core syntax tree). The pending object aborts to a no-op, never panics.
+        assert_eq!(feed("dit"), Feed::Ignored);
+        assert_eq!(feed("dat"), Feed::Ignored);
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('v'), Mode::Normal),
+            Feed::Cmd(Command::EnterVisual { line: false })
+        );
+        assert_eq!(e.feed(k('i'), Mode::Visual { line: false }), Feed::Pending);
+        assert_eq!(e.feed(k('t'), Mode::Visual { line: false }), Feed::Ignored);
     }
 
     #[test]
@@ -1025,7 +1216,7 @@ mod state_machine_props {
 
     /// A key drawn from the meaningful command alphabet, plus arbitrary chars (find targets) and specials.
     fn any_key() -> impl Strategy<Value = KeyEvent> {
-        let named = "0123456789hjklwbeWBEdcyiaoOAIxfFtT;,vVpPunN$/:gGrJ~%"
+        let named = "0123456789hjklwbeWBEdcyiaoOAIxfFtT;,vVpPunN$/:gGrJ~%(){}[]<>\"'`sp"
             .chars()
             .collect::<Vec<_>>();
         prop_oneof![
@@ -1062,9 +1253,15 @@ mod state_machine_props {
             let mut e = InputEngine::new();
             for (key, mode) in steps {
                 let feed = e.feed(key, mode);
-                // Orthogonal-axis invariant: TextObjectChar implies an armed operator.
+                // Orthogonal-axis invariant: a text object is only ever awaited with an operator armed
+                // (`diw`) or from a selection mode (`viw`) — never bare in Normal. `mode` is the mode the
+                // arming key was fed with, so this checks the arm site directly.
                 if let Awaiting::TextObjectChar { .. } = e.awaiting {
-                    prop_assert!(e.op.is_some(), "text object awaited with no operator armed");
+                    let in_selection = matches!(mode, Mode::Visual { .. } | Mode::Select { .. });
+                    prop_assert!(
+                        e.op.is_some() || in_selection,
+                        "text object awaited with neither an operator nor a selection"
+                    );
                 }
                 if feed == Feed::Pending {
                     // A pending outcome must correspond to real accumulated state.
