@@ -332,6 +332,9 @@ FIXTURES: list[dict] = [
     {"name": "reg_dw_word_paste_before", "lines": ["one two three"], "keys": "dwwP"},
     {"name": "reg_dd_overwrite_then_paste", "lines": ["1", "2", "3", "4"], "keys": "ddjddp"},
     {"name": "reg_named_yank_paste", "lines": ["foo bar"], "keys": '"ayiw$"ap'},
+    {"name": "reg_named_yy_paste", "lines": ["one", "two"], "keys": '"ayy"ap'},
+    {"name": "reg_named_dd_paste", "lines": ["one", "two"], "keys": '"add"ap'},
+    {"name": "reg_append_uppercase", "lines": ["foo", "bar"], "keys": '"Ayiwj"Ayiw"ap'},
     #     MODE-TRANSITION sequences (selection/insert -> normal -> paste; append then insert-at-start) ----
     {"name": "mode_viwy_open_paste", "lines": ["hello"], "keys": "viwyo<Esc>p"},
     {"name": "mode_vjd_then_paste", "lines": ["abc", "def"], "keys": "vjdp"},

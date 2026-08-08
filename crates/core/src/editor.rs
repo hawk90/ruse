@@ -12,7 +12,7 @@ use crate::effect::Effect;
 use crate::motion::{
     self, at_col, col_of, line_end, line_start, next_boundary, prev_boundary, snap, Motion,
 };
-use crate::register::Register;
+use crate::register::{Register, RegisterStore};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 
 /// The editor mode. `Visual { line }` and `Select { line }` are selection modes: charwise (`v`) or
@@ -66,9 +66,15 @@ pub struct EditorState {
     /// Whether the previous command edited text — drives undo grouping: an edit right after a non-edit
     /// (a motion or a mode change) starts a new undo group (persistence §6); consecutive edits coalesce.
     last_was_edit: bool,
-    /// The v0 unnamed register: text yanked (`y`) or deleted (`d`/`c`/`x`) for a later paste (`p`/`P`).
-    /// Named slots / the numbered ring are deferred (D-026; see `register.rs`).
-    register: Register,
+    /// The register store: the unnamed slot plus named `a`–`z` (`A`–`Z` append). Text yanked (`y`) or
+    /// deleted (`d`/`c`/`x`) lands here for a later paste (`p`/`P`); an edit into `"x` mirrors the unnamed
+    /// slot too. The numbered delete-ring / `"0` yank register stay deferred (D-026; see `register.rs`).
+    registers: RegisterStore,
+    /// The one-shot register selected by `"x` — the slot the NEXT yank/delete/change/paste targets, then
+    /// cleared. `None` = the unnamed register (the default). Set by [`Command::SetRegister`] and consumed by
+    /// the following register command in [`commit`]; any other committed command also clears it (a stray
+    /// `"x` followed by a plain motion forgets the selection, as in Vim).
+    pending_register: Option<char>,
     /// The Visual-mode selection anchor (the fixed end; the cursor is the moving end). `Some` exactly while
     /// in `Mode::Visual`. The full anchor-store-backed `Selection` set is deferred (D-027).
     anchor: Option<usize>,
@@ -79,10 +85,16 @@ pub struct EditorState {
 }
 
 enum Action {
-    Txn { edits: EditList, hint: GroupHint },
+    Txn {
+        edits: EditList,
+        hint: GroupHint,
+    },
     Undo,
     Redo,
     Nop,
+    /// Install the one-shot pending register (`"x`). Distinct from `Nop` so [`commit`] knows NOT to clear
+    /// the pending register it just set — every other action clears it once its command has consumed it.
+    SetPending(Option<char>),
 }
 
 /// The pure result of [`plan`]: what a command would do, before any mutation.
@@ -128,7 +140,8 @@ impl EditorState {
             cursor: 0,
             mode: Mode::Normal,
             last_was_edit: false,
-            register: Register::default(),
+            registers: RegisterStore::new(),
+            pending_register: None,
             anchor: None,
             // Schema defaults (spec/config-schema.yaml): editor.tab_width=4, editor.indent_style=space.
             // Runtime config wiring is deferred (as with editor.scrolloff), so the shift operators read
@@ -157,7 +170,13 @@ impl EditorState {
     /// The unnamed register's current contents (for tests / a future `:registers`).
     #[must_use]
     pub fn register(&self) -> &Register {
-        &self.register
+        self.registers.unnamed()
+    }
+
+    /// The whole register store (for tests / a future `:registers`), giving access to the named slots.
+    #[must_use]
+    pub fn registers(&self) -> &RegisterStore {
+        &self.registers
     }
 
     /// The highlighted byte range `[start, end)` of the current Visual selection, or `None` in Normal/Insert.
@@ -706,7 +725,25 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
         Command::ShiftLeft(count) => plan_shift(st, cur, *count, false, hint),
-        Command::Paste { after, count } => paste(b, cur, st.mode, &st.register, *after, *count),
+        // Paste reads the pending register (`"xp`) or the unnamed slot; `commit` clears the pending slot.
+        Command::Paste { after, count } => paste(
+            b,
+            cur,
+            st.mode,
+            st.registers.get(st.pending_register),
+            *after,
+            *count,
+        ),
+        // `"x` — install the one-shot pending register. A pure state set: no edit, no cursor/mode change.
+        Command::SetRegister(name) => Plan {
+            action: Action::SetPending(*name),
+            cursor: cur,
+            mode: st.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+        },
         Command::EnterVisual { line } => nop(cur, Mode::Visual { line: *line }),
         // CTRL-G toggle: enter Select over the same selection. The anchor is preserved because both are
         // selection modes, so `commit` keeps it (see the (true, true) arm there).
@@ -1004,6 +1041,12 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u
 
 /// Apply a plan to the state, returning the effects the frontend must perform.
 pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
+    // `"x` sets the one-shot pending register and nothing else — it must NOT be cleared by the tail below
+    // (that clear is what consumes the selection on the FOLLOWING command), so it returns early.
+    if let Action::SetPending(name) = plan.action {
+        st.pending_register = name;
+        return plan.effects;
+    }
     let was_selection = st.mode.selection().is_some();
     let entry_cursor = st.cursor;
     match plan.action {
@@ -1022,6 +1065,8 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             st.doc.redo();
         }
         Action::Nop => {}
+        // Handled by the early return above; the buffer-mutating tail never runs for it.
+        Action::SetPending(_) => unreachable!("SetPending is handled before the action match"),
     }
     // The cursor the plan computed is valid for the post-action buffer, except undo/redo which resize the
     // text unpredictably — clamp and snap to a char boundary either way.
@@ -1040,8 +1085,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             st.cursor = prev_boundary(b, le);
         }
     }
+    // A yank/delete/change writes its captured span into the pending register (or unnamed when none),
+    // mirroring the unnamed slot on a named write; append (`"A`) is handled inside the store.
     if let Some(reg) = plan.set_register {
-        st.register = reg;
+        st.registers.write(st.pending_register, reg);
     }
     // Maintain the selection anchor: set it when entering a selection mode (Visual/Select; the fixed end
     // is where the cursor was), keep it while staying in one — including across a Visual↔Select CTRL-G
@@ -1062,6 +1109,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     if let Some(a) = st.anchor {
         st.anchor = Some(snap(st.doc.bytes(), a));
     }
+    // The pending register (`"x`) is one-shot: any command other than `SetRegister` (which returned early
+    // above) consumes it. Cleared here AFTER the register write so a stray `"x` before a non-register
+    // command is simply forgotten, and a later plain edit never leaks into the named slot.
+    st.pending_register = None;
     plan.effects
 }
 
@@ -1223,6 +1274,98 @@ mod register_tests {
             st.register().text(),
             b"a",
             "the register is unchanged by paste"
+        );
+    }
+
+    #[test]
+    fn named_yank_writes_slot_and_mirrors_unnamed() {
+        // `"ayiw` on "foo bar": yank "foo" into register a, which also mirrors the unnamed slot.
+        let st = run(
+            "foo bar",
+            &[
+                Command::SetRegister(Some('a')),
+                Command::Yank(1, Motion::InnerWord),
+            ],
+        );
+        assert_eq!(st.registers().get(Some('a')).text(), b"foo");
+        assert_eq!(
+            st.register().text(),
+            b"foo",
+            "unnamed mirrors the named write"
+        );
+    }
+
+    #[test]
+    fn named_paste_reads_the_named_slot() {
+        // `"ayiw$"ap` on "foo bar" -> "foo barfoo" (the oracle fixture reg_named_yank_paste).
+        let st = run(
+            "foo bar",
+            &[
+                Command::SetRegister(Some('a')),
+                Command::Yank(1, Motion::InnerWord),
+                Command::Move(1, Motion::LineEnd),
+                Command::SetRegister(Some('a')),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "foo barfoo");
+        assert_eq!(st.cursor(), 9);
+    }
+
+    #[test]
+    fn plain_edit_does_not_leak_into_a_named_slot() {
+        // After a named yank, a plain (unregistered) delete must write ONLY the unnamed slot — the pending
+        // register is one-shot and cleared once consumed.
+        let st = run(
+            "foo bar",
+            &[
+                Command::SetRegister(Some('a')),
+                Command::Yank(1, Motion::InnerWord), // a = unnamed = "foo"
+                Command::DeleteUnder(1),             // plain x: unnamed only
+            ],
+        );
+        assert_eq!(
+            st.registers().get(Some('a')).text(),
+            b"foo",
+            "named slot untouched"
+        );
+        assert_eq!(st.register().text(), b"f", "plain x wrote unnamed only");
+    }
+
+    #[test]
+    fn uppercase_register_appends() {
+        // `"ayiw` then `"Ayiw` on the next word appends charwise -> "foobar" (matches the nvim oracle).
+        let st = run(
+            "foo bar",
+            &[
+                Command::SetRegister(Some('a')),
+                Command::Yank(1, Motion::InnerWord),
+                Command::Move(1, Motion::WordFwd),
+                Command::SetRegister(Some('A')),
+                Command::Yank(1, Motion::InnerWord),
+            ],
+        );
+        assert_eq!(st.registers().get(Some('a')).text(), b"foobar");
+        assert_eq!(st.register().text(), b"foobar");
+    }
+
+    #[test]
+    fn stray_register_selection_is_forgotten_by_a_motion() {
+        // `"a` then a bare motion (no operator) drops the selection; a later plain delete stays unnamed-only.
+        let st = run(
+            "foo bar",
+            &[
+                Command::SetRegister(Some('a')),
+                Command::Move(1, Motion::Right), // consumes+clears the pending register
+                Command::DeleteUnder(1),
+            ],
+        );
+        assert!(
+            st.registers().get(Some('a')).is_empty(),
+            "named slot never written"
         );
     }
 

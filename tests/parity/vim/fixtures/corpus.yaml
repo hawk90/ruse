@@ -2199,6 +2199,85 @@
       }
     },
     {
+      "name": "reg_named_yy_paste",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "\"ayy\"ap",
+      "expect": {
+        "text": [
+          "one",
+          "one",
+          "two"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_named_dd_paste",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "\"add\"ap",
+      "expect": {
+        "text": [
+          "two",
+          "one"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_append_uppercase",
+      "lines": [
+        "foo",
+        "bar"
+      ],
+      "keys": "\"Ayiwj\"Ayiw\"ap",
+      "expect": {
+        "text": [
+          "foo",
+          "bfoobarar"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "foobar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "mode_viwy_open_paste",
       "lines": [
         "hello"

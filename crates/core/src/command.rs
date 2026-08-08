@@ -61,6 +61,11 @@ pub enum Command {
         after: bool,
         count: u32,
     },
+    /// `"x` — select the register `x` (`a`–`z`, or `A`–`Z` to append) for the FOLLOWING yank/delete/
+    /// change/paste. `None` selects the unnamed register (the default). Emitted by the input engine on the
+    /// register name key; the editor holds it as a one-shot pending register the next such command reads,
+    /// then clears (D-026's named-slot expansion). Numbered/other register names are not modelled yet.
+    SetRegister(Option<char>),
     // visual mode: enter a selection (charwise `v` / linewise `V`); operate on the current selection
     EnterVisual {
         line: bool,
@@ -269,6 +274,10 @@ impl Command {
                     format!("paste_before {count}")
                 }
             }
+            Command::SetRegister(name) => match name {
+                Some(c) => format!("select_register {}", *c as u32),
+                None => "select_register".into(),
+            },
             Command::EnterVisual { line } => {
                 if *line {
                     "enter_visual_line".into()
@@ -393,6 +402,22 @@ impl Command {
                     .and_then(|a| a.parse().ok())
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?,
             },
+            "select_register" => {
+                // No arg → the unnamed register; otherwise a decimal Unicode scalar for the register name.
+                let name = match arg {
+                    None => None,
+                    Some(a) => {
+                        let cp: u32 = a
+                            .parse()
+                            .map_err(|_| CommandParseError::BadArgument(line.to_string()))?;
+                        Some(
+                            char::from_u32(cp)
+                                .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?,
+                        )
+                    }
+                };
+                Command::SetRegister(name)
+            }
             "enter_visual" => Command::EnterVisual { line: false },
             "enter_visual_line" => Command::EnterVisual { line: true },
             "enter_select" => Command::EnterSelect { line: false },
@@ -560,6 +585,9 @@ mod tests {
                 after: false,
                 count: 5,
             },
+            Command::SetRegister(None),
+            Command::SetRegister(Some('a')),
+            Command::SetRegister(Some('Z')),
             Command::EnterVisual { line: false },
             Command::EnterVisual { line: true },
             Command::EnterSelect { line: false },
