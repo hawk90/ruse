@@ -598,6 +598,8 @@ impl InputEngine {
                 self.awaiting = Awaiting::Nothing;
                 return match key.code {
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
+                    // `gv` — re-select the last visual selection (D-027 depth-1 slice).
+                    KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),

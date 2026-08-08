@@ -78,6 +78,11 @@ pub struct EditorState {
     /// The Visual-mode selection anchor (the fixed end; the cursor is the moving end). `Some` exactly while
     /// in `Mode::Visual`. The full anchor-store-backed `Selection` set is deferred (D-027).
     anchor: Option<usize>,
+    /// The LAST selection left behind, as `(anchor, active_end, linewise)` — captured whenever a Visual/
+    /// Select mode is exited, restored by `gv` ([`Command::ReselectVisual`]). This is the depth-1
+    /// degenerate of D-027's `` `< ``/`` `> `` selection history: one remembered selection, stored in the
+    /// same raw-offset representation as the live `anchor` (both migrate to the anchor store together).
+    last_visual: Option<(usize, usize, bool)>,
     /// `editor.tab_width` — one indent level's width in columns/spaces. Schema default 4.
     tab_width: usize,
     /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
@@ -143,6 +148,7 @@ impl EditorState {
             registers: RegisterStore::new(),
             pending_register: None,
             anchor: None,
+            last_visual: None,
             // Schema defaults (spec/config-schema.yaml): editor.tab_width=4, editor.indent_style=space.
             // Runtime config wiring is deferred (as with editor.scrolloff), so the shift operators read
             // these fields, which currently always hold the defaults.
@@ -748,6 +754,21 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // CTRL-G toggle: enter Select over the same selection. The anchor is preserved because both are
         // selection modes, so `commit` keeps it (see the (true, true) arm there).
         Command::EnterSelect { line } => nop(cur, Mode::Select { line: *line }),
+        Command::ReselectVisual => match st.last_visual {
+            // Restore the remembered selection: re-enter Visual with the stored kind, put the cursor on the
+            // active end, and install the stored anchor (via `set_anchor`, which `commit` applies after its
+            // enter-selection bookkeeping). No prior selection → a clean no-op (Vim rings the bell).
+            Some((anchor, active, line)) => Plan {
+                action: Action::Nop,
+                cursor: active,
+                mode: Mode::Visual { line },
+                is_edit: false,
+                effects: Vec::new(),
+                set_register: None,
+                set_anchor: Some(anchor),
+            },
+            None => nop(cur, st.mode),
+        },
         Command::ReplaceSelection(c) => {
             // Select's `open/replace-selection`: delete the selection, insert the char, enter Insert.
             let line = matches!(
@@ -1105,8 +1126,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         st.pending_register = name;
         return plan.effects;
     }
-    let was_selection = st.mode.selection().is_some();
+    let entry_selection = st.mode.selection();
+    let was_selection = entry_selection.is_some();
     let entry_cursor = st.cursor;
+    let entry_anchor = st.anchor;
     match plan.action {
         Action::Txn { edits, hint } => {
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
@@ -1153,7 +1176,15 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // toggle, since both are selection modes — and clear it on any exit to Normal/Insert.
     match (was_selection, st.mode.selection().is_some()) {
         (false, true) => st.anchor = Some(entry_cursor),
-        (_, false) => st.anchor = None,
+        (_, false) => {
+            // Leaving a selection: remember it (anchor, active end, kind) for `gv` BEFORE dropping the
+            // anchor — the depth-1 slice of D-027's `` `< ``/`` `> `` history. Only fires on an actual exit
+            // (entry_selection is None when we were already in Normal), so a plain Normal command is inert.
+            if let (Some(line), Some(a)) = (entry_selection, entry_anchor) {
+                st.last_visual = Some((a, entry_cursor, line));
+            }
+            st.anchor = None;
+        }
         (true, true) => {}
     }
     // A text object in a selection mode overrides the anchor to span the object (both ends move at once).
@@ -1477,6 +1508,36 @@ mod visual_swap_tests {
         assert_eq!(st.register().text(), b"cde");
         assert!(!st.register().is_linewise());
         assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn gv_reselects_the_last_visual_then_deletes_it() {
+        // Parity fixture gv_reselect on "hello world": `viw` selects "hello", `y` yanks and leaves Visual,
+        // `gv` re-selects the same span, `d` deletes it → " world". The selection survives the round-trip
+        // to Normal because `y` captured it into last_visual on exit (D-027 depth-1).
+        let st = run(
+            "hello world",
+            &[
+                Command::EnterVisual { line: false },
+                Command::Move(1, Motion::InnerWord),
+                Command::YankSelection,
+                Command::ReselectVisual,
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), " world");
+        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.register().text(), b"hello");
+        assert!(!st.register().is_linewise());
+        assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn gv_without_a_prior_selection_is_a_noop() {
+        let st = run("abc", &[Command::ReselectVisual]);
+        assert_eq!(text(&st), "abc");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.cursor(), 0);
     }
 
     #[test]
