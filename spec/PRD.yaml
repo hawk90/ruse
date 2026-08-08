@@ -165,7 +165,8 @@ features:
     depends_on: [C-INPUT, C-EDITLANG]
     summary: Text-object targets (iw/aw/i(/a"/it/...) as operator and visual operands (census surface mode_key.text_object).
     trace:
-      parity: [VIM-TOBJ-1, VIM-TOBJ-2, VIM-TOBJ-3, VIM-TOBJ-4, VIM-TOBJ-5]
+      # repointed off legacy VIM-TOBJ-1..5 onto the mode_key.text_object census (D-043); vim.md rows retired.
+      parity: [nvim.key.text_object.aw, nvim.key.text_object.aW, nvim.key.text_object.iw, nvim.key.text_object.iW, nvim.key.text_object.ap, nvim.key.text_object.ip, nvim.key.text_object.as, nvim.key.text_object.is, nvim.key.text_object.at, nvim.key.text_object.it, nvim.key.text_object.ab, nvim.key.text_object.aB, nvim.key.text_object.ib, nvim.key.text_object.iB, nvim.key.text_object.ax28, nvim.key.text_object.ax29, nvim.key.text_object.ix28, nvim.key.text_object.ix29, nvim.key.text_object.ax7b, nvim.key.text_object.ax7d, nvim.key.text_object.ix7b, nvim.key.text_object.ix7d, nvim.key.text_object.ax5b, nvim.key.text_object.ax5d, nvim.key.text_object.ix5b, nvim.key.text_object.ix5d, nvim.key.text_object.a, nvim.key.text_object.i, nvim.key.text_object.ax22, nvim.key.text_object.ix22, nvim.key.text_object.ax27, nvim.key.text_object.ix27, nvim.key.text_object.ax60, nvim.key.text_object.ix60]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/editing-language.md]
       verify: [../tests/parity/vim/text-objects.yaml]

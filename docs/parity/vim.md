@@ -107,13 +107,8 @@ Source: `motion.txt`. Three types: **characterwise** (inclusive/exclusive), **li
 ## VIM-TOBJ — Text Objects
 Source: `motion.txt`. `i`=inner, `a`=around.
 
-| ID | Objects | Target | Compat | Weight |
-| --- | --- | --- | --- | --- |
-| VIM-TOBJ-1 | `iw aw iW aW` | L2 | Exact | high |
-| VIM-TOBJ-2 | `is as ip ap` | L2 | Exact | med |
-| VIM-TOBJ-3 | `i( a( ib i{ a{ iB i[ a[ i< a<` | L2 | Exact | high |
-| VIM-TOBJ-4 | `it at` (tag) | L1 | Equivalent | med |
-| VIM-TOBJ-5 | `i" a" i' a'` `` i` a` `` | L2 | Exact | high |
+_Retired to the census (D-043): VIM-TOBJ-1..5 migrated to the 34 `nvim.key.text_object.*` items
+(surface `mode_key.text_object`), screened FAM-EDIT-VIM-GRAMMAR/targeted and cited by PRD F-028._
 
 - **⚠️** `aw` trailing-vs-leading whitespace rule; quote objects single-line + "next pair on line" + `a"` space handling; `it`/`at` nesting with counts; `ap`/`ip` blank-line handling.
 
