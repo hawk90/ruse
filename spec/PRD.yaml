@@ -549,6 +549,12 @@ features:
     priority: must
     status: active
     depends_on: [C-COMMAND, C-DOCUMENT]
+    implementable_ack:
+      - concept: CONCEPT-COUNT-VS-PREFIX
+        reason: >
+          Deterministic replay records and replays semantic Commands; whether count is a Vim multiplier or an
+          Emacs prefix-arg affects a Command's CONTENT, not the replay contract (same trace -> byte-identical
+          state; survives keymap changes). So F-022 does not touch the aspect C-COMMAND is blocked on.
     summary: >
       Every edit session is a replayable list of semantic commands (a ruse-native v0 product pillar, RFC-0012;
       no external-editor parity). Deterministic replay is the contract and the substrate for the test corpus.

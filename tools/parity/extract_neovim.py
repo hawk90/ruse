@@ -262,6 +262,21 @@ def _lua_records(path: str, key: str) -> list[str]:
     return re.findall(rf"^\s*{key}\s*=\s*'([^']+)'", text, re.M)
 
 
+# The Vimscript LANGUAGE ex-commands: control flow, variables, functions, the eval bridge, and :echo
+# output. These are the surface of "running Vimscript", an explicit MVP non_goal (spec/PRD.yaml), so they
+# are split into their own lock-unit `ex_command.scripting` and screened intentionally-different by decision
+# — NOT by guess. The set is deliberately TIGHT: it contains only commands that ARE the language. Editing /
+# config commands a Vim user might loosely call "scripting" are excluded on purpose (`:normal` runs normal
+# keys, `:global`/`:g` is an editing iterator, `:source`/`:runtime`/`:autocmd`/`:command` are config/registry)
+# — those stay in `ex_command` for feature-motivated classification.
+SCRIPTING_EX = frozenset({
+    "let", "unlet", "const", "lockvar", "unlockvar", "if", "elseif", "else", "endif",
+    "while", "endwhile", "for", "endfor", "function", "endfunction", "delfunction",
+    "return", "call", "eval", "execute", "try", "catch", "finally", "throw",
+    "echo", "echon", "echomsg", "echoerr", "echohl",
+})
+
+
 def extract_ex_commands(root: str) -> list[dict]:
     """src/nvim/ex_cmds.lua — source of record. The runtime API for builtins is unreliable."""
     path = os.path.join(root, "src/nvim/ex_cmds.lua")
@@ -274,7 +289,8 @@ def extract_ex_commands(root: str) -> list[dict]:
         if name in seen:
             continue
         seen.add(name)
-        out.append({"id": f"nvim.ex.{_slug(name)}", "surface": "ex_command", "command": name,
+        surface = "ex_command.scripting" if name in SCRIPTING_EX else "ex_command"
+        out.append({"id": f"nvim.ex.{_slug(name)}", "surface": surface, "command": name,
                     "addr_type": addr.group(1) if addr else None, "attestation": ["S"]})
     return out
 

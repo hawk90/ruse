@@ -141,7 +141,7 @@ families:
     axis: ruse-choice
     layer: kernel
     evidence_refs: [FAM-EDIT-VIM-GRAMMAR, FAM-EDIT-SELECTION]
-    decisions: [D-EDITLANG-PRIMITIVE]   # to be assigned a real D-id when opened; blocks C-EDITLANG, C-INPUT
+    decisions: [D-047]   # to be assigned a real D-id when opened; blocks C-EDITLANG, C-INPUT
     caps: [CAP-EDIT-CORE]
     irreconcilable_observables:         # each is a testable contract that closes ONE Decision (not one giant one)
       - OBS-BARE-MOTION                 #   bare motion = move (Vim) | select+extend (Kakoune/Helix)
@@ -372,6 +372,7 @@ surface_cover:
   map_mode:    { primary: [FAM-KEYMAP-MODEL], secondary: [FAM-EDIT-VIM-GRAMMAR], note: "8/8 classified via vim-style.yaml — the one real cover today" }
   mode_key:    { primary: [FAM-EDIT-VIM-GRAMMAR, FAM-EDIT-SELECTION, FAM-NAVIGATION], note: "each key by PRIMARY role; residuals triage to non-goal or FAM-EDIT-SELECTION (not-in-census)" }
   ex_command:  { primary: [FAM-BATCH-EX, FAM-FILE-PROJECT, FAM-PERSISTENCE, FAM-BUFFER-MODEL], note: "most FAM-BATCH-EX; file/session/window subsets peel off" }
+  ex_command.scripting: { primary: [], note: "the 29 Vimscript-language commands (:let/:if/:function/:call/:eval/...); intentionally-different by MVP non_goal 'running-vimscript-or-elisp', owned by no family — sub-surfaced so it opens without locking the 528-command editing set" }
   option:      { primary: [], classified_by: subsystem, note: "unowned by families; covered by config-schema derivation (D-042)" }
   event:       { primary: [FAM-EVENT-HOOKS], note: "Vim-side hook denominator only" }
   # --- emacs (D-044) ---

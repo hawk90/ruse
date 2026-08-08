@@ -7,7 +7,7 @@ Neovim and Emacs are pinned because ruse intends compatibility with them. Helix 
 because three entries in concepts/irreconcilable.yaml#observables — OBS-BARE-MOTION,
 OBS-SELECTION-PERSISTENCE, OBS-DOT-REPEAT-UNIT — had their selection-first column ASSERTED FROM
 DOCUMENTATION, because no selection-first editor was pinned. Those observables decide
-D-EDITLANG-PRIMITIVE, which blocks C-EDITLANG and C-INPUT, and F-003 ships in the `usable-vim-tui`
+D-047, which blocks C-EDITLANG and C-INPUT, and F-003 ships in the `usable-vim-tui`
 MVP phase. The kernel primitive gets chosen either way; pinning Helix decides whether it is chosen
 on observed or asserted evidence.
 
@@ -436,7 +436,7 @@ def write_surface(fname: str, title: str, source: str, items: list[dict],
         # far from upstreams.yaml, and a count without this line reads as coverage.
         "role": "reference",
         "not_a_parity_target": ("Pinned as EVIDENCE for concepts/irreconcilable.yaml#observables "
-                                "(D-EDITLANG-PRIMITIVE). ruse declares no helix input profile; "
+                                "(D-047). ruse declares no helix input profile; "
                                 "these counts are never a coverage ratio."),
         "surface": title,
         "source_of_record": source,

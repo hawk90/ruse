@@ -51,7 +51,7 @@ concepts:
     kernel_concept: C-EDITLANG        # primitive = (selection-set, operation); op-pending = deferred selection build
     residual_observables: [OBS-BARE-MOTION, OBS-SELECTION-PERSISTENCE, OBS-DOT-REPEAT-UNIT]
     blocks: [C-INPUT, F-003]           # C-EDITLANG no longer blocked at concept level; it is blocked per-observable
-    refs: [nvim.mapmode.opr, contracts/vim-style.yaml#namespaces.operator_pending]
+    refs: [nvim.mapmode.opr, contracts/vim-style.yaml#namespaces.operator_pending, D-047]
 
   CONCEPT-COUNT-VS-PREFIX:
     title: Vim count and Emacs universal-argument are not the same mechanism
@@ -67,7 +67,10 @@ concepts:
       kernel that models "count" as a number folded into the command loses Emacs semantics; one that
       passes it through as an opaque argument loses Vim's count1 x count2 multiplication rule.
     resolution: pending
-    blocks: [C-COMMAND, C-EDITLANG]
+    # C-EDITLANG's count CHANNEL is decided by D-047 (count is part of D-025's change-intent); only the
+    # cross-profile count/prefix SEMANTICS remain pending, so this no longer blocks the primitive STRUCTURE.
+    blocks: [C-COMMAND]
+    decided_structure_by: D-047
 
   CONCEPT-POSITION-HISTORY:
     title: Jumplist and mark-ring are different data structures with different invariants
@@ -202,7 +205,7 @@ observables:
     vim: moves the cursor; selection is untouched.
     selection_first: extends/replaces the primary selection as it moves (motion IS a selection verb).
     observe: fixture presses `w` from a clean state and reads whether a selection now exists.
-    decides: D-EDITLANG-PRIMITIVE
+    decides: D-047
     attested_structure: >
       PINNED FACT at helix 25.07.1: Normal binds `h`/`w` to move_char_left/move_next_word_start while
       Select binds `h` to extend_char_left, and Select is built as `normal.clone()` +
@@ -221,7 +224,7 @@ observables:
     vim: an operator consumes the (implicit) motion-span and leaves no selection behind.
     selection_first: the selection remains after the edit, ready for the next operation.
     observe: fixture runs an operation over a span, then reads whether a live selection remains.
-    decides: D-EDITLANG-PRIMITIVE
+    decides: D-047
     attested_structure: none — a keymap cannot encode what survives an operation.
     needs_oracle: >
       All of it. The census contributes only the target list: 305 static commands, of which the

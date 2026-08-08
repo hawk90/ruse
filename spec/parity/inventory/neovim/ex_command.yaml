@@ -1,6 +1,6 @@
 # GENERATED — do not hand-edit item enumeration. Regenerate:
 #   python3 tools/parity/fetch.py neovim && python3 tools/parity/extract_neovim.py
-# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
 # enumeration is not. `status: unclassified` is legitimate and expected — discovery is
 # strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
 version: 1
@@ -384,19 +384,23 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.call
-  surface: ex_command
+  surface: ex_command.scripting
   command: call
   addr_type: ADDR_LINES
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.catch
-  surface: ex_command
+  surface: ex_command.scripting
   command: catch
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.cbuffer
   surface: ex_command
   command: cbuffer
@@ -706,12 +710,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.const
-  surface: ex_command
+  surface: ex_command.scripting
   command: const
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.copen
   surface: ex_command
   command: copen
@@ -818,12 +824,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.delfunction
-  surface: ex_command
+  surface: ex_command.scripting
   command: delfunction
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.detach
   surface: ex_command
   command: detach
@@ -958,54 +966,68 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.echo
-  surface: ex_command
+  surface: ex_command.scripting
   command: echo
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.echoerr
-  surface: ex_command
+  surface: ex_command.scripting
   command: echoerr
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.echohl
-  surface: ex_command
+  surface: ex_command.scripting
   command: echohl
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.echomsg
-  surface: ex_command
+  surface: ex_command.scripting
   command: echomsg
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.echon
-  surface: ex_command
+  surface: ex_command.scripting
   command: echon
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.else
-  surface: ex_command
+  surface: ex_command.scripting
   command: else
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.elseif
-  surface: ex_command
+  surface: ex_command.scripting
   command: elseif
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.emenu
   surface: ex_command
   command: emenu
@@ -1014,26 +1036,32 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.endif
-  surface: ex_command
+  surface: ex_command.scripting
   command: endif
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.endfunction
-  surface: ex_command
+  surface: ex_command.scripting
   command: endfunction
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.endfor
-  surface: ex_command
+  surface: ex_command.scripting
   command: endfor
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.endtry
   surface: ex_command
   command: endtry
@@ -1042,12 +1070,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.endwhile
-  surface: ex_command
+  surface: ex_command.scripting
   command: endwhile
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.enew
   surface: ex_command
   command: enew
@@ -1056,12 +1086,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.eval
-  surface: ex_command
+  surface: ex_command.scripting
   command: eval
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.ex
   surface: ex_command
   command: ex
@@ -1070,12 +1102,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.execute
-  surface: ex_command
+  surface: ex_command.scripting
   command: execute
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.exit
   surface: ex_command
   command: exit
@@ -1126,12 +1160,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.finally
-  surface: ex_command
+  surface: ex_command.scripting
   command: finally
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.finish
   surface: ex_command
   command: finish
@@ -1182,19 +1218,23 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.for
-  surface: ex_command
+  surface: ex_command.scripting
   command: for
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.function
-  surface: ex_command
+  surface: ex_command.scripting
   command: function
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.fclose
   surface: ex_command
   command: fclose
@@ -1322,12 +1362,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.if
-  surface: ex_command
+  surface: ex_command.scripting
   command: if
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.ijump
   surface: ex_command
   command: ijump
@@ -1630,12 +1672,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.let
-  surface: ex_command
+  surface: ex_command.scripting
   command: let
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.lexpr
   surface: ex_command
   command: lexpr
@@ -1805,12 +1849,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.lockvar
-  surface: ex_command
+  surface: ex_command.scripting
   command: lockvar
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.lolder
   surface: ex_command
   command: lolder
@@ -2610,12 +2656,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.return
-  surface: ex_command
+  surface: ex_command.scripting
   command: return
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.rewind
   surface: ex_command
   command: rewind
@@ -3324,12 +3372,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.throw
-  surface: ex_command
+  surface: ex_command.scripting
   command: throw
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.tjump
   surface: ex_command
   command: tjump
@@ -3429,12 +3479,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.try
-  surface: ex_command
+  surface: ex_command.scripting
   command: try
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.tselect
   surface: ex_command
   command: tselect
@@ -3499,19 +3551,23 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.unlet
-  surface: ex_command
+  surface: ex_command.scripting
   command: unlet
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.unlockvar
-  surface: ex_command
+  surface: ex_command.scripting
   command: unlockvar
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.unmap
   surface: ex_command
   command: unmap
@@ -3688,12 +3744,14 @@ items:
   - S
   status: unclassified
 - id: nvim.ex.while
-  surface: ex_command
+  surface: ex_command.scripting
   command: while
   addr_type: ADDR_NONE
   attestation:
   - S
-  status: unclassified
+  status: intentionally-different
+  note: Vimscript language command (control flow / variables / functions / eval bridge / :echo). MVP non_goal 'running-vimscript-or-elisp'
+    (spec/PRD.yaml mvp.non_goals) — screened by decision, not guess.
 - id: nvim.ex.winsize
   surface: ex_command
   command: winsize
