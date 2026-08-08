@@ -344,6 +344,20 @@ FIXTURES: list[dict] = [
     {"name": "refactor_find_paren_change_inner", "lines": ["foo(bar)baz"], "keys": "f(ci(X<Esc>"},
     #     SEARCH probe (one, per brief): `/` is not wired into the parity comparator's drive loop --------
     {"name": "search_then_daw_probe", "lines": ["hello world foo"], "keys": "/world<CR>daw"},
+    # --- SEARCH corpus (impl/parity-search-drive): the comparator now drives `/pattern<CR>` by
+    #     collecting the minibuffer pattern and applying SearchNext (mirroring main.rs). These exercise
+    #     bare search moves, `n` repeat, and — as probes — search-as-operator-motion and a count prefix,
+    #     which ruse's engine resets on `/` (findings if divergent). Every `expect` is oracle-captured.
+    {"name": "search_word_move", "lines": ["hello world foo"], "keys": "/world<CR>"},
+    {"name": "search_then_daw", "lines": ["hello world foo"], "keys": "/foo<CR>daw"},
+    {"name": "search_next_n", "lines": ["foo bar foo bar foo"], "keys": "/foo<CR>n"},
+    # PROBE — `d/pat<CR>` (search as an operator motion): ruse's engine resets the armed operator when
+    # `/` opens the search line, so it performs a bare move where Vim deletes up to the match. Divergence
+    # is the expected finding; the comparator stays green (divergence is data, never a failure).
+    {"name": "search_as_dmotion", "lines": ["hello world foo"], "keys": "d/world<CR>"},
+    # PROBE — `2/pat<CR>` (count before search = go to the Nth match in Vim): ruse resets the count on
+    # `/`, so it lands on the FIRST match. Documented divergence.
+    {"name": "search_count_prefix", "lines": ["foo bar foo bar foo"], "keys": "2/foo<CR>"},
 ]
 
 

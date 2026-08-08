@@ -11,7 +11,7 @@
 //! captured by `tools/parity/oracle.py`. Run with `-- --nocapture` to see the tally.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{apply_command, EditorState};
+use ruse_core::{apply_command, Command, EditorState};
 use ruse_tui::input::{Feed, InputEngine};
 use serde_json::Value;
 
@@ -53,7 +53,10 @@ fn tokenize(keys: &str) -> Vec<KeyEvent> {
 fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
     let mut st = EditorState::new(lines.join("\n").into_bytes());
     let mut engine = InputEngine::new();
-    for key in tokenize(keys) {
+    let events = tokenize(keys);
+    let mut i = 0;
+    while i < events.len() {
+        let key = events[i];
         let mode = st.mode();
         match engine.feed(key, mode) {
             Feed::Cmd(cmd) => {
@@ -65,9 +68,37 @@ fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
                     apply_command(&mut st, &cmd);
                 }
             }
-            // The corpus uses no `:`/`/` command-line fixtures; those and pending/ignored are no-ops.
-            Feed::OpenExLine | Feed::OpenSearch | Feed::Pending | Feed::Ignored => {}
+            // `/` opens the search minibuffer. The real frontend (main.rs) collects the typed pattern
+            // in a command line — raw keystrokes the input engine does NOT parse — until `<CR>`, then
+            // `engine.set_last_search(pattern)` (so a later `n`/`N` repeats it) and applies
+            // `Command::SearchNext(pattern)` to move the cursor to the match. Mirror that exactly:
+            // consume the SUBSEQUENT keys as raw pattern chars (not via `engine.feed`) up to the
+            // terminating Enter, then resume normal feeding. `?` (backward search) is not wired to the
+            // engine at all — it never yields `OpenSearch` — so only `/` needs this path.
+            Feed::OpenSearch => {
+                let mut pattern = String::new();
+                i += 1;
+                while i < events.len() {
+                    match events[i].code {
+                        KeyCode::Enter => break, // `<CR>` submits the search line
+                        KeyCode::Char(c) => pattern.push(c),
+                        KeyCode::Backspace => {
+                            pattern.pop();
+                        }
+                        _ => {} // Esc/other: the corpus never types these mid-pattern
+                    }
+                    i += 1;
+                }
+                engine.set_last_search(pattern.clone());
+                if !pattern.is_empty() {
+                    apply_command(&mut st, &Command::SearchNext(pattern));
+                }
+            }
+            // The ex-line minibuffer (`:`) is a separate concern (no ex fixtures in the corpus);
+            // pending/ignored are no-ops.
+            Feed::OpenExLine | Feed::Pending | Feed::Ignored => {}
         }
+        i += 1;
     }
     st
 }

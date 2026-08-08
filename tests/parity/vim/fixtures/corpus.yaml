@@ -2423,6 +2423,126 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "search_word_move",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/world<CR>",
+      "expect": {
+        "text": [
+          "hello world foo"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_then_daw",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/foo<CR>daw",
+      "expect": {
+        "text": [
+          "hello world"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": " foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_next_n",
+      "lines": [
+        "foo bar foo bar foo"
+      ],
+      "keys": "/foo<CR>n",
+      "expect": {
+        "text": [
+          "foo bar foo bar foo"
+        ],
+        "cursor": [
+          1,
+          16
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_as_dmotion",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "d/world<CR>",
+      "expect": {
+        "text": [
+          "world foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_count_prefix",
+      "lines": [
+        "foo bar foo bar foo"
+      ],
+      "keys": "2/foo<CR>",
+      "expect": {
+        "text": [
+          "foo bar foo bar foo"
+        ],
+        "cursor": [
+          1,
+          16
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }
