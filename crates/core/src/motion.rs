@@ -71,6 +71,11 @@ pub enum Motion {
     /// Jump to the matching bracket of `()`, `[]`, or `{}` (`%`). Nesting-aware; the match may be on another
     /// line. If the cursor is not on a bracket, the first bracket forward on the line is matched instead.
     MatchBracket,
+    /// Paragraph motion forward (`}`): to the start of the next blank line (or end of buffer). Exclusive
+    /// charwise as a bare move; under an operator Vim's exclusive-linewise rule can make it linewise (`d}`).
+    ParagraphFwd,
+    /// Paragraph motion backward (`{`): to the start of the previous blank line (or start of buffer).
+    ParagraphBack,
 }
 
 // --- shared byte / char-boundary / line helpers (one home; editor.rs reuses these) ---
@@ -345,6 +350,36 @@ fn paragraph_span(b: &[u8], cur: usize, around: bool) -> (usize, usize) {
         }
     }
     (s2, block_end)
+}
+
+/// The `}` target: the start of the next blank line strictly after the cursor's line, or the end of the
+/// buffer if there is none. Vim's paragraph-forward motion. Lands on a char boundary (a line start).
+fn next_para_boundary(b: &[u8], pos: usize) -> usize {
+    let mut ls = line_start(b, pos);
+    loop {
+        let le = line_end(b, ls);
+        if le >= b.len() {
+            return b.len();
+        }
+        ls = le + 1;
+        if is_blank_line(b, ls) {
+            return ls;
+        }
+    }
+}
+
+/// The `{` target: the start of the previous blank line strictly before the cursor's line, or the start of
+/// the buffer if there is none. Vim's paragraph-backward motion. Lands on a char boundary (a line start).
+fn prev_para_boundary(b: &[u8], pos: usize) -> usize {
+    let mut ls = line_start(b, pos);
+    while ls > 0 {
+        let prev_ls = line_start(b, ls - 1);
+        if is_blank_line(b, prev_ls) {
+            return prev_ls;
+        }
+        ls = prev_ls;
+    }
+    0
 }
 
 fn is_space_or_tab(c: u8) -> bool {
@@ -697,7 +732,19 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::Up => up(b, c),
             Motion::Down => down(b, c),
             Motion::LineStart => line_start(b, c),
-            Motion::LineEnd => line_end(b, c),
+            // A bare `$` lands ON the last char of the line (Vim never rests the cursor past it in Normal),
+            // unlike the `d$` operator span which reaches the line end — see `char_span`.
+            Motion::LineEnd => {
+                let ls = line_start(b, c);
+                let le = line_end(b, c);
+                if le > ls {
+                    prev_boundary(b, le)
+                } else {
+                    le
+                }
+            }
+            Motion::ParagraphFwd => next_para_boundary(b, c),
+            Motion::ParagraphBack => prev_para_boundary(b, c),
             Motion::WordFwd => next_word_start(b, c, false),
             Motion::WordBack => prev_word_start(b, c, false),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c, false)), // land ON the last char
@@ -734,9 +781,13 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
     let n = count.max(1);
     match m {
         // forward / rightward → [cursor, target)
-        Motion::Right | Motion::WordFwd | Motion::BigWordFwd | Motion::LineEnd => {
-            (cur, target(b, cur, m, n))
-        }
+        Motion::Right | Motion::WordFwd | Motion::BigWordFwd => (cur, target(b, cur, m, n)),
+        // `d$` reaches the line end (deletes the last char too), unlike the bare `$` move which stops on it.
+        Motion::LineEnd => (cur, line_end(b, cur)),
+        // Paragraph motions as a charwise span (`c}` / a Visual `}` extend): forward → [cursor, target),
+        // backward → [target, cursor). The operator's exclusive-linewise reshaping lives in `editor::op_span`.
+        Motion::ParagraphFwd => (cur, target(b, cur, m, n)),
+        Motion::ParagraphBack => (target(b, cur, m, n), cur),
         // inclusive end-of-word (Vim `de` / `dE`)
         Motion::WordEnd | Motion::BigWordEnd => {
             let big = m == Motion::BigWordEnd;
