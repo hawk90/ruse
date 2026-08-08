@@ -23,6 +23,7 @@ related:
 ---
 
 <!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+<!-- design-code-ack: RegisterStore — design ahead of code: v0 store is the unnamed slot + a-z named (A-Z appends into the lowercase slot), mirroring the last write to unnamed; the numbered delete-ring (1-9), "0 yank register, small_delete, and the kill_ring/arena/max_kill machinery land with the full D-026 model. -->
 
 # ruse Unified Register / Kill-Ring Model
 
