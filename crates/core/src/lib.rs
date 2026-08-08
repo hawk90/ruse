@@ -43,7 +43,7 @@ pub use editor::{apply_command, commit, plan, EditorState, IndentStyle, Mode, Pl
 pub use effect::Effect;
 pub use motion::Motion;
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};
-pub use register::Register;
+pub use register::{Register, RegisterStore};
 pub use snapshot::{AnchorIndex, DocumentSnapshot};
 pub use trace::{doc_hash, Trace, TraceError, TRACE_FORMAT_VERSION};
 pub use transaction::{GroupHint, Transaction, TransactionOrigin};

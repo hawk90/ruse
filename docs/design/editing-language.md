@@ -20,6 +20,7 @@ related:
 ---
 
 <!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
+<!-- design-code-ack: ChangeIntent — design ahead of code: v0 records {lead, insert} (the operator / insert-entry command plus the insert-session commands captured until <Esc>), replayed verbatim by `.` at the new cursor; the fuller {operator, count, target, inserted_text} decomposition is the intended model, deferred. -->
 
 # ruse Editing-Language Composition Engine (D-025)
 

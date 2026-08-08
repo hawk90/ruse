@@ -54,6 +54,106 @@ impl Register {
     }
 }
 
+/// The register STORE: the unnamed slot plus the 26 named slots `a`–`z` (D-026's additive expansion over
+/// the single-slot model). This is the minimal step past one unnamed register — the numbered delete-ring
+/// (`"1`–`"9`) and the yank register (`"0`) are still deferred (they are captured by the oracle but excluded
+/// from the ruse comparison), so nothing here fakes them.
+///
+/// Vim linkage (`:help registers`): a yank/delete/change into `"x` ALSO mirrors into the unnamed register
+/// (unnamed always reflects the LAST write); a plain, unregistered edit writes the unnamed slot only. An
+/// UPPERCASE name (`"A`–`"Z`) APPENDS to the lowercase slot instead of replacing it, and the unnamed slot
+/// then mirrors the full appended content.
+#[derive(Clone, Debug)]
+pub struct RegisterStore {
+    unnamed: Register,
+    /// Slots for `a`–`z`, indexed by `letter - 'a'`. Uppercase names append into the same 26 slots.
+    named: [Register; 26],
+}
+
+impl Default for RegisterStore {
+    fn default() -> RegisterStore {
+        RegisterStore {
+            unnamed: Register::default(),
+            named: std::array::from_fn(|_| Register::default()),
+        }
+    }
+}
+
+impl RegisterStore {
+    /// A fresh store: every slot empty.
+    #[must_use]
+    pub fn new() -> RegisterStore {
+        RegisterStore::default()
+    }
+
+    /// The unnamed register (the last write, whatever slot it targeted).
+    #[must_use]
+    pub fn unnamed(&self) -> &Register {
+        &self.unnamed
+    }
+
+    /// The slot index for an `a`–`z`/`A`–`Z` name, or `None` for any other char (an unsupported register).
+    fn index(name: char) -> Option<usize> {
+        name.is_ascii_alphabetic()
+            .then(|| (name.to_ascii_lowercase() as u8 - b'a') as usize)
+    }
+
+    /// Read a register for a paste. `None` → unnamed; a named letter (case-insensitive) → its slot; any
+    /// unsupported name falls back to the unnamed register rather than inventing an empty one.
+    #[must_use]
+    pub fn get(&self, name: Option<char>) -> &Register {
+        match name.and_then(Self::index) {
+            Some(i) => &self.named[i],
+            None => &self.unnamed,
+        }
+    }
+
+    /// Write a captured value on a yank/delete/change. `None` writes the unnamed slot only. A named letter
+    /// writes (lowercase) or appends (uppercase) into its slot, and mirrors the resulting content into the
+    /// unnamed slot (Vim's "unnamed reflects the last write"). An unsupported name degrades to unnamed-only.
+    pub fn write(&mut self, name: Option<char>, reg: Register) {
+        match name {
+            None => self.unnamed = reg,
+            Some(c) => match Self::index(c) {
+                Some(i) => {
+                    self.named[i] = if c.is_ascii_uppercase() {
+                        append(&self.named[i], &reg)
+                    } else {
+                        reg
+                    };
+                    self.unnamed = self.named[i].clone();
+                }
+                None => self.unnamed = reg,
+            },
+        }
+    }
+}
+
+/// Append `add` onto `existing`, matching Vim's `"A`-style accumulation. Appending into an empty slot just
+/// takes `add`. Charwise + charwise concatenates directly (`"Ayiw` twice → "foobar"); once either side is
+/// linewise the result is linewise, with a separating newline inserted only when a charwise head precedes a
+/// linewise tail (a linewise head already carries its trailing newline).
+fn append(existing: &Register, add: &Register) -> Register {
+    if existing.is_empty() {
+        return add.clone();
+    }
+    let mut bytes = existing.text().to_vec();
+    if existing.is_linewise() {
+        // Normalized linewise content already ends in '\n'; the tail joins straight on.
+        bytes.extend_from_slice(add.text());
+    } else if add.is_linewise() {
+        bytes.push(b'\n');
+        bytes.extend_from_slice(add.text());
+    } else {
+        bytes.extend_from_slice(add.text());
+    }
+    if existing.is_linewise() || add.is_linewise() {
+        Register::linewise(bytes)
+    } else {
+        Register::charwise(bytes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +182,59 @@ mod tests {
     #[test]
     fn default_is_empty() {
         assert!(Register::default().is_empty());
+    }
+
+    #[test]
+    fn store_named_write_mirrors_unnamed() {
+        // A write into `"a` fills the named slot AND the unnamed slot (Vim's last-write mirror).
+        let mut s = RegisterStore::new();
+        s.write(Some('a'), Register::charwise(b"foo".to_vec()));
+        assert_eq!(s.get(Some('a')).text(), b"foo");
+        assert_eq!(s.unnamed().text(), b"foo");
+        // A plain (unregistered) write touches unnamed only, leaving `"a` intact.
+        s.write(None, Register::charwise(b"bar".to_vec()));
+        assert_eq!(s.unnamed().text(), b"bar");
+        assert_eq!(
+            s.get(Some('a')).text(),
+            b"foo",
+            "named slot survives a plain write"
+        );
+    }
+
+    #[test]
+    fn store_uppercase_appends_charwise() {
+        // `"Ayiw` twice concatenates directly (matches the nvim oracle: "foo"+"bar" -> "foobar").
+        let mut s = RegisterStore::new();
+        s.write(Some('A'), Register::charwise(b"foo".to_vec()));
+        s.write(Some('A'), Register::charwise(b"bar".to_vec()));
+        assert_eq!(s.get(Some('a')).text(), b"foobar");
+        assert!(!s.get(Some('a')).is_linewise());
+        assert_eq!(
+            s.unnamed().text(),
+            b"foobar",
+            "unnamed mirrors the full appended content"
+        );
+    }
+
+    #[test]
+    fn store_uppercase_appends_linewise() {
+        // `"Ayy` twice accumulates whole lines (oracle: "alpha\n"+"beta\n").
+        let mut s = RegisterStore::new();
+        s.write(Some('A'), Register::linewise(b"alpha".to_vec()));
+        s.write(Some('A'), Register::linewise(b"beta".to_vec()));
+        assert!(s.get(Some('a')).is_linewise());
+        assert_eq!(s.get(Some('a')).text(), b"alpha\nbeta\n");
+    }
+
+    #[test]
+    fn store_read_case_insensitive_and_fallback() {
+        let mut s = RegisterStore::new();
+        s.write(Some('a'), Register::charwise(b"z".to_vec()));
+        assert_eq!(
+            s.get(Some('A')).text(),
+            b"z",
+            "uppercase reads the same slot"
+        );
+        assert!(s.get(Some('q')).is_empty(), "an untouched slot is empty");
     }
 }

@@ -48,6 +48,9 @@ struct ChangeIntent {
     /// The insert-session commands captured after an insert-entering `lead`, terminated by the
     /// `EnterNormal` that `<Esc>` produced. Empty for self-contained changes (`dw`, `x`, `>>`).
     insert: Vec<Command>,
+    /// The register the change targeted (`"a` before it), replayed so `.` reuses the SAME register (Vim).
+    /// `None` for an unregistered change; replay then omits the leading `SetRegister`.
+    register: Option<char>,
 }
 
 impl ChangeIntent {
@@ -59,7 +62,12 @@ impl ChangeIntent {
             Some(n) => with_count(&self.lead, n),
             None => self.lead.clone(),
         };
-        let mut cmds = Vec::with_capacity(1 + self.insert.len());
+        let mut cmds =
+            Vec::with_capacity(1 + self.insert.len() + usize::from(self.register.is_some()));
+        // Re-select the register first, so the replayed change writes to the same slot (`"ax` then `.`).
+        if self.register.is_some() {
+            cmds.push(Command::SetRegister(self.register));
+        }
         cmds.push(lead);
         cmds.extend(self.insert.iter().cloned());
         cmds
@@ -307,6 +315,10 @@ enum Awaiting {
     GSecond,
     /// After `r`: the next key is the replacement char.
     ReplaceChar,
+    /// After `"`: the next key is the register NAME (`a`–`z`, or `A`–`Z` to append). It arms a one-shot
+    /// pending register that the FOLLOWING yank/delete/change/paste targets — emitted as a
+    /// [`Command::SetRegister`] the core applies before that command. `"` itself does not reset the count.
+    RegisterSelect,
     /// After `>` / `<`: a matching second key completes the doubled shift operator (`>>` / `<<`); the
     /// `{count}` accumulated before it becomes the LINE count. Modelled like `gg`/`r` (a one-shot second
     /// key) rather than a full `Op` on the operator axis because only the doubled linewise form is wired —
@@ -336,6 +348,9 @@ pub struct InputEngine {
     /// An in-flight change being recorded: set when an insert-entering command fires, then extended with the
     /// insert-session commands until the terminating `<Esc>` (`EnterNormal`) closes it into `last_change`.
     recording: Option<ChangeIntent>,
+    /// The register named by the most recent `"x`, held only until the NEXT recorded change picks it up (so
+    /// `.` replays it). Cleared by any intervening non-register command — a stray `"x` then a motion forgets.
+    pending_record_register: Option<char>,
 }
 
 impl InputEngine {
@@ -350,6 +365,7 @@ impl InputEngine {
             last_search: None,
             last_change: None,
             recording: None,
+            pending_record_register: None,
         }
     }
 
@@ -497,11 +513,17 @@ impl InputEngine {
             }
             return;
         }
+        // `"x` selects the register the NEXT recorded change should carry — remembered, not itself a change.
+        if let Command::SetRegister(name) = cmd {
+            self.pending_record_register = *name;
+            return;
+        }
         match change_kind(cmd) {
             ChangeKind::InsertEntering => {
                 self.recording = Some(ChangeIntent {
                     lead: cmd.clone(),
                     insert: Vec::new(),
+                    register: self.pending_record_register.take(),
                 });
             }
             ChangeKind::Immediate => {
@@ -509,9 +531,11 @@ impl InputEngine {
                 self.last_change = Some(ChangeIntent {
                     lead: cmd.clone(),
                     insert: Vec::new(),
+                    register: self.pending_record_register.take(),
                 });
             }
-            ChangeKind::NotAChange => {}
+            // A non-change (motion, mode switch, yank) forgets a dangling register selection.
+            ChangeKind::NotAChange => self.pending_record_register = None,
         }
     }
 
@@ -572,6 +596,20 @@ impl InputEngine {
                     KeyCode::Char(c) => self.action(Command::ReplaceChar(self.mcount(), c)),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::RegisterSelect => {
+                self.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // A register name (`a`–`z` / `A`–`Z`): emit `SetRegister` for the core to hold as the
+                    // pending register the next yank/delete/change/paste reads. `action` clears the transient
+                    // axes — which is why the register PREFIX must precede a count (`"a3yy`, as in Vim).
+                    KeyCode::Char(c) if c.is_ascii_alphabetic() => {
+                        self.action(Command::SetRegister(Some(c)))
+                    }
+                    // Numbered/other registers are not modelled yet; a pending construct is in flight, so an
+                    // unusable name is `closed/abort` (operator-pending), leaking no state.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
@@ -661,6 +699,13 @@ impl InputEngine {
                 };
             }
             KeyCode::Char('%') => return self.motion(Motion::MatchBracket),
+            // `"x` — arm register selection. Deliberately does NOT reset the count/operator axes, so a
+            // count typed after it still lands (`"a3yy`). The next key is the register name (see the
+            // `RegisterSelect` tier above). Shared by Normal and Visual (Vim supports `"ayiw` and `"xy`).
+            KeyCode::Char('"') => {
+                self.awaiting = Awaiting::RegisterSelect;
+                return Feed::Pending;
+            }
             _ => {}
         }
         // Visual and Select: the selection already exists, so operators act on it directly and motions
@@ -1218,6 +1263,43 @@ mod tests {
     }
 
     #[test]
+    fn named_register_prefix_parses() {
+        // `"a` is pending until the name, then emits SetRegister; the following op is unaffected.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('"'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), Mode::Normal),
+            Feed::Cmd(Command::SetRegister(Some('a')))
+        );
+        // `"a3yy` → the count typed after the register prefix still lands.
+        let mut e = InputEngine::new();
+        e.feed(k('"'), Mode::Normal);
+        e.feed(k('a'), Mode::Normal);
+        e.feed(k('3'), Mode::Normal);
+        e.feed(k('y'), Mode::Normal);
+        assert_eq!(
+            e.feed(k('y'), Mode::Normal),
+            Feed::Cmd(Command::Yank(3, Motion::Line)),
+            "count after the register prefix still applies"
+        );
+        // Uppercase names (append) parse too.
+        let mut e = InputEngine::new();
+        e.feed(k('"'), Mode::Normal);
+        assert_eq!(
+            e.feed(k('A'), Mode::Normal),
+            Feed::Cmd(Command::SetRegister(Some('A')))
+        );
+        // `"` works in Visual as well (Vim `"xy`).
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual { line: false };
+        assert_eq!(e.feed(k('"'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), vis),
+            Feed::Cmd(Command::SetRegister(Some('a')))
+        );
+    }
+
+    #[test]
     fn yank_operator_and_paste() {
         assert_eq!(feed("yw"), Feed::Cmd(Command::Yank(1, Motion::WordFwd)));
         assert_eq!(feed("y2w"), Feed::Cmd(Command::Yank(2, Motion::WordFwd)));
@@ -1415,6 +1497,26 @@ mod dot_repeat_tests {
         e.feed(k('w'), Mode::Normal);
         assert!(e.last_change.is_none());
         assert_eq!(e.feed(k('.'), Mode::Normal), Feed::Ignored);
+    }
+
+    #[test]
+    fn named_register_change_replays_with_its_register() {
+        // `"ax` records DeleteUnder(1) carrying register a; `.` replays SetRegister(a) THEN the delete.
+        let (_, last) = feed_modes(&[k('"'), k('a'), k('x'), k('.')]);
+        assert_eq!(
+            last,
+            Feed::Replay(vec![
+                Command::SetRegister(Some('a')),
+                Command::DeleteUnder(1),
+            ])
+        );
+    }
+
+    #[test]
+    fn unregistered_change_replays_without_a_register() {
+        // A plain `x` after a stray-then-consumed register still replays bare (no leading SetRegister).
+        let (_, last) = feed_modes(&[k('x'), k('.')]);
+        assert_eq!(last, Feed::Replay(vec![Command::DeleteUnder(1)]));
     }
 
     #[test]
