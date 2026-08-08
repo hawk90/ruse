@@ -43,6 +43,12 @@ pub enum Command {
     ToggleCase(u32),
     /// `J` — join the current line with the next on a single space.
     JoinLines,
+    /// `{count}>>` — shift `count` lines one indent level to the right (Vim `>>`). Linewise: the count
+    /// is a LINE count, not a motion. The indent unit comes from the editor's indent config.
+    ShiftRight(u32),
+    /// `{count}<<` — shift `count` lines one indent level to the left (Vim `<<`). Symmetric inverse of
+    /// [`Command::ShiftRight`]: removes up to one indent level of leading whitespace, never past column 0.
+    ShiftLeft(u32),
     // editing grammar: count + motion / operator (Phase D)
     Move(u32, Motion),
     Delete(u32, Motion),
@@ -243,6 +249,8 @@ impl Command {
             Command::ReplaceChar(n, c) => format!("replace_char {n} {}", *c as u32),
             Command::ToggleCase(n) => format!("toggle_case {n}"),
             Command::JoinLines => "join_lines".into(),
+            Command::ShiftRight(n) => format!("shift_right {n}"),
+            Command::ShiftLeft(n) => format!("shift_left {n}"),
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
@@ -349,6 +357,18 @@ impl Command {
                 Command::ToggleCase(n)
             }
             "join_lines" => Command::JoinLines,
+            "shift_right" => {
+                let n: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::ShiftRight(n)
+            }
+            "shift_left" => {
+                let n: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::ShiftLeft(n)
+            }
             "move" => return op_cmd(arg, Command::Move),
             "delete" => return op_cmd(arg, Command::Delete),
             "change" => return op_cmd(arg, Command::Change),
@@ -408,6 +428,10 @@ mod tests {
             Command::ToggleCase(1),
             Command::ToggleCase(4),
             Command::JoinLines,
+            Command::ShiftRight(1),
+            Command::ShiftRight(3),
+            Command::ShiftLeft(1),
+            Command::ShiftLeft(2),
             Command::InsertChar('🎉'),
             Command::InsertChar(' '),
             Command::InsertNewline,

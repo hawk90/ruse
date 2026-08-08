@@ -49,12 +49,17 @@ DEFAULT_CORPUS = REPO_ROOT / "tests" / "parity" / "vim" / "fixtures" / "corpus.y
 
 INVOKE = "nvim --headless -u NONE -i NONE -l <script>"
 
-# The Lua probe. It sets the buffer, homes the cursor, feeds the keys SYNCHRONOUSLY, then reads state.
-# Every line after feedkeys is a pure read — this ordering is the non-corruption guarantee.
+# The Lua probe. It sets the buffer, homes the cursor, applies the fixture's optional `setup` ex command,
+# feeds the keys SYNCHRONOUSLY, then reads state. Every line after feedkeys is a pure read — this ordering
+# is the non-corruption guarantee. `setup` runs BEFORE feedkeys so it configures the very edit under test
+# (see the shift_right_line fixture: config-dependent ops need a config-matched oracle run).
 _LUA = r"""
 local input = vim.json.decode([==[ %s ]==])
 vim.api.nvim_buf_set_lines(0, 0, -1, false, input.lines)
 vim.api.nvim_win_set_cursor(0, {1, 0})
+if input.setup ~= nil and input.setup ~= '' then
+  vim.cmd(input.setup)
+end
 local tc = vim.api.nvim_replace_termcodes(input.keys, true, false, true)
 vim.api.nvim_feedkeys(tc, 'x', false)
 io.write(vim.json.encode({
@@ -144,14 +149,16 @@ def _regtype(rt: str) -> str:
     return rt
 
 
-def run_neovim(lines: list[str], keys: str) -> dict:
+def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
     """Run the pinned Neovim on `lines`, feed `keys` in Normal mode, and return the settled state.
 
     Returns {text, cursor:[row1,col0], reg_unnamed:{text,type}, reg0:{text,type}, mode, nvim_version}.
     The read happens strictly after synchronous feedkeys — see the module docstring for why that is
-    the whole point.
+    the whole point. `setup` is an optional ex command (e.g. `set shiftwidth=4 expandtab`) applied to the
+    fresh process before the keys, so a CONFIG-DEPENDENT op can be observed under a config that matches
+    ruse's defaults instead of nvim's factory defaults (see the shift_right_line fixture).
     """
-    payload = json.dumps({"lines": lines, "keys": keys})
+    payload = json.dumps({"lines": lines, "keys": keys, "setup": setup})
     src = _LUA % payload
     with tempfile.NamedTemporaryFile(
         "w", suffix=".lua", delete=False, encoding="utf-8"
@@ -222,7 +229,23 @@ FIXTURES: list[dict] = [
     {"name": "J_join_lines", "lines": ["foo", "bar"], "keys": "J"},
     {"name": "count_tilde", "lines": ["abcdef"], "keys": "3~"},
     {"name": "count_r", "lines": ["abcdef"], "keys": "3rz"},
-    {"name": "shift_right_line", "lines": ["hello"], "keys": ">>"},
+    # CONFIG-DEPENDENT (the only fixture that carries a `setup`): `>>` depends on three editor options.
+    # Every OTHER fixture is config-INDEPENDENT — its result is the same under nvim's factory defaults, so
+    # it needs no setup and its `expect` is a clean cross-editor claim. `>>` is not: its indent unit and its
+    # final cursor both hinge on config, so it is only a valid comparison against ruse when the oracle runs
+    # under a config MATCHING ruse's defaults (spec/config-schema.yaml):
+    #   editor.indent_style=space  -> `expandtab`      (indent with spaces, not a tab)
+    #   editor.tab_width=4         -> `shiftwidth=4`   (one indent level is 4 columns)
+    #   ruse homes the cursor to the first non-blank after a shift (Vim's classic `>>`); Neovim's `-u NONE`
+    #   default is `nostartofline`, which SUPPRESSES that cursor move, so `startofline` restores it.
+    # Under this config the oracle records `"    hello"` with the cursor on the first non-blank — which is
+    # exactly what ruse produces from its defaults. (Captured under nvim's own defaults it was a tab.)
+    {
+        "name": "shift_right_line",
+        "lines": ["hello"],
+        "keys": ">>",
+        "setup": "set shiftwidth=4 expandtab startofline",
+    },
     # --- edge-case corpus (impl/corpus-edgecases): CORNERS of already-implemented ops, chosen to
     #     surface subtle correctness bugs the way the earlier di( forward-scan bug was caught.
     #     word motions on punctuation / mixed classes / last word --------------------------------------
@@ -266,12 +289,20 @@ def generate(path: Path) -> int:
 
     fixtures = []
     for spec in FIXTURES:
-        state = run_neovim(spec["lines"], spec["keys"])
+        setup = spec.get("setup", "")
+        state = run_neovim(spec["lines"], spec["keys"], setup)
+        entry = {
+            "name": spec["name"],
+            "lines": spec["lines"],
+            "keys": spec["keys"],
+        }
+        # Emit `setup` only for the fixtures that carry one, so the corpus records exactly which runs were
+        # config-matched (and stays byte-identical for the config-independent majority).
+        if setup:
+            entry["setup"] = setup
         fixtures.append(
             {
-                "name": spec["name"],
-                "lines": spec["lines"],
-                "keys": spec["keys"],
+                **entry,
                 "expect": {
                     "text": state["text"],
                     "cursor": state["cursor"],

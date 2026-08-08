@@ -33,6 +33,18 @@ pub enum Mode {
     Select { line: bool },
 }
 
+/// The indentation unit a shift operator (`>>`/`<<`) applies, derived from the two editor config keys
+/// `editor.indent_style` (space|tab) and `editor.tab_width`. Modelled here rather than as ad-hoc constants
+/// so the shift commands read the same knobs a future runtime config loader will set — no NEW schema key is
+/// introduced (spec/config-schema.yaml already owns both). Defaults match the schema: spaces, width 4.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum IndentStyle {
+    /// `editor.indent_style = space`: one indent level is `editor.tab_width` spaces.
+    Space,
+    /// `editor.indent_style = tab`: one indent level is a single `\t`.
+    Tab,
+}
+
 impl Mode {
     /// Whether this mode carries a live selection (Visual or Select) — the anchor is `Some` exactly then.
     /// `line` is the selection's linewise flag when it has one.
@@ -60,6 +72,10 @@ pub struct EditorState {
     /// The Visual-mode selection anchor (the fixed end; the cursor is the moving end). `Some` exactly while
     /// in `Mode::Visual`. The full anchor-store-backed `Selection` set is deferred (D-027).
     anchor: Option<usize>,
+    /// `editor.tab_width` — one indent level's width in columns/spaces. Schema default 4.
+    tab_width: usize,
+    /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
+    indent_style: IndentStyle,
 }
 
 enum Action {
@@ -114,6 +130,27 @@ impl EditorState {
             last_was_edit: false,
             register: Register::default(),
             anchor: None,
+            // Schema defaults (spec/config-schema.yaml): editor.tab_width=4, editor.indent_style=space.
+            // Runtime config wiring is deferred (as with editor.scrolloff), so the shift operators read
+            // these fields, which currently always hold the defaults.
+            tab_width: 4,
+            indent_style: IndentStyle::Space,
+        }
+    }
+
+    /// Set the indentation config the shift operators (`>>`/`<<`) use. Runtime config loading is deferred;
+    /// until it lands this is the seam a loader (or a test) uses to install `editor.tab_width` /
+    /// `editor.indent_style`. No new schema key — both are existing keys (spec/config-schema.yaml).
+    pub fn set_indent(&mut self, tab_width: usize, indent_style: IndentStyle) {
+        self.tab_width = tab_width.max(1);
+        self.indent_style = indent_style;
+    }
+
+    /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
+    fn indent_unit(&self) -> Vec<u8> {
+        match self.indent_style {
+            IndentStyle::Space => vec![b' '; self.tab_width],
+            IndentStyle::Tab => vec![b'\t'],
         }
     }
 
@@ -630,6 +667,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 }
             }
         }
+        Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
+        Command::ShiftLeft(count) => plan_shift(st, cur, *count, false, hint),
         Command::Paste { after } => paste(b, cur, st.mode, &st.register, *after),
         Command::EnterVisual { line } => nop(cur, Mode::Visual { line: *line }),
         // CTRL-G toggle: enter Select over the same selection. The anchor is preserved because both are
@@ -742,6 +781,96 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             set_register: None,
             set_anchor: None,
         },
+    }
+}
+
+/// How many leading whitespace bytes one `<<` removes from the line at `ls`: a single leading tab, else up
+/// to `tab_width` leading spaces — one indent level, never crossing a non-blank char or the line end
+/// (`le`). Style-agnostic on purpose: a space-configured buffer that happens to start with a tab still
+/// unindents by that tab, matching Vim's "remove one shiftwidth of indent" for the common cases ruse models.
+fn shift_left_remove(b: &[u8], ls: usize, le: usize, tab_width: usize) -> usize {
+    if ls < le && b[ls] == b'\t' {
+        return 1;
+    }
+    let mut n = 0;
+    while n < tab_width && ls + n < le && b[ls + n] == b' ' {
+        n += 1;
+    }
+    n
+}
+
+/// Plan a linewise shift (`>>` / `<<`) over `count` lines from the cursor's line down. `right` adds one
+/// indent level to each line; `!right` removes up to one. Empty lines are never indented (Vim); the cursor
+/// lands on the first non-blank of the cursor's (first) line, exactly as Vim leaves it. The register is
+/// untouched. Edits are one-per-line at distinct line starts, so the [`EditList`] is disjoint by construction.
+fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: GroupHint) -> Plan {
+    let b = st.bytes();
+    let first_ls = line_start(b, cur);
+    let first_le = line_end(b, first_ls);
+    let old_fnb = motion::first_non_blank(b, first_ls);
+    let unit = st.indent_unit();
+
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut first_removed = 0usize;
+    let mut ls = first_ls;
+    for i in 0..count.max(1) {
+        let le = line_end(b, ls);
+        if right {
+            // Vim indents a whitespace-only line but never a truly EMPTY one (`ls == le`).
+            if ls < le {
+                edits.push(Edit::insert(ls, unit.clone()));
+            }
+        } else {
+            let remove = shift_left_remove(b, ls, le, st.tab_width);
+            if i == 0 {
+                first_removed = remove;
+            }
+            if remove > 0 {
+                edits.push(Edit::delete(ls, remove));
+            }
+        }
+        if le >= b.len() {
+            break; // no more lines — shifting fewer than `count` is fine (Vim clamps too).
+        }
+        ls = le + 1;
+    }
+
+    // Cursor: first non-blank of the FIRST shifted line, computed against the POST-edit buffer. Prepending
+    // `unit` (all blanks) shifts that line's first non-blank right by `unit.len()`; a `<<` shifts it left by
+    // the bytes removed. An empty line got no indent, so the cursor stays at its start. The all-blank-line
+    // case (fnb past the last char) is pulled back onto the last char by `commit`'s Normal-mode clamp.
+    let cursor = if right {
+        if first_ls < first_le {
+            old_fnb + unit.len()
+        } else {
+            first_ls
+        }
+    } else {
+        old_fnb - first_removed
+    };
+
+    if edits.is_empty() {
+        // Nothing to indent/unindent (e.g. `<<` at column 0, or `>>` on an empty line): a pure cursor move.
+        return Plan {
+            action: Action::Nop,
+            cursor,
+            mode: st.mode(),
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+        };
+    }
+    let edits = EditList::new(edits)
+        .expect("shift edits sit at distinct line starts, so they are disjoint");
+    Plan {
+        action: Action::Txn { edits, hint },
+        cursor,
+        mode: st.mode(),
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
     }
 }
 
@@ -1106,6 +1235,134 @@ mod single_key_edit_tests {
     fn join_on_last_line_is_noop() {
         let st = run("only", &[Command::JoinLines]);
         assert_eq!(text(&st), "only");
+    }
+}
+
+#[cfg(test)]
+mod shift_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn run_indent(initial: &str, tw: usize, style: IndentStyle, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        st.set_indent(tw, style);
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn shift_right_adds_tab_width_spaces_and_homes_to_first_non_blank() {
+        // Default config = 4 spaces. Matches the parity fixture shift_right_line (oracle `>>`).
+        let st = run("hello", &[Command::ShiftRight(1)]);
+        assert_eq!(text(&st), "    hello");
+        assert_eq!(st.cursor(), 4, "cursor lands on the first non-blank ('h')");
+        assert_eq!(
+            st.register().text(),
+            b"",
+            "shift does not touch the register"
+        );
+    }
+
+    #[test]
+    fn shift_right_stacks_onto_existing_indent() {
+        let st = run("  hi", &[Command::ShiftRight(1)]);
+        assert_eq!(text(&st), "      hi"); // 2 + 4 spaces
+        assert_eq!(st.cursor(), 6);
+    }
+
+    #[test]
+    fn shift_right_uses_a_tab_when_indent_style_is_tab() {
+        let st = run_indent("hello", 4, IndentStyle::Tab, &[Command::ShiftRight(1)]);
+        assert_eq!(text(&st), "\thello");
+        assert_eq!(st.cursor(), 1, "cursor after the one-byte tab, on 'h'");
+    }
+
+    #[test]
+    fn shift_right_leaves_a_truly_empty_line_untouched() {
+        let st = run("", &[Command::ShiftRight(1)]);
+        assert_eq!(text(&st), "", "Vim never indents an empty line");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn shift_right_count_shifts_multiple_lines_cursor_stays_on_first() {
+        let st = run("a\nb\nc", &[Command::ShiftRight(2)]);
+        assert_eq!(
+            text(&st),
+            "    a\n    b\nc",
+            "2>> shifts the first two lines"
+        );
+        assert_eq!(
+            st.cursor(),
+            4,
+            "cursor stays on the first line's first non-blank"
+        );
+    }
+
+    #[test]
+    fn shift_left_removes_one_level_of_spaces() {
+        let st = run("    hello", &[Command::ShiftLeft(1)]);
+        assert_eq!(text(&st), "hello");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn shift_left_removes_at_most_one_level() {
+        // 6 leading spaces, tab_width 4 -> removes 4, leaves 2.
+        let st = run("      hi", &[Command::ShiftLeft(1)]);
+        assert_eq!(text(&st), "  hi");
+        assert_eq!(st.cursor(), 2);
+    }
+
+    #[test]
+    fn shift_left_partial_indent_never_crosses_column_zero() {
+        let st = run("  hi", &[Command::ShiftLeft(1)]);
+        assert_eq!(
+            text(&st),
+            "hi",
+            "fewer than tab_width spaces: remove them all, no more"
+        );
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn shift_left_on_unindented_line_is_a_noop() {
+        let st = run("hi", &[Command::ShiftLeft(1)]);
+        assert_eq!(text(&st), "hi");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn shift_left_removes_a_leading_tab() {
+        let st = run("\thello", &[Command::ShiftLeft(1)]);
+        assert_eq!(text(&st), "hello");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn shift_right_then_left_round_trips() {
+        let st = run("hello", &[Command::ShiftRight(1), Command::ShiftLeft(1)]);
+        assert_eq!(text(&st), "hello", ">> then << restores the original");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn shift_is_undoable_as_one_edit() {
+        let st = run("a\nb", &[Command::ShiftRight(2), Command::Undo]);
+        assert_eq!(text(&st), "a\nb", "a single undo reverses the whole shift");
     }
 }
 

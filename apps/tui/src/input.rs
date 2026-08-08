@@ -206,6 +206,11 @@ enum Awaiting {
     GSecond,
     /// After `r`: the next key is the replacement char.
     ReplaceChar,
+    /// After `>` / `<`: a matching second key completes the doubled shift operator (`>>` / `<<`); the
+    /// `{count}` accumulated before it becomes the LINE count. Modelled like `gg`/`r` (a one-shot second
+    /// key) rather than a full `Op` on the operator axis because only the doubled linewise form is wired —
+    /// operator×motion (`>j`) is a deliberate carve-out, so a non-matching key aborts (operator-pending).
+    ShiftSecond { right: bool },
 }
 
 /// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
@@ -416,6 +421,16 @@ impl InputEngine {
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
+            Awaiting::ShiftSecond { right } => {
+                self.awaiting = Awaiting::Nothing;
+                // The count accumulated before the first `>`/`<` is still live and becomes the line count.
+                return match key.code {
+                    KeyCode::Char('>') if right => self.action(Command::ShiftRight(self.mcount())),
+                    KeyCode::Char('<') if !right => self.action(Command::ShiftLeft(self.mcount())),
+                    // Anything else (including the mismatched bracket, e.g. `><`): operator-pending abort.
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
             Awaiting::Nothing => {}
         }
         // `CTRL-G` toggles Visual<->Select over the SAME selection (Vim's documented behaviour). Handled
@@ -572,6 +587,15 @@ impl InputEngine {
             KeyCode::Char('d') => self.operator(Op::Delete, Command::Delete),
             KeyCode::Char('c') => self.operator(Op::Change, Command::Change),
             KeyCode::Char('y') => self.operator(Op::Yank, Command::Yank),
+            // `>`/`<` arm the doubled linewise shift; the second matching key emits it (see `ShiftSecond`).
+            KeyCode::Char('>') => {
+                self.awaiting = Awaiting::ShiftSecond { right: true };
+                Feed::Pending
+            }
+            KeyCode::Char('<') => {
+                self.awaiting = Awaiting::ShiftSecond { right: false };
+                Feed::Pending
+            }
             KeyCode::Char('p') => self.action(Command::Paste { after: true }),
             KeyCode::Char('P') => self.action(Command::Paste { after: false }),
             KeyCode::Char('i') if self.op.is_some() => {
@@ -804,6 +828,24 @@ mod tests {
             ),
             Feed::Cmd(Command::Redo)
         );
+    }
+
+    #[test]
+    fn shift_operators_doubled_and_counted() {
+        // `>>` / `<<` are the doubled linewise forms; the count before them is the line count.
+        assert_eq!(feed(">>"), Feed::Cmd(Command::ShiftRight(1)));
+        assert_eq!(feed("<<"), Feed::Cmd(Command::ShiftLeft(1)));
+        assert_eq!(feed("3>>"), Feed::Cmd(Command::ShiftRight(3)));
+        assert_eq!(feed("2<<"), Feed::Cmd(Command::ShiftLeft(2)));
+    }
+
+    #[test]
+    fn lone_shift_is_pending_then_aborts_on_mismatch() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('>'), Mode::Normal), Feed::Pending);
+        // A mismatched second bracket aborts cleanly (operator-pending), leaking no state.
+        assert_eq!(e.feed(k('<'), Mode::Normal), Feed::Ignored);
+        assert!(e.op.is_none() && e.awaiting == Awaiting::Nothing && e.count == 0);
     }
 
     #[test]
