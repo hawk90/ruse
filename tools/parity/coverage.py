@@ -133,13 +133,23 @@ def build(ups_doc: dict, inventories: dict) -> dict:
     oracles = ups_doc.get("oracles") or {}
     out["oracles"] = {k: {"status": v.get("status"),
                           "hazards": len(v.get("hazards") or [])} for k, v in sorted(oracles.items())}
+    try:
+        with open(repo.path("tests/parity/vim/fixtures/corpus.yaml"), encoding="utf-8") as fh:
+            corpus = yaml.safe_load(fh) or {}
+        n_fixtures = len(corpus.get("fixtures") or [])
+    except FileNotFoundError:
+        n_fixtures = 0
     out["behavioral"] = {
-        "fixtures": 0,
+        "fixtures": n_fixtures,
         "verified_items": sum(e.get("totals", {}).get("verified", 0)
                               for e in out["upstreams"].values()),
-        "note": "No fixture corpus exists yet. `oracle_selftest` in upstreams.yaml must pass before "
-                "any fixture is admitted: three oracle harnesses were tried and three corrupted "
-                "their own first observation.",
+        "note": "Differential fixtures live at tests/parity/vim/fixtures/ against the nvim oracle "
+                "(tools/parity/oracle.py; `--selftest` gates the corpus — three prior harnesses corrupted "
+                "their own first observation). verified/divergent is reported by "
+                "apps/tui/tests/parity_compare.rs, NOT counted here (it needs the running engine). "
+                "Fixtures are ATOMIC (single op) AND COMPOSITE (multi-step sessions); composite coverage "
+                "finds interaction bugs (dot-repeat/registers/paste) atomic fixtures cannot — required, "
+                "not optional. See docs/operations/testing-and-benchmarks.md #1.3.",
     }
     return out
 

@@ -190,9 +190,10 @@ upstreams:
         source_of_record: 'S: src/nvim/ex_cmds.lua'
         discovered: 557
         by_status:
-          unclassified: 557
-        classified: 0
-        unclassified: 557
+          unclassified: 528
+          intentionally-different: 29
+        classified: 29
+        unclassified: 528
         verified: 0
       map_mode:
         source_of_record: 'D: runtime/doc/map.txt'
@@ -206,9 +207,10 @@ upstreams:
         source_of_record: 'D: runtime/doc/index.txt'
         discovered: 708
         by_status:
-          unclassified: 708
-        classified: 0
-        unclassified: 708
+          unclassified: 674
+          targeted: 34
+        classified: 34
+        unclassified: 674
         verified: 0
         non_enumerable:
         - nvim.key.terminal.__surface__
@@ -222,10 +224,10 @@ upstreams:
         verified: 0
     totals:
       discovered: 1788
-      classified: 8
-      unclassified: 1780
+      classified: 71
+      unclassified: 1717
       verified: 0
-      classification_pct: 0.4
+      classification_pct: 4.0
       verification_pct: 0.0
     discovery:
       scope_enumerated: complete
@@ -261,7 +263,10 @@ oracles:
     status: usable-with-hazard
     hazards: 2
 behavioral:
-  fixtures: 0
+  fixtures: 94
   verified_items: 0
-  note: 'No fixture corpus exists yet. `oracle_selftest` in upstreams.yaml must pass before any fixture is admitted:
-    three oracle harnesses were tried and three corrupted their own first observation.'
+  note: 'Differential fixtures live at tests/parity/vim/fixtures/ against the nvim oracle (tools/parity/oracle.py;
+    `--selftest` gates the corpus — three prior harnesses corrupted their own first observation). verified/divergent
+    is reported by apps/tui/tests/parity_compare.rs, NOT counted here (it needs the running engine). Fixtures are
+    ATOMIC (single op) AND COMPOSITE (multi-step sessions); composite coverage finds interaction bugs (dot-repeat/registers/paste)
+    atomic fixtures cannot — required, not optional. See docs/operations/testing-and-benchmarks.md #1.3.'
