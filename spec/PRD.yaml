@@ -122,7 +122,7 @@ features:
       stack at depth 1 — sealed, editor-state-selected — each with a declared unmatched-key policy, its
       own owned state, and stack-based return; not one state machine with mode flags.
     trace:
-      parity: [VIM-MODE-1, VIM-MODE-6]
+      parity: [nvim.mapmode.norm, nvim.mapmode.opr]   # was VIM-MODE-1/6 — repointed onto the map_mode census (D-043)
       contract: [../spec/parity/contracts/keymap-layers.yaml, ../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/editing-language.md]
       verify: [../tests/parity/vim/namespaces.yaml, ../tests/parity/vim/mode-stack.yaml]
@@ -162,7 +162,8 @@ features:
     depends_on: [C-INPUT, C-UNDO]
     summary: The open/insert namespace — a printable key is text — with one-shot return and undo-group ownership.
     trace:
-      parity: [VIM-MODE-2, VIM-MODE-3, VIM-CNT-INS]
+      parity: [nvim.mapmode.ins, VIM-MODE-3, VIM-CNT-INS]   # Ins namespace onto census; VIM-MODE-3 (Replace) has NO map_mode namespace — it is the Ins overwrite policy, kept legacy
+
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/persistence-and-recovery.md]
       verify: [../tests/parity/vim/insert.yaml]
@@ -180,7 +181,7 @@ features:
     depends_on: [C-INPUT, C-ANCHOR]
     summary: Two namespaces over one selection state, separated by opposite unmatched-key policies.
     trace:
-      parity: [VIM-MODE-4, VIM-MODE-5]
+      parity: [nvim.mapmode.vis, nvim.mapmode.sel]   # was VIM-MODE-4/5 — repointed onto the map_mode census (D-043)
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/view-window-workspace.md]
       verify: [../tests/parity/vim/visual.yaml]
@@ -197,7 +198,8 @@ features:
     depends_on: [C-INPUT, C-COMMAND]
     summary: A real namespace with its own line editor, not an ad-hoc text buffer on the UI.
     trace:
-      parity: [VIM-MODE-7, VIM-MODE-8]
+      parity: [nvim.mapmode.cmd, VIM-MODE-8]   # Cmd namespace onto census; VIM-MODE-8 (Ex mode) is NOT a map_mode namespace (gQ-only; `Q` is replay per census_corrections) — kept legacy
+
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/command-engine.md]
       verify: [../tests/parity/vim/command-line.yaml]
@@ -351,7 +353,7 @@ features:
     depends_on: [C-TERMINAL, C-WORKSPACE, C-SCHEDULER]
     summary: A terminal emulator as a first-class buffer (Unix PTY + Windows ConPTY).
     trace:
-      parity: [TERM-PTY-1, TERM-PTY-2, WS-5, EMACS-PROC-2, VIM-JOB-1, EMACS-PROC-1, VIM-MODE-9]
+      parity: [TERM-PTY-1, TERM-PTY-2, WS-5, EMACS-PROC-2, VIM-JOB-1, EMACS-PROC-1, nvim.mapmode.term]   # VIM-MODE-9 -> map_mode census (D-043)
       design: [../docs/architecture/architecture.md#8]
       verify: [../tests/integration/pty-unix, ../tests/integration/conpty-windows]
     acceptance:
