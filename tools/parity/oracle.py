@@ -221,6 +221,7 @@ FIXTURES: list[dict] = [
     #     actions ------------------------------------------------------------------------------------
     {"name": "J_join_lines", "lines": ["foo", "bar"], "keys": "J"},
     {"name": "count_tilde", "lines": ["abcdef"], "keys": "3~"},
+    {"name": "count_r", "lines": ["abcdef"], "keys": "3rz"},
     {"name": "shift_right_line", "lines": ["hello"], "keys": ">>"},
 ]
 

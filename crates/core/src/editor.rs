@@ -244,6 +244,36 @@ fn selection_range(b: &[u8], anchor: usize, cursor: usize, line: bool) -> (usize
     }
 }
 
+/// Walk `count` char boundaries forward from `from`, never past `limit` (typically the line end).
+/// Returns the end byte offset; fewer than `count` chars available stops at `limit` (Vim's EOL clamp).
+fn advance_n(b: &[u8], from: usize, count: u32, limit: usize) -> usize {
+    let mut end = from;
+    for _ in 0..count {
+        if end >= limit {
+            break;
+        }
+        let nb = next_boundary(b, end).min(limit);
+        if nb == end {
+            break;
+        }
+        end = nb;
+    }
+    end
+}
+
+/// Like [`advance_n`] but reports whether the FULL `count` chars fit within `[from, limit)`. The bool
+/// is false when fewer than `count` chars remain — the signal `{count}r` uses to become a clean no-op.
+fn advance_n_checked(b: &[u8], from: usize, count: u32, limit: usize) -> (usize, bool) {
+    let mut end = from;
+    for _ in 0..count {
+        if end >= limit {
+            return (end, false);
+        }
+        end = next_boundary(b, end);
+    }
+    (end, true)
+}
+
 /// The pure decision for one command.
 #[must_use]
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
@@ -374,38 +404,68 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 edit(one(Edit::delete(p, cur - p)), p, st.mode, hint)
             }
         }
-        Command::DeleteUnder => {
-            if cur >= b.len() {
+        Command::DeleteUnder(count) => {
+            // `{count}x`: delete `count` chars from the cursor, clamped at end-of-line (Vim). Fewer than
+            // `count` chars left deletes to EOL. The removed span fills the unnamed register (charwise).
+            let le = line_end(b, cur);
+            let end = advance_n(b, cur, *count, le);
+            if end <= cur {
                 nop(cur, st.mode)
             } else {
-                let nb = next_boundary(b, cur);
-                // Vim: `x` yanks the deleted character(s) into the unnamed register (charwise).
-                let reg = captured(cur, nb, false);
-                edit_yank(one(Edit::delete(cur, nb - cur)), cur, st.mode, hint, reg)
+                let reg = captured(cur, end, false);
+                edit_yank(one(Edit::delete(cur, end - cur)), cur, st.mode, hint, reg)
             }
         }
-        Command::ReplaceChar(c) => {
-            // Replace the char under the cursor; a no-op at end-of-line / empty buffer or over a newline.
-            if cur >= b.len() || b[cur] == b'\n' {
+        Command::ReplaceChar(count, c) => {
+            // `{count}r{ch}`: replace `count` chars with `ch`. Per Vim it is a NO-OP if fewer than
+            // `count` chars remain on the line (never a partial replace). Cursor lands on the last one.
+            let le = line_end(b, cur);
+            let (end, reached) = advance_n_checked(b, cur, *count, le);
+            if !reached {
                 nop(cur, st.mode)
             } else {
-                let nb = next_boundary(b, cur);
                 let mut buf = [0u8; 4];
-                let bytes = c.encode_utf8(&mut buf).as_bytes().to_vec();
-                edit(one(Edit::replace(cur, nb - cur, bytes)), cur, st.mode, hint)
+                let one_ch = c.encode_utf8(&mut buf).as_bytes();
+                let mut bytes = Vec::with_capacity(one_ch.len() * *count as usize);
+                for _ in 0..*count {
+                    bytes.extend_from_slice(one_ch);
+                }
+                let last = cur + one_ch.len() * (*count as usize - 1);
+                edit(
+                    one(Edit::replace(cur, end - cur, bytes)),
+                    last,
+                    st.mode,
+                    hint,
+                )
             }
         }
-        Command::ToggleCase => {
-            // Toggle the ASCII case of the char under the cursor (if a letter), then move right (Vim `~`).
-            if cur >= b.len() || b[cur] == b'\n' {
+        Command::ToggleCase(count) => {
+            // `{count}~`: toggle the ASCII case of `count` chars, clamped at EOL, then leave the cursor
+            // past the last toggled char (Vim). Non-letters are consumed but left unchanged.
+            let le = line_end(b, cur);
+            let end = advance_n(b, cur, *count, le);
+            if end <= cur {
                 nop(cur, st.mode)
             } else {
-                let nb = next_boundary(b, cur);
-                if b[cur].is_ascii_alphabetic() {
-                    let flipped = vec![b[cur] ^ 0b0010_0000]; // ASCII case bit
-                    edit(one(Edit::replace(cur, 1, flipped)), nb, st.mode, hint)
+                let flipped: Vec<u8> = b[cur..end]
+                    .iter()
+                    .map(|&byte| {
+                        if byte.is_ascii_alphabetic() {
+                            byte ^ 0b0010_0000 // ASCII case bit
+                        } else {
+                            byte
+                        }
+                    })
+                    .collect();
+                if flipped == b[cur..end] {
+                    nop(end, st.mode) // nothing was a letter: `~` just moves right
                 } else {
-                    nop(nb, st.mode) // non-letter: `~` just moves right
+                    edit(
+                        one(Edit::replace(cur, end - cur, flipped)),
+                        end,
+                        st.mode,
+                        hint,
+                    )
                 }
             }
         }
@@ -788,7 +848,7 @@ mod register_tests {
         // The classic Vim idiom: `x` yanks the char, `p` puts it after the next one.
         let st = run(
             "abc",
-            &[Command::DeleteUnder, Command::Paste { after: true }],
+            &[Command::DeleteUnder(1), Command::Paste { after: true }],
         );
         assert_eq!(text(&st), "bac");
     }
@@ -868,7 +928,7 @@ mod single_key_edit_tests {
 
     #[test]
     fn replace_char_keeps_the_cursor() {
-        let st = run("abc", &[Command::MoveRight, Command::ReplaceChar('X')]);
+        let st = run("abc", &[Command::MoveRight, Command::ReplaceChar(1, 'X')]);
         assert_eq!(text(&st), "aXc");
         assert_eq!(st.cursor(), 1, "r leaves the cursor on the replaced char");
         assert_eq!(st.mode(), Mode::Normal);
@@ -876,7 +936,7 @@ mod single_key_edit_tests {
 
     #[test]
     fn replace_char_multibyte() {
-        let st = run("abc", &[Command::ReplaceChar('가')]);
+        let st = run("abc", &[Command::ReplaceChar(1, '가')]);
         assert_eq!(text(&st), "가bc");
     }
 
@@ -884,20 +944,60 @@ mod single_key_edit_tests {
     fn replace_over_newline_or_eol_is_noop() {
         let st = run(
             "ab\nc",
-            &[Command::Move(1, Motion::LineEnd), Command::ReplaceChar('X')],
+            &[
+                Command::Move(1, Motion::LineEnd),
+                Command::ReplaceChar(1, 'X'),
+            ],
         );
         assert_eq!(text(&st), "ab\nc", "r on the line-end newline does nothing");
     }
 
     #[test]
+    fn replace_char_with_count() {
+        // `3rz` replaces three chars and leaves the cursor on the last one.
+        let st = run("abcdef", &[Command::ReplaceChar(3, 'z')]);
+        assert_eq!(text(&st), "zzzdef");
+        assert_eq!(st.cursor(), 2, "cursor lands on the last replaced char");
+        // Fewer than `count` chars remain on the line: a clean no-op (Vim never partial-replaces).
+        let st = run("ab", &[Command::ReplaceChar(3, 'z')]);
+        assert_eq!(text(&st), "ab");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn delete_under_with_count() {
+        // `3x` deletes three chars into the unnamed register (charwise); clamps at EOL.
+        let st = run("abcdef", &[Command::DeleteUnder(3)]);
+        assert_eq!(text(&st), "def");
+        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.register().text(), b"abc");
+        assert!(!st.register().is_linewise());
+        // Fewer than `count` chars left: delete to EOL (not across the newline).
+        let st = run("abc\nxy", &[Command::DeleteUnder(9)]);
+        assert_eq!(text(&st), "\nxy");
+    }
+
+    #[test]
     fn toggle_case_flips_and_moves_right() {
-        let st = run("aBc", &[Command::ToggleCase]);
+        let st = run("aBc", &[Command::ToggleCase(1)]);
         assert_eq!(text(&st), "ABc");
         assert_eq!(st.cursor(), 1);
         // On a non-letter, `~` just moves right.
-        let st = run("1a", &[Command::ToggleCase]);
+        let st = run("1a", &[Command::ToggleCase(1)]);
         assert_eq!(text(&st), "1a");
         assert_eq!(st.cursor(), 1);
+    }
+
+    #[test]
+    fn toggle_case_with_count() {
+        // `3~` toggles three chars, leaving the cursor past the last (clamped at EOL).
+        let st = run("abcdef", &[Command::ToggleCase(3)]);
+        assert_eq!(text(&st), "ABCdef");
+        assert_eq!(st.cursor(), 3);
+        // Clamp: fewer than `count` chars left toggles to EOL.
+        let st = run("aB", &[Command::ToggleCase(9)]);
+        assert_eq!(text(&st), "Ab");
+        assert_eq!(st.cursor(), 2);
     }
 
     #[test]

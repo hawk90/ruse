@@ -738,6 +738,30 @@
       }
     },
     {
+      "name": "count_r",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "3rz",
+      "expect": {
+        "text": [
+          "zzzdef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "shift_right_line",
       "lines": [
         "hello"

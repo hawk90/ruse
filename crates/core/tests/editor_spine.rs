@@ -57,11 +57,11 @@ fn motions_and_deletes() {
     let mut st = EditorState::new(b"abc".to_vec());
     apply_command(&mut st, &Command::MoveRight); // cursor 1
     apply_command(&mut st, &Command::MoveRight); // cursor 2
-    apply_command(&mut st, &Command::DeleteUnder); // delete 'c'
+    apply_command(&mut st, &Command::DeleteUnder(1)); // delete 'c'
     assert_eq!(st.as_str(), Some("ab"));
     apply_command(&mut st, &Command::MoveLineStart);
     assert_eq!(st.cursor(), 0);
-    apply_command(&mut st, &Command::DeleteUnder); // delete 'a'
+    apply_command(&mut st, &Command::DeleteUnder(1)); // delete 'a'
     assert_eq!(st.as_str(), Some("b"));
 }
 
