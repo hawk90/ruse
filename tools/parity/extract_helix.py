@@ -64,7 +64,7 @@ OUT_DIR = "spec/parity/inventory/helix"
 UPSTREAMS = "spec/parity/upstreams.yaml"
 CACHE = ".ruse/cache/parity/helix"
 
-HUMAN_FIELDS = ("status", "ruse", "note", "superseded_by", "surface_locked")
+HUMAN_FIELDS = ("status", "ruse", "note", "superseded_by", "surface_locked", "family", "secondary")
 
 KEYMAP_RS = "helix-term/src/keymap/default.rs"
 COMMANDS_RS = "helix-term/src/commands.rs"

@@ -22,6 +22,7 @@ items:
   - D
   status: targeted
   ruse: contracts/vim-style.yaml#namespaces.normal
+  family: FAM-KEYMAP-MODEL
 - id: nvim.mapmode.ins
   surface: map_mode
   mode: Ins
@@ -33,6 +34,7 @@ items:
   - D
   status: targeted
   ruse: contracts/vim-style.yaml#namespaces.insert
+  family: FAM-KEYMAP-MODEL
 - id: nvim.mapmode.cmd
   surface: map_mode
   mode: Cmd
@@ -44,6 +46,7 @@ items:
   - D
   status: targeted
   ruse: contracts/vim-style.yaml#namespaces.command_line
+  family: FAM-KEYMAP-MODEL
 - id: nvim.mapmode.vis
   surface: map_mode
   mode: Vis
@@ -55,6 +58,7 @@ items:
   - D
   status: targeted
   ruse: contracts/vim-style.yaml#namespaces.visual
+  family: FAM-KEYMAP-MODEL
 - id: nvim.mapmode.sel
   surface: map_mode
   mode: Sel
@@ -66,6 +70,7 @@ items:
   - D
   status: targeted
   ruse: contracts/vim-style.yaml#namespaces.select
+  family: FAM-KEYMAP-MODEL
 - id: nvim.mapmode.opr
   surface: map_mode
   mode: Opr
@@ -76,6 +81,7 @@ items:
   - D
   status: targeted
   ruse: contracts/vim-style.yaml#namespaces.operator_pending
+  family: FAM-KEYMAP-MODEL
 - id: nvim.mapmode.term
   surface: map_mode
   mode: Term
@@ -85,6 +91,7 @@ items:
   - D
   status: targeted
   ruse: contracts/vim-style.yaml#namespaces.terminal
+  family: FAM-KEYMAP-MODEL
 - id: nvim.mapmode.lang
   surface: map_mode
   mode: Lang
@@ -94,5 +101,6 @@ items:
   - D
   status: targeted
   ruse: contracts/vim-style.yaml#namespaces.lang_arg
+  family: FAM-KEYMAP-MODEL
   note: Targeted by decision though ruse has no counterpart concept; the gap is tracked in concepts/irreconcilable.yaml#CONCEPT-LANG-ARG
     and needs a Decision before implementation.

@@ -85,7 +85,7 @@ OUT_DIR = "spec/parity/inventory/emacs"
 UPSTREAMS = "spec/parity/upstreams.yaml"
 
 # Preserved across regeneration — the human half of the census (mirrors extract_neovim.py).
-HUMAN_FIELDS = ("status", "ruse", "note", "superseded_by", "surface_locked")
+HUMAN_FIELDS = ("status", "ruse", "note", "superseded_by", "surface_locked", "family", "secondary")
 
 # The active-keymap precedence stack. This is the ONE surface here whose source of record is D, not
 # R: the ordering is defined by the command loop (src/keyboard.c) and documented in

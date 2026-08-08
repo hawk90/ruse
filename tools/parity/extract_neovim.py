@@ -51,7 +51,7 @@ OUT_DIR = "spec/parity/inventory/neovim"
 
 # Human-owned fields preserved across regeneration. Everything else is machine-derived and
 # overwritten from upstream on every run.
-HUMAN_FIELDS = ("status", "ruse", "note", "superseded_by", "surface_locked")
+HUMAN_FIELDS = ("status", "ruse", "note", "superseded_by", "surface_locked", "family", "secondary")
 
 # index.txt section heading -> ruse surface name. The section structure IS the evidence that Vim's
 # key namespaces are disjoint per mode; flattening it is what the hand-written catalog did.

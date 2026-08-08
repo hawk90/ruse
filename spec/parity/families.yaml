@@ -37,8 +37,8 @@
 #   not-in-census  not in upstreams.yaml at all                                  (asserted from docs only)
 #
 # LLM rules: `caps`/`prd`/`concepts` name real ids (spec/capabilities.yaml, spec/PRD.yaml, concepts/*.yaml).
-# `covers_surfaces` name real surfaces and appear ONLY on FAM-* (parity-fact). A PILLAR-* with no
-# `evidence_refs` is invalid. A POL-* with no `lint_id` is invalid. Any family citing only editors absent
+# `covers_surfaces` name real surfaces and appear ONLY on FAM-* (parity-fact). A PILLAR-* with neither
+# `evidence_refs` nor a `contract` is invalid. A POL-* with no `lint_id` is invalid. Any family citing only editors absent
 # from spec/parity/upstreams.yaml carries census_status: not-in-census.
 
 schema_version: 1
