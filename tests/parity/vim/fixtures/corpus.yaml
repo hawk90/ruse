@@ -2278,6 +2278,78 @@
       }
     },
     {
+      "name": "reg0_yank_then_paste",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "yiw$\"0p",
+      "expect": {
+        "text": [
+          "ab cdab"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "reg0_survives_delete",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "yiwwdiw\"0p",
+      "expect": {
+        "text": [
+          "foo foo"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "foo",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "reg0_named_yank_leaves_it_empty",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "\"ayiww\"0p",
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "mode_viwy_open_paste",
       "lines": [
         "hello"

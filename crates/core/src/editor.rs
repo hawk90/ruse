@@ -102,6 +102,14 @@ enum Action {
     SetPending(Option<char>),
 }
 
+/// How a committed command should route its captured text into the register store. A `Yank` additionally
+/// seeds the yank register `"0` (when unregistered); an `Edit` (delete/change/`x`) never touches `"0`, so
+/// `"0` survives intervening deletes (Vim `:help quote0`).
+enum RegWrite {
+    Edit(Register),
+    Yank(Register),
+}
+
 /// The pure result of [`plan`]: what a command would do, before any mutation.
 pub struct Plan {
     action: Action,
@@ -109,8 +117,9 @@ pub struct Plan {
     mode: Mode,
     is_edit: bool,
     effects: Vec<Effect>,
-    /// Text to store into the unnamed register on commit (a yank, or the text a delete/change removed).
-    set_register: Option<Register>,
+    /// Text to store into a register on commit — an `Edit` capture (delete/change) or a `Yank` (which also
+    /// seeds `"0`). `None` when the command writes no register.
+    set_register: Option<RegWrite>,
     /// A new selection anchor to install on commit — set only when a text object issued in a selection mode
     /// (`viw`/`vi(`) must move BOTH ends, unlike a bare motion that only moves the cursor. `None` leaves the
     /// anchor to the mode-transition logic in [`commit`].
@@ -410,7 +419,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             mode,
             is_edit: true,
             effects: Vec::new(),
-            set_register: Some(reg),
+            set_register: Some(RegWrite::Edit(reg)),
             set_anchor: None,
         };
     // Capture `b[s..e]` as a register value with the given geometry.
@@ -679,7 +688,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                         mode: Mode::Insert,
                         is_edit: false,
                         effects: Vec::new(),
-                        set_register: Some(reg),
+                        set_register: Some(RegWrite::Edit(reg)),
                         set_anchor: None,
                     }
                 } else {
@@ -724,7 +733,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     mode: st.mode,
                     is_edit: false,
                     effects: Vec::new(),
-                    set_register: Some(reg),
+                    set_register: Some(RegWrite::Yank(reg)),
                     set_anchor: None,
                 }
             }
@@ -836,7 +845,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     mode: Mode::Normal,
                     is_edit: false,
                     effects: Vec::new(),
-                    set_register: Some(reg),
+                    set_register: Some(RegWrite::Yank(reg)),
                     set_anchor: None,
                 },
                 Command::DeleteSelection if s < e => {
@@ -895,7 +904,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                         mode: st.mode,
                         is_edit: false,
                         effects: Vec::new(),
-                        set_register: Some(reg),
+                        set_register: Some(RegWrite::Yank(reg)),
                         set_anchor: None,
                     }
                 }
@@ -1168,8 +1177,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     }
     // A yank/delete/change writes its captured span into the pending register (or unnamed when none),
     // mirroring the unnamed slot on a named write; append (`"A`) is handled inside the store.
-    if let Some(reg) = plan.set_register {
-        st.registers.write(st.pending_register, reg);
+    match plan.set_register {
+        Some(RegWrite::Edit(reg)) => st.registers.write(st.pending_register, reg),
+        Some(RegWrite::Yank(reg)) => st.registers.yank(st.pending_register, reg),
+        None => {}
     }
     // Maintain the selection anchor: set it when entering a selection mode (Visual/Select; the fixed end
     // is where the cursor was), keep it while staying in one — including across a Visual↔Select CTRL-G
