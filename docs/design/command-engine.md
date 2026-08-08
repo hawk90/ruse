@@ -128,8 +128,9 @@ This doc **depends on and enforces** (does not mint — single-registry rule, D-
 - **INV-CMD-SEMANTIC** — a Command has a stable namespaced id, typed args, decoupled from any binding/
   command-line string; keymaps resolve *onto* commands. *This doc is its primary realization.* Guards
   CMD-1/6/7/8.
-- **INV-PRIORITY** — key resolution follows the fixed priority ABI (temporary state → active view →
-  buffer-local mode → workspace → user → plugin-explicit → plugin-suggested → built-in); plugins cannot force
+- **INV-PRIORITY** — key resolution follows two ordered axes (D-046): the *scope* layer stack (temporary
+  state → active view → buffer-local; decided, D-045) then *provenance* within the winning layer (workspace →
+  user → plugin-explicit → plugin-suggested → built-in; ordering still open, D-008); plugins cannot force
   global keys. *The Context Key Resolver §5 implements this.* Guards PROFILE-3/6/7.
 - **INV-PROFILE-ISOLATION** — profiles never share a key space; a real conflict = same profile + sequence +
   overlapping context + same priority, detected statically (§5.3). Guards PROFILE-1/4/5.
@@ -563,6 +564,12 @@ The palette (§7) calls the *same* `availability` to decide what to list — so 
 The resolver turns a **key sequence** into a **command invocation**, or reports a static conflict. It is the
 concrete realization of [architecture §1.3–§1.4 / §12](../architecture/architecture.md) and EMACS-KEYMAP-2.
 
+**Two axes, not one tier integer (D-046).** The walk is: descend the **layer** stack by rank until a layer
+binds (a `sealed` layer stops the walk and applies its own `unmatched_key` policy — the mechanism is
+[`keymap-layers.yaml`](../../spec/parity/contracts/keymap-layers.yaml)); then, among the candidates in that
+layer whose `when` holds, **provenance** picks the winner. `SubOrder` is gone: it existed only to carry V-28's
+"tier 3 is secretly an ordered sub-list", and a sub-list member is now just another layer.
+
 #### 5.1 Binding
 
 ```rust
@@ -570,8 +577,8 @@ pub struct Binding {
     pub profile:  ProfileId,          // isolation: a resolution only ever considers the active profile
     pub sequence: KeySequence,
     pub when:     Option<WhenExpr>,    // context predicate (compiled)
-    pub tier:     PriorityTier,        // the §1.4 ABI tier (provisional numbers, D-008)
-    pub sub_order:SubOrder,            // intra-tier ordering (ordered minor modes / overlay > major, V-28)
+    pub layer:    LayerId,             // SCOPE axis — which keymap layer this binds into (D-045)
+    pub provenance: ProvenanceTier,    // PROVENANCE axis — who registered it (provisional order, D-008)
     pub command:  CommandId,
     pub args:     ArgTemplate,         // pre-bound args (e.g. placement='after' for `p`)
     pub origin:   BindingOrigin,       // builtin | userProfile | workspace | pluginExplicit | pluginSuggested
@@ -870,10 +877,13 @@ registry so id stability is enforced from day one.
   consistency (assertion catches).
 - **`C-CONTEXT` evaluator** — grammar round-trips; parse-time type errors rejected; totality (unset keys,
   random Contexts never panic); `refs`-based invalidation correctness; `=~`/`in` semantics.
-- **Priority ABI (INV-PRIORITY)** — resolution picks the correct tier/sub-order winner across the §1.4 tiers
-  incl. ordered minor modes + overlay>major (V-28); transient/operator-pending tier-1 precedence.
+- **Priority axes (INV-PRIORITY)** — resolution descends the layer stack and stops at the first binding
+  layer, honouring `sealed`; ordered minor modes and overlay>major (V-28) resolve as ordinary layer ranks, not
+  as an intra-tier sub-list; operator-pending is the top-rank layer; provenance then decides within the
+  winning layer.
 - **Static conflict detection (INV-PROFILE-ISOLATION)** — mutually-exclusive `when` ⇒ no conflict;
-  overlapping-context same-tier same-seq ⇒ conflict reported; new binding disabled until resolved.
+  **different layers ⇒ no conflict** (the stack already orders them); overlapping-context, same layer, same
+  provenance, same seq ⇒ conflict reported; new binding disabled until resolved.
 - **Typed args** — `Acquire` chains (prompt/pick/from-context), defaults, missing/ bad-arg errors; `Count` vs
   `RawPrefix` distinction (EMACS-ARG); `Range`/`Pattern` coerced to IR, not strings.
 - **Macros (command sequences)** — record captures Invocations not keys; replay carries `Origin::Macro` and

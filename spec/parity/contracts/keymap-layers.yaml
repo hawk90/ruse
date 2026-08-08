@@ -36,7 +36,7 @@ version: 1
 contract: keymap-layers
 scope: kernel
 component: C-INPUT
-decided_by: D-045
+decided_by: [D-045, D-046]
 status: draft
 
 # ---------------------------------------------------------------------------------------------
@@ -52,6 +52,34 @@ model:
     failure mode this whole layer exists to prevent: `apps/tui/src/input.rs` already special-cases
     Insert ahead of a single `Feed::Ignored` fallthrough, which is one `closed/ignore` policy
     standing in for the five `open` ones vim-style.yaml enumerates.
+
+# ---------------------------------------------------------------------------------------------
+# WHICH AXIS THIS CONTRACT OWNS (D-046). ruse already had a keymap-ordering model before this one:
+# the eight-tier "priority ABI" (INV-PRIORITY, architecture.md §1.4, D-008). It is not a competitor and
+# it is not superseded — it was one list answering two questions, and D-046 separates them.
+axes:
+  scope:
+    owns: this contract
+    question: "which keymaps are consulted at all, and in what order?"
+    absorbs: "priority-ABI tiers 1-3 (temporary state, active widget/view, buffer-local mode) as three ranks"
+    decided_by: D-045
+    note: >
+      Old tier 3 carried a hand-written exception — V-28, "not flat: stacked minor modes are an ORDERED
+      sub-list and text-span maps rank just above the major-mode map." That exception disappears here: a
+      sub-list member is just another layer. An exception that dissolves when the primitive changes is
+      evidence the primitive was wrong, not that the exception was.
+  provenance:
+    owns: contracts/… (none yet)
+    question: "when two sources bind the same key WITHIN one layer, whose binding wins?"
+    absorbs: "priority-ABI tiers 4-8 (workspace, user, plugin-explicit, plugin-suggested, built-in)"
+    decided_by: D-008
+    status: open
+    note: >
+      Explicitly NOT this contract's business, and the boundary is load-bearing: no upstream census can
+      attest it (no editor publishes a table of who registered a binding), so it waits on F-016 and real
+      plugins. A binding carries a `(layer, provenance)` pair; `sealed` and `unmatched_key` are properties
+      of the LAYER only. If a provenance tier ever needs to reorder layers rather than bindings inside one,
+      the two axes stop being independent — that is D-046's stated re-evaluation trigger.
 
 layer_fields:
   rank:          "integer; higher is consulted first. Ties are a definition error, not a runtime tiebreak."

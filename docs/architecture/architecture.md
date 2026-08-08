@@ -315,19 +315,33 @@ same profile
 One reason the Neovim ecosystem gets complicated is load order and mapping overrides. Here, lock
 the priority rules **like an ABI** (lower number = higher priority):
 
+**SCOPE axis** — *which keymaps are consulted, in what order* (decided; D-045 layer stack):
+
 1. **Temporary state** — Vim operator-pending, Emacs prefix, popup navigation
 2. **Active widget/view** — Git, file tree, debugger, picker
 3. **Buffer-local mode** — Rust, Markdown, terminal, diff
+
+**PROVENANCE axis** — *within the winning layer, whose binding wins* (principle locked, ordering open; D-008):
+
 4. **Workspace override**
 5. **User profile override**
 6. **Plugin explicit binding**
 7. **Plugin suggested binding**
 8. **Built-in profile default**
 
-> **Intra-tier ordering (verification V-28):** tier 3 ("Buffer-local mode") is not flat — like Emacs, stacked
-> minor modes form an **ordered** sub-list within the tier, and text-span (overlay) keymaps rank just above
-> the major-mode map. The priority ABI must carry that ordered sub-list, not collapse all buffer-local maps
-> into one rank.
+> **These are two axes, not eight tiers (D-046).** The original single list conflated "is this keymap in
+> scope?" with "who registered this binding?", which is why the whole of D-008 stayed open: the half that
+> needs real plugins to validate (4–8) was holding open the half three upstream censuses already attest
+> (1–3). A binding carries a `(layer, provenance)` pair. Resolution walks **layers** by rank; within the
+> layer that binds, **provenance** picks the winner. `sealed` and `unmatched_key` belong to the layer only,
+> and a plugin never installs a layer — only bindings into one. The mechanism is
+> [`spec/parity/contracts/keymap-layers.yaml`](../../spec/parity/contracts/keymap-layers.yaml).
+>
+> **Verification V-28 is now satisfied by construction.** It required tier 3 to be "not flat — stacked minor
+> modes are an *ordered* sub-list, and text-span (overlay) keymaps rank just above the major-mode map."
+> Under the layer stack a sub-list member is simply another layer, so the exception dissolves rather than
+> needing to be carried. The Emacs census is what made this visible: **613 of its 1,952 keyboard bindings
+> live in major-mode maps**, i.e. old tier 3 alone had to hold a nine-deep stack of its own.
 
 The most important distinction is **Plugin explicit binding vs Plugin suggested binding.**
 **By default a plugin cannot forcibly register a global key.** A plugin only *suggests*; the user

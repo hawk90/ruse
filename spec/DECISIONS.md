@@ -70,11 +70,13 @@ related:
 - **Re-evaluate:** per-feature as parity CI matures.
 - Refs: docs/parity/README.md, docs/architecture/design-requirements.md §2.
 
-## D-008 — Profile > plugin keymap priority · decided (principle) / open (exact tiers)
+## D-008 — Profile > plugin keymap priority · decided (principle) / open (exact tiers) · NARROWED by D-046
 - **Decision (principle, locked):** profiles are isolated (never share a key space); user overrides beat
   plugin bindings; plugins cannot force global keys; real conflicts are detected statically.
-- **Open (do not lock yet):** the exact 8-tier ordering (esp. plugin-explicit vs plugin-suggested) — those
-  tiers cannot be validated until an input engine and real plugins exist. Locking them now would violate
+- **Open (do not lock yet):** the exact ordering of the **provenance** tiers (workspace → user →
+  plugin-explicit → plugin-suggested → built-in; esp. the last two) — those cannot be validated until an
+  input engine and real plugins exist. *(D-046 narrowed this: former tiers 1-3 were never a provenance
+  question at all and are now the D-045 scope axis, decided on census evidence. Only tiers 4-8 remain here.)* Locking them now would violate
   D-010/APIX ("don't stabilize the unvalidated"). Treat the current ordering as provisional.
 - **Reason:** predictable conflicts + user control are safe now; fine-grained tiers are not.
 - **Re-evaluate:** finalize tiers once F-003 (input) and F-016 (plugins) exist.
@@ -555,3 +557,36 @@ related:
   still `pending`); if re-dispatch cannot be expressed as a layer that rewrites and yields, the stack needs a
   second mechanism and this decision is incomplete rather than wrong.
 - Refs: [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), [parity/contracts/keymap-layers.yaml](parity/contracts/keymap-layers.yaml), [parity/contracts/vim-style.yaml](parity/contracts/vim-style.yaml), D-043, D-044, F-003, F-016, C-INPUT, C-EDITLANG.
+
+## D-046 — Keymap priority is TWO axes (scope, provenance), not one eight-tier list · decided
+- **Decision:** the "priority ABI" of [architecture §1.4](../docs/architecture/architecture.md) is split into
+  two independent axes, and `C-INPUT` resolves them in this order:
+  1. **Scope** — *which keymaps are consulted at all, and in what order.* This is D-045's ordered layer
+     stack, and it absorbs ABI tiers **1–3** (temporary state → active widget/view → buffer-local mode)
+     as three ranks of one stack. Old tier 3's V-28 "ordered sub-list, not flat" stops being a special
+     case: sub-list members are simply more layers.
+  2. **Provenance** — *when two sources bind the same key **within one layer**, whose binding wins.*
+     This is ABI tiers **4–8** (workspace → user → plugin-explicit → plugin-suggested → built-in), and it
+     stays exactly as D-008 left it: principle locked, exact ordering open.
+  A binding therefore carries a `(layer, provenance)` pair. Resolution walks layers by rank (D-045); within
+  the layer that binds, provenance decides the winner; `unmatched_key` and `sealed` are properties of the
+  layer, never of a provenance tier.
+- **Reason:** the one-list form makes the two questions look like one, and that is why the *whole* of D-008
+  has been open since it was written. Tiers 1–3 are now attested by three censuses — Neovim's eight
+  namespaces, Emacs's nine buffer-selected tiers, Helix's derived mode — and need no plugin to validate.
+  Tiers 4–8 are about who *registered* a binding, a question no upstream census can answer and which
+  genuinely waits on F-016. Splitting the axes lets the evidence-backed half close now instead of being
+  held open by the half that cannot be validated yet. It also removes a live hazard: two models of one
+  mechanism existed in the spec — `keymap-layers.yaml` (rank/sealed/unmatched_key) and the priority ABI
+  (eight tiers) — neither citing the other, so F-003 would have implemented whichever its author read first.
+- **Consequence:** INV-PRIORITY is restated over the two axes rather than the flat tier list; D-008 is
+  narrowed to provenance only and remains `open` there. `keymap-layers.yaml` gains the provenance field as
+  a declared NON-goal of the layer primitive, so the contract is explicit about the axis it does not own.
+  Static conflict detection (INV-PROFILE-ISOLATION) is unchanged and now has a sharper definition of
+  "same priority": same layer **and** same provenance tier.
+- **Re-evaluate if:** a real profile needs provenance to reorder *layers* rather than bindings within one —
+  e.g. a plugin that must install a whole layer above the user's. That would make the axes interdependent
+  and this split would need a joining rule rather than two independent orders.
+- Refs: D-008 (narrowed), D-045, INV-PRIORITY, INV-PROFILE-ISOLATION,
+  [parity/contracts/keymap-layers.yaml](parity/contracts/keymap-layers.yaml),
+  [../docs/design/input-engine.md](../docs/design/input-engine.md), F-003, F-016, C-INPUT.
