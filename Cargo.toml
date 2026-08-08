@@ -1,6 +1,8 @@
-# ruse — Cargo workspace. Crate layout mirrors docs/README.md §Target Repository Layout and the PRD
-# component layers (kernel < input < tui < workspace < plugin < remote). This is a compiling SKELETON:
-# modules are stubs pending the design docs under docs/design/ (spec-first). `cargo test` passes empty.
+# ruse — Cargo workspace. Two crates today (RFC-0012 collapse): crates/core — the dependency-free kernel
+# (document, transaction, undo, anchors, registers, editing grammar) — and apps/tui — the `ruse` binary
+# (Vim input engine + terminal rendering). Later PRD component layers (workspace < plugin < remote) add
+# crates as the build order reaches them. The two crates are implemented and tested (`cargo test` runs a
+# real suite incl. a Neovim-oracle parity comparator); version stays 0.0.0 until the MVP milestone.
 [workspace]
 resolver = "2"
 members = ["crates/*", "apps/*"]
