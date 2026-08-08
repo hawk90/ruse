@@ -73,6 +73,10 @@ pub enum Command {
     DeleteSelection,
     YankSelection,
     ChangeSelection,
+    /// Visual/Select `o` — swap the selection's two ends: the cursor jumps to the anchor and the anchor
+    /// becomes the old cursor position. The SAME text stays selected, but subsequent motions now extend
+    /// the OTHER end. Involutive (`oo` restores the original ends); a clean no-op outside a selection.
+    SwapSelectionEnds,
     /// Select's `open/replace-selection` policy: a printable key deletes the selection, inserts the char,
     /// and enters Insert. The one behaviour that distinguishes Select from Visual over identical state.
     ReplaceSelection(char),
@@ -282,6 +286,7 @@ impl Command {
             Command::DeleteSelection => "delete_selection".into(),
             Command::YankSelection => "yank_selection".into(),
             Command::ChangeSelection => "change_selection".into(),
+            Command::SwapSelectionEnds => "swap_selection_ends".into(),
             Command::ReplaceSelection(c) => {
                 let mut s = String::from("replace_selection ");
                 let _ = write!(s, "{}", *c as u32);
@@ -395,6 +400,7 @@ impl Command {
             "delete_selection" => Command::DeleteSelection,
             "yank_selection" => Command::YankSelection,
             "change_selection" => Command::ChangeSelection,
+            "swap_selection_ends" => Command::SwapSelectionEnds,
             "replace_selection" => {
                 let cp: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -561,6 +567,7 @@ mod tests {
             Command::DeleteSelection,
             Command::YankSelection,
             Command::ChangeSelection,
+            Command::SwapSelectionEnds,
             Command::ReplaceSelection('z'),
             Command::ReplaceSelection('가'),
             Command::ReplaceSelection('🎉'),

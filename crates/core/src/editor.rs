@@ -741,6 +741,24 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 None => edit(one(Edit::insert(cur, ins)), cur + n, Mode::Insert, hint),
             }
         }
+        Command::SwapSelectionEnds => {
+            // Visual/Select `o`: exchange the two ends. The cursor jumps to the anchor; the anchor becomes
+            // the old cursor (`set_anchor`, which `commit` installs). The SAME text stays selected, but a
+            // later bare motion now extends the OTHER end (it re-plans against the new anchor). Involutive.
+            // Outside a selection (no anchor) it is a clean no-op.
+            match (st.mode.selection(), st.anchor) {
+                (Some(_), Some(anchor)) => Plan {
+                    action: Action::Nop,
+                    cursor: anchor,
+                    mode: st.mode,
+                    is_edit: false,
+                    effects: Vec::new(),
+                    set_register: None,
+                    set_anchor: Some(cur),
+                },
+                _ => nop(cur, st.mode),
+            }
+        }
         Command::YankSelection | Command::DeleteSelection | Command::ChangeSelection => {
             let line = matches!(
                 st.mode,
@@ -1218,6 +1236,95 @@ mod register_tests {
         assert_eq!(st.mode(), Mode::Insert);
         assert!(st.register().is_linewise());
         assert_eq!(st.register().text(), b"  hello\n");
+    }
+}
+
+#[cfg(test)]
+mod visual_swap_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn swap_then_extend_then_delete() {
+        // Parity fixture visual_o_swap_then_extend on "abcde": `lll`→col3, `v` anchors col3, `h`→col2
+        // (sel "c"), `o` swaps (cursor col3, anchor col2), `l`→col4 (sel "cde"), `d` deletes it → "ab".
+        let st = run(
+            "abcde",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::Move(1, Motion::Right),
+                Command::Move(1, Motion::Right),
+                Command::EnterVisual { line: false },
+                Command::Move(1, Motion::Left),
+                Command::SwapSelectionEnds,
+                Command::Move(1, Motion::Right),
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "ab");
+        assert_eq!(st.register().text(), b"cde");
+        assert!(!st.register().is_linewise());
+        assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn swap_is_involutive() {
+        // `oo` restores the original selection span (both ends back where they were).
+        let base = run(
+            "abcde",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::Move(1, Motion::Right),
+                Command::Move(1, Motion::Right),
+                Command::EnterVisual { line: false },
+                Command::Move(1, Motion::Left),
+            ],
+        );
+        let span_before = base.selection_span();
+        let cur_before = base.cursor();
+
+        let mut st = base;
+        apply_command(&mut st, &Command::SwapSelectionEnds);
+        apply_command(&mut st, &Command::SwapSelectionEnds);
+        assert_eq!(st.selection_span(), span_before, "oo restores the span");
+        assert_eq!(st.cursor(), cur_before, "oo restores the active end");
+    }
+
+    #[test]
+    fn swap_keeps_the_selected_span() {
+        // A single `o` leaves the SAME text selected — only the active end changes.
+        let mut st = run(
+            "abcde",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::EnterVisual { line: false },
+                Command::Move(1, Motion::Right),
+                Command::Move(1, Motion::Right),
+            ],
+        );
+        let span_before = st.selection_span();
+        apply_command(&mut st, &Command::SwapSelectionEnds);
+        assert_eq!(st.selection_span(), span_before, "swap preserves the span");
+    }
+
+    #[test]
+    fn swap_outside_a_selection_is_a_noop() {
+        let st = run("abcde", &[Command::SwapSelectionEnds]);
+        assert_eq!(text(&st), "abcde");
+        assert_eq!(st.cursor(), 0);
+        assert_eq!(st.mode(), Mode::Normal);
+        assert!(st.selection_span().is_none());
     }
 }
 
