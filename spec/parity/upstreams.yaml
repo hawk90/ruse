@@ -122,7 +122,7 @@ upstreams:
     # one does not. Helix is pinned to make three OBSERVABLES observable
     # (concepts/irreconcilable.yaml#observables: OBS-BARE-MOTION, OBS-SELECTION-PERSISTENCE,
     # OBS-DOT-REPEAT-UNIT), whose selection-first column was asserted from documentation because no
-    # selection-first editor was pinned. Those observables decide D-EDITLANG-PRIMITIVE, which blocks
+    # selection-first editor was pinned. Those observables decide D-047, which blocks
     # C-EDITLANG and C-INPUT — and F-003 ships in the `usable-vim-tui` MVP phase, so the kernel
     # primitive gets chosen either way; the only question is whether on observed or asserted evidence.
     #

@@ -141,7 +141,7 @@ families:
     axis: ruse-choice
     layer: kernel
     evidence_refs: [FAM-EDIT-VIM-GRAMMAR, FAM-EDIT-SELECTION]
-    decisions: [D-EDITLANG-PRIMITIVE]   # to be assigned a real D-id when opened; blocks C-EDITLANG, C-INPUT
+    decisions: [D-047]   # to be assigned a real D-id when opened; blocks C-EDITLANG, C-INPUT
     caps: [CAP-EDIT-CORE]
     irreconcilable_observables:         # each is a testable contract that closes ONE Decision (not one giant one)
       - OBS-BARE-MOTION                 #   bare motion = move (Vim) | select+extend (Kakoune/Helix)
