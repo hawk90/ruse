@@ -482,29 +482,44 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::ToggleCase(count) => {
-            // `{count}~`: toggle the ASCII case of `count` chars, clamped at EOL, then leave the cursor
-            // past the last toggled char (Vim). Non-letters are consumed but left unchanged.
+            // `{count}~`: toggle the case of `count` chars, clamped at EOL, then leave the cursor past the
+            // last toggled char (a Normal-mode edit, so `commit` clamps it back onto the last char at EOL).
+            // Case-toggle by Unicode scalar (uppercase→lowercase, else lowercase→uppercase), so non-ASCII
+            // letters flip too (`~` on "αβ" → "Αβ"); non-letters are consumed but left unchanged. The
+            // toggled UTF-8 may differ in byte length from the source, so the cursor lands at `cur +
+            // flipped.len()`, not the source end.
             let le = line_end(b, cur);
             let end = advance_n(b, cur, *count, le);
             if end <= cur {
                 nop(cur, st.mode)
             } else {
-                let flipped: Vec<u8> = b[cur..end]
-                    .iter()
-                    .map(|&byte| {
-                        if byte.is_ascii_alphabetic() {
-                            byte ^ 0b0010_0000 // ASCII case bit
-                        } else {
-                            byte
+                // `[cur, end)` is on char boundaries (`advance_n` walks boundaries), so it is valid UTF-8.
+                let src =
+                    std::str::from_utf8(&b[cur..end]).expect("cursor span is on char boundaries");
+                let mut flipped: Vec<u8> = Vec::with_capacity(end - cur);
+                for ch in src.chars() {
+                    if ch.is_uppercase() {
+                        for c in ch.to_lowercase() {
+                            let mut buf = [0u8; 4];
+                            flipped.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
                         }
-                    })
-                    .collect();
+                    } else if ch.is_lowercase() {
+                        for c in ch.to_uppercase() {
+                            let mut buf = [0u8; 4];
+                            flipped.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+                        }
+                    } else {
+                        let mut buf = [0u8; 4];
+                        flipped.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+                    }
+                }
                 if flipped == b[cur..end] {
                     nop(end, st.mode) // nothing was a letter: `~` just moves right
                 } else {
+                    let cursor = cur + flipped.len();
                     edit(
                         one(Edit::replace(cur, end - cur, flipped)),
-                        end,
+                        cursor,
                         st.mode,
                         hint,
                     )
@@ -554,6 +569,24 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let (s, e, linewise) = op_span(b, cur, *m, *count);
             if s >= e {
                 nop(cur, st.mode)
+            } else if linewise && e == b.len() && s > 0 && b[e - 1] != b'\n' {
+                // Deleting the buffer's LAST line while earlier lines remain, where that line has no
+                // trailing newline (so the span itself does not already eat one): Vim removes the line
+                // entirely (not blank it in place), which means also dropping the newline that ends the
+                // previous line, then moving the cursor up to the new last line. The register still holds
+                // the line content linewise ("beta\n"), not the leading newline we splice away.
+                // (`dG` on a newline-terminated buffer keeps its own trailing newline and takes the plain
+                // branch, since the span already ends in `\n`.)
+                let reg = captured(s, e, true);
+                let del_start = s - 1; // the '\n' terminating the previous line (s is a line start, s > 0)
+                let cursor = line_start(b, del_start);
+                edit_yank(
+                    one(Edit::delete(del_start, e - del_start)),
+                    cursor,
+                    st.mode,
+                    hint,
+                    reg,
+                )
             } else {
                 let reg = captured(s, e, linewise);
                 edit_yank(one(Edit::delete(s, e - s)), s, st.mode, hint, reg)
@@ -806,6 +839,18 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     st.cursor = snap(st.doc.bytes(), plan.cursor);
     st.mode = plan.mode;
     st.last_was_edit = plan.is_edit;
+    // Vim never rests the Normal-mode cursor on the newline: after an edit that leaves it beyond the final
+    // char of a non-empty line, pull it back onto the last char (e.g. `dw` on the last word → the cursor
+    // clamps to the trailing char rather than the line end). Scoped to edits in Normal mode so it never
+    // touches Insert's legitimate cursor-past-end, and guarded by `ls < le` so an empty line keeps `[n,0]`.
+    if plan.is_edit && st.mode == Mode::Normal {
+        let b = st.doc.bytes();
+        let le = line_end(b, st.cursor);
+        let ls = line_start(b, st.cursor);
+        if st.cursor == le && ls < le {
+            st.cursor = prev_boundary(b, le);
+        }
+    }
     if let Some(reg) = plan.set_register {
         st.register = reg;
     }
@@ -1043,10 +1088,11 @@ mod single_key_edit_tests {
         let st = run("abcdef", &[Command::ToggleCase(3)]);
         assert_eq!(text(&st), "ABCdef");
         assert_eq!(st.cursor(), 3);
-        // Clamp: fewer than `count` chars left toggles to EOL.
+        // Clamp: fewer than `count` chars left toggles to EOL. The cursor would land past the last char,
+        // but Vim never rests the Normal-mode cursor on the newline, so `commit` pulls it onto the last char.
         let st = run("aB", &[Command::ToggleCase(9)]);
         assert_eq!(text(&st), "Ab");
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor(), 1);
     }
 
     #[test]
