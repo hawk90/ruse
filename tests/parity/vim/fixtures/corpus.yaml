@@ -313,6 +313,453 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "d_to_eol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "d$",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello world",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_to_bol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "$d0",
+      "expect": {
+        "text": [
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello worl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dG_to_last_line",
+      "lines": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "keys": "dG",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "alpha\nbeta\ngamma\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dj_linewise",
+      "lines": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "keys": "dj",
+      "expect": {
+        "text": [
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "alpha\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "c_to_eol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "c$END<Esc>",
+      "expect": {
+        "text": [
+          "END"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "hello world",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "y_eol_then_paste",
+      "lines": [
+        "hello"
+      ],
+      "keys": "y$p",
+      "expect": {
+        "text": [
+          "hhelloello"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "hello",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "count_dd",
+      "lines": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "keys": "2dd",
+      "expect": {
+        "text": [
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "alpha\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_x",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "3x",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_paragraph_fwd",
+      "lines": [
+        "one",
+        "two",
+        "",
+        "three"
+      ],
+      "keys": "d}",
+      "expect": {
+        "text": [
+          "",
+          "three"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\ntwo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_bracket_inner",
+      "lines": [
+        "pre[abc]post"
+      ],
+      "keys": "f[di[",
+      "expect": {
+        "text": [
+          "pre[]post"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "da_brace_around",
+      "lines": [
+        "pre{ab}post"
+      ],
+      "keys": "f{da{",
+      "expect": {
+        "text": [
+          "prepost"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "{ab}",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_dquote_inner",
+      "lines": [
+        "say \"hi\" now"
+      ],
+      "keys": "di\"",
+      "expect": {
+        "text": [
+          "say \"\" now"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "hi",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ci_squote_text",
+      "lines": [
+        "x 'old' y"
+      ],
+      "keys": "ci'NEW<Esc>",
+      "expect": {
+        "text": [
+          "x 'NEW' y"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "old",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "da_angle_around",
+      "lines": [
+        "a<tag>b"
+      ],
+      "keys": "f<da<",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "<tag>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dip_inner_paragraph",
+      "lines": [
+        "one",
+        "two",
+        "",
+        "three"
+      ],
+      "keys": "dip",
+      "expect": {
+        "text": [
+          "",
+          "three"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\ntwo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "J_join_lines",
+      "lines": [
+        "foo",
+        "bar"
+      ],
+      "keys": "J",
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_tilde",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "3~",
+      "expect": {
+        "text": [
+          "ABCdef"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "shift_right_line",
+      "lines": [
+        "hello"
+      ],
+      "keys": ">>",
+      "expect": {
+        "text": [
+          "\thello"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

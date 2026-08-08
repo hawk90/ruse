@@ -200,6 +200,28 @@ FIXTURES: list[dict] = [
     {"name": "tilde_toggle_case", "lines": ["abc"], "keys": "~"},
     {"name": "di_paren_inner", "lines": ["foo (bar) baz"], "keys": "di("},
     {"name": "da_quote_around", "lines": ['say "hi" now'], "keys": 'da"'},
+    # --- expansion (impl/oracle-harden): already-implemented ruse ops chosen to SURFACE divergence.
+    #     operator x motion --------------------------------------------------------------------------
+    {"name": "d_to_eol", "lines": ["hello world"], "keys": "d$"},
+    {"name": "d_to_bol", "lines": ["hello world"], "keys": "$d0"},
+    {"name": "dG_to_last_line", "lines": ["alpha", "beta", "gamma"], "keys": "dG"},
+    {"name": "dj_linewise", "lines": ["alpha", "beta", "gamma"], "keys": "dj"},
+    {"name": "c_to_eol", "lines": ["hello world"], "keys": "c$END<Esc>"},
+    {"name": "y_eol_then_paste", "lines": ["hello"], "keys": "y$p"},
+    {"name": "count_dd", "lines": ["alpha", "beta", "gamma"], "keys": "2dd"},
+    {"name": "count_x", "lines": ["abcdef"], "keys": "3x"},
+    {"name": "d_paragraph_fwd", "lines": ["one", "two", "", "three"], "keys": "d}"},
+    #     text objects -------------------------------------------------------------------------------
+    {"name": "di_bracket_inner", "lines": ["pre[abc]post"], "keys": "f[di["},
+    {"name": "da_brace_around", "lines": ["pre{ab}post"], "keys": "f{da{"},
+    {"name": "di_dquote_inner", "lines": ['say "hi" now'], "keys": 'di"'},
+    {"name": "ci_squote_text", "lines": ["x 'old' y"], "keys": "ci'NEW<Esc>"},
+    {"name": "da_angle_around", "lines": ["a<tag>b"], "keys": "f<da<"},
+    {"name": "dip_inner_paragraph", "lines": ["one", "two", "", "three"], "keys": "dip"},
+    #     actions ------------------------------------------------------------------------------------
+    {"name": "J_join_lines", "lines": ["foo", "bar"], "keys": "J"},
+    {"name": "count_tilde", "lines": ["abcdef"], "keys": "3~"},
+    {"name": "shift_right_line", "lines": ["hello"], "keys": ">>"},
 ]
 
 
