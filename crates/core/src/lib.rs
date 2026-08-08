@@ -39,7 +39,7 @@ pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
 pub use command::{Command, CommandParseError};
 pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
-pub use editor::{apply_command, commit, plan, EditorState, Mode, Plan};
+pub use editor::{apply_command, commit, plan, EditorState, IndentStyle, Mode, Plan};
 pub use effect::Effect;
 pub use motion::Motion;
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};

@@ -767,13 +767,14 @@
         "hello"
       ],
       "keys": ">>",
+      "setup": "set shiftwidth=4 expandtab startofline",
       "expect": {
         "text": [
-          "\thello"
+          "    hello"
         ],
         "cursor": [
           1,
-          0
+          4
         ],
         "reg_unnamed": {
           "text": "",
