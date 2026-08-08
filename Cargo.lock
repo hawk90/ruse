@@ -532,6 +532,7 @@ dependencies = [
  "crossterm",
  "proptest",
  "ruse-core",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
  "tree-sitter",
