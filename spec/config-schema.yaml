@@ -42,7 +42,11 @@ settings:
   # ---- input ----
   input.profile:        { type: enum,   default: vim,    scope: user,      merge: replace,   security_locked: false, enum: [vim, emacs, native], desc: "Active input profile (editing language + state machine, architecture section 1)." }
 
-  # ---- keymap (one namespace per Vim keymap mode; D-043 / contracts/vim-style.yaml) ----
+  # ---- keymap (one LAYER per Vim keymap namespace; D-045 / contracts/keymap-layers.yaml) ----
+  # Under D-045 these eight keys are the Vim profile's LAYER OVERLAYS, not the kernel's layer model.
+  # They keep their names and shape deliberately: an Emacs profile adds its own keys for its own
+  # layers rather than renaming or generalising these, because a key that means "the active layer,
+  # whatever it is" would re-create exactly the unqualified binding KL-OBL-1 forbids.
   # Upstream's own map.txt map-table declares EIGHT disjoint keymap namespaces, each addressed by its
   # own `:*map` family — that is why these are eight keys and not one `keymap` map with a mode field:
   # a binding that does not name its namespace is not expressible (VS-OBL-4). Merge is deep-merge so a

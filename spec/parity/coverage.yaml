@@ -65,9 +65,9 @@ upstreams:
           pin)'
         discovered: 9
         by_status:
-          unclassified: 9
-        classified: 0
-        unclassified: 9
+          targeted: 9
+        classified: 9
+        unclassified: 0
         verified: 0
       option:
         source_of_record: 'R: custom-variable-p, scoped to census_scope.include'
@@ -79,10 +79,10 @@ upstreams:
         verified: 0
     totals:
       discovered: 3522
-      classified: 0
-      unclassified: 3522
+      classified: 9
+      unclassified: 3513
       verified: 0
-      classification_pct: 0.0
+      classification_pct: 0.3
       verification_pct: 0.0
     discovery:
       scope_enumerated: complete
@@ -131,9 +131,9 @@ upstreams:
         source_of_record: 'S: helix-term/src/keymap/default.rs'
         discovered: 3
         by_status:
-          unclassified: 3
-        classified: 0
-        unclassified: 3
+          targeted: 3
+        classified: 3
+        unclassified: 0
         verified: 0
       option:
         source_of_record: 'S: helix-view/src/editor.rs Config (dotted through nested structs)'
@@ -153,10 +153,10 @@ upstreams:
         verified: 0
     totals:
       discovered: 1229
-      classified: 0
-      unclassified: 1229
+      classified: 3
+      unclassified: 1226
       verified: 0
-      classification_pct: 0.0
+      classification_pct: 0.2
       verification_pct: 0.0
     discovery:
       scope_enumerated: complete

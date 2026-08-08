@@ -112,23 +112,26 @@ features:
   # F-003 keeps the router and the mode stack; each namespace is its own deliverable with its own
   # acceptance. IDs are never renumbered, so F-003 stays and the namespaces are appended.  # D-043
   F-003:
-    title: Vim input profile — namespace router + mode stack
+    title: Keymap layer router + the Vim profile as its depth-1 configuration
     stage: mvp
     priority: must
     status: planned
     depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-CONFIG]
     summary: >
-      The eight Vim keymap namespaces exist as namespaces, each with a declared unmatched-key policy,
-      its own owned state, and stack-based return — not one state machine with mode flags.
+      Keys resolve against an ORDERED STACK OF KEYMAP LAYERS (D-045). The eight Vim namespaces are that
+      stack at depth 1 — sealed, editor-state-selected — each with a declared unmatched-key policy, its
+      own owned state, and stack-based return; not one state machine with mode flags.
     trace:
       parity: [VIM-MODE-1, VIM-MODE-6]
-      contract: [../spec/parity/contracts/vim-style.yaml]
+      contract: [../spec/parity/contracts/keymap-layers.yaml, ../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/editing-language.md]
       verify: [../tests/parity/vim/namespaces.yaml, ../tests/parity/vim/mode-stack.yaml]
     acceptance:
-      - "Each of the eight namespaces (Norm/Opr/Ins/Cmd/Vis/Sel/Term/Lang) is addressable in its own right; a binding cannot be declared without naming its namespace (VS-OBL-4)."
+      - "Resolution walks an ordered layer stack highest-rank-first until a layer binds; a `sealed` layer stops the walk whether or not it bound (KL-OBL-1..3). The Vim profile declares depth 1 and sealed — depth is an OBLIGATION of the profile, not an accident of having one layer active, or `closed/ignore` starts leaking into a lower layer."
+      - "The same router at depth 9, unsealed and buffer-selected, resolves an Emacs-style stack, and a depth-2 `[override, base]` resolves a derived mode; neither needs a code path of its own. Build-time collapse of a derived layer is observably identical to consulting it at dispatch (KL-OBL-6)."
+      - "Each of the eight namespaces (Norm/Opr/Ins/Cmd/Vis/Sel/Term/Lang) is addressable in its own right; a binding cannot be declared without naming its namespace (VS-OBL-4 = KL-OBL-1)."
       - "Every namespace declares an unmatched-key policy and an `open` namespace never falls through to a shared ignore path (VS-OBL-3). The five open policies (insert/append/overwrite/replace-selection/forward) are each exercised."
-      - "Operator-pending is a namespace whose unmatched key ABORTS the pending operator, distinct from Normal's ignore — not a nullable field on Normal state."
+      - "Operator-pending is a namespace whose unmatched key ABORTS the pending operator, distinct from Normal's ignore — not a nullable field on Normal state. Layer state is owned by the layer and dies with it; the engine never reaches in to reset it (KL-OBL-4)."
       - "Namespace transitions carry return addresses: `i_CTRL-O` and `t_CTRL-\\ CTRL-O` are the same one-shot-return construct, and `gv` restores a selection that outlived its namespace (VS-OBL-2)."
       - "Mode is per-window/per-buffer: a terminal buffer is in the terminal namespace while a neighbouring window is in normal (VS-OBL-1)."
 

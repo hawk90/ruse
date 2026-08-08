@@ -30,7 +30,8 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.02.overriding-local-map
   surface: keymap_tier
   rank: 2
@@ -41,7 +42,8 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.03.keymap
   surface: keymap_tier
   rank: 3
@@ -52,7 +54,8 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.04.emulation-mode-map-alists
   surface: keymap_tier
   rank: 4
@@ -63,7 +66,8 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.05.minor-mode-overriding-map-alist
   surface: keymap_tier
   rank: 5
@@ -74,7 +78,8 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.06.minor-mode-map-alist
   surface: keymap_tier
   rank: 6
@@ -85,7 +90,8 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.07.local-map
   surface: keymap_tier
   rank: 7
@@ -96,7 +102,8 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.08.current-local-map
   surface: keymap_tier
   rank: 8
@@ -107,7 +114,8 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.09.global-map
   surface: keymap_tier
   rank: 9
@@ -118,4 +126,5 @@ items:
   attestation:
   - D
   - R
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style

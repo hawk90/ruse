@@ -26,7 +26,8 @@ items:
   desc: The root keymap; motions move and collapse the selection to a cursor.
   attestation:
   - S
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.derived-mode
 - id: helix.mode.select
   surface: mode
   mode: Select
@@ -41,7 +42,8 @@ items:
     divergence, structurally located.'
   attestation:
   - S
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.derived-mode
 - id: helix.mode.insert
   surface: mode
   mode: Insert
@@ -52,4 +54,5 @@ items:
   desc: Independent root keymap; unmatched printable keys insert literally.
   attestation:
   - S
-  status: unclassified
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.derived-mode

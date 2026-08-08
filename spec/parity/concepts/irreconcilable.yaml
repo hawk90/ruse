@@ -162,16 +162,19 @@ concepts:
       - "`config-schema` keymap.<namespace> ×8 are Vim-profile layer overlays, not the kernel's
          layer model; an Emacs profile adds its own without renaming these."
     blocks: [C-INPUT, F-003]
-    decides: D-KEYMAP-DISPATCH        # to be assigned a real D-id when opened
+    decided_by: D-045
+    contract: contracts/keymap-layers.yaml
     refs:
       - emacs.keymaptier.*            # the 9 tiers, D-sourced from (elisp) Searching the Active Keymaps
       - nvim.mapmode.*                # the 8 disjoint namespaces
       - contracts/vim-style.yaml
     note: >
       Filed here despite `resolution: unified` on purpose. This file is the architecture's risk
-      register, and the risk is not that the two models conflict — it is that the general model is
-      cheap to adopt NOW and expensive after F-003 ships a disjoint router. Recording it only once a
-      Decision closes would put it here after the cost has already been paid.
+      register, and the risk was never that the models conflict — it is that the general model is
+      cheap to adopt NOW and expensive after F-003 ships a disjoint router. CLOSED by D-045 before
+      that cost was paid, which is the outcome this entry existed to produce. The residual risk moved
+      to the contract's KL-Q-LANG-ARG: a layer that TRANSLATES and re-dispatches makes resolution
+      non-total, and that is D-045's own re-evaluation trigger.
 
 # Observable-granularity irreconcilables (Vim vs selection-first editing, Kakoune/Helix). These are what
 # actually resist a single primitive once CONCEPT-OP-PENDING is unified. Each is a contract a differential

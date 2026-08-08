@@ -519,3 +519,39 @@ related:
   becomes substrate adequacy rather than parity (HOLE-SUBSTRATE-UNTESTED); or the pinned tree is fetched and
   `S`-corroboration contradicts an `R`-derived surface.
 - Refs: [parity/upstreams.yaml](parity/upstreams.yaml), [parity/families.yaml](parity/families.yaml), [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), D-043, F-016, C-INPUT.
+
+## D-045 — Keymap resolution is one ordered layer stack; Vim's eight namespaces are its depth-1 case · decided
+- **Decision:** `C-INPUT` resolves a key against an ORDERED STACK OF KEYMAP LAYERS, consulted highest-rank
+  first until one binds. Each layer carries its own `unmatched_key` policy, its own owned state, and a rank;
+  a layer may declare `sealed`, meaning resolution stops there instead of falling through. The three input
+  profiles are then configurations of one mechanism, not three mechanisms:
+  **Vim Style** installs its eight namespaces as eight `sealed` layers of which exactly one is active,
+  selected by editor state — a depth-1 stack, which is what makes VS-OBL-1..4 remain literally true.
+  **Emacs Style** installs the nine-tier stack (`overriding-terminal-local-map` → … → `global-map`)
+  unsealed, selected by what the buffer is. **Derived maps** (one mode = another plus a diff) are a depth-2
+  stack `[override, base]`, which may be collapsed at build time as an optimisation but is not a separate
+  feature. `config-schema` `keymap.<namespace>` ×8 stay exactly as they are: they are the Vim profile's layer
+  overlays, and an Emacs profile adds its own keys rather than renaming these.
+- **Reason:** the layered model strictly CONTAINS the other two, so building it costs one implementation and
+  building the disjoint one costs two. That is not an aesthetic claim — it is what three censuses show.
+  Neovim's `map.txt` declares eight disjoint namespaces (`nvim.mapmode.*`, 8 items). Emacs's precedence stack
+  is nine tiers (`emacs.keymaptier.*`), and **613 of its 1,952 keyboard bindings live in major-mode maps** —
+  a tier Vim's model has no seat for at all, because Vim selects a namespace by editor STATE while Emacs
+  selects one by what the BUFFER is. Helix arrived independently at a third arrangement: `Select` is
+  `normal.clone()` + `merge_nodes(overrides)`, 301 inherited bindings under a 33-binding diff. Read
+  carelessly that is a third dispatch model; read correctly the merge is BUILD-TIME, so at dispatch each
+  Helix mode is one flat map — Vim's depth-1 case again, and in layer terms simply a depth-2 stack collapsed
+  early. A disjoint router must either duplicate those 301 bindings or grow a bespoke inheritance feature;
+  a layered router expresses it for free. No oracle is required to take this decision: all three facts are
+  structural, attested by the census at each pin, and none of them is a behavioural claim.
+- **Consequence:** F-003 is restated as the layer router with the Vim profile as its first configuration.
+  `crates/core/src/editor.rs` `Mode { Normal, Insert, Visual { line } }` is the shape this replaces — three
+  variants for eight namespaces is why `apps/tui/src/input.rs` handles Insert as an `if mode == Mode::Insert`
+  early return ahead of a single `Feed::Ignored` fallthrough, i.e. one `closed/ignore` policy standing in for
+  five `open` ones. The cost of adopting the layer model rises sharply once F-003 ships a disjoint router,
+  which is why the decision is taken now rather than when the Emacs profile is scheduled (F-016, ecosystem).
+- **Re-evaluate if:** a profile needs resolution that is not a total order over layers — the known candidate
+  is Vim's Lang-Arg, which TRANSLATES a key and re-dispatches rather than binding it (CONCEPT-LANG-ARG,
+  still `pending`); if re-dispatch cannot be expressed as a layer that rewrites and yields, the stack needs a
+  second mechanism and this decision is incomplete rather than wrong.
+- Refs: [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), [parity/contracts/keymap-layers.yaml](parity/contracts/keymap-layers.yaml), [parity/contracts/vim-style.yaml](parity/contracts/vim-style.yaml), D-043, D-044, F-003, F-016, C-INPUT, C-EDITLANG.

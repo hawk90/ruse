@@ -35,6 +35,18 @@
 #   open/forward             key -> forwarded verbatim to the job, except one escape prefix
 #   open/translate           key -> rewritten by the active language map, then re-dispatched
 #
+# WHAT CHANGED UNDER D-045: this file is no longer the kernel's model of keymap resolution, it is one
+# CONFIGURATION of it. contracts/keymap-layers.yaml owns the mechanism — an ordered layer stack — and
+# the Vim profile configures it to depth 1, sealed, editor-state-selected. Nothing below is weakened
+# by that; the opposite. Vim's guarantees hold *because* the stack is depth-1 and sealed, so the depth
+# is now an obligation the profile must declare (KL-OBL-3) rather than an unstated assumption. If an
+# unsealed lower layer were ever added under these namespaces, `closed/ignore` would start falling
+# through and every promise here would break without one line of Vim-specific code changing.
+#
+# The eight namespaces below therefore map 1:1 onto eight sealed layers, and each obligation has a
+# kernel counterpart: VS-OBL-4 = KL-OBL-1 (a binding names its layer), VS-OBL-3 = KL-OBL-2 (no
+# engine-wide unmatched default), VS-OBL-2 = KL-OBL-5 (return is a stack with an address).
+#
 # LLM rules: `derives_from` must name real census ids (spec/parity/inventory/neovim/*.yaml) — a
 # contract that cites nothing is an opinion. Never add a namespace here that the census does not
 # show; never silently drop one.
@@ -44,6 +56,15 @@ profile: vim-style
 upstream: neovim
 revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b   # v0.12.4
 derives_from_surface: map_mode
+implements: contracts/keymap-layers.yaml
+stack:
+  depth: 1
+  sealed: true
+  selected_by: editor-state
+  note: >
+    Declared, not inferred (KL-OBL-3). Exactly one of the eight layers is active at a time and
+    resolution never reaches past it — that is the whole content of "disjoint namespaces" expressed
+    in the kernel's vocabulary.
 status: draft
 
 namespaces:
