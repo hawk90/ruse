@@ -11,6 +11,11 @@ use ruse_core::{Command, Mode, Motion};
 pub enum Feed {
     /// A completed command to apply.
     Cmd(Command),
+    /// `.` (dot-repeat): replay a recorded change as an ORDERED command list — the change's leading
+    /// command followed by any insert-session text (F-023). The frontend applies each in turn, exactly as
+    /// if the original keys were re-typed at the current cursor. Kept distinct from `Cmd` because one
+    /// keypress expands to a compound edit, and because the driver must NOT re-record it as a new change.
+    Replay(Vec<Command>),
     /// `:` — open the ex command line.
     OpenExLine,
     /// `/` — open the search line.
@@ -26,6 +31,102 @@ enum Op {
     Delete,
     Change,
     Yank,
+}
+
+/// A recorded **change-intent** for Vim dot-repeat (D-025 / D-047): the buffer-modifying command that
+/// began the change, plus — for changes that enter Insert — the exact commands typed until `<Esc>`.
+///
+/// This is the design's key move: `.` records the INTENT (a re-parameterizable command + text), not a
+/// resolved byte range, so replaying it at a new cursor re-runs the motion there. `dw` recorded, then `.`
+/// at the next word deletes THAT word; `ciwFOO<Esc>` recorded, then `.` re-does the change AND re-inserts
+/// `FOO`. `.` never overwrites the record, so `..` repeats the same change.
+#[derive(Clone, PartialEq, Eq)]
+struct ChangeIntent {
+    /// The command that began the change: an operator (`dw`, `d2w`), a single-key edit (`x`, `~`, `>>`),
+    /// or an insert-entry (`i`/`A`/`o`/`ciw`). Its count is the one `N.` overrides.
+    lead: Command,
+    /// The insert-session commands captured after an insert-entering `lead`, terminated by the
+    /// `EnterNormal` that `<Esc>` produced. Empty for self-contained changes (`dw`, `x`, `>>`).
+    insert: Vec<Command>,
+}
+
+impl ChangeIntent {
+    /// The ordered command list `.` replays. `count` — a leading `N` on the `.` — REPLACES the lead's
+    /// count (Vim `3.` repeats with count 3); `None` keeps the recorded count. Insert text is replayed
+    /// verbatim.
+    fn replay(&self, count: Option<u32>) -> Vec<Command> {
+        let lead = match count {
+            Some(n) => with_count(&self.lead, n),
+            None => self.lead.clone(),
+        };
+        let mut cmds = Vec::with_capacity(1 + self.insert.len());
+        cmds.push(lead);
+        cmds.extend(self.insert.iter().cloned());
+        cmds
+    }
+}
+
+/// How a completed command relates to the dot-repeat record.
+enum ChangeKind {
+    /// Enters Insert; the change is this command PLUS the text typed until `<Esc>`.
+    InsertEntering,
+    /// A complete buffer edit with no insert session (`dw`, `x`, `dd`, `>>`, `~`, `r`, `p`).
+    Immediate,
+    /// Not a change (pure motion, mode switch, yank, undo/redo, search) — `.` leaves the record intact.
+    NotAChange,
+}
+
+/// Classify a completed command for dot-repeat. Per Vim, yank is NOT dot-repeatable; delete/change/put/
+/// replace/shift/`~`/join and the insert-entries ARE.
+fn change_kind(cmd: &Command) -> ChangeKind {
+    use Command as C;
+    match cmd {
+        // Insert-entering: the change includes the text typed until `<Esc>`.
+        C::EnterInsert
+        | C::EnterInsertAfter
+        | C::InsertLineStart
+        | C::AppendLineEnd
+        | C::OpenBelow
+        | C::OpenAbove
+        | C::Change(..)
+        | C::ChangeSelection
+        | C::ReplaceSelection(_) => ChangeKind::InsertEntering,
+        // Self-contained buffer edits — dot-repeatable as a single command.
+        C::Delete(..)
+        | C::DeleteUnder(_)
+        | C::DeleteBack
+        | C::ReplaceChar(..)
+        | C::ToggleCase(_)
+        | C::JoinLines
+        | C::ShiftRight(_)
+        | C::ShiftLeft(_)
+        | C::Paste { .. }
+        | C::DeleteSelection => ChangeKind::Immediate,
+        // Everything else (motions, mode switches, yank, search, undo/redo, save/quit) is not a change.
+        _ => ChangeKind::NotAChange,
+    }
+}
+
+/// Rewrite a command's count for `N.` (Vim replaces the change's count with `N`). Commands without a count
+/// are returned unchanged.
+fn with_count(cmd: &Command, n: u32) -> Command {
+    use Command as C;
+    match cmd {
+        C::Move(_, m) => C::Move(n, *m),
+        C::Delete(_, m) => C::Delete(n, *m),
+        C::Change(_, m) => C::Change(n, *m),
+        C::Yank(_, m) => C::Yank(n, *m),
+        C::DeleteUnder(_) => C::DeleteUnder(n),
+        C::ReplaceChar(_, c) => C::ReplaceChar(n, *c),
+        C::ToggleCase(_) => C::ToggleCase(n),
+        C::ShiftRight(_) => C::ShiftRight(n),
+        C::ShiftLeft(_) => C::ShiftLeft(n),
+        C::Paste { after, .. } => C::Paste {
+            after: *after,
+            count: n,
+        },
+        other => other.clone(),
+    }
 }
 
 /// The motion a movement key names, shared by Normal (bare move / operator) and Visual (extend selection).
@@ -229,6 +330,12 @@ pub struct InputEngine {
     last_find: Option<(char, bool, bool)>,
     /// Sticky: the last search pattern, for `n`/`N`.
     last_search: Option<String>,
+    /// Sticky: the last completed change, replayed by `.` (dot-repeat). `None` until the first change, so
+    /// a bare `.` before any edit is a clean no-op.
+    last_change: Option<ChangeIntent>,
+    /// An in-flight change being recorded: set when an insert-entering command fires, then extended with the
+    /// insert-session commands until the terminating `<Esc>` (`EnterNormal`) closes it into `last_change`.
+    recording: Option<ChangeIntent>,
 }
 
 impl InputEngine {
@@ -241,6 +348,8 @@ impl InputEngine {
             awaiting: Awaiting::Nothing,
             last_find: None,
             last_search: None,
+            last_change: None,
+            recording: None,
         }
     }
 
@@ -361,8 +470,53 @@ impl InputEngine {
         Feed::Pending
     }
 
-    /// Feed one key given the current mode.
+    /// Feed one key given the current mode. Resolves the key into an outcome, then folds that outcome into
+    /// the dot-repeat record (so `.` can later replay the last change). The two steps are split so the
+    /// resolution grammar stays untouched by the recording concern.
     pub fn feed(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        let out = self.feed_impl(key, mode);
+        self.record(&out, mode);
+        out
+    }
+
+    /// Fold a just-produced outcome into the dot-repeat record. In Insert mode, extend the in-flight change
+    /// until `<Esc>` closes it; in Normal/Visual, an insert-entering command opens a recording, a
+    /// self-contained edit becomes the record outright, and anything else leaves the record intact.
+    /// `Pending`/`Ignored`/`Replay`/`Open*` never touch it — which is what makes `..` repeat one change.
+    fn record(&mut self, out: &Feed, mode: Mode) {
+        let Feed::Cmd(cmd) = out else {
+            return;
+        };
+        if mode == Mode::Insert {
+            if let Some(rec) = self.recording.as_mut() {
+                rec.insert.push(cmd.clone());
+                // The `<Esc>` that leaves Insert (recorded here so replay leaves Insert too) closes the change.
+                if *cmd == Command::EnterNormal {
+                    self.last_change = self.recording.take();
+                }
+            }
+            return;
+        }
+        match change_kind(cmd) {
+            ChangeKind::InsertEntering => {
+                self.recording = Some(ChangeIntent {
+                    lead: cmd.clone(),
+                    insert: Vec::new(),
+                });
+            }
+            ChangeKind::Immediate => {
+                self.recording = None;
+                self.last_change = Some(ChangeIntent {
+                    lead: cmd.clone(),
+                    insert: Vec::new(),
+                });
+            }
+            ChangeKind::NotAChange => {}
+        }
+    }
+
+    /// Feed one key given the current mode.
+    fn feed_impl(&mut self, key: KeyEvent, mode: Mode) -> Feed {
         // Insert resolves through its LAYER, not through an early return ahead of everything else.
         // The bindings and the `open/insert` policy both live in `VimProfile`, so the namespace is
         // addressable in its own right (KL-OBL-1) and its policy is declared (KL-OBL-2).
@@ -645,6 +799,19 @@ impl InputEngine {
                 Some(p) => self.action(Command::SearchPrev(p)),
                 None => self.unmatched(Ns::Normal, key),
             },
+            // Dot-repeat: replay the last recorded change at the current cursor (D-047). A leading `N`
+            // overrides the change's count (Vim `3.`). `.` itself never rewrites the record, so `..`
+            // repeats the same change; with no prior change it is a clean no-op (the Normal namespace's
+            // `closed/ignore` policy — Vim rings the bell).
+            KeyCode::Char('.') => {
+                if let Some(intent) = self.last_change.clone() {
+                    let count = (self.count > 0).then_some(self.count);
+                    self.reset();
+                    Feed::Replay(intent.replay(count))
+                } else {
+                    self.unmatched(Ns::Normal, key)
+                }
+            }
             KeyCode::Char('/') => {
                 self.reset();
                 Feed::OpenSearch
@@ -738,7 +905,7 @@ mod tests {
         assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordEnd)));
     }
 
-    fn esc() -> KeyEvent {
+    pub(super) fn esc() -> KeyEvent {
         KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
     }
 
@@ -1097,6 +1264,164 @@ mod tests {
             parse_ex("trace save t.trace"),
             Ex::SaveTrace("t.trace".into())
         );
+    }
+}
+
+/// Dot-repeat (`.`): the engine records the last change as a re-parameterizable [`ChangeIntent`] and
+/// replays it — the operator/edit at the CURRENT cursor, plus any captured insert text (F-023).
+#[cfg(test)]
+mod dot_repeat_tests {
+    use super::tests::{esc, k};
+    use super::*;
+
+    /// Feed a whole sequence, tracking the mode the way the frontend does (a completed command may change
+    /// the mode, which the next key must see). Only the outcome matters here; we assert on the LAST feed.
+    fn feed_modes(seq: &[KeyEvent]) -> (InputEngine, Feed) {
+        let mut e = InputEngine::new();
+        let mut mode = Mode::Normal;
+        let mut last = Feed::Ignored;
+        for key in seq {
+            last = e.feed(*key, mode);
+            // Track the handful of mode transitions dot-repeat capture depends on.
+            match &last {
+                Feed::Cmd(Command::EnterInsert)
+                | Feed::Cmd(Command::EnterInsertAfter)
+                | Feed::Cmd(Command::InsertLineStart)
+                | Feed::Cmd(Command::AppendLineEnd)
+                | Feed::Cmd(Command::OpenBelow)
+                | Feed::Cmd(Command::OpenAbove)
+                | Feed::Cmd(Command::Change(..)) => mode = Mode::Insert,
+                Feed::Cmd(Command::EnterNormal) => mode = Mode::Normal,
+                _ => {}
+            }
+        }
+        (e, last)
+    }
+
+    #[test]
+    fn dot_with_no_prior_change_is_a_clean_noop() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('.'), Mode::Normal), Feed::Ignored);
+        assert!(e.last_change.is_none());
+    }
+
+    #[test]
+    fn operator_change_replays_the_command_at_the_new_cursor() {
+        // `dw` records Delete(1, WordFwd); `.` replays exactly that (motion re-run at the new cursor).
+        let (_, last) = feed_modes(&[k('d'), k('w'), k('.')]);
+        assert_eq!(
+            last,
+            Feed::Replay(vec![Command::Delete(1, Motion::WordFwd)])
+        );
+    }
+
+    #[test]
+    fn dot_does_not_overwrite_the_record_so_dot_dot_repeats() {
+        // `dw..` — the second `.` replays the SAME recorded change, not "repeat of a repeat".
+        let (_, last) = feed_modes(&[k('d'), k('w'), k('.'), k('.')]);
+        assert_eq!(
+            last,
+            Feed::Replay(vec![Command::Delete(1, Motion::WordFwd)])
+        );
+    }
+
+    #[test]
+    fn counted_operator_is_recorded_with_its_count() {
+        // `d2w` -> Delete(2, WordFwd); `.` repeats with the same count.
+        let (_, last) = feed_modes(&[k('d'), k('2'), k('w'), k('.')]);
+        assert_eq!(
+            last,
+            Feed::Replay(vec![Command::Delete(2, Motion::WordFwd)])
+        );
+    }
+
+    #[test]
+    fn single_key_edits_are_dot_repeatable() {
+        assert_eq!(
+            feed_modes(&[k('x'), k('.')]).1,
+            Feed::Replay(vec![Command::DeleteUnder(1)])
+        );
+        assert_eq!(
+            feed_modes(&[k('3'), k('x'), k('.')]).1,
+            Feed::Replay(vec![Command::DeleteUnder(3)])
+        );
+        assert_eq!(
+            feed_modes(&[k('>'), k('>'), k('.')]).1,
+            Feed::Replay(vec![Command::ShiftRight(1)])
+        );
+        assert_eq!(
+            feed_modes(&[k('d'), k('d'), k('.')]).1,
+            Feed::Replay(vec![Command::Delete(1, Motion::Line)])
+        );
+    }
+
+    #[test]
+    fn n_dot_overrides_the_recorded_count() {
+        // `3.` after `dw` replays with count 3 (Vim replaces, not multiplies).
+        let (_, last) = feed_modes(&[k('d'), k('w'), k('3'), k('.')]);
+        assert_eq!(
+            last,
+            Feed::Replay(vec![Command::Delete(3, Motion::WordFwd)])
+        );
+        // `2.` after `3x` replaces the 3 with 2.
+        let (_, last) = feed_modes(&[k('3'), k('x'), k('2'), k('.')]);
+        assert_eq!(last, Feed::Replay(vec![Command::DeleteUnder(2)]));
+    }
+
+    #[test]
+    fn insert_change_replays_command_and_captured_text() {
+        // `ciwFOO<Esc>` -> Change(1, InnerWord) + the inserted chars + the terminating EnterNormal.
+        let (_, last) = feed_modes(&[
+            k('c'),
+            k('i'),
+            k('w'),
+            k('F'),
+            k('O'),
+            k('O'),
+            esc(),
+            k('.'),
+        ]);
+        assert_eq!(
+            last,
+            Feed::Replay(vec![
+                Command::Change(1, Motion::InnerWord),
+                Command::InsertChar('F'),
+                Command::InsertChar('O'),
+                Command::InsertChar('O'),
+                Command::EnterNormal,
+            ])
+        );
+    }
+
+    #[test]
+    fn append_insert_is_dot_repeatable_including_text() {
+        // `A;<Esc>` then `.` replays AppendLineEnd + the ';' + Esc.
+        let (_, last) = feed_modes(&[k('A'), k(';'), esc(), k('.')]);
+        assert_eq!(
+            last,
+            Feed::Replay(vec![
+                Command::AppendLineEnd,
+                Command::InsertChar(';'),
+                Command::EnterNormal,
+            ])
+        );
+    }
+
+    #[test]
+    fn yank_is_not_dot_repeatable() {
+        // Vim: `yw` is NOT a change; a following `.` has nothing to repeat.
+        let mut e = InputEngine::new();
+        e.feed(k('y'), Mode::Normal);
+        e.feed(k('w'), Mode::Normal);
+        assert!(e.last_change.is_none());
+        assert_eq!(e.feed(k('.'), Mode::Normal), Feed::Ignored);
+    }
+
+    #[test]
+    fn motions_between_changes_do_not_clobber_the_record() {
+        // `x` records; then a pure motion `w`; `.` still repeats the `x`.
+        let (_, last) = feed_modes(&[k('x'), k('w'), k('.')]);
+        assert_eq!(last, Feed::Replay(vec![Command::DeleteUnder(1)]));
     }
 }
 
