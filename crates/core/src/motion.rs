@@ -447,6 +447,18 @@ fn pair_span(b: &[u8], cur: usize, open: u8, close: u8, around: bool) -> (usize,
         }
         found
     };
+    // Vim: when the cursor is not inside a pair, i(/a( uses the next pair FORWARD on the current
+    // line (e.g. `di(` at col 0 of `foo (bar) baz` deletes `bar`). Oracle finding, PR #53.
+    let open_pos = open_pos.or_else(|| {
+        let mut i = cur;
+        while i < b.len() && b[i] != b'\n' {
+            if b[i] == open {
+                return Some(i);
+            }
+            i += 1;
+        }
+        None
+    });
     let Some(o) = open_pos else {
         return (cur, cur);
     };
