@@ -35,11 +35,12 @@ pub enum Command {
     InsertChar(char),
     InsertNewline,
     DeleteBack,
-    DeleteUnder,
-    /// `r{char}` — replace the character under the cursor.
-    ReplaceChar(char),
-    /// `~` — toggle the case of the character under the cursor, then move right.
-    ToggleCase,
+    /// `{count}x` — delete `count` chars from the cursor, clamped at end-of-line (Vim).
+    DeleteUnder(u32),
+    /// `{count}r{char}` — replace `count` chars with `char`; a no-op if fewer than `count` remain (Vim).
+    ReplaceChar(u32, char),
+    /// `{count}~` — toggle the case of `count` chars, clamped at EOL, then move past the last (Vim).
+    ToggleCase(u32),
     /// `J` — join the current line with the next on a single space.
     JoinLines,
     // editing grammar: count + motion / operator (Phase D)
@@ -234,13 +235,9 @@ impl Command {
             }
             Command::InsertNewline => "insert_newline".into(),
             Command::DeleteBack => "delete_back".into(),
-            Command::DeleteUnder => "delete_under".into(),
-            Command::ReplaceChar(c) => {
-                let mut s = String::from("replace_char ");
-                let _ = write!(s, "{}", *c as u32);
-                s
-            }
-            Command::ToggleCase => "toggle_case".into(),
+            Command::DeleteUnder(n) => format!("delete_under {n}"),
+            Command::ReplaceChar(n, c) => format!("replace_char {n} {}", *c as u32),
+            Command::ToggleCase(n) => format!("toggle_case {n}"),
             Command::JoinLines => "join_lines".into(),
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
@@ -320,16 +317,33 @@ impl Command {
             }
             "insert_newline" => Command::InsertNewline,
             "delete_back" => Command::DeleteBack,
-            "delete_under" => Command::DeleteUnder,
-            "replace_char" => {
-                let cp: u32 = arg
+            "delete_under" => {
+                let n: u32 = arg
                     .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::DeleteUnder(n)
+            }
+            "replace_char" => {
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let n: u32 = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let cp: u32 = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
-                Command::ReplaceChar(c)
+                Command::ReplaceChar(n, c)
             }
-            "toggle_case" => Command::ToggleCase,
+            "toggle_case" => {
+                let n: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::ToggleCase(n)
+            }
             "join_lines" => Command::JoinLines,
             "move" => return op_cmd(arg, Command::Move),
             "delete" => return op_cmd(arg, Command::Delete),
@@ -384,15 +398,18 @@ mod tests {
             Command::OpenBelow,
             Command::OpenAbove,
             Command::InsertChar('h'),
-            Command::ReplaceChar('z'),
-            Command::ReplaceChar('가'),
-            Command::ToggleCase,
+            Command::ReplaceChar(1, 'z'),
+            Command::ReplaceChar(3, 'z'),
+            Command::ReplaceChar(1, '가'),
+            Command::ToggleCase(1),
+            Command::ToggleCase(4),
             Command::JoinLines,
             Command::InsertChar('🎉'),
             Command::InsertChar(' '),
             Command::InsertNewline,
             Command::DeleteBack,
-            Command::DeleteUnder,
+            Command::DeleteUnder(1),
+            Command::DeleteUnder(3),
             Command::Move(2, Motion::WordFwd),
             Command::Move(1, Motion::BigWordFwd),
             Command::Delete(1, Motion::BigWordBack),

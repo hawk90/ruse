@@ -407,7 +407,8 @@ impl InputEngine {
             Awaiting::ReplaceChar => {
                 self.awaiting = Awaiting::Nothing;
                 return match key.code {
-                    KeyCode::Char(c) => self.action(Command::ReplaceChar(c)),
+                    // The count accumulated before `r` is still live (the `r` arm did not reset it).
+                    KeyCode::Char(c) => self.action(Command::ReplaceChar(self.mcount(), c)),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),
@@ -585,14 +586,14 @@ impl InputEngine {
             KeyCode::Char('A') => self.action(Command::AppendLineEnd),
             KeyCode::Char('o') => self.action(Command::OpenBelow),
             KeyCode::Char('O') => self.action(Command::OpenAbove),
-            KeyCode::Char('x') => self.action(Command::DeleteUnder),
+            KeyCode::Char('x') => self.action(Command::DeleteUnder(self.mcount())),
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Char('r') if ctrl => self.action(Command::Redo),
             KeyCode::Char('r') => {
                 self.awaiting = Awaiting::ReplaceChar;
                 Feed::Pending
             }
-            KeyCode::Char('~') => self.action(Command::ToggleCase),
+            KeyCode::Char('~') => self.action(Command::ToggleCase(self.mcount())),
             KeyCode::Char('J') => self.action(Command::JoinLines),
             KeyCode::Char('n') => match self.last_search.clone() {
                 Some(p) => self.action(Command::SearchNext(p)),
@@ -778,10 +779,21 @@ mod tests {
         assert_eq!(e.feed(k('r'), Mode::Normal), Feed::Pending);
         assert_eq!(
             e.feed(k('z'), Mode::Normal),
-            Feed::Cmd(Command::ReplaceChar('z'))
+            Feed::Cmd(Command::ReplaceChar(1, 'z'))
         );
-        assert_eq!(feed("~"), Feed::Cmd(Command::ToggleCase));
+        assert_eq!(feed("x"), Feed::Cmd(Command::DeleteUnder(1)));
+        assert_eq!(feed("~"), Feed::Cmd(Command::ToggleCase(1)));
         assert_eq!(feed("J"), Feed::Cmd(Command::JoinLines));
+        // Counts multiply the single-key actions (Vim `3x` / `3~` / `3rz`).
+        assert_eq!(feed("3x"), Feed::Cmd(Command::DeleteUnder(3)));
+        assert_eq!(feed("3~"), Feed::Cmd(Command::ToggleCase(3)));
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('3'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('r'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('z'), Mode::Normal),
+            Feed::Cmd(Command::ReplaceChar(3, 'z'))
+        );
         let mut e = InputEngine::new();
         assert_eq!(
             e.feed(
