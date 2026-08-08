@@ -541,6 +541,9 @@ impl InputEngine {
                 KeyCode::Char('c') | KeyCode::Char('s') => {
                     return self.action(Command::ChangeSelection)
                 }
+                // `o` swaps the selection's ends (cursor <-> anchor); the SAME text stays selected but a
+                // later motion extends the other end. In Normal `o` is OpenBelow — here it is the swap.
+                KeyCode::Char('o') => return self.action(Command::SwapSelectionEnds),
                 // In a selection, `i`/`a` always begin a text object (there is no insert here); the next key
                 // is its selector. The completed object re-spans the selection (see the core's `Move` arm).
                 KeyCode::Char('i') => {
@@ -928,6 +931,22 @@ mod tests {
         assert_eq!(e.feed(k('c'), vis), Feed::Cmd(Command::ChangeSelection));
         assert_eq!(e.feed(k('x'), vis), Feed::Cmd(Command::DeleteSelection));
         assert_eq!(e.feed(esc(), vis), Feed::Cmd(Command::EnterNormal));
+    }
+
+    #[test]
+    fn visual_o_swaps_selection_ends() {
+        // In Visual/Select, `o` emits SwapSelectionEnds (in Normal it is OpenBelow).
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('o'), Mode::Visual { line: false }),
+            Feed::Cmd(Command::SwapSelectionEnds)
+        );
+        assert_eq!(
+            e.feed(k('o'), Mode::Select { line: true }),
+            Feed::Cmd(Command::SwapSelectionEnds)
+        );
+        // Sanity: `o` in Normal is still OpenBelow.
+        assert_eq!(feed("o"), Feed::Cmd(Command::OpenBelow));
     }
 
     #[test]
