@@ -308,6 +308,39 @@ FIXTURES: list[dict] = [
     {"name": "C_change_to_eol", "lines": ["hello world"], "keys": "wCX<Esc>"},
     {"name": "Y_yank_line", "lines": ["hello", "world"], "keys": "Yp"},
     {"name": "S_change_line", "lines": ["  hello", "world"], "keys": "SNEW<Esc>"},
+    # --- COMPOSITE corpus (impl/corpus-composite): multi-step editing SESSIONS (6-20 keystrokes) whose
+    #     whole point is CROSS-COMMAND STATE — one command's effect (dot-register, unnamed register,
+    #     cursor, mode) carried into the next. The atomic (1-2 op) fixtures above cannot surface an
+    #     INTERACTION bug; these can. Every `expect` is still oracle-captured, never hand-written.
+    #     DOT-REPEAT chains (`.` replays the last change; verify dd/insert repeatability via the oracle) --
+    {"name": "dot_ciw_repeat_word", "lines": ["foo bar baz"], "keys": "ciwX<Esc>w."},
+    {"name": "dot_x_across_lines", "lines": ["abc", "def"], "keys": "xj."},
+    {"name": "dot_dd_repeat", "lines": ["a", "b", "c"], "keys": "dd."},
+    {"name": "dot_A_append_repeat", "lines": ["foo", "bar"], "keys": "A;<Esc>j."},
+    {
+        "name": "dot_shift_repeat",
+        "lines": ["a", "b"],
+        "keys": ">>j.",
+        "setup": "set shiftwidth=4 expandtab startofline",
+    },
+    {"name": "dot_dw_twice", "lines": ["one two three four"], "keys": "dw.."},
+    #     COUNT accumulation interacting with a later command / dot --------------------------------------
+    {"name": "count_d2w_then_dot", "lines": ["a b c d e"], "keys": "d2w."},
+    {"name": "count_3x_then_dot", "lines": ["abcdefgh"], "keys": "3x."},
+    {"name": "count_2dd_then_p", "lines": ["a", "b", "c", "d"], "keys": "2ddp"},
+    #     REGISTER reuse across ops (unnamed register survives motions; `"a` is a NAMED-register probe) ---
+    {"name": "reg_dw_word_paste_before", "lines": ["one two three"], "keys": "dwwP"},
+    {"name": "reg_dd_overwrite_then_paste", "lines": ["1", "2", "3", "4"], "keys": "ddjddp"},
+    {"name": "reg_named_yank_paste", "lines": ["foo bar"], "keys": '"ayiw$"ap'},
+    #     MODE-TRANSITION sequences (selection/insert -> normal -> paste; append then insert-at-start) ----
+    {"name": "mode_viwy_open_paste", "lines": ["hello"], "keys": "viwyo<Esc>p"},
+    {"name": "mode_vjd_then_paste", "lines": ["abc", "def"], "keys": "vjdp"},
+    {"name": "mode_append_then_insert_bol", "lines": ["mid"], "keys": "A!<Esc>0i?<Esc>"},
+    #     MIXED realistic refactors (navigate then edit; find-delimiter then change-inner) ---------------
+    {"name": "refactor_2word_change_end", "lines": ["aa bb cc dd"], "keys": "2wceHELLO<Esc>0"},
+    {"name": "refactor_find_paren_change_inner", "lines": ["foo(bar)baz"], "keys": "f(ci(X<Esc>"},
+    #     SEARCH probe (one, per brief): `/` is not wired into the parity comparator's drive loop --------
+    {"name": "search_then_daw_probe", "lines": ["hello world foo"], "keys": "/world<CR>daw"},
 ]
 
 

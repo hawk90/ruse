@@ -1889,6 +1889,461 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "dot_ciw_repeat_word",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "ciwX<Esc>w.",
+      "expect": {
+        "text": [
+          "X X baz"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_x_across_lines",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "xj.",
+      "expect": {
+        "text": [
+          "bc",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_dd_repeat",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "dd.",
+      "expect": {
+        "text": [
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_A_append_repeat",
+      "lines": [
+        "foo",
+        "bar"
+      ],
+      "keys": "A;<Esc>j.",
+      "expect": {
+        "text": [
+          "foo;",
+          "bar;"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_shift_repeat",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ">>j.",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a",
+          "    b"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_dw_twice",
+      "lines": [
+        "one two three four"
+      ],
+      "keys": "dw..",
+      "expect": {
+        "text": [
+          "four"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "three ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_d2w_then_dot",
+      "lines": [
+        "a b c d e"
+      ],
+      "keys": "d2w.",
+      "expect": {
+        "text": [
+          "e"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c d ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_3x_then_dot",
+      "lines": [
+        "abcdefgh"
+      ],
+      "keys": "3x.",
+      "expect": {
+        "text": [
+          "gh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_2dd_then_p",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "2ddp",
+      "expect": {
+        "text": [
+          "c",
+          "a",
+          "b",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_dw_word_paste_before",
+      "lines": [
+        "one two three"
+      ],
+      "keys": "dwwP",
+      "expect": {
+        "text": [
+          "two one three"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "one ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_dd_overwrite_then_paste",
+      "lines": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "keys": "ddjddp",
+      "expect": {
+        "text": [
+          "2",
+          "4",
+          "3"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_named_yank_paste",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "\"ayiw$\"ap",
+      "expect": {
+        "text": [
+          "foo barfoo"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "mode_viwy_open_paste",
+      "lines": [
+        "hello"
+      ],
+      "keys": "viwyo<Esc>p",
+      "expect": {
+        "text": [
+          "hello",
+          "hello"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "hello",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "mode_vjd_then_paste",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "vjdp",
+      "expect": {
+        "text": [
+          "eabc",
+          "df"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "abc\nd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "mode_append_then_insert_bol",
+      "lines": [
+        "mid"
+      ],
+      "keys": "A!<Esc>0i?<Esc>",
+      "expect": {
+        "text": [
+          "?mid!"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "refactor_2word_change_end",
+      "lines": [
+        "aa bb cc dd"
+      ],
+      "keys": "2wceHELLO<Esc>0",
+      "expect": {
+        "text": [
+          "aa bb HELLO dd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "cc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "refactor_find_paren_change_inner",
+      "lines": [
+        "foo(bar)baz"
+      ],
+      "keys": "f(ci(X<Esc>",
+      "expect": {
+        "text": [
+          "foo(X)baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_then_daw_probe",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/world<CR>daw",
+      "expect": {
+        "text": [
+          "hello foo"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "world ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }
