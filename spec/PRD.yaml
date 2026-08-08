@@ -135,24 +135,58 @@ features:
       - "Namespace transitions carry return addresses: `i_CTRL-O` and `t_CTRL-\\ CTRL-O` are the same one-shot-return construct, and `gv` restores a selection that outlived its namespace (VS-OBL-2)."
       - "Mode is per-window/per-buffer: a terminal buffer is in the terminal namespace while a neighbouring window is in normal (VS-OBL-1)."
 
+  # F-023 was split by CENSUS SURFACE (mirrors F-003 -> F-023..F-027 per namespace): operators/motions/
+  # dot-repeat live in mode_key.normal (+ operator_pending), text objects in mode_key.text_object, and
+  # registers have no clean census surface (a `"` prefix, not a mode_key sub-surface) so they are isolated
+  # in F-029 until that home is decided. Rationale: families.yaml FAM-EDIT-VIM-GRAMMAR + D-043 (screen a
+  # surface, then repoint trace.parity off the legacy VIM-* ids onto census ids).
   F-023:
-    title: Normal + Operator-pending namespaces — the editing grammar
+    title: Operators, motions & dot-repeat — the Normal editing grammar
     stage: mvp
     priority: must
     status: planned
-    depends_on: [C-INPUT, C-EDITLANG, C-REGISTER, C-POSHIST]
-    summary: Operator x count x motion composition, text objects, registers and dot-repeat.
+    depends_on: [C-INPUT, C-EDITLANG, C-POSHIST]
+    summary: Operator x count x motion composition and dot-repeat (census surface mode_key.normal + operator_pending).
     trace:
-      parity: [VIM-OP-1, VIM-OP-2, VIM-OP-3, VIM-OP-4, VIM-OP-5, VIM-OP-6, VIM-OP-7, VIM-OP-8, VIM-OP-9, VIM-MOT-PROMOTE, VIM-MOT-1, VIM-MOT-2, VIM-MOT-3, VIM-MOT-4, VIM-MOT-5, VIM-MOT-6, VIM-MOT-7, VIM-MOT-8, VIM-MOT-9, VIM-TOBJ-1, VIM-TOBJ-2, VIM-TOBJ-3, VIM-TOBJ-4, VIM-TOBJ-5, VIM-REG-1, VIM-REG-2, VIM-REG-3, VIM-REG-4, VIM-REG-5, VIM-REG-6, VIM-REG-7, VIM-REG-8, VIM-REG-9, VIM-REPEAT-DOT]
+      parity: [VIM-OP-1, VIM-OP-2, VIM-OP-3, VIM-OP-4, VIM-OP-5, VIM-OP-6, VIM-OP-7, VIM-OP-8, VIM-OP-9, VIM-MOT-PROMOTE, VIM-MOT-1, VIM-MOT-2, VIM-MOT-3, VIM-MOT-4, VIM-MOT-5, VIM-MOT-6, VIM-MOT-7, VIM-MOT-8, VIM-MOT-9, VIM-REPEAT-DOT]
       contract: [../spec/parity/contracts/vim-style.yaml]
-      design: [../docs/design/editing-language.md, ../docs/design/register-model.md, ../docs/design/positions-history.md]
-      verify: [../tests/parity/vim/operator-motion.yaml, ../tests/parity/vim/text-objects.yaml, ../tests/parity/vim/registers.yaml]
+      design: [../docs/design/editing-language.md, ../docs/design/positions-history.md]
+      verify: [../tests/parity/vim/operator-motion.yaml]
     acceptance:
       - "Operator+motion composes with count multiplication (2d3w deletes 6 words) and doubling goes linewise (dd/yy)."
       - "Exclusive->inclusive->linewise motion promotion (VIM-MOT-PROMOTE) matches the vim.md checklist item 1."
       - "The three operator-pending keys of its own (`v`/`V`/`CTRL-V` force charwise/linewise/blockwise) apply to the pending operator; every other unbound key aborts it."
-      - "diw / daw / di( / dd / yy / p and the unnamed + yank-only (reg 0) registers behave per the L2 checklist; register entries carry a SHAPE (charwise/linewise/blockwise) that survives round-trip (CONCEPT-REGISTER-STORE)."
       - "Dot-repeat replays the full change including inserted text."
+  F-028:
+    title: Text objects — inner/around targets
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-INPUT, C-EDITLANG]
+    summary: Text-object targets (iw/aw/i(/a"/it/...) as operator and visual operands (census surface mode_key.text_object).
+    trace:
+      parity: [VIM-TOBJ-1, VIM-TOBJ-2, VIM-TOBJ-3, VIM-TOBJ-4, VIM-TOBJ-5]
+      contract: [../spec/parity/contracts/vim-style.yaml]
+      design: [../docs/design/editing-language.md]
+      verify: [../tests/parity/vim/text-objects.yaml]
+    acceptance:
+      - "diw / daw / di( / da\" select the inner/around span; usable as an operator operand (diw) and to extend a visual selection."
+      - "Inner vs around differ by the surrounding whitespace/delimiters per the vim.md L2 checklist."
+  F-029:
+    title: Registers / kill-ring — the typed store
+    stage: mvp
+    priority: must
+    status: planned
+    depends_on: [C-EDITLANG, C-REGISTER]
+    summary: Named/numbered/unnamed registers; entries carry a shape that survives round-trip. NOTE - no clean census surface yet (registers are a `"` prefix, not a mode_key sub-surface); stays legacy until that home is decided.
+    trace:
+      parity: [VIM-REG-1, VIM-REG-2, VIM-REG-3, VIM-REG-4, VIM-REG-5, VIM-REG-6, VIM-REG-7, VIM-REG-8, VIM-REG-9]
+      contract: [../spec/parity/contracts/vim-style.yaml]
+      design: [../docs/design/register-model.md]
+      verify: [../tests/parity/vim/registers.yaml]
+    acceptance:
+      - "The unnamed and yank-only (reg 0) registers behave per the L2 checklist; `\"ayy` / `\"ap` address a named register."
+      - "Register entries carry a SHAPE (charwise/linewise/blockwise) that survives round-trip (CONCEPT-REGISTER-STORE); dd then p opens a line."
 
   F-024:
     title: Insert namespace
