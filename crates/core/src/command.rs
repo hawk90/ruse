@@ -93,6 +93,10 @@ pub enum Command {
     DeleteSelection,
     YankSelection,
     ChangeSelection,
+    /// `gv` — re-select the LAST visual/select selection (its anchor, active end, and charwise/linewise
+    /// kind), captured when that selection was last left. A no-op if there is no prior selection. This is
+    /// the depth-1 degenerate of D-027's `` `< ``/`` `> `` selection history (one remembered `Selection`).
+    ReselectVisual,
     /// Visual/Select `o` — swap the selection's two ends: the cursor jumps to the anchor and the anchor
     /// becomes the old cursor position. The SAME text stays selected, but subsequent motions now extend
     /// the OTHER end. Involutive (`oo` restores the original ends); a clean no-op outside a selection.
@@ -339,6 +343,7 @@ impl Command {
             Command::DeleteSelection => "delete_selection".into(),
             Command::YankSelection => "yank_selection".into(),
             Command::ChangeSelection => "change_selection".into(),
+            Command::ReselectVisual => "reselect_visual".into(),
             Command::SwapSelectionEnds => "swap_selection_ends".into(),
             Command::ReplaceSelection(c) => {
                 let mut s = String::from("replace_selection ");
@@ -473,6 +478,7 @@ impl Command {
             "delete_selection" => Command::DeleteSelection,
             "yank_selection" => Command::YankSelection,
             "change_selection" => Command::ChangeSelection,
+            "reselect_visual" => Command::ReselectVisual,
             "swap_selection_ends" => Command::SwapSelectionEnds,
             "replace_selection" => {
                 let cp: u32 = arg
@@ -658,6 +664,7 @@ mod tests {
             Command::YankSelection,
             Command::ChangeSelection,
             Command::SwapSelectionEnds,
+            Command::ReselectVisual,
             Command::ReplaceSelection('z'),
             Command::ReplaceSelection('가'),
             Command::ReplaceSelection('🎉'),
