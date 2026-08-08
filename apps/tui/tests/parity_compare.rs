@@ -59,6 +59,12 @@ fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
             Feed::Cmd(cmd) => {
                 apply_command(&mut st, &cmd);
             }
+            // `.` (dot-repeat) expands to the recorded change's command list; apply each in turn.
+            Feed::Replay(cmds) => {
+                for cmd in cmds {
+                    apply_command(&mut st, &cmd);
+                }
+            }
             // The corpus uses no `:`/`/` command-line fixtures; those and pending/ignored are no-ops.
             Feed::OpenExLine | Feed::OpenSearch | Feed::Pending | Feed::Ignored => {}
         }

@@ -203,6 +203,13 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
             Feed::OpenSearch => cmd_line = Some(('/', String::new())),
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => run_cmd(cmd, &mut st, &path, &mut recorded, &mut status, &mut quit),
+            // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
+            // trace (F-022) captures the resolved edit, not the `.` keypress.
+            Feed::Replay(cmds) => {
+                for cmd in cmds {
+                    run_cmd(cmd, &mut st, &path, &mut recorded, &mut status, &mut quit);
+                }
+            }
         }
     }
     Ok(())
