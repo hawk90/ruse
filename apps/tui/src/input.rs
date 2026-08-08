@@ -596,8 +596,21 @@ impl InputEngine {
                 self.awaiting = Awaiting::ShiftSecond { right: false };
                 Feed::Pending
             }
-            KeyCode::Char('p') => self.action(Command::Paste { after: true }),
-            KeyCode::Char('P') => self.action(Command::Paste { after: false }),
+            KeyCode::Char('p') => self.action(Command::Paste {
+                after: true,
+                count: self.mcount(),
+            }),
+            KeyCode::Char('P') => self.action(Command::Paste {
+                after: false,
+                count: self.mcount(),
+            }),
+            // Line-operator synonyms: `D`=`d$`, `C`=`c$`, `Y`=`y$` (nvim 0.6+ charwise), `S`=`cc`.
+            // Each is the existing operator applied to an implicit motion, routed through the same
+            // plan/commit path (so register geometry, cursor clamping, and dot-replayability match).
+            KeyCode::Char('D') => self.action(Command::Delete(self.mcount(), Motion::LineEnd)),
+            KeyCode::Char('C') => self.action(Command::Change(self.mcount(), Motion::LineEnd)),
+            KeyCode::Char('Y') => self.action(Command::Yank(self.mcount(), Motion::LineEnd)),
+            KeyCode::Char('S') => self.action(Command::Change(self.mcount(), Motion::Line)),
             KeyCode::Char('i') if self.op.is_some() => {
                 self.awaiting = Awaiting::TextObjectChar { inner: true };
                 Feed::Pending
@@ -1025,8 +1038,20 @@ mod tests {
         assert_eq!(feed("yy"), Feed::Cmd(Command::Yank(1, Motion::Line)));
         assert_eq!(feed("2yy"), Feed::Cmd(Command::Yank(2, Motion::Line)));
         assert_eq!(feed("yiw"), Feed::Cmd(Command::Yank(1, Motion::InnerWord)));
-        assert_eq!(feed("p"), Feed::Cmd(Command::Paste { after: true }));
-        assert_eq!(feed("P"), Feed::Cmd(Command::Paste { after: false }));
+        assert_eq!(
+            feed("p"),
+            Feed::Cmd(Command::Paste {
+                after: true,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("P"),
+            Feed::Cmd(Command::Paste {
+                after: false,
+                count: 1
+            })
+        );
     }
 
     #[test]

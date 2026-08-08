@@ -630,23 +630,60 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::Change(count, m) => {
-            let (s, e) = change_range(b, cur, *m, *count);
-            if s >= e {
-                Plan {
-                    action: Action::Nop,
-                    cursor: s,
-                    mode: Mode::Insert,
-                    is_edit: false,
-                    effects: Vec::new(),
-                    set_register: None,
-                    set_anchor: None,
+            if *m == Motion::Line {
+                // `cc` / `{count}cc` / `S`: a LINEWISE change. Vim keeps the leading indent of the first
+                // line (autoindent-like, but here config-independent — the existing indent TEXT is
+                // preserved), deletes the rest of the line content down through `count` lines, keeps the
+                // trailing newline, and enters Insert at the end of the kept indent. The register captures
+                // the whole affected line(s) LINEWISE, including their indent and trailing newline.
+                let (ls, content_end) = change_range(b, cur, *m, *count);
+                let indent_end = motion::first_non_blank(b, ls).min(content_end);
+                // Register span: whole lines including the terminating newline where one is present.
+                let reg_end = if content_end < b.len() && b[content_end] == b'\n' {
+                    content_end + 1
+                } else {
+                    content_end
+                };
+                let reg = captured(ls, reg_end, true);
+                if indent_end >= content_end {
+                    // Nothing after the indent to delete (empty/blank line): keep the buffer, but still
+                    // capture the register linewise and drop into Insert at the indent end.
+                    Plan {
+                        action: Action::Nop,
+                        cursor: indent_end,
+                        mode: Mode::Insert,
+                        is_edit: false,
+                        effects: Vec::new(),
+                        set_register: Some(reg),
+                        set_anchor: None,
+                    }
+                } else {
+                    edit_yank(
+                        one(Edit::delete(indent_end, content_end - indent_end)),
+                        indent_end,
+                        Mode::Insert,
+                        hint,
+                        reg,
+                    )
                 }
             } else {
-                // `change_range` keeps the trailing newline on the buffer for `cc`; the register still
-                // captures the removed content, charwise (Vim treats `cc`'s register as characterwise-ish;
-                // v0 keeps it charwise — the common paste target is inline).
-                let reg = captured(s, e, false);
-                edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+                let (s, e) = change_range(b, cur, *m, *count);
+                if s >= e {
+                    Plan {
+                        action: Action::Nop,
+                        cursor: s,
+                        mode: Mode::Insert,
+                        is_edit: false,
+                        effects: Vec::new(),
+                        set_register: None,
+                        set_anchor: None,
+                    }
+                } else {
+                    // The register captures the removed content charwise (a partial-line change like `c$`
+                    // pastes inline).
+                    let reg = captured(s, e, false);
+                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+                }
             }
         }
         Command::Yank(count, m) => {
@@ -669,7 +706,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
         Command::ShiftLeft(count) => plan_shift(st, cur, *count, false, hint),
-        Command::Paste { after } => paste(b, cur, st.mode, &st.register, *after),
+        Command::Paste { after, count } => paste(b, cur, st.mode, &st.register, *after, *count),
         Command::EnterVisual { line } => nop(cur, Mode::Visual { line: *line }),
         // CTRL-G toggle: enter Select over the same selection. The anchor is preserved because both are
         // selection modes, so `commit` keeps it (see the (true, true) arm there).
@@ -877,7 +914,7 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
 /// Build the paste plan for `p` (after) / `P` (before) from the unnamed register. Charwise pastes insert
 /// inline next to the cursor; linewise pastes open a whole new line below/above. An empty register is a
 /// no-op. This is the paste-geometry semantic D-026 pins down for v0.
-fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool) -> Plan {
+fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u32) -> Plan {
     let nop = Plan {
         action: Action::Nop,
         cursor: cur,
@@ -890,6 +927,10 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool) -> Plan 
     if reg.is_empty() {
         return nop;
     }
+    // `{count}p` pastes the register `count` times (Vim); the register itself is unchanged. The repeated
+    // bytes are one contiguous insert, so the cursor math below (last pasted byte) still holds.
+    let count = count.max(1) as usize;
+    let repeat = |unit: &[u8]| unit.repeat(count);
     let one = |e: Edit| EditList::new(vec![e]).expect("single edit is always valid");
     let mk = |at: usize, bytes: Vec<u8>, cursor: usize| Plan {
         action: Action::Txn {
@@ -905,8 +946,8 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool) -> Plan 
     };
 
     if reg.is_linewise() {
-        // Linewise content is normalized to end with '\n'.
-        let text = reg.text().to_vec();
+        // Linewise content is normalized to end with '\n'; `{count}p` stacks that many whole-line copies.
+        let text = repeat(reg.text());
         if after {
             let le = line_end(b, cur);
             if le < b.len() {
@@ -924,7 +965,8 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool) -> Plan 
             mk(ls, text, ls)
         }
     } else {
-        let text = reg.text().to_vec();
+        // `{count}p` inserts that many copies inline; the cursor lands on the last pasted byte (Vim).
+        let text = repeat(reg.text());
         let n = text.len();
         if after {
             // Insert after the cursor char; cursor ends on the last pasted byte's boundary (Vim behavior).
@@ -1033,7 +1075,10 @@ mod register_tests {
             "aaa\nbbb\n",
             &[
                 Command::Yank(1, Motion::Line),
-                Command::Paste { after: true },
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "aaa\naaa\nbbb\n");
@@ -1045,7 +1090,10 @@ mod register_tests {
             "one\ntwo\n",
             &[
                 Command::Delete(1, Motion::Line),
-                Command::Paste { after: true },
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "two\none\n");
@@ -1056,7 +1104,13 @@ mod register_tests {
         // The classic Vim idiom: `x` yanks the char, `p` puts it after the next one.
         let st = run(
             "abc",
-            &[Command::DeleteUnder(1), Command::Paste { after: true }],
+            &[
+                Command::DeleteUnder(1),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                },
+            ],
         );
         assert_eq!(text(&st), "bac");
     }
@@ -1067,7 +1121,10 @@ mod register_tests {
             "foo",
             &[
                 Command::Yank(1, Motion::Right),
-                Command::Paste { after: true },
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "ffoo");
@@ -1081,7 +1138,10 @@ mod register_tests {
             &[
                 Command::MoveDown,
                 Command::Yank(1, Motion::Line),
-                Command::Paste { after: false },
+                Command::Paste {
+                    after: false,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "x\ny\ny\n");
@@ -1095,7 +1155,10 @@ mod register_tests {
             &[
                 Command::MoveDown,
                 Command::Yank(1, Motion::Line),
-                Command::Paste { after: true },
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "a\nb\nb");
@@ -1103,7 +1166,13 @@ mod register_tests {
 
     #[test]
     fn paste_from_empty_register_is_a_noop() {
-        let st = run("hello", &[Command::Paste { after: true }]);
+        let st = run(
+            "hello",
+            &[Command::Paste {
+                after: true,
+                count: 1,
+            }],
+        );
         assert_eq!(text(&st), "hello");
         assert!(st.register().is_empty());
     }
@@ -1115,6 +1184,40 @@ mod register_tests {
         assert!(!st.register().is_linewise());
         let st = run("word\n", &[Command::Delete(1, Motion::Line)]);
         assert!(st.register().is_linewise());
+    }
+
+    #[test]
+    fn count_paste_repeats_charwise_register_inline() {
+        // `yl2p` on "abc": yank "a", paste it twice after the cursor -> "aaabc", cursor on the last copy.
+        let st = run(
+            "abc",
+            &[
+                Command::Yank(1, Motion::Right),
+                Command::Paste {
+                    after: true,
+                    count: 2,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "aaabc");
+        assert_eq!(st.cursor(), 2, "cursor lands on the last pasted byte");
+        assert_eq!(
+            st.register().text(),
+            b"a",
+            "the register is unchanged by paste"
+        );
+    }
+
+    #[test]
+    fn cc_preserves_indent_and_captures_linewise() {
+        // `cc` (Change over Motion::Line) keeps the first line's indent, deletes the rest, enters Insert
+        // at the indent end, and captures the WHOLE line linewise (indent + trailing newline included).
+        let st = run("  hello\nworld", &[Command::Change(1, Motion::Line)]);
+        assert_eq!(text(&st), "  \nworld", "leading indent survives cc");
+        assert_eq!(st.cursor(), 2, "cursor sits at the end of the kept indent");
+        assert_eq!(st.mode(), Mode::Insert);
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"  hello\n");
     }
 }
 
@@ -1810,7 +1913,10 @@ mod visual_tests {
                 Command::EnterVisual { line: false },
                 Command::MoveRight, // select "he"
                 Command::YankSelection,
-                Command::Paste { after: true },
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                },
             ],
         );
         // Yank leaves the buffer, cursor at selection start (0); `p` inserts "he" after the cursor char.

@@ -307,6 +307,7 @@ FIXTURES: list[dict] = [
     {"name": "D_delete_to_eol", "lines": ["hello world"], "keys": "wD"},
     {"name": "C_change_to_eol", "lines": ["hello world"], "keys": "wCX<Esc>"},
     {"name": "Y_yank_line", "lines": ["hello", "world"], "keys": "Yp"},
+    {"name": "S_change_line", "lines": ["  hello", "world"], "keys": "SNEW<Esc>"},
 ]
 
 
