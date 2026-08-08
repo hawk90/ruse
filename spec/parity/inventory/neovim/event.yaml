@@ -1,0 +1,1142 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py neovim && python3 tools/parity/extract_neovim.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+version: 1
+generated: true
+generator: tools/parity/extract_neovim.py
+upstream: neovim
+revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
+version_label: v0.12.4
+surface: event
+source_of_record: 'S: src/nvim/auevents.lua'
+items:
+- id: nvim.event.bufadd
+  surface: event
+  event: BufAdd
+  window_local: true
+  desc: after adding a buffer to the buffer list
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufdelete
+  surface: event
+  event: BufDelete
+  window_local: true
+  desc: deleting a buffer from the buffer list
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufenter
+  surface: event
+  event: BufEnter
+  window_local: true
+  desc: after entering a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.buffilepost
+  surface: event
+  event: BufFilePost
+  window_local: true
+  desc: after renaming a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.buffilepre
+  surface: event
+  event: BufFilePre
+  window_local: true
+  desc: before renaming a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufhidden
+  surface: event
+  event: BufHidden
+  window_local: true
+  desc: just after buffer becomes hidden
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufleave
+  surface: event
+  event: BufLeave
+  window_local: true
+  desc: before leaving a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufmodifiedset
+  surface: event
+  event: BufModifiedSet
+  window_local: true
+  desc: after the 'modified' state of a buffer changes
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufnew
+  surface: event
+  event: BufNew
+  window_local: true
+  desc: after creating any buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufnewfile
+  surface: event
+  event: BufNewFile
+  window_local: true
+  desc: when creating a buffer for a new file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufreadcmd
+  surface: event
+  event: BufReadCmd
+  window_local: true
+  desc: read buffer using command
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufreadpost
+  surface: event
+  event: BufReadPost
+  window_local: true
+  desc: after reading a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufreadpre
+  surface: event
+  event: BufReadPre
+  window_local: true
+  desc: before reading a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufunload
+  surface: event
+  event: BufUnload
+  window_local: true
+  desc: just before unloading a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufwinenter
+  surface: event
+  event: BufWinEnter
+  window_local: true
+  desc: after showing a buffer in a window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufwinleave
+  surface: event
+  event: BufWinLeave
+  window_local: true
+  desc: just after buffer removed from window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufwipeout
+  surface: event
+  event: BufWipeout
+  window_local: true
+  desc: just before really deleting a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufwritecmd
+  surface: event
+  event: BufWriteCmd
+  window_local: true
+  desc: write buffer using command
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufwritepost
+  surface: event
+  event: BufWritePost
+  window_local: true
+  desc: after writing a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.bufwritepre
+  surface: event
+  event: BufWritePre
+  window_local: true
+  desc: before writing a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.chaninfo
+  surface: event
+  event: ChanInfo
+  window_local: false
+  desc: info was received about channel
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.chanopen
+  surface: event
+  event: ChanOpen
+  window_local: false
+  desc: channel was opened
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cmdundefined
+  surface: event
+  event: CmdUndefined
+  window_local: false
+  desc: command undefined
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cmdlinechanged
+  surface: event
+  event: CmdlineChanged
+  window_local: false
+  desc: command line was modified
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cmdlineenter
+  surface: event
+  event: CmdlineEnter
+  window_local: false
+  desc: after entering cmdline mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cmdlineleave
+  surface: event
+  event: CmdlineLeave
+  window_local: false
+  desc: before leaving cmdline mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cmdlineleavepre
+  surface: event
+  event: CmdlineLeavePre
+  window_local: false
+  desc: just before leaving the command line
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cmdwinenter
+  surface: event
+  event: CmdwinEnter
+  window_local: false
+  desc: after entering the cmdline window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cmdwinleave
+  surface: event
+  event: CmdwinLeave
+  window_local: false
+  desc: before leaving the cmdline window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.colorscheme
+  surface: event
+  event: ColorScheme
+  window_local: false
+  desc: after loading a colorscheme
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.colorschemepre
+  surface: event
+  event: ColorSchemePre
+  window_local: false
+  desc: before loading a colorscheme
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.completechanged
+  surface: event
+  event: CompleteChanged
+  window_local: false
+  desc: after popup menu changed
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.completedone
+  surface: event
+  event: CompleteDone
+  window_local: false
+  desc: after finishing insert complete
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.completedonepre
+  surface: event
+  event: CompleteDonePre
+  window_local: false
+  desc: idem, before clearing info
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cursorhold
+  surface: event
+  event: CursorHold
+  window_local: true
+  desc: cursor in same position for a while
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cursorholdi
+  surface: event
+  event: CursorHoldI
+  window_local: true
+  desc: idem, in Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cursormoved
+  surface: event
+  event: CursorMoved
+  window_local: true
+  desc: cursor was moved
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cursormovedc
+  surface: event
+  event: CursorMovedC
+  window_local: true
+  desc: cursor was moved in Cmdline mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.cursormovedi
+  surface: event
+  event: CursorMovedI
+  window_local: true
+  desc: cursor was moved in Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.diagnosticchanged
+  surface: event
+  event: DiagnosticChanged
+  window_local: false
+  desc: diagnostics in a buffer were modified
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.diffupdated
+  surface: event
+  event: DiffUpdated
+  window_local: false
+  desc: diffs have been updated
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.dirchanged
+  surface: event
+  event: DirChanged
+  window_local: false
+  desc: directory changed
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.dirchangedpre
+  surface: event
+  event: DirChangedPre
+  window_local: false
+  desc: directory is going to change
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.encodingchanged
+  surface: event
+  event: EncodingChanged
+  window_local: false
+  desc: after changing the 'encoding' option
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.exitpre
+  surface: event
+  event: ExitPre
+  window_local: false
+  desc: before exiting
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.fileappendcmd
+  surface: event
+  event: FileAppendCmd
+  window_local: true
+  desc: append to a file using command
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.fileappendpost
+  surface: event
+  event: FileAppendPost
+  window_local: true
+  desc: after appending to a file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.fileappendpre
+  surface: event
+  event: FileAppendPre
+  window_local: true
+  desc: before appending to a file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filechangedro
+  surface: event
+  event: FileChangedRO
+  window_local: true
+  desc: before first change to read-only file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filechangedshell
+  surface: event
+  event: FileChangedShell
+  window_local: true
+  desc: after shell command that changed file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filechangedshellpost
+  surface: event
+  event: FileChangedShellPost
+  window_local: true
+  desc: after (not) reloading changed file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filereadcmd
+  surface: event
+  event: FileReadCmd
+  window_local: true
+  desc: read from a file using command
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filereadpost
+  surface: event
+  event: FileReadPost
+  window_local: true
+  desc: after reading a file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filereadpre
+  surface: event
+  event: FileReadPre
+  window_local: true
+  desc: before reading a file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filetype
+  surface: event
+  event: FileType
+  window_local: true
+  desc: new file type detected (user defined)
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filewritecmd
+  surface: event
+  event: FileWriteCmd
+  window_local: true
+  desc: write to a file using command
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filewritepost
+  surface: event
+  event: FileWritePost
+  window_local: true
+  desc: after writing a file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filewritepre
+  surface: event
+  event: FileWritePre
+  window_local: true
+  desc: before writing a file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filterreadpost
+  surface: event
+  event: FilterReadPost
+  window_local: true
+  desc: after reading from a filter
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filterreadpre
+  surface: event
+  event: FilterReadPre
+  window_local: true
+  desc: before reading from a filter
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filterwritepost
+  surface: event
+  event: FilterWritePost
+  window_local: true
+  desc: after writing to a filter
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.filterwritepre
+  surface: event
+  event: FilterWritePre
+  window_local: true
+  desc: before writing to a filter
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.focusgained
+  surface: event
+  event: FocusGained
+  window_local: false
+  desc: got the focus
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.focuslost
+  surface: event
+  event: FocusLost
+  window_local: false
+  desc: lost the focus to another app
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.funcundefined
+  surface: event
+  event: FuncUndefined
+  window_local: false
+  desc: if calling a function which doesn't exist
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.guienter
+  surface: event
+  event: GUIEnter
+  window_local: false
+  desc: after starting the GUI
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.guifailed
+  surface: event
+  event: GUIFailed
+  window_local: false
+  desc: after starting the GUI failed
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.insertchange
+  surface: event
+  event: InsertChange
+  window_local: true
+  desc: when changing Insert/Replace mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.insertcharpre
+  surface: event
+  event: InsertCharPre
+  window_local: true
+  desc: before inserting a char
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.insertenter
+  surface: event
+  event: InsertEnter
+  window_local: true
+  desc: when entering Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.insertleave
+  surface: event
+  event: InsertLeave
+  window_local: true
+  desc: just after leaving Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.insertleavepre
+  surface: event
+  event: InsertLeavePre
+  window_local: true
+  desc: just before leaving Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.lspattach
+  surface: event
+  event: LspAttach
+  window_local: false
+  desc: after an LSP client attaches to a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.lspdetach
+  surface: event
+  event: LspDetach
+  window_local: false
+  desc: after an LSP client detaches from a buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.lspnotify
+  surface: event
+  event: LspNotify
+  window_local: false
+  desc: after an LSP notice has been sent to the server
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.lspprogress
+  surface: event
+  event: LspProgress
+  window_local: false
+  desc: after a LSP progress update
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.lsprequest
+  surface: event
+  event: LspRequest
+  window_local: false
+  desc: after an LSP request is started, canceled, or completed
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.lsptokenupdate
+  surface: event
+  event: LspTokenUpdate
+  window_local: false
+  desc: after a visible LSP token is updated
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.markset
+  surface: event
+  event: MarkSet
+  window_local: false
+  desc: after a mark is set
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.menupopup
+  surface: event
+  event: MenuPopup
+  window_local: false
+  desc: just before popup menu is displayed
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.modechanged
+  surface: event
+  event: ModeChanged
+  window_local: false
+  desc: after changing the mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.optionset
+  surface: event
+  event: OptionSet
+  window_local: false
+  desc: after setting any option
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.quickfixcmdpost
+  surface: event
+  event: QuickFixCmdPost
+  window_local: false
+  desc: after :make, :grep etc.
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.quickfixcmdpre
+  surface: event
+  event: QuickFixCmdPre
+  window_local: false
+  desc: before :make, :grep etc.
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.quitpre
+  surface: event
+  event: QuitPre
+  window_local: false
+  desc: before :quit
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.packchangedpre
+  surface: event
+  event: PackChangedPre
+  window_local: false
+  desc: before trying to change state of `vim.pack` plugin
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.packchanged
+  surface: event
+  event: PackChanged
+  window_local: false
+  desc: after changing state of `vim.pack` plugin
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.progress
+  surface: event
+  event: Progress
+  window_local: false
+  desc: after showing/updating a progress message
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.recordingenter
+  surface: event
+  event: RecordingEnter
+  window_local: true
+  desc: when starting to record a macro
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.recordingleave
+  surface: event
+  event: RecordingLeave
+  window_local: true
+  desc: just before a macro stops recording
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.remotereply
+  surface: event
+  event: RemoteReply
+  window_local: false
+  desc: upon string reception from a remote vim
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.safestate
+  surface: event
+  event: SafeState
+  window_local: false
+  desc: going to wait for a character
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.searchwrapped
+  surface: event
+  event: SearchWrapped
+  window_local: true
+  desc: after the search wrapped around
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.sessionloadpost
+  surface: event
+  event: SessionLoadPost
+  window_local: false
+  desc: after loading a session file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.sessionloadpre
+  surface: event
+  event: SessionLoadPre
+  window_local: false
+  desc: before loading a session file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.sessionwritepost
+  surface: event
+  event: SessionWritePost
+  window_local: false
+  desc: after writing a session file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.shellcmdpost
+  surface: event
+  event: ShellCmdPost
+  window_local: false
+  desc: after ":!cmd"
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.shellfilterpost
+  surface: event
+  event: ShellFilterPost
+  window_local: true
+  desc: after ":1,2!cmd", ":w !cmd", ":r !cmd".
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.signal
+  surface: event
+  event: Signal
+  window_local: false
+  desc: after nvim process received a signal
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.sourcecmd
+  surface: event
+  event: SourceCmd
+  window_local: false
+  desc: sourcing a Vim script using command
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.sourcepost
+  surface: event
+  event: SourcePost
+  window_local: false
+  desc: after sourcing a Vim script
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.sourcepre
+  surface: event
+  event: SourcePre
+  window_local: false
+  desc: before sourcing a Vim script
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.spellfilemissing
+  surface: event
+  event: SpellFileMissing
+  window_local: false
+  desc: spell file missing
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.stdinreadpost
+  surface: event
+  event: StdinReadPost
+  window_local: false
+  desc: after reading from stdin
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.stdinreadpre
+  surface: event
+  event: StdinReadPre
+  window_local: false
+  desc: before reading from stdin
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.swapexists
+  surface: event
+  event: SwapExists
+  window_local: false
+  desc: found existing swap file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.syntax
+  surface: event
+  event: Syntax
+  window_local: false
+  desc: syntax selected
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.tabclosed
+  surface: event
+  event: TabClosed
+  window_local: false
+  desc: after closing a tab page
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.tabclosedpre
+  surface: event
+  event: TabClosedPre
+  window_local: false
+  desc: before closing a tab page
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.tabenter
+  surface: event
+  event: TabEnter
+  window_local: false
+  desc: after entering a tab page
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.tableave
+  surface: event
+  event: TabLeave
+  window_local: false
+  desc: before leaving a tab page
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.tabnew
+  surface: event
+  event: TabNew
+  window_local: false
+  desc: when creating a new tab
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.tabnewentered
+  surface: event
+  event: TabNewEntered
+  window_local: false
+  desc: after entering a new tab
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.termchanged
+  surface: event
+  event: TermChanged
+  window_local: false
+  desc: after changing 'term'
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.termclose
+  surface: event
+  event: TermClose
+  window_local: false
+  desc: after the process exits
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.termenter
+  surface: event
+  event: TermEnter
+  window_local: false
+  desc: after entering Terminal mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.termleave
+  surface: event
+  event: TermLeave
+  window_local: false
+  desc: after leaving Terminal mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.termopen
+  surface: event
+  event: TermOpen
+  window_local: false
+  desc: after opening a terminal buffer
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.termrequest
+  surface: event
+  event: TermRequest
+  window_local: false
+  desc: after an unhandled OSC sequence is emitted
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.termresponse
+  surface: event
+  event: TermResponse
+  window_local: false
+  desc: after setting "v:termresponse"
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.textchanged
+  surface: event
+  event: TextChanged
+  window_local: true
+  desc: text was modified
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.textchangedi
+  surface: event
+  event: TextChangedI
+  window_local: true
+  desc: text was modified in Insert mode(no popup)
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.textchangedp
+  surface: event
+  event: TextChangedP
+  window_local: true
+  desc: text was modified in Insert mode(popup)
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.textchangedt
+  surface: event
+  event: TextChangedT
+  window_local: true
+  desc: text was modified in Terminal mode
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.textyankpost
+  surface: event
+  event: TextYankPost
+  window_local: true
+  desc: after a yank or delete was done (y, d, c)
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.uienter
+  surface: event
+  event: UIEnter
+  window_local: false
+  desc: after UI attaches
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.uileave
+  surface: event
+  event: UILeave
+  window_local: false
+  desc: after UI detaches
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.user
+  surface: event
+  event: User
+  window_local: false
+  desc: user defined autocommand
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.vimenter
+  surface: event
+  event: VimEnter
+  window_local: false
+  desc: after starting Vim
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.vimleave
+  surface: event
+  event: VimLeave
+  window_local: false
+  desc: before exiting Vim
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.vimleavepre
+  surface: event
+  event: VimLeavePre
+  window_local: false
+  desc: before exiting Vim and writing ShaDa file
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.vimresized
+  surface: event
+  event: VimResized
+  window_local: false
+  desc: after Vim window was resized
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.vimresume
+  surface: event
+  event: VimResume
+  window_local: false
+  desc: after Nvim is resumed
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.vimsuspend
+  surface: event
+  event: VimSuspend
+  window_local: false
+  desc: before Nvim is suspended
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.winclosed
+  surface: event
+  event: WinClosed
+  window_local: true
+  desc: after closing a window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.winenter
+  surface: event
+  event: WinEnter
+  window_local: true
+  desc: after entering a window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.winleave
+  surface: event
+  event: WinLeave
+  window_local: true
+  desc: before leaving a window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.winnewpre
+  surface: event
+  event: WinNewPre
+  window_local: false
+  desc: before creating a new window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.winnew
+  surface: event
+  event: WinNew
+  window_local: false
+  desc: after creating a new window
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.winresized
+  surface: event
+  event: WinResized
+  window_local: true
+  desc: after a window was resized
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.event.winscrolled
+  surface: event
+  event: WinScrolled
+  window_local: true
+  desc: after a window was scrolled or resized
+  attestation:
+  - S
+  status: unclassified

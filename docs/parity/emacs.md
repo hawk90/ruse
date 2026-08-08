@@ -10,6 +10,8 @@ summary: >
   rectangles/registers/bookmarks. Grounded in the GNU Emacs & Elisp manuals.
 audience: [maintainers, contributors, llm-agents]
 status: draft
+source_of_truth: false
+verified_against_upstream: false
 sources_root: https://www.gnu.org/software/emacs/manual/html_node/
 related:
   - README.md
@@ -19,6 +21,14 @@ related:
 ---
 
 # Parity: Emacs Interaction & Extension Model
+
+> **⚠️ NOT THE SOURCE OF TRUTH (D-043).** This file is hand-authored and has never been checked
+> against a pinned upstream revision. The parity source is the machine-derived census in
+> [`spec/parity/inventory/`](../../spec/parity/inventory/), generated from the SHA pins in
+> [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml). These tables survive as *human
+> annotation* — reading, grouping and intent — and are migrating onto census IDs. Do not add rows
+> here to record a newly discovered upstream feature: humans classify, they do not enumerate.
+
 
 Emacs is ruse's model for the **command / buffer / extension** dimension (the Emacs Style profile, and
 Native Style's command-discovery + special-view layers). We target the **semantic models**, not the
@@ -31,25 +41,36 @@ reproduced as models, not shortcuts. Out of scope: running Elisp / actual Emacs 
 ## EMACS-KEYMAP — Prefix keys & keymap layering
 Source: `Prefix-Keys`, `Active-Keymaps`, `Searching-Keymaps`, `Controlling-Active-Maps`.
 - Prefix keys (`C-x C-c C-h M-g C-x 4 C-x r ESC`) bind to *sub-keymaps*, not commands; nesting.
-- **Lookup precedence (highest first)** — the key extension mechanism to reproduce:
+- **Lookup precedence (highest first)** — the key extension mechanism to reproduce.
 
-| Rank | Layer | ruse mapping |
-| --- | --- | --- |
-| 1 | `overriding-terminal-local-map` (transient, `set-transient-map`) | Temporary state (architecture §1.4 priority 1) |
-| 2 | `overriding-local-map` | — |
-| 3 | text-property / overlay keymap | context binding (architecture §1.3) |
-| 4 | minor-mode maps (ordered) | Buffer-local mode / active view |
-| 5 | local (major-mode) map | Buffer-local mode |
-| 6 | global map | Built-in profile default |
+> **MIGRATED TO THE CENSUS (D-043).** The precedence stack is now enumerated by runtime introspection at the
+> pin as the [`keymap_tier`](../../spec/parity/inventory/emacs/keymap_tier.yaml) surface
+> (`emacs.keymaptier.*`), and what ruse promises for it is
+> [`keymap-layers.yaml`](../../spec/parity/contracts/keymap-layers.yaml) `profiles.emacs-style` — a depth-9,
+> unsealed, buffer-selected stack. **EMACS-KEYMAP-2 is dropped**; F-012 cites the nine census ids directly.
+>
+> **The hand-authored table this replaced had SIX ranks. The census counted NINE.** That gap is the concrete
+> cost of enumerating by hand: `emulation-mode-map-alists` and `minor-mode-overriding-map-alist` were missing
+> entirely, and `local-map` (a text/overlay property) was conflated with `current-local-map` (the major-mode
+> map) — two different mechanisms under one row. Three of the nine had nowhere to live, and one of the
+> six was two tiers wearing one name.
+>
+> A second measurement from the same census sizes the stakes: **613 of Emacs's 1,952 keyboard bindings live
+> in major-mode maps** — a tier Vim's model has no seat for at all. That is what forced D-045 (one ordered
+> layer stack) and then D-046 (scope and provenance are different axes).
 
 | ID | Capability | Target | Compat | Weight |
 | --- | --- | --- | --- | --- |
 | EMACS-KEYMAP-1 | Prefix keys select sub-keymaps; multi-key nesting | L1 | Equivalent | high |
-| EMACS-KEYMAP-2 | Runtime-layered keymap resolution (transient > **ordered** minor > major > global) + text-span keymaps | L2 | Equivalent | high |
 | EMACS-KEYMAP-3 | Per-buffer / per-text-span keymaps | L1 | Equivalent | med |
 
+EMACS-KEYMAP-3 survives on purpose: "per-buffer / per-text-span" is a statement about *what selects a layer*
+(the buffer, and the text under point), which the tier enumeration does not by itself assert. Forcing it onto
+a census id would claim evidence the census does not carry — the same cut vim.md makes for VIM-MODE-3/8.
+
 **Semantic model:** key resolution is dynamic and compositional — a minor mode shadows a major-mode key
-without either knowing. This is ruse's **Context Key Resolver + priority ABI** (architecture §1.3–1.4).
+without either knowing. In ruse this is the **scope axis** — the layer stack (D-045) — with the Context Key
+Resolver evaluating `when` inside the winning layer and **provenance** deciding among what is left (D-046).
 
 ## EMACS-CMD — M-x and the command model
 Source: `M-x`, `Defining-Commands`, `Interactive-Call`.

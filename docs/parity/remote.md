@@ -9,6 +9,8 @@ summary: >
   reference model; ruse targets the architecture properties, not the wire format.
 audience: [maintainers, contributors, llm-agents]
 status: draft
+source_of_truth: false
+verified_against_upstream: false
 related:
   - README.md
   - ../architecture/architecture.md
@@ -16,6 +18,14 @@ related:
 ---
 
 # Parity: Remote Development
+
+> **⚠️ NOT THE SOURCE OF TRUTH (D-043).** This file is hand-authored and has never been checked
+> against a pinned upstream revision. The parity source is the machine-derived census in
+> [`spec/parity/inventory/`](../../spec/parity/inventory/), generated from the SHA pins in
+> [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml). These tables survive as *human
+> annotation* — reading, grouping and intent — and are migrating onto census IDs. Do not add rows
+> here to record a newly discovered upstream feature: humans classify, they do not enumerate.
+
 
 ruse is **TUI-first** but remote-first in architecture: the local client is thin, and a workspace runtime
 runs next to the code. Remote is not "a remote filesystem" — a design where only files are remote while

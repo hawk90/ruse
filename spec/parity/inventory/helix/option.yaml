@@ -1,0 +1,967 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py helix && python3 tools/parity/extract_helix.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# role: reference — see `not_a_parity_target` below before quoting any number from here.
+version: 1
+generated: true
+generator: tools/parity/extract_helix.py
+upstream: helix
+revision: a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b
+version_label: 25.07.1
+role: reference
+not_a_parity_target: Pinned as EVIDENCE for concepts/irreconcilable.yaml#observables (D-EDITLANG-PRIMITIVE). ruse declares
+  no helix input profile; these counts are never a coverage ratio.
+surface: option
+source_of_record: 'S: helix-view/src/editor.rs Config (dotted through nested structs)'
+items:
+- id: helix.option.scrolloff
+  surface: option
+  name: scrolloff
+  type: usize
+  kind: leaf
+  desc: Padding to keep between the edge of the screen and the cursor when scrolling. Defaults to 5.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.scroll-lines
+  surface: option
+  name: scroll_lines
+  type: isize
+  kind: leaf
+  desc: Number of lines to scroll at once. Defaults to 3
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.mouse
+  surface: option
+  name: mouse
+  type: bool
+  kind: leaf
+  desc: Mouse support. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.shell
+  surface: option
+  name: shell
+  type: Vec<String>
+  kind: leaf
+  desc: Shell to use for shell commands. Defaults to ["cmd", "/C"] on Windows and ["sh", "-c"] otherwise.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.line-number
+  surface: option
+  name: line_number
+  type: LineNumber
+  kind: leaf
+  desc: Line number mode.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.cursorline
+  surface: option
+  name: cursorline
+  type: bool
+  kind: leaf
+  desc: Highlight the lines cursors are currently on. Defaults to false.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.cursorcolumn
+  surface: option
+  name: cursorcolumn
+  type: bool
+  kind: leaf
+  desc: Highlight the columns cursors are currently on. Defaults to false.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.gutters
+  surface: option
+  name: gutters
+  type: GutterConfig
+  kind: section
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.gutters-layout
+  surface: option
+  name: gutters.layout
+  type: Vec<GutterType>
+  kind: leaf
+  desc: Gutter Layout
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.gutters-line-numbers
+  surface: option
+  name: gutters.line_numbers
+  type: GutterLineNumbersConfig
+  kind: section
+  desc: Options specific to the "line-numbers" gutter
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.gutters-line-numbers-min-width
+  surface: option
+  name: gutters.line_numbers.min_width
+  type: usize
+  kind: leaf
+  desc: Minimum number of characters to use for line number gutter. Defaults to 3.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.middle-click-paste
+  surface: option
+  name: middle_click_paste
+  type: bool
+  kind: leaf
+  desc: Middle click paste support. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-pairs
+  surface: option
+  name: auto_pairs
+  type: AutoPairConfig
+  kind: leaf
+  desc: Automatic insertion of pairs to parentheses, brackets, etc. Optionally, this can be a list of 2-tuples to specify
+    a global list of characters to pair. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-completion
+  surface: option
+  name: auto_completion
+  type: bool
+  kind: leaf
+  desc: Automatic auto-completion, automatically pop up without user trigger. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.path-completion
+  surface: option
+  name: path_completion
+  type: bool
+  kind: leaf
+  desc: Enable filepath completion. Show files and directories if an existing path at the cursor was recognized, either absolute
+    or relative to the current opened document or current working directory (if the buffer is not yet saved). Defaults to
+    true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-format
+  surface: option
+  name: auto_format
+  type: bool
+  kind: leaf
+  desc: Automatic formatting on save. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.default-yank-register
+  surface: option
+  name: default_yank_register
+  type: char
+  kind: leaf
+  desc: Default register used for yank/paste. Defaults to '"'
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-save
+  surface: option
+  name: auto_save
+  type: AutoSave
+  kind: section
+  desc: Automatic save on focus lost and/or after delay. Time delay in milliseconds since last edit after which auto save
+    timer triggers. Time delay defaults to false with 3000ms delay. Focus lost defaults to false.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-save-after-delay
+  surface: option
+  name: auto_save.after_delay
+  type: AutoSaveAfterDelay
+  kind: section
+  desc: Auto save after a delay in milliseconds. Defaults to disabled.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-save-after-delay-enable
+  surface: option
+  name: auto_save.after_delay.enable
+  type: bool
+  kind: leaf
+  desc: Enable auto save after delay. Defaults to false.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-save-after-delay-timeout
+  surface: option
+  name: auto_save.after_delay.timeout
+  type: u64
+  kind: leaf
+  desc: Time delay in milliseconds. Defaults to [DEFAULT_AUTO_SAVE_DELAY].
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-save-focus-lost
+  surface: option
+  name: auto_save.focus_lost
+  type: bool
+  kind: leaf
+  desc: Auto save on focus lost. Defaults to false.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.text-width
+  surface: option
+  name: text_width
+  type: usize
+  kind: leaf
+  desc: Set a global text_width
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.idle-timeout
+  surface: option
+  name: idle_timeout
+  type: Duration
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.completion-timeout
+  surface: option
+  name: completion_timeout
+  type: Duration
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.preview-completion-insert
+  surface: option
+  name: preview_completion_insert
+  type: bool
+  kind: leaf
+  desc: Whether to insert the completion suggestion on hover. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.completion-trigger-len
+  surface: option
+  name: completion_trigger_len
+  type: u8
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.completion-replace
+  surface: option
+  name: completion_replace
+  type: bool
+  kind: leaf
+  desc: Whether to instruct the LSP to replace the entire word when applying a completion or to only insert new text
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.continue-comments
+  surface: option
+  name: continue_comments
+  type: bool
+  kind: leaf
+  desc: '`true` if helix should automatically add a line comment token if you''re currently in a comment and press `enter`.'
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.auto-info
+  surface: option
+  name: auto_info
+  type: bool
+  kind: leaf
+  desc: Whether to display infoboxes. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker
+  surface: option
+  name: file_picker
+  type: FilePickerConfig
+  kind: section
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-hidden
+  surface: option
+  name: file_picker.hidden
+  type: bool
+  kind: leaf
+  desc: IgnoreOptions Enables ignoring hidden files. Whether to hide hidden files in file picker and global search results.
+    Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-follow-symlinks
+  surface: option
+  name: file_picker.follow_symlinks
+  type: bool
+  kind: leaf
+  desc: Enables following symlinks. Whether to follow symbolic links in file picker and file or directory completions. Defaults
+    to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-deduplicate-links
+  surface: option
+  name: file_picker.deduplicate_links
+  type: bool
+  kind: leaf
+  desc: Hides symlinks that point into the current directory. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-parents
+  surface: option
+  name: file_picker.parents
+  type: bool
+  kind: leaf
+  desc: Enables reading ignore files from parent directories. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-ignore
+  surface: option
+  name: file_picker.ignore
+  type: bool
+  kind: leaf
+  desc: Enables reading `.ignore` files. Whether to hide files listed in .ignore in file picker and global search results.
+    Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-git-ignore
+  surface: option
+  name: file_picker.git_ignore
+  type: bool
+  kind: leaf
+  desc: Enables reading `.gitignore` files. Whether to hide files listed in .gitignore in file picker and global search results.
+    Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-git-global
+  surface: option
+  name: file_picker.git_global
+  type: bool
+  kind: leaf
+  desc: 'Enables reading global .gitignore, whose path is specified in git''s config: `core.excludefile` option. Whether to
+    hide files listed in global .gitignore in file picker and global search results. Defaults to true.'
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-git-exclude
+  surface: option
+  name: file_picker.git_exclude
+  type: bool
+  kind: leaf
+  desc: Enables reading `.git/info/exclude` files. Whether to hide files listed in .git/info/exclude in file picker and global
+    search results. Defaults to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.file-picker-max-depth
+  surface: option
+  name: file_picker.max_depth
+  type: Option<usize>
+  kind: leaf
+  desc: WalkBuilder options Maximum Depth to recurse directories in file picker and global search. Defaults to `None`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline
+  surface: option
+  name: statusline
+  type: StatusLineConfig
+  kind: section
+  desc: Configuration of the statusline elements
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-left
+  surface: option
+  name: statusline.left
+  type: Vec<StatusLineElement>
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-center
+  surface: option
+  name: statusline.center
+  type: Vec<StatusLineElement>
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-right
+  surface: option
+  name: statusline.right
+  type: Vec<StatusLineElement>
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-separator
+  surface: option
+  name: statusline.separator
+  type: String
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-mode
+  surface: option
+  name: statusline.mode
+  type: ModeConfig
+  kind: section
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-mode-normal
+  surface: option
+  name: statusline.mode.normal
+  type: String
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-mode-insert
+  surface: option
+  name: statusline.mode.insert
+  type: String
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-mode-select
+  surface: option
+  name: statusline.mode.select
+  type: String
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-diagnostics
+  surface: option
+  name: statusline.diagnostics
+  type: Vec<Severity>
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.statusline-workspace-diagnostics
+  surface: option
+  name: statusline.workspace_diagnostics
+  type: Vec<Severity>
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.cursor-shape
+  surface: option
+  name: cursor_shape
+  type: CursorShapeConfig
+  kind: leaf
+  desc: Shape for cursor in each mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.true-color
+  surface: option
+  name: true_color
+  type: bool
+  kind: leaf
+  desc: Set to `true` to override automatic detection of terminal truecolor support in the event of a false negative. Defaults
+    to `false`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.undercurl
+  surface: option
+  name: undercurl
+  type: bool
+  kind: leaf
+  desc: Set to `true` to override automatic detection of terminal undercurl support in the event of a false negative. Defaults
+    to `false`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.search
+  surface: option
+  name: search
+  type: SearchConfig
+  kind: section
+  desc: Search configuration.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.search-smart-case
+  surface: option
+  name: search.smart_case
+  type: bool
+  kind: leaf
+  desc: 'Smart case: Case insensitive searching unless pattern contains upper case characters. Defaults to true.'
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.search-wrap-around
+  surface: option
+  name: search.wrap_around
+  type: bool
+  kind: leaf
+  desc: Whether the search should wrap after depleting the matches. Default to true.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp
+  surface: option
+  name: lsp
+  type: LspConfig
+  kind: section
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-enable
+  surface: option
+  name: lsp.enable
+  type: bool
+  kind: leaf
+  desc: Enables LSP
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-display-progress-messages
+  surface: option
+  name: lsp.display_progress_messages
+  type: bool
+  kind: leaf
+  desc: Display LSP messagess from $/progress below statusline
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-display-messages
+  surface: option
+  name: lsp.display_messages
+  type: bool
+  kind: leaf
+  desc: Display LSP messages from window/showMessage below statusline
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-auto-signature-help
+  surface: option
+  name: lsp.auto_signature_help
+  type: bool
+  kind: leaf
+  desc: Enable automatic pop up of signature help (parameter hints)
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-display-signature-help-docs
+  surface: option
+  name: lsp.display_signature_help_docs
+  type: bool
+  kind: leaf
+  desc: Display docs under signature help popup
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-display-inlay-hints
+  surface: option
+  name: lsp.display_inlay_hints
+  type: bool
+  kind: leaf
+  desc: Display inlay hints
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-inlay-hints-length-limit
+  surface: option
+  name: lsp.inlay_hints_length_limit
+  type: Option<NonZeroU8>
+  kind: leaf
+  desc: Maximum displayed length of inlay hints (excluding the added trailing `…`). If it's `None`, there's no limit
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-display-color-swatches
+  surface: option
+  name: lsp.display_color_swatches
+  type: bool
+  kind: leaf
+  desc: Display document color swatches
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-snippets
+  surface: option
+  name: lsp.snippets
+  type: bool
+  kind: leaf
+  desc: Whether to enable snippet support
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.lsp-goto-reference-include-declaration
+  surface: option
+  name: lsp.goto_reference_include_declaration
+  type: bool
+  kind: leaf
+  desc: Whether to include declaration in the goto reference query
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.terminal
+  surface: option
+  name: terminal
+  type: Option<TerminalConfig>
+  kind: section
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.terminal-command
+  surface: option
+  name: terminal.command
+  type: String
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.terminal-args
+  surface: option
+  name: terminal.args
+  type: Vec<String>
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.rulers
+  surface: option
+  name: rulers
+  type: Vec<u16>
+  kind: leaf
+  desc: Column numbers at which to draw the rulers. Defaults to `[]`, meaning no rulers.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace
+  surface: option
+  name: whitespace
+  type: WhitespaceConfig
+  kind: section
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace-render
+  surface: option
+  name: whitespace.render
+  type: WhitespaceRender
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace-characters
+  surface: option
+  name: whitespace.characters
+  type: WhitespaceCharacters
+  kind: section
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace-characters-space
+  surface: option
+  name: whitespace.characters.space
+  type: char
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace-characters-nbsp
+  surface: option
+  name: whitespace.characters.nbsp
+  type: char
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace-characters-nnbsp
+  surface: option
+  name: whitespace.characters.nnbsp
+  type: char
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace-characters-tab
+  surface: option
+  name: whitespace.characters.tab
+  type: char
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace-characters-tabpad
+  surface: option
+  name: whitespace.characters.tabpad
+  type: char
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.whitespace-characters-newline
+  surface: option
+  name: whitespace.characters.newline
+  type: char
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.bufferline
+  surface: option
+  name: bufferline
+  type: BufferLine
+  kind: leaf
+  desc: Persistently display open buffers along the top
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.indent-guides
+  surface: option
+  name: indent_guides
+  type: IndentGuidesConfig
+  kind: section
+  desc: Vertical indent width guides.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.indent-guides-render
+  surface: option
+  name: indent_guides.render
+  type: bool
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.indent-guides-character
+  surface: option
+  name: indent_guides.character
+  type: char
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.indent-guides-skip-levels
+  surface: option
+  name: indent_guides.skip_levels
+  type: u8
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.color-modes
+  surface: option
+  name: color_modes
+  type: bool
+  kind: leaf
+  desc: Whether to color modes with different colors. Defaults to `false`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.soft-wrap
+  surface: option
+  name: soft_wrap
+  type: SoftWrap
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.workspace-lsp-roots
+  surface: option
+  name: workspace_lsp_roots
+  type: Vec<PathBuf>
+  kind: leaf
+  desc: Workspace specific lsp ceiling dirs
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.default-line-ending
+  surface: option
+  name: default_line_ending
+  type: LineEndingConfig
+  kind: leaf
+  desc: Which line ending to choose for new documents. Defaults to `native`. i.e. `crlf` on Windows, otherwise `lf`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.insert-final-newline
+  surface: option
+  name: insert_final_newline
+  type: bool
+  kind: leaf
+  desc: Whether to automatically insert a trailing line-ending on write if missing. Defaults to `true`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.atomic-save
+  surface: option
+  name: atomic_save
+  type: bool
+  kind: leaf
+  desc: Whether to use atomic operations to write documents to disk. This prevents data loss if the editor is interrupted
+    while writing the file, but may confuse some file watching/hot reloading programs. Defaults to `true`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.trim-final-newlines
+  surface: option
+  name: trim_final_newlines
+  type: bool
+  kind: leaf
+  desc: Whether to automatically remove all trailing line-endings after the final one on write. Defaults to `false`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.trim-trailing-whitespace
+  surface: option
+  name: trim_trailing_whitespace
+  type: bool
+  kind: leaf
+  desc: Whether to automatically remove all whitespace characters preceding line-endings on write. Defaults to `false`.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.smart-tab
+  surface: option
+  name: smart_tab
+  type: Option<SmartTabConfig>
+  kind: section
+  desc: Enables smart tab
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.smart-tab-enable
+  surface: option
+  name: smart_tab.enable
+  type: bool
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.smart-tab-supersede-menu
+  surface: option
+  name: smart_tab.supersede_menu
+  type: bool
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.popup-border
+  surface: option
+  name: popup_border
+  type: PopupBorderConfig
+  kind: leaf
+  desc: Draw border around popups.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.indent-heuristic
+  surface: option
+  name: indent_heuristic
+  type: IndentationHeuristic
+  kind: leaf
+  desc: Which indent heuristic to use when a new line is inserted
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.jump-label-alphabet
+  surface: option
+  name: jump_label_alphabet
+  type: Vec<char>
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.inline-diagnostics
+  surface: option
+  name: inline_diagnostics
+  type: InlineDiagnosticsConfig
+  kind: leaf
+  desc: Display diagnostic below the line they occur.
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.end-of-line-diagnostics
+  surface: option
+  name: end_of_line_diagnostics
+  type: DiagnosticFilter
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.clipboard-provider
+  surface: option
+  name: clipboard_provider
+  type: ClipboardProvider
+  kind: leaf
+  desc: ''
+  attestation:
+  - S
+  status: unclassified
+- id: helix.option.editor-config
+  surface: option
+  name: editor_config
+  type: bool
+  kind: leaf
+  desc: Whether to read settings from [EditorConfig](https://editorconfig.org) files. Defaults to `true`.
+  attestation:
+  - S
+  status: unclassified

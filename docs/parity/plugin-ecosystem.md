@@ -10,6 +10,8 @@ summary: >
   Plugins provide ONE semantic command; profiles wire it to keys.
 audience: [maintainers, contributors, llm-agents]
 status: draft
+source_of_truth: false
+verified_against_upstream: false
 related:
   - README.md
   - ../architecture/architecture.md
@@ -19,6 +21,14 @@ related:
 ---
 
 # Parity: Plugin Ecosystem Foundations
+
+> **⚠️ NOT THE SOURCE OF TRUTH (D-043).** This file is hand-authored and has never been checked
+> against a pinned upstream revision. The parity source is the machine-derived census in
+> [`spec/parity/inventory/`](../../spec/parity/inventory/), generated from the SHA pins in
+> [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml). These tables survive as *human
+> annotation* — reading, grouping and intent — and are migrating onto census IDs. Do not add rows
+> here to record a newly discovered upstream feature: humans classify, they do not enumerate.
+
 
 To reach a Neovim-scale ecosystem "that breaks less than Neovim," the foundations matter more than feature
 count. A plugin registers **one semantic command**; input profiles wire it to keys per profile — authors

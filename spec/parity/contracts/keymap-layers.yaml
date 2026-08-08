@@ -1,0 +1,189 @@
+# Compatibility contract — keymap resolution, the KERNEL model (D-045).
+#
+# This file is one level below contracts/vim-style.yaml and that ordering is the point. vim-style.yaml
+# states what the Vim profile promises; this states the mechanism all profiles are configurations OF.
+# Writing the Vim contract first and generalising later is exactly how F-003 would have shipped a
+# disjoint router — the general model is cheap now and expensive after.
+#
+# THE FACT THIS IS BUILT ON is three censuses that disagree in a specific way:
+#
+#   neovim   8 DISJOINT namespaces (nvim.mapmode.*), exactly one active, selected by editor STATE.
+#   emacs    9 precedence TIERS (emacs.keymaptier.*), all consulted in order, selected by what the
+#            BUFFER is. 613 of its 1,952 keyboard bindings live in major-mode maps — a tier Vim's
+#            model has no seat for, which is the measurement that makes this a real divergence and
+#            not a vocabulary difference.
+#   helix    3 modes, one of them DERIVED: Select is `normal.clone()` + `merge_nodes(overrides)`,
+#            301 inherited bindings under a 33-binding diff.
+#
+# The resolution is that all three are cases of ONE ordered layer stack:
+#   Vim    = depth-1  (eight sealed layers, one active)
+#   Emacs  = depth-9  (unsealed, buffer-selected)
+#   Helix  = depth-2  ([override, base]) collapsed at BUILD time — which is why Helix looks flat at
+#            dispatch and must not be mistaken for a third dispatch model. The distinction matters:
+#            a disjoint router must duplicate Helix's 301 inherited bindings or grow a bespoke
+#            inheritance feature, while a layer stack expresses the derivation for free.
+#
+# WHAT THIS CONTRACT DOES NOT DECIDE: which keys are bound, what a bare motion does to the selection,
+# or what repeat re-applies. Those are behaviour, they need an oracle, and they are tracked as
+# concepts/irreconcilable.yaml#observables. This contract is safe to take without one precisely
+# because every fact above is structural and attested at a pin.
+#
+# LLM rules: `derives_from` must name real census ids across all three inventories — a contract that
+# cites one upstream is a profile contract, not this one. A profile that installs layers declares
+# `implements: contracts/keymap-layers.yaml` and states its own depth and sealing.
+
+version: 1
+contract: keymap-layers
+scope: kernel
+component: C-INPUT
+decided_by: [D-045, D-046]
+status: draft
+
+# ---------------------------------------------------------------------------------------------
+model:
+  primitive: ordered-layer-stack
+  resolution: >
+    A key event is offered to the active layers in descending rank until one BINDS it. The first
+    layer that binds resolves the event. If a layer is `sealed`, resolution stops at that layer
+    whether or not it bound the key, and the layer's own `unmatched_key` policy applies.
+  why_not_flat: >
+    A flat map per mode is what the shipped engine has, and it cannot express Emacs's major-mode
+    tier or Helix's derived mode without a special case per profile. The special cases are the
+    failure mode this whole layer exists to prevent: `apps/tui/src/input.rs` already special-cases
+    Insert ahead of a single `Feed::Ignored` fallthrough, which is one `closed/ignore` policy
+    standing in for the five `open` ones vim-style.yaml enumerates.
+
+# ---------------------------------------------------------------------------------------------
+# WHICH AXIS THIS CONTRACT OWNS (D-046). ruse already had a keymap-ordering model before this one:
+# the eight-tier "priority ABI" (INV-PRIORITY, architecture.md §1.4, D-008). It is not a competitor and
+# it is not superseded — it was one list answering two questions, and D-046 separates them.
+axes:
+  scope:
+    owns: this contract
+    question: "which keymaps are consulted at all, and in what order?"
+    absorbs: "priority-ABI tiers 1-3 (temporary state, active widget/view, buffer-local mode) as three ranks"
+    decided_by: D-045
+    note: >
+      Old tier 3 carried a hand-written exception — V-28, "not flat: stacked minor modes are an ORDERED
+      sub-list and text-span maps rank just above the major-mode map." That exception disappears here: a
+      sub-list member is just another layer. An exception that dissolves when the primitive changes is
+      evidence the primitive was wrong, not that the exception was.
+  provenance:
+    owns: contracts/… (none yet)
+    question: "when two sources bind the same key WITHIN one layer, whose binding wins?"
+    absorbs: "priority-ABI tiers 4-8 (workspace, user, plugin-explicit, plugin-suggested, built-in)"
+    decided_by: D-008
+    status: open
+    note: >
+      Explicitly NOT this contract's business, and the boundary is load-bearing: no upstream census can
+      attest it (no editor publishes a table of who registered a binding), so it waits on F-016 and real
+      plugins. A binding carries a `(layer, provenance)` pair; `sealed` and `unmatched_key` are properties
+      of the LAYER only. If a provenance tier ever needs to reorder layers rather than bindings inside one,
+      the two axes stop being independent — that is D-046's stated re-evaluation trigger.
+
+layer_fields:
+  rank:          "integer; higher is consulted first. Ties are a definition error, not a runtime tiebreak."
+  sealed:        "bool; true stops resolution at this layer. Vim's namespaces are sealed, Emacs's tiers are not."
+  unmatched_key: "the policy applied when this layer is reached and nothing binds — same vocabulary as contracts/vim-style.yaml (closed/ignore, closed/abort, open/insert, open/append, open/overwrite, open/replace-selection, open/forward, open/translate)."
+  owns_state:    "what this layer owns. State belongs to a layer, never to 'the engine' — conflating the two is why the Normal machine's count survived into Insert."
+  selected_by:   "editor-state | buffer | always. The axis on which upstreams actually differ."
+  derives_from:  "another layer this one overlays; the depth-2 case. Collapsing it at build time is an OPTIMISATION and must not change resolution order."
+
+# ---------------------------------------------------------------------------------------------
+obligations:
+  KL-OBL-1:
+    rule: "A binding names the layer it belongs to; there is no unqualified 'bind key K'."
+    why: >
+      Inherited verbatim from VS-OBL-4, and generalised. The original defect was a catalog that
+      recorded modes without recording that each is a namespace; an API that lets a caller bind a
+      key without naming a layer reproduces it in code.
+  KL-OBL-2:
+    rule: "Every layer declares an unmatched_key policy explicitly; there is no engine-wide default."
+    why: >
+      Five of Vim's eight namespaces are `open`. A shared fallthrough silently makes them all
+      `closed/ignore`, which is the shipped bug.
+  KL-OBL-3:
+    rule: "A profile declares its stack DEPTH and whether its layers are sealed."
+    why: >
+      Vim's guarantees (VS-OBL-1..4) hold only at depth 1 with sealed layers. If the Vim profile
+      silently gained an unsealed lower layer, `closed/ignore` would start falling through and the
+      profile's own contract would break without any Vim-specific code changing.
+  KL-OBL-4:
+    rule: "Layer state is owned by the layer and is destroyed with it, not reset by the engine."
+    why: >
+      `reset()` on entering Insert is the current shape and it conflates the Normal machine's state
+      with the engine's. A layer that goes inactive takes its count / pending operator / cmdline
+      buffer with it.
+  KL-OBL-5:
+    rule: "Return is a stack with an address, not an edge in a transition table."
+    why: >
+      VS-OBL-2 generalised: `i_CTRL-O` and `t_CTRL-\\ CTRL-O` are one construct — run one command in
+      another layer, then return whence you came. A flat edge set cannot express 'whence'.
+  KL-OBL-6:
+    rule: "Build-time collapse of a derived layer must not change resolution order versus consulting it at dispatch."
+    why: >
+      Helix collapses [override, base] before any key is pressed. That is legitimate, and it is only
+      legitimate while the two orderings are observably identical — otherwise the optimisation has
+      quietly become a second dispatch model.
+
+# ---------------------------------------------------------------------------------------------
+# Each profile below is a CONFIGURATION of the model, cited to the census that shows it.
+profiles:
+  vim-style:
+    contract: contracts/vim-style.yaml
+    depth: 1
+    sealed: true
+    selected_by: editor-state
+    layers: 8
+    derives_from: [nvim.mapmode.norm, nvim.mapmode.ins, nvim.mapmode.cmd, nvim.mapmode.vis,
+                   nvim.mapmode.sel, nvim.mapmode.opr, nvim.mapmode.term, nvim.mapmode.lang]
+    note: >
+      Depth 1 is an OBLIGATION of this profile, not an accident of having one layer active. It is
+      what keeps `closed/ignore` from leaking into a lower layer (KL-OBL-3).
+
+  emacs-style:
+    contract: null                      # not yet written; F-016 is `ecosystem` phase
+    depth: 9
+    sealed: false
+    selected_by: buffer
+    layers: 9
+    derives_from: [emacs.keymaptier.01.overriding-terminal-local-map,
+                   emacs.keymaptier.02.overriding-local-map,
+                   emacs.keymaptier.03.keymap,
+                   emacs.keymaptier.04.emulation-mode-map-alists,
+                   emacs.keymaptier.05.minor-mode-overriding-map-alist,
+                   emacs.keymaptier.06.minor-mode-map-alist,
+                   emacs.keymaptier.07.local-map,
+                   emacs.keymaptier.08.current-local-map,
+                   emacs.keymaptier.09.global-map]
+    note: >
+      The tier NAMES are Emacs's and ruse is not obliged to reproduce them; what the census
+      establishes is that a buffer-selected tier must EXIST, because 613 bindings live there. Two of
+      the nine (`keymap`, `local-map`) are text/overlay properties rather than variables — a layer
+      whose membership is a property of the text under point, which is the hardest case and the one
+      to design against rather than discover later.
+
+  derived-mode:
+    contract: null                      # not a ruse profile; a SHAPE any profile may use
+    depth: 2
+    sealed: true
+    selected_by: editor-state
+    layers: 2
+    derives_from: [helix.mode.normal, helix.mode.select, helix.mode.insert]
+    note: >
+      Listed as a profile shape rather than a ruse profile because ruse declares no helix input
+      profile (input.profile enum is [vim, emacs, native]) and FAM-EDIT-SELECTION carries `prd: []`.
+      It is here as the third witness that the layer primitive is general: Helix reached
+      "one mode is another plus a diff" independently, and the model absorbs it without a feature.
+
+# ---------------------------------------------------------------------------------------------
+open_questions:
+  - id: KL-Q-LANG-ARG
+    question: "Can Vim's Lang-Arg be a layer, given it TRANSLATES a key and re-dispatches rather than binding it?"
+    blocks: [F-027]
+    concept: CONCEPT-LANG-ARG
+    note: >
+      This is D-045's own stated re-evaluation trigger. A layer that rewrites the event and yields
+      (rather than resolving it) is expressible, but it makes resolution non-total, so it needs to be
+      designed rather than assumed. Recorded here so the decision's weak point is visible from the
+      contract, not only from DECISIONS.md.

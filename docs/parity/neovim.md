@@ -9,6 +9,8 @@ summary: >
   ShaDa. Grounded in neovim.io/doc. Focus: the client-observable guarantees ruse must re-provide.
 audience: [maintainers, contributors, llm-agents]
 status: draft
+source_of_truth: false
+verified_against_upstream: false
 sources_root: https://neovim.io/doc/user/
 related:
   - README.md
@@ -18,6 +20,14 @@ related:
 ---
 
 # Parity: Neovim Additions
+
+> **⚠️ NOT THE SOURCE OF TRUTH (D-043).** This file is hand-authored and has never been checked
+> against a pinned upstream revision. The parity source is the machine-derived census in
+> [`spec/parity/inventory/`](../../spec/parity/inventory/), generated from the SHA pins in
+> [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml). These tables survive as *human
+> annotation* — reading, grouping and intent — and are migrating onto census IDs. Do not add rows
+> here to record a newly discovered upstream feature: humans classify, they do not enumerate.
+
 
 Classic Vim's editing language is in [vim.md](vim.md). This file covers what **Neovim adds** and, more
 importantly, the **client/plugin-observable guarantees** ruse must reproduce with its *own* stable API

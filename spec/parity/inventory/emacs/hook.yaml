@@ -1,0 +1,870 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/extract_emacs.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
+# `require` of exactly the census_scope.include libraries. Changing that load set changes
+# the denominator, so it lives in upstreams.yaml where it needs a reason.
+version: 1
+generated: true
+generator: tools/parity/extract_emacs.py
+upstream: emacs
+revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
+version_label: emacs-30.2
+derived_from: runtime-binary
+binary_version: '30.2'
+binary_identity: unverified-build
+baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
+  project)
+surface: hook
+source_of_record: 'R: -hook/-functions defvars, scoped to census_scope.include'
+items:
+- id: emacs.hook.activate-mark-hook
+  surface: hook
+  name: activate-mark-hook
+  defined_in: simple.elc
+  desc: Hook run when the mark becomes active.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.after-change-major-mode-hook
+  surface: hook
+  name: after-change-major-mode-hook
+  defined_in: subr.elc
+  desc: Normal hook run at the very end of major mode functions.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.after-load-functions
+  surface: hook
+  name: after-load-functions
+  defined_in: subr.elc
+  desc: Special hook run after loading a file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.after-pdump-load-hook
+  surface: hook
+  name: after-pdump-load-hook
+  defined_in: subr.elc
+  desc: Normal hook run after loading the .pdmp file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.after-revert-hook
+  surface: hook
+  name: after-revert-hook
+  defined_in: files.elc
+  desc: Normal hook for ‘revert-buffer’ to run after reverting.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.after-save-hook
+  surface: hook
+  name: after-save-hook
+  defined_in: files.elc
+  desc: Normal hook that is run after a buffer is saved to its file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.after-set-visited-file-name-hook
+  surface: hook
+  name: after-set-visited-file-name-hook
+  defined_in: files.elc
+  desc: Normal hook run just after setting visited file name of current buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.auto-fill-mode-hook
+  surface: hook
+  name: auto-fill-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘auto-fill-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.auto-save-hook
+  surface: hook
+  name: auto-save-hook
+  defined_in: files.elc
+  desc: Normal hook run just before auto-saving.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.auto-save-mode-hook
+  surface: hook
+  name: auto-save-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘auto-save-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.auto-save-visited-mode-hook
+  surface: hook
+  name: auto-save-visited-mode-hook
+  defined_in: files.elc
+  desc: Hook run after entering or leaving ‘auto-save-visited-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.before-hack-local-variables-hook
+  surface: hook
+  name: before-hack-local-variables-hook
+  defined_in: files.elc
+  desc: Normal hook run before setting file-local variables.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.before-revert-hook
+  surface: hook
+  name: before-revert-hook
+  defined_in: files.elc
+  desc: Normal hook for ‘revert-buffer’ to run before reverting.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.before-save-hook
+  surface: hook
+  name: before-save-hook
+  defined_in: files.elc
+  desc: Normal hook that is run before a buffer is saved to its file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.binary-overwrite-mode-hook
+  surface: hook
+  name: binary-overwrite-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘binary-overwrite-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.bookmark-after-jump-hook
+  surface: hook
+  name: bookmark-after-jump-hook
+  defined_in: bookmark.elc
+  desc: Hook run after ‘bookmark-jump’ jumps to a bookmark.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.bookmark-bmenu-mode-hook
+  surface: hook
+  name: bookmark-bmenu-mode-hook
+  defined_in: bookmark.elc
+  desc: Hook run after entering ‘bookmark-bmenu-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.bookmark-edit-annotation-mode-hook
+  surface: hook
+  name: bookmark-edit-annotation-mode-hook
+  defined_in: bookmark.elc
+  desc: Hook run after entering ‘bookmark-edit-annotation-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.bookmark-exit-hook
+  surface: hook
+  name: bookmark-exit-hook
+  defined_in: bookmark.elc
+  desc: Hook run when Emacs exits.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.bookmark-inhibit-context-functions
+  surface: hook
+  name: bookmark-inhibit-context-functions
+  defined_in: bookmark.elc
+  desc: List of functions to call before making a bookmark record.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.bookmark-load-hook
+  surface: hook
+  name: bookmark-load-hook
+  defined_in: bookmark.elc
+  desc: Hook run at the end of loading library ‘bookmark.el’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.called-interactively-p-functions
+  surface: hook
+  name: called-interactively-p-functions
+  defined_in: subr.elc
+  desc: Special hook called to skip special frames in ‘called-interactively-p’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.change-major-mode-after-body-hook
+  surface: hook
+  name: change-major-mode-after-body-hook
+  defined_in: subr.elc
+  desc: Normal hook run in major mode functions, before the mode hooks.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.choose-completion-string-functions
+  surface: hook
+  name: choose-completion-string-functions
+  defined_in: simple.elc
+  desc: Functions that may override the normal insertion of a completion choice.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.clean-mode-hook
+  surface: hook
+  name: clean-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering ‘clean-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.clone-buffer-hook
+  surface: hook
+  name: clone-buffer-hook
+  defined_in: simple.elc
+  desc: Normal hook to run in the new buffer at the end of ‘clone-buffer’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.column-number-mode-hook
+  surface: hook
+  name: column-number-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘column-number-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.completion-at-point-functions
+  surface: hook
+  name: completion-at-point-functions
+  defined_in: minibuffer.elc
+  desc: Special hook to find the completion table for the entity at point.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.completion-in-region-functions
+  surface: hook
+  name: completion-in-region-functions
+  defined_in: minibuffer.elc
+  desc: Wrapper hook around ‘completion--in-region’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.completion-in-region-mode-hook
+  surface: hook
+  name: completion-in-region-mode-hook
+  defined_in: minibuffer.elc
+  desc: Hook run after entering or leaving ‘completion-in-region-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.completion-list-mode-hook
+  surface: hook
+  name: completion-list-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering ‘completion-list-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.completion-setup-hook
+  surface: hook
+  name: completion-setup-hook
+  defined_in: minibuffer.elc
+  desc: Normal hook run at the end of setting up a completion list buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.cursor-face-highlight-mode-hook
+  surface: hook
+  name: cursor-face-highlight-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘cursor-face-highlight-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.deactivate-mark-hook
+  surface: hook
+  name: deactivate-mark-hook
+  defined_in: simple.elc
+  desc: Hook run when the mark becomes inactive.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.delayed-after-hook-functions
+  surface: hook
+  name: delayed-after-hook-functions
+  defined_in: subr.elc
+  desc: List of delayed :after-hook forms waiting to be run.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.delayed-warnings-hook
+  surface: hook
+  name: delayed-warnings-hook
+  defined_in: subr.elc
+  desc: Normal hook run to process and display delayed warnings.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.dired-after-readin-hook
+  surface: hook
+  name: dired-after-readin-hook
+  defined_in: dired.elc
+  desc: Hook run after each time a file or directory is read by Dired.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.dired-before-readin-hook
+  surface: hook
+  name: dired-before-readin-hook
+  defined_in: dired.elc
+  desc: This hook is run before a Dired buffer is read in (created or reverted).
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.dired-click-to-select-mode-hook
+  surface: hook
+  name: dired-click-to-select-mode-hook
+  defined_in: dired.elc
+  desc: Hook run after entering or leaving ‘dired-click-to-select-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.dired-hide-details-mode-hook
+  surface: hook
+  name: dired-hide-details-mode-hook
+  defined_in: dired.elc
+  desc: Hook run after entering or leaving ‘dired-hide-details-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.dired-initial-position-hook
+  surface: hook
+  name: dired-initial-position-hook
+  defined_in: dired.elc
+  desc: Hook used to position point in a new Dired listing display.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.dired-load-hook
+  surface: hook
+  name: dired-load-hook
+  defined_in: dired.elc
+  desc: Run after loading Dired.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.dired-mode-hook
+  surface: hook
+  name: dired-mode-hook
+  defined_in: dired.elc
+  desc: Run at the very end of ‘dired-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.eval-expression-minibuffer-setup-hook
+  surface: hook
+  name: eval-expression-minibuffer-setup-hook
+  defined_in: simple.elc
+  desc: Hook run by ‘eval-expression’ when entering the minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.file-name-at-point-functions
+  surface: hook
+  name: file-name-at-point-functions
+  defined_in: files.elc
+  desc: List of functions to try in sequence to get a file name at point.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.filter-buffer-substring-functions
+  surface: hook
+  name: filter-buffer-substring-functions
+  defined_in: simple.elc
+  desc: This variable is a wrapper hook around ‘buffer-substring--filter’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.find-directory-functions
+  surface: hook
+  name: find-directory-functions
+  defined_in: files.elc
+  desc: List of functions to try in sequence to visit a directory.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.find-file-hook
+  surface: hook
+  name: find-file-hook
+  defined_in: files.elc
+  desc: List of functions to be called after a buffer is loaded from a file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.find-file-not-found-functions
+  surface: hook
+  name: find-file-not-found-functions
+  defined_in: files.elc
+  desc: List of functions to be called for ‘find-file’ on nonexistent file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.global-visual-line-mode-hook
+  surface: hook
+  name: global-visual-line-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘global-visual-line-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.hack-dir-local-get-variables-functions
+  surface: hook
+  name: hack-dir-local-get-variables-functions
+  defined_in: files.elc
+  desc: Special hook to compute the set of dir-local variables.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.hack-local-variables-hook
+  surface: hook
+  name: hack-local-variables-hook
+  defined_in: files.elc
+  desc: Normal hook run after processing a file’s local variables specs.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.indent-line-ignored-functions
+  surface: hook
+  name: indent-line-ignored-functions
+  defined_in: indent.elc
+  desc: Values that are ignored by ‘indent-according-to-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.indent-tabs-mode-hook
+  surface: hook
+  name: indent-tabs-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘indent-tabs-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.isearch-fold-quotes-mode-hook
+  surface: hook
+  name: isearch-fold-quotes-mode-hook
+  defined_in: isearch.elc
+  desc: Hook run after entering or leaving ‘isearch-fold-quotes-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.isearch-mode-end-hook
+  surface: hook
+  name: isearch-mode-end-hook
+  defined_in: isearch.elc
+  desc: Function(s) to call after terminating an incremental search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.isearch-mode-hook
+  surface: hook
+  name: isearch-mode-hook
+  defined_in: isearch.elc
+  desc: Function(s) to call after starting up an incremental search.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.isearch-update-post-hook
+  surface: hook
+  name: isearch-update-post-hook
+  defined_in: isearch.elc
+  desc: Function(s) to call after isearch has found matches in the buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.kill-buffer-hook
+  surface: hook
+  name: kill-buffer-hook
+  defined_in: files.elc
+  desc: Hook run when a buffer is killed.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.kill-emacs-query-functions
+  surface: hook
+  name: kill-emacs-query-functions
+  defined_in: files.elc
+  desc: Functions to call with no arguments to query about killing Emacs.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.kmacro-menu-mode-hook
+  surface: hook
+  name: kmacro-menu-mode-hook
+  defined_in: kmacro.elc
+  desc: Hook run after entering ‘kmacro-menu-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.lazy-count-update-hook
+  surface: hook
+  name: lazy-count-update-hook
+  defined_in: isearch.elc
+  desc: Hook run after new lazy count results are computed.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.line-number-mode-hook
+  surface: hook
+  name: line-number-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘line-number-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.lock-file-mode-hook
+  surface: hook
+  name: lock-file-mode-hook
+  defined_in: files.elc
+  desc: Hook run after entering or leaving ‘lock-file-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.messages-buffer-mode-hook
+  surface: hook
+  name: messages-buffer-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering ‘messages-buffer-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.minibuffer-inactive-mode-hook
+  surface: hook
+  name: minibuffer-inactive-mode-hook
+  defined_in: minibuffer.elc
+  desc: Hook run after entering ‘minibuffer-inactive-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.minibuffer-mode-hook
+  surface: hook
+  name: minibuffer-mode-hook
+  defined_in: minibuffer.elc
+  desc: Hook run after entering ‘minibuffer-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.minibuffer-regexp-mode-hook
+  surface: hook
+  name: minibuffer-regexp-mode-hook
+  defined_in: minibuffer.elc
+  desc: Hook run after entering or leaving ‘minibuffer-regexp-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.next-error-follow-minor-mode-hook
+  surface: hook
+  name: next-error-follow-minor-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘next-error-follow-minor-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.next-error-hook
+  surface: hook
+  name: next-error-hook
+  defined_in: simple.elc
+  desc: List of hook functions run by ‘next-error’ after visiting source file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.normal-erase-is-backspace-mode-hook
+  surface: hook
+  name: normal-erase-is-backspace-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘normal-erase-is-backspace-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.occur-edit-mode-hook
+  surface: hook
+  name: occur-edit-mode-hook
+  defined_in: replace.elc
+  desc: Hook run after entering ‘occur-edit-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.occur-hook
+  surface: hook
+  name: occur-hook
+  defined_in: replace.elc
+  desc: Hook run by Occur when there are any matches.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.occur-mode-find-occurrence-hook
+  surface: hook
+  name: occur-mode-find-occurrence-hook
+  defined_in: replace.elc
+  desc: Hook run by Occur after locating an occurrence.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.occur-mode-hook
+  surface: hook
+  name: occur-mode-hook
+  defined_in: replace.elc
+  desc: Hook run when entering Occur mode.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.overwrite-mode-hook
+  surface: hook
+  name: overwrite-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘overwrite-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.post-text-conversion-hook
+  surface: hook
+  name: post-text-conversion-hook
+  defined_in: simple.elc
+  desc: Hook run after text is inserted by an input method.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.pre-redisplay-functions
+  surface: hook
+  name: pre-redisplay-functions
+  defined_in: simple.elc
+  desc: Hook run just before redisplay.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.prefix-command-echo-keystrokes-functions
+  surface: hook
+  name: prefix-command-echo-keystrokes-functions
+  defined_in: simple.elc
+  desc: Abnormal hook that constructs the description of the current prefix state.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.prefix-command-preserve-state-hook
+  surface: hook
+  name: prefix-command-preserve-state-hook
+  defined_in: simple.elc
+  desc: Normal hook run when a command needs to preserve the prefix.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.process-menu-mode-hook
+  surface: hook
+  name: process-menu-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering ‘process-menu-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.project-find-functions
+  surface: hook
+  name: project-find-functions
+  defined_in: project.elc
+  desc: Special hook to find the project containing a given directory.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.quit-window-hook
+  surface: hook
+  name: quit-window-hook
+  defined_in: window.elc
+  desc: Hook run before performing any other actions in the ‘quit-window’ command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.read-extended-command-mode-hook
+  surface: hook
+  name: read-extended-command-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘read-extended-command-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.read-only-mode-hook
+  surface: hook
+  name: read-only-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘read-only-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.rectangle-mark-mode-hook
+  surface: hook
+  name: rectangle-mark-mode-hook
+  defined_in: rect.elc
+  desc: Hook run after entering or leaving ‘rectangle-mark-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.replace-update-post-hook
+  surface: hook
+  name: replace-update-post-hook
+  defined_in: replace.elc
+  desc: Function(s) to call after ‘query-replace’ has found a match in the buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.revert-buffer-restore-functions
+  surface: hook
+  name: revert-buffer-restore-functions
+  defined_in: files.elc
+  desc: Functions to preserve buffer state during ‘revert-buffer’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.save-some-buffers-functions
+  surface: hook
+  name: save-some-buffers-functions
+  defined_in: files.elc
+  desc: Functions to be run by ‘save-some-buffers’ after saving the buffers.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.self-insert-uses-region-functions
+  surface: hook
+  name: self-insert-uses-region-functions
+  defined_in: simple.elc
+  desc: Special hook to tell if ‘self-insert-command’ will use the region.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.set-message-functions
+  surface: hook
+  name: set-message-functions
+  defined_in: minibuffer.elc
+  desc: List of functions to handle display of echo-area messages.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.size-indication-mode-hook
+  surface: hook
+  name: size-indication-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘size-indication-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.special-mode-hook
+  surface: hook
+  name: special-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering ‘special-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.suspend-hook
+  surface: hook
+  name: suspend-hook
+  defined_in: subr.elc
+  desc: Normal hook run by ‘suspend-emacs’, before suspending.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.suspend-resume-hook
+  surface: hook
+  name: suspend-resume-hook
+  defined_in: subr.elc
+  desc: Normal hook run by ‘suspend-emacs’, after Emacs is continued.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.temp-buffer-setup-hook
+  surface: hook
+  name: temp-buffer-setup-hook
+  defined_in: subr.elc
+  desc: Normal hook run by ‘with-output-to-temp-buffer’ at the start.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.temp-buffer-show-hook
+  surface: hook
+  name: temp-buffer-show-hook
+  defined_in: subr.elc
+  desc: Normal hook run by ‘with-output-to-temp-buffer’ after displaying the buffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.temp-buffer-window-setup-hook
+  surface: hook
+  name: temp-buffer-window-setup-hook
+  defined_in: window.elc
+  desc: Normal hook run by ‘with-temp-buffer-window’ before buffer display.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.temp-buffer-window-show-hook
+  surface: hook
+  name: temp-buffer-window-show-hook
+  defined_in: window.elc
+  desc: Normal hook run by ‘with-temp-buffer-window’ after buffer display.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.transient-mark-mode-hook
+  surface: hook
+  name: transient-mark-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘transient-mark-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.use-hard-newlines-hook
+  surface: hook
+  name: use-hard-newlines-hook
+  defined_in: paragraphs.elc
+  desc: Hook run after entering or leaving ‘use-hard-newlines’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.visible-mode-hook
+  surface: hook
+  name: visible-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘visible-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.visual-line-mode-hook
+  surface: hook
+  name: visual-line-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘visual-line-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.write-contents-functions
+  surface: hook
+  name: write-contents-functions
+  defined_in: files.elc
+  desc: List of functions to be called before writing out a buffer to a file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.write-file-functions
+  surface: hook
+  name: write-file-functions
+  defined_in: files.elc
+  desc: List of functions to be called before saving a buffer to a file.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.yank-transform-functions
+  surface: hook
+  name: yank-transform-functions
+  defined_in: simple.elc
+  desc: Hook run on strings to be yanked.
+  attestation:
+  - R
+  status: unclassified

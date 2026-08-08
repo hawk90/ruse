@@ -1,0 +1,58 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py helix && python3 tools/parity/extract_helix.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# role: reference — see `not_a_parity_target` below before quoting any number from here.
+version: 1
+generated: true
+generator: tools/parity/extract_helix.py
+upstream: helix
+revision: a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b
+version_label: 25.07.1
+role: reference
+not_a_parity_target: Pinned as EVIDENCE for concepts/irreconcilable.yaml#observables (D-EDITLANG-PRIMITIVE). ruse declares
+  no helix input profile; these counts are never a coverage ratio.
+surface: mode
+source_of_record: 'S: helix-term/src/keymap/default.rs'
+items:
+- id: helix.mode.normal
+  surface: mode
+  mode: Normal
+  dispatch: root
+  derives_from: null
+  bindings: 334
+  unmatched_key: ignore
+  desc: The root keymap; motions move and collapse the selection to a cursor.
+  attestation:
+  - S
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.derived-mode
+- id: helix.mode.select
+  surface: mode
+  mode: Select
+  dispatch: derived
+  derives_from: Normal
+  bindings: 334
+  override_bindings: 33
+  inherited_bindings: 301
+  unmatched_key: ignore
+  desc: 'Built as normal.clone() + merge_nodes(overrides): every Normal binding is reachable unless overridden, and the merge
+    is BUILD-TIME so dispatch stays flat (a depth-2 layer stack collapsed early). Motions EXTEND rather than move — the OBS-BARE-MOTION
+    divergence, structurally located.'
+  attestation:
+  - S
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.derived-mode
+- id: helix.mode.insert
+  surface: mode
+  mode: Insert
+  dispatch: root
+  derives_from: null
+  bindings: 27
+  unmatched_key: insert
+  desc: Independent root keymap; unmatched printable keys insert literally.
+  attestation:
+  - S
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.derived-mode

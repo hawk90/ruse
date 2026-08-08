@@ -16,7 +16,7 @@ capabilities:
   # ---- Base: always present; complete local+remote editing with zero plugins ----
   CAP-EDIT-CORE:    { title: Editing core (Document/View/Transaction/Undo/Selection), product_layer: base, architecture_tier: kernel, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false, prd: [F-001, F-002, F-005] }
   CAP-TRACE:        { title: Command trace + deterministic replay, product_layer: base, architecture_tier: kernel, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false, prd: [F-022] }
-  CAP-VIM-PROFILE:  { title: Vim input profile, product_layer: base, architecture_tier: kernel, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-003] }
+  CAP-VIM-PROFILE:  { title: Vim input profile, product_layer: base, architecture_tier: kernel, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-003, F-023, F-024, F-025, F-026, F-027] }
   CAP-NATIVE-PROFILE: { title: Native input profile, product_layer: base, architecture_tier: kernel, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-013] }
   CAP-COMMAND-PALETTE: { title: Command palette, product_layer: base, architecture_tier: bundled-extension, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-004] }
   CAP-FILE-PICKER:  { title: File picker / fuzzy finder, product_layer: base, architecture_tier: bundled-extension, implementation: own, runtime: both, activation: startup, trust: core, replaceable: true, requires: [CAP-FS, CAP-SEARCH] , prd: [] }  # base UX gap; no fuzzy-finder feature yet

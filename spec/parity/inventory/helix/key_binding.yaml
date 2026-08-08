@@ -1,0 +1,4272 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py helix && python3 tools/parity/extract_helix.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# role: reference — see `not_a_parity_target` below before quoting any number from here.
+version: 1
+generated: true
+generator: tools/parity/extract_helix.py
+upstream: helix
+revision: a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b
+version_label: 25.07.1
+role: reference
+not_a_parity_target: Pinned as EVIDENCE for concepts/irreconcilable.yaml#observables (D-EDITLANG-PRIMITIVE). ruse declares
+  no helix input profile; these counts are never a coverage ratio.
+surface: key_binding
+source_of_record: 'S: helix-term/src/keymap/default.rs'
+items:
+- id: helix.key.normal.h
+  surface: key_binding
+  mode: normal
+  key: h
+  kind: command
+  binds: move_char_left
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - left
+  status: unclassified
+- id: helix.key.normal.left
+  surface: key_binding
+  mode: normal
+  key: left
+  kind: command
+  binds: move_char_left
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - h
+  status: unclassified
+- id: helix.key.normal.j
+  surface: key_binding
+  mode: normal
+  key: j
+  kind: command
+  binds: move_visual_line_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - down
+  status: unclassified
+- id: helix.key.normal.down
+  surface: key_binding
+  mode: normal
+  key: down
+  kind: command
+  binds: move_visual_line_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - j
+  status: unclassified
+- id: helix.key.normal.k
+  surface: key_binding
+  mode: normal
+  key: k
+  kind: command
+  binds: move_visual_line_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - up
+  status: unclassified
+- id: helix.key.normal.up
+  surface: key_binding
+  mode: normal
+  key: up
+  kind: command
+  binds: move_visual_line_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - k
+  status: unclassified
+- id: helix.key.normal.l
+  surface: key_binding
+  mode: normal
+  key: l
+  kind: command
+  binds: move_char_right
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - right
+  status: unclassified
+- id: helix.key.normal.right
+  surface: key_binding
+  mode: normal
+  key: right
+  kind: command
+  binds: move_char_right
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - l
+  status: unclassified
+- id: helix.key.normal.t
+  surface: key_binding
+  mode: normal
+  key: t
+  kind: command
+  binds: find_till_char
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.f
+  surface: key_binding
+  mode: normal
+  key: f
+  kind: command
+  binds: find_next_char
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.t~2
+  surface: key_binding
+  mode: normal
+  key: T
+  kind: command
+  binds: till_prev_char
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.f~2
+  surface: key_binding
+  mode: normal
+  key: F
+  kind: command
+  binds: find_prev_char
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.r
+  surface: key_binding
+  mode: normal
+  key: r
+  kind: command
+  binds: replace
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.r~2
+  surface: key_binding
+  mode: normal
+  key: R
+  kind: command
+  binds: replace_with_yanked
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a
+  surface: key_binding
+  mode: normal
+  key: A-.
+  kind: command
+  binds: repeat_last_motion
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x
+  surface: key_binding
+  mode: normal
+  key: '~'
+  kind: command
+  binds: switch_case
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~2
+  surface: key_binding
+  mode: normal
+  key: '`'
+  kind: command
+  binds: switch_to_lowercase
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~2
+  surface: key_binding
+  mode: normal
+  key: A-`
+  kind: command
+  binds: switch_to_uppercase
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.home
+  surface: key_binding
+  mode: normal
+  key: home
+  kind: command
+  binds: goto_line_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.end
+  surface: key_binding
+  mode: normal
+  key: end
+  kind: command
+  binds: goto_line_end
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.w
+  surface: key_binding
+  mode: normal
+  key: w
+  kind: command
+  binds: move_next_word_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.b
+  surface: key_binding
+  mode: normal
+  key: b
+  kind: command
+  binds: move_prev_word_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.e
+  surface: key_binding
+  mode: normal
+  key: e
+  kind: command
+  binds: move_next_word_end
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.w~2
+  surface: key_binding
+  mode: normal
+  key: W
+  kind: command
+  binds: move_next_long_word_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.b~2
+  surface: key_binding
+  mode: normal
+  key: B
+  kind: command
+  binds: move_prev_long_word_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.e~2
+  surface: key_binding
+  mode: normal
+  key: E
+  kind: command
+  binds: move_next_long_word_end
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.v
+  surface: key_binding
+  mode: normal
+  key: v
+  kind: command
+  binds: select_mode
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g
+  surface: key_binding
+  mode: normal
+  key: G
+  kind: command
+  binds: goto_line
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g~2
+  surface: key_binding
+  mode: normal
+  key: g
+  kind: prefix
+  binds: ''
+  group: Goto
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-g
+  surface: key_binding
+  mode: normal
+  key: g g
+  kind: command
+  binds: goto_file_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-bar
+  surface: key_binding
+  mode: normal
+  key: g |
+  kind: command
+  binds: goto_column
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-e
+  surface: key_binding
+  mode: normal
+  key: g e
+  kind: command
+  binds: goto_last_line
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-f
+  surface: key_binding
+  mode: normal
+  key: g f
+  kind: command
+  binds: goto_file
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-h
+  surface: key_binding
+  mode: normal
+  key: g h
+  kind: command
+  binds: goto_line_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-l
+  surface: key_binding
+  mode: normal
+  key: g l
+  kind: command
+  binds: goto_line_end
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-s
+  surface: key_binding
+  mode: normal
+  key: g s
+  kind: command
+  binds: goto_first_nonwhitespace
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-d
+  surface: key_binding
+  mode: normal
+  key: g d
+  kind: command
+  binds: goto_definition
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-d~2
+  surface: key_binding
+  mode: normal
+  key: g D
+  kind: command
+  binds: goto_declaration
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-y
+  surface: key_binding
+  mode: normal
+  key: g y
+  kind: command
+  binds: goto_type_definition
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-r
+  surface: key_binding
+  mode: normal
+  key: g r
+  kind: command
+  binds: goto_reference
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-i
+  surface: key_binding
+  mode: normal
+  key: g i
+  kind: command
+  binds: goto_implementation
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-t
+  surface: key_binding
+  mode: normal
+  key: g t
+  kind: command
+  binds: goto_window_top
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-c
+  surface: key_binding
+  mode: normal
+  key: g c
+  kind: command
+  binds: goto_window_center
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-b
+  surface: key_binding
+  mode: normal
+  key: g b
+  kind: command
+  binds: goto_window_bottom
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-a
+  surface: key_binding
+  mode: normal
+  key: g a
+  kind: command
+  binds: goto_last_accessed_file
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-m
+  surface: key_binding
+  mode: normal
+  key: g m
+  kind: command
+  binds: goto_last_modified_file
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-n
+  surface: key_binding
+  mode: normal
+  key: g n
+  kind: command
+  binds: goto_next_buffer
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-p
+  surface: key_binding
+  mode: normal
+  key: g p
+  kind: command
+  binds: goto_previous_buffer
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-k
+  surface: key_binding
+  mode: normal
+  key: g k
+  kind: command
+  binds: move_line_up
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-j
+  surface: key_binding
+  mode: normal
+  key: g j
+  kind: command
+  binds: move_line_down
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g~3
+  surface: key_binding
+  mode: normal
+  key: g .
+  kind: command
+  binds: goto_last_modification
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g-w
+  surface: key_binding
+  mode: normal
+  key: g w
+  kind: command
+  binds: goto_word
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~3
+  surface: key_binding
+  mode: normal
+  key: ':'
+  kind: command
+  binds: command_mode
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.i
+  surface: key_binding
+  mode: normal
+  key: i
+  kind: command
+  binds: insert_mode
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.i~2
+  surface: key_binding
+  mode: normal
+  key: I
+  kind: command
+  binds: insert_at_line_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~3
+  surface: key_binding
+  mode: normal
+  key: a
+  kind: command
+  binds: append_mode
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~4
+  surface: key_binding
+  mode: normal
+  key: A
+  kind: command
+  binds: insert_at_line_end
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.o
+  surface: key_binding
+  mode: normal
+  key: o
+  kind: command
+  binds: open_below
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.o~2
+  surface: key_binding
+  mode: normal
+  key: O
+  kind: command
+  binds: open_above
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.d
+  surface: key_binding
+  mode: normal
+  key: d
+  kind: command
+  binds: delete_selection
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-d
+  surface: key_binding
+  mode: normal
+  key: A-d
+  kind: command
+  binds: delete_selection_noyank
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c
+  surface: key_binding
+  mode: normal
+  key: c
+  kind: command
+  binds: change_selection
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-c
+  surface: key_binding
+  mode: normal
+  key: A-c
+  kind: command
+  binds: change_selection_noyank
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c~2
+  surface: key_binding
+  mode: normal
+  key: C
+  kind: command
+  binds: copy_selection_on_next_line
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-c~2
+  surface: key_binding
+  mode: normal
+  key: A-C
+  kind: command
+  binds: copy_selection_on_prev_line
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.s
+  surface: key_binding
+  mode: normal
+  key: s
+  kind: command
+  binds: select_regex
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-s
+  surface: key_binding
+  mode: normal
+  key: A-s
+  kind: command
+  binds: split_selection_on_newline
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-minus
+  surface: key_binding
+  mode: normal
+  key: A-minus
+  kind: command
+  binds: merge_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~5
+  surface: key_binding
+  mode: normal
+  key: A-_
+  kind: command
+  binds: merge_consecutive_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.s~2
+  surface: key_binding
+  mode: normal
+  key: S
+  kind: command
+  binds: split_selection
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~4
+  surface: key_binding
+  mode: normal
+  key: ;
+  kind: command
+  binds: collapse_selection
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~6
+  surface: key_binding
+  mode: normal
+  key: A-;
+  kind: command
+  binds: flip_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-o
+  surface: key_binding
+  mode: normal
+  key: A-o
+  kind: command
+  binds: expand_selection
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-up
+  status: unclassified
+- id: helix.key.normal.a-up
+  surface: key_binding
+  mode: normal
+  key: A-up
+  kind: command
+  binds: expand_selection
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-o
+  status: unclassified
+- id: helix.key.normal.a-i
+  surface: key_binding
+  mode: normal
+  key: A-i
+  kind: command
+  binds: shrink_selection
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-down
+  status: unclassified
+- id: helix.key.normal.a-down
+  surface: key_binding
+  mode: normal
+  key: A-down
+  kind: command
+  binds: shrink_selection
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-i
+  status: unclassified
+- id: helix.key.normal.a-i~2
+  surface: key_binding
+  mode: normal
+  key: A-I
+  kind: command
+  binds: select_all_children
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-S-down
+  status: unclassified
+- id: helix.key.normal.a-s-down
+  surface: key_binding
+  mode: normal
+  key: A-S-down
+  kind: command
+  binds: select_all_children
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-I
+  status: unclassified
+- id: helix.key.normal.a-p
+  surface: key_binding
+  mode: normal
+  key: A-p
+  kind: command
+  binds: select_prev_sibling
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-left
+  status: unclassified
+- id: helix.key.normal.a-left
+  surface: key_binding
+  mode: normal
+  key: A-left
+  kind: command
+  binds: select_prev_sibling
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-p
+  status: unclassified
+- id: helix.key.normal.a-n
+  surface: key_binding
+  mode: normal
+  key: A-n
+  kind: command
+  binds: select_next_sibling
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-right
+  status: unclassified
+- id: helix.key.normal.a-right
+  surface: key_binding
+  mode: normal
+  key: A-right
+  kind: command
+  binds: select_next_sibling
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - A-n
+  status: unclassified
+- id: helix.key.normal.a-e
+  surface: key_binding
+  mode: normal
+  key: A-e
+  kind: command
+  binds: move_parent_node_end
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-b
+  surface: key_binding
+  mode: normal
+  key: A-b
+  kind: command
+  binds: move_parent_node_start
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-a
+  surface: key_binding
+  mode: normal
+  key: A-a
+  kind: command
+  binds: select_all_siblings
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~5
+  surface: key_binding
+  mode: normal
+  key: '%'
+  kind: command
+  binds: select_all
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~6
+  surface: key_binding
+  mode: normal
+  key: x
+  kind: command
+  binds: extend_line_below
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~7
+  surface: key_binding
+  mode: normal
+  key: X
+  kind: command
+  binds: extend_to_line_bounds
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-x
+  surface: key_binding
+  mode: normal
+  key: A-x
+  kind: command
+  binds: shrink_to_line_bounds
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.m
+  surface: key_binding
+  mode: normal
+  key: m
+  kind: prefix
+  binds: ''
+  group: Match
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.m-m
+  surface: key_binding
+  mode: normal
+  key: m m
+  kind: command
+  binds: match_brackets
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.m-s
+  surface: key_binding
+  mode: normal
+  key: m s
+  kind: command
+  binds: surround_add
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.m-r
+  surface: key_binding
+  mode: normal
+  key: m r
+  kind: command
+  binds: surround_replace
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.m-d
+  surface: key_binding
+  mode: normal
+  key: m d
+  kind: command
+  binds: surround_delete
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.m-a
+  surface: key_binding
+  mode: normal
+  key: m a
+  kind: command
+  binds: select_textobject_around
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.m-i
+  surface: key_binding
+  mode: normal
+  key: m i
+  kind: command
+  binds: select_textobject_inner
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~8
+  surface: key_binding
+  mode: normal
+  key: '['
+  kind: prefix
+  binds: ''
+  group: Left bracket
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.d~2
+  surface: key_binding
+  mode: normal
+  key: '[ d'
+  kind: command
+  binds: goto_prev_diag
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.d~3
+  surface: key_binding
+  mode: normal
+  key: '[ D'
+  kind: command
+  binds: goto_first_diag
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g~4
+  surface: key_binding
+  mode: normal
+  key: '[ g'
+  kind: command
+  binds: goto_prev_change
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g~5
+  surface: key_binding
+  mode: normal
+  key: '[ G'
+  kind: command
+  binds: goto_first_change
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.f~3
+  surface: key_binding
+  mode: normal
+  key: '[ f'
+  kind: command
+  binds: goto_prev_function
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.t~3
+  surface: key_binding
+  mode: normal
+  key: '[ t'
+  kind: command
+  binds: goto_prev_class
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~7
+  surface: key_binding
+  mode: normal
+  key: '[ a'
+  kind: command
+  binds: goto_prev_parameter
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c~3
+  surface: key_binding
+  mode: normal
+  key: '[ c'
+  kind: command
+  binds: goto_prev_comment
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.e~3
+  surface: key_binding
+  mode: normal
+  key: '[ e'
+  kind: command
+  binds: goto_prev_entry
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.t~4
+  surface: key_binding
+  mode: normal
+  key: '[ T'
+  kind: command
+  binds: goto_prev_test
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.p
+  surface: key_binding
+  mode: normal
+  key: '[ p'
+  kind: command
+  binds: goto_prev_paragraph
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space
+  surface: key_binding
+  mode: normal
+  key: '[ space'
+  kind: command
+  binds: add_newline_above
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~9
+  surface: key_binding
+  mode: normal
+  key: ']'
+  kind: prefix
+  binds: ''
+  group: Right bracket
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.d~4
+  surface: key_binding
+  mode: normal
+  key: '] d'
+  kind: command
+  binds: goto_next_diag
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.d~5
+  surface: key_binding
+  mode: normal
+  key: '] D'
+  kind: command
+  binds: goto_last_diag
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g~6
+  surface: key_binding
+  mode: normal
+  key: '] g'
+  kind: command
+  binds: goto_next_change
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.g~7
+  surface: key_binding
+  mode: normal
+  key: '] G'
+  kind: command
+  binds: goto_last_change
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.f~4
+  surface: key_binding
+  mode: normal
+  key: '] f'
+  kind: command
+  binds: goto_next_function
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.t~5
+  surface: key_binding
+  mode: normal
+  key: '] t'
+  kind: command
+  binds: goto_next_class
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~8
+  surface: key_binding
+  mode: normal
+  key: '] a'
+  kind: command
+  binds: goto_next_parameter
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c~4
+  surface: key_binding
+  mode: normal
+  key: '] c'
+  kind: command
+  binds: goto_next_comment
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.e~4
+  surface: key_binding
+  mode: normal
+  key: '] e'
+  kind: command
+  binds: goto_next_entry
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.t~6
+  surface: key_binding
+  mode: normal
+  key: '] T'
+  kind: command
+  binds: goto_next_test
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.p~2
+  surface: key_binding
+  mode: normal
+  key: '] p'
+  kind: command
+  binds: goto_next_paragraph
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space~2
+  surface: key_binding
+  mode: normal
+  key: '] space'
+  kind: command
+  binds: add_newline_below
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~10
+  surface: key_binding
+  mode: normal
+  key: /
+  kind: command
+  binds: search
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~11
+  surface: key_binding
+  mode: normal
+  key: '?'
+  kind: command
+  binds: rsearch
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.n
+  surface: key_binding
+  mode: normal
+  key: n
+  kind: command
+  binds: search_next
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.n~2
+  surface: key_binding
+  mode: normal
+  key: N
+  kind: command
+  binds: search_prev
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~12
+  surface: key_binding
+  mode: normal
+  key: '*'
+  kind: command
+  binds: search_selection_detect_word_boundaries
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~9
+  surface: key_binding
+  mode: normal
+  key: A-*
+  kind: command
+  binds: search_selection
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.u
+  surface: key_binding
+  mode: normal
+  key: u
+  kind: command
+  binds: undo
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.u~2
+  surface: key_binding
+  mode: normal
+  key: U
+  kind: command
+  binds: redo
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-u
+  surface: key_binding
+  mode: normal
+  key: A-u
+  kind: command
+  binds: earlier
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-u~2
+  surface: key_binding
+  mode: normal
+  key: A-U
+  kind: command
+  binds: later
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.y
+  surface: key_binding
+  mode: normal
+  key: y
+  kind: command
+  binds: yank
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.p~3
+  surface: key_binding
+  mode: normal
+  key: p
+  kind: command
+  binds: paste_after
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.p~4
+  surface: key_binding
+  mode: normal
+  key: P
+  kind: command
+  binds: paste_before
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.q
+  surface: key_binding
+  mode: normal
+  key: Q
+  kind: command
+  binds: record_macro
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.q~2
+  surface: key_binding
+  mode: normal
+  key: q
+  kind: command
+  binds: replay_macro
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~13
+  surface: key_binding
+  mode: normal
+  key: '>'
+  kind: command
+  binds: indent
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~14
+  surface: key_binding
+  mode: normal
+  key: <
+  kind: command
+  binds: unindent
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~15
+  surface: key_binding
+  mode: normal
+  key: '='
+  kind: command
+  binds: format_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.j~2
+  surface: key_binding
+  mode: normal
+  key: J
+  kind: command
+  binds: join_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-j
+  surface: key_binding
+  mode: normal
+  key: A-J
+  kind: command
+  binds: join_selections_space
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.k~2
+  surface: key_binding
+  mode: normal
+  key: K
+  kind: command
+  binds: keep_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-k
+  surface: key_binding
+  mode: normal
+  key: A-K
+  kind: command
+  binds: remove_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~16
+  surface: key_binding
+  mode: normal
+  key: ','
+  kind: command
+  binds: keep_primary_selection
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~10
+  surface: key_binding
+  mode: normal
+  key: A-,
+  kind: command
+  binds: remove_primary_selection
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~17
+  surface: key_binding
+  mode: normal
+  key: '&'
+  kind: command
+  binds: align_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~18
+  surface: key_binding
+  mode: normal
+  key: _
+  kind: command
+  binds: trim_selections
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~19
+  surface: key_binding
+  mode: normal
+  key: (
+  kind: command
+  binds: rotate_selections_backward
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~20
+  surface: key_binding
+  mode: normal
+  key: )
+  kind: command
+  binds: rotate_selections_forward
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~11
+  surface: key_binding
+  mode: normal
+  key: A-(
+  kind: command
+  binds: rotate_selection_contents_backward
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~12
+  surface: key_binding
+  mode: normal
+  key: A-)
+  kind: command
+  binds: rotate_selection_contents_forward
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~13
+  surface: key_binding
+  mode: normal
+  key: 'A-:'
+  kind: command
+  binds: ensure_selections_forward
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.esc
+  surface: key_binding
+  mode: normal
+  key: esc
+  kind: command
+  binds: normal_mode
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-b
+  surface: key_binding
+  mode: normal
+  key: C-b
+  kind: command
+  binds: page_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - pageup
+  status: unclassified
+- id: helix.key.normal.pageup
+  surface: key_binding
+  mode: normal
+  key: pageup
+  kind: command
+  binds: page_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-b
+  status: unclassified
+- id: helix.key.normal.c-f
+  surface: key_binding
+  mode: normal
+  key: C-f
+  kind: command
+  binds: page_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - pagedown
+  status: unclassified
+- id: helix.key.normal.pagedown
+  surface: key_binding
+  mode: normal
+  key: pagedown
+  kind: command
+  binds: page_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-f
+  status: unclassified
+- id: helix.key.normal.c-u
+  surface: key_binding
+  mode: normal
+  key: C-u
+  kind: command
+  binds: page_cursor_half_up
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-d
+  surface: key_binding
+  mode: normal
+  key: C-d
+  kind: command
+  binds: page_cursor_half_down
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w
+  surface: key_binding
+  mode: normal
+  key: C-w
+  kind: prefix
+  binds: ''
+  group: Window
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w-c-w
+  surface: key_binding
+  mode: normal
+  key: C-w C-w
+  kind: command
+  binds: rotate_view
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - w
+  status: unclassified
+- id: helix.key.normal.c-w-w
+  surface: key_binding
+  mode: normal
+  key: C-w w
+  kind: command
+  binds: rotate_view
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-w
+  status: unclassified
+- id: helix.key.normal.c-w-c-s
+  surface: key_binding
+  mode: normal
+  key: C-w C-s
+  kind: command
+  binds: hsplit
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - s
+  status: unclassified
+- id: helix.key.normal.c-w-s
+  surface: key_binding
+  mode: normal
+  key: C-w s
+  kind: command
+  binds: hsplit
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-s
+  status: unclassified
+- id: helix.key.normal.c-w-c-v
+  surface: key_binding
+  mode: normal
+  key: C-w C-v
+  kind: command
+  binds: vsplit
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - v
+  status: unclassified
+- id: helix.key.normal.c-w-v
+  surface: key_binding
+  mode: normal
+  key: C-w v
+  kind: command
+  binds: vsplit
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-v
+  status: unclassified
+- id: helix.key.normal.c-w-c-t
+  surface: key_binding
+  mode: normal
+  key: C-w C-t
+  kind: command
+  binds: transpose_view
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - t
+  status: unclassified
+- id: helix.key.normal.c-w-t
+  surface: key_binding
+  mode: normal
+  key: C-w t
+  kind: command
+  binds: transpose_view
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-t
+  status: unclassified
+- id: helix.key.normal.c-w-f
+  surface: key_binding
+  mode: normal
+  key: C-w f
+  kind: command
+  binds: goto_file_hsplit
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w-f~2
+  surface: key_binding
+  mode: normal
+  key: C-w F
+  kind: command
+  binds: goto_file_vsplit
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w-c-q
+  surface: key_binding
+  mode: normal
+  key: C-w C-q
+  kind: command
+  binds: wclose
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - q
+  status: unclassified
+- id: helix.key.normal.c-w-q
+  surface: key_binding
+  mode: normal
+  key: C-w q
+  kind: command
+  binds: wclose
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-q
+  status: unclassified
+- id: helix.key.normal.c-w-c-o
+  surface: key_binding
+  mode: normal
+  key: C-w C-o
+  kind: command
+  binds: wonly
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - o
+  status: unclassified
+- id: helix.key.normal.c-w-o
+  surface: key_binding
+  mode: normal
+  key: C-w o
+  kind: command
+  binds: wonly
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-o
+  status: unclassified
+- id: helix.key.normal.c-w-c-h
+  surface: key_binding
+  mode: normal
+  key: C-w C-h
+  kind: command
+  binds: jump_view_left
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - h
+  - left
+  status: unclassified
+- id: helix.key.normal.c-w-h
+  surface: key_binding
+  mode: normal
+  key: C-w h
+  kind: command
+  binds: jump_view_left
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-h
+  - left
+  status: unclassified
+- id: helix.key.normal.c-w-left
+  surface: key_binding
+  mode: normal
+  key: C-w left
+  kind: command
+  binds: jump_view_left
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-h
+  - h
+  status: unclassified
+- id: helix.key.normal.c-w-c-j
+  surface: key_binding
+  mode: normal
+  key: C-w C-j
+  kind: command
+  binds: jump_view_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - j
+  - down
+  status: unclassified
+- id: helix.key.normal.c-w-j
+  surface: key_binding
+  mode: normal
+  key: C-w j
+  kind: command
+  binds: jump_view_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-j
+  - down
+  status: unclassified
+- id: helix.key.normal.c-w-down
+  surface: key_binding
+  mode: normal
+  key: C-w down
+  kind: command
+  binds: jump_view_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-j
+  - j
+  status: unclassified
+- id: helix.key.normal.c-w-c-k
+  surface: key_binding
+  mode: normal
+  key: C-w C-k
+  kind: command
+  binds: jump_view_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - k
+  - up
+  status: unclassified
+- id: helix.key.normal.c-w-k
+  surface: key_binding
+  mode: normal
+  key: C-w k
+  kind: command
+  binds: jump_view_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-k
+  - up
+  status: unclassified
+- id: helix.key.normal.c-w-up
+  surface: key_binding
+  mode: normal
+  key: C-w up
+  kind: command
+  binds: jump_view_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-k
+  - k
+  status: unclassified
+- id: helix.key.normal.c-w-c-l
+  surface: key_binding
+  mode: normal
+  key: C-w C-l
+  kind: command
+  binds: jump_view_right
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - l
+  - right
+  status: unclassified
+- id: helix.key.normal.c-w-l
+  surface: key_binding
+  mode: normal
+  key: C-w l
+  kind: command
+  binds: jump_view_right
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-l
+  - right
+  status: unclassified
+- id: helix.key.normal.c-w-right
+  surface: key_binding
+  mode: normal
+  key: C-w right
+  kind: command
+  binds: jump_view_right
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-l
+  - l
+  status: unclassified
+- id: helix.key.normal.c-w-l~2
+  surface: key_binding
+  mode: normal
+  key: C-w L
+  kind: command
+  binds: swap_view_right
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w-k~2
+  surface: key_binding
+  mode: normal
+  key: C-w K
+  kind: command
+  binds: swap_view_up
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w-h~2
+  surface: key_binding
+  mode: normal
+  key: C-w H
+  kind: command
+  binds: swap_view_left
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w-j~2
+  surface: key_binding
+  mode: normal
+  key: C-w J
+  kind: command
+  binds: swap_view_down
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w-n
+  surface: key_binding
+  mode: normal
+  key: C-w n
+  kind: prefix
+  binds: ''
+  group: New split scratch buffer
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-w-n-c-s
+  surface: key_binding
+  mode: normal
+  key: C-w n C-s
+  kind: command
+  binds: hsplit_new
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - s
+  status: unclassified
+- id: helix.key.normal.c-w-n-s
+  surface: key_binding
+  mode: normal
+  key: C-w n s
+  kind: command
+  binds: hsplit_new
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-s
+  status: unclassified
+- id: helix.key.normal.c-w-n-c-v
+  surface: key_binding
+  mode: normal
+  key: C-w n C-v
+  kind: command
+  binds: vsplit_new
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - v
+  status: unclassified
+- id: helix.key.normal.c-w-n-v
+  surface: key_binding
+  mode: normal
+  key: C-w n v
+  kind: command
+  binds: vsplit_new
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-v
+  status: unclassified
+- id: helix.key.normal.c-c
+  surface: key_binding
+  mode: normal
+  key: C-c
+  kind: command
+  binds: toggle_comments
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-i
+  surface: key_binding
+  mode: normal
+  key: C-i
+  kind: command
+  binds: jump_forward
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - tab
+  status: unclassified
+- id: helix.key.normal.tab
+  surface: key_binding
+  mode: normal
+  key: tab
+  kind: command
+  binds: jump_forward
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-i
+  status: unclassified
+- id: helix.key.normal.c-o
+  surface: key_binding
+  mode: normal
+  key: C-o
+  kind: command
+  binds: jump_backward
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-s
+  surface: key_binding
+  mode: normal
+  key: C-s
+  kind: command
+  binds: save_selection
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space~3
+  surface: key_binding
+  mode: normal
+  key: space
+  kind: prefix
+  binds: ''
+  group: Space
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-f
+  surface: key_binding
+  mode: normal
+  key: space f
+  kind: command
+  binds: file_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-f~2
+  surface: key_binding
+  mode: normal
+  key: space F
+  kind: command
+  binds: file_picker_in_current_directory
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-e
+  surface: key_binding
+  mode: normal
+  key: space e
+  kind: command
+  binds: file_explorer
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-e~2
+  surface: key_binding
+  mode: normal
+  key: space E
+  kind: command
+  binds: file_explorer_in_current_buffer_directory
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-b
+  surface: key_binding
+  mode: normal
+  key: space b
+  kind: command
+  binds: buffer_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-j
+  surface: key_binding
+  mode: normal
+  key: space j
+  kind: command
+  binds: jumplist_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-s
+  surface: key_binding
+  mode: normal
+  key: space s
+  kind: command
+  binds: symbol_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-s~2
+  surface: key_binding
+  mode: normal
+  key: space S
+  kind: command
+  binds: workspace_symbol_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-d
+  surface: key_binding
+  mode: normal
+  key: space d
+  kind: command
+  binds: diagnostics_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-d~2
+  surface: key_binding
+  mode: normal
+  key: space D
+  kind: command
+  binds: workspace_diagnostics_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g
+  surface: key_binding
+  mode: normal
+  key: space g
+  kind: command
+  binds: changed_file_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-a
+  surface: key_binding
+  mode: normal
+  key: space a
+  kind: command
+  binds: code_action
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space~4
+  surface: key_binding
+  mode: normal
+  key: space '
+  kind: command
+  binds: last_picker
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g~2
+  surface: key_binding
+  mode: normal
+  key: space G
+  kind: prefix
+  binds: ''
+  group: Debug (experimental)
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-l
+  surface: key_binding
+  mode: normal
+  key: space G l
+  kind: command
+  binds: dap_launch
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-r
+  surface: key_binding
+  mode: normal
+  key: space G r
+  kind: command
+  binds: dap_restart
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-b
+  surface: key_binding
+  mode: normal
+  key: space G b
+  kind: command
+  binds: dap_toggle_breakpoint
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-c
+  surface: key_binding
+  mode: normal
+  key: space G c
+  kind: command
+  binds: dap_continue
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-h
+  surface: key_binding
+  mode: normal
+  key: space G h
+  kind: command
+  binds: dap_pause
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-i
+  surface: key_binding
+  mode: normal
+  key: space G i
+  kind: command
+  binds: dap_step_in
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-o
+  surface: key_binding
+  mode: normal
+  key: space G o
+  kind: command
+  binds: dap_step_out
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-n
+  surface: key_binding
+  mode: normal
+  key: space G n
+  kind: command
+  binds: dap_next
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-v
+  surface: key_binding
+  mode: normal
+  key: space G v
+  kind: command
+  binds: dap_variables
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-t
+  surface: key_binding
+  mode: normal
+  key: space G t
+  kind: command
+  binds: dap_terminate
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-c-c
+  surface: key_binding
+  mode: normal
+  key: space G C-c
+  kind: command
+  binds: dap_edit_condition
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-c-l
+  surface: key_binding
+  mode: normal
+  key: space G C-l
+  kind: command
+  binds: dap_edit_log
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-s
+  surface: key_binding
+  mode: normal
+  key: space G s
+  kind: prefix
+  binds: ''
+  group: Switch
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-s-t
+  surface: key_binding
+  mode: normal
+  key: space G s t
+  kind: command
+  binds: dap_switch_thread
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-s-f
+  surface: key_binding
+  mode: normal
+  key: space G s f
+  kind: command
+  binds: dap_switch_stack_frame
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-e
+  surface: key_binding
+  mode: normal
+  key: space G e
+  kind: command
+  binds: dap_enable_exceptions
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-g-e~2
+  surface: key_binding
+  mode: normal
+  key: space G E
+  kind: command
+  binds: dap_disable_exceptions
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w
+  surface: key_binding
+  mode: normal
+  key: space w
+  kind: prefix
+  binds: ''
+  group: Window
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w-c-w
+  surface: key_binding
+  mode: normal
+  key: space w C-w
+  kind: command
+  binds: rotate_view
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - w
+  status: unclassified
+- id: helix.key.normal.space-w-w
+  surface: key_binding
+  mode: normal
+  key: space w w
+  kind: command
+  binds: rotate_view
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-w
+  status: unclassified
+- id: helix.key.normal.space-w-c-s
+  surface: key_binding
+  mode: normal
+  key: space w C-s
+  kind: command
+  binds: hsplit
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - s
+  status: unclassified
+- id: helix.key.normal.space-w-s
+  surface: key_binding
+  mode: normal
+  key: space w s
+  kind: command
+  binds: hsplit
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-s
+  status: unclassified
+- id: helix.key.normal.space-w-c-v
+  surface: key_binding
+  mode: normal
+  key: space w C-v
+  kind: command
+  binds: vsplit
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - v
+  status: unclassified
+- id: helix.key.normal.space-w-v
+  surface: key_binding
+  mode: normal
+  key: space w v
+  kind: command
+  binds: vsplit
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-v
+  status: unclassified
+- id: helix.key.normal.space-w-c-t
+  surface: key_binding
+  mode: normal
+  key: space w C-t
+  kind: command
+  binds: transpose_view
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - t
+  status: unclassified
+- id: helix.key.normal.space-w-t
+  surface: key_binding
+  mode: normal
+  key: space w t
+  kind: command
+  binds: transpose_view
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-t
+  status: unclassified
+- id: helix.key.normal.space-w-f
+  surface: key_binding
+  mode: normal
+  key: space w f
+  kind: command
+  binds: goto_file_hsplit
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w-f~2
+  surface: key_binding
+  mode: normal
+  key: space w F
+  kind: command
+  binds: goto_file_vsplit
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w-c-q
+  surface: key_binding
+  mode: normal
+  key: space w C-q
+  kind: command
+  binds: wclose
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - q
+  status: unclassified
+- id: helix.key.normal.space-w-q
+  surface: key_binding
+  mode: normal
+  key: space w q
+  kind: command
+  binds: wclose
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-q
+  status: unclassified
+- id: helix.key.normal.space-w-c-o
+  surface: key_binding
+  mode: normal
+  key: space w C-o
+  kind: command
+  binds: wonly
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - o
+  status: unclassified
+- id: helix.key.normal.space-w-o
+  surface: key_binding
+  mode: normal
+  key: space w o
+  kind: command
+  binds: wonly
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-o
+  status: unclassified
+- id: helix.key.normal.space-w-c-h
+  surface: key_binding
+  mode: normal
+  key: space w C-h
+  kind: command
+  binds: jump_view_left
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - h
+  - left
+  status: unclassified
+- id: helix.key.normal.space-w-h
+  surface: key_binding
+  mode: normal
+  key: space w h
+  kind: command
+  binds: jump_view_left
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-h
+  - left
+  status: unclassified
+- id: helix.key.normal.space-w-left
+  surface: key_binding
+  mode: normal
+  key: space w left
+  kind: command
+  binds: jump_view_left
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-h
+  - h
+  status: unclassified
+- id: helix.key.normal.space-w-c-j
+  surface: key_binding
+  mode: normal
+  key: space w C-j
+  kind: command
+  binds: jump_view_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - j
+  - down
+  status: unclassified
+- id: helix.key.normal.space-w-j
+  surface: key_binding
+  mode: normal
+  key: space w j
+  kind: command
+  binds: jump_view_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-j
+  - down
+  status: unclassified
+- id: helix.key.normal.space-w-down
+  surface: key_binding
+  mode: normal
+  key: space w down
+  kind: command
+  binds: jump_view_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-j
+  - j
+  status: unclassified
+- id: helix.key.normal.space-w-c-k
+  surface: key_binding
+  mode: normal
+  key: space w C-k
+  kind: command
+  binds: jump_view_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - k
+  - up
+  status: unclassified
+- id: helix.key.normal.space-w-k
+  surface: key_binding
+  mode: normal
+  key: space w k
+  kind: command
+  binds: jump_view_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-k
+  - up
+  status: unclassified
+- id: helix.key.normal.space-w-up
+  surface: key_binding
+  mode: normal
+  key: space w up
+  kind: command
+  binds: jump_view_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-k
+  - k
+  status: unclassified
+- id: helix.key.normal.space-w-c-l
+  surface: key_binding
+  mode: normal
+  key: space w C-l
+  kind: command
+  binds: jump_view_right
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - l
+  - right
+  status: unclassified
+- id: helix.key.normal.space-w-l
+  surface: key_binding
+  mode: normal
+  key: space w l
+  kind: command
+  binds: jump_view_right
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-l
+  - right
+  status: unclassified
+- id: helix.key.normal.space-w-right
+  surface: key_binding
+  mode: normal
+  key: space w right
+  kind: command
+  binds: jump_view_right
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-l
+  - l
+  status: unclassified
+- id: helix.key.normal.space-w-h~2
+  surface: key_binding
+  mode: normal
+  key: space w H
+  kind: command
+  binds: swap_view_left
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w-j~2
+  surface: key_binding
+  mode: normal
+  key: space w J
+  kind: command
+  binds: swap_view_down
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w-k~2
+  surface: key_binding
+  mode: normal
+  key: space w K
+  kind: command
+  binds: swap_view_up
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w-l~2
+  surface: key_binding
+  mode: normal
+  key: space w L
+  kind: command
+  binds: swap_view_right
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w-n
+  surface: key_binding
+  mode: normal
+  key: space w n
+  kind: prefix
+  binds: ''
+  group: New split scratch buffer
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-w-n-c-s
+  surface: key_binding
+  mode: normal
+  key: space w n C-s
+  kind: command
+  binds: hsplit_new
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - s
+  status: unclassified
+- id: helix.key.normal.space-w-n-s
+  surface: key_binding
+  mode: normal
+  key: space w n s
+  kind: command
+  binds: hsplit_new
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-s
+  status: unclassified
+- id: helix.key.normal.space-w-n-c-v
+  surface: key_binding
+  mode: normal
+  key: space w n C-v
+  kind: command
+  binds: vsplit_new
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - v
+  status: unclassified
+- id: helix.key.normal.space-w-n-v
+  surface: key_binding
+  mode: normal
+  key: space w n v
+  kind: command
+  binds: vsplit_new
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-v
+  status: unclassified
+- id: helix.key.normal.space-y
+  surface: key_binding
+  mode: normal
+  key: space y
+  kind: command
+  binds: yank_to_clipboard
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-y~2
+  surface: key_binding
+  mode: normal
+  key: space Y
+  kind: command
+  binds: yank_main_selection_to_clipboard
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-p
+  surface: key_binding
+  mode: normal
+  key: space p
+  kind: command
+  binds: paste_clipboard_after
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-p~2
+  surface: key_binding
+  mode: normal
+  key: space P
+  kind: command
+  binds: paste_clipboard_before
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-r
+  surface: key_binding
+  mode: normal
+  key: space R
+  kind: command
+  binds: replace_selections_with_clipboard
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space~5
+  surface: key_binding
+  mode: normal
+  key: space /
+  kind: command
+  binds: global_search
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-k
+  surface: key_binding
+  mode: normal
+  key: space k
+  kind: command
+  binds: hover
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-r~2
+  surface: key_binding
+  mode: normal
+  key: space r
+  kind: command
+  binds: rename_symbol
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-h
+  surface: key_binding
+  mode: normal
+  key: space h
+  kind: command
+  binds: select_references_to_symbol_under_cursor
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-c
+  surface: key_binding
+  mode: normal
+  key: space c
+  kind: command
+  binds: toggle_comments
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-c~2
+  surface: key_binding
+  mode: normal
+  key: space C
+  kind: command
+  binds: toggle_block_comments
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space-a-c
+  surface: key_binding
+  mode: normal
+  key: space A-c
+  kind: command
+  binds: toggle_line_comments
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.space~6
+  surface: key_binding
+  mode: normal
+  key: space ?
+  kind: command
+  binds: command_palette
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z
+  surface: key_binding
+  mode: normal
+  key: z
+  kind: prefix
+  binds: ''
+  group: View
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-z
+  surface: key_binding
+  mode: normal
+  key: z z
+  kind: command
+  binds: align_view_center
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - c
+  status: unclassified
+- id: helix.key.normal.z-c
+  surface: key_binding
+  mode: normal
+  key: z c
+  kind: command
+  binds: align_view_center
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - z
+  status: unclassified
+- id: helix.key.normal.z-t
+  surface: key_binding
+  mode: normal
+  key: z t
+  kind: command
+  binds: align_view_top
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-b
+  surface: key_binding
+  mode: normal
+  key: z b
+  kind: command
+  binds: align_view_bottom
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-m
+  surface: key_binding
+  mode: normal
+  key: z m
+  kind: command
+  binds: align_view_middle
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-k
+  surface: key_binding
+  mode: normal
+  key: z k
+  kind: command
+  binds: scroll_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - up
+  status: unclassified
+- id: helix.key.normal.z-up
+  surface: key_binding
+  mode: normal
+  key: z up
+  kind: command
+  binds: scroll_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - k
+  status: unclassified
+- id: helix.key.normal.z-j
+  surface: key_binding
+  mode: normal
+  key: z j
+  kind: command
+  binds: scroll_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - down
+  status: unclassified
+- id: helix.key.normal.z-down
+  surface: key_binding
+  mode: normal
+  key: z down
+  kind: command
+  binds: scroll_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - j
+  status: unclassified
+- id: helix.key.normal.z-c-b
+  surface: key_binding
+  mode: normal
+  key: z C-b
+  kind: command
+  binds: page_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - pageup
+  status: unclassified
+- id: helix.key.normal.z-pageup
+  surface: key_binding
+  mode: normal
+  key: z pageup
+  kind: command
+  binds: page_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-b
+  status: unclassified
+- id: helix.key.normal.z-c-f
+  surface: key_binding
+  mode: normal
+  key: z C-f
+  kind: command
+  binds: page_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - pagedown
+  status: unclassified
+- id: helix.key.normal.z-pagedown
+  surface: key_binding
+  mode: normal
+  key: z pagedown
+  kind: command
+  binds: page_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-f
+  status: unclassified
+- id: helix.key.normal.z-c-u
+  surface: key_binding
+  mode: normal
+  key: z C-u
+  kind: command
+  binds: page_cursor_half_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - backspace
+  status: unclassified
+- id: helix.key.normal.z-backspace
+  surface: key_binding
+  mode: normal
+  key: z backspace
+  kind: command
+  binds: page_cursor_half_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-u
+  status: unclassified
+- id: helix.key.normal.z-c-d
+  surface: key_binding
+  mode: normal
+  key: z C-d
+  kind: command
+  binds: page_cursor_half_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - space
+  status: unclassified
+- id: helix.key.normal.z-space
+  surface: key_binding
+  mode: normal
+  key: z space
+  kind: command
+  binds: page_cursor_half_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-d
+  status: unclassified
+- id: helix.key.normal.z~2
+  surface: key_binding
+  mode: normal
+  key: z /
+  kind: command
+  binds: search
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z~3
+  surface: key_binding
+  mode: normal
+  key: z ?
+  kind: command
+  binds: rsearch
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-n
+  surface: key_binding
+  mode: normal
+  key: z n
+  kind: command
+  binds: search_next
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-n~2
+  surface: key_binding
+  mode: normal
+  key: z N
+  kind: command
+  binds: search_prev
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z~4
+  surface: key_binding
+  mode: normal
+  key: Z
+  kind: prefix
+  binds: ''
+  group: View
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-z~2
+  surface: key_binding
+  mode: normal
+  key: Z z
+  kind: command
+  binds: align_view_center
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - c
+  status: unclassified
+- id: helix.key.normal.z-c~2
+  surface: key_binding
+  mode: normal
+  key: Z c
+  kind: command
+  binds: align_view_center
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - z
+  status: unclassified
+- id: helix.key.normal.z-t~2
+  surface: key_binding
+  mode: normal
+  key: Z t
+  kind: command
+  binds: align_view_top
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-b~2
+  surface: key_binding
+  mode: normal
+  key: Z b
+  kind: command
+  binds: align_view_bottom
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-m~2
+  surface: key_binding
+  mode: normal
+  key: Z m
+  kind: command
+  binds: align_view_middle
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-k~2
+  surface: key_binding
+  mode: normal
+  key: Z k
+  kind: command
+  binds: scroll_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - up
+  status: unclassified
+- id: helix.key.normal.z-up~2
+  surface: key_binding
+  mode: normal
+  key: Z up
+  kind: command
+  binds: scroll_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - k
+  status: unclassified
+- id: helix.key.normal.z-j~2
+  surface: key_binding
+  mode: normal
+  key: Z j
+  kind: command
+  binds: scroll_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - down
+  status: unclassified
+- id: helix.key.normal.z-down~2
+  surface: key_binding
+  mode: normal
+  key: Z down
+  kind: command
+  binds: scroll_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - j
+  status: unclassified
+- id: helix.key.normal.z-c-b~2
+  surface: key_binding
+  mode: normal
+  key: Z C-b
+  kind: command
+  binds: page_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - pageup
+  status: unclassified
+- id: helix.key.normal.z-pageup~2
+  surface: key_binding
+  mode: normal
+  key: Z pageup
+  kind: command
+  binds: page_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-b
+  status: unclassified
+- id: helix.key.normal.z-c-f~2
+  surface: key_binding
+  mode: normal
+  key: Z C-f
+  kind: command
+  binds: page_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - pagedown
+  status: unclassified
+- id: helix.key.normal.z-pagedown~2
+  surface: key_binding
+  mode: normal
+  key: Z pagedown
+  kind: command
+  binds: page_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-f
+  status: unclassified
+- id: helix.key.normal.z-c-u~2
+  surface: key_binding
+  mode: normal
+  key: Z C-u
+  kind: command
+  binds: page_cursor_half_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - backspace
+  status: unclassified
+- id: helix.key.normal.z-backspace~2
+  surface: key_binding
+  mode: normal
+  key: Z backspace
+  kind: command
+  binds: page_cursor_half_up
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-u
+  status: unclassified
+- id: helix.key.normal.z-c-d~2
+  surface: key_binding
+  mode: normal
+  key: Z C-d
+  kind: command
+  binds: page_cursor_half_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - space
+  status: unclassified
+- id: helix.key.normal.z-space~2
+  surface: key_binding
+  mode: normal
+  key: Z space
+  kind: command
+  binds: page_cursor_half_down
+  group: Normal mode
+  attestation:
+  - S
+  aliases:
+  - C-d
+  status: unclassified
+- id: helix.key.normal.z~5
+  surface: key_binding
+  mode: normal
+  key: Z /
+  kind: command
+  binds: search
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z~6
+  surface: key_binding
+  mode: normal
+  key: Z ?
+  kind: command
+  binds: rsearch
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-n~3
+  surface: key_binding
+  mode: normal
+  key: Z n
+  kind: command
+  binds: search_next
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.z-n~4
+  surface: key_binding
+  mode: normal
+  key: Z N
+  kind: command
+  binds: search_prev
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.bar
+  surface: key_binding
+  mode: normal
+  key: '|'
+  kind: command
+  binds: shell_pipe
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a-bar
+  surface: key_binding
+  mode: normal
+  key: A-|
+  kind: command
+  binds: shell_pipe_to
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~21
+  surface: key_binding
+  mode: normal
+  key: '!'
+  kind: command
+  binds: shell_insert_output
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.a~14
+  surface: key_binding
+  mode: normal
+  key: A-!
+  kind: command
+  binds: shell_append_output
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.x~22
+  surface: key_binding
+  mode: normal
+  key: $
+  kind: command
+  binds: shell_keep_pipe
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-z
+  surface: key_binding
+  mode: normal
+  key: C-z
+  kind: command
+  binds: suspend
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-a
+  surface: key_binding
+  mode: normal
+  key: C-a
+  kind: command
+  binds: increment
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.normal.c-x
+  surface: key_binding
+  mode: normal
+  key: C-x
+  kind: command
+  binds: decrement
+  group: Normal mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.select.h
+  surface: key_binding
+  mode: select
+  key: h
+  kind: command
+  binds: extend_char_left
+  group: Select mode
+  attestation:
+  - S
+  aliases:
+  - left
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.left
+  surface: key_binding
+  mode: select
+  key: left
+  kind: command
+  binds: extend_char_left
+  group: Select mode
+  attestation:
+  - S
+  aliases:
+  - h
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.j
+  surface: key_binding
+  mode: select
+  key: j
+  kind: command
+  binds: extend_visual_line_down
+  group: Select mode
+  attestation:
+  - S
+  aliases:
+  - down
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.down
+  surface: key_binding
+  mode: select
+  key: down
+  kind: command
+  binds: extend_visual_line_down
+  group: Select mode
+  attestation:
+  - S
+  aliases:
+  - j
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.k
+  surface: key_binding
+  mode: select
+  key: k
+  kind: command
+  binds: extend_visual_line_up
+  group: Select mode
+  attestation:
+  - S
+  aliases:
+  - up
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.up
+  surface: key_binding
+  mode: select
+  key: up
+  kind: command
+  binds: extend_visual_line_up
+  group: Select mode
+  attestation:
+  - S
+  aliases:
+  - k
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.l
+  surface: key_binding
+  mode: select
+  key: l
+  kind: command
+  binds: extend_char_right
+  group: Select mode
+  attestation:
+  - S
+  aliases:
+  - right
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.right
+  surface: key_binding
+  mode: select
+  key: right
+  kind: command
+  binds: extend_char_right
+  group: Select mode
+  attestation:
+  - S
+  aliases:
+  - l
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.w
+  surface: key_binding
+  mode: select
+  key: w
+  kind: command
+  binds: extend_next_word_start
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.b
+  surface: key_binding
+  mode: select
+  key: b
+  kind: command
+  binds: extend_prev_word_start
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.e
+  surface: key_binding
+  mode: select
+  key: e
+  kind: command
+  binds: extend_next_word_end
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.w~2
+  surface: key_binding
+  mode: select
+  key: W
+  kind: command
+  binds: extend_next_long_word_start
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.b~2
+  surface: key_binding
+  mode: select
+  key: B
+  kind: command
+  binds: extend_prev_long_word_start
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.e~2
+  surface: key_binding
+  mode: select
+  key: E
+  kind: command
+  binds: extend_next_long_word_end
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.a-e
+  surface: key_binding
+  mode: select
+  key: A-e
+  kind: command
+  binds: extend_parent_node_end
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.a-b
+  surface: key_binding
+  mode: select
+  key: A-b
+  kind: command
+  binds: extend_parent_node_start
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.n
+  surface: key_binding
+  mode: select
+  key: n
+  kind: command
+  binds: extend_search_next
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.n~2
+  surface: key_binding
+  mode: select
+  key: N
+  kind: command
+  binds: extend_search_prev
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.t
+  surface: key_binding
+  mode: select
+  key: t
+  kind: command
+  binds: extend_till_char
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.f
+  surface: key_binding
+  mode: select
+  key: f
+  kind: command
+  binds: extend_next_char
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.t~2
+  surface: key_binding
+  mode: select
+  key: T
+  kind: command
+  binds: extend_till_prev_char
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.f~2
+  surface: key_binding
+  mode: select
+  key: F
+  kind: command
+  binds: extend_prev_char
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.home
+  surface: key_binding
+  mode: select
+  key: home
+  kind: command
+  binds: extend_to_line_start
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.end
+  surface: key_binding
+  mode: select
+  key: end
+  kind: command
+  binds: extend_to_line_end
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.esc
+  surface: key_binding
+  mode: select
+  key: esc
+  kind: command
+  binds: exit_select_mode
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.v
+  surface: key_binding
+  mode: select
+  key: v
+  kind: command
+  binds: normal_mode
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.g
+  surface: key_binding
+  mode: select
+  key: g
+  kind: prefix
+  binds: ''
+  group: Goto
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.g-g
+  surface: key_binding
+  mode: select
+  key: g g
+  kind: command
+  binds: extend_to_file_start
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.g-bar
+  surface: key_binding
+  mode: select
+  key: g |
+  kind: command
+  binds: extend_to_column
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.g-e
+  surface: key_binding
+  mode: select
+  key: g e
+  kind: command
+  binds: extend_to_last_line
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.g-k
+  surface: key_binding
+  mode: select
+  key: g k
+  kind: command
+  binds: extend_line_up
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.g-j
+  surface: key_binding
+  mode: select
+  key: g j
+  kind: command
+  binds: extend_line_down
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.select.g-w
+  surface: key_binding
+  mode: select
+  key: g w
+  kind: command
+  binds: extend_to_word
+  group: Select mode
+  attestation:
+  - S
+  overrides_mode: normal
+  status: unclassified
+- id: helix.key.insert.esc
+  surface: key_binding
+  mode: insert
+  key: esc
+  kind: command
+  binds: normal_mode
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.c-s
+  surface: key_binding
+  mode: insert
+  key: C-s
+  kind: command
+  binds: commit_undo_checkpoint
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.c-x
+  surface: key_binding
+  mode: insert
+  key: C-x
+  kind: command
+  binds: completion
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.c-r
+  surface: key_binding
+  mode: insert
+  key: C-r
+  kind: command
+  binds: insert_register
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.c-w
+  surface: key_binding
+  mode: insert
+  key: C-w
+  kind: command
+  binds: delete_word_backward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - A-backspace
+  status: unclassified
+- id: helix.key.insert.a-backspace
+  surface: key_binding
+  mode: insert
+  key: A-backspace
+  kind: command
+  binds: delete_word_backward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - C-w
+  status: unclassified
+- id: helix.key.insert.a-d
+  surface: key_binding
+  mode: insert
+  key: A-d
+  kind: command
+  binds: delete_word_forward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - A-del
+  status: unclassified
+- id: helix.key.insert.a-del
+  surface: key_binding
+  mode: insert
+  key: A-del
+  kind: command
+  binds: delete_word_forward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - A-d
+  status: unclassified
+- id: helix.key.insert.c-u
+  surface: key_binding
+  mode: insert
+  key: C-u
+  kind: command
+  binds: kill_to_line_start
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.c-k
+  surface: key_binding
+  mode: insert
+  key: C-k
+  kind: command
+  binds: kill_to_line_end
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.c-h
+  surface: key_binding
+  mode: insert
+  key: C-h
+  kind: command
+  binds: delete_char_backward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - backspace
+  - S-backspace
+  status: unclassified
+- id: helix.key.insert.backspace
+  surface: key_binding
+  mode: insert
+  key: backspace
+  kind: command
+  binds: delete_char_backward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - C-h
+  - S-backspace
+  status: unclassified
+- id: helix.key.insert.s-backspace
+  surface: key_binding
+  mode: insert
+  key: S-backspace
+  kind: command
+  binds: delete_char_backward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - C-h
+  - backspace
+  status: unclassified
+- id: helix.key.insert.c-d
+  surface: key_binding
+  mode: insert
+  key: C-d
+  kind: command
+  binds: delete_char_forward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - del
+  status: unclassified
+- id: helix.key.insert.del
+  surface: key_binding
+  mode: insert
+  key: del
+  kind: command
+  binds: delete_char_forward
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - C-d
+  status: unclassified
+- id: helix.key.insert.c-j
+  surface: key_binding
+  mode: insert
+  key: C-j
+  kind: command
+  binds: insert_newline
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - ret
+  status: unclassified
+- id: helix.key.insert.ret
+  surface: key_binding
+  mode: insert
+  key: ret
+  kind: command
+  binds: insert_newline
+  group: Insert mode
+  attestation:
+  - S
+  aliases:
+  - C-j
+  status: unclassified
+- id: helix.key.insert.tab
+  surface: key_binding
+  mode: insert
+  key: tab
+  kind: command
+  binds: smart_tab
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.s-tab
+  surface: key_binding
+  mode: insert
+  key: S-tab
+  kind: command
+  binds: insert_tab
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.up
+  surface: key_binding
+  mode: insert
+  key: up
+  kind: command
+  binds: move_visual_line_up
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.down
+  surface: key_binding
+  mode: insert
+  key: down
+  kind: command
+  binds: move_visual_line_down
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.left
+  surface: key_binding
+  mode: insert
+  key: left
+  kind: command
+  binds: move_char_left
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.right
+  surface: key_binding
+  mode: insert
+  key: right
+  kind: command
+  binds: move_char_right
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.pageup
+  surface: key_binding
+  mode: insert
+  key: pageup
+  kind: command
+  binds: page_up
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.pagedown
+  surface: key_binding
+  mode: insert
+  key: pagedown
+  kind: command
+  binds: page_down
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.home
+  surface: key_binding
+  mode: insert
+  key: home
+  kind: command
+  binds: goto_line_start
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified
+- id: helix.key.insert.end
+  surface: key_binding
+  mode: insert
+  key: end
+  kind: command
+  binds: goto_line_end_newline
+  group: Insert mode
+  attestation:
+  - S
+  status: unclassified

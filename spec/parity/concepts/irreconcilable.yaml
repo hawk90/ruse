@@ -1,0 +1,250 @@
+# Irreconcilable concepts — where Vim and Emacs cannot both be satisfied by one kernel (D-043).
+#
+# ruse runs two editing languages over ONE core. Most upstream concepts reconcile: a Vim register
+# and an Emacs kill-ring are two surfaces over one store. Some do not — and those are not a
+# documentation problem, they are the architecture's risk register. Every entry here forces a
+# Decision before the kernel commits to a shape, because the alternative is discovering the tension
+# while implementing and resolving it by accident in whichever profile was written first.
+#
+# This file is HAND-AUTHORED and that is correct: it records judgement, not enumeration. The census
+# (spec/parity/inventory/) supplies the facts; deciding that two facts cannot coexist is human work.
+# It is deliberately written BEFORE the census is complete — the tensions below are already known,
+# and waiting for 100% classification to start would delay the decisions that shape the kernel.
+#
+# `resolution` values:
+#   pending          no Decision yet — blocks any kernel commitment to the concept
+#   profile-scoped   both semantics ship, selected by the active input profile
+#   unified          one kernel concept, both surfaces project onto it
+#   dropped          one side is not provided (needs `intentionally-different` in the census)
+#
+# UNIT OF IRRECONCILABILITY IS THE OBSERVABLE, NOT THE CONCEPT. "The grammars are irreconcilable" is
+# almost always an overclaim: a (selection-set, operation) kernel primitive expresses Vim's operator-pending
+# as a deferred, invisible selection build (evil-mode already ships this), so the CONCEPT reconciles. What
+# does not reconcile is a small set of externally OBSERVABLE behaviours, each a testable contract. Recording
+# the tension at concept granularity yields one Decision that never closes; recording it as N observables
+# yields N Decisions that each close. When a concept turns out to be reconcilable-by-primitive, mark it
+# `unified` and move the genuine residue into `observables:` below.
+#
+# LLM rules: never mark `resolution: unified` without naming the kernel concept that unifies them;
+# a `pending` entry that gains a Decision must cite the D-id; an `observables:` entry must state the
+# Vim value, the selection-first value, and be phrased as something a fixture can OBSERVE (not model).
+
+version: 1
+
+concepts:
+  CONCEPT-OP-PENDING:
+    title: Operator-pending has no Emacs counterpart
+    vim: >
+      A first-class keymap namespace (`omap`) entered by an operator and exited by a motion or text
+      object; unmatched keys ABORT. Composition is grammar: operator x count x motion.
+    emacs: >
+      No equivalent state. `C-w`/`M-w` act on an already-established region (point + mark); there is
+      no pending-operator awaiting a motion, so nothing to map.
+    tension: >
+      The earlier framing — "op-pending as a universal kernel state imposes a phantom stage on Emacs" — was
+      an overclaim. If the kernel primitive is (selection-set, operation), operator-pending is just the
+      window between naming an operation and the motion that RESOLVES its selection; Emacs's already-
+      established region is the same primitive with the selection resolved first. evil-mode demonstrates the
+      reconciliation in practice. So the CONCEPT is unified; the irreconcilable residue is not here but in
+      the three OBSERVABLES below (Vim vs selection-first editing), each a fixture-checkable contract.
+    resolution: unified
+    kernel_concept: C-EDITLANG        # primitive = (selection-set, operation); op-pending = deferred selection build
+    residual_observables: [OBS-BARE-MOTION, OBS-SELECTION-PERSISTENCE, OBS-DOT-REPEAT-UNIT]
+    blocks: [C-INPUT, F-003]           # C-EDITLANG no longer blocked at concept level; it is blocked per-observable
+    refs: [nvim.mapmode.opr, contracts/vim-style.yaml#namespaces.operator_pending]
+
+  CONCEPT-COUNT-VS-PREFIX:
+    title: Vim count and Emacs universal-argument are not the same mechanism
+    vim: >
+      `[count]` is a multiplier bound to the pending construct; `2d3w` multiplies to 6. Count is
+      owned by the Normal/operator-pending namespaces and is meaningless elsewhere.
+    emacs: >
+      `C-u` / `M-<digit>` is a prefix ARGUMENT passed to the command; it may mean repetition, but
+      commands are free to interpret it arbitrarily (`C-u C-SPC` pops the mark ring, no repetition
+      involved), and bare `C-u` means 4.
+    tension: >
+      One is a multiplier the engine applies; the other is an argument the command interprets. A
+      kernel that models "count" as a number folded into the command loses Emacs semantics; one that
+      passes it through as an opaque argument loses Vim's count1 x count2 multiplication rule.
+    resolution: pending
+    blocks: [C-COMMAND, C-EDITLANG]
+
+  CONCEPT-POSITION-HISTORY:
+    title: Jumplist and mark-ring are different data structures with different invariants
+    vim: >
+      A per-window jumplist (bounded, ordered, traversed with CTRL-O / CTRL-I) plus named marks.
+      Motion classes are defined to be "jumps" or not, so what enters the list is a property of the
+      MOTION.
+    emacs: >
+      A per-buffer mark ring plus a global mark ring, pushed explicitly (`C-SPC`) or as a side
+      effect, traversed by popping (`C-u C-SPC`). Region and history share the same mark.
+    tension: >
+      In Emacs the mark is simultaneously position history AND the selection anchor; in Vim those
+      are different objects (jumplist vs visual anchor). C-POSHIST cannot be one ring without
+      breaking one profile's invariants.
+    resolution: pending
+    blocks: [C-POSHIST, C-ANCHOR]
+
+  CONCEPT-REGISTER-STORE:
+    title: Registers and the kill ring — reconcilable, but only with typed entries
+    vim: >
+      Named / numbered / unnamed registers addressed explicitly (`"ay`), each carrying a TYPE
+      (charwise / linewise / blockwise) that changes how paste behaves (`dd` then `p` opens a line).
+    emacs: >
+      An unaddressed rotating kill ring; `C-y` yanks the head and `M-y` rotates. Entries are plain
+      text with no linewise/blockwise notion.
+    tension: >
+      Reconcilable as one store, but ONLY if entries are typed and the type survives round-tripping.
+      A store of plain strings silently drops Vim's register type — historically the single most
+      common emulation break, and the reason the fixture schema must observe register_type.
+    resolution: unified
+    kernel_concept: C-REGISTER
+    note: >
+      Unified in principle; the obligation is that C-REGISTER entries carry a shape, and that the
+      Emacs surface projects untyped text onto the charwise case rather than the store being untyped.
+
+  CONCEPT-LANG-ARG:
+    title: Vim's language-mapping layer has no ruse counterpart
+    vim: >
+      `lmap` defines a translation layer applied to Insert, Command-line, and single-character
+      command arguments (Lang-Arg), for non-Latin input. It is one of the eight keymap namespaces.
+    emacs: >
+      Input methods (`set-input-method`) occupy roughly the same space but are a different mechanism
+      with different scoping.
+    tension: >
+      The Lang namespace is targeted (product decision), yet ruse's input model has no re-dispatch
+      stage where a translation layer could sit, and the terminal itself may already apply an IME.
+      Promising the namespace without deciding the stage means the promise is unimplementable.
+    resolution: pending
+    blocks: [C-INPUT]
+
+  CONCEPT-KEYMAP-DISPATCH:
+    title: Vim namespaces are disjoint and state-selected; Emacs keymaps are a layered buffer-selected stack
+    vim: >
+      Eight DISJOINT keymap namespaces (Norm|Ins|Cmd|Vis|Sel|Opr|Term|Lang, runtime/doc/map.txt).
+      Exactly one is active, selected by editor STATE, and each declares its own unmatched-key
+      policy. A key is resolved by one lookup in one namespace.
+    emacs: >
+      A LAYERED precedence stack, all tiers consulted in order until one binds:
+      overriding-terminal-local-map > overriding-local-map > text/overlay `keymap` property >
+      emulation-mode-map-alists > minor-mode-overriding-map-alist > minor-mode-map-alist >
+      `local-map` property > current-local-map (the major mode) > global-map. The active set is
+      selected by what the BUFFER is, not by what state the editor is in.
+    tension: >
+      Measured at the pin, this is not a subtlety: of 1,952 keyboard bindings in the Emacs census,
+      613 live in MAJOR-MODE maps (dired-mode-map 138, bookmark-bmenu-mode-map 64,
+      kmacro-menu-mode-map 44, ...) — bindings for which Vim's model has no seat at all, because
+      Vim has no "the keymap depends on what this buffer is" tier. A router built on eight disjoint
+      namespaces cannot express them; a `Mode` enum with a flag per special case is exactly how the
+      original mode defect was produced (crates/core/src/editor.rs:22 still has three variants).
+    helix: >
+      Three modes, and at DISPATCH time each is one flat map — so Helix looks like Vim's depth-1 case.
+      What differs is CONSTRUCTION: Select is `normal.clone()` + `merge_nodes(overrides)`, i.e. 301
+      inherited bindings under a 33-binding diff, collapsed into one map before any key is pressed.
+    resolution: unified
+    kernel_concept: >
+      An ORDERED STACK OF KEYMAP LAYERS is the kernel primitive, because the layered model strictly
+      CONTAINS the other two: Vim's eight namespaces are the depth-1 case, where the active layer is
+      chosen by editor state and no lower layer is consulted — and Helix's derived mode is the SAME
+      stack at depth 2, [override, base], simply collapsed at build time instead of consulted at
+      dispatch. That Helix independently arrived at "one mode is another plus a diff" is the useful
+      corroboration: a layered router expresses it for free, whereas a disjoint router must either
+      duplicate 301 bindings or grow a bespoke inheritance feature. Building the router layered and
+      deriving Vim from it is one implementation; building it disjoint and bolting on major-mode
+      maps later is two, and the second one loses. This is the concrete form of "absorb the strength
+      of each upstream" — not two parities, one general model with Vim as a special case.
+    obligations:
+      - "A layer declares its own unmatched-key policy (contracts/vim-style.yaml VS-OBL-1..4 stay
+         valid; they become properties of a layer instead of properties of a mode)."
+      - "The Vim profile MUST configure the stack so that exactly one layer is consulted — the
+         depth-1 constraint is the profile's obligation, not the kernel's, or Vim's `closed/ignore`
+         policy silently leaks into a lower layer."
+      - "`config-schema` keymap.<namespace> ×8 are Vim-profile layer overlays, not the kernel's
+         layer model; an Emacs profile adds its own without renaming these."
+    blocks: [C-INPUT, F-003]
+    decided_by: D-045
+    contract: contracts/keymap-layers.yaml
+    refs:
+      - emacs.keymaptier.*            # the 9 tiers, D-sourced from (elisp) Searching the Active Keymaps
+      - nvim.mapmode.*                # the 8 disjoint namespaces
+      - contracts/vim-style.yaml
+    note: >
+      Filed here despite `resolution: unified` on purpose. This file is the architecture's risk
+      register, and the risk was never that the models conflict — it is that the general model is
+      cheap to adopt NOW and expensive after F-003 ships a disjoint router. CLOSED by D-045 before
+      that cost was paid, which is the outcome this entry existed to produce. The residual risk moved
+      to the contract's KL-Q-LANG-ARG: a layer that TRANSLATES and re-dispatches makes resolution
+      non-total, and that is D-045's own re-evaluation trigger.
+
+# Observable-granularity irreconcilables (Vim vs selection-first editing, Kakoune/Helix). These are what
+# actually resist a single primitive once CONCEPT-OP-PENDING is unified. Each is a contract a differential
+# fixture can OBSERVE, and each closes exactly ONE Decision — the reason to record them here rather than as
+# one grammar-sized concept. Referenced by spec/parity/families.yaml#PILLAR-HYBRID-GRAMMAR.
+# `decides` names the Decision the observable closes (assigned a real D-id when opened).
+#
+# HELIX IS NOW PINNED (25.07.1, role: reference) and the selection-first column is no longer pure
+# assertion — but the upgrade is PARTIAL and the distinction is the point of this block:
+#   attested_structure  what the pinned census proves. A static parse of the keymap sees which command
+#                       a key is bound to, so a Normal/Select binding divergence is now FACT.
+#   needs_oracle        what it cannot prove. Selection lifetime, what a bare motion does to the
+#                       selection in NORMAL mode, and what repeat re-applies are all questions about
+#                       STATE AFTER AN OPERATION. No keymap encodes that; helix-core's Selection type
+#                       does, and it is deliberately out of census scope (prior art for ruse's kernel,
+#                       not a surface to enumerate).
+# Writing "Helix is pinned, therefore observed" would be exactly the move D-043 exists to prevent —
+# `verified` is reserved for what a differential fixture proved against the pinned oracle, and the
+# helix oracle does not exist yet (families.yaml#HOLE-SELECTION-BEHAVIOUR). Kakoune stays unpinned on
+# purpose: it originated the model, so its value is as a SECOND witness if Helix disagrees with the
+# documented claims — not as a duplicate census.
+observables:
+  OBS-BARE-MOTION:
+    title: What a bare motion does
+    vim: moves the cursor; selection is untouched.
+    selection_first: extends/replaces the primary selection as it moves (motion IS a selection verb).
+    observe: fixture presses `w` from a clean state and reads whether a selection now exists.
+    decides: D-EDITLANG-PRIMITIVE
+    attested_structure: >
+      PINNED FACT at helix 25.07.1: Normal binds `h`/`w` to move_char_left/move_next_word_start while
+      Select binds `h` to extend_char_left, and Select is built as `normal.clone()` +
+      `merge_nodes(overrides)` — so the entire move-vs-extend divergence is one 33-binding override
+      set over 301 inherited bindings. That locates the divergence exactly, and it kills the framing
+      of "two grammars": Helix has ONE keymap with a diff, not two namespaces.
+    needs_oracle: >
+      Whether a bare motion in NORMAL mode leaves a selection behind. The keymap says `w` runs
+      move_next_word_start; what that does to the Selection is helix-core, out of census scope. This
+      is the half that actually decides the primitive's default, and it is still unobserved.
+    refs: [helix.mode.select, helix.key.select.h, helix.key.normal.h]
+    note: the cheapest of the three to observe and the one that forces the primitive's default.
+
+  OBS-SELECTION-PERSISTENCE:
+    title: Whether a selection survives the operation applied to it
+    vim: an operator consumes the (implicit) motion-span and leaves no selection behind.
+    selection_first: the selection remains after the edit, ready for the next operation.
+    observe: fixture runs an operation over a span, then reads whether a live selection remains.
+    decides: D-EDITLANG-PRIMITIVE
+    attested_structure: none — a keymap cannot encode what survives an operation.
+    needs_oracle: >
+      All of it. The census contributes only the target list: 305 static commands, of which the
+      operator-shaped ones are what a fixture must run. Pinning Helix did NOT advance this observable
+      and saying otherwise would launder a census into a verification.
+    note: determines whether the kernel's post-operation state carries a selection — a lifetime question.
+
+  OBS-DOT-REPEAT-UNIT:
+    title: What the repeat command re-applies
+    vim: the last (operator, motion/text-object, count) tuple, replayed at the new cursor.
+    selection_first: the last edit re-applied to EACH current selection independently.
+    observe: fixture makes an edit, moves/creates selections, triggers repeat, reads the resulting buffers.
+    decides: D-EDITLANG-DOT-REPEAT
+    attested_structure: >
+      Weak but real: Helix binds `A-.` to `repeat_last_motion` — a MOTION repeat, not an edit repeat,
+      and there is no `.` binding in the Normal keymap at all. Vim's `.` replays the last change; the
+      pinned keymap shows Helix does not offer that key or that concept under it. Whether an
+      equivalent exists under another name is a question for the command surface, not the keymap.
+    needs_oracle: >
+      What the repeat actually re-applies, and against how many selections. This is the hardest of the
+      three and the census moved it least.
+    note: >
+      The hardest. Macro recording compounds it — a recorded macro is a repeat unit at a larger grain, so
+      whatever answers this observable must also answer "what does a macro replay against". Split from
+      OBS-BARE-MOTION's Decision precisely so this one can stay open while the cheaper two close.
+    refs: [nvim.mapmode.lang, contracts/vim-style.yaml#namespaces.lang_arg]

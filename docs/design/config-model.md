@@ -263,15 +263,18 @@ settings in its manifest, using the **same field set** as the core schema:
 
 ### Keymap config (§7)
 
-Keymaps are configuration, but they are **not** scalar-merged. Keymap layers **append** into the key
-resolver, which then applies the fixed **priority ABI** (architecture §1.4) and static conflict detection
-(INV-PRIORITY). Two consequences for the config model:
+Keymaps are configuration, but they are **not** scalar-merged. Keymap config layers **append** into the key
+resolver, which then applies the two **priority axes** (architecture §1.4, D-046) and static conflict
+detection (INV-PRIORITY). Note the collision of the word *layer*: a config layer is a source of settings
+(default → user → workspace), while a **keymap layer** (D-045) is a scope in the resolver's stack. A config
+layer contributes bindings *into* keymap layers at its own provenance rank; it is not itself one. Two consequences for the config model:
 
 - Cross-profile keymaps never merge or conflict (INV-PROFILE-ISOLATION): a workspace Vim binding and a user
   Emacs binding are in different key spaces.
-- A workspace keymap layer enters at the **workspace-override tier** (ABI tier 4) and only when the
-  workspace is trusted; it can never register a global binding above the user tier, and can never bind a
-  security-gated command (CFG-LOCK-001). Plugin-suggested bindings remain the lowest, opt-in tier.
+- A workspace keymap config layer enters at the **workspace provenance tier** (the old ABI tier 4) and only
+  when the workspace is trusted; it can never register a global binding above the user tier, and can never
+  bind a security-gated command (CFG-LOCK-001). Plugin-suggested bindings remain the lowest, opt-in tier.
+  Provenance never lets a config layer reorder *keymap layers* — only bindings within one (D-046).
 
 The keymap *values* (the map of `key → command + when`) deep-merge; the *resolution* is out of scope here.
 

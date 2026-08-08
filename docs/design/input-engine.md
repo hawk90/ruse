@@ -23,7 +23,10 @@ related:
   - ../parity/vim.md                          # VIM-MAP (timeouts), VIM-MODE-6, VIM-CNT, VIM-REPEAT-DOT
   - ../invariants/reference-invariants.md     # INV-PRIORITY, INV-PROFILE-ISOLATION, INV-CMD-SEMANTIC
   - ../rfc/proposed/RFC-0004-input-profiles.md
-  - ../../spec/DECISIONS.md                    # D-008, D-025, D-002
+  - ../../spec/parity/contracts/keymap-layers.yaml  # the SCOPE axis — the kernel keymap primitive (D-045)
+  - ../../spec/parity/contracts/vim-style.yaml      # the Vim profile's own obligations (VS-OBL-1..4)
+  - parity-evidence.md                        # where the upstream facts under D-045/D-046 come from
+  - ../../spec/DECISIONS.md                    # D-008, D-025, D-002, D-043, D-045, D-046
 notation: "See parity/terminal.md for escape-sequence notation (ESC/CSI/OSC …); this doc does not re-emit sequences."
 ---
 
@@ -238,38 +241,56 @@ prevents the classic "made `Esc` laggy to support a two-key map" bug.
 - **`<expr>`** bindings resolve to a host callback (not a Vimscript body — Non-goals) that returns keys or a
   command id; the result re-enters the resolver.
 
-### Priority ABI resolution (INV-PRIORITY) {#priority-abi}
+### Priority resolution — two axes, not one tier list (INV-PRIORITY) {#priority-abi}
 
-A binding's identity is the tuple `BindingKey{ profile, sequence, context, priority }`
-([architecture.md §1.3](../architecture/architecture.md)). Resolution for the pending sequence:
+A binding's identity is the tuple `BindingKey{ profile, sequence, context, layer, provenance }`
+([architecture.md §1.3](../architecture/architecture.md)). The last two fields replace the single `priority`
+integer this doc previously carried, because **the eight-tier priority ABI was one list answering two
+questions** (D-046):
+
+- **Scope** — *is this keymap consulted at all, and when?* Old tiers 1–3. **Decided** (D-045): this is an
+  ordered stack of keymap **layers**, specified in
+  [`spec/parity/contracts/keymap-layers.yaml`](../../spec/parity/contracts/keymap-layers.yaml).
+- **Provenance** — *within one layer, whose binding wins?* Old tiers 4–8. **Principle locked, ordering still
+  open** (D-008), because no upstream census can attest who *registered* a binding; it waits on F-016.
+
+Resolution for the pending sequence:
 
 1. **Filter by active profile.** Only the active profile's bindings are even loaded (INV-PROFILE-ISOLATION) —
    an Emacs binding never enters a Vim resolver.
-2. **Gather candidates in priority-tier order** ([architecture.md §1.4](../architecture/architecture.md);
-   lower number = higher priority). Tiers are **provisional** (D-008 open); C-INPUT treats the ordering as
-   data, not a frozen contract:
-   1. **Temporary/pending state** — operator-pending, Emacs prefix, popup nav. *This tier is C-INPUT's own
-      mode-axis/pending state* (§Mode axes) — it is why operator-pending bindings outrank everything.
-   2. **Active widget/view** — git status, tree, debugger, picker.
-   3. **Buffer-local mode — an *ordered sub-list*, not flat (V-28).** Stacked minor modes form an **ordered**
-      sub-list within the tier, and **text-span / overlay** keymaps rank *just above* the major-mode map. The
-      resolver walks this sub-list in order; it must not collapse all buffer-local maps into one rank. Mirrors
-      Emacs `transient > ordered-minor > major > global` precedence.
-   4. Workspace override → 5. User profile override → 6. Plugin **explicit** → 7. Plugin **suggested** →
-      8. Built-in profile default.
-3. **Evaluate context predicates.** Within tiers, keep only bindings whose `ContextExpression`
+2. **Walk the layer stack by descending rank** (the scope axis). The first layer that **binds** the sequence
+   resolves it. A layer marked `sealed` stops the walk whether or not it bound the key, and that layer's own
+   `unmatched_key` policy applies. Vim Style is a **depth-1 sealed** stack (eight namespaces, exactly one
+   active, selected by editor state); Emacs Style is **depth-9 unsealed**, selected by what the buffer is;
+   a derived map (`Select = Normal + diff`) is **depth-2** and may be collapsed at build time (KL-OBL-6).
+   C-INPUT's own pending state (§Mode axes) is the top-rank layer — that is why operator-pending outranks
+   everything, and it is a *layer* rather than a hardcoded early-return.
+3. **Evaluate context predicates.** Within a layer, keep only bindings whose `ContextExpression`
    (`view.kind == 'text' && input.mode == 'normal'`) holds against the current active-view + mode-axis state
    (evaluated by `C-CONTEXT`). Distinct contexts are **not** a conflict — this is what makes "most conflicts
    disappear" ([architecture.md §1.3](../architecture/architecture.md)).
-4. **Longest-match within the winning tier.** The highest-priority tier that yields a satisfiable
-   candidate wins; ties inside a tier resolve by longest sequence (feeding the ambiguity classification above).
+4. **Provenance decides survivors, longest-match breaks the rest.** Among the candidates left in the winning
+   layer, the highest provenance tier wins (workspace → user → plugin-explicit → plugin-suggested →
+   built-in); ties resolve by longest sequence (feeding the ambiguity classification above). C-INPUT treats
+   the provenance ordering as **data, not a frozen contract** — it is the half of D-008 still open.
+
+**Why the split matters here and not only in the decision record.** Old tier 3 came with a hand-written
+exception (V-28): "not flat — stacked minor modes are an *ordered* sub-list, and text-span/overlay keymaps
+rank just above the major-mode map." Under the layer stack that exception **dissolves**: a sub-list member is
+just another layer. The Emacs census is what forced this — **613 of its 1,952 keyboard bindings live in
+major-mode maps**, so tier 3 alone was being asked to hold a nine-deep stack while tiers 4–8 held one rank
+each. A resolver built from the flat list would have grown that sub-list as a special case in exactly the
+place the general primitive belongs.
 
 **Static conflict detection (INV-PROFILE-ISOLATION).** At keymap **load/registration** time (off the input
-hot path), C-INPUT flags any pair that is `same profile + same sequence + overlapping context + same priority`.
-On a real conflict it **keeps the new binding disabled** and surfaces the resolution prompt
+hot path), C-INPUT flags any pair that is `same profile + same sequence + overlapping context + same layer +
+same provenance`. On a real conflict it **keeps the new binding disabled** and surfaces the resolution prompt
 (Keep / Replace / Reassign / Context-scope — [architecture.md §1.2](../architecture/architecture.md)); it does
 **not** let the last-loaded plugin win. Context-overlap is decided by the predicate algebra in `C-CONTEXT`
-(satisfiability of `ctx_a ∧ ctx_b`), so `text`-vs-`git-status` bindings are provably non-overlapping.
+(satisfiability of `ctx_a ∧ ctx_b`), so `text`-vs-`git-status` bindings are provably non-overlapping. Note the
+sharpened definition of "same priority": two bindings in *different layers* are never a conflict, because the
+stack already orders them — a plugin binding `<C-n>` into the popup layer does not conflict with the user's
+`<C-n>` in the buffer layer, and previously that pair looked like a tier collision.
 
 ### Mode axes — independent state, not one enum {#mode-axes}
 
@@ -308,6 +329,17 @@ work in Normal *and* Visual while preserving the operator axis, so `dfx` compose
 outcome runs through `reset()`, and this is **enforced by a property test** (`no_pending_state_ever_leaks`):
 over random key/mode sequences, no partial command ever leaks past a completed/ignored/mode-open outcome, and
 `TextObjectChar` never holds without an operator. A second property pins `feed` determinism.
+
+**What that fixed ladder is, in the model above (D-045).** It is a **hardcoded depth-3 stack** — pending
+state, key-expectation, base keys — with the layers written as statement order instead of as data. Two things
+follow, and both are defects rather than simplifications. First, `if mode == Mode::Insert` is a fourth layer
+smuggled in ahead of the ladder as an early return. Second, and worse, every miss funnels into one shared
+`Feed::Ignored`, which hardcodes `closed/ignore` for **all** namespaces — but five of Vim's eight are `open`
+([vim-style.yaml](../../spec/parity/contracts/vim-style.yaml) VS-OBL-1), so Insert had to be special-cased
+*because* the fallthrough was wrong for it. That is one policy standing in for six. The migration is to make
+the layers data (`crates/core` keymap primitive) and give each namespace its declared `unmatched_key`, which
+is behaviour-preserving for the four namespaces v0 actually reaches. Until that lands, this section describes
+the shipped shape, not the target; the target is §Priority resolution above.
 
 **v0 Command-line mode (VIM-MODE-7) — the design to build toward** (PRD F-003). Today the `:`/`/` line lives
 in `main.rs` as a separate ad-hoc line editor **outside** the engine (opening it goes through `reset()`,
@@ -524,9 +556,18 @@ text-objects are valid after `d`, what registers after `"`).
   the only structure that supports Kitty richness today and a GUI/RPC source tomorrow without rewriting the
   resolver.
 - **Two timers add state.** Accepted and deliberate — collapsing them is the specific footgun being avoided.
-- **Provisional priority tiers (D-008 open) create temporary ambiguity.** Accepted: locking unvalidated tiers
-  is worse (D-010); the *principles* (isolation, user-override, no forced global keys, static detection) are
-  enough to be safe now.
+- **Provisional *provenance* tiers (D-008, still open) create temporary ambiguity.** Accepted: locking
+  unvalidated tiers is worse (D-010); the *principles* (isolation, user-override, no forced global keys,
+  static detection) are enough to be safe now. Narrowed by D-046 — the scope half of the old eight-tier list
+  is no longer provisional, so this ambiguity now covers five tiers instead of eight.
+- **Two ordering axes (scope + provenance) are more machinery than one priority integer.** Accepted, and it
+  is a cost paid in the resolver's data model, not at runtime: the walk is still one pass down the stack. The
+  alternative — keep one integer — is what produced V-28, a hand-written "this tier is secretly a sub-list"
+  exception carried in prose because the model had nowhere to put it (D-046).
+- **The layer stack is general enough to express profiles ruse does not ship.** Accepted deliberately. The
+  Helix census (`role: reference`, not a compatibility target) shows a depth-2 derived map, and the model
+  absorbs it for free; a disjoint router would need a bespoke inheritance feature or 301 duplicated bindings.
+  Generality bought with no extra mechanism is not speculative generality.
 - **The Command-vs-Operator dispatch split means the input layer knows "this key is an operator".** Accepted:
   it is the minimal knowledge needed to route to C-EDITLANG; the engine still owns all range/promotion logic.
 
@@ -572,8 +613,16 @@ engine) and F-016 (real plugins) exist (D-008 re-evaluation).
 
 - **Exact mapping-timer values and the which-key discovery delay** (separate from `timeoutlen`?) — tune on real
   use (ties D-008 re-evaluation).
-- **The provisional priority tiers** (esp. plugin-explicit vs plugin-suggested) and the precise encoding of the
-  tier-3 ordered sub-list (V-28) in the ABI — **open per D-008**; cannot be validated pre-F-016.
+- **The provisional provenance tiers** (esp. plugin-explicit vs plugin-suggested) — **open per D-008**;
+  cannot be validated pre-F-016. *(The tier-3 ordered sub-list, V-28, is no longer part of this question:
+  D-046 moved it to the scope axis, where a sub-list member is just another layer.)*
+- **Lang-Arg as a layer** (KL-Q-LANG-ARG, CONCEPT-LANG-ARG) — Vim's Lang-Arg **translates** a key and
+  re-dispatches rather than binding it, which makes resolution non-total. It is D-045's own stated
+  re-evaluation trigger and it blocks F-027; a layer that rewrites-and-yields is expressible but must be
+  designed, not assumed.
+- **Whether provenance can ever reorder layers** rather than bindings within one (e.g. a plugin that must
+  install a whole layer above the user's). If it can, the two axes are not independent and D-046 needs a
+  joining rule.
 - **`<expr>`/host-callback contract** — argument surface and re-entrancy limits for a callback that returns
   keys vs a command (must not re-enter mid-transaction; INV-ASYNC-ORDER).
 - **Legacy-degrade UX** — how prominently to surface an unsatisfiable disambiguation binding to the user

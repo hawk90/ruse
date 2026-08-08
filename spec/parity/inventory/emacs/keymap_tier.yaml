@@ -1,0 +1,130 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/extract_emacs.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+# This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
+# `require` of exactly the census_scope.include libraries. Changing that load set changes
+# the denominator, so it lives in upstreams.yaml where it needs a reason.
+version: 1
+generated: true
+generator: tools/parity/extract_emacs.py
+upstream: emacs
+revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
+version_label: emacs-30.2
+derived_from: runtime-binary
+binary_version: '30.2'
+binary_identity: unverified-build
+baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
+  project)
+surface: keymap_tier
+source_of_record: 'D: (elisp) Searching the Active Keymaps + src/keyboard.c (R: each symbol bound at the pin)'
+items:
+- id: emacs.keymaptier.01.overriding-terminal-local-map
+  surface: keymap_tier
+  rank: 1
+  name: overriding-terminal-local-map
+  role: terminal-local override; consulted first, suppresses all below
+  runtime_bound: true
+  kind: variable
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+- id: emacs.keymaptier.02.overriding-local-map
+  surface: keymap_tier
+  rank: 2
+  name: overriding-local-map
+  role: buffer-local override; suppresses minor/local/global
+  runtime_bound: true
+  kind: variable
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+- id: emacs.keymaptier.03.keymap
+  surface: keymap_tier
+  rank: 3
+  name: keymap
+  role: text-property or overlay `keymap` property at point
+  runtime_bound: false
+  kind: property
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+- id: emacs.keymaptier.04.emulation-mode-map-alists
+  surface: keymap_tier
+  rank: 4
+  name: emulation-mode-map-alists
+  role: emulation packages (evil-mode lives here); above minor modes
+  runtime_bound: true
+  kind: variable
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+- id: emacs.keymaptier.05.minor-mode-overriding-map-alist
+  surface: keymap_tier
+  rank: 5
+  name: minor-mode-overriding-map-alist
+  role: major mode overriding a minor mode's binding
+  runtime_bound: true
+  kind: variable
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+- id: emacs.keymaptier.06.minor-mode-map-alist
+  surface: keymap_tier
+  rank: 6
+  name: minor-mode-map-alist
+  role: active minor modes, in alist order
+  runtime_bound: true
+  kind: variable
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+- id: emacs.keymaptier.07.local-map
+  surface: keymap_tier
+  rank: 7
+  name: local-map
+  role: text-property or overlay `local-map` property at point
+  runtime_bound: false
+  kind: property
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+- id: emacs.keymaptier.08.current-local-map
+  surface: keymap_tier
+  rank: 8
+  name: current-local-map
+  role: the major mode's keymap
+  runtime_bound: false
+  kind: variable
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+- id: emacs.keymaptier.09.global-map
+  surface: keymap_tier
+  rank: 9
+  name: global-map
+  role: the global fallback
+  runtime_bound: true
+  kind: variable
+  attestation:
+  - D
+  - R
+  status: targeted
+  ruse: contracts/keymap-layers.yaml#profiles.emacs-style

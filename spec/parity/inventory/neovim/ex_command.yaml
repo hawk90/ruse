@@ -1,0 +1,3913 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py neovim && python3 tools/parity/extract_neovim.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+version: 1
+generated: true
+generator: tools/parity/extract_neovim.py
+upstream: neovim
+revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
+version_label: v0.12.4
+surface: ex_command
+source_of_record: 'S: src/nvim/ex_cmds.lua'
+items:
+- id: nvim.ex.append
+  surface: ex_command
+  command: append
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.abbreviate
+  surface: ex_command
+  command: abbreviate
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.abclear
+  surface: ex_command
+  command: abclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.aboveleft
+  surface: ex_command
+  command: aboveleft
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.all
+  surface: ex_command
+  command: all
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.amenu
+  surface: ex_command
+  command: amenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.anoremenu
+  surface: ex_command
+  command: anoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.args
+  surface: ex_command
+  command: args
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.argadd
+  surface: ex_command
+  command: argadd
+  addr_type: ADDR_ARGUMENTS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.argdelete
+  surface: ex_command
+  command: argdelete
+  addr_type: ADDR_ARGUMENTS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.argdo
+  surface: ex_command
+  command: argdo
+  addr_type: ADDR_ARGUMENTS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.argdedupe
+  surface: ex_command
+  command: argdedupe
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.argedit
+  surface: ex_command
+  command: argedit
+  addr_type: ADDR_ARGUMENTS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.argglobal
+  surface: ex_command
+  command: argglobal
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.arglocal
+  surface: ex_command
+  command: arglocal
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.argument
+  surface: ex_command
+  command: argument
+  addr_type: ADDR_ARGUMENTS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ascii
+  surface: ex_command
+  command: ascii
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.autocmd
+  surface: ex_command
+  command: autocmd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.augroup
+  surface: ex_command
+  command: augroup
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.aunmenu
+  surface: ex_command
+  command: aunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.buffer
+  surface: ex_command
+  command: buffer
+  addr_type: ADDR_BUFFERS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bNext
+  surface: ex_command
+  command: bNext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ball
+  surface: ex_command
+  command: ball
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.badd
+  surface: ex_command
+  command: badd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.balt
+  surface: ex_command
+  command: balt
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bdelete
+  surface: ex_command
+  command: bdelete
+  addr_type: ADDR_BUFFERS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.belowright
+  surface: ex_command
+  command: belowright
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bfirst
+  surface: ex_command
+  command: bfirst
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.blast
+  surface: ex_command
+  command: blast
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bmodified
+  surface: ex_command
+  command: bmodified
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bnext
+  surface: ex_command
+  command: bnext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.botright
+  surface: ex_command
+  command: botright
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bprevious
+  surface: ex_command
+  command: bprevious
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.brewind
+  surface: ex_command
+  command: brewind
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.break
+  surface: ex_command
+  command: break
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.breakadd
+  surface: ex_command
+  command: breakadd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.breakdel
+  surface: ex_command
+  command: breakdel
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.breaklist
+  surface: ex_command
+  command: breaklist
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.browse
+  surface: ex_command
+  command: browse
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.buffers
+  surface: ex_command
+  command: buffers
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bufdo
+  surface: ex_command
+  command: bufdo
+  addr_type: ADDR_BUFFERS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bunload
+  surface: ex_command
+  command: bunload
+  addr_type: ADDR_LOADED_BUFFERS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.bwipeout
+  surface: ex_command
+  command: bwipeout
+  addr_type: ADDR_BUFFERS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.change
+  surface: ex_command
+  command: change
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cNext
+  surface: ex_command
+  command: cNext
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cNfile
+  surface: ex_command
+  command: cNfile
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cabbrev
+  surface: ex_command
+  command: cabbrev
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cabclear
+  surface: ex_command
+  command: cabclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cabove
+  surface: ex_command
+  command: cabove
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.caddbuffer
+  surface: ex_command
+  command: caddbuffer
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.caddexpr
+  surface: ex_command
+  command: caddexpr
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.caddfile
+  surface: ex_command
+  command: caddfile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cafter
+  surface: ex_command
+  command: cafter
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.call
+  surface: ex_command
+  command: call
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.catch
+  surface: ex_command
+  command: catch
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cbuffer
+  surface: ex_command
+  command: cbuffer
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cbefore
+  surface: ex_command
+  command: cbefore
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cbelow
+  surface: ex_command
+  command: cbelow
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cbottom
+  surface: ex_command
+  command: cbottom
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cc
+  surface: ex_command
+  command: cc
+  addr_type: ADDR_QUICKFIX
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cclose
+  surface: ex_command
+  command: cclose
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cd
+  surface: ex_command
+  command: cd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cdo
+  surface: ex_command
+  command: cdo
+  addr_type: ADDR_QUICKFIX_VALID
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.center
+  surface: ex_command
+  command: center
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cexpr
+  surface: ex_command
+  command: cexpr
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cfile
+  surface: ex_command
+  command: cfile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cfdo
+  surface: ex_command
+  command: cfdo
+  addr_type: ADDR_QUICKFIX_VALID
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cfirst
+  surface: ex_command
+  command: cfirst
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cgetfile
+  surface: ex_command
+  command: cgetfile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cgetbuffer
+  surface: ex_command
+  command: cgetbuffer
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cgetexpr
+  surface: ex_command
+  command: cgetexpr
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.chdir
+  surface: ex_command
+  command: chdir
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.changes
+  surface: ex_command
+  command: changes
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.checkhealth
+  surface: ex_command
+  command: checkhealth
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.checkpath
+  surface: ex_command
+  command: checkpath
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.checktime
+  surface: ex_command
+  command: checktime
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.chistory
+  surface: ex_command
+  command: chistory
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.clist
+  surface: ex_command
+  command: clist
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.clast
+  surface: ex_command
+  command: clast
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.close
+  surface: ex_command
+  command: close
+  addr_type: ADDR_WINDOWS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.clearjumps
+  surface: ex_command
+  command: clearjumps
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cmap
+  surface: ex_command
+  command: cmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cmapclear
+  surface: ex_command
+  command: cmapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cmenu
+  surface: ex_command
+  command: cmenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cnext
+  surface: ex_command
+  command: cnext
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cnewer
+  surface: ex_command
+  command: cnewer
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cnfile
+  surface: ex_command
+  command: cnfile
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cnoremap
+  surface: ex_command
+  command: cnoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cnoreabbrev
+  surface: ex_command
+  command: cnoreabbrev
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cnoremenu
+  surface: ex_command
+  command: cnoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.copy
+  surface: ex_command
+  command: copy
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.colder
+  surface: ex_command
+  command: colder
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.colorscheme
+  surface: ex_command
+  command: colorscheme
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.command
+  surface: ex_command
+  command: command
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.comclear
+  surface: ex_command
+  command: comclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.compiler
+  surface: ex_command
+  command: compiler
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.continue
+  surface: ex_command
+  command: continue
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.confirm
+  surface: ex_command
+  command: confirm
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.connect
+  surface: ex_command
+  command: connect
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.const
+  surface: ex_command
+  command: const
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.copen
+  surface: ex_command
+  command: copen
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cprevious
+  surface: ex_command
+  command: cprevious
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cpfile
+  surface: ex_command
+  command: cpfile
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cquit
+  surface: ex_command
+  command: cquit
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.crewind
+  surface: ex_command
+  command: crewind
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cunmap
+  surface: ex_command
+  command: cunmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cunabbrev
+  surface: ex_command
+  command: cunabbrev
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cunmenu
+  surface: ex_command
+  command: cunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.cwindow
+  surface: ex_command
+  command: cwindow
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.delete
+  surface: ex_command
+  command: delete
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.delmarks
+  surface: ex_command
+  command: delmarks
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.debug
+  surface: ex_command
+  command: debug
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.debuggreedy
+  surface: ex_command
+  command: debuggreedy
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.defer
+  surface: ex_command
+  command: defer
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.delcommand
+  surface: ex_command
+  command: delcommand
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.delfunction
+  surface: ex_command
+  command: delfunction
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.detach
+  surface: ex_command
+  command: detach
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.display
+  surface: ex_command
+  command: display
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.diffupdate
+  surface: ex_command
+  command: diffupdate
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.diffget
+  surface: ex_command
+  command: diffget
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.diffoff
+  surface: ex_command
+  command: diffoff
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.diffpatch
+  surface: ex_command
+  command: diffpatch
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.diffput
+  surface: ex_command
+  command: diffput
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.diffsplit
+  surface: ex_command
+  command: diffsplit
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.diffthis
+  surface: ex_command
+  command: diffthis
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.digraphs
+  surface: ex_command
+  command: digraphs
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.djump
+  surface: ex_command
+  command: djump
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.dlist
+  surface: ex_command
+  command: dlist
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.doautocmd
+  surface: ex_command
+  command: doautocmd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.doautoall
+  surface: ex_command
+  command: doautoall
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.drop
+  surface: ex_command
+  command: drop
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.dsearch
+  surface: ex_command
+  command: dsearch
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.dsplit
+  surface: ex_command
+  command: dsplit
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.edit
+  surface: ex_command
+  command: edit
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.earlier
+  surface: ex_command
+  command: earlier
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.echo
+  surface: ex_command
+  command: echo
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.echoerr
+  surface: ex_command
+  command: echoerr
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.echohl
+  surface: ex_command
+  command: echohl
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.echomsg
+  surface: ex_command
+  command: echomsg
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.echon
+  surface: ex_command
+  command: echon
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.else
+  surface: ex_command
+  command: else
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.elseif
+  surface: ex_command
+  command: elseif
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.emenu
+  surface: ex_command
+  command: emenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.endif
+  surface: ex_command
+  command: endif
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.endfunction
+  surface: ex_command
+  command: endfunction
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.endfor
+  surface: ex_command
+  command: endfor
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.endtry
+  surface: ex_command
+  command: endtry
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.endwhile
+  surface: ex_command
+  command: endwhile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.enew
+  surface: ex_command
+  command: enew
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.eval
+  surface: ex_command
+  command: eval
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ex
+  surface: ex_command
+  command: ex
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.execute
+  surface: ex_command
+  command: execute
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.exit
+  surface: ex_command
+  command: exit
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.exusage
+  surface: ex_command
+  command: exusage
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.file
+  surface: ex_command
+  command: file
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.files
+  surface: ex_command
+  command: files
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.filetype
+  surface: ex_command
+  command: filetype
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.filter
+  surface: ex_command
+  command: filter
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.find
+  surface: ex_command
+  command: find
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.finally
+  surface: ex_command
+  command: finally
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.finish
+  surface: ex_command
+  command: finish
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.first
+  surface: ex_command
+  command: first
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.fold
+  surface: ex_command
+  command: fold
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.foldclose
+  surface: ex_command
+  command: foldclose
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.folddoopen
+  surface: ex_command
+  command: folddoopen
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.folddoclosed
+  surface: ex_command
+  command: folddoclosed
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.foldopen
+  surface: ex_command
+  command: foldopen
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.for
+  surface: ex_command
+  command: for
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.function
+  surface: ex_command
+  command: function
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.fclose
+  surface: ex_command
+  command: fclose
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.global
+  surface: ex_command
+  command: global
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.goto
+  surface: ex_command
+  command: goto
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.grep
+  surface: ex_command
+  command: grep
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.grepadd
+  surface: ex_command
+  command: grepadd
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.gui
+  surface: ex_command
+  command: gui
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.gvim
+  surface: ex_command
+  command: gvim
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.help
+  surface: ex_command
+  command: help
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.helpclose
+  surface: ex_command
+  command: helpclose
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.helpgrep
+  surface: ex_command
+  command: helpgrep
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.helptags
+  surface: ex_command
+  command: helptags
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.highlight
+  surface: ex_command
+  command: highlight
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.hide
+  surface: ex_command
+  command: hide
+  addr_type: ADDR_WINDOWS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.history
+  surface: ex_command
+  command: history
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.horizontal
+  surface: ex_command
+  command: horizontal
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.insert
+  surface: ex_command
+  command: insert
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.iabbrev
+  surface: ex_command
+  command: iabbrev
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.iabclear
+  surface: ex_command
+  command: iabclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.if
+  surface: ex_command
+  command: if
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ijump
+  surface: ex_command
+  command: ijump
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ilist
+  surface: ex_command
+  command: ilist
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.imap
+  surface: ex_command
+  command: imap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.imapclear
+  surface: ex_command
+  command: imapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.imenu
+  surface: ex_command
+  command: imenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.inoremap
+  surface: ex_command
+  command: inoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.inoreabbrev
+  surface: ex_command
+  command: inoreabbrev
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.inoremenu
+  surface: ex_command
+  command: inoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.intro
+  surface: ex_command
+  command: intro
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.iput
+  surface: ex_command
+  command: iput
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.isearch
+  surface: ex_command
+  command: isearch
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.isplit
+  surface: ex_command
+  command: isplit
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.iunmap
+  surface: ex_command
+  command: iunmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.iunabbrev
+  surface: ex_command
+  command: iunabbrev
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.iunmenu
+  surface: ex_command
+  command: iunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.join
+  surface: ex_command
+  command: join
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.jumps
+  surface: ex_command
+  command: jumps
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.k
+  surface: ex_command
+  command: k
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.keepmarks
+  surface: ex_command
+  command: keepmarks
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.keepjumps
+  surface: ex_command
+  command: keepjumps
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.keeppatterns
+  surface: ex_command
+  command: keeppatterns
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.keepalt
+  surface: ex_command
+  command: keepalt
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.list
+  surface: ex_command
+  command: list
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lNext
+  surface: ex_command
+  command: lNext
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lNfile
+  surface: ex_command
+  command: lNfile
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.last
+  surface: ex_command
+  command: last
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.labove
+  surface: ex_command
+  command: labove
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.language
+  surface: ex_command
+  command: language
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.laddexpr
+  surface: ex_command
+  command: laddexpr
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.laddbuffer
+  surface: ex_command
+  command: laddbuffer
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.laddfile
+  surface: ex_command
+  command: laddfile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lafter
+  surface: ex_command
+  command: lafter
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.later
+  surface: ex_command
+  command: later
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lbuffer
+  surface: ex_command
+  command: lbuffer
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lbefore
+  surface: ex_command
+  command: lbefore
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lbelow
+  surface: ex_command
+  command: lbelow
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lbottom
+  surface: ex_command
+  command: lbottom
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lcd
+  surface: ex_command
+  command: lcd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lchdir
+  surface: ex_command
+  command: lchdir
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lclose
+  surface: ex_command
+  command: lclose
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ldo
+  surface: ex_command
+  command: ldo
+  addr_type: ADDR_QUICKFIX_VALID
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.left
+  surface: ex_command
+  command: left
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.leftabove
+  surface: ex_command
+  command: leftabove
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.let
+  surface: ex_command
+  command: let
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lexpr
+  surface: ex_command
+  command: lexpr
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lfile
+  surface: ex_command
+  command: lfile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lfdo
+  surface: ex_command
+  command: lfdo
+  addr_type: ADDR_QUICKFIX_VALID
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lfirst
+  surface: ex_command
+  command: lfirst
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lgetfile
+  surface: ex_command
+  command: lgetfile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lgetbuffer
+  surface: ex_command
+  command: lgetbuffer
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lgetexpr
+  surface: ex_command
+  command: lgetexpr
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lgrep
+  surface: ex_command
+  command: lgrep
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lgrepadd
+  surface: ex_command
+  command: lgrepadd
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lhelpgrep
+  surface: ex_command
+  command: lhelpgrep
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lhistory
+  surface: ex_command
+  command: lhistory
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ll
+  surface: ex_command
+  command: ll
+  addr_type: ADDR_QUICKFIX
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.llast
+  surface: ex_command
+  command: llast
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.llist
+  surface: ex_command
+  command: llist
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lmap
+  surface: ex_command
+  command: lmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lmapclear
+  surface: ex_command
+  command: lmapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lmake
+  surface: ex_command
+  command: lmake
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lnoremap
+  surface: ex_command
+  command: lnoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lnext
+  surface: ex_command
+  command: lnext
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lnewer
+  surface: ex_command
+  command: lnewer
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lnfile
+  surface: ex_command
+  command: lnfile
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.loadview
+  surface: ex_command
+  command: loadview
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.loadkeymap
+  surface: ex_command
+  command: loadkeymap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lockmarks
+  surface: ex_command
+  command: lockmarks
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lockvar
+  surface: ex_command
+  command: lockvar
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lolder
+  surface: ex_command
+  command: lolder
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lopen
+  surface: ex_command
+  command: lopen
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lprevious
+  surface: ex_command
+  command: lprevious
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lpfile
+  surface: ex_command
+  command: lpfile
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lrewind
+  surface: ex_command
+  command: lrewind
+  addr_type: ADDR_UNSIGNED
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ltag
+  surface: ex_command
+  command: ltag
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lunmap
+  surface: ex_command
+  command: lunmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lua
+  surface: ex_command
+  command: lua
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.luado
+  surface: ex_command
+  command: luado
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.luafile
+  surface: ex_command
+  command: luafile
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lvimgrep
+  surface: ex_command
+  command: lvimgrep
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lvimgrepadd
+  surface: ex_command
+  command: lvimgrepadd
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lwindow
+  surface: ex_command
+  command: lwindow
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ls
+  surface: ex_command
+  command: ls
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.lsp
+  surface: ex_command
+  command: lsp
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.move
+  surface: ex_command
+  command: move
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mark
+  surface: ex_command
+  command: mark
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.make
+  surface: ex_command
+  command: make
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.map
+  surface: ex_command
+  command: map
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mapclear
+  surface: ex_command
+  command: mapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.marks
+  surface: ex_command
+  command: marks
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.match
+  surface: ex_command
+  command: match
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.menu
+  surface: ex_command
+  command: menu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.menutranslate
+  surface: ex_command
+  command: menutranslate
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.messages
+  surface: ex_command
+  command: messages
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mkexrc
+  surface: ex_command
+  command: mkexrc
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mksession
+  surface: ex_command
+  command: mksession
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mkspell
+  surface: ex_command
+  command: mkspell
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mkvimrc
+  surface: ex_command
+  command: mkvimrc
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mkview
+  surface: ex_command
+  command: mkview
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mode
+  surface: ex_command
+  command: mode
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mzscheme
+  surface: ex_command
+  command: mzscheme
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.mzfile
+  surface: ex_command
+  command: mzfile
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.next
+  surface: ex_command
+  command: next
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.new
+  surface: ex_command
+  command: new
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.nmap
+  surface: ex_command
+  command: nmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.nmapclear
+  surface: ex_command
+  command: nmapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.nmenu
+  surface: ex_command
+  command: nmenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.nnoremap
+  surface: ex_command
+  command: nnoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.nnoremenu
+  surface: ex_command
+  command: nnoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.noremap
+  surface: ex_command
+  command: noremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.noautocmd
+  surface: ex_command
+  command: noautocmd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.nohlsearch
+  surface: ex_command
+  command: nohlsearch
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.noreabbrev
+  surface: ex_command
+  command: noreabbrev
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.noremenu
+  surface: ex_command
+  command: noremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.noswapfile
+  surface: ex_command
+  command: noswapfile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.normal
+  surface: ex_command
+  command: normal
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.number
+  surface: ex_command
+  command: number
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.nunmap
+  surface: ex_command
+  command: nunmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.nunmenu
+  surface: ex_command
+  command: nunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.oldfiles
+  surface: ex_command
+  command: oldfiles
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.omap
+  surface: ex_command
+  command: omap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.omapclear
+  surface: ex_command
+  command: omapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.omenu
+  surface: ex_command
+  command: omenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.only
+  surface: ex_command
+  command: only
+  addr_type: ADDR_WINDOWS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.onoremap
+  surface: ex_command
+  command: onoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.onoremenu
+  surface: ex_command
+  command: onoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.options
+  surface: ex_command
+  command: options
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ounmap
+  surface: ex_command
+  command: ounmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ounmenu
+  surface: ex_command
+  command: ounmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ownsyntax
+  surface: ex_command
+  command: ownsyntax
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.print
+  surface: ex_command
+  command: print
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.packadd
+  surface: ex_command
+  command: packadd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.packloadall
+  surface: ex_command
+  command: packloadall
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pbuffer
+  surface: ex_command
+  command: pbuffer
+  addr_type: ADDR_BUFFERS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pclose
+  surface: ex_command
+  command: pclose
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.perl
+  surface: ex_command
+  command: perl
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.perldo
+  surface: ex_command
+  command: perldo
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.perlfile
+  surface: ex_command
+  command: perlfile
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pedit
+  surface: ex_command
+  command: pedit
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pop
+  surface: ex_command
+  command: pop
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.popup
+  surface: ex_command
+  command: popup
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ppop
+  surface: ex_command
+  command: ppop
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.preserve
+  surface: ex_command
+  command: preserve
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.previous
+  surface: ex_command
+  command: previous
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.profile
+  surface: ex_command
+  command: profile
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.profdel
+  surface: ex_command
+  command: profdel
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.psearch
+  surface: ex_command
+  command: psearch
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptag
+  surface: ex_command
+  command: ptag
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptNext
+  surface: ex_command
+  command: ptNext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptfirst
+  surface: ex_command
+  command: ptfirst
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptjump
+  surface: ex_command
+  command: ptjump
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptlast
+  surface: ex_command
+  command: ptlast
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptnext
+  surface: ex_command
+  command: ptnext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptprevious
+  surface: ex_command
+  command: ptprevious
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptrewind
+  surface: ex_command
+  command: ptrewind
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ptselect
+  surface: ex_command
+  command: ptselect
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.put
+  surface: ex_command
+  command: put
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pwd
+  surface: ex_command
+  command: pwd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.python
+  surface: ex_command
+  command: python
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pydo
+  surface: ex_command
+  command: pydo
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pyfile
+  surface: ex_command
+  command: pyfile
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.py3
+  surface: ex_command
+  command: py3
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.py3do
+  surface: ex_command
+  command: py3do
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.python3
+  surface: ex_command
+  command: python3
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.py3file
+  surface: ex_command
+  command: py3file
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pyx
+  surface: ex_command
+  command: pyx
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pyxdo
+  surface: ex_command
+  command: pyxdo
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pythonx
+  surface: ex_command
+  command: pythonx
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.pyxfile
+  surface: ex_command
+  command: pyxfile
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.quit
+  surface: ex_command
+  command: quit
+  addr_type: ADDR_WINDOWS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.quitall
+  surface: ex_command
+  command: quitall
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.qall
+  surface: ex_command
+  command: qall
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.read
+  surface: ex_command
+  command: read
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.recover
+  surface: ex_command
+  command: recover
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.redo
+  surface: ex_command
+  command: redo
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.redir
+  surface: ex_command
+  command: redir
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.redraw
+  surface: ex_command
+  command: redraw
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.redrawstatus
+  surface: ex_command
+  command: redrawstatus
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.redrawtabline
+  surface: ex_command
+  command: redrawtabline
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.registers
+  surface: ex_command
+  command: registers
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.resize
+  surface: ex_command
+  command: resize
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.restart
+  surface: ex_command
+  command: restart
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.retab
+  surface: ex_command
+  command: retab
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.return
+  surface: ex_command
+  command: return
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.rewind
+  surface: ex_command
+  command: rewind
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.right
+  surface: ex_command
+  command: right
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.rightbelow
+  surface: ex_command
+  command: rightbelow
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.rshada
+  surface: ex_command
+  command: rshada
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.runtime
+  surface: ex_command
+  command: runtime
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.rundo
+  surface: ex_command
+  command: rundo
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.ruby
+  surface: ex_command
+  command: ruby
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.rubydo
+  surface: ex_command
+  command: rubydo
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.rubyfile
+  surface: ex_command
+  command: rubyfile
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.rviminfo
+  surface: ex_command
+  command: rviminfo
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.substitute
+  surface: ex_command
+  command: substitute
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sNext
+  surface: ex_command
+  command: sNext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sargument
+  surface: ex_command
+  command: sargument
+  addr_type: ADDR_ARGUMENTS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sall
+  surface: ex_command
+  command: sall
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sandbox
+  surface: ex_command
+  command: sandbox
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.saveas
+  surface: ex_command
+  command: saveas
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sbuffer
+  surface: ex_command
+  command: sbuffer
+  addr_type: ADDR_BUFFERS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sbNext
+  surface: ex_command
+  command: sbNext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sball
+  surface: ex_command
+  command: sball
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sbfirst
+  surface: ex_command
+  command: sbfirst
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sblast
+  surface: ex_command
+  command: sblast
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sbmodified
+  surface: ex_command
+  command: sbmodified
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sbnext
+  surface: ex_command
+  command: sbnext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sbprevious
+  surface: ex_command
+  command: sbprevious
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sbrewind
+  surface: ex_command
+  command: sbrewind
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.scriptnames
+  surface: ex_command
+  command: scriptnames
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.scriptencoding
+  surface: ex_command
+  command: scriptencoding
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.set
+  surface: ex_command
+  command: set
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.setfiletype
+  surface: ex_command
+  command: setfiletype
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.setglobal
+  surface: ex_command
+  command: setglobal
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.setlocal
+  surface: ex_command
+  command: setlocal
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sfind
+  surface: ex_command
+  command: sfind
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sfirst
+  surface: ex_command
+  command: sfirst
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.simalt
+  surface: ex_command
+  command: simalt
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sign
+  surface: ex_command
+  command: sign
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.silent
+  surface: ex_command
+  command: silent
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sleep
+  surface: ex_command
+  command: sleep
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.slast
+  surface: ex_command
+  command: slast
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.smagic
+  surface: ex_command
+  command: smagic
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.smap
+  surface: ex_command
+  command: smap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.smapclear
+  surface: ex_command
+  command: smapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.smenu
+  surface: ex_command
+  command: smenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.snext
+  surface: ex_command
+  command: snext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.snomagic
+  surface: ex_command
+  command: snomagic
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.snoremap
+  surface: ex_command
+  command: snoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.snoremenu
+  surface: ex_command
+  command: snoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.source
+  surface: ex_command
+  command: source
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sort
+  surface: ex_command
+  command: sort
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.split
+  surface: ex_command
+  command: split
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.spellgood
+  surface: ex_command
+  command: spellgood
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.spelldump
+  surface: ex_command
+  command: spelldump
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.spellinfo
+  surface: ex_command
+  command: spellinfo
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.spellrepall
+  surface: ex_command
+  command: spellrepall
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.spellrare
+  surface: ex_command
+  command: spellrare
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.spellundo
+  surface: ex_command
+  command: spellundo
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.spellwrong
+  surface: ex_command
+  command: spellwrong
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sprevious
+  surface: ex_command
+  command: sprevious
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.srewind
+  surface: ex_command
+  command: srewind
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.stop
+  surface: ex_command
+  command: stop
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.stag
+  surface: ex_command
+  command: stag
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.startinsert
+  surface: ex_command
+  command: startinsert
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.startgreplace
+  surface: ex_command
+  command: startgreplace
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.startreplace
+  surface: ex_command
+  command: startreplace
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.stopinsert
+  surface: ex_command
+  command: stopinsert
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.stjump
+  surface: ex_command
+  command: stjump
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.stselect
+  surface: ex_command
+  command: stselect
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sunhide
+  surface: ex_command
+  command: sunhide
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sunmap
+  surface: ex_command
+  command: sunmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sunmenu
+  surface: ex_command
+  command: sunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.suspend
+  surface: ex_command
+  command: suspend
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.sview
+  surface: ex_command
+  command: sview
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.swapname
+  surface: ex_command
+  command: swapname
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.syntax
+  surface: ex_command
+  command: syntax
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.syntime
+  surface: ex_command
+  command: syntime
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.syncbind
+  surface: ex_command
+  command: syncbind
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.t
+  surface: ex_command
+  command: t
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tcd
+  surface: ex_command
+  command: tcd
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tchdir
+  surface: ex_command
+  command: tchdir
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tNext
+  surface: ex_command
+  command: tNext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tag
+  surface: ex_command
+  command: tag
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tags
+  surface: ex_command
+  command: tags
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tab
+  surface: ex_command
+  command: tab
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabclose
+  surface: ex_command
+  command: tabclose
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabdo
+  surface: ex_command
+  command: tabdo
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabedit
+  surface: ex_command
+  command: tabedit
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabfind
+  surface: ex_command
+  command: tabfind
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabfirst
+  surface: ex_command
+  command: tabfirst
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabmove
+  surface: ex_command
+  command: tabmove
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tablast
+  surface: ex_command
+  command: tablast
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabnext
+  surface: ex_command
+  command: tabnext
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabnew
+  surface: ex_command
+  command: tabnew
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabonly
+  surface: ex_command
+  command: tabonly
+  addr_type: ADDR_TABS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabprevious
+  surface: ex_command
+  command: tabprevious
+  addr_type: ADDR_TABS_RELATIVE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabNext
+  surface: ex_command
+  command: tabNext
+  addr_type: ADDR_TABS_RELATIVE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabrewind
+  surface: ex_command
+  command: tabrewind
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tabs
+  surface: ex_command
+  command: tabs
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tcl
+  surface: ex_command
+  command: tcl
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tcldo
+  surface: ex_command
+  command: tcldo
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tclfile
+  surface: ex_command
+  command: tclfile
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.terminal
+  surface: ex_command
+  command: terminal
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tfirst
+  surface: ex_command
+  command: tfirst
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.throw
+  surface: ex_command
+  command: throw
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tjump
+  surface: ex_command
+  command: tjump
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tlast
+  surface: ex_command
+  command: tlast
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tlmenu
+  surface: ex_command
+  command: tlmenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tlnoremenu
+  surface: ex_command
+  command: tlnoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tlunmenu
+  surface: ex_command
+  command: tlunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tmenu
+  surface: ex_command
+  command: tmenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tmap
+  surface: ex_command
+  command: tmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tmapclear
+  surface: ex_command
+  command: tmapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tnext
+  surface: ex_command
+  command: tnext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tnoremap
+  surface: ex_command
+  command: tnoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.topleft
+  surface: ex_command
+  command: topleft
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tprevious
+  surface: ex_command
+  command: tprevious
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.trewind
+  surface: ex_command
+  command: trewind
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.trust
+  surface: ex_command
+  command: trust
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.try
+  surface: ex_command
+  command: try
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tselect
+  surface: ex_command
+  command: tselect
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tunmenu
+  surface: ex_command
+  command: tunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.tunmap
+  surface: ex_command
+  command: tunmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.undo
+  surface: ex_command
+  command: undo
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.undojoin
+  surface: ex_command
+  command: undojoin
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.undolist
+  surface: ex_command
+  command: undolist
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.unabbreviate
+  surface: ex_command
+  command: unabbreviate
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.unhide
+  surface: ex_command
+  command: unhide
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.uniq
+  surface: ex_command
+  command: uniq
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.unlet
+  surface: ex_command
+  command: unlet
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.unlockvar
+  surface: ex_command
+  command: unlockvar
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.unmap
+  surface: ex_command
+  command: unmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.unmenu
+  surface: ex_command
+  command: unmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.unsilent
+  surface: ex_command
+  command: unsilent
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.update
+  surface: ex_command
+  command: update
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vglobal
+  surface: ex_command
+  command: vglobal
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.version
+  surface: ex_command
+  command: version
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.verbose
+  surface: ex_command
+  command: verbose
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vertical
+  surface: ex_command
+  command: vertical
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.visual
+  surface: ex_command
+  command: visual
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.view
+  surface: ex_command
+  command: view
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vimgrep
+  surface: ex_command
+  command: vimgrep
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vimgrepadd
+  surface: ex_command
+  command: vimgrepadd
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.viusage
+  surface: ex_command
+  command: viusage
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vmap
+  surface: ex_command
+  command: vmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vmapclear
+  surface: ex_command
+  command: vmapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vmenu
+  surface: ex_command
+  command: vmenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vnoremap
+  surface: ex_command
+  command: vnoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vnew
+  surface: ex_command
+  command: vnew
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vnoremenu
+  surface: ex_command
+  command: vnoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vsplit
+  surface: ex_command
+  command: vsplit
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vunmap
+  surface: ex_command
+  command: vunmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.vunmenu
+  surface: ex_command
+  command: vunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.write
+  surface: ex_command
+  command: write
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wNext
+  surface: ex_command
+  command: wNext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wall
+  surface: ex_command
+  command: wall
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.while
+  surface: ex_command
+  command: while
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.winsize
+  surface: ex_command
+  command: winsize
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wincmd
+  surface: ex_command
+  command: wincmd
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.windo
+  surface: ex_command
+  command: windo
+  addr_type: ADDR_WINDOWS
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.winpos
+  surface: ex_command
+  command: winpos
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wnext
+  surface: ex_command
+  command: wnext
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wprevious
+  surface: ex_command
+  command: wprevious
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wq
+  surface: ex_command
+  command: wq
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wqall
+  surface: ex_command
+  command: wqall
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wshada
+  surface: ex_command
+  command: wshada
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wundo
+  surface: ex_command
+  command: wundo
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.wviminfo
+  surface: ex_command
+  command: wviminfo
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xit
+  surface: ex_command
+  command: xit
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xall
+  surface: ex_command
+  command: xall
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xmap
+  surface: ex_command
+  command: xmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xmapclear
+  surface: ex_command
+  command: xmapclear
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xmenu
+  surface: ex_command
+  command: xmenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xnoremap
+  surface: ex_command
+  command: xnoremap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xnoremenu
+  surface: ex_command
+  command: xnoremenu
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xunmap
+  surface: ex_command
+  command: xunmap
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.xunmenu
+  surface: ex_command
+  command: xunmenu
+  addr_type: ADDR_NONE
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.yank
+  surface: ex_command
+  command: yank
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.z
+  surface: ex_command
+  command: z
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.x21
+  surface: ex_command
+  command: '!'
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.x23
+  surface: ex_command
+  command: '#'
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.x26
+  surface: ex_command
+  command: '&'
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.empty
+  surface: ex_command
+  command: <
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.x3d
+  surface: ex_command
+  command: '='
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.empty
+  surface: ex_command
+  command: '>'
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.x40
+  surface: ex_command
+  command: '@'
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.x7e
+  surface: ex_command
+  command: '~'
+  addr_type: ADDR_LINES
+  attestation:
+  - S
+  status: unclassified
+- id: nvim.ex.Next
+  surface: ex_command
+  command: Next
+  addr_type: ADDR_OTHER
+  attestation:
+  - S
+  status: unclassified

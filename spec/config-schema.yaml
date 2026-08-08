@@ -23,6 +23,9 @@
 #   min / max       int bounds (optional, type=int)
 #   secret          bool = never logged / redacted in `:inspect config`. Default false. (optional)
 #   deprecated      bool + optional replaced_by (alias for a deprecation window). Default false. (optional)
+#   derives_from    [F-..] = the PRD feature(s) this setting realizes (the PRD->CFG trace). REQUIRED on every
+#                     key; `[]` is a legal, explicit "no owning feature yet" (surfaced as WARN, never a fail).
+#                     F-ids must resolve to real PRD features. Enforced by `gov prd_cfg`.
 #   desc            one-line description                                (required)
 #
 # LLM rules: patch a single key; never rename a key (add new + mark old deprecated); never renumber `version`
@@ -40,32 +43,53 @@ scopes:
 
 settings:
   # ---- input ----
-  input.profile:        { type: enum,   default: vim,    scope: user,      merge: replace,   security_locked: false, enum: [vim, emacs, native], desc: "Active input profile (editing language + state machine, architecture section 1)." }
+  input.profile:        { type: enum,   default: vim,    scope: user,      merge: replace,   security_locked: false, enum: [vim, emacs, native], derives_from: [F-003, F-012, F-013], desc: "Active input profile (editing language + state machine, architecture section 1)." }
+
+  # ---- keymap (one LAYER per Vim keymap namespace; D-045 / contracts/keymap-layers.yaml) ----
+  # Under D-045 these eight keys are the Vim profile's LAYER OVERLAYS, not the kernel's layer model.
+  # They keep their names and shape deliberately: an Emacs profile adds its own keys for its own
+  # layers rather than renaming or generalising these, because a key that means "the active layer,
+  # whatever it is" would re-create exactly the unqualified binding KL-OBL-1 forbids.
+  # Upstream's own map.txt map-table declares EIGHT disjoint keymap namespaces, each addressed by its
+  # own `:*map` family — that is why these are eight keys and not one `keymap` map with a mode field:
+  # a binding that does not name its namespace is not expressible (VS-OBL-4). Merge is deep-merge so a
+  # layer can override ONE binding without replacing a whole namespace; the built-in profile bindings
+  # are not defaults here (they belong to the profile), so each default is the empty overlay.
+  # scope:user, not workspace: a binding invokes a command, so a workspace-supplied keymap is a
+  # remote-code-execution-shaped surface. Relaxing this to workspace needs its own Decision.
+  keymap.normal:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-003], desc: "Normal-namespace bindings (map_mode Norm). Unmatched key: ignore." }
+  keymap.operator_pending: { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-023], desc: "Operator-pending-namespace bindings (map_mode Opr). Unmatched key: abort the pending operator." }
+  keymap.insert:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-024], desc: "Insert-namespace bindings (map_mode Ins). Unmatched printable key: insert literally." }
+  keymap.cmdline:          { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-026], desc: "Command-line-namespace bindings (map_mode Cmd). Unmatched printable key: append to the line buffer." }
+  keymap.visual:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-025], desc: "Visual-namespace bindings (map_mode Vis). Unmatched key: ignore." }
+  keymap.select:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-025], desc: "Select-namespace bindings (map_mode Sel). Unmatched printable key: replace the selection and enter Insert." }
+  keymap.terminal:         { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-011], desc: "Terminal-namespace bindings (map_mode Term). Unmatched key: forward to the job, except the CTRL-\\ escape prefix." }
+  keymap.lang:             { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-027], desc: "Lang-Arg-namespace bindings (map_mode Lang). Unmatched key: translate via the active language map, then re-dispatch. Blocked on CONCEPT-LANG-ARG." }
 
   # ---- editor ----
-  editor.tab_width:     { type: int,    default: 4,      scope: workspace, merge: replace,   security_locked: false, min: 1, max: 16, desc: Number of columns a tab renders/indents as. }
-  editor.indent_style:  { type: enum,   default: space,  scope: workspace, merge: replace,   security_locked: false, enum: [space, tab], desc: Whether indentation uses spaces or tabs. }
-  editor.line_endings:  { type: enum,   default: auto,   scope: workspace, merge: replace,   security_locked: false, enum: [lf, crlf, auto], desc: Line-ending policy on save (auto = preserve/detect per file). }
-  editor.scrolloff:     { type: int,    default: 3,      scope: user,      merge: replace,   security_locked: false, min: 0, max: 99, desc: "Minimum lines of context kept above/below the cursor when scrolling (Vim scrolloff). Derived from the shipped viewport behavior; not yet runtime-wired." }
+  editor.tab_width:     { type: int,    default: 4,      scope: workspace, merge: replace,   security_locked: false, min: 1, max: 16, derives_from: [], desc: Number of columns a tab renders/indents as. }
+  editor.indent_style:  { type: enum,   default: space,  scope: workspace, merge: replace,   security_locked: false, enum: [space, tab], derives_from: [], desc: Whether indentation uses spaces or tabs. }
+  editor.line_endings:  { type: enum,   default: auto,   scope: workspace, merge: replace,   security_locked: false, enum: [lf, crlf, auto], derives_from: [F-008], desc: Line-ending policy on save (auto = preserve/detect per file). }
+  editor.scrolloff:     { type: int,    default: 3,      scope: user,      merge: replace,   security_locked: false, min: 0, max: 99, derives_from: [], desc: "Minimum lines of context kept above/below the cursor when scrolling (Vim scrolloff). Derived from the shipped viewport behavior; not yet runtime-wired." }
 
   # ---- files ----
-  files.watcher:        { type: enum,   default: native, scope: workspace, merge: replace,   security_locked: false, enum: [native, poll, off], desc: File-watch backend (native OS events, polling fallback, or disabled). }
-  files.exclude:        { type: list,   default: [".git", "node_modules", "target"], scope: workspace, merge: append, security_locked: false, desc: "Glob patterns hidden from tree/search/watch; layers append (use !pattern to remove)." }
+  files.watcher:        { type: enum,   default: native, scope: workspace, merge: replace,   security_locked: false, enum: [native, poll, off], derives_from: [], desc: File-watch backend (native OS events, polling fallback, or disabled). }
+  files.exclude:        { type: list,   default: [".git", "node_modules", "target"], scope: workspace, merge: append, security_locked: false, derives_from: [], desc: "Glob patterns hidden from tree/search/watch; layers append (use !pattern to remove)." }
 
   # ---- ui ----
-  ui.theme:             { type: string, default: default, scope: user,     merge: replace,   security_locked: false, desc: Active color theme name. }
+  ui.theme:             { type: string, default: default, scope: user,     merge: replace,   security_locked: false, derives_from: [], desc: Active color theme name. }
 
   # ---- update ----
-  update.channel:       { type: enum,   default: stable, scope: user,      merge: replace,   security_locked: false, enum: [stable, beta, nightly], desc: Release channel used for self-update checks. }
+  update.channel:       { type: enum,   default: stable, scope: user,      merge: replace,   security_locked: false, enum: [stable, beta, nightly], derives_from: [], desc: Release channel used for self-update checks. }
 
   # ---- remote (security-sensitive: trust) ----
-  remote.trust_prompt:  { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: true,  desc: Prompt before trusting a remote runtime/workspace. Workspace can NEVER override (INV-TRUST-1). }
+  remote.trust_prompt:  { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: true,  derives_from: [F-017], desc: Prompt before trusting a remote runtime/workspace. Workspace can NEVER override (INV-TRUST-1). }
 
   # ---- plugins (security-sensitive: executables/trust) ----
-  plugins.allow_unsigned: { type: bool, default: false,  scope: machine,   merge: replace,   security_locked: true,  desc: Allow loading unsigned/unverified plugins. Admin-only; workspace can NEVER override (INV-TRUST-1). }
+  plugins.allow_unsigned: { type: bool, default: false,  scope: machine,   merge: replace,   security_locked: true,  derives_from: [F-016], desc: Allow loading unsigned/unverified plugins. Admin-only; workspace can NEVER override (INV-TRUST-1). }
 
   # ---- telemetry ----
-  telemetry.enabled:    { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, desc: Opt-in anonymous telemetry (off by default). }
+  telemetry.enabled:    { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, derives_from: [], desc: Opt-in anonymous telemetry (off by default). }
 
 # Per-plugin settings are NOT listed here: a plugin declares its own schema (same field set) namespaced under
 # `plugin.<plugin-id>.*` in its manifest (architecture #4.5 / config-model.md CFG-PLUGIN). A plugin may only

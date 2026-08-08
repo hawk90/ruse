@@ -1,0 +1,267 @@
+# GENERATED — regenerate with `python3 tools/parity/coverage.py`.
+# The number that matters is DISCOVERY, not implementation. `unsupported` and `deferred`
+# are honest outcomes; an item nobody knew existed is not. classification_pct is expected
+# to sit near zero for a long time and that is the design (classification is lazy).
+version: 1
+generated: true
+generator: tools/parity/coverage.py
+axes:
+  discovery: mechanical; every item in the declared census scope is enumerated. The census's only exit condition.
+  classification: human and deliberately LAZY; `unclassified` is a legitimate resting state. Locked at SURFACE granularity
+    by `ruse gov parity_discovery`.
+  verification: executed; `verified` requires a differential fixture that passed against the pinned oracle. Being
+    documented in two places is not verification.
+upstreams:
+  emacs:
+    revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
+    version_label: emacs-30.2
+    role: secondary
+    denominator_method: runtime introspection at the baseline below; commands DERIVED from key_binding, never enumerated
+      independently
+    denominator_baseline: emacs -Q --batch + require of the load_set
+    census_scope_include:
+    - lisp/simple.el, lisp/subr.el, lisp/bindings.el, lisp/window.el, lisp/buffer.c
+    - lisp/isearch.el, lisp/register.el, lisp/rect.el, lisp/minibuffer.el, lisp/replace.el
+    - lisp/files.el, lisp/paragraphs.el, lisp/indent.el, lisp/kmacro.el, lisp/macros.el
+    - lisp/dired.el, lisp/bookmark.el, lisp/progmodes/project.el
+    - src/
+    census_excluded_surfaces: 5
+    status: surveyed
+    surfaces:
+      command:
+        source_of_record: 'R: DERIVED from key_binding (no independent denominator)'
+        discovered: 803
+        by_status:
+          unclassified: 803
+        classified: 0
+        unclassified: 803
+        verified: 0
+      hook:
+        source_of_record: 'R: -hook/-functions defvars, scoped to census_scope.include'
+        discovered: 106
+        by_status:
+          unclassified: 106
+        classified: 0
+        unclassified: 106
+        verified: 0
+      key_binding:
+        source_of_record: 'R: map-keymap walk, partitioned at named-keymap boundaries'
+        discovered: 2083
+        by_status:
+          unclassified: 2083
+        classified: 0
+        unclassified: 2083
+        verified: 0
+      keymap:
+        source_of_record: 'R: mapatoms + keymapp, scoped to census_scope.include'
+        discovered: 87
+        by_status:
+          unclassified: 87
+        classified: 0
+        unclassified: 87
+        verified: 0
+      keymap_tier:
+        source_of_record: 'D: (elisp) Searching the Active Keymaps + src/keyboard.c (R: each symbol bound at the
+          pin)'
+        discovered: 9
+        by_status:
+          targeted: 9
+        classified: 9
+        unclassified: 0
+        verified: 0
+      option:
+        source_of_record: 'R: custom-variable-p, scoped to census_scope.include'
+        discovered: 434
+        by_status:
+          unclassified: 434
+        classified: 0
+        unclassified: 434
+        verified: 0
+    totals:
+      discovered: 3522
+      classified: 9
+      unclassified: 3513
+      verified: 0
+      classification_pct: 0.3
+      verification_pct: 0.0
+    discovery:
+      scope_enumerated: complete
+      meaning: every surface in census_scope.include was enumerated, or declared non-enumerable with its upstream
+        prose recorded. This is NOT a claim about 100% of the editor — it is 100% of the declared scope.
+  helix:
+    revision: a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b
+    version_label: 25.07.1
+    role: reference
+    denominator_method: static parse of the four in-scope Rust files; no runtime introspection (Helix exposes no
+      equivalent of nvim's API or Emacs's mapatoms)
+    denominator_baseline: the pinned tree; `hx` need not be installed to enumerate
+    census_scope_include:
+    - helix-term/src/keymap/default.rs
+    - helix-term/src/commands.rs
+    - helix-term/src/commands/typed.rs
+    - helix-view/src/editor.rs
+    census_excluded_surfaces: 4
+    status: surveyed
+    surfaces:
+      command:
+        source_of_record: 'S: helix-term/src/commands.rs static_commands!'
+        discovered: 305
+        by_status:
+          unclassified: 305
+        classified: 0
+        unclassified: 305
+        verified: 0
+      effective_key_binding:
+        source_of_record: 'S: helix-term/src/keymap/default.rs (COMPUTED: normal + select overrides)'
+        discovered: 334
+        by_status:
+          unclassified: 334
+        classified: 0
+        unclassified: 334
+        verified: 0
+      key_binding:
+        source_of_record: 'S: helix-term/src/keymap/default.rs'
+        discovered: 394
+        by_status:
+          unclassified: 394
+        classified: 0
+        unclassified: 394
+        verified: 0
+      mode:
+        source_of_record: 'S: helix-term/src/keymap/default.rs'
+        discovered: 3
+        by_status:
+          targeted: 3
+        classified: 3
+        unclassified: 0
+        verified: 0
+      option:
+        source_of_record: 'S: helix-view/src/editor.rs Config (dotted through nested structs)'
+        discovered: 104
+        by_status:
+          unclassified: 104
+        classified: 0
+        unclassified: 104
+        verified: 0
+      typed_command:
+        source_of_record: 'S: helix-term/src/commands/typed.rs TYPABLE_COMMAND_LIST'
+        discovered: 89
+        by_status:
+          unclassified: 89
+        classified: 0
+        unclassified: 89
+        verified: 0
+    totals:
+      discovered: 1229
+      classified: 3
+      unclassified: 1226
+      verified: 0
+      classification_pct: 0.2
+      verification_pct: 0.0
+    discovery:
+      scope_enumerated: complete
+      meaning: every surface in census_scope.include was enumerated, or declared non-enumerable with its upstream
+        prose recorded. This is NOT a claim about 100% of the editor — it is 100% of the declared scope.
+  neovim:
+    revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
+    version_label: v0.12.4
+    role: primary
+    denominator_method: static tables (options.lua/ex_cmds.lua/auevents.lua) + index.txt sections, cross-checked
+      against a headless `nvim -u NONE` introspection run
+    denominator_baseline: nvim --headless -u NONE -i NONE
+    census_scope_include:
+    - runtime/doc/index.txt
+    - runtime/doc/map.txt
+    - src/nvim/options.lua
+    - src/nvim/ex_cmds.lua
+    - src/nvim/auevents.lua
+    census_excluded_surfaces: 3
+    status: surveyed
+    surfaces:
+      event:
+        source_of_record: 'S: src/nvim/auevents.lua'
+        discovered: 141
+        by_status:
+          unclassified: 141
+        classified: 0
+        unclassified: 141
+        verified: 0
+      ex_command:
+        source_of_record: 'S: src/nvim/ex_cmds.lua'
+        discovered: 557
+        by_status:
+          unclassified: 557
+        classified: 0
+        unclassified: 557
+        verified: 0
+      map_mode:
+        source_of_record: 'D: runtime/doc/map.txt'
+        discovered: 8
+        by_status:
+          targeted: 8
+        classified: 8
+        unclassified: 0
+        verified: 0
+      mode_key:
+        source_of_record: 'D: runtime/doc/index.txt'
+        discovered: 708
+        by_status:
+          unclassified: 708
+        classified: 0
+        unclassified: 708
+        verified: 0
+        non_enumerable:
+        - nvim.key.terminal.__surface__
+      option:
+        source_of_record: 'R: nvim_get_all_options_info() (S: src/nvim/options.lua)'
+        discovered: 374
+        by_status:
+          unclassified: 374
+        classified: 0
+        unclassified: 374
+        verified: 0
+    totals:
+      discovered: 1788
+      classified: 8
+      unclassified: 1780
+      verified: 0
+      classification_pct: 0.4
+      verification_pct: 0.0
+    discovery:
+      scope_enumerated: complete
+      meaning: every surface in census_scope.include was enumerated, or declared non-enumerable with its upstream
+        prose recorded. This is NOT a claim about 100% of the editor — it is 100% of the declared scope.
+  vim:
+    revision: c5f312aad8e4179e437f81ad39a860cd0ef11970
+    version_label: v9.1.2148
+    role: baseline
+    denominator_method: same extractor as Neovim, run against the Vim tree; the Vim<->Neovim delta is COMPUTED by
+      diffing the two inventories
+    denominator_baseline: null
+    census_scope_include:
+    - runtime/doc/index.txt
+    - runtime/doc/map.txt
+    - src/optiondata.h
+    - src/ex_cmds.h
+    census_excluded_surfaces: 1
+    status: not-surveyed
+    reason: 'runtime/doc/vim_diff.txt is Neovim''s own STATED delta. By this file''s own logic (stated intent is
+      not observed behavior) it is a third witness used to VALIDATE the computed delta, never the source of it.
+      A disagreement between computed and stated delta is an investigation item.
+
+      '
+oracles:
+  emacs:
+    status: blocked
+    hazards: 4
+  neovim:
+    status: usable
+    hazards: 0
+  vim:
+    status: usable-with-hazard
+    hazards: 2
+behavioral:
+  fixtures: 0
+  verified_items: 0
+  note: 'No fixture corpus exists yet. `oracle_selftest` in upstreams.yaml must pass before any fixture is admitted:
+    three oracle harnesses were tried and three corrupted their own first observation.'

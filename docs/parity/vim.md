@@ -9,6 +9,8 @@ summary: >
   Grounded in vimhelp.org; edge cases a compatibility layer must get exactly right are flagged.
 audience: [maintainers, contributors, llm-agents]
 status: draft
+source_of_truth: false
+verified_against_upstream: false
 sources_root: https://vimhelp.org/
 related:
   - README.md
@@ -18,6 +20,14 @@ related:
 ---
 
 # Parity: Vim Editing Language
+
+> **⚠️ NOT THE SOURCE OF TRUTH (D-043).** This file is hand-authored and has never been checked
+> against a pinned upstream revision. The parity source is the machine-derived census in
+> [`spec/parity/inventory/`](../../spec/parity/inventory/), generated from the SHA pins in
+> [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml). These tables survive as *human
+> annotation* — reading, grouping and intent — and are migrating onto census IDs. Do not add rows
+> here to record a newly discovered upstream feature: humans classify, they do not enumerate.
+
 
 Scope: **classic Vim** (Neovim's additions are in [neovim.md](neovim.md)). Vim is ruse's model for the
 **editing language** of the Vim Style profile (and Native Style's text layer). We target L1 broadly and
@@ -31,21 +41,29 @@ plugins depend on. We do **not** target L3 (running Vimscript / actual Vim plugi
 ## VIM-MODE — Modes & Transitions
 Source: `intro.txt`, `visual.txt`, `terminal.txt`.
 
+> **MIGRATED TO THE CENSUS (D-043).** The eight Vim keymap *namespaces* — Normal, Insert, Command-line,
+> Visual, Select, Operator-pending, Terminal, Lang-Arg — are now enumerated from upstream's own
+> `runtime/doc/map.txt` map-table as the [`map_mode`](../../spec/parity/inventory/neovim/map_mode.yaml)
+> census surface (`nvim.mapmode.*`), and what ruse promises for them lives in the
+> [`vim-style.yaml`](../../spec/parity/contracts/vim-style.yaml) contract. The old transition-table rows
+> (VIM-MODE-1/2/4/5/6/7/9) have been dropped: they are superseded by census IDs the PRD now cites directly.
+> Two rows survive here because they are **not** map_mode namespaces and have no census ID of their own:
+
 | ID | Mode | Enter | Exit | Target | Compat | Weight |
 | --- | --- | --- | --- | --- | --- | --- |
-| VIM-MODE-1 | Normal | `<Esc>` | — | L2 | Exact | high |
-| VIM-MODE-2 | Insert | `i I a A o O gi gI` | `<Esc> C-c C-[` | L2 | Exact | high |
 | VIM-MODE-3 | Replace / Virtual Replace | `R` / `gR gr` | `<Esc>`; `<BS>` restores | L1 | Equivalent | low |
-| VIM-MODE-4 | Visual char / line / block | `v` / `V` / `C-v` | `<Esc>` / toggle | L2 | Exact | high |
-| VIM-MODE-5 | Select mode | `gh gH g C-h` | printable char → Insert | L1 | Equivalent | low |
-| VIM-MODE-6 | Operator-pending | after operator | motion completes / `<Esc>` | L2 | Exact | high |
-| VIM-MODE-7 | Command-line | `: / ? ! q:` | `<CR>` / `<Esc> C-c` | L2 | Equivalent | high |
-| VIM-MODE-8 | Ex mode | `Q` / `gQ` | `:visual` | L1 | Adapted | low |
-| VIM-MODE-9 | Terminal-Job / Terminal-Normal | `:terminal` / `C-w N`, `C-\ C-n` | `C-w N` / any key | L1 | Equivalent | med |
+| VIM-MODE-8 | Ex mode | `gQ` | `:visual` | L1 | Adapted | low |
 
-- `C-o` in Insert runs **one** Normal command then returns; `gi` re-enters Insert at `` `^ ``.
-- **⚠️ VIM-MODE-6**: model operator-pending as a *transient state*, not a special case (VIM-1, anti-pattern VIM-12).
-- **⚠️ VIM-MODE-5/8**: Select mode and Ex mode are real, commonly-omitted modes.
+- **VIM-MODE-3** (Replace / Virtual Replace) is not a keymap namespace: it is the *overwrite* unmatched-key
+  policy *inside* the Insert namespace (`nvim.mapmode.ins`), so it stays as a human annotation on F-024
+  rather than becoming its own census ID.
+- **VIM-MODE-8** (Ex mode) is entered by `gQ` only — at the pinned Neovim revision `Q` is *replay-last-register*,
+  not an Ex-mode key (see `vim-style.yaml` census_corrections). Ex mode is not one of the eight map_mode
+  namespaces, so it too is kept as a legacy annotation (on F-026) rather than forced onto a census ID.
+- `C-o` in Insert runs **one** Normal command then returns; `gi` re-enters Insert at `` `^ `` — now an
+  obligation of the Insert namespace (VS-OBL-2, one-shot return), see the contract.
+- **⚠️** Operator-pending is a real namespace with an *abort* unmatched-key policy, not a transient flag on
+  Normal — modelled as `nvim.mapmode.opr` / the `operator_pending` contract namespace (was VIM-MODE-6).
 
 ## VIM-OP — Operators & Operator+Motion Grammar
 Source: `change.txt`, `motion.txt`. Grammar: `[count1] operator [count2] {motion|text-object}`; effective repeat = `count1 × count2`. Doubling → linewise (`dd yy >> == cc guu`).

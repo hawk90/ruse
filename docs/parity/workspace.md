@@ -9,6 +9,8 @@ summary: >
   into a text buffer.
 audience: [maintainers, contributors, llm-agents]
 status: draft
+source_of_truth: false
+verified_against_upstream: false
 related:
   - README.md
   - emacs.md
@@ -18,6 +20,14 @@ related:
 ---
 
 # Parity: Workspace Surfaces
+
+> **⚠️ NOT THE SOURCE OF TRUTH (D-043).** This file is hand-authored and has never been checked
+> against a pinned upstream revision. The parity source is the machine-derived census in
+> [`spec/parity/inventory/`](../../spec/parity/inventory/), generated from the SHA pins in
+> [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml). These tables survive as *human
+> annotation* — reading, grouping and intent — and are migrating onto census IDs. Do not add rows
+> here to record a newly discovered upstream feature: humans classify, they do not enumerate.
+
 
 Every workspace surface is a **view over a shared semantic view model** (not a cell grid, not a bespoke UI
 engine per feature). This is Emacs's "everything is a buffer" ([emacs.md](emacs.md) EMACS-BUFFER) realized

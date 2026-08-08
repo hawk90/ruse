@@ -20,6 +20,8 @@ related:
   - ../../parity/native-style.md
   - ../../parity/README.md
   - ../../invariants/reference-invariants.md
+  - ../../design/input-engine.md
+  - ../../../spec/parity/contracts/keymap-layers.yaml
   - ../../../spec/DECISIONS.md
 ---
 
@@ -45,8 +47,9 @@ ruse ships **three official, versioned input profiles** — Vim Style, Emacs Sty
 that share **one Semantic Command Layer**. A profile is not a keymap preset: each profile is an
 input grammar and state machine that **resolves onto** namespaced, typed semantic commands
 (D-006 / INV-CMD-SEMANTIC). Profiles are **isolated** — bindings from different profiles never
-share a key space (INV-PROFILE-ISOLATION) — and a **fixed-principle priority ABI** plus a **context
-key resolver** decide which binding fires (INV-PRIORITY, D-008). The load-bearing correction this
+share a key space (INV-PROFILE-ISOLATION) — and **two ordered axes** (a *scope* stack of keymap layers,
+D-045, plus a *provenance* order, D-008) with a **context key resolver** decide which binding fires
+(INV-PRIORITY, D-046 — this RFC originally wrote them as one eight-tier list). The load-bearing correction this
 RFC formalizes: the atomic-command model **cannot express Vim's `operator + count + motion|text-object`
 grammar**. That composition is a first-class core layer — the **editing-language engine**
 (`C-EDITLANG`, D-025) — and `editor.delete_selection` is a **sibling** of operator+motion (used by
@@ -104,14 +107,21 @@ RPC / macro  → org.example.git.stage
 ### A binding's identity is a tuple, not a key
 
 Because the same key means different things in different views/modes (architecture.md §1.3), a
-binding is identified by `(profile, sequence, context, priority)`, not by the key alone. Two
+binding is identified by `(profile, sequence, context, layer, provenance)`, not by the key alone. The
+last two fields were one `priority` integer when this RFC was written; D-046 split it, because the single
+integer was answering two independent questions — *is this keymap in scope?* and *who registered this
+binding?* Two
 bindings on the same key with **mutually exclusive contexts** (`view.kind == 'text'` vs
 `view.kind == 'git-status'`) are **not** a conflict; the **context key resolver** disambiguates
 them. A real conflict is narrow and **detected statically** (INV-PROFILE-ISOLATION):
 
 ```
-same profile + same key sequence + overlapping context + same priority
+same profile + same key sequence + overlapping context + same layer + same provenance
 ```
+
+Two bindings in **different layers** are therefore never a conflict — the stack already orders them. Under
+the pre-D-046 single integer they looked like a tier collision, which would have made a plugin binding
+`<C-n>` into its own popup layer collide with the user's `<C-n>` in the buffer layer.
 
 On a real conflict the editor **does not** let the last-loaded plugin silently win; it disables the
 new binding and asks the user to resolve (architecture.md §1.2). Because profiles are isolated, a
@@ -174,27 +184,45 @@ Per architecture.md §2 and the command contract (§2.3):
   Emacs M-x model (emacs.md EMACS-CMD-1: "invoke by name independent of any key"). `<Plug>`-style
   indirection is replaced by semantic command IDs (vim.md VIM-MAP-1).
 
-### 3. Priority ABI — principle-locked, tiers provisional (D-008)
+### 3. Priority is two axes — scope (decided) and provenance (still provisional) (D-046)
 
-Key resolution follows a **fixed priority ABI** (INV-PRIORITY). D-008 is **decided in principle,
-open in tiers** — this distinction is normative and must not be collapsed:
+Key resolution follows **two ordered axes** (INV-PRIORITY). This RFC originally wrote them as one
+eight-tier ABI; **D-046 split them**, and the split is normative — the two axes must not be
+re-collapsed into a single integer.
+
+**Axis 1 — SCOPE: which keymaps are consulted, in what order. DECIDED (D-045).** Old tiers 1–3. The
+key is offered to the active keymap **layers** by descending rank, and the first layer that *binds*
+resolves it; a layer marked `sealed` stops the walk whether or not it bound, applying its own
+`unmatched_key` policy. The mechanism is
+[`spec/parity/contracts/keymap-layers.yaml`](../../../spec/parity/contracts/keymap-layers.yaml); each
+of the three profiles this RFC ships is a *configuration* of it, not a mechanism of its own:
+
+  1. Temporary state (Vim operator-pending, Emacs prefix, popup nav) — the top-rank layer
+  2. Active widget/view (git, tree, debugger, picker)
+  3. Buffer-local — as many layers as the profile declares
+
+This is no longer provisional because it does not need plugins to validate: it is attested by three
+machine censuses at pinned revisions (D-043). **Verification V-28 dissolves here.** It required tier 3
+to be "an ordered sub-list, not flat — stacked minor modes ordered, text-span/overlay just above the
+major-mode map, mirroring Emacs `transient > ordered minor > major > global`". Under a layer stack a
+sub-list member is simply another layer, so there is no sub-list to encode. The Emacs census is what
+made the pressure visible: **613 of its 1,952 keyboard bindings live in major-mode maps** — old tier 3
+alone was being asked to hold a nine-deep stack while tiers 4–8 held one rank each.
+
+**Axis 2 — PROVENANCE: within the winning layer, whose binding wins. STILL OPEN (D-008).** Old tiers
+4–8. D-008 remains **decided in principle, open in ordering**, and that distinction is unchanged:
 
 - **Locked (principle):** profiles are isolated (never share a key space); user overrides beat
   plugin bindings; **plugins cannot force a global key** (they *suggest*; the user accepts via
   install flow/preset — architecture.md §1.4); real conflicts are detected statically. A plugin
-  may own keys **only inside its own special view**.
-- **Open (do NOT lock):** the exact 8-tier ordering — especially *plugin-explicit vs
-  plugin-suggested* — is **provisional**. It cannot be validated until an input engine (F-003) and
-  real plugins (F-016) exist; locking it now would violate D-010 ("don't stabilize the
-  unvalidated"). This RFC therefore records the ordering as **provisional guidance**, not a frozen
-  contract:
+  may own keys **only inside its own special view**, and a plugin never installs a *layer* — only
+  bindings into one.
+- **Open (do NOT lock):** the exact ordering — especially *plugin-explicit vs plugin-suggested* — is
+  **provisional**. No upstream census can attest it, because no editor publishes a table of who
+  registered a binding; it cannot be validated until an input engine (F-003) and real plugins (F-016)
+  exist, and locking it now would violate D-010 ("don't stabilize the unvalidated"). Recorded as
+  **provisional guidance**, not a frozen contract:
 
-  1. Temporary state (Vim operator-pending, Emacs prefix, popup nav)
-  2. Active widget/view (git, tree, debugger, picker)
-  3. Buffer-local mode — **an ordered sub-list, not flat** (verification V-28): stacked minor modes
-     form an ordered sub-list, and text-span/overlay keymaps rank just above the major-mode map.
-     This mirrors Emacs lookup precedence exactly (emacs.md EMACS-KEYMAP-2: "transient > **ordered**
-     minor > major > global"). The ABI must carry that ordered sub-list.
   4. Workspace override → 5. User profile override → 6. Plugin explicit → 7. Plugin suggested →
   8. Built-in profile default.
 
@@ -269,8 +297,9 @@ This RFC depends on and enforces:
 - **INV-PROFILE-ISOLATION** — bindings from different profiles never share a key space; a real
   conflict requires same profile + same sequence + overlapping context + same priority, detected
   statically. (D-008 principle.)
-- **INV-PRIORITY** — key resolution follows the fixed priority ABI; plugins cannot force global
-  keys. (D-008 principle; exact tiers provisional per D-008 open.)
+- **INV-PRIORITY** — key resolution follows two ordered axes: the *scope* layer stack (decided,
+  D-045) then *provenance* within the winning layer; plugins cannot force global keys. (D-046 split;
+  provenance ordering still provisional per D-008 open.)
 
 Related invariants it leans on (not introduced here): INV-PROTOCOL-VERSIONED (profiles/commands are
 versioned), INV-TXN / INV-UNDO (command mutations go through transactions), INV-ANCHOR / INV-POS-TYPED
@@ -374,8 +403,12 @@ D-002). No new `INV-*` is minted here; new invariants must be added to
 
 ## Re-evaluation conditions
 
-- **Priority tiers (D-008 open):** finalize once F-003 (input engine) and F-016 (plugins) exist and
-  the plugin-explicit vs plugin-suggested distinction can be validated on real plugins.
+- **Provenance tiers (D-008 open):** finalize once F-003 (input engine) and F-016 (plugins) exist and
+  the plugin-explicit vs plugin-suggested distinction can be validated on real plugins. *(The scope
+  half of the original eight is no longer waiting on this — D-046.)*
+- **The two axes are assumed independent (D-046).** If a profile ever needs provenance to reorder
+  *layers* rather than bindings inside one — a plugin that must install a whole layer above the
+  user's — the split needs a joining rule and this section reopens.
 - **C-EDITLANG (D-025):** close before F-003 reaches L2; if the motion IR cannot re-enter the input
   engine cleanly (incl. `:normal`/`:global`), revisit the profile/engine boundary.
 - **Command contract (D-006):** additive only; a need to change command *meaning* (not add) would
@@ -392,5 +425,9 @@ D-002). No new `INV-*` is minted here; new invariants must be added to
   mapping tables + differential tests (introduces `C-REGISTER`).
 - **D-027 — positions-history model (OPEN):** the model + pluggable membership/traversal rules for
   jumplist / mark-rings / selection-sets, and how point-rings and selection-sets coexist.
-- **D-008 open tail:** the exact 8-tier ordering, especially plugin-explicit vs plugin-suggested, and
-  how the tier-3 ordered sub-list (V-28) is encoded in the ABI.
+- **D-008 open tail:** the exact *provenance* ordering, especially plugin-explicit vs
+  plugin-suggested. *(The tier-3 ordered sub-list, V-28, is no longer part of this question — D-046
+  moved it to the scope axis, where a sub-list member is just another layer.)*
+- **KL-Q-LANG-ARG (D-045 re-evaluation trigger):** Vim's Lang-Arg **translates** a key and
+  re-dispatches rather than binding it, which makes layer resolution non-total. Blocks F-027; a
+  layer that rewrites-and-yields is expressible but must be designed, not assumed.

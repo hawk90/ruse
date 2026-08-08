@@ -8,6 +8,8 @@ summary: >
   clipboard/register/kill-ring model, large files, encoding/line endings.
 audience: [maintainers, contributors, llm-agents]
 status: draft
+source_of_truth: false
+verified_against_upstream: false
 related:
   - README.md
   - vim.md
@@ -16,6 +18,14 @@ related:
 ---
 
 # Parity: Common Editor Capabilities
+
+> **⚠️ NOT THE SOURCE OF TRUTH (D-043).** This file is hand-authored and has never been checked
+> against a pinned upstream revision. The parity source is the machine-derived census in
+> [`spec/parity/inventory/`](../../spec/parity/inventory/), generated from the SHA pins in
+> [`spec/parity/upstreams.yaml`](../../spec/parity/upstreams.yaml). These tables survive as *human
+> annotation* — reading, grouping and intent — and are migrating onto census IDs. Do not add rows
+> here to record a newly discovered upstream feature: humans classify, they do not enumerate.
+
 
 Capabilities shared by Vim, Neovim, and Emacs — provided once in the core and surfaced through every
 profile. Profile-specific keystrokes are in [vim.md](vim.md) / [emacs.md](emacs.md) / [native-style.md](native-style.md).

@@ -71,9 +71,13 @@ they do not mint new numbering.
 - **INV-PROFILE-ISOLATION** — Bindings from different input profiles never share a key space; a real
   conflict requires same profile + same sequence + overlapping context + same priority, and is detected
   statically. *Guards:* PROFILE-1/4/5.
-- **INV-PRIORITY** — Key resolution follows the fixed priority ABI (temporary state → active view →
-  buffer-local mode → workspace → user → plugin-explicit → plugin-suggested → built-in). Plugins cannot
-  force global keys. *Guards:* PROFILE-3/6/7.
+- **INV-PRIORITY** — Key resolution follows two ordered axes, never one flat tier list (D-046).
+  **Scope** (decided, D-045): the key is offered to the active keymap **layers** by descending rank —
+  temporary state → active view → buffer-local — stopping at the first layer that binds, or at a `sealed`
+  layer, whose own `unmatched_key` policy then applies. **Provenance** (principle locked, ordering open per
+  D-008): among bindings *within the winning layer*, workspace → user → plugin-explicit → plugin-suggested
+  → built-in. Plugins cannot force global keys, and a plugin never installs a layer — only bindings into
+  one. *Guards:* PROFILE-3/6/7.
 
 ## Plugin & Extension
 
