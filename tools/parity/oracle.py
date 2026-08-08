@@ -343,6 +343,17 @@ FIXTURES: list[dict] = [
     {"name": "mode_viwy_open_paste", "lines": ["hello"], "keys": "viwyo<Esc>p"},
     {"name": "mode_vjd_then_paste", "lines": ["abc", "def"], "keys": "vjdp"},
     {"name": "mode_append_then_insert_bol", "lines": ["mid"], "keys": "A!<Esc>0i?<Esc>"},
+    #     FORCED MOTION WISE (o_v / o_V): force charwise on a linewise motion, force linewise on a charwise
+    #     motion, and toggle a charwise motion's exclusive/inclusive edge. CTRL-V (blockwise) is deferred. --
+    {"name": "forced_dvj_charwise", "lines": ["hello", "world"], "keys": "dvj"},
+    {"name": "forced_dvk_charwise", "lines": ["hello", "world"], "keys": "jdvk"},
+    {"name": "forced_dVe_linewise", "lines": ["hello world"], "keys": "dVe"},
+    {"name": "forced_dVw_linewise", "lines": ["hello world"], "keys": "dVw"},
+    {"name": "forced_dvw_toggle_inclusive", "lines": ["hello world"], "keys": "dvw"},
+    {"name": "forced_dve_toggle_exclusive", "lines": ["hello world"], "keys": "dve"},
+    {"name": "forced_dv_dollar_toggle", "lines": ["hello world"], "keys": "dv$"},
+    {"name": "forced_dV_paragraph", "lines": ["one", "two", "", "three"], "keys": "dV}"},
+    {"name": "forced_yvj_then_paste", "lines": ["hello", "world"], "keys": "yvjP"},
     #     MIXED realistic refactors (navigate then edit; find-delimiter then change-inner) ---------------
     {"name": "refactor_2word_change_end", "lines": ["aa bb cc dd"], "keys": "2wceHELLO<Esc>0"},
     {"name": "refactor_find_paren_change_inner", "lines": ["foo(bar)baz"], "keys": "f(ci(X<Esc>"},

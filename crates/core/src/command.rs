@@ -23,6 +23,25 @@ pub enum SearchOp {
     Yank,
 }
 
+/// Which operator a forced-wise motion applies ([`Command::OpForced`]). The plain operator commands are
+/// [`Command::Delete`]/[`Command::Change`]/[`Command::Yank`]; this enum names the same three for the rarer
+/// forced-wise form so that form needs no parallel command per operator.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OpKind {
+    Delete,
+    Change,
+    Yank,
+}
+
+/// A motion's forced wise-ness (Vim `o_v` / `o_V`): the operator applies the motion but overrides whether
+/// the removed span is charwise or linewise. `Charwise` also toggles the motion's exclusive/inclusive edge
+/// (Vim's rule for `v`). Blockwise (`CTRL-V`) is deferred with the rest of blockwise support.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ForcedWise {
+    Charwise,
+    Linewise,
+}
+
 /// A semantic command — the granularity a trace records. Beyond single motions/edits it carries the editing
 /// grammar: a counted move, and the `delete`/`change` operators over a motion range (`dw`, `d2w`, `cc`).
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -68,6 +87,16 @@ pub enum Command {
     Move(u32, Motion),
     Delete(u32, Motion),
     Change(u32, Motion),
+    /// `{op}{v|V}{motion}` — an operator over a motion whose wise is FORCED (Vim `o_v`/`o_V`): `dvj`
+    /// deletes charwise where `dj` is linewise; `dVe` deletes whole lines where `de` is charwise. Kept
+    /// distinct from the plain operator commands so the common path stays a bare tuple; `count` multiplies
+    /// the motion as usual.
+    OpForced {
+        op: OpKind,
+        count: u32,
+        motion: Motion,
+        wise: ForcedWise,
+    },
     // registers (v0 unnamed slot): yank a motion range; paste after (`p`) or before (`P`) the cursor
     Yank(u32, Motion),
     /// `{count}p` / `{count}P` — paste the unnamed register `count` times, after (`p`) or before (`P`)
@@ -235,6 +264,38 @@ fn motion_from_token(s: &str) -> Option<Motion> {
 }
 
 /// Parse an operator/move argument `"<count> <motion>"` into a command via `ctor`.
+fn op_kind_token(op: OpKind) -> &'static str {
+    match op {
+        OpKind::Delete => "delete",
+        OpKind::Change => "change",
+        OpKind::Yank => "yank",
+    }
+}
+
+fn op_kind_from_token(s: &str) -> Option<OpKind> {
+    Some(match s {
+        "delete" => OpKind::Delete,
+        "change" => OpKind::Change,
+        "yank" => OpKind::Yank,
+        _ => return None,
+    })
+}
+
+fn forced_wise_token(w: ForcedWise) -> &'static str {
+    match w {
+        ForcedWise::Charwise => "charwise",
+        ForcedWise::Linewise => "linewise",
+    }
+}
+
+fn forced_wise_from_token(s: &str) -> Option<ForcedWise> {
+    Some(match s {
+        "charwise" => ForcedWise::Charwise,
+        "linewise" => ForcedWise::Linewise,
+        _ => return None,
+    })
+}
+
 fn search_op_token(op: SearchOp) -> &'static str {
     match op {
         SearchOp::Move => "move",
@@ -314,6 +375,17 @@ impl Command {
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
+            Command::OpForced {
+                op,
+                count,
+                motion,
+                wise,
+            } => format!(
+                "op_forced {} {} {count} {}",
+                op_kind_token(*op),
+                forced_wise_token(*wise),
+                motion_token(*motion)
+            ),
             Command::Yank(n, m) => format!("yank {n} {}", motion_token(*m)),
             Command::Paste { after, count } => {
                 if *after {
@@ -443,6 +515,33 @@ impl Command {
             "delete" => return op_cmd(arg, Command::Delete),
             "change" => return op_cmd(arg, Command::Change),
             "yank" => return op_cmd(arg, Command::Yank),
+            "op_forced" => {
+                // `op_forced {op} {wise} {count} {motion}`
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let op = it
+                    .next()
+                    .and_then(op_kind_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let wise = it
+                    .next()
+                    .and_then(forced_wise_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let count: u32 = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let motion = it
+                    .next()
+                    .and_then(motion_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::OpForced {
+                    op,
+                    count,
+                    motion,
+                    wise,
+                }
+            }
             "paste_after" => Command::Paste {
                 after: true,
                 count: arg
@@ -602,6 +701,24 @@ mod tests {
                 },
             ),
             Command::Change(3, Motion::WordEnd),
+            Command::OpForced {
+                op: OpKind::Delete,
+                count: 1,
+                motion: Motion::Down,
+                wise: ForcedWise::Charwise,
+            },
+            Command::OpForced {
+                op: OpKind::Yank,
+                count: 2,
+                motion: Motion::WordEnd,
+                wise: ForcedWise::Linewise,
+            },
+            Command::OpForced {
+                op: OpKind::Change,
+                count: 1,
+                motion: Motion::WordFwd,
+                wise: ForcedWise::Charwise,
+            },
             Command::Move(
                 1,
                 Motion::FindChar {
