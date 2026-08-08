@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+"""Neovim differential oracle — the executable half of the parity verification axis.
+
+This is the FIRST slice of ruse's parity verification: a harness that runs the pinned Neovim as a
+black box, feeds a fixture's keystrokes into a scratch buffer, and reads back the resulting editor
+state. The captured state becomes the `expect` of a fixture; a fixture is a hand-verified claim about
+what Vim's editing language *does*, pinned to an exact upstream revision (spec/parity/upstreams.yaml).
+
+WHY THE SELFTEST GATES EVERYTHING (spec/parity/upstreams.yaml#oracle_selftest):
+    Three prior oracle harnesses each corrupted their own first observation — `vim -es` reported the
+    HARNESS's mode instead of the fixture's; `emacs --batch execute-kbd-macro` left the buffer empty
+    while the kill-ring was correct; `emacs --batch read-from-minibuffer` hung forever. Oracle risk
+    exceeds extractor risk, so no fixture is trusted until `--selftest` reproduces cases whose answers
+    are known independently of the harness.
+
+THE NON-CORRUPTION TECHNIQUE (this harness's answer to that hazard):
+    1. Observation is READ-ONLY and happens AFTER mutation, never through a mutating call. Keys are
+       fed with `nvim_feedkeys(nvim_replace_termcodes(keys, true, false, true), 'x', false)` — mode
+       'x' executes synchronously and RETURNS, so every read (`nvim_buf_get_lines`,
+       `nvim_win_get_cursor`, `getreg`/`getregtype`) runs against already-settled state. No read
+       command is itself an editing command (the `vim -es` / `execute-kbd-macro` trap).
+    2. One fresh `nvim` PROCESS per fixture — `-u NONE -i NONE` (no user config, no shada). State
+       cannot leak between fixtures because there is no shared process to leak through.
+    3. The pin is VERIFIED, not assumed. `nvim --version` is parsed and asserted equal to the
+       `version_label` recorded in spec/parity/upstreams.yaml, and that version string is recorded in
+       every emitted document. A wrong binary refuses rather than silently recording a lie.
+
+Stdlib only (D-034): no PyYAML, no pip deps. The fixture corpus is emitted as JSON, which is a strict
+subset of YAML 1.2 — so `corpus.yaml` is valid YAML *and* parses with `serde_json` on the Rust side
+with no YAML dependency on either end.
+
+Usage:
+    python3 tools/parity/oracle.py --selftest          # prove non-corruption + determinism; gates the corpus
+    python3 tools/parity/oracle.py --generate [PATH]    # capture the fixture corpus from the oracle
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+UPSTREAMS = REPO_ROOT / "spec" / "parity" / "upstreams.yaml"
+DEFAULT_CORPUS = REPO_ROOT / "tests" / "parity" / "vim" / "fixtures" / "corpus.yaml"
+
+INVOKE = "nvim --headless -u NONE -i NONE -l <script>"
+
+# The Lua probe. It sets the buffer, homes the cursor, feeds the keys SYNCHRONOUSLY, then reads state.
+# Every line after feedkeys is a pure read — this ordering is the non-corruption guarantee.
+_LUA = r"""
+local input = vim.json.decode([==[ %s ]==])
+vim.api.nvim_buf_set_lines(0, 0, -1, false, input.lines)
+vim.api.nvim_win_set_cursor(0, {1, 0})
+local tc = vim.api.nvim_replace_termcodes(input.keys, true, false, true)
+vim.api.nvim_feedkeys(tc, 'x', false)
+io.write(vim.json.encode({
+  text        = vim.api.nvim_buf_get_lines(0, 0, -1, false),
+  cursor      = vim.api.nvim_win_get_cursor(0),
+  reg_unnamed = { vim.fn.getreg('"'), vim.fn.getregtype('"') },
+  reg0        = { vim.fn.getreg('0'), vim.fn.getregtype('0') },
+  mode        = vim.api.nvim_get_mode().mode,
+}))
+"""
+
+
+class OracleError(RuntimeError):
+    """The harness cannot make a trustworthy observation (bad binary, version mismatch, nvim error)."""
+
+
+def read_pin() -> dict[str, str]:
+    """Extract Neovim's pinned revision + version_label from spec/parity/upstreams.yaml.
+
+    Parsed by hand (stdlib only): locate the `neovim:` block under `upstreams:` and pull its two
+    scalar fields. We deliberately do NOT depend on PyYAML here — the oracle must run with nothing
+    installed, and a two-field lookup does not justify a parser dependency.
+    """
+    text = UPSTREAMS.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    try:
+        start = next(i for i, ln in enumerate(lines) if ln.rstrip() == "upstreams:")
+    except StopIteration as exc:  # pragma: no cover - the file always has this key
+        raise OracleError(f"no `upstreams:` section in {UPSTREAMS}") from exc
+    # The first 2-space-indented `neovim:` after `upstreams:`.
+    nv = next((i for i in range(start + 1, len(lines)) if lines[i] == "  neovim:"), None)
+    if nv is None:
+        raise OracleError("no `neovim:` upstream block")
+    rev = ver = None
+    for ln in lines[nv + 1 :]:
+        # Stop at the next upstream (2-space key) or a top-level key (dedent).
+        if re.match(r"^  \S", ln) or re.match(r"^\S", ln):
+            break
+        m = re.match(r"\s*revision:\s*(\S+)", ln)
+        if m and rev is None:
+            rev = m.group(1)
+        m = re.match(r"\s*version_label:\s*(\S+)", ln)
+        if m and ver is None:
+            ver = m.group(1)
+    if not rev or not ver:
+        raise OracleError("neovim block missing revision/version_label")
+    return {"revision": rev, "version_label": ver}
+
+
+def nvim_version() -> str:
+    """The first line of `nvim --version`, e.g. 'NVIM v0.12.4'. Recorded in every run."""
+    try:
+        out = subprocess.run(
+            ["nvim", "--version"], capture_output=True, text=True, check=True
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise OracleError(f"cannot run `nvim --version`: {exc}") from exc
+    return out.stdout.splitlines()[0].strip()
+
+
+def assert_pin(version_line: str, pin: dict[str, str]) -> None:
+    """Refuse to observe through a binary that is not the pinned revision (contract: warn/refuse).
+
+    We match the `version_label` (e.g. 'v0.12.4') as a token in `nvim --version`. A release binary
+    does not expose the peeled commit sha, so the label is the strongest check available here; the
+    sha is still recorded in the emitted document so the claim is auditable.
+    """
+    label = pin["version_label"]
+    if not re.search(rf"\b{re.escape(label)}\b", version_line):
+        raise OracleError(
+            f"nvim version mismatch: `{version_line}` is not the pinned {label} "
+            f"(spec/parity/upstreams.yaml neovim revision {pin['revision']}). "
+            "Refusing: a fixture captured through the wrong binary is not evidence."
+        )
+
+
+def _regtype(rt: str) -> str:
+    """Normalize Vim's getregtype() code to a stable observable name."""
+    if rt == "":
+        return ""  # empty register (nothing yanked/deleted)
+    if rt == "v":
+        return "charwise"
+    if rt == "V":
+        return "linewise"
+    if rt and rt[0] == "\x16":  # CTRL-V prefix
+        return "blockwise"
+    return rt
+
+
+def run_neovim(lines: list[str], keys: str) -> dict:
+    """Run the pinned Neovim on `lines`, feed `keys` in Normal mode, and return the settled state.
+
+    Returns {text, cursor:[row1,col0], reg_unnamed:{text,type}, reg0:{text,type}, mode, nvim_version}.
+    The read happens strictly after synchronous feedkeys — see the module docstring for why that is
+    the whole point.
+    """
+    payload = json.dumps({"lines": lines, "keys": keys})
+    src = _LUA % payload
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".lua", delete=False, encoding="utf-8"
+    ) as fh:
+        fh.write(src)
+        script = fh.name
+    try:
+        proc = subprocess.run(
+            ["nvim", "--headless", "-u", "NONE", "-i", "NONE", "-l", script],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        Path(script).unlink(missing_ok=True)
+    if proc.returncode != 0 or not proc.stdout:
+        raise OracleError(
+            f"nvim failed (rc={proc.returncode}) on keys={keys!r}: "
+            f"{proc.stderr.strip() or '<no stderr>'}"
+        )
+    raw = json.loads(proc.stdout)
+    ru_text, ru_type = raw["reg_unnamed"]
+    r0_text, r0_type = raw["reg0"]
+    return {
+        "text": raw["text"],
+        "cursor": raw["cursor"],
+        "reg_unnamed": {"text": ru_text, "type": _regtype(ru_type)},
+        "reg0": {"text": r0_text, "type": _regtype(r0_type)},
+        "mode": raw["mode"],
+        "nvim_version": nvim_version(),
+    }
+
+
+# --- The fixture corpus: ALREADY-IMPLEMENTED ruse ops. `expect` is captured from the oracle, never
+#     hand-written; the (lines, keys) here are the only human-authored part. `<Esc>` is passed
+#     verbatim to nvim_replace_termcodes and is understood identically by the Rust key tokenizer.
+FIXTURES: list[dict] = [
+    {"name": "x_delete_char", "lines": ["hello"], "keys": "x"},
+    {"name": "dw_delete_word", "lines": ["foo bar"], "keys": "dw"},
+    {"name": "de_to_word_end", "lines": ["foobar baz"], "keys": "de"},
+    {"name": "daw_a_word", "lines": ["foo bar baz"], "keys": "daw"},
+    {"name": "diw_inner_word", "lines": ["foo bar baz"], "keys": "diw"},
+    {"name": "dd_delete_line", "lines": ["alpha", "beta"], "keys": "dd"},
+    {"name": "cw_change_word", "lines": ["foo bar"], "keys": "cwbaz<Esc>"},
+    {"name": "yy_p_duplicate_line", "lines": ["one", "two"], "keys": "yyp"},
+    {"name": "r_replace_char", "lines": ["hello"], "keys": "rz"},
+    {"name": "tilde_toggle_case", "lines": ["abc"], "keys": "~"},
+    {"name": "di_paren_inner", "lines": ["foo (bar) baz"], "keys": "di("},
+    {"name": "da_quote_around", "lines": ['say "hi" now'], "keys": 'da"'},
+]
+
+
+def generate(path: Path) -> int:
+    """Capture every fixture's `expect` from the oracle and write the corpus as JSON-in-YAML."""
+    pin = read_pin()
+    version_line = nvim_version()
+    assert_pin(version_line, pin)
+
+    fixtures = []
+    for spec in FIXTURES:
+        state = run_neovim(spec["lines"], spec["keys"])
+        fixtures.append(
+            {
+                "name": spec["name"],
+                "lines": spec["lines"],
+                "keys": spec["keys"],
+                "expect": {
+                    "text": state["text"],
+                    "cursor": state["cursor"],
+                    "reg_unnamed": state["reg_unnamed"],
+                    "reg0": state["reg0"],
+                },
+            }
+        )
+
+    corpus = {
+        "version": 1,
+        "generator": "tools/parity/oracle.py",
+        "note": (
+            "GENERATED — every `expect` was captured from the pinned Neovim oracle, never "
+            "hand-written. Regenerate with `python3 tools/parity/oracle.py --generate`. "
+            "JSON is a subset of YAML 1.2, so this .yaml parses on both ends without a YAML dep."
+        ),
+        "oracle": {
+            "editor": "neovim",
+            "invoke": INVOKE,
+            "nvim_version": version_line,
+            "pin_version_label": pin["version_label"],
+            "pin_revision": pin["revision"],
+            "captured_observables": ["text", "cursor", "reg_unnamed", "reg0"],
+            "ruse_compare_observables": ["text", "cursor", "reg_unnamed"],
+            "reg0_note": (
+                "reg0 is captured for completeness but excluded from the ruse comparison: ruse's "
+                "core models a single unnamed register (D-026), with no separate yank register."
+            ),
+        },
+        "fixtures": fixtures,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(corpus, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    print(f"wrote {len(fixtures)} oracle-captured fixtures to {path}")
+    print(f"oracle: {version_line} (pin {pin['version_label']} / {pin['revision']})")
+    return 0
+
+
+# --- Selftest: the gate. Every case below has an answer known independently of this harness. ---
+
+
+def _fail(msg: str) -> None:
+    print(f"FAIL: {msg}")
+
+
+def selftest() -> int:
+    """Prove the harness does not corrupt its own observation. Exit non-zero on any disagreement."""
+    pin = read_pin()
+    version_line = nvim_version()
+    print(f"oracle selftest — {version_line} (pin {pin['version_label']})")
+    try:
+        assert_pin(version_line, pin)
+    except OracleError as exc:
+        _fail(str(exc))
+        return 1
+
+    failures = 0
+
+    # 1. IDENTITY — the empty keystroke must not perturb text or cursor. A harness that mutates on
+    #    observation (the core hazard) fails here first.
+    ident = run_neovim(["hello", "world"], "")
+    if ident["text"] != ["hello", "world"]:
+        _fail(f"identity: text changed on keys='' -> {ident['text']}")
+        failures += 1
+    if ident["cursor"] != [1, 0]:
+        _fail(f"identity: cursor moved on keys='' -> {ident['cursor']}")
+        failures += 1
+
+    # 2. DETERMINISM — the same (lines, keys) twice must yield identical observations. Non-determinism
+    #    means shared state leaked between runs (the shada/config hazard `-u NONE -i NONE` guards).
+    a = run_neovim(["foo bar baz"], "dw")
+    b = run_neovim(["foo bar baz"], "dw")
+    for k in ("text", "cursor", "reg_unnamed", "reg0"):
+        if a[k] != b[k]:
+            _fail(f"determinism: {k} differs across identical runs: {a[k]} != {b[k]}")
+            failures += 1
+
+    # 3. KNOWN OPS — hand-verified expectations. If the oracle disagrees with these, it is LYING and
+    #    no fixture recorded through it can be trusted.
+    known = [
+        ("x on 'hello' -> 'ello'", ["hello"], "x", lambda s: s["text"] == ["ello"]),
+        ("dw on 'foo bar' -> 'bar'", ["foo bar"], "dw", lambda s: s["text"] == ["bar"]),
+        (
+            "dd on ['a','b'] -> ['b']",
+            ["a", "b"],
+            "dd",
+            lambda s: s["text"] == ["b"],
+        ),
+        (
+            "yy sets reg0 linewise",
+            ["hello"],
+            "yy",
+            lambda s: s["reg0"]["type"] == "linewise" and s["reg0"]["text"] == "hello\n",
+        ),
+    ]
+    for label, lines, keys, ok in known:
+        state = run_neovim(lines, keys)
+        if not ok(state):
+            _fail(f"known-op disagreement: {label} — got {state['text']} / reg0={state['reg0']}")
+            failures += 1
+
+    if failures:
+        print(f"oracle selftest FAILED ({failures} check(s)) — the corpus is NOT trustworthy.")
+        return 1
+    print("oracle selftest PASSED — identity, determinism, and known ops all hold.")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    args = argv[1:]
+    try:
+        if "--selftest" in args:
+            return selftest()
+        if "--generate" in args:
+            i = args.index("--generate")
+            path = (
+                Path(args[i + 1]).resolve()
+                if i + 1 < len(args) and not args[i + 1].startswith("-")
+                else DEFAULT_CORPUS
+            )
+            return generate(path)
+    except OracleError as exc:
+        print(f"oracle error: {exc}")
+        return 2
+    print(__doc__)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

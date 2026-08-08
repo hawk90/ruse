@@ -22,6 +22,8 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 # Property-based tests of the input-engine state machine (no pending leak, orthogonal-axis invariants).
 proptest = { version = "1", default-features = false, features = ["std"] }
+# Parity fixture corpus is JSON-in-YAML (a subset of YAML 1.2); serde_json reads it with no YAML dep.
+serde_json = "1"
 
 [[bench]]
 name = "highlight_parse"
