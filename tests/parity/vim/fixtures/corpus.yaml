@@ -784,6 +784,567 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "dw_on_punct",
+      "lines": [
+        "foo.bar baz"
+      ],
+      "keys": "dw",
+      "expect": {
+        "text": [
+          ".bar baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "de_on_dotted",
+      "lines": [
+        "a.b.c"
+      ],
+      "keys": "de",
+      "expect": {
+        "text": [
+          "b.c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dw_last_word",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "wdw",
+      "expect": {
+        "text": [
+          "hello "
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "world",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "x_on_empty_line",
+      "lines": [
+        ""
+      ],
+      "keys": "x",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dw_on_empty_line",
+      "lines": [
+        ""
+      ],
+      "keys": "dw",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dd_on_last_line",
+      "lines": [
+        "alpha",
+        "beta"
+      ],
+      "keys": "Gdd",
+      "expect": {
+        "text": [
+          "alpha"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "beta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "j_past_last_line",
+      "lines": [
+        "alpha",
+        "beta"
+      ],
+      "keys": "Gj",
+      "expect": {
+        "text": [
+          "alpha",
+          "beta"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "x_unicode_multibyte",
+      "lines": [
+        "αβγ"
+      ],
+      "keys": "x",
+      "expect": {
+        "text": [
+          "βγ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "α",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "x_emoji",
+      "lines": [
+        "a😀b"
+      ],
+      "keys": "lx",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "😀",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dw_unicode",
+      "lines": [
+        "héllo wörld"
+      ],
+      "keys": "dw",
+      "expect": {
+        "text": [
+          "wörld"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "héllo ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tilde_unicode",
+      "lines": [
+        "αβ"
+      ],
+      "keys": "~",
+      "expect": {
+        "text": [
+          "Αβ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_dquote_unicode",
+      "lines": [
+        "say \"héllo\" now"
+      ],
+      "keys": "di\"",
+      "expect": {
+        "text": [
+          "say \"\" now"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "héllo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_paren_nested_outer",
+      "lines": [
+        "(a(b)c)"
+      ],
+      "keys": "di(",
+      "expect": {
+        "text": [
+          "()"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a(b)c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_paren_nested_inner",
+      "lines": [
+        "(a(b)c)"
+      ],
+      "keys": "f(di(",
+      "expect": {
+        "text": [
+          "(a()c)"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "da_paren_innermost",
+      "lines": [
+        "(a(b)c)"
+      ],
+      "keys": "fbda(",
+      "expect": {
+        "text": [
+          "(ac)"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "(b)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "viwd_visual_inner_word",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wviwd",
+      "expect": {
+        "text": [
+          "foo  baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "Vd_visual_line",
+      "lines": [
+        "alpha",
+        "beta"
+      ],
+      "keys": "Vd",
+      "expect": {
+        "text": [
+          "beta"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "alpha\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vjd_visual_charwise_lines",
+      "lines": [
+        "hello",
+        "world"
+      ],
+      "keys": "vjd",
+      "expect": {
+        "text": [
+          "orld"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello\nw",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "v_dollar_y",
+      "lines": [
+        "hello"
+      ],
+      "keys": "v$y",
+      "expect": {
+        "text": [
+          "hello"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "hello",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "yy_p_last_line",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "Gyyp",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "two"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "two\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "two\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "x_then_p",
+      "lines": [
+        "abc"
+      ],
+      "keys": "xp",
+      "expect": {
+        "text": [
+          "bac"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_5x_past_eol",
+      "lines": [
+        "abc"
+      ],
+      "keys": "5x",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_3dd_past_last",
+      "lines": [
+        "alpha",
+        "beta"
+      ],
+      "keys": "3dd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "alpha\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }
