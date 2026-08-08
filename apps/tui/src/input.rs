@@ -372,6 +372,15 @@ pub struct InputEngine {
     /// A forced motion wise armed by `v`/`V` after an operator (Vim `o_v`/`o_V`): the NEXT motion resolves
     /// into a [`Command::OpForced`] instead of a plain operator command. `None` unless mid-`dv…`/`dV…`.
     forced_wise: Option<ForcedWise>,
+    /// Insert-mode `CTRL-O`: run exactly ONE Normal-mode command, then return to Insert (Vim `i_CTRL-O`).
+    /// While set, `feed` routes keys through the Normal grammar instead of the Insert layer; a completed
+    /// command clears it (via `reset`), so subsequent keys are Insert again. The core needs no help — every
+    /// Normal editing/motion command inherits `st.mode` (Insert) and the Normal-only cursor clamp is gated
+    /// on Normal mode, so the command applies correctly and the buffer stays in Insert on its own.
+    insert_one_shot: bool,
+    /// Insert-mode `CTRL-G` prefix: the next key is expected to be `u` (undo-break, [`Command::BreakUndo`]).
+    /// A one-key expectation local to Insert; any other second key aborts the prefix (Vim beeps).
+    insert_ctrl_g: bool,
 }
 
 impl InputEngine {
@@ -389,6 +398,8 @@ impl InputEngine {
             pending_record_register: None,
             pending_search: None,
             forced_wise: None,
+            insert_one_shot: false,
+            insert_ctrl_g: false,
         }
     }
 
@@ -465,6 +476,9 @@ impl InputEngine {
         self.op = None;
         self.awaiting = Awaiting::Nothing;
         self.forced_wise = None;
+        // A `CTRL-O` one-shot is consumed the instant its single Normal command completes (every
+        // completion runs through here), returning the engine to plain Insert routing.
+        self.insert_one_shot = false;
     }
 
     fn mcount(&self) -> u32 {
@@ -590,10 +604,52 @@ impl InputEngine {
 
     /// Feed one key given the current mode.
     fn feed_impl(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        // The `CTRL-O` one-shot and the `CTRL-G` prefix are Insert-only transient state, armed and consumed
+        // between two consecutive Insert keys. Real flows keep the mode in Insert across them; a key that
+        // arrives in any other mode means the insert context is gone, so the flags are stale — drop them so
+        // they can never leak into a Normal/Visual command.
+        if mode != Mode::Insert {
+            self.insert_one_shot = false;
+            self.insert_ctrl_g = false;
+        }
         // Insert resolves through its LAYER, not through an early return ahead of everything else.
         // The bindings and the `open/insert` policy both live in `VimProfile`, so the namespace is
         // addressable in its own right (KL-OBL-1) and its policy is declared (KL-OBL-2).
-        if mode == Mode::Insert {
+        //
+        // Two multi-key insert sequences are handled BEFORE the layer: `CTRL-O` (arm a one-shot Normal
+        // command, then fall through to the Normal grammar for the rest of this and following keys until it
+        // completes) and `CTRL-G u` (undo-break). A `CTRL-O` already in flight (`insert_one_shot`) skips the
+        // insert branch entirely so the pending Normal command keeps resolving.
+        if mode == Mode::Insert && !self.insert_one_shot {
+            let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+            // `CTRL-G` prefix: consume the second key. `u` (or `U`) breaks the undo group; anything else
+            // aborts the prefix without inserting (Vim beeps). Checked before the layer so the printable
+            // path never sees the prefixed key.
+            if self.insert_ctrl_g {
+                self.insert_ctrl_g = false;
+                return match key.code {
+                    // `action` clears the transient axes (like every other completed key), so no partial
+                    // Normal state can survive an Insert key.
+                    KeyCode::Char('u') | KeyCode::Char('U') => self.action(Command::BreakUndo),
+                    _ => {
+                        self.reset();
+                        Feed::Ignored
+                    }
+                };
+            }
+            if ctrl && key.code == KeyCode::Char('o') {
+                // Arm the one-shot: the NEXT keys resolve through the Normal grammar; on completion
+                // `reset()` disarms it and Insert routing resumes. Core mode stays Insert throughout.
+                // Reset first so the one-shot begins from a clean count/operator/awaiting state.
+                self.reset();
+                self.insert_one_shot = true;
+                return Feed::Pending;
+            }
+            if ctrl && key.code == KeyCode::Char('g') {
+                self.reset();
+                self.insert_ctrl_g = true;
+                return Feed::Pending;
+            }
             if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code)
             {
                 let cmd = value.clone();
@@ -1083,6 +1139,60 @@ mod tests {
     #[test]
     fn cw_is_ce() {
         assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordEnd)));
+    }
+
+    fn ctrl(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn ctrl_o_runs_one_normal_command_then_returns_to_insert() {
+        // In Insert, CTRL-O arms a one-shot (Pending); the next key resolves through the NORMAL grammar
+        // (here `x` → DeleteUnder), then the engine returns to plain Insert routing.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('o'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('x'), Mode::Insert),
+            Feed::Cmd(Command::DeleteUnder(1))
+        );
+        // Disarmed: the next key is an inserted char again, not a Normal command.
+        assert_eq!(
+            e.feed(k('x'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('x'))
+        );
+    }
+
+    #[test]
+    fn ctrl_o_spans_a_multi_key_normal_command() {
+        // A one-shot survives the intermediate Pending keys of a multi-key command (`dw`), disarming only
+        // when the command completes.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('o'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('d'), Mode::Insert), Feed::Pending); // operator armed
+        assert_eq!(
+            e.feed(k('w'), Mode::Insert),
+            Feed::Cmd(Command::Delete(1, Motion::WordFwd))
+        );
+        assert_eq!(
+            e.feed(k('z'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('z')),
+            "back to Insert after the one-shot command completes"
+        );
+    }
+
+    #[test]
+    fn ctrl_g_u_breaks_undo_and_other_second_keys_abort() {
+        // CTRL-G is a one-key prefix in Insert: `u` (or `U`) emits BreakUndo.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('g'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('u'), Mode::Insert), Feed::Cmd(Command::BreakUndo));
+        // A non-`u` second key aborts the prefix without inserting; Insert then resumes normally.
+        assert_eq!(e.feed(ctrl('g'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('x'), Mode::Insert), Feed::Ignored);
+        assert_eq!(
+            e.feed(k('y'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('y'))
+        );
     }
 
     pub(super) fn esc() -> KeyEvent {
@@ -1967,13 +2077,20 @@ mod state_machine_props {
                     );
                 }
                 if feed == Feed::Pending {
-                    // A pending outcome must correspond to real accumulated state.
-                    let has_state = e.count > 0 || e.op.is_some() || e.awaiting != Awaiting::Nothing;
+                    // A pending outcome must correspond to real accumulated state — including the two
+                    // Insert-only prefixes (`CTRL-O` one-shot, `CTRL-G u`), which are pending too.
+                    let has_state = e.count > 0
+                        || e.op.is_some()
+                        || e.awaiting != Awaiting::Nothing
+                        || e.insert_one_shot
+                        || e.insert_ctrl_g;
                     prop_assert!(has_state, "Feed::Pending but the engine is idle");
                 } else {
                     prop_assert_eq!(e.count, 0, "count leaked after {:?}", feed);
                     prop_assert!(e.op.is_none(), "operator leaked after {:?}", feed);
                     prop_assert!(e.awaiting == Awaiting::Nothing, "key-expectation leaked after {:?}", feed);
+                    prop_assert!(!e.insert_one_shot, "one-shot leaked after {:?}", feed);
+                    prop_assert!(!e.insert_ctrl_g, "ctrl-g prefix leaked after {:?}", feed);
                 }
             }
         }
