@@ -223,6 +223,38 @@ FIXTURES: list[dict] = [
     {"name": "count_tilde", "lines": ["abcdef"], "keys": "3~"},
     {"name": "count_r", "lines": ["abcdef"], "keys": "3rz"},
     {"name": "shift_right_line", "lines": ["hello"], "keys": ">>"},
+    # --- edge-case corpus (impl/corpus-edgecases): CORNERS of already-implemented ops, chosen to
+    #     surface subtle correctness bugs the way the earlier di( forward-scan bug was caught.
+    #     word motions on punctuation / mixed classes / last word --------------------------------------
+    {"name": "dw_on_punct", "lines": ["foo.bar baz"], "keys": "dw"},
+    {"name": "de_on_dotted", "lines": ["a.b.c"], "keys": "de"},
+    {"name": "dw_last_word", "lines": ["hello world"], "keys": "wdw"},
+    #     operators on empty / single-char / last line ------------------------------------------------
+    {"name": "x_on_empty_line", "lines": [""], "keys": "x"},
+    {"name": "dw_on_empty_line", "lines": [""], "keys": "dw"},
+    {"name": "dd_on_last_line", "lines": ["alpha", "beta"], "keys": "Gdd"},
+    {"name": "j_past_last_line", "lines": ["alpha", "beta"], "keys": "Gj"},
+    #     multi-byte / unicode buffers (byte-index correctness) --------------------------------------
+    {"name": "x_unicode_multibyte", "lines": ["αβγ"], "keys": "x"},
+    {"name": "x_emoji", "lines": ["a😀b"], "keys": "lx"},
+    {"name": "dw_unicode", "lines": ["héllo wörld"], "keys": "dw"},
+    {"name": "tilde_unicode", "lines": ["αβ"], "keys": "~"},
+    {"name": "di_dquote_unicode", "lines": ['say "héllo" now'], "keys": 'di"'},
+    #     delimiter nesting ---------------------------------------------------------------------------
+    {"name": "di_paren_nested_outer", "lines": ["(a(b)c)"], "keys": "di("},
+    {"name": "di_paren_nested_inner", "lines": ["(a(b)c)"], "keys": "f(di("},
+    {"name": "da_paren_innermost", "lines": ["(a(b)c)"], "keys": "fbda("},
+    #     visual mode ---------------------------------------------------------------------------------
+    {"name": "viwd_visual_inner_word", "lines": ["foo bar baz"], "keys": "wviwd"},
+    {"name": "Vd_visual_line", "lines": ["alpha", "beta"], "keys": "Vd"},
+    {"name": "vjd_visual_charwise_lines", "lines": ["hello", "world"], "keys": "vjd"},
+    {"name": "v_dollar_y", "lines": ["hello"], "keys": "v$y"},
+    #     paste geometry ------------------------------------------------------------------------------
+    {"name": "yy_p_last_line", "lines": ["one", "two"], "keys": "Gyyp"},
+    {"name": "x_then_p", "lines": ["abc"], "keys": "xp"},
+    #     count edges ---------------------------------------------------------------------------------
+    {"name": "count_5x_past_eol", "lines": ["abc"], "keys": "5x"},
+    {"name": "count_3dd_past_last", "lines": ["alpha", "beta"], "keys": "3dd"},
 ]
 
 
