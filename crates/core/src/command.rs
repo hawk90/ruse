@@ -55,9 +55,17 @@ pub enum Command {
     EnterVisual {
         line: bool,
     },
+    /// `CTRL-G` from Visual — enter Select over the SAME selection (Visual↔Select toggle). Select
+    /// shares Visual's anchor/shape and differs only in its unmatched-key policy (contracts/vim-style.yaml).
+    EnterSelect {
+        line: bool,
+    },
     DeleteSelection,
     YankSelection,
     ChangeSelection,
+    /// Select's `open/replace-selection` policy: a printable key deletes the selection, inserts the char,
+    /// and enters Insert. The one behaviour that distinguishes Select from Visual over identical state.
+    ReplaceSelection(char),
     // search (literal substring for v0; the pattern is carried so traces replay deterministically)
     SearchNext(String),
     SearchPrev(String),
@@ -209,9 +217,21 @@ impl Command {
                     "enter_visual".into()
                 }
             }
+            Command::EnterSelect { line } => {
+                if *line {
+                    "enter_select_line".into()
+                } else {
+                    "enter_select".into()
+                }
+            }
             Command::DeleteSelection => "delete_selection".into(),
             Command::YankSelection => "yank_selection".into(),
             Command::ChangeSelection => "change_selection".into(),
+            Command::ReplaceSelection(c) => {
+                let mut s = String::from("replace_selection ");
+                let _ = write!(s, "{}", *c as u32);
+                s
+            }
             Command::SearchNext(p) => format!("search_next {p}"),
             Command::SearchPrev(p) => format!("search_prev {p}"),
             Command::Undo => "undo".into(),
@@ -276,9 +296,19 @@ impl Command {
             "paste_before" => Command::Paste { after: false },
             "enter_visual" => Command::EnterVisual { line: false },
             "enter_visual_line" => Command::EnterVisual { line: true },
+            "enter_select" => Command::EnterSelect { line: false },
+            "enter_select_line" => Command::EnterSelect { line: true },
             "delete_selection" => Command::DeleteSelection,
             "yank_selection" => Command::YankSelection,
             "change_selection" => Command::ChangeSelection,
+            "replace_selection" => {
+                let cp: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::ReplaceSelection(c)
+            }
             "search_next" => Command::SearchNext(raw.to_string()),
             "search_prev" => Command::SearchPrev(raw.to_string()),
             "undo" => Command::Undo,
@@ -363,9 +393,14 @@ mod tests {
             Command::Paste { after: false },
             Command::EnterVisual { line: false },
             Command::EnterVisual { line: true },
+            Command::EnterSelect { line: false },
+            Command::EnterSelect { line: true },
             Command::DeleteSelection,
             Command::YankSelection,
             Command::ChangeSelection,
+            Command::ReplaceSelection('z'),
+            Command::ReplaceSelection('가'),
+            Command::ReplaceSelection('🎉'),
             Command::SearchNext("foo bar".into()),
             Command::SearchPrev("x".into()),
             Command::Undo,

@@ -373,6 +373,8 @@ fn render(
                 Mode::Insert => "INSERT",
                 Mode::Visual { line: false } => "VISUAL",
                 Mode::Visual { line: true } => "V-LINE",
+                Mode::Select { line: false } => "SELECT",
+                Mode::Select { line: true } => "S-LINE",
             };
             let name = path
                 .map(|p| p.display().to_string())
