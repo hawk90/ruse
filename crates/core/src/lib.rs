@@ -36,7 +36,7 @@ pub mod transaction;
 pub mod undo;
 
 pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
-pub use command::{Command, CommandParseError, SearchOp};
+pub use command::{Command, CommandParseError, ForcedWise, OpKind, SearchOp};
 pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
 pub use editor::{apply_command, commit, plan, EditorState, IndentStyle, Mode, Plan};

@@ -4,7 +4,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
-use ruse_core::{Command, Mode, Motion, SearchOp};
+use ruse_core::{Command, ForcedWise, Mode, Motion, OpKind, SearchOp};
 
 /// The outcome of feeding one key to the engine.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -98,7 +98,10 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::OpenAbove
         | C::Change(..)
         | C::ChangeSelection
-        | C::ReplaceSelection(_) => ChangeKind::InsertEntering,
+        | C::ReplaceSelection(_)
+        | C::OpForced {
+            op: OpKind::Change, ..
+        } => ChangeKind::InsertEntering,
         // Self-contained buffer edits — dot-repeatable as a single command.
         C::Delete(..)
         | C::DeleteUnder(_)
@@ -109,8 +112,11 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::ShiftRight(_)
         | C::ShiftLeft(_)
         | C::Paste { .. }
-        | C::DeleteSelection => ChangeKind::Immediate,
-        // Everything else (motions, mode switches, yank, search, undo/redo, save/quit) is not a change.
+        | C::DeleteSelection
+        | C::OpForced {
+            op: OpKind::Delete, ..
+        } => ChangeKind::Immediate,
+        // Everything else (motions, mode switches, yank incl. forced yank, search, undo/redo) is not a change.
         _ => ChangeKind::NotAChange,
     }
 }
@@ -124,6 +130,14 @@ fn with_count(cmd: &Command, n: u32) -> Command {
         C::Delete(_, m) => C::Delete(n, *m),
         C::Change(_, m) => C::Change(n, *m),
         C::Yank(_, m) => C::Yank(n, *m),
+        C::OpForced {
+            op, motion, wise, ..
+        } => C::OpForced {
+            op: *op,
+            count: n,
+            motion: *motion,
+            wise: *wise,
+        },
         C::DeleteUnder(_) => C::DeleteUnder(n),
         C::ReplaceChar(_, c) => C::ReplaceChar(n, *c),
         C::ToggleCase(_) => C::ToggleCase(n),
@@ -355,6 +369,9 @@ pub struct InputEngine {
     /// so `submit_search` can fold them into the finished command (`d/pat`, `2/pat`). `/` captures this
     /// BEFORE `reset()` wipes the axes; `None` between searches. See [`InputEngine::submit_search`].
     pending_search: Option<(SearchOp, u32)>,
+    /// A forced motion wise armed by `v`/`V` after an operator (Vim `o_v`/`o_V`): the NEXT motion resolves
+    /// into a [`Command::OpForced`] instead of a plain operator command. `None` unless mid-`dv…`/`dV…`.
+    forced_wise: Option<ForcedWise>,
 }
 
 impl InputEngine {
@@ -371,6 +388,7 @@ impl InputEngine {
             recording: None,
             pending_record_register: None,
             pending_search: None,
+            forced_wise: None,
         }
     }
 
@@ -446,6 +464,7 @@ impl InputEngine {
         self.count = 0;
         self.op = None;
         self.awaiting = Awaiting::Nothing;
+        self.forced_wise = None;
     }
 
     fn mcount(&self) -> u32 {
@@ -457,18 +476,34 @@ impl InputEngine {
         let cmd = match self.op {
             Some(OpPending { op, count }) => {
                 let total = count.max(1) * self.mcount();
-                match op {
-                    Op::Delete => Command::Delete(total, m),
-                    // Vim `cw`/`cW` behave like `ce`/`cE` (do not eat the trailing space).
-                    Op::Change => Command::Change(
-                        total,
-                        match m {
-                            Motion::WordFwd => Motion::WordEnd,
-                            Motion::BigWordFwd => Motion::BigWordEnd,
-                            other => other,
-                        },
-                    ),
-                    Op::Yank => Command::Yank(total, m),
+                // A forced wise (`dvj`/`dVe`) resolves into `OpForced`; the `cw`->`ce` rewrite is a plain-
+                // change nicety that does not apply to the (rare) forced-change form.
+                if let Some(wise) = self.forced_wise {
+                    let opk = match op {
+                        Op::Delete => OpKind::Delete,
+                        Op::Change => OpKind::Change,
+                        Op::Yank => OpKind::Yank,
+                    };
+                    Command::OpForced {
+                        op: opk,
+                        count: total,
+                        motion: m,
+                        wise,
+                    }
+                } else {
+                    match op {
+                        Op::Delete => Command::Delete(total, m),
+                        // Vim `cw`/`cW` behave like `ce`/`cE` (do not eat the trailing space).
+                        Op::Change => Command::Change(
+                            total,
+                            match m {
+                                Motion::WordFwd => Motion::WordEnd,
+                                Motion::BigWordFwd => Motion::BigWordEnd,
+                                other => other,
+                            },
+                        ),
+                        Op::Yank => Command::Yank(total, m),
+                    }
                 }
             }
             None => Command::Move(self.mcount(), m),
@@ -802,6 +837,18 @@ impl InputEngine {
             code if motion_key(code).is_some() => {
                 self.motion(motion_key(code).expect("guarded by is_some"))
             }
+            // With an operator armed, `v`/`V` FORCE the next motion's wise (Vim `o_v`/`o_V`): `dvj`,
+            // `dVe`. They stay operator-pending (the motion still follows); `motion` emits `OpForced`.
+            // Bare (no operator) they enter Visual/Visual-line as before. `CTRL-V` force is blockwise —
+            // deferred with the rest of blockwise, so it is not intercepted here.
+            KeyCode::Char('v') if self.op.is_some() && !ctrl => {
+                self.forced_wise = Some(ForcedWise::Charwise);
+                Feed::Pending
+            }
+            KeyCode::Char('V') if self.op.is_some() => {
+                self.forced_wise = Some(ForcedWise::Linewise);
+                Feed::Pending
+            }
             KeyCode::Char('v') => self.action(Command::EnterVisual { line: false }),
             KeyCode::Char('V') => self.action(Command::EnterVisual { line: true }),
             KeyCode::Char('d') => self.operator(Op::Delete, Command::Delete),
@@ -978,6 +1025,46 @@ mod tests {
         assert_eq!(feed("dd"), Feed::Cmd(Command::Delete(1, Motion::Line)));
         assert_eq!(feed("2dd"), Feed::Cmd(Command::Delete(2, Motion::Line)));
         assert_eq!(feed("cc"), Feed::Cmd(Command::Change(1, Motion::Line)));
+    }
+
+    #[test]
+    fn forced_wise_after_operator() {
+        // `v`/`V` after an operator FORCE the next motion's wise (Vim o_v/o_V) → OpForced.
+        assert_eq!(
+            feed("dvj"),
+            Feed::Cmd(Command::OpForced {
+                op: OpKind::Delete,
+                count: 1,
+                motion: Motion::Down,
+                wise: ForcedWise::Charwise,
+            })
+        );
+        assert_eq!(
+            feed("dVe"),
+            Feed::Cmd(Command::OpForced {
+                op: OpKind::Delete,
+                count: 1,
+                motion: Motion::WordEnd,
+                wise: ForcedWise::Linewise,
+            })
+        );
+        // Count still multiplies through the forced form (`y2Vj`).
+        assert_eq!(
+            feed("y2Vj"),
+            Feed::Cmd(Command::OpForced {
+                op: OpKind::Yank,
+                count: 2,
+                motion: Motion::Down,
+                wise: ForcedWise::Linewise,
+            })
+        );
+    }
+
+    #[test]
+    fn bare_v_still_enters_visual() {
+        // Without an operator armed, `v`/`V` enter Visual as before — the force only applies operator-pending.
+        assert_eq!(feed("v"), Feed::Cmd(Command::EnterVisual { line: false }));
+        assert_eq!(feed("V"), Feed::Cmd(Command::EnterVisual { line: true }));
     }
 
     #[test]

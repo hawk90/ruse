@@ -2425,6 +2425,230 @@
       }
     },
     {
+      "name": "forced_dvj_charwise",
+      "lines": [
+        "hello",
+        "world"
+      ],
+      "keys": "dvj",
+      "expect": {
+        "text": [
+          "world"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "forced_dvk_charwise",
+      "lines": [
+        "hello",
+        "world"
+      ],
+      "keys": "jdvk",
+      "expect": {
+        "text": [
+          "world"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "forced_dVe_linewise",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "dVe",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello world\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "forced_dVw_linewise",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "dVw",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello world\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "forced_dvw_toggle_inclusive",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "dvw",
+      "expect": {
+        "text": [
+          "orld"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello w",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "forced_dve_toggle_exclusive",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "dve",
+      "expect": {
+        "text": [
+          "o world"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hell",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "forced_dv_dollar_toggle",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "dv$",
+      "expect": {
+        "text": [
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello worl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "forced_dV_paragraph",
+      "lines": [
+        "one",
+        "two",
+        "",
+        "three"
+      ],
+      "keys": "dV}",
+      "expect": {
+        "text": [
+          "three"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\ntwo\n\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "forced_yvj_then_paste",
+      "lines": [
+        "hello",
+        "world"
+      ],
+      "keys": "yvjP",
+      "expect": {
+        "text": [
+          "hello",
+          "hello",
+          "world"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "hello\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
       "name": "refactor_2word_change_end",
       "lines": [
         "aa bb cc dd"

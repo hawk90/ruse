@@ -5,7 +5,7 @@
 //! the same commands on the same initial document is deterministic (see [`crate::trace`]). This is the split
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
-use crate::command::{Command, SearchOp};
+use crate::command::{Command, ForcedWise, OpKind, SearchOp};
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
 use crate::effect::Effect;
@@ -284,28 +284,97 @@ fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize, bool) 
             let (s, e) = motion::char_span(b, cur, m, count);
             (s, e, true)
         }
-        // Paragraph motions (`d}`/`d{`) are exclusive charwise, but Vim's exclusive-linewise rule turns them
-        // linewise when the exclusive end sits at column 0 and the start is at/before the first non-blank of
-        // its line (the common `d}` case); otherwise the end pulls back to the previous line end (charwise).
+        // Paragraph motions (`d}`/`d{`) are exclusive charwise, but Vim's exclusive-linewise rule can turn
+        // them linewise — shared with forced-charwise on a linewise motion (see `exclusive_linewise`).
         Motion::ParagraphFwd | Motion::ParagraphBack => {
             let t = motion::target(b, cur, m, count);
-            let (lo, hi) = (cur.min(t), cur.max(t));
-            if lo >= hi {
-                (lo, lo, false)
-            } else if hi > 0 && hi == line_start(b, hi) {
-                if lo <= motion::first_non_blank(b, lo) {
-                    (line_start(b, lo), hi, true)
-                } else {
-                    (lo, hi - 1, false)
-                }
-            } else {
-                (lo, hi, false)
-            }
+            exclusive_linewise(b, cur.min(t), cur.max(t))
         }
         // Everything else is the motion's charwise span.
         _ => {
             let (s, e) = motion::char_span(b, cur, m, count);
             (s, e, false)
+        }
+    }
+}
+
+/// Vim's exclusive-linewise reduction for an EXCLUSIVE charwise span `[lo, hi)`: if the end sits at column
+/// 0 of a line and the start is at/before that start line's first non-blank, the span becomes whole lines
+/// (linewise); otherwise the end pulls back one byte (charwise). Empty span → a no-op. Shared by the `d}`
+/// paragraph motion and forced-charwise on a linewise motion (`dvj`), which is why they agree.
+fn exclusive_linewise(b: &[u8], lo: usize, hi: usize) -> (usize, usize, bool) {
+    if lo >= hi {
+        (lo, lo, false)
+    } else if hi > 0 && hi == line_start(b, hi) {
+        if lo <= motion::first_non_blank(b, lo) {
+            (line_start(b, lo), hi, true)
+        } else {
+            (lo, hi - 1, false)
+        }
+    } else {
+        (lo, hi, false)
+    }
+}
+
+/// Whether a charwise motion is INCLUSIVE (its last char is part of the operated span) in Vim terms — the
+/// bit `o_v` toggles. Only the directional motions matter here; text objects carry their own exact span and
+/// are left untoggled by [`forced_span`]. Kept in sync with `motion::char_span`'s inclusivity by hand.
+fn motion_inclusive(m: Motion) -> bool {
+    matches!(
+        m,
+        Motion::WordEnd
+            | Motion::BigWordEnd
+            | Motion::LineEnd
+            | Motion::MatchBracket
+            | Motion::FindChar { forward: true, .. }
+    )
+}
+
+/// The span for an operator whose motion wise is FORCED (Vim `o_v`/`o_V`). `Linewise` expands the motion's
+/// reach to whole lines; `Charwise` makes it charwise — turning a linewise motion into an inclusive span to
+/// the target, or toggling a charwise motion's exclusive/inclusive edge. Text objects (which already carry
+/// an exact span) are only reshaped for `Linewise`; `Charwise` leaves their edge alone.
+fn forced_span(
+    b: &[u8],
+    cur: usize,
+    m: Motion,
+    count: u32,
+    wise: ForcedWise,
+) -> (usize, usize, bool) {
+    let (s0, e0, was_line) = op_span(b, cur, m, count);
+    match wise {
+        ForcedWise::Linewise => {
+            // Whole lines from the cursor's line THROUGH the line the motion lands on (Vim `dV}` includes
+            // the blank paragraph line the `}` reaches). Text objects have no bare-move target, so expand
+            // their own span instead.
+            if is_text_object(m) || motion::target(b, cur, m, count) == cur && !was_line {
+                if s0 >= e0 {
+                    return (cur, cur, true);
+                }
+                let start = line_start(b, s0);
+                let le = line_end(b, (e0 - 1).max(s0));
+                return (start, if le < b.len() { le + 1 } else { le }, true);
+            }
+            let t = motion::target(b, cur, m, count);
+            let (lo, hi) = (cur.min(t), cur.max(t));
+            let start = line_start(b, lo);
+            let le = line_end(b, hi);
+            (start, if le < b.len() { le + 1 } else { le }, true)
+        }
+        ForcedWise::Charwise => {
+            if was_line {
+                // A linewise motion forced charwise becomes EXCLUSIVE [cur, target) and then takes Vim's
+                // exclusive-linewise reduction — so `dvj` deletes the first line linewise, exactly as `d}`
+                // would (both go through `exclusive_linewise`).
+                let t = motion::target(b, cur, m, count);
+                exclusive_linewise(b, cur.min(t), cur.max(t))
+            } else if is_text_object(m) {
+                (s0, e0, false)
+            } else if motion_inclusive(m) {
+                (s0, prev_boundary(b, e0).max(s0), false)
+            } else {
+                (s0, next_boundary(b, e0).min(b.len()), false)
+            }
         }
     }
 }
@@ -736,6 +805,42 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     set_register: Some(RegWrite::Yank(reg)),
                     set_anchor: None,
                 }
+            }
+        }
+        // Forced-wise operator (`dvj`, `dVe`, `yv}`): compute the reshaped span, then apply the operator
+        // like its plain form. Change uses the charwise change shape (delete span + Insert); the linewise
+        // indent-preserving `cc` special-case is not reused here (forced-linewise change is vanishingly rare).
+        Command::OpForced {
+            op,
+            count,
+            motion,
+            wise,
+        } => {
+            let (s, e, linewise) = forced_span(b, cur, *motion, *count, *wise);
+            match op {
+                OpKind::Delete if s < e => {
+                    let reg = captured(s, e, linewise);
+                    edit_yank(one(Edit::delete(s, e - s)), s, st.mode, hint, reg)
+                }
+                OpKind::Yank if s < e => {
+                    let reg = captured(s, e, linewise);
+                    Plan {
+                        action: Action::Nop,
+                        cursor: s,
+                        mode: st.mode,
+                        is_edit: false,
+                        effects: Vec::new(),
+                        set_register: Some(RegWrite::Yank(reg)),
+                        set_anchor: None,
+                    }
+                }
+                OpKind::Change if s < e => {
+                    let reg = captured(s, e, linewise);
+                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+                }
+                // Empty span: delete/yank are a clean no-op; change still drops into Insert (Vim).
+                OpKind::Change => nop(s, Mode::Insert),
+                _ => nop(cur, st.mode),
             }
         }
         Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
