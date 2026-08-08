@@ -27,7 +27,8 @@ fn tokenize(keys: &str) -> Vec<KeyEvent> {
         if chars[i] == '<' {
             if let Some(end) = chars[i + 1..].iter().position(|&c| c == '>') {
                 let name: String = chars[i + 1..i + 1 + end].iter().collect();
-                let code = match name.to_ascii_lowercase().as_str() {
+                let lower = name.to_ascii_lowercase();
+                let code = match lower.as_str() {
                     "esc" => Some(KeyCode::Esc),
                     "cr" | "enter" => Some(KeyCode::Enter),
                     "bs" => Some(KeyCode::Backspace),
@@ -39,6 +40,17 @@ fn tokenize(keys: &str) -> Vec<KeyEvent> {
                     out.push(ev(code));
                     i += end + 2;
                     continue;
+                }
+                // `<C-x>` — a CTRL-modified key (e.g. `<C-o>`, `<C-g>`), matching nvim_replace_termcodes.
+                // The name is `c-<char>`; emit the base char with the CONTROL modifier so the input
+                // engine's ctrl checks (CTRL-O one-shot, CTRL-G undo-break) fire.
+                if let Some(rest) = lower.strip_prefix("c-") {
+                    let rc: Vec<char> = rest.chars().collect();
+                    if rc.len() == 1 {
+                        out.push(KeyEvent::new(KeyCode::Char(rc[0]), KeyModifiers::CONTROL));
+                        i += end + 2;
+                        continue;
+                    }
                 }
             }
         }

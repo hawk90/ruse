@@ -84,6 +84,11 @@ pub enum Command {
     ToggleCase(u32),
     /// `J` — join the current line with the next on a single space.
     JoinLines,
+    /// `CTRL-G u` in Insert — break the undo sequence: the NEXT edit starts a fresh undo group, so a
+    /// later `u` stops here instead of undoing the whole insert session. A nop that only clears the
+    /// edit-continuation state (Vim `i_CTRL-G_u`). Undo-of-a-session is not observable via the parity
+    /// oracle (its `set_lines` is not an undo boundary), so this is verified by a core unit test.
+    BreakUndo,
     /// `{count}>>` — shift `count` lines one indent level to the right (Vim `>>`). Linewise: the count
     /// is a LINE count, not a motion. The indent unit comes from the editor's indent config.
     ShiftRight(u32),
@@ -380,6 +385,7 @@ impl Command {
             Command::ReplaceChar(n, c) => format!("replace_char {n} {}", *c as u32),
             Command::ToggleCase(n) => format!("toggle_case {n}"),
             Command::JoinLines => "join_lines".into(),
+            Command::BreakUndo => "break_undo".into(),
             Command::ShiftRight(n) => format!("shift_right {n}"),
             Command::ShiftLeft(n) => format!("shift_left {n}"),
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
@@ -519,6 +525,7 @@ impl Command {
                 Command::ToggleCase(n)
             }
             "join_lines" => Command::JoinLines,
+            "break_undo" => Command::BreakUndo,
             "shift_right" => {
                 let n: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -663,6 +670,7 @@ mod tests {
             Command::ToggleCase(1),
             Command::ToggleCase(4),
             Command::JoinLines,
+            Command::BreakUndo,
             Command::ShiftRight(1),
             Command::ShiftRight(3),
             Command::ShiftLeft(1),

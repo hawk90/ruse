@@ -768,6 +768,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 )
             }
         }
+        // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
+        // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
+        // group starts here mid-insert-session (Vim `i_CTRL-G_u`). Cursor and mode are untouched.
+        Command::BreakUndo => nop(cur, st.mode),
         Command::Move(count, m) => {
             // A text object issued in a selection mode (`viw`, `vi(`) sets BOTH ends: anchor at the object's
             // start, cursor on its last char (inclusive selection). A bare motion only moves the cursor.
@@ -1787,6 +1791,54 @@ mod visual_swap_tests {
             ],
         );
         assert_eq!(text(&st), "hello", "undo reverts the whole R session");
+    }
+
+    #[test]
+    fn ctrl_g_u_breaks_the_undo_group_mid_insert_session() {
+        // `i ab <C-g>u cd <Esc>`: BreakUndo splits the insert session into two undo groups, so the first
+        // `u` reverts only "cd" (leaving "ab"), where without the break one `u` would revert the whole
+        // session. Not oracle-observable (its set_lines is not an undo boundary) — hence a core test.
+        let with_break = run(
+            "",
+            &[
+                Command::EnterInsert,
+                Command::InsertChar('a'),
+                Command::InsertChar('b'),
+                Command::BreakUndo,
+                Command::InsertChar('c'),
+                Command::InsertChar('d'),
+                Command::EnterNormal,
+                Command::Undo,
+            ],
+        );
+        assert_eq!(
+            text(&with_break),
+            "ab",
+            "the undo-break makes `u` stop at the CTRL-G u point"
+        );
+        // A second undo reverts the first group too.
+        let mut st = with_break;
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(text(&st), "", "the second undo reverts the pre-break group");
+
+        // Contrast: the SAME edits without the break are one group, so one `u` clears everything.
+        let no_break = run(
+            "",
+            &[
+                Command::EnterInsert,
+                Command::InsertChar('a'),
+                Command::InsertChar('b'),
+                Command::InsertChar('c'),
+                Command::InsertChar('d'),
+                Command::EnterNormal,
+                Command::Undo,
+            ],
+        );
+        assert_eq!(
+            text(&no_break),
+            "",
+            "without a break the whole insert session is one undo group"
+        );
     }
 
     #[test]

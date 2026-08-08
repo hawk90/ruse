@@ -362,6 +362,20 @@ FIXTURES: list[dict] = [
     # (No `R`-then-`u` fixture: the oracle sets the buffer via set_lines, which is NOT an undo boundary, so
     #  `u` undoes past the initial content to empty — an oracle artifact, not Vim behavior. R+undo is covered
     #  by a core unit test instead.)
+    #     INSERT `CTRL-O` (i_CTRL-O): run ONE Normal command from Insert, then return to Insert. Observable
+    #     via the resulting text+cursor. (CTRL-G u — undo-break — is NOT observable here for the same
+    #     set_lines-is-not-an-undo-boundary reason as R+undo, so it is a core unit test, not a fixture.)
+    #     ruse implements the one-shot by routing the next key(s) through the Normal grammar while the core
+    #     stays in Insert (every Normal cmd inherits st.mode; the Normal-only cursor clamp is gated off).
+    {"name": "ctrl_o_x_delete", "lines": ["hello"], "keys": "i<C-o>xEND<Esc>"},
+    {"name": "ctrl_o_word_motion", "lines": ["foo bar"], "keys": "i<C-o>wX<Esc>"},
+    # PROBES — i_CTRL-O's EOL APPEND-COLUMN (curswant) preservation: after `$` (or an `A` whose append
+    # column survives a `dd`), Vim keeps the return-to-insert cursor at/past end-of-line so the next char
+    # appends. ruse computes a pure Normal-mode motion cursor and lands ON the last char, so it inserts one
+    # position early (`h<X>i` not `hi<X>`; `<X>beta` not `beta<X>`). Documented divergence — curswant/append-
+    # column modeling is a named follow-up; F-024 stays active until it (and `gR`) land.
+    {"name": "ctrl_o_dollar_append", "lines": ["hi"], "keys": "i<C-o>$X<Esc>"},
+    {"name": "ctrl_o_dd_delete_line", "lines": ["alpha", "beta"], "keys": "A<C-o>ddX<Esc>"},
     #     MIXED realistic refactors (navigate then edit; find-delimiter then change-inner) ---------------
     {"name": "refactor_2word_change_end", "lines": ["aa bb cc dd"], "keys": "2wceHELLO<Esc>0"},
     {"name": "refactor_find_paren_change_inner", "lines": ["foo(bar)baz"], "keys": "f(ci(X<Esc>"},

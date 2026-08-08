@@ -2745,6 +2745,103 @@
       }
     },
     {
+      "name": "ctrl_o_x_delete",
+      "lines": [
+        "hello"
+      ],
+      "keys": "i<C-o>xEND<Esc>",
+      "expect": {
+        "text": [
+          "ENDello"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "h",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_o_word_motion",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "i<C-o>wX<Esc>",
+      "expect": {
+        "text": [
+          "foo Xbar"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_o_dollar_append",
+      "lines": [
+        "hi"
+      ],
+      "keys": "i<C-o>$X<Esc>",
+      "expect": {
+        "text": [
+          "hiX"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_o_dd_delete_line",
+      "lines": [
+        "alpha",
+        "beta"
+      ],
+      "keys": "A<C-o>ddX<Esc>",
+      "expect": {
+        "text": [
+          "betaX"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "alpha\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "refactor_2word_change_end",
       "lines": [
         "aa bb cc dd"
