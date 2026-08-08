@@ -1346,6 +1346,523 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "Vjd_visual_linewise",
+      "lines": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "keys": "Vjd",
+      "expect": {
+        "text": [
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "alpha\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vey_visual_yank_to_word_end",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "vey",
+      "expect": {
+        "text": [
+          "hello world"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "hello",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "v_dollar_d_visual",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "v$d",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello world",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "viwc_visual_change_text",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wviwcNEW<Esc>",
+      "expect": {
+        "text": [
+          "foo NEW baz"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_o_swap_then_extend",
+      "lines": [
+        "abcde"
+      ],
+      "keys": "lllvhold",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "cde",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gv_reselect",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "viwygvd",
+      "expect": {
+        "text": [
+          " world"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "hello",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "yl_p_charwise_after",
+      "lines": [
+        "abc"
+      ],
+      "keys": "ylp",
+      "expect": {
+        "text": [
+          "aabc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "yl_P_charwise_before",
+      "lines": [
+        "abc"
+      ],
+      "keys": "ylP",
+      "expect": {
+        "text": [
+          "aabc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "yy_P_linewise_above",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "yyP",
+      "expect": {
+        "text": [
+          "one",
+          "one",
+          "two"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "one\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "charwise_paste_at_eol",
+      "lines": [
+        "abc"
+      ],
+      "keys": "yl$p",
+      "expect": {
+        "text": [
+          "abca"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "dd_p_linewise_put",
+      "lines": [
+        "one",
+        "two",
+        "three"
+      ],
+      "keys": "ddp",
+      "expect": {
+        "text": [
+          "two",
+          "one",
+          "three"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_2p_charwise",
+      "lines": [
+        "abc"
+      ],
+      "keys": "yl2p",
+      "expect": {
+        "text": [
+          "aaabc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "dtx_till_forward",
+      "lines": [
+        "abcxdef"
+      ],
+      "keys": "dtx",
+      "expect": {
+        "text": [
+          "xdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dfx_find_forward",
+      "lines": [
+        "abcxdef"
+      ],
+      "keys": "dfx",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctx_change_text",
+      "lines": [
+        "abcxdef"
+      ],
+      "keys": "ctxYZ<Esc>",
+      "expect": {
+        "text": [
+          "YZxdef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dTx_till_backward",
+      "lines": [
+        "xabcd"
+      ],
+      "keys": "$dTx",
+      "expect": {
+        "text": [
+          "xd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_semicolon_repeat_under_op",
+      "lines": [
+        "a.b.c.d"
+      ],
+      "keys": "f.d;",
+      "expect": {
+        "text": [
+          "ac.d"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": ".b.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cc_change_line",
+      "lines": [
+        "  hello",
+        "world"
+      ],
+      "keys": "ccNEW<Esc>",
+      "expect": {
+        "text": [
+          "  NEW",
+          "world"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "  hello\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "D_delete_to_eol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "wD",
+      "expect": {
+        "text": [
+          "hello "
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "world",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "C_change_to_eol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "wCX<Esc>",
+      "expect": {
+        "text": [
+          "hello X"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "world",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "Y_yank_line",
+      "lines": [
+        "hello",
+        "world"
+      ],
+      "keys": "Yp",
+      "expect": {
+        "text": [
+          "hhelloello",
+          "world"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "hello",
+          "type": "charwise"
+        }
+      }
     }
   ]
 }

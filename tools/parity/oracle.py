@@ -278,6 +278,35 @@ FIXTURES: list[dict] = [
     #     count edges ---------------------------------------------------------------------------------
     {"name": "count_5x_past_eol", "lines": ["abc"], "keys": "5x"},
     {"name": "count_3dd_past_last", "lines": ["alpha", "beta"], "keys": "3dd"},
+    # --- op-family expansion (impl/corpus-visual-paste): new op FAMILIES chosen to surface parity
+    #     divergences. Edge cases of IMPLEMENTED ops dominate; a single probe documents each op ruse
+    #     does not implement yet. Every `expect` is still oracle-captured, never hand-written.
+    #     VISUAL editing (edge cases of the implemented v/V + selection operators) -------------------
+    {"name": "Vjd_visual_linewise", "lines": ["alpha", "beta", "gamma"], "keys": "Vjd"},
+    {"name": "vey_visual_yank_to_word_end", "lines": ["hello world"], "keys": "vey"},
+    {"name": "v_dollar_d_visual", "lines": ["hello world"], "keys": "v$d"},
+    {"name": "viwc_visual_change_text", "lines": ["foo bar baz"], "keys": "wviwcNEW<Esc>"},
+    #     VISUAL probes (ops ruse does not implement: `o` swap-ends, `gv` reselect) ------------------
+    {"name": "visual_o_swap_then_extend", "lines": ["abcde"], "keys": "lllvhold"},
+    {"name": "gv_reselect", "lines": ["hello world"], "keys": "viwygvd"},
+    #     PASTE geometry (edge cases of the implemented p/P) -----------------------------------------
+    {"name": "yl_p_charwise_after", "lines": ["abc"], "keys": "ylp"},
+    {"name": "yl_P_charwise_before", "lines": ["abc"], "keys": "ylP"},
+    {"name": "yy_P_linewise_above", "lines": ["one", "two"], "keys": "yyP"},
+    {"name": "charwise_paste_at_eol", "lines": ["abc"], "keys": "yl$p"},
+    {"name": "dd_p_linewise_put", "lines": ["one", "two", "three"], "keys": "ddp"},
+    {"name": "count_2p_charwise", "lines": ["abc"], "keys": "yl2p"},
+    #     CHAR-SEARCH operators (edge cases of the implemented f/F/t/T + ; under an operator) --------
+    {"name": "dtx_till_forward", "lines": ["abcxdef"], "keys": "dtx"},
+    {"name": "dfx_find_forward", "lines": ["abcxdef"], "keys": "dfx"},
+    {"name": "ctx_change_text", "lines": ["abcxdef"], "keys": "ctxYZ<Esc>"},
+    {"name": "dTx_till_backward", "lines": ["xabcd"], "keys": "$dTx"},
+    {"name": "d_semicolon_repeat_under_op", "lines": ["a.b.c.d"], "keys": "f.d;"},
+    #     LINE-operator synonyms — mostly probes for ops ruse does not implement (D/C/Y), plus `cc` ---
+    {"name": "cc_change_line", "lines": ["  hello", "world"], "keys": "ccNEW<Esc>"},
+    {"name": "D_delete_to_eol", "lines": ["hello world"], "keys": "wD"},
+    {"name": "C_change_to_eol", "lines": ["hello world"], "keys": "wCX<Esc>"},
+    {"name": "Y_yank_line", "lines": ["hello", "world"], "keys": "Yp"},
 ]
 
 
