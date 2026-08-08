@@ -78,6 +78,28 @@ pub struct Plan {
     effects: Vec<Effect>,
     /// Text to store into the unnamed register on commit (a yank, or the text a delete/change removed).
     set_register: Option<Register>,
+    /// A new selection anchor to install on commit — set only when a text object issued in a selection mode
+    /// (`viw`/`vi(`) must move BOTH ends, unlike a bare motion that only moves the cursor. `None` leaves the
+    /// anchor to the mode-transition logic in [`commit`].
+    set_anchor: Option<usize>,
+}
+
+/// Whether a motion is a text object (a range around the cursor), as opposed to a bare cursor movement. In a
+/// selection mode these set both ends of the selection; everywhere else they are operator operands.
+fn is_text_object(m: Motion) -> bool {
+    matches!(
+        m,
+        Motion::InnerWord
+            | Motion::AWord
+            | Motion::InnerBigWord
+            | Motion::ABigWord
+            | Motion::InnerParagraph
+            | Motion::AParagraph
+            | Motion::InnerSentence
+            | Motion::ASentence
+            | Motion::Pair { .. }
+            | Motion::Quote { .. }
+    )
 }
 
 impl EditorState {
@@ -234,6 +256,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         is_edit: false,
         effects: Vec::new(),
         set_register: None,
+        set_anchor: None,
     };
     let edit = |edits: EditList, cursor: usize, mode: Mode, hint: GroupHint| Plan {
         action: Action::Txn { edits, hint },
@@ -242,6 +265,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         is_edit: true,
         effects: Vec::new(),
         set_register: None,
+        set_anchor: None,
     };
     // A delete/change that also captures the removed span into the unnamed register (Vim: `d`/`c`/`x` fill
     // the register). `linewise` picks the register's paste geometry.
@@ -253,6 +277,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             is_edit: true,
             effects: Vec::new(),
             set_register: Some(reg),
+            set_anchor: None,
         };
     // Capture `b[s..e]` as a register value with the given geometry.
     let captured = |s: usize, e: usize, linewise: bool| {
@@ -403,7 +428,26 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 )
             }
         }
-        Command::Move(count, m) => nop(motion::target(b, cur, *m, *count), st.mode),
+        Command::Move(count, m) => {
+            // A text object issued in a selection mode (`viw`, `vi(`) sets BOTH ends: anchor at the object's
+            // start, cursor on its last char (inclusive selection). A bare motion only moves the cursor.
+            if st.mode.selection().is_some() && is_text_object(*m) {
+                let (s, e) = motion::char_span(b, cur, *m, *count);
+                if s >= e {
+                    return nop(cur, st.mode);
+                }
+                return Plan {
+                    action: Action::Nop,
+                    cursor: prev_boundary(b, e),
+                    mode: st.mode,
+                    is_edit: false,
+                    effects: Vec::new(),
+                    set_register: None,
+                    set_anchor: Some(s),
+                };
+            }
+            nop(motion::target(b, cur, *m, *count), st.mode)
+        }
         Command::Delete(count, m) => {
             let (s, e) = op_range(b, cur, *m, *count);
             if s >= e {
@@ -427,6 +471,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     is_edit: false,
                     effects: Vec::new(),
                     set_register: None,
+                    set_anchor: None,
                 }
             } else {
                 // `change_range` keeps the trailing newline on the buffer for `cc`; the register still
@@ -454,6 +499,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     is_edit: false,
                     effects: Vec::new(),
                     set_register: Some(reg),
+                    set_anchor: None,
                 }
             }
         }
@@ -512,6 +558,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     is_edit: false,
                     effects: Vec::new(),
                     set_register: Some(reg),
+                    set_anchor: None,
                 },
                 Command::DeleteSelection if s < e => {
                     edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
@@ -539,6 +586,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             is_edit: false,
             effects: Vec::new(),
             set_register: None,
+            set_anchor: None,
         },
         Command::Redo => Plan {
             action: Action::Redo,
@@ -547,6 +595,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             is_edit: false,
             effects: Vec::new(),
             set_register: None,
+            set_anchor: None,
         },
         Command::Save => Plan {
             action: Action::Nop,
@@ -555,6 +604,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             is_edit: false,
             effects: vec![Effect::Save],
             set_register: None,
+            set_anchor: None,
         },
         Command::Quit => Plan {
             action: Action::Nop,
@@ -563,6 +613,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             is_edit: false,
             effects: vec![Effect::Quit],
             set_register: None,
+            set_anchor: None,
         },
     }
 }
@@ -578,6 +629,7 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool) -> Plan 
         is_edit: false,
         effects: Vec::new(),
         set_register: None,
+        set_anchor: None,
     };
     if reg.is_empty() {
         return nop;
@@ -593,6 +645,7 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool) -> Plan 
         is_edit: true,
         effects: Vec::new(),
         set_register: None,
+        set_anchor: None,
     };
 
     if reg.is_linewise() {
@@ -669,6 +722,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         (false, true) => st.anchor = Some(entry_cursor),
         (_, false) => st.anchor = None,
         (true, true) => {}
+    }
+    // A text object in a selection mode overrides the anchor to span the object (both ends move at once).
+    if let Some(a) = plan.set_anchor {
+        st.anchor = Some(a);
     }
     // Keep the raw-offset anchor valid: an edit applied while in Visual mode can resize the buffer under it,
     // and a stale anchor past the new end would make `selection_range` slice out of bounds (a core panic).
@@ -1351,6 +1408,221 @@ mod visual_tests {
         assert_eq!(text(&st), "hello");
         assert_eq!(st.mode(), Mode::Normal);
         assert_eq!(st.selection_span(), None);
+    }
+}
+
+#[cfg(test)]
+mod text_object_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    fn pair(open: char, close: char, around: bool) -> Motion {
+        Motion::Pair {
+            open,
+            close,
+            around,
+        }
+    }
+
+    #[test]
+    fn iw_splits_on_punctuation_but_big_word_does_not() {
+        // cursor on 'f' of "foo.bar": `iw` is the word class run "foo"; `iW` is the whole WORD "foo.bar".
+        let st = run("foo.bar", &[Command::Delete(1, Motion::InnerWord)]);
+        assert_eq!(text(&st), ".bar", "diw stops at the punctuation");
+        let st = run("foo.bar baz", &[Command::Delete(1, Motion::InnerBigWord)]);
+        assert_eq!(text(&st), " baz", "diW spans the punctuation");
+    }
+
+    #[test]
+    fn aw_and_a_big_word_take_trailing_whitespace() {
+        let st = run("foo bar baz", &[Command::Delete(1, Motion::AWord)]);
+        assert_eq!(
+            text(&st),
+            "bar baz",
+            "daw removes the word and its trailing space"
+        );
+        let st = run("foo.bar baz", &[Command::Delete(1, Motion::ABigWord)]);
+        assert_eq!(
+            text(&st),
+            "baz",
+            "daW removes the WORD and its trailing space"
+        );
+    }
+
+    #[test]
+    fn delimiter_pair_inner_and_around() {
+        // cursor inside the parens of "a(bc)d".
+        let st = run(
+            "a(bc)d",
+            &[
+                Command::Move(2, Motion::Right),
+                Command::Delete(1, pair('(', ')', false)),
+            ],
+        );
+        assert_eq!(text(&st), "a()d", "di( deletes the interior");
+        let st = run(
+            "a(bc)d",
+            &[
+                Command::Move(2, Motion::Right),
+                Command::Delete(1, pair('(', ')', true)),
+            ],
+        );
+        assert_eq!(text(&st), "ad", "da( deletes the delimiters too");
+    }
+
+    #[test]
+    fn delimiter_pair_is_nesting_aware() {
+        // On the inner content of "(a(b)c)": from the outer, di( takes everything inside the OUTER pair.
+        let st = run("(a(b)c)", &[Command::Delete(1, pair('(', ')', false))]);
+        assert_eq!(
+            text(&st),
+            "()",
+            "di( on the opener spans to the matching closer"
+        );
+        // Cursor inside the inner pair selects only the inner interior.
+        let st = run(
+            "(a(b)c)",
+            &[
+                Command::Move(3, Motion::Right),
+                Command::Delete(1, pair('(', ')', false)),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "(a()c)",
+            "di( from inside the inner pair takes only 'b'"
+        );
+    }
+
+    #[test]
+    fn delimiter_object_outside_a_pair_is_a_noop() {
+        let st = run("abc", &[Command::Delete(1, pair('(', ')', false))]);
+        assert_eq!(text(&st), "abc");
+    }
+
+    #[test]
+    fn quote_inner_and_around() {
+        // `a "hi" b`: quotes at 2 and 5; cursor on 'h'.
+        let st = run(
+            "a \"hi\" b",
+            &[
+                Command::Move(3, Motion::Right),
+                Command::Change(
+                    1,
+                    Motion::Quote {
+                        ch: '"',
+                        around: false,
+                    },
+                ),
+            ],
+        );
+        assert_eq!(text(&st), "a \"\" b", "ci\" clears the interior");
+        assert_eq!(st.mode(), Mode::Insert);
+        let st = run(
+            "a \"hi\" b",
+            &[
+                Command::Move(3, Motion::Right),
+                Command::Delete(
+                    1,
+                    Motion::Quote {
+                        ch: '"',
+                        around: true,
+                    },
+                ),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "a b",
+            "da\" removes the quotes and the trailing space"
+        );
+    }
+
+    #[test]
+    fn quotes_are_single_line() {
+        // The quote on the next line must not pair with one on this line.
+        let st = run(
+            "x\"a\nb\"y",
+            &[Command::Delete(
+                1,
+                Motion::Quote {
+                    ch: '"',
+                    around: false,
+                },
+            )],
+        );
+        assert_eq!(
+            text(&st),
+            "x\"a\nb\"y",
+            "no matching quote on this line → no-op"
+        );
+    }
+
+    #[test]
+    fn paragraph_inner_and_around() {
+        // "l1\nl2\n\nl3\n": cursor in the first paragraph.
+        let st = run(
+            "l1\nl2\n\nl3\n",
+            &[Command::Delete(1, Motion::InnerParagraph)],
+        );
+        assert_eq!(text(&st), "\nl3\n", "dip removes the paragraph's lines");
+        let st = run("l1\nl2\n\nl3\n", &[Command::Delete(1, Motion::AParagraph)]);
+        assert_eq!(
+            text(&st),
+            "l3\n",
+            "dap also removes the trailing blank line"
+        );
+    }
+
+    #[test]
+    fn sentence_inner_and_around() {
+        let st = run("One. Two.", &[Command::Delete(1, Motion::InnerSentence)]);
+        assert_eq!(
+            text(&st),
+            " Two.",
+            "dis removes the first sentence, keeping the space"
+        );
+        let st = run("One. Two.", &[Command::Delete(1, Motion::ASentence)]);
+        assert_eq!(
+            text(&st),
+            "Two.",
+            "das removes the sentence and its trailing space"
+        );
+    }
+
+    #[test]
+    fn text_object_selects_in_visual() {
+        // `viw` spans the word under the cursor.
+        let st = run(
+            "foo bar",
+            &[
+                Command::EnterVisual { line: false },
+                Command::Move(1, Motion::InnerWord),
+            ],
+        );
+        assert_eq!(st.mode(), Mode::Visual { line: false });
+        assert_eq!(st.selection_span(), Some((0, 3)), "viw selects 'foo'");
+        // `vi(` spans the interior of the enclosing pair.
+        let st = run(
+            "a(bc)d",
+            &[
+                Command::Move(2, Motion::Right),
+                Command::EnterVisual { line: false },
+                Command::Move(1, pair('(', ')', false)),
+            ],
+        );
+        assert_eq!(st.selection_span(), Some((2, 4)), "vi( selects 'bc'");
     }
 }
 

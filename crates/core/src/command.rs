@@ -92,6 +92,12 @@ fn motion_token(m: Motion) -> String {
         Motion::BigWordEnd => "big_word_end",
         Motion::InnerWord => "inner_word",
         Motion::AWord => "a_word",
+        Motion::InnerBigWord => "inner_big_word",
+        Motion::ABigWord => "a_big_word",
+        Motion::InnerParagraph => "inner_paragraph",
+        Motion::AParagraph => "a_paragraph",
+        Motion::InnerSentence => "inner_sentence",
+        Motion::ASentence => "a_sentence",
         Motion::Line => "line",
         Motion::GotoLine => "goto_line",
         Motion::LastLine => "last_line",
@@ -101,6 +107,14 @@ fn motion_token(m: Motion) -> String {
         Motion::FindChar { ch, forward, till } => {
             return format!("find_char:{}:{}:{}", ch as u32, forward as u8, till as u8)
         }
+        // Delimiter/quote text objects carry their char(s) + around flag as a single whitespace-free token,
+        // mirroring `find_char` so the `<count> <motion>` split still holds.
+        Motion::Pair {
+            open,
+            close,
+            around,
+        } => return format!("pair:{}:{}:{}", open as u32, close as u32, around as u8),
+        Motion::Quote { ch, around } => return format!("quote:{}:{}", ch as u32, around as u8),
     };
     s.to_string()
 }
@@ -115,6 +129,29 @@ fn motion_from_token(s: &str) -> Option<Motion> {
             return None; // trailing garbage
         }
         return Some(Motion::FindChar { ch, forward, till });
+    }
+    if let Some(rest) = s.strip_prefix("pair:") {
+        let mut it = rest.split(':');
+        let open = char::from_u32(it.next()?.parse().ok()?)?;
+        let close = char::from_u32(it.next()?.parse().ok()?)?;
+        let around = it.next()? == "1";
+        if it.next().is_some() {
+            return None; // trailing garbage
+        }
+        return Some(Motion::Pair {
+            open,
+            close,
+            around,
+        });
+    }
+    if let Some(rest) = s.strip_prefix("quote:") {
+        let mut it = rest.split(':');
+        let ch = char::from_u32(it.next()?.parse().ok()?)?;
+        let around = it.next()? == "1";
+        if it.next().is_some() {
+            return None; // trailing garbage
+        }
+        return Some(Motion::Quote { ch, around });
     }
     Some(match s {
         "left" => Motion::Left,
@@ -131,6 +168,12 @@ fn motion_from_token(s: &str) -> Option<Motion> {
         "big_word_end" => Motion::BigWordEnd,
         "inner_word" => Motion::InnerWord,
         "a_word" => Motion::AWord,
+        "inner_big_word" => Motion::InnerBigWord,
+        "a_big_word" => Motion::ABigWord,
+        "inner_paragraph" => Motion::InnerParagraph,
+        "a_paragraph" => Motion::AParagraph,
+        "inner_sentence" => Motion::InnerSentence,
+        "a_sentence" => Motion::ASentence,
         "line" => Motion::Line,
         "goto_line" => Motion::GotoLine,
         "last_line" => Motion::LastLine,
@@ -357,6 +400,50 @@ mod tests {
             Command::Delete(1, Motion::Line),
             Command::Delete(1, Motion::InnerWord),
             Command::Change(1, Motion::AWord),
+            Command::Delete(1, Motion::InnerBigWord),
+            Command::Change(1, Motion::ABigWord),
+            Command::Delete(1, Motion::InnerParagraph),
+            Command::Yank(1, Motion::AParagraph),
+            Command::Delete(1, Motion::InnerSentence),
+            Command::Change(1, Motion::ASentence),
+            Command::Delete(
+                1,
+                Motion::Pair {
+                    open: '(',
+                    close: ')',
+                    around: false,
+                },
+            ),
+            Command::Change(
+                2,
+                Motion::Pair {
+                    open: '{',
+                    close: '}',
+                    around: true,
+                },
+            ),
+            Command::Yank(
+                1,
+                Motion::Pair {
+                    open: '<',
+                    close: '>',
+                    around: false,
+                },
+            ),
+            Command::Delete(
+                1,
+                Motion::Quote {
+                    ch: '"',
+                    around: true,
+                },
+            ),
+            Command::Change(
+                1,
+                Motion::Quote {
+                    ch: '`',
+                    around: false,
+                },
+            ),
             Command::Change(3, Motion::WordEnd),
             Command::Move(
                 1,
