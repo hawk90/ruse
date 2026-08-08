@@ -1863,6 +1863,32 @@
           "type": "charwise"
         }
       }
+    },
+    {
+      "name": "S_change_line",
+      "lines": [
+        "  hello",
+        "world"
+      ],
+      "keys": "SNEW<Esc>",
+      "expect": {
+        "text": [
+          "  NEW",
+          "world"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "  hello\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

@@ -55,8 +55,11 @@ pub enum Command {
     Change(u32, Motion),
     // registers (v0 unnamed slot): yank a motion range; paste after (`p`) or before (`P`) the cursor
     Yank(u32, Motion),
+    /// `{count}p` / `{count}P` — paste the unnamed register `count` times, after (`p`) or before (`P`)
+    /// the cursor. `count` is the repetition count (Vim `2p` pastes twice); it defaults to 1.
     Paste {
         after: bool,
+        count: u32,
     },
     // visual mode: enter a selection (charwise `v` / linewise `V`); operate on the current selection
     EnterVisual {
@@ -255,11 +258,11 @@ impl Command {
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
             Command::Yank(n, m) => format!("yank {n} {}", motion_token(*m)),
-            Command::Paste { after } => {
+            Command::Paste { after, count } => {
                 if *after {
-                    "paste_after".into()
+                    format!("paste_after {count}")
                 } else {
-                    "paste_before".into()
+                    format!("paste_before {count}")
                 }
             }
             Command::EnterVisual { line } => {
@@ -373,8 +376,18 @@ impl Command {
             "delete" => return op_cmd(arg, Command::Delete),
             "change" => return op_cmd(arg, Command::Change),
             "yank" => return op_cmd(arg, Command::Yank),
-            "paste_after" => Command::Paste { after: true },
-            "paste_before" => Command::Paste { after: false },
+            "paste_after" => Command::Paste {
+                after: true,
+                count: arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?,
+            },
+            "paste_before" => Command::Paste {
+                after: false,
+                count: arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?,
+            },
             "enter_visual" => Command::EnterVisual { line: false },
             "enter_visual_line" => Command::EnterVisual { line: true },
             "enter_select" => Command::EnterSelect { line: false },
@@ -525,8 +538,22 @@ mod tests {
             Command::Yank(1, Motion::ParagraphBack),
             Command::Yank(1, Motion::Line),
             Command::Yank(2, Motion::WordFwd),
-            Command::Paste { after: true },
-            Command::Paste { after: false },
+            Command::Paste {
+                after: true,
+                count: 1,
+            },
+            Command::Paste {
+                after: false,
+                count: 1,
+            },
+            Command::Paste {
+                after: true,
+                count: 2,
+            },
+            Command::Paste {
+                after: false,
+                count: 5,
+            },
             Command::EnterVisual { line: false },
             Command::EnterVisual { line: true },
             Command::EnterSelect { line: false },
