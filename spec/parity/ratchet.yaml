@@ -1,0 +1,11 @@
+# Ratchet baseline — the debt CEILING per bucket (enforced by `gov ratchet`). A bucket may never rise above
+# its value here. Lower a number when you burn that debt down and the gate holds the new floor; raising one
+# is a deliberate, reviewable edit — that visibility is the point. `unclassified` census items are NOT
+# ratcheted: they grow with discovery (a new upstream survey), which the census wants; partial classification
+# is already blocked per-surface by `gov parity_discovery`.
+version: 1
+buckets:
+  config_untraced: 8      # config-schema keys with `derives_from: []`      (see gov prd_cfg)
+  cap_untraced: 18        # capabilities with an empty `prd:`               (see gov capability_coverage)
+  legacy_in_prd: 177      # hand-authored parity IDs still cited by the PRD (see gov parity_discovery)
+  backlog: 0              # entries in spec/parity-backlog.yaml
