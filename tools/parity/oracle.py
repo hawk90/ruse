@@ -354,6 +354,14 @@ FIXTURES: list[dict] = [
     {"name": "forced_dv_dollar_toggle", "lines": ["hello world"], "keys": "dv$"},
     {"name": "forced_dV_paragraph", "lines": ["one", "two", "", "three"], "keys": "dV}"},
     {"name": "forced_yvj_then_paste", "lines": ["hello", "world"], "keys": "yvjP"},
+    #     REPLACE MODE (R): overwrite policy + <BS> restores the overwritten char / deletes an appended one.
+    {"name": "replace_basic_overwrite", "lines": ["hello"], "keys": "Rxy<Esc>"},
+    {"name": "replace_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"},
+    {"name": "replace_backspace_restores", "lines": ["hello"], "keys": "Rxy<BS><BS><Esc>"},
+    {"name": "replace_backspace_deletes_appended", "lines": ["ab"], "keys": "RXYZ<BS><Esc>"},
+    # (No `R`-then-`u` fixture: the oracle sets the buffer via set_lines, which is NOT an undo boundary, so
+    #  `u` undoes past the initial content to empty — an oracle artifact, not Vim behavior. R+undo is covered
+    #  by a core unit test instead.)
     #     MIXED realistic refactors (navigate then edit; find-delimiter then change-inner) ---------------
     {"name": "refactor_2word_change_end", "lines": ["aa bb cc dd"], "keys": "2wceHELLO<Esc>0"},
     {"name": "refactor_find_paren_change_inner", "lines": ["foo(bar)baz"], "keys": "f(ci(X<Esc>"},

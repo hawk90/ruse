@@ -602,6 +602,18 @@ impl InputEngine {
             }
             return self.unmatched(Ns::Insert, key);
         }
+        // Replace mode (`R`): overwrite policy. A printable key overwrites (or appends at EOL); `<BS>`
+        // restores; `<Esc>` leaves. It is its own mode, not the Insert layer, because its unmatched-key
+        // policy (overwrite) differs — the same open/policy framing as Insert vs Select.
+        if mode == Mode::Replace {
+            return match key.code {
+                KeyCode::Esc => self.action(Command::EnterNormal),
+                KeyCode::Backspace => self.action(Command::ReplaceBackspace),
+                KeyCode::Enter => self.action(Command::InsertNewline),
+                KeyCode::Char(c) => self.action(Command::ReplaceType(c)),
+                _ => Feed::Ignored,
+            };
+        }
         // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
         match self.awaiting {
             Awaiting::FindTarget { forward, till } => {
@@ -899,6 +911,7 @@ impl InputEngine {
                 self.awaiting = Awaiting::ReplaceChar;
                 Feed::Pending
             }
+            KeyCode::Char('R') => self.action(Command::EnterReplace),
             KeyCode::Char('~') => self.action(Command::ToggleCase(self.mcount())),
             KeyCode::Char('J') => self.action(Command::JoinLines),
             KeyCode::Char('n') => match self.last_search.clone() {
@@ -1924,6 +1937,7 @@ mod state_machine_props {
         prop_oneof![
             Just(Mode::Normal),
             Just(Mode::Insert),
+            Just(Mode::Replace),
             Just(Mode::Visual { line: false }),
             Just(Mode::Visual { line: true }),
             Just(Mode::Select { line: false }),
