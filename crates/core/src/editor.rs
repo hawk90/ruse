@@ -169,32 +169,74 @@ impl EditorState {
     }
 }
 
-/// The byte range a `delete` operator covers: linewise (whole lines incl. newline) for `Motion::Line`,
-/// else the motion's charwise span.
-fn op_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
-    // Line jumps (`dG`, `dgg`, `d{n}G`) are linewise across every line between the cursor and the target.
-    if matches!(m, Motion::GotoLine | Motion::LastLine) {
-        let t = motion::target(b, cur, m, count);
+/// The byte range `[s, e)` a `delete`/`yank` operator covers for a motion + count, plus whether the removed
+/// span is **linewise** (its register geometry and paste shape). Linewise motions delete whole lines;
+/// paragraph motions (`d}`) become linewise per Vim's exclusive-linewise rule; everything else is charwise.
+fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize, bool) {
+    // Whole-lines span from the cursor's line through the target's line, inclusive of the final newline.
+    let whole_lines = |t: usize| {
         let start = line_start(b, cur.min(t));
         let le = line_end(b, cur.max(t));
         let end = if le < b.len() { le + 1 } else { le };
-        return (start, end);
-    }
-    if m != Motion::Line {
-        return motion::char_span(b, cur, m, count);
-    }
-    let start = line_start(b, cur);
-    let mut end = start;
-    for _ in 0..count.max(1) {
-        let le = line_end(b, end);
-        if le < b.len() {
-            end = le + 1;
-        } else {
-            end = le;
-            break;
+        (start, end, true)
+    };
+    match m {
+        // Line jumps (`dG`, `dgg`, `d{n}G`) are linewise across every line between the cursor and target.
+        Motion::GotoLine | Motion::LastLine => whole_lines(motion::target(b, cur, m, count)),
+        // Vertical motions under an operator are linewise (`dj` deletes this line and the next). A motion
+        // that cannot move a line (`dj` on the last line) fails the operator entirely (Vim) — a no-op range.
+        Motion::Up | Motion::Down => {
+            let t = motion::target(b, cur, m, count);
+            if line_start(b, t) == line_start(b, cur) {
+                (cur, cur, true)
+            } else {
+                whole_lines(t)
+            }
+        }
+        // `dd` / `{count}dd`: whole lines from the cursor's line down.
+        Motion::Line => {
+            let start = line_start(b, cur);
+            let mut end = start;
+            for _ in 0..count.max(1) {
+                let le = line_end(b, end);
+                if le < b.len() {
+                    end = le + 1;
+                } else {
+                    end = le;
+                    break;
+                }
+            }
+            (start, end, true)
+        }
+        // Paragraph objects (`dip`/`dap`) are linewise (Vim); `char_span` already returns whole lines.
+        Motion::InnerParagraph | Motion::AParagraph => {
+            let (s, e) = motion::char_span(b, cur, m, count);
+            (s, e, true)
+        }
+        // Paragraph motions (`d}`/`d{`) are exclusive charwise, but Vim's exclusive-linewise rule turns them
+        // linewise when the exclusive end sits at column 0 and the start is at/before the first non-blank of
+        // its line (the common `d}` case); otherwise the end pulls back to the previous line end (charwise).
+        Motion::ParagraphFwd | Motion::ParagraphBack => {
+            let t = motion::target(b, cur, m, count);
+            let (lo, hi) = (cur.min(t), cur.max(t));
+            if lo >= hi {
+                (lo, lo, false)
+            } else if hi > 0 && hi == line_start(b, hi) {
+                if lo <= motion::first_non_blank(b, lo) {
+                    (line_start(b, lo), hi, true)
+                } else {
+                    (lo, hi - 1, false)
+                }
+            } else {
+                (lo, hi, false)
+            }
+        }
+        // Everything else is the motion's charwise span.
+        _ => {
+            let (s, e) = motion::char_span(b, cur, m, count);
+            (s, e, false)
         }
     }
-    (start, end)
 }
 
 /// The byte range a `change` operator covers: for `Motion::Line` it is the *content* of the line(s) (the
@@ -509,15 +551,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             nop(motion::target(b, cur, *m, *count), st.mode)
         }
         Command::Delete(count, m) => {
-            let (s, e) = op_range(b, cur, *m, *count);
+            let (s, e, linewise) = op_span(b, cur, *m, *count);
             if s >= e {
                 nop(cur, st.mode)
             } else {
-                let reg = captured(
-                    s,
-                    e,
-                    matches!(m, Motion::Line | Motion::GotoLine | Motion::LastLine),
-                );
+                let reg = captured(s, e, linewise);
                 edit_yank(one(Edit::delete(s, e - s)), s, st.mode, hint, reg)
             }
         }
@@ -542,16 +580,12 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::Yank(count, m) => {
-            let (s, e) = op_range(b, cur, *m, *count);
+            let (s, e, linewise) = op_span(b, cur, *m, *count);
             if s >= e {
                 nop(cur, st.mode)
             } else {
                 // Yank captures without editing; Vim leaves the cursor at the start of the yanked span.
-                let reg = captured(
-                    s,
-                    e,
-                    matches!(m, Motion::Line | Motion::GotoLine | Motion::LastLine),
-                );
+                let reg = captured(s, e, linewise);
                 Plan {
                     action: Action::Nop,
                     cursor: s,
@@ -942,14 +976,29 @@ mod single_key_edit_tests {
 
     #[test]
     fn replace_over_newline_or_eol_is_noop() {
+        // On an empty line the cursor sits at the line end (== line start): `r` has no char to replace and
+        // is a clean no-op (Vim). This is the Vim-valid way to land on EOL — a bare `$` rests on the last
+        // char, never past it, so it can never park the cursor on the newline itself.
+        let st = run("a\n\nb", &[Command::MoveDown, Command::ReplaceChar(1, 'X')]);
+        assert_eq!(text(&st), "a\n\nb", "r on an empty line's EOL does nothing");
+    }
+
+    #[test]
+    fn bare_dollar_lands_on_the_last_char_not_past_it() {
+        // Vim: a bare `$` rests ON the last char (byte 4 of "hello"), unlike the `d$` operator span which
+        // reaches the line end. This is what makes `$d0` leave the final char (parity fixture d_to_bol).
+        let st = run("hello", &[Command::Move(1, Motion::LineEnd)]);
+        assert_eq!(st.cursor(), 4);
         let st = run(
-            "ab\nc",
+            "hello world",
             &[
                 Command::Move(1, Motion::LineEnd),
-                Command::ReplaceChar(1, 'X'),
+                Command::Delete(1, Motion::LineStart),
             ],
         );
-        assert_eq!(text(&st), "ab\nc", "r on the line-end newline does nothing");
+        assert_eq!(text(&st), "d", "$d0 deletes [BOL, last char)");
+        assert_eq!(st.register().text(), b"hello worl");
+        assert!(!st.register().is_linewise());
     }
 
     #[test]
