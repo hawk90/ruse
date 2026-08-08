@@ -2514,7 +2514,8 @@ items:
   attestation:
   - D
   tag: v_aquote
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ax27
   surface: mode_key.text_object
   key: a'
@@ -2522,7 +2523,8 @@ items:
   attestation:
   - D
   tag: v_a'
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ax28
   surface: mode_key.text_object
   key: a(
@@ -2530,7 +2532,8 @@ items:
   attestation:
   - D
   tag: v_a(
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ax29
   surface: mode_key.text_object
   key: a)
@@ -2538,7 +2541,8 @@ items:
   attestation:
   - D
   tag: v_a)
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.a
   surface: mode_key.text_object
   key: a<
@@ -2546,7 +2550,8 @@ items:
   attestation:
   - D
   tag: v_a<
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.aB
   surface: mode_key.text_object
   key: aB
@@ -2554,7 +2559,8 @@ items:
   attestation:
   - D
   tag: v_aB
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.aW
   surface: mode_key.text_object
   key: aW
@@ -2562,7 +2568,8 @@ items:
   attestation:
   - D
   tag: v_aW
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ax5b
   surface: mode_key.text_object
   key: a[
@@ -2570,7 +2577,8 @@ items:
   attestation:
   - D
   tag: v_a[
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ax5d
   surface: mode_key.text_object
   key: a]
@@ -2578,7 +2586,8 @@ items:
   attestation:
   - D
   tag: v_a]
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ax60
   surface: mode_key.text_object
   key: a`
@@ -2586,7 +2595,8 @@ items:
   attestation:
   - D
   tag: v_a`
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ab
   surface: mode_key.text_object
   key: ab
@@ -2594,7 +2604,8 @@ items:
   attestation:
   - D
   tag: v_ab
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ap
   surface: mode_key.text_object
   key: ap
@@ -2602,7 +2613,8 @@ items:
   attestation:
   - D
   tag: v_ap
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.as
   surface: mode_key.text_object
   key: as
@@ -2610,7 +2622,8 @@ items:
   attestation:
   - D
   tag: v_as
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.at
   surface: mode_key.text_object
   key: at
@@ -2618,7 +2631,8 @@ items:
   attestation:
   - D
   tag: v_at
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.aw
   surface: mode_key.text_object
   key: aw
@@ -2626,7 +2640,8 @@ items:
   attestation:
   - D
   tag: v_aw
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ax7b
   surface: mode_key.text_object
   key: a{
@@ -2634,7 +2649,8 @@ items:
   attestation:
   - D
   tag: v_a{
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ax7d
   surface: mode_key.text_object
   key: a}
@@ -2642,7 +2658,8 @@ items:
   attestation:
   - D
   tag: v_a}
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix22
   surface: mode_key.text_object
   key: i"
@@ -2650,7 +2667,8 @@ items:
   attestation:
   - D
   tag: v_iquote
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix27
   surface: mode_key.text_object
   key: i'
@@ -2658,7 +2676,8 @@ items:
   attestation:
   - D
   tag: v_i'
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix28
   surface: mode_key.text_object
   key: i(
@@ -2666,7 +2685,8 @@ items:
   attestation:
   - D
   tag: v_i(
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix29
   surface: mode_key.text_object
   key: i)
@@ -2674,7 +2694,8 @@ items:
   attestation:
   - D
   tag: v_i)
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.i
   surface: mode_key.text_object
   key: i<
@@ -2682,7 +2703,8 @@ items:
   attestation:
   - D
   tag: v_i<
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.iB
   surface: mode_key.text_object
   key: iB
@@ -2690,7 +2712,8 @@ items:
   attestation:
   - D
   tag: v_iB
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.iW
   surface: mode_key.text_object
   key: iW
@@ -2698,7 +2721,8 @@ items:
   attestation:
   - D
   tag: v_iW
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix5b
   surface: mode_key.text_object
   key: i[
@@ -2706,7 +2730,8 @@ items:
   attestation:
   - D
   tag: v_i[
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix5d
   surface: mode_key.text_object
   key: i]
@@ -2714,7 +2739,8 @@ items:
   attestation:
   - D
   tag: v_i]
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix60
   surface: mode_key.text_object
   key: i`
@@ -2722,7 +2748,8 @@ items:
   attestation:
   - D
   tag: v_i`
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ib
   surface: mode_key.text_object
   key: ib
@@ -2730,7 +2757,8 @@ items:
   attestation:
   - D
   tag: v_ib
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ip
   surface: mode_key.text_object
   key: ip
@@ -2738,7 +2766,8 @@ items:
   attestation:
   - D
   tag: v_ip
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.is
   surface: mode_key.text_object
   key: is
@@ -2746,7 +2775,8 @@ items:
   attestation:
   - D
   tag: v_is
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.it
   surface: mode_key.text_object
   key: it
@@ -2754,7 +2784,8 @@ items:
   attestation:
   - D
   tag: v_it
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.iw
   surface: mode_key.text_object
   key: iw
@@ -2762,7 +2793,8 @@ items:
   attestation:
   - D
   tag: v_iw
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix7b
   surface: mode_key.text_object
   key: i{
@@ -2770,7 +2802,8 @@ items:
   attestation:
   - D
   tag: v_i{
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.text_object.ix7d
   surface: mode_key.text_object
   key: i}
@@ -2778,7 +2811,8 @@ items:
   attestation:
   - D
   tag: v_i}
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.window.c_Wx20c_B
   surface: mode_key.normal.window
   key: CTRL-W CTRL-B
