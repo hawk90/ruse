@@ -2649,6 +2649,102 @@
       }
     },
     {
+      "name": "replace_basic_overwrite",
+      "lines": [
+        "hello"
+      ],
+      "keys": "Rxy<Esc>",
+      "expect": {
+        "text": [
+          "xyllo"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "replace_past_eol_appends",
+      "lines": [
+        "ab"
+      ],
+      "keys": "RXYZ<Esc>",
+      "expect": {
+        "text": [
+          "XYZ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "replace_backspace_restores",
+      "lines": [
+        "hello"
+      ],
+      "keys": "Rxy<BS><BS><Esc>",
+      "expect": {
+        "text": [
+          "hello"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "replace_backspace_deletes_appended",
+      "lines": [
+        "ab"
+      ],
+      "keys": "RXYZ<BS><Esc>",
+      "expect": {
+        "text": [
+          "XY"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "refactor_2word_change_end",
       "lines": [
         "aa bb cc dd"

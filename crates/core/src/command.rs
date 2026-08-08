@@ -65,6 +65,13 @@ pub enum Command {
     OpenBelow,
     /// `O` — open a new line above and insert.
     OpenAbove,
+    /// `R` — enter Replace mode (overwrite policy).
+    EnterReplace,
+    /// A printable key typed in Replace mode: overwrite the char under the cursor (or append at EOL).
+    ReplaceType(char),
+    /// `<BS>` in Replace mode: restore the last overwritten char (or delete the last appended one),
+    /// moving the cursor back; at the session start it only moves the cursor left.
+    ReplaceBackspace,
     // edit
     InsertChar(char),
     InsertNewline,
@@ -359,6 +366,9 @@ impl Command {
             Command::AppendLineEnd => "append_line_end".into(),
             Command::OpenBelow => "open_below".into(),
             Command::OpenAbove => "open_above".into(),
+            Command::EnterReplace => "enter_replace".into(),
+            Command::ReplaceType(c) => format!("replace_type {}", *c as u32),
+            Command::ReplaceBackspace => "replace_backspace".into(),
             Command::InsertChar(c) => {
                 let mut s = String::from("insert_char ");
                 let _ = write!(s, "{}", *c as u32);
@@ -461,6 +471,16 @@ impl Command {
             "append_line_end" => Command::AppendLineEnd,
             "open_below" => Command::OpenBelow,
             "open_above" => Command::OpenAbove,
+            "enter_replace" => Command::EnterReplace,
+            "replace_type" => {
+                let cp: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::ReplaceType(c)
+            }
+            "replace_backspace" => Command::ReplaceBackspace,
             "insert_char" => {
                 let cp: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -632,6 +652,10 @@ mod tests {
             Command::AppendLineEnd,
             Command::OpenBelow,
             Command::OpenAbove,
+            Command::EnterReplace,
+            Command::ReplaceType('z'),
+            Command::ReplaceType('가'),
+            Command::ReplaceBackspace,
             Command::InsertChar('h'),
             Command::ReplaceChar(1, 'z'),
             Command::ReplaceChar(3, 'z'),

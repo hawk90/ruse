@@ -29,8 +29,16 @@ use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 pub enum Mode {
     Normal,
     Insert,
-    Visual { line: bool },
-    Select { line: bool },
+    /// Replace mode (`R`): a printable key OVERWRITES the char under the cursor instead of inserting; at
+    /// end-of-line it appends. `<BS>` restores the overwritten char (or deletes an appended one). Virtual
+    /// Replace (`gR`, tab-aware) is deferred.
+    Replace,
+    Visual {
+        line: bool,
+    },
+    Select {
+        line: bool,
+    },
 }
 
 /// The indentation unit a shift operator (`>>`/`<<`) applies, derived from the two editor config keys
@@ -52,7 +60,7 @@ impl Mode {
     fn selection(self) -> Option<bool> {
         match self {
             Mode::Visual { line } | Mode::Select { line } => Some(line),
-            Mode::Normal | Mode::Insert => None,
+            Mode::Normal | Mode::Insert | Mode::Replace => None,
         }
     }
 }
@@ -83,6 +91,10 @@ pub struct EditorState {
     /// degenerate of D-027's `` `< ``/`` `> `` selection history: one remembered selection, stored in the
     /// same raw-offset representation as the live `anchor` (both migrate to the anchor store together).
     last_visual: Option<(usize, usize, bool)>,
+    /// Replace-mode (`R`) session history for `<BS>` restore: one entry per key typed, in order. `Some(orig)`
+    /// = that key OVERWROTE a char (its original bytes, to restore on backspace); `None` = it APPENDED at
+    /// end-of-line (backspace deletes it). Empty outside a Replace session; cleared on leaving Replace.
+    replace_stack: Vec<Option<Vec<u8>>>,
     /// `editor.tab_width` — one indent level's width in columns/spaces. Schema default 4.
     tab_width: usize,
     /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
@@ -93,6 +105,15 @@ enum Action {
     Txn {
         edits: EditList,
         hint: GroupHint,
+    },
+    /// A Replace-mode edit that also updates the `<BS>`-restore stack: apply `edits`, then `push` an entry
+    /// (`Some(orig)` overwrote / `None` appended) and/or `pop` one on backspace. Distinct from `Txn` only
+    /// because the stack mutation must ride with the edit.
+    ReplaceTxn {
+        edits: EditList,
+        hint: GroupHint,
+        push: Option<Option<Vec<u8>>>,
+        pop: bool,
     },
     Undo,
     Redo,
@@ -158,6 +179,7 @@ impl EditorState {
             pending_register: None,
             anchor: None,
             last_visual: None,
+            replace_stack: Vec::new(),
             // Schema defaults (spec/config-schema.yaml): editor.tab_width=4, editor.indent_style=space.
             // Runtime config wiring is deferred (as with editor.scrolloff), so the shift operators read
             // these fields, which currently always hold the defaults.
@@ -556,9 +578,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             )
         }
         Command::EnterNormal => {
-            // Vim: leaving Insert nudges the cursor left one, but never before the line start. Leaving Visual
-            // (Esc) just collapses the selection in place — no nudge.
-            if st.mode == Mode::Insert {
+            // Vim: leaving Insert OR Replace nudges the cursor left one, but never before the line start.
+            // Leaving Visual (Esc) just collapses the selection in place — no nudge.
+            if matches!(st.mode, Mode::Insert | Mode::Replace) {
                 let ls = line_start(b, cur);
                 let c = if cur > ls { prev_boundary(b, cur) } else { cur };
                 nop(c, Mode::Normal)
@@ -566,6 +588,67 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 nop(cur, Mode::Normal)
             }
         }
+        Command::EnterReplace => nop(cur, Mode::Replace),
+        Command::ReplaceType(c) => {
+            let mut buf = [0u8; 4];
+            let typed = c.encode_utf8(&mut buf).as_bytes().to_vec();
+            let tn = typed.len();
+            let le = line_end(b, cur);
+            let (edits, push) = if cur < le {
+                // Overwrite the char under the cursor; remember its original bytes for `<BS>` restore.
+                let nb = next_boundary(b, cur);
+                (
+                    one(Edit::replace(cur, nb - cur, typed)),
+                    Some(Some(b[cur..nb].to_vec())),
+                )
+            } else {
+                // At end-of-line there is nothing to overwrite: append, remembered as `None` (backspace deletes).
+                (one(Edit::insert(cur, typed)), Some(None))
+            };
+            Plan {
+                action: Action::ReplaceTxn {
+                    edits,
+                    hint,
+                    push,
+                    pop: false,
+                },
+                cursor: cur + tn,
+                mode: Mode::Replace,
+                is_edit: true,
+                effects: Vec::new(),
+                set_register: None,
+                set_anchor: None,
+            }
+        }
+        Command::ReplaceBackspace => match st.replace_stack.last() {
+            // At the session start `<BS>` only moves the cursor left (Vim does not restore past the start).
+            None => {
+                let ls = line_start(b, cur);
+                let c = if cur > ls { prev_boundary(b, cur) } else { cur };
+                nop(c, Mode::Replace)
+            }
+            Some(entry) => {
+                let start = prev_boundary(b, cur); // the last typed char occupies [start, cur)
+                let edits = match entry {
+                    Some(orig) => one(Edit::replace(start, cur - start, orig.clone())),
+                    None => one(Edit::delete(start, cur - start)),
+                };
+                Plan {
+                    action: Action::ReplaceTxn {
+                        edits,
+                        hint,
+                        push: None,
+                        pop: true,
+                    },
+                    cursor: start,
+                    mode: Mode::Replace,
+                    is_edit: true,
+                    effects: Vec::new(),
+                    set_register: None,
+                    set_anchor: None,
+                }
+            }
+        },
         Command::InsertChar(c) => {
             let mut buf = [0u8; 4];
             let bytes = c.encode_utf8(&mut buf).as_bytes().to_vec();
@@ -1253,6 +1336,24 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 .apply(txn)
                 .expect("planned transaction applies cleanly");
         }
+        Action::ReplaceTxn {
+            edits,
+            hint,
+            push,
+            pop,
+        } => {
+            let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
+                .with_hint(hint);
+            st.doc
+                .apply(txn)
+                .expect("planned transaction applies cleanly");
+            if pop {
+                st.replace_stack.pop();
+            }
+            if let Some(entry) = push {
+                st.replace_stack.push(entry);
+            }
+        }
         Action::Undo => {
             st.doc.undo();
         }
@@ -1268,6 +1369,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     st.cursor = snap(st.doc.bytes(), plan.cursor);
     st.mode = plan.mode;
     st.last_was_edit = plan.is_edit;
+    // The `<BS>`-restore history lives only for the duration of a Replace session; drop it on any exit.
+    if st.mode != Mode::Replace {
+        st.replace_stack.clear();
+    }
     // Vim never rests the Normal-mode cursor on the newline: after an edit that leaves it beyond the final
     // char of a non-empty line, pull it back onto the last char (e.g. `dw` on the last word → the cursor
     // clamps to the trailing char rather than the line end). Scoped to edits in Normal mode so it never
@@ -1624,6 +1729,64 @@ mod visual_swap_tests {
         assert_eq!(st.register().text(), b"cde");
         assert!(!st.register().is_linewise());
         assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn replace_mode_overwrites_appends_restores_and_undoes() {
+        // Overwrite: R over "hello" typing x,y → "xyllo".
+        let st = run(
+            "hello",
+            &[
+                Command::EnterReplace,
+                Command::ReplaceType('x'),
+                Command::ReplaceType('y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "xyllo");
+        assert_eq!(st.mode(), Mode::Normal);
+
+        // Append past EOL, then <BS> deletes the appended char (not a restore).
+        let st = run(
+            "ab",
+            &[
+                Command::EnterReplace,
+                Command::ReplaceType('X'),
+                Command::ReplaceType('Y'),
+                Command::ReplaceType('Z'), // appended (past EOL)
+                Command::ReplaceBackspace, // deletes the appended Z
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "XY");
+
+        // Backspace restores the overwritten originals.
+        let st = run(
+            "hello",
+            &[
+                Command::EnterReplace,
+                Command::ReplaceType('x'),
+                Command::ReplaceType('y'),
+                Command::ReplaceBackspace,
+                Command::ReplaceBackspace,
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "hello", "BS restored both overwritten chars");
+
+        // Undo of a whole R session restores the original line as one group (oracle can't observe this).
+        let st = run(
+            "hello",
+            &[
+                Command::EnterReplace,
+                Command::ReplaceType('x'),
+                Command::ReplaceType('y'),
+                Command::ReplaceType('z'),
+                Command::EnterNormal,
+                Command::Undo,
+            ],
+        );
+        assert_eq!(text(&st), "hello", "undo reverts the whole R session");
     }
 
     #[test]

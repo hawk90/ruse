@@ -263,7 +263,7 @@ oracles:
     status: usable-with-hazard
     hazards: 2
 behavioral:
-  fixtures: 114
+  fixtures: 118
   verified_items: 0
   note: 'Differential fixtures live at tests/parity/vim/fixtures/ against the nvim oracle (tools/parity/oracle.py;
     `--selftest` gates the corpus — three prior harnesses corrupted their own first observation). verified/divergent

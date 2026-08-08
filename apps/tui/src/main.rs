@@ -370,6 +370,7 @@ fn render(
             let mode = match st.mode() {
                 Mode::Normal => "NORMAL",
                 Mode::Insert => "INSERT",
+                Mode::Replace => "REPLACE",
                 Mode::Visual { line: false } => "VISUAL",
                 Mode::Visual { line: true } => "V-LINE",
                 Mode::Select { line: false } => "SELECT",
