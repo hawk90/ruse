@@ -58,6 +58,10 @@ enum Ns {
     Normal,
     Insert,
     Visual,
+    /// Shares Visual's selection state (they toggle with `CTRL-G`) and differs only in its
+    /// unmatched-key policy: `open/replace-selection` where Visual is `closed/ignore`. Two namespaces
+    /// over identical state, distinguished by the one dimension a transition table could not record.
+    Select,
     /// Distinct from [`Ns::Normal`] precisely because its policy is `closed/abort`, not
     /// `closed/ignore` — the distinction the engine could not express while operator-pending was a
     /// field on Normal state rather than a namespace of its own.
@@ -70,6 +74,7 @@ impl Ns {
             Ns::Normal => "vim.normal",
             Ns::Insert => "vim.insert",
             Ns::Visual => "vim.visual",
+            Ns::Select => "vim.select",
             Ns::OperatorPending => "vim.operator_pending",
         }
     }
@@ -85,6 +90,7 @@ struct VimProfile {
     normal: LayerStack<KeyCode, Command>,
     insert: LayerStack<KeyCode, Command>,
     visual: LayerStack<KeyCode, Command>,
+    select: LayerStack<KeyCode, Command>,
     operator_pending: LayerStack<KeyCode, Command>,
 }
 
@@ -109,6 +115,10 @@ impl VimProfile {
             // missing, not the half that worked.
             normal: one(Ns::Normal, UnmatchedKey::Ignore, &[]),
             visual: one(Ns::Visual, UnmatchedKey::Ignore, &[]),
+            // Select carries no bindings either — its matched keys are Visual's grammar, shared in
+            // `feed`. What it contributes is the OPPOSITE unmatched-key policy: a printable key that
+            // matches nothing deletes the selection and enters Insert (`open/replace-selection`).
+            select: one(Ns::Select, UnmatchedKey::ReplaceSelection, &[]),
             operator_pending: one(Ns::OperatorPending, UnmatchedKey::Abort, &[]),
             // Insert IS a flat table, so it is a real layer with real bindings — and routing it
             // through the stack is what removes the `if mode == Mode::Insert` early return.
@@ -129,6 +139,7 @@ impl VimProfile {
             Ns::Normal => &self.normal,
             Ns::Insert => &self.insert,
             Ns::Visual => &self.visual,
+            Ns::Select => &self.select,
             Ns::OperatorPending => &self.operator_pending,
         }
     }
@@ -226,9 +237,20 @@ impl InputEngine {
                 self.reset();
                 Feed::Ignored
             }
+            UnmatchedKey::ReplaceSelection => {
+                self.reset();
+                match key.code {
+                    // Vim Select: a printable key deletes the selection, inserts the char, enters Insert.
+                    // The core (`Command::ReplaceSelection`) performs all three as one edit.
+                    KeyCode::Char(c) => Feed::Cmd(Command::ReplaceSelection(c)),
+                    // `open/replace-selection` is about PRINTABLE keys; a non-printable unmatched key
+                    // does nothing (it is NOT `closed/ignore`, but the observable result here matches).
+                    _ => Feed::Ignored,
+                }
+            }
             // The remaining open policies belong to namespaces this engine does not reach yet
-            // (Cmdline/Select/Terminal/Lang). Reaching one means a namespace was wired without its
-            // handler, and failing loudly beats inventing a behaviour.
+            // (Cmdline/Terminal/Lang). Reaching one means a namespace was wired without its handler,
+            // and failing loudly beats inventing a behaviour.
             other => unreachable!("namespace {ns:?} has unimplemented policy {other:?}"),
         }
     }
@@ -359,6 +381,20 @@ impl InputEngine {
             }
             Awaiting::Nothing => {}
         }
+        // `CTRL-G` toggles Visual<->Select over the SAME selection (Vim's documented behaviour). Handled
+        // here, before the shared `g` initiator below, so it is never mistaken for the start of `gg` — and
+        // fully consumed in every mode: outside a selection nothing is bound (Vim's file-info `CTRL-G` is
+        // not implemented), which is inert, NOT the start of `gg`.
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('g') {
+            return match mode {
+                Mode::Visual { line } => self.action(Command::EnterSelect { line }),
+                Mode::Select { line } => self.action(Command::EnterVisual { line }),
+                _ => {
+                    self.reset();
+                    Feed::Ignored
+                }
+            };
+        }
         // --- Shared initiators (char-search + `;`/`,`): work in Normal and Visual, preserving the operator
         // axis (so `dfx` / `d;` work). Reachable only with `awaiting == Nothing` — the tier above already
         // returned for the pending cases — so a text object in flight can never be hijacked by `f`/`t`. ---
@@ -421,8 +457,14 @@ impl InputEngine {
             KeyCode::Char('%') => return self.motion(Motion::MatchBracket),
             _ => {}
         }
-        // Visual mode: the selection already exists, so operators act on it directly and motions extend it.
-        if let Mode::Visual { line } = mode {
+        // Visual and Select: the selection already exists, so operators act on it directly and motions
+        // extend it. The two share every matched key here (identical selection state); they diverge ONLY
+        // in the unmatched-key fallthrough — Visual ignores, Select replaces-and-inserts.
+        //
+        // DEFERRED (F-025 carve-out): `gv` (restore the PREVIOUS selection) is blocked on
+        // CONCEPT-POSITION-HISTORY (C-ANCHOR) — a previous-selection store the engine does not have yet —
+        // so it is intentionally unimplemented. `g` here only ever arms `gg`.
+        if let Mode::Visual { line } | Mode::Select { line } = mode {
             match key.code {
                 KeyCode::Esc => return self.action(Command::EnterNormal),
                 // `v`/`V` toggle: same kind exits, the other switches charwise↔linewise.
@@ -447,14 +489,22 @@ impl InputEngine {
                 KeyCode::Char('c') | KeyCode::Char('s') => {
                     return self.action(Command::ChangeSelection)
                 }
-                // Count digits and motions extend the selection; anything else is ignored in Visual.
+                // Count digits and motions extend the selection; an unmatched key hits the namespace's
+                // own policy — `closed/ignore` for Visual, `open/replace-selection` for Select.
                 KeyCode::Char('1'..='9') => {}
                 KeyCode::Char('0') if self.count > 0 => {}
                 KeyCode::Char('0') => return self.motion(Motion::LineStart),
                 _ if motion_key(key.code).is_some() => {}
-                _ => return self.unmatched(Ns::Visual, key),
+                _ => {
+                    let ns = if matches!(mode, Mode::Select { .. }) {
+                        Ns::Select
+                    } else {
+                        Ns::Visual
+                    };
+                    return self.unmatched(ns, key);
+                }
             }
-            // fall through to shared count/motion handling below (op is never set in Visual)
+            // fall through to shared count/motion handling below (op is never set in Visual/Select)
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
@@ -800,6 +850,74 @@ mod tests {
         );
     }
 
+    fn ctrl_g() -> KeyEvent {
+        KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn ctrl_g_toggles_visual_and_select_both_ways() {
+        let mut e = InputEngine::new();
+        // Visual -> Select, carrying the charwise/linewise shape.
+        assert_eq!(
+            e.feed(ctrl_g(), Mode::Visual { line: false }),
+            Feed::Cmd(Command::EnterSelect { line: false })
+        );
+        assert_eq!(
+            e.feed(ctrl_g(), Mode::Visual { line: true }),
+            Feed::Cmd(Command::EnterSelect { line: true })
+        );
+        // Select -> Visual, back again.
+        assert_eq!(
+            e.feed(ctrl_g(), Mode::Select { line: false }),
+            Feed::Cmd(Command::EnterVisual { line: false })
+        );
+        assert_eq!(
+            e.feed(ctrl_g(), Mode::Select { line: true }),
+            Feed::Cmd(Command::EnterVisual { line: true })
+        );
+        // CTRL-G is inert in Normal (no selection to toggle); it is NOT the start of `gg`.
+        assert_eq!(e.feed(ctrl_g(), Mode::Normal), Feed::Ignored);
+    }
+
+    #[test]
+    fn printable_key_in_select_replaces_the_selection() {
+        // A key that matches no motion/operator hits Select's `open/replace-selection` policy.
+        let sel = Mode::Select { line: false };
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('z'), sel),
+            Feed::Cmd(Command::ReplaceSelection('z'))
+        );
+        // A non-printable unmatched key does nothing.
+        assert_eq!(e.feed(esc(), sel), Feed::Cmd(Command::EnterNormal));
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('A'), sel),
+            Feed::Cmd(Command::ReplaceSelection('A'))
+        );
+    }
+
+    #[test]
+    fn select_operators_and_motions_match_visual() {
+        let sel = Mode::Select { line: false };
+        let mut e = InputEngine::new();
+        // d/y/c act on the selection, exactly as in Visual.
+        assert_eq!(e.feed(k('d'), sel), Feed::Cmd(Command::DeleteSelection));
+        assert_eq!(e.feed(k('y'), sel), Feed::Cmd(Command::YankSelection));
+        assert_eq!(e.feed(k('c'), sel), Feed::Cmd(Command::ChangeSelection));
+        // A motion extends the selection (a bare Move; the frontend re-plans it against the anchor).
+        assert_eq!(
+            e.feed(k('l'), sel),
+            Feed::Cmd(Command::Move(1, Motion::Right))
+        );
+        assert_eq!(
+            e.feed(k('w'), sel),
+            Feed::Cmd(Command::Move(1, Motion::WordFwd))
+        );
+        // Esc leaves the selection.
+        assert_eq!(e.feed(esc(), sel), Feed::Cmd(Command::EnterNormal));
+    }
+
     #[test]
     fn yank_operator_and_paste() {
         assert_eq!(feed("yw"), Feed::Cmd(Command::Yank(1, Motion::WordFwd)));
@@ -915,6 +1033,7 @@ mod state_machine_props {
                 .prop_map(|c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)),
             any::<char>().prop_map(|c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)),
             Just(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+            Just(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL)),
             Just(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
             Just(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
             Just(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)),
@@ -927,6 +1046,8 @@ mod state_machine_props {
             Just(Mode::Insert),
             Just(Mode::Visual { line: false }),
             Just(Mode::Visual { line: true }),
+            Just(Mode::Select { line: false }),
+            Just(Mode::Select { line: true }),
         ]
     }
 
