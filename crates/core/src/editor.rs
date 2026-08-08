@@ -1020,21 +1020,36 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u
             mk(ls, text, ls)
         }
     } else {
-        // `{count}p` inserts that many copies inline; the cursor lands on the last pasted byte (Vim).
+        // `{count}p` inserts that many copies inline. Vim's charwise-paste cursor rule splits on whether the
+        // pasted text spans lines: single-line content leaves the cursor on the LAST pasted byte, but content
+        // carrying a newline (e.g. a charwise Visual delete across a line boundary) leaves it on the FIRST
+        // pasted byte — the start of the inserted run — not the last.
         let text = repeat(reg.text());
         let n = text.len();
+        let multiline = text.contains(&b'\n');
         if after {
-            // Insert after the cursor char; cursor ends on the last pasted byte's boundary (Vim behavior).
+            // Insert after the cursor char; cursor lands on the first pasted byte for multi-line content,
+            // else on the last pasted byte's boundary (Vim behavior).
             let at = if cur < b.len() {
                 next_boundary(b, cur)
             } else {
                 cur
             };
-            let end = at + n;
-            mk(at, text, end.saturating_sub(1))
+            let cursor = if multiline {
+                at
+            } else {
+                (at + n).saturating_sub(1)
+            };
+            mk(at, text, cursor)
         } else {
-            // Insert before the cursor; cursor ends on the last pasted byte.
-            mk(cur, text, (cur + n).saturating_sub(1))
+            // Insert before the cursor; cursor lands on the first pasted byte for multi-line content, else
+            // on the last pasted byte.
+            let cursor = if multiline {
+                cur
+            } else {
+                (cur + n).saturating_sub(1)
+            };
+            mk(cur, text, cursor)
         }
     }
 }
