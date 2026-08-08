@@ -5,7 +5,7 @@
 //! the same commands on the same initial document is deterministic (see [`crate::trace`]). This is the split
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
-use crate::command::Command;
+use crate::command::{Command, SearchOp};
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
 use crate::effect::Effect;
@@ -836,6 +836,49 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::SearchPrev(pat) => {
             let m = crate::search::find_prev(b, pat.as_bytes(), cur).unwrap_or(cur);
             nop(m, st.mode)
+        }
+        // `/pat` as a motion: step forward to the `count`-th match (each step searches from just past the
+        // last), then either move there (`Move`) or fold `[cursor, match)` into a charwise-exclusive edit
+        // (`d/pat`/`c/pat`/`y/pat`). If no forward match lands past the cursor the operator aborts (Vim
+        // rings the bell) — a clean no-op, never a reversed/empty edit.
+        Command::Search { op, count, pattern } => {
+            let mut pos = cur;
+            for _ in 0..(*count).max(1) {
+                match crate::search::find_next(b, pattern.as_bytes(), pos + 1) {
+                    Some(m) => pos = m,
+                    None => break,
+                }
+            }
+            match op {
+                SearchOp::Move => nop(pos, st.mode),
+                _ if pos <= cur => nop(cur, st.mode),
+                SearchOp::Delete => {
+                    let reg = captured(cur, pos, false);
+                    edit_yank(one(Edit::delete(cur, pos - cur)), cur, st.mode, hint, reg)
+                }
+                SearchOp::Change => {
+                    let reg = captured(cur, pos, false);
+                    edit_yank(
+                        one(Edit::delete(cur, pos - cur)),
+                        cur,
+                        Mode::Insert,
+                        hint,
+                        reg,
+                    )
+                }
+                SearchOp::Yank => {
+                    let reg = captured(cur, pos, false);
+                    Plan {
+                        action: Action::Nop,
+                        cursor: cur,
+                        mode: st.mode,
+                        is_edit: false,
+                        effects: Vec::new(),
+                        set_register: Some(reg),
+                        set_anchor: None,
+                    }
+                }
+            }
         }
         Command::Undo => Plan {
             action: Action::Undo,

@@ -4,7 +4,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
-use ruse_core::{Command, Mode, Motion};
+use ruse_core::{Command, Mode, Motion, SearchOp};
 
 /// The outcome of feeding one key to the engine.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -351,6 +351,10 @@ pub struct InputEngine {
     /// The register named by the most recent `"x`, held only until the NEXT recorded change picks it up (so
     /// `.` replays it). Cleared by any intervening non-register command — a stray `"x` then a motion forgets.
     pending_record_register: Option<char>,
+    /// The operator+count armed when `/` opened the search line, held across the minibuffer's pattern entry
+    /// so `submit_search` can fold them into the finished command (`d/pat`, `2/pat`). `/` captures this
+    /// BEFORE `reset()` wipes the axes; `None` between searches. See [`InputEngine::submit_search`].
+    pending_search: Option<(SearchOp, u32)>,
 }
 
 impl InputEngine {
@@ -366,6 +370,7 @@ impl InputEngine {
             last_change: None,
             recording: None,
             pending_record_register: None,
+            pending_search: None,
         }
     }
 
@@ -421,9 +426,18 @@ impl InputEngine {
         }
     }
 
-    /// Remember the pattern from a `/search` so `n`/`N` can repeat it.
-    pub fn set_last_search(&mut self, pattern: String) {
-        self.last_search = Some(pattern);
+    /// Complete a `/pattern` line the frontend collected after a [`Feed::OpenSearch`]. Folds the pattern
+    /// into the operator/count captured when `/` was pressed and yields the finished [`Command::Search`]:
+    /// bare (`/pat`, `2/pat`) moves, or `d/pat`/`c/pat`/`y/pat` deletes/changes/yanks `[cursor, match)`.
+    /// Also records the pattern for `n`/`N`. An empty pattern aborts (Vim's `<CR>` on an empty line is a
+    /// no-op / reuse-last, which v0 treats as inert) — the armed operator is dropped, nothing is emitted.
+    pub fn submit_search(&mut self, pattern: String) -> Feed {
+        let (op, count) = self.pending_search.take().unwrap_or((SearchOp::Move, 1));
+        if pattern.is_empty() {
+            return Feed::Ignored;
+        }
+        self.last_search = Some(pattern.clone());
+        Feed::Cmd(Command::Search { op, count, pattern })
     }
 
     /// Clear the transient command state (count, operator, key-expectation). Sticky repeat state survives.
@@ -858,6 +872,23 @@ impl InputEngine {
                 }
             }
             KeyCode::Char('/') => {
+                // `/` is a MOTION, so an armed operator/count must survive the minibuffer (`d/pat`,
+                // `2/pat`). Capture them (folded like `motion()` does: op-count × pending count) BEFORE
+                // `reset()` clears the axes, then hand off to the frontend, which collects the pattern and
+                // calls `submit_search` to build the finished command.
+                let op = match self.op {
+                    Some(OpPending { op, .. }) => match op {
+                        Op::Delete => SearchOp::Delete,
+                        Op::Change => SearchOp::Change,
+                        Op::Yank => SearchOp::Yank,
+                    },
+                    None => SearchOp::Move,
+                };
+                let count = match self.op {
+                    Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+                    None => self.mcount(),
+                };
+                self.pending_search = Some((op, count));
                 self.reset();
                 Feed::OpenSearch
             }
@@ -1710,9 +1741,17 @@ mod search_tests {
     #[test]
     fn slash_opens_search_and_n_repeats() {
         let mut e = InputEngine::new();
-        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
         assert_eq!(e.feed(k('n'), Mode::Normal), Feed::Ignored); // no prior search yet
-        e.set_last_search("foo".into());
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        // Submitting the pattern yields a bare-move Search AND records it for `n`/`N`.
+        assert_eq!(
+            e.submit_search("foo".into()),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into()
+            })
+        );
         assert_eq!(
             e.feed(k('n'), Mode::Normal),
             Feed::Cmd(Command::SearchNext("foo".into()))
@@ -1724,12 +1763,44 @@ mod search_tests {
     }
 
     #[test]
-    fn opening_a_command_line_clears_a_pending_operator() {
-        // The `:`/`/` boundary to main.rs's cmd_line must not carry a half-typed operator across.
+    fn empty_search_pattern_is_inert() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        assert_eq!(e.submit_search(String::new()), Feed::Ignored);
+    }
+
+    #[test]
+    fn slash_clears_the_transient_axes_but_folds_the_operator_into_the_search() {
+        // `/` is a MOTION: the transient count/op/awaiting axes are cleared (so nothing leaks into the
+        // minibuffer), but an armed operator/count is CAPTURED for the search to consume — `d/pat`,
+        // `2/pat`. This is the fix for the old behaviour that dropped the operator on `/`.
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
         assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
         assert!(e.op.is_none() && e.awaiting == Awaiting::Nothing && e.count == 0);
+        assert_eq!(
+            e.submit_search("bar".into()),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "bar".into()
+            })
+        );
+    }
+
+    #[test]
+    fn count_before_slash_selects_the_nth_match() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        assert_eq!(
+            e.submit_search("foo".into()),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 2,
+                pattern: "foo".into()
+            })
+        );
     }
 }
 

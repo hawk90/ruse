@@ -180,18 +180,10 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
                             &mut status,
                             &mut quit,
                         );
-                    } else {
-                        engine.set_last_search(text.clone());
-                        if !text.is_empty() {
-                            run_cmd(
-                                Command::SearchNext(text),
-                                &mut st,
-                                &path,
-                                &mut recorded,
-                                &mut status,
-                                &mut quit,
-                            );
-                        }
+                    } else if let Feed::Cmd(cmd) = engine.submit_search(text) {
+                        // `submit_search` folds the pattern into any operator/count that preceded `/`
+                        // (`d/pat`, `2/pat`) and records it for `n`/`N`; an empty pattern yields Ignored.
+                        run_cmd(cmd, &mut st, &path, &mut recorded, &mut status, &mut quit);
                     }
                 }
                 _ => {}
