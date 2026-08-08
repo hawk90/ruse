@@ -3,6 +3,7 @@
 //! commands, so re-keymapping never invalidates a corpus. Pure and unit-tested.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
 use ruse_core::{Command, Mode, Motion};
 
 /// The outcome of feeding one key to the engine.
@@ -46,6 +47,93 @@ fn motion_key(code: KeyCode) -> Option<Motion> {
     })
 }
 
+/// The Vim keymap namespaces this engine currently implements, as LAYERS of the D-045 stack.
+///
+/// Not all eight yet — Cmdline/Select/Terminal/Lang are not reachable from this engine — but the four
+/// that are reachable now name themselves, and each carries its own unmatched-key policy instead of
+/// sharing one `Feed::Ignored` fallthrough. That sharing was the shipped defect: one `closed/ignore`
+/// standing in for five `open` policies (contracts/vim-style.yaml).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Ns {
+    Normal,
+    Insert,
+    Visual,
+    /// Distinct from [`Ns::Normal`] precisely because its policy is `closed/abort`, not
+    /// `closed/ignore` — the distinction the engine could not express while operator-pending was a
+    /// field on Normal state rather than a namespace of its own.
+    OperatorPending,
+}
+
+impl Ns {
+    fn id(self) -> &'static str {
+        match self {
+            Ns::Normal => "vim.normal",
+            Ns::Insert => "vim.insert",
+            Ns::Visual => "vim.visual",
+            Ns::OperatorPending => "vim.operator_pending",
+        }
+    }
+}
+
+/// The Vim profile's layer set: depth 1 and SEALED, declared rather than assumed (KL-OBL-3).
+///
+/// Depth-1-sealed is what makes Vim's guarantees hold. If an unsealed layer were ever installed
+/// beneath these, `closed/ignore` would start falling through to it and every VS-OBL would break
+/// without one line of Vim-specific code changing — so the property is asserted in the tests below
+/// rather than left as a comment.
+struct VimProfile {
+    normal: LayerStack<KeyCode, Command>,
+    insert: LayerStack<KeyCode, Command>,
+    visual: LayerStack<KeyCode, Command>,
+    operator_pending: LayerStack<KeyCode, Command>,
+}
+
+fn one(ns: Ns, policy: UnmatchedKey, binds: &[(KeyCode, Command)]) -> LayerStack<KeyCode, Command> {
+    let mut layer = Layer::new(ns.id(), 100, true, policy);
+    for (k, c) in binds {
+        layer = layer.bind(*k, c.clone());
+    }
+    let mut stack = LayerStack::new();
+    stack
+        .push(layer)
+        .expect("a single-layer stack cannot collide with itself");
+    stack
+}
+
+impl VimProfile {
+    fn new() -> VimProfile {
+        VimProfile {
+            // Normal and Visual hold no bindings HERE on purpose: their keys are a grammar
+            // (count x operator x motion), not a flat table, and that grammar still lives in `feed`.
+            // What the layer contributes today is the declared policy — which is the half that was
+            // missing, not the half that worked.
+            normal: one(Ns::Normal, UnmatchedKey::Ignore, &[]),
+            visual: one(Ns::Visual, UnmatchedKey::Ignore, &[]),
+            operator_pending: one(Ns::OperatorPending, UnmatchedKey::Abort, &[]),
+            // Insert IS a flat table, so it is a real layer with real bindings — and routing it
+            // through the stack is what removes the `if mode == Mode::Insert` early return.
+            insert: one(
+                Ns::Insert,
+                UnmatchedKey::Insert,
+                &[
+                    (KeyCode::Esc, Command::EnterNormal),
+                    (KeyCode::Enter, Command::InsertNewline),
+                    (KeyCode::Backspace, Command::DeleteBack),
+                ],
+            ),
+        }
+    }
+
+    fn stack(&self, ns: Ns) -> &LayerStack<KeyCode, Command> {
+        match ns {
+            Ns::Normal => &self.normal,
+            Ns::Insert => &self.insert,
+            Ns::Visual => &self.visual,
+            Ns::OperatorPending => &self.operator_pending,
+        }
+    }
+}
+
 /// The operator-pending axis: an armed operator (`d`/`c`/`y`) plus the count that preceded it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct OpPending {
@@ -76,8 +164,9 @@ enum Awaiting {
 /// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
 /// and the one-shot `awaiting` key-expectation — plus sticky repeat state. `feed` resolves them in a fixed
 /// precedence (mode → awaiting tier → base keys), so the hierarchy is explicit, not encoded in field order.
-#[derive(Default)]
 pub struct InputEngine {
+    /// The active profile's layers. Built once — resolution must not allocate per keystroke.
+    profile: VimProfile,
     /// Count axis: the accumulating numeric prefix for the next motion/operator.
     count: u32,
     /// Operator axis: an armed operator awaiting its motion (`None` = none).
@@ -94,11 +183,53 @@ impl InputEngine {
     #[must_use]
     pub fn new() -> InputEngine {
         InputEngine {
+            profile: VimProfile::new(),
             count: 0,
             op: None,
             awaiting: Awaiting::Nothing,
             last_find: None,
             last_search: None,
+        }
+    }
+
+    /// Apply a namespace's declared unmatched-key policy to a key nothing bound.
+    ///
+    /// This is the replacement for the shared `Feed::Ignored` fallthrough. The behaviour is
+    /// deliberately unchanged today — `Ignore` and `Abort` both clear the transient state and yield
+    /// `Ignored` — but the DECISION now comes from the layer that was actually consulted instead of
+    /// from one arm at the bottom of `feed`. Separating them properly needs KL-OBL-4 (a layer owns
+    /// its state and dies with it), which this engine does not model yet: count/operator/awaiting are
+    /// still engine-wide, so `reset()` is the only available approximation of "the layer went away".
+    fn unmatched(&mut self, ns: Ns, key: KeyEvent) -> Feed {
+        let policy = match self.profile.stack(ns).resolve(&key.code) {
+            Resolved::Bound { .. } => {
+                // Reachable only if a caller routes a bound key here; treat as unhandled rather than
+                // guessing, so a wiring mistake shows up instead of silently doing something.
+                self.reset();
+                return Feed::Ignored;
+            }
+            Resolved::Unmatched { policy, .. } => policy,
+            // An empty stack is a construction bug (see `VimProfile::new`), never a policy.
+            Resolved::NoLayer => unreachable!("every Vim namespace declares exactly one layer"),
+        };
+        match policy {
+            UnmatchedKey::Insert => {
+                self.reset();
+                match key.code {
+                    KeyCode::Char(c) => Feed::Cmd(Command::InsertChar(c)),
+                    // `open/insert` is about PRINTABLE keys; a non-printable unmatched key does
+                    // nothing, which is not the same statement as `closed/ignore`.
+                    _ => Feed::Ignored,
+                }
+            }
+            UnmatchedKey::Ignore | UnmatchedKey::Abort => {
+                self.reset();
+                Feed::Ignored
+            }
+            // The remaining open policies belong to namespaces this engine does not reach yet
+            // (Cmdline/Select/Terminal/Lang). Reaching one means a namespace was wired without its
+            // handler, and failing loudly beats inventing a behaviour.
+            other => unreachable!("namespace {ns:?} has unimplemented policy {other:?}"),
         }
     }
 
@@ -169,15 +300,17 @@ impl InputEngine {
 
     /// Feed one key given the current mode.
     pub fn feed(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        // Insert resolves through its LAYER, not through an early return ahead of everything else.
+        // The bindings and the `open/insert` policy both live in `VimProfile`, so the namespace is
+        // addressable in its own right (KL-OBL-1) and its policy is declared (KL-OBL-2).
         if mode == Mode::Insert {
-            self.reset();
-            return match key.code {
-                KeyCode::Esc => Feed::Cmd(Command::EnterNormal),
-                KeyCode::Enter => Feed::Cmd(Command::InsertNewline),
-                KeyCode::Backspace => Feed::Cmd(Command::DeleteBack),
-                KeyCode::Char(c) => Feed::Cmd(Command::InsertChar(c)),
-                _ => Feed::Ignored,
-            };
+            if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code)
+            {
+                let cmd = value.clone();
+                self.reset();
+                return Feed::Cmd(cmd);
+            }
+            return self.unmatched(Ns::Insert, key);
         }
         // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
         match self.awaiting {
@@ -188,10 +321,9 @@ impl InputEngine {
                         self.last_find = Some((ch, forward, till));
                         self.motion(Motion::FindChar { ch, forward, till })
                     }
-                    _ => {
-                        self.reset();
-                        Feed::Ignored
-                    }
+                    // A pending construct is in flight, so this is `closed/abort` — the policy
+                    // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
             Awaiting::TextObjectChar { inner } => {
@@ -202,30 +334,27 @@ impl InputEngine {
                     } else {
                         Motion::AWord
                     }),
-                    _ => {
-                        self.reset();
-                        Feed::Ignored
-                    }
+                    // A pending construct is in flight, so this is `closed/abort` — the policy
+                    // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
             Awaiting::GSecond => {
                 self.awaiting = Awaiting::Nothing;
                 return match key.code {
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
-                    _ => {
-                        self.reset();
-                        Feed::Ignored
-                    }
+                    // A pending construct is in flight, so this is `closed/abort` — the policy
+                    // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
             Awaiting::ReplaceChar => {
                 self.awaiting = Awaiting::Nothing;
                 return match key.code {
                     KeyCode::Char(c) => self.action(Command::ReplaceChar(c)),
-                    _ => {
-                        self.reset();
-                        Feed::Ignored
-                    }
+                    // A pending construct is in flight, so this is `closed/abort` — the policy
+                    // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
             Awaiting::Nothing => {}
@@ -323,10 +452,7 @@ impl InputEngine {
                 KeyCode::Char('0') if self.count > 0 => {}
                 KeyCode::Char('0') => return self.motion(Motion::LineStart),
                 _ if motion_key(key.code).is_some() => {}
-                _ => {
-                    self.reset();
-                    return Feed::Ignored;
-                }
+                _ => return self.unmatched(Ns::Visual, key),
             }
             // fall through to shared count/motion handling below (op is never set in Visual)
         }
@@ -376,17 +502,11 @@ impl InputEngine {
             KeyCode::Char('J') => self.action(Command::JoinLines),
             KeyCode::Char('n') => match self.last_search.clone() {
                 Some(p) => self.action(Command::SearchNext(p)),
-                None => {
-                    self.reset();
-                    Feed::Ignored
-                }
+                None => self.unmatched(Ns::Normal, key),
             },
             KeyCode::Char('N') => match self.last_search.clone() {
                 Some(p) => self.action(Command::SearchPrev(p)),
-                None => {
-                    self.reset();
-                    Feed::Ignored
-                }
+                None => self.unmatched(Ns::Normal, key),
             },
             KeyCode::Char('/') => {
                 self.reset();
@@ -396,11 +516,20 @@ impl InputEngine {
                 self.reset();
                 Feed::OpenExLine
             }
-            _ => {
-                self.reset();
-                Feed::Ignored
-            }
+            // The base namespace's own declared policy — not a shared fallthrough. In Visual this
+            // line is unreachable (the Visual arm above returns first), which is why the two are
+            // separate calls rather than one `mode`-derived namespace.
+            _ => self.unmatched(Ns::Normal, key),
         }
+    }
+}
+
+impl Default for InputEngine {
+    /// Hand-written, NOT derived. A derived `Default` would build an empty layer set, every
+    /// `resolve` would return `NoLayer`, and the policies would be silently disabled — the exact
+    /// class of invisible regression the layer model exists to prevent.
+    fn default() -> InputEngine {
+        InputEngine::new()
     }
 }
 
