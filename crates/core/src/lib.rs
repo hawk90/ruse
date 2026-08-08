@@ -25,6 +25,7 @@ pub mod document;
 pub mod edit;
 pub mod editor;
 pub mod effect;
+pub mod keymap;
 pub mod motion;
 pub mod pos;
 pub mod register;
