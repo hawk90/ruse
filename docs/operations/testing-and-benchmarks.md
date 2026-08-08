@@ -241,6 +241,38 @@ same `initial` + `keys` and assert the listed fields match. Use it to *generate*
 not for ruse-specific behavior (Native profile, ruse extensions) — those keep an explicit `expected`
 (guards PAR-6, SPEC-6: do not substitute an external project as the spec).
 
+#### v0 status — SHIPPED (nvim differential oracle, `tools/parity/oracle.py` + `tests/parity/vim/fixtures/corpus.yaml`)
+
+The Neovim half is live and is the primary way the Vim input engine is now built and policed. Notes that
+generalize to any oracle:
+
+- **Oracle = pinned binary, black-box.** `tools/parity/oracle.py` runs the pinned `nvim` (`--headless -u NONE
+  -i NONE`); the local `nvim` must equal the census pin (v0.12.4) and its version is recorded in every run.
+  **Non-corruption is the load-bearing property** (three prior harnesses corrupted their own first
+  observation): feed keys with `nvim_feedkeys(...,'x')` then read state via the API AFTER — never through a
+  call that itself mutates. `oracle.py --selftest` (identity + determinism + hand-verified known ops) GATES
+  the corpus; `gov parity_oracle` runs it when a pinned nvim is present and otherwise verifies corpus
+  integrity only (nvim-optional, so CI without nvim stays green).
+- **Every `expect` is ORACLE-CAPTURED, never hand-written.** For v0 the corpus uses a compact JSON-in-YAML
+  form (`{name, lines, keys, expect:{text,cursor,registers…}}`) rather than the full schema above.
+- **Config-dependent ops** (indent `>>`, etc.) carry a per-fixture `setup` ex-command so nvim runs under
+  ruse's defaults (e.g. `set shiftwidth=4 expandtab`) — cross-default comparison is invalid; match config or
+  the fixture lies.
+- **A divergence is a FINDING, not a test failure.** `apps/tui/tests/parity_compare.rs` replays each fixture
+  through ruse and reports verified-vs-divergent; it stays green so ruse can be early. Divergences are the
+  work-list.
+
+**Fixture taxonomy — ATOMIC then COMPOSITE (do both):**
+
+- **Atomic** — one operation (`dw`, `di(`, `3x`). Pins per-op correctness; found e.g. the `di(` forward-scan
+  and count-not-applied bugs.
+- **Composite** — a 6–20 keystroke *editing session* (`ciwX<Esc>w.`, `"ayiw$"ap`, `vjdp`). These test
+  **cross-command state** — dot-repeat chains, named-register reuse, count accumulation, mode transitions —
+  which atomic fixtures structurally cannot reach. **Composite fixtures find INTERACTION bugs**: they
+  surfaced that dot-repeat (`.`) was entirely unimplemented, that named registers (`"a`) mis-parse, and a
+  charwise-multiline paste cursor bug — none visible to single-op tests. **A corpus of only atomic fixtures
+  gives false confidence; composite coverage is required, not optional.**
+
 ### 1.4 Plugin-compat — `tests/plugin-compat/`
 
 Ecosystem-stability gate ([ci-cd-and-release.md §4](ci-cd-and-release.md); guards ECO-9, TEST-13/14, and
