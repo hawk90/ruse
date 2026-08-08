@@ -54,20 +54,23 @@ impl Register {
     }
 }
 
-/// The register STORE: the unnamed slot plus the 26 named slots `a`–`z` (D-026's additive expansion over
-/// the single-slot model). This is the minimal step past one unnamed register — the numbered delete-ring
-/// (`"1`–`"9`) and the yank register (`"0`) are still deferred (they are captured by the oracle but excluded
-/// from the ruse comparison), so nothing here fakes them.
+/// The register STORE: the unnamed slot, the 26 named slots `a`–`z` (D-026's additive expansion over the
+/// single-slot model), and the yank register `"0`. The numbered delete-ring (`"1`–`"9`) is still deferred
+/// (captured by the oracle but not yet modelled), so nothing here fakes it.
 ///
 /// Vim linkage (`:help registers`): a yank/delete/change into `"x` ALSO mirrors into the unnamed register
 /// (unnamed always reflects the LAST write); a plain, unregistered edit writes the unnamed slot only. An
 /// UPPERCASE name (`"A`–`"Z`) APPENDS to the lowercase slot instead of replacing it, and the unnamed slot
-/// then mirrors the full appended content.
+/// then mirrors the full appended content. The yank register `"0` holds the text of the most recent YANK
+/// (`:help quote0`) — but ONLY when the yank named no other register; a delete/change never touches it, so
+/// `"0` survives intervening deletes. `"0` is read-only from the edit path (you paste from it, `"0p`).
 #[derive(Clone, Debug)]
 pub struct RegisterStore {
     unnamed: Register,
     /// Slots for `a`–`z`, indexed by `letter - 'a'`. Uppercase names append into the same 26 slots.
     named: [Register; 26],
+    /// The yank register `"0`: the last unregistered yank, untouched by deletes/changes.
+    yank0: Register,
 }
 
 impl Default for RegisterStore {
@@ -75,6 +78,7 @@ impl Default for RegisterStore {
         RegisterStore {
             unnamed: Register::default(),
             named: std::array::from_fn(|_| Register::default()),
+            yank0: Register::default(),
         }
     }
 }
@@ -98,19 +102,31 @@ impl RegisterStore {
             .then(|| (name.to_ascii_lowercase() as u8 - b'a') as usize)
     }
 
-    /// Read a register for a paste. `None` → unnamed; a named letter (case-insensitive) → its slot; any
-    /// unsupported name falls back to the unnamed register rather than inventing an empty one.
+    /// The yank register `"0` (the last unregistered yank).
+    #[must_use]
+    pub fn yank0(&self) -> &Register {
+        &self.yank0
+    }
+
+    /// Read a register for a paste. `None` → unnamed; `'0'` → the yank register; a named letter
+    /// (case-insensitive) → its slot; any unsupported name falls back to the unnamed register rather than
+    /// inventing an empty one.
     #[must_use]
     pub fn get(&self, name: Option<char>) -> &Register {
-        match name.and_then(Self::index) {
-            Some(i) => &self.named[i],
+        match name {
+            Some('0') => &self.yank0,
+            Some(c) => match Self::index(c) {
+                Some(i) => &self.named[i],
+                None => &self.unnamed,
+            },
             None => &self.unnamed,
         }
     }
 
-    /// Write a captured value on a yank/delete/change. `None` writes the unnamed slot only. A named letter
-    /// writes (lowercase) or appends (uppercase) into its slot, and mirrors the resulting content into the
-    /// unnamed slot (Vim's "unnamed reflects the last write"). An unsupported name degrades to unnamed-only.
+    /// Write a captured value on a delete/change (NOT a yank — see [`RegisterStore::yank`]). `None` writes
+    /// the unnamed slot only. A named letter writes (lowercase) or appends (uppercase) into its slot, and
+    /// mirrors the resulting content into the unnamed slot (Vim's "unnamed reflects the last write"). An
+    /// unsupported name (including `'0'`, which is read-only from the edit path) degrades to unnamed-only.
     pub fn write(&mut self, name: Option<char>, reg: Register) {
         match name {
             None => self.unnamed = reg,
@@ -126,6 +142,16 @@ impl RegisterStore {
                 None => self.unnamed = reg,
             },
         }
+    }
+
+    /// Write a captured value on a YANK. Same slot routing as [`RegisterStore::write`], plus: an
+    /// unregistered yank (`name` is `None`) ALSO seeds the yank register `"0` (Vim `:help quote0`). A yank
+    /// into a named register does NOT touch `"0`.
+    pub fn yank(&mut self, name: Option<char>, reg: Register) {
+        if name.is_none() {
+            self.yank0 = reg.clone();
+        }
+        self.write(name, reg);
     }
 }
 
@@ -224,6 +250,29 @@ mod tests {
         s.write(Some('A'), Register::linewise(b"beta".to_vec()));
         assert!(s.get(Some('a')).is_linewise());
         assert_eq!(s.get(Some('a')).text(), b"alpha\nbeta\n");
+    }
+
+    #[test]
+    fn yank0_holds_last_unregistered_yank_and_survives_a_delete() {
+        let mut s = RegisterStore::new();
+        // An unregistered yank seeds "0 and mirrors unnamed.
+        s.yank(None, Register::charwise(b"foo".to_vec()));
+        assert_eq!(s.yank0().text(), b"foo");
+        assert_eq!(s.get(Some('0')).text(), b"foo");
+        assert_eq!(s.unnamed().text(), b"foo");
+        // A later delete overwrites unnamed but NOT "0 (Vim quote0: "0 survives deletes).
+        s.write(None, Register::charwise(b"bar".to_vec()));
+        assert_eq!(s.unnamed().text(), b"bar");
+        assert_eq!(s.yank0().text(), b"foo", "\"0 is untouched by a delete");
+    }
+
+    #[test]
+    fn yank_into_a_named_register_leaves_yank0_empty() {
+        let mut s = RegisterStore::new();
+        // `"ayiw`: a yank naming another register must NOT set "0 (:help quote0).
+        s.yank(Some('a'), Register::charwise(b"foo".to_vec()));
+        assert_eq!(s.get(Some('a')).text(), b"foo");
+        assert!(s.yank0().is_empty(), "a named yank does not touch \"0");
     }
 
     #[test]

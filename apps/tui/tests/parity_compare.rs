@@ -124,8 +124,7 @@ fn ruse_text(st: &EditorState) -> Vec<String> {
         .collect()
 }
 
-fn ruse_reg(st: &EditorState) -> (String, String) {
-    let r = st.register();
+fn reg_shape(r: &ruse_core::Register) -> (String, String) {
     let ty = if r.is_empty() {
         ""
     } else if r.is_linewise() {
@@ -137,6 +136,14 @@ fn ruse_reg(st: &EditorState) -> (String, String) {
         String::from_utf8_lossy(r.text()).into_owned(),
         ty.to_string(),
     )
+}
+
+fn ruse_reg(st: &EditorState) -> (String, String) {
+    reg_shape(st.register())
+}
+
+fn ruse_reg0(st: &EditorState) -> (String, String) {
+    reg_shape(st.registers().yank0())
 }
 
 fn as_str_vec(v: &Value) -> Vec<String> {
@@ -162,7 +169,7 @@ fn parity_ruse_vs_neovim_oracle() {
     assert!(!fixtures.is_empty(), "corpus has no fixtures");
 
     println!("\n=== ruse vs neovim parity ({oracle_version}) ===");
-    println!("compared observables: text, cursor, reg_unnamed  (reg0 excluded: ruse has no yank register)\n");
+    println!("compared observables: text, cursor, reg_unnamed, reg0 (the yank register)\n");
 
     let mut verified = 0usize;
     let mut divergent_names: Vec<String> = Vec::new();
@@ -179,6 +186,7 @@ fn parity_ruse_vs_neovim_oracle() {
         let r_text = ruse_text(&st);
         let (r_row, r_col) = ruse_cursor(st.bytes(), st.cursor());
         let (r_reg_text, r_reg_type) = ruse_reg(&st);
+        let (r_reg0_text, r_reg0_type) = ruse_reg0(&st);
 
         // oracle observables.
         let e_text = as_str_vec(&expect["text"]);
@@ -189,6 +197,8 @@ fn parity_ruse_vs_neovim_oracle() {
         );
         let e_reg_text = expect["reg_unnamed"]["text"].as_str().expect("reg text");
         let e_reg_type = expect["reg_unnamed"]["type"].as_str().expect("reg type");
+        let e_reg0_text = expect["reg0"]["text"].as_str().expect("reg0 text");
+        let e_reg0_type = expect["reg0"]["type"].as_str().expect("reg0 type");
 
         let mut diffs: Vec<String> = Vec::new();
         if r_text != e_text {
@@ -201,6 +211,12 @@ fn parity_ruse_vs_neovim_oracle() {
             diffs.push(format!(
                 "reg {:?}/{} != {:?}/{}",
                 r_reg_text, r_reg_type, e_reg_text, e_reg_type
+            ));
+        }
+        if (r_reg0_text.as_str(), r_reg0_type.as_str()) != (e_reg0_text, e_reg0_type) {
+            diffs.push(format!(
+                "reg0 {:?}/{} != {:?}/{}",
+                r_reg0_text, r_reg0_type, e_reg0_text, e_reg0_type
             ));
         }
 

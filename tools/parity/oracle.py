@@ -335,6 +335,10 @@ FIXTURES: list[dict] = [
     {"name": "reg_named_yy_paste", "lines": ["one", "two"], "keys": '"ayy"ap'},
     {"name": "reg_named_dd_paste", "lines": ["one", "two"], "keys": '"add"ap'},
     {"name": "reg_append_uppercase", "lines": ["foo", "bar"], "keys": '"Ayiwj"Ayiw"ap'},
+    #     YANK REGISTER "0 (quote0): last yank, untouched by deletes; a NAMED yank does not set it ----------
+    {"name": "reg0_yank_then_paste", "lines": ["ab cd"], "keys": 'yiw$"0p'},
+    {"name": "reg0_survives_delete", "lines": ["foo bar"], "keys": 'yiwwdiw"0p'},
+    {"name": "reg0_named_yank_leaves_it_empty", "lines": ["foo bar"], "keys": '"ayiww"0p'},
     #     MODE-TRANSITION sequences (selection/insert -> normal -> paste; append then insert-at-start) ----
     {"name": "mode_viwy_open_paste", "lines": ["hello"], "keys": "viwyo<Esc>p"},
     {"name": "mode_vjd_then_paste", "lines": ["abc", "def"], "keys": "vjdp"},
