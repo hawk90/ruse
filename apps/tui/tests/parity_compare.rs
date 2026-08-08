@@ -11,7 +11,7 @@
 //! captured by `tools/parity/oracle.py`. Run with `-- --nocapture` to see the tally.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{apply_command, Command, EditorState};
+use ruse_core::{apply_command, EditorState};
 use ruse_tui::input::{Feed, InputEngine};
 use serde_json::Value;
 
@@ -70,8 +70,8 @@ fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
             }
             // `/` opens the search minibuffer. The real frontend (main.rs) collects the typed pattern
             // in a command line — raw keystrokes the input engine does NOT parse — until `<CR>`, then
-            // `engine.set_last_search(pattern)` (so a later `n`/`N` repeats it) and applies
-            // `Command::SearchNext(pattern)` to move the cursor to the match. Mirror that exactly:
+            // hands the pattern back via `engine.submit_search`, which folds it into any operator/count
+            // that preceded `/` (`d/pat`, `2/pat`) and records it for `n`/`N`. Mirror that exactly:
             // consume the SUBSEQUENT keys as raw pattern chars (not via `engine.feed`) up to the
             // terminating Enter, then resume normal feeding. `?` (backward search) is not wired to the
             // engine at all — it never yields `OpenSearch` — so only `/` needs this path.
@@ -89,9 +89,8 @@ fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
                     }
                     i += 1;
                 }
-                engine.set_last_search(pattern.clone());
-                if !pattern.is_empty() {
-                    apply_command(&mut st, &Command::SearchNext(pattern));
+                if let Feed::Cmd(cmd) = engine.submit_search(pattern) {
+                    apply_command(&mut st, &cmd);
                 }
             }
             // The ex-line minibuffer (`:`) is a separate concern (no ex fixtures in the corpus);

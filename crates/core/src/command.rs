@@ -8,6 +8,21 @@ use std::fmt::Write as _;
 
 use crate::motion::Motion;
 
+/// How a command-line search (`/pat`) folds into the editing grammar. A search is a MOTION (Vim: `/` is a
+/// motion), so it can stand alone (`Move`) or be the range of an operator (`d/pat`, `c/pat`, `y/pat`). The
+/// operator range is charwise-EXCLUSIVE — `[cursor, match)` — matching Vim's rule for `/` as a motion.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SearchOp {
+    /// Bare `/pat` (and `{count}/pat`): move the cursor to the match.
+    Move,
+    /// `d/pat`: delete `[cursor, match)`.
+    Delete,
+    /// `c/pat`: delete `[cursor, match)` and enter Insert.
+    Change,
+    /// `y/pat`: yank `[cursor, match)`.
+    Yank,
+}
+
 /// A semantic command — the granularity a trace records. Beyond single motions/edits it carries the editing
 /// grammar: a counted move, and the `delete`/`change` operators over a motion range (`dw`, `d2w`, `cc`).
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -88,6 +103,16 @@ pub enum Command {
     // search (literal substring for v0; the pattern is carried so traces replay deterministically)
     SearchNext(String),
     SearchPrev(String),
+    /// `{count}/{pattern}<CR>` as a MOTION: bare it moves to the `count`-th forward match; under an
+    /// operator (`op`) it folds into a charwise-exclusive edit over `[cursor, match)` (`d/pat`, `c/pat`,
+    /// `y/pat`). The pattern is literal (v0; C-REGEX later) and carried so traces replay deterministically.
+    /// Backward search (`?`) is not wired yet, so this is forward-only. `n`/`N` still repeat via
+    /// [`Command::SearchNext`]/[`Command::SearchPrev`].
+    Search {
+        op: SearchOp,
+        count: u32,
+        pattern: String,
+    },
     // history / file / control
     Undo,
     Redo,
@@ -206,6 +231,25 @@ fn motion_from_token(s: &str) -> Option<Motion> {
 }
 
 /// Parse an operator/move argument `"<count> <motion>"` into a command via `ctor`.
+fn search_op_token(op: SearchOp) -> &'static str {
+    match op {
+        SearchOp::Move => "move",
+        SearchOp::Delete => "delete",
+        SearchOp::Change => "change",
+        SearchOp::Yank => "yank",
+    }
+}
+
+fn search_op_from_token(s: &str) -> Option<SearchOp> {
+    Some(match s {
+        "move" => SearchOp::Move,
+        "delete" => SearchOp::Delete,
+        "change" => SearchOp::Change,
+        "yank" => SearchOp::Yank,
+        _ => return None,
+    })
+}
+
 fn op_cmd(
     arg: Option<&str>,
     ctor: fn(u32, Motion) -> Command,
@@ -303,6 +347,10 @@ impl Command {
             }
             Command::SearchNext(p) => format!("search_next {p}"),
             Command::SearchPrev(p) => format!("search_prev {p}"),
+            // Pattern LAST so it may contain spaces (parsed as the untrimmed remainder, like search_next).
+            Command::Search { op, count, pattern } => {
+                format!("search {} {count} {pattern}", search_op_token(*op))
+            }
             Command::Undo => "undo".into(),
             Command::Redo => "redo".into(),
             Command::Save => "save".into(),
@@ -436,6 +484,20 @@ impl Command {
             }
             "search_next" => Command::SearchNext(raw.to_string()),
             "search_prev" => Command::SearchPrev(raw.to_string()),
+            "search" => {
+                // `search {op} {count} {pattern...}` — pattern is the untrimmed remainder (may hold spaces).
+                let mut parts = raw.splitn(3, ' ');
+                let op = parts
+                    .next()
+                    .and_then(search_op_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let count: u32 = parts
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let pattern = parts.next().unwrap_or("").to_string();
+                Command::Search { op, count, pattern }
+            }
             "undo" => Command::Undo,
             "redo" => Command::Redo,
             "save" => Command::Save,
@@ -601,6 +663,26 @@ mod tests {
             Command::ReplaceSelection('🎉'),
             Command::SearchNext("foo bar".into()),
             Command::SearchPrev("x".into()),
+            Command::Search {
+                op: SearchOp::Move,
+                count: 2,
+                pattern: "foo".into(),
+            },
+            Command::Search {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "world foo".into(),
+            },
+            Command::Search {
+                op: SearchOp::Change,
+                count: 1,
+                pattern: "x".into(),
+            },
+            Command::Search {
+                op: SearchOp::Yank,
+                count: 3,
+                pattern: "a b".into(),
+            },
             Command::Undo,
             Command::Redo,
             Command::Save,
