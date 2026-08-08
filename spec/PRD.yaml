@@ -73,7 +73,7 @@ features:
     title: Transactional editing
     stage: mvp
     priority: must
-    status: planned
+    status: done
     depends_on: [C-DOCUMENT, C-TRANSACTION]
     summary: Every document change is applied as a tracked, reversible transaction.
     trace:
@@ -90,7 +90,7 @@ features:
     title: Document & coordinate model
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-DOCUMENT, C-ANCHOR]
     summary: Typed byte/char/grapheme/screen-cell coordinates; positions tracked as anchors.
     trace:
@@ -115,7 +115,7 @@ features:
     title: Keymap layer router + the Vim profile as its depth-1 configuration
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-CONFIG]
     summary: >
       Keys resolve against an ORDERED STACK OF KEYMAP LAYERS (D-045). The eight Vim namespaces are that
@@ -144,7 +144,7 @@ features:
     title: Operators, motions & dot-repeat — the Normal editing grammar
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-INPUT, C-EDITLANG, C-POSHIST]
     summary: Operator x count x motion composition and dot-repeat (census surface mode_key.normal + operator_pending).
     trace:
@@ -161,7 +161,7 @@ features:
     title: Text objects — inner/around targets
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-INPUT, C-EDITLANG]
     summary: Text-object targets (iw/aw/i(/a"/it/...) as operator and visual operands (census surface mode_key.text_object).
     trace:
@@ -177,7 +177,7 @@ features:
     title: Registers / kill-ring — the typed store
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-EDITLANG, C-REGISTER]
     summary: Named/numbered/unnamed registers; entries carry a shape that survives round-trip. NOTE - no clean census surface yet (registers are a `"` prefix, not a mode_key sub-surface); stays legacy until that home is decided.
     trace:
@@ -193,7 +193,7 @@ features:
     title: Insert namespace
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-INPUT, C-UNDO]
     summary: The open/insert namespace — a printable key is text — with one-shot return and undo-group ownership.
     trace:
@@ -211,7 +211,7 @@ features:
     title: Visual + Select namespaces
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-INPUT, C-ANCHOR]
     summary: Two namespaces over one selection state, separated by opposite unmatched-key policies.
     trace:
@@ -282,7 +282,7 @@ features:
     title: Undo/redo with logical grouping
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-UNDO, C-TRANSACTION]
     summary: Undo recorded by logical unit (e.g. one insert session), not per keystroke.
     trace:
@@ -298,7 +298,7 @@ features:
     title: TUI rendering (ANSI/Unicode)
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-RENDER, C-TERMINAL]
     summary: Render-diff output on the compatibility path; grapheme-correct widths.
     trace:
@@ -332,7 +332,7 @@ features:
     title: File open / save / crash recovery
     stage: mvp
     priority: must
-    status: planned
+    status: active
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only recovery journal.
     trace:
@@ -349,7 +349,7 @@ features:
     title: Search & substitute
     stage: mvp
     priority: should
-    status: planned
+    status: active
     depends_on: [C-DOCUMENT, C-COMMAND, C-REGEX, C-QUERY]
     summary: Incremental search and range substitution.
     trace:
@@ -582,7 +582,7 @@ features:
     title: Command traces & deterministic replay
     stage: mvp
     priority: must
-    status: active
+    status: done
     depends_on: [C-COMMAND, C-DOCUMENT]
     implementable_ack:
       - concept: CONCEPT-COUNT-VS-PREFIX
