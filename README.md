@@ -5,8 +5,10 @@ A **Rust, terminal-first, remote-first, extensible code editor** targeting featu
 architecture is meant to outlive the language, and the code is a *reference implementation* that proves the
 spec, not the source of it.
 
-> **Status: spec-first / pre-code.** The design is near-complete and self-validating; product implementation
-> has not started (the `crates/` are compiling stubs). This is deliberate — see the build order below.
+> **Status: spec-first, early implementation.** The design is near-complete and self-validating; the
+> two-crate reference implementation (`crates/core` + `apps/tui`, collapsed per RFC-0012) now runs — a Vim
+> editing engine verified against a pinned Neovim oracle (102/102 differential fixtures) — with most MVP
+> features in progress (see `spec/PRD.yaml` status fields). Build order below.
 
 ## Where to start
 
@@ -30,9 +32,10 @@ spec/     Source of truth (state). PROJECT · glossary · capabilities · depend
           POLICY · DECISIONS · CONTEXT · context-profiles · templates/       (YAML where it's data, MD where prose)
 docs/     Reference (prose). README (hub) · architecture/ · design/ (subsystems) · parity/ · invariants/ ·
           protocols/ · operations/ · anti-patterns/ · reviews/ · rfc/
-crates/   Reference implementation — engine: core, render-model, terminal-platform, workspace,
-          workspace-runtime, plugin-protocol
-apps/     Thin frontends: tui, remote-agent, gui
+crates/   Reference implementation (engine). Today: core — the dependency-free kernel (document,
+          transaction, undo, anchors, registers, editing grammar). Later stages add render/workspace/
+          plugin/remote crates as the build order below reaches them.
+apps/     Thin frontends. Today: tui — the `ruse` binary (Vim input engine + terminal rendering).
 tools/    spec-validate.py — the doc-system checker (D-022 reference)
 .github/  Issue forms, PR template, labels, workflows (spec-check runs today)
 ```
@@ -70,7 +73,7 @@ Full model: [docs/operations/development-model.md](docs/operations/development-m
 
 ```sh
 python3 tools/spec-validate.py                       # doc-system integrity (refs, layers, links, enums)
-cargo fmt --all --check && cargo test --workspace    # reference implementation (stubs today)
+cargo fmt --all --check && cargo test --workspace    # reference implementation
 ```
 
 ## Development and contribution
