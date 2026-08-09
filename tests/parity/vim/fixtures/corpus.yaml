@@ -3168,6 +3168,58 @@
       }
     },
     {
+      "name": "ctrl_o_j_rides_to_append",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "A<C-o>jX<Esc>",
+      "expect": {
+        "text": [
+          "ab",
+          "cdX"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_o_zero_resets_append",
+      "lines": [
+        "alpha",
+        "beta"
+      ],
+      "keys": "A<C-o>0X<Esc>",
+      "expect": {
+        "text": [
+          "Xalpha",
+          "beta"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "refactor_2word_change_end",
       "lines": [
         "aa bb cc dd"

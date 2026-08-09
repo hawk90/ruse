@@ -1879,20 +1879,58 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
 }
 
 /// Maintain [`EditorState::curswant`] after a command (Vim's curswant rule): a vertical move KEEPS the
-/// wanted column (that is the whole point — ride it through short lines); `$`/`<End>` set it to [`MAXCOL`]
-/// so subsequent `j`/`k` stay at each line's end; every other command recomputes it from the cursor's new
-/// char column. Called from [`apply_command`], the single plan+commit driver.
+/// wanted column (ride it through short lines); `$`/`<End>`/`A` (append) set it to [`MAXCOL`] so subsequent
+/// `j`/`k` — and an Insert caret — stay at the line's end; every other command recomputes it from the
+/// cursor's new char column.
+///
+/// Insert-mode append column (Vim `i_CTRL-O` at EOL): while `curswant == MAXCOL` in Insert, the caret rests
+/// at the line's END (the append position), and a one-shot `CTRL-O` command that is not itself a column-
+/// setting move (e.g. `dd`) PRESERVES that append intent rather than recomputing it — so `A<C-o>ddX` appends
+/// `X` at the end of the line dd left behind, and `i<C-o>$X` appends at end. Called from [`apply_command`],
+/// the single plan+commit driver, so `cmd` is always in scope.
 fn update_curswant(st: &mut EditorState, cmd: &Command) {
+    let insert = matches!(st.mode, Mode::Insert);
     match cmd {
         Command::Move(_, Motion::Up)
         | Command::Move(_, Motion::Down)
         | Command::MoveUp
         | Command::MoveDown => {} // keep the sticky column
-        Command::Move(_, Motion::LineEnd) | Command::MoveLineEnd => st.curswant = MAXCOL,
-        _ => {
+        // `$`/`<End>` and `A` (append) want the line's end.
+        Command::Move(_, Motion::LineEnd) | Command::MoveLineEnd | Command::AppendLineEnd => {
+            st.curswant = MAXCOL
+        }
+        // Commands that establish a definite column: horizontal moves, the Insert-native keys, and every
+        // insert-ENTRY except `A` (which is the append/MAXCOL case above) reset the wanted column — they
+        // never preserve a stale append intent from an earlier `$`/`A`.
+        Command::Move(_, _)
+        | Command::MoveLeft
+        | Command::MoveRight
+        | Command::MoveLineStart
+        | Command::InsertChar(_)
+        | Command::InsertNewline
+        | Command::DeleteBack
+        | Command::EnterInsert
+        | Command::EnterInsertAfter
+        | Command::InsertLineStart
+        | Command::OpenBelow
+        | Command::OpenAbove
+        | Command::EnterReplace => {
             let b = st.doc.bytes();
             st.curswant = col_of(b, line_start(b, st.cursor), st.cursor);
         }
+        // Everything else (edits like `dd`/`x`, mode changes): in Insert with an append intent (a one-shot
+        // `CTRL-O` command run while `curswant == MAXCOL`), PRESERVE MAXCOL; otherwise recompute the column.
+        _ => {
+            if !(insert && st.curswant == MAXCOL) {
+                let b = st.doc.bytes();
+                st.curswant = col_of(b, line_start(b, st.cursor), st.cursor);
+            }
+        }
+    }
+    // In Insert, a MAXCOL wanted column parks the caret at the append position (end of line).
+    if insert && st.curswant == MAXCOL {
+        let b = st.doc.bytes();
+        st.cursor = line_end(b, st.cursor);
     }
 }
 
@@ -3925,5 +3963,65 @@ mod curswant_tests {
             ],
         );
         assert_eq!(st.cursor(), 10); // the 'n' in "lmnop" (col 2), proving curswant = 2 not MAXCOL
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    // Insert-mode append column (Vim i_CTRL-O at EOL). A one-shot CTRL-O routes the next Normal command
+    // through the engine while core mode STAYS Insert, so at the core level it is just that Normal command
+    // executed in Insert mode; these tests drive that command sequence directly.
+
+    #[test]
+    fn ctrl_o_dollar_appends_at_end_of_line() {
+        // `i<C-o>$X`: `$` sets curswant = MAXCOL, which in Insert parks the caret at the append position, so
+        // `X` lands at the END of the line, not on the last char.
+        let st = run(
+            "hi",
+            &[
+                Command::EnterInsert,
+                Command::Move(1, Motion::LineEnd), // the one-shot `$`
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "hiX");
+        assert_eq!(st.cursor(), 2); // on 'X' after the Esc nudge
+    }
+
+    #[test]
+    fn ctrl_o_dd_preserves_the_append_intent() {
+        // `A<C-o>ddX`: `A` sets the append intent (curswant = MAXCOL); the one-shot `dd` PRESERVES it (an
+        // edit, not a column-setting move), so insert resumes at the end of the line dd left behind and `X`
+        // appends there → "betaX".
+        let st = run(
+            "alpha\nbeta",
+            &[
+                Command::AppendLineEnd, // append at end of "alpha", curswant = MAXCOL
+                Command::Delete(1, Motion::Line), // the one-shot `dd` -> buffer "beta"
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "betaX");
+        assert_eq!(st.cursor(), 4); // on 'X' (col 4 of "betaX")
+    }
+
+    #[test]
+    fn ctrl_o_line_start_resets_the_append_intent() {
+        // `A<C-o>0X`: `A` sets MAXCOL but the one-shot `0` is a column-setting move that resets it, so `X`
+        // inserts at column 0 → "Xalpha".
+        let st = run(
+            "alpha\nbeta",
+            &[
+                Command::AppendLineEnd,
+                Command::Move(1, Motion::LineStart), // the one-shot `0`
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "Xalpha\nbeta");
+        assert_eq!(st.cursor(), 0);
     }
 }
