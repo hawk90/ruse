@@ -105,7 +105,7 @@ families:
     upstreams: { vim: not-surveyed, neovim: pinned }
     census_status: measured
     caps: [CAP-EDIT-CORE, CAP-VIM-PROFILE]
-    prd: [F-001, F-002, F-003, F-005, F-023, F-024, F-025, F-026, F-027]
+    prd: [F-001, F-002, F-003, F-005, F-023, F-024, F-025, F-026, F-027, F-028, F-029]
     contract: contracts/vim-style.yaml
     concepts: [CONCEPT-OP-PENDING, CONCEPT-COUNT-VS-PREFIX, CONCEPT-REGISTER-STORE]
     excludes:

@@ -144,11 +144,22 @@ features:
     title: Operators, motions & dot-repeat — the Normal editing grammar
     stage: mvp
     priority: must
-    status: active
+    # done: operator x count x motion composition (d/c/y + aliases x/X/D/C/Y/s/S, `<<`), the core motions
+    # (h l j k 0 $ w W b B e E f F t T ; , G % { }), count multiplication (2d3w), dd/yy doubling->linewise,
+    # exclusive->inclusive->linewise promotion, the three operator_pending force keys (v/V/CTRL-V), and
+    # dot-repeat (full change incl. inserted text) are all implemented + oracle/unit tested. Carve-outs (NOT
+    # F-023 acceptance criteria): the extended g/z operators (gu/gU/g~/gq/g?/g@/zf) and un-implemented
+    # `={motion}`/`!`filter/`~{motion}`tildeop/`<{motion}` live on other census sub-surfaces and stay
+    # unclassified; search motions belong to F-009; the C-INPUT LANG-ARG re-dispatch and the full C-POSHIST
+    # position history (marks/jumplist) are pending-concept carve-outs (READY-WITH-SCOPE), like F-025.
+    # Census gap logged: `>>`/`>{motion}` have no upstream-extracted row (only `<<`/`<{motion}` present).
+    status: done
     depends_on: [C-INPUT, C-EDITLANG, C-POSHIST]
     summary: Operator x count x motion composition and dot-repeat (census surface mode_key.normal + operator_pending).
     trace:
-      parity: [VIM-OP-1, VIM-OP-2, VIM-OP-3, VIM-OP-4, VIM-OP-5, VIM-OP-6, VIM-OP-7, VIM-OP-8, VIM-OP-9, VIM-MOT-PROMOTE, VIM-MOT-1, VIM-MOT-2, VIM-MOT-3, VIM-MOT-4, VIM-MOT-5, VIM-MOT-6, VIM-MOT-7, VIM-MOT-8, VIM-MOT-9, VIM-REPEAT-DOT]
+      # repointed off legacy VIM-OP-*/VIM-MOT-*/VIM-REPEAT-DOT onto the mode_key.normal + operator_pending
+      # census (D-043); only implemented+accepted grammar cited (see status carve-outs). vim.md rows retired.
+      parity: [nvim.key.normal.x5bx22xx5ddx7bmotionx7d, nvim.key.normal.x5bx22xx5ddd, nvim.key.normal.x5bx22xx5dcx7bmotionx7d, nvim.key.normal.x5bx22xx5dcc, nvim.key.normal.x5bx22xx5dyx7bmotionx7d, nvim.key.normal.x5bx22xx5dyy, nvim.key.normal.x5bx22xx5dx, nvim.key.normal.x5bx22xx5dD, nvim.key.normal.x5bx22xx5dC, nvim.key.normal.x5bx22xx5dY, nvim.key.normal.x5bx22xx5dS, nvim.key.normal.empty, nvim.key.normal.h, nvim.key.normal.l, nvim.key.normal.0, nvim.key.normal.x24, nvim.key.normal.w, nvim.key.normal.W, nvim.key.normal.b, nvim.key.normal.B, nvim.key.normal.e, nvim.key.normal.E, nvim.key.normal.fx7bcharx7d, nvim.key.normal.Fx7bcharx7d, nvim.key.normal.tx7bcharx7d, nvim.key.normal.Tx7bcharx7d, nvim.key.normal.x3b, nvim.key.normal.x2c, nvim.key.normal.G, nvim.key.normal.x25, nvim.key.normal.x7b, nvim.key.normal.x7d, nvim.key.normal.j, nvim.key.normal.k, nvim.key.normal.1, nvim.key.normal.2, nvim.key.normal.3, nvim.key.normal.4, nvim.key.normal.5, nvim.key.normal.6, nvim.key.normal.7, nvim.key.normal.8, nvim.key.normal.9, nvim.key.normal.., nvim.key.operator_pending.v, nvim.key.operator_pending.V, nvim.key.operator_pending.c_V]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/editing-language.md, ../docs/design/positions-history.md]
       verify: [../tests/parity/vim/operator-motion.yaml]
@@ -177,11 +188,20 @@ features:
     title: Registers / kill-ring — the typed store
     stage: mvp
     priority: must
-    status: active
+    # done: the register-select prefix `"{register}` (named a-z, A-Z append), the unnamed and yank-only
+    # (`"0`) registers, and put `p`/`P` are implemented; entries carry a SHAPE (charwise/linewise/blockwise)
+    # that survives round-trip (dd then p opens a line; blockwise paste per #81) — oracle/unit tested.
+    # Census home decided: registers have no dedicated surface, so F-029 anchors on the `"{register}`
+    # selection key + p/P within mode_key.normal (the operators that WRITE registers stay under F-023).
+    # Carve-outs (NOT F-029 acceptance): numbered ring `"1`-`"9`, small-delete `"-`, black-hole `"_`,
+    # expression `"=`, clipboard `"+`/`"*` are not modelled yet; `:registers` awaits the F-026 command engine.
+    status: done
     depends_on: [C-EDITLANG, C-REGISTER]
-    summary: Named/numbered/unnamed registers; entries carry a shape that survives round-trip. NOTE - no clean census surface yet (registers are a `"` prefix, not a mode_key sub-surface); stays legacy until that home is decided.
+    summary: Named/unnamed/yank-only registers via the `"{register}` prefix + p/P; entries carry a shape that survives round-trip. Census anchor = the `"` selection key (registers are a prefix, not a dedicated surface); numbered ring/black-hole/clipboard are carve-outs.
     trace:
-      parity: [VIM-REG-1, VIM-REG-2, VIM-REG-3, VIM-REG-4, VIM-REG-5, VIM-REG-6, VIM-REG-7, VIM-REG-8, VIM-REG-9]
+      # repointed off legacy VIM-REG-* onto the mode_key.normal census (D-043): the `"{register}` selection
+      # prefix + put p/P. Numbered/other register semantics are documented carve-outs. vim.md rows retired.
+      parity: [nvim.key.normal.x22x7bregisterx7d, nvim.key.normal.x5bx22xx5dp, nvim.key.normal.x5bx22xx5dP]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/register-model.md]
       verify: [../tests/parity/vim/registers.yaml]
