@@ -211,7 +211,11 @@ features:
     title: Visual + Select namespaces
     stage: mvp
     priority: must
-    status: active
+    # done: shape enum (charwise/linewise/blockwise) with v/V/CTRL-V switching (#81/#83), `o` end-swap,
+    # `gv` depth-1 restore of the previous selection's anchor AND shape, and the Select open/replace policy
+    # are all implemented + oracle/unit tested. The full C-ANCHOR position history (mark ring/jumplist/
+    # multi-selection) is a carve-out (READY-WITH-SCOPE), not an F-025 acceptance criterion.
+    status: done
     depends_on: [C-INPUT, C-ANCHOR]
     summary: Two namespaces over one selection state, separated by opposite unmatched-key policies.
     trace:
