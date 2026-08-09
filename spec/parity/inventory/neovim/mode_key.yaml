@@ -770,7 +770,7 @@ items:
   desc: not used
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_A
   surface: mode_key.normal
   key: CTRL-A
@@ -779,7 +779,7 @@ items:
   - D
   tag: CTRL-A
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_B
   surface: mode_key.normal
   key: CTRL-B
@@ -788,7 +788,7 @@ items:
   - D
   tag: CTRL-B
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_C
   surface: mode_key.normal
   key: CTRL-C
@@ -796,7 +796,7 @@ items:
   attestation:
   - D
   tag: CTRL-C
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_D
   surface: mode_key.normal
   key: CTRL-D
@@ -804,7 +804,7 @@ items:
   attestation:
   - D
   tag: CTRL-D
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_E
   surface: mode_key.normal
   key: CTRL-E
@@ -812,7 +812,7 @@ items:
   attestation:
   - D
   tag: CTRL-E
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_F
   surface: mode_key.normal
   key: CTRL-F
@@ -821,7 +821,7 @@ items:
   - D
   tag: CTRL-F
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_G
   surface: mode_key.normal
   key: CTRL-G
@@ -829,7 +829,7 @@ items:
   attestation:
   - D
   tag: CTRL-G
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.BS
   surface: mode_key.normal
   key: <BS>
@@ -838,7 +838,7 @@ items:
   - D
   tag: <BS>
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_H
   surface: mode_key.normal
   key: CTRL-H
@@ -847,7 +847,7 @@ items:
   - D
   tag: CTRL-H
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.Tab
   surface: mode_key.normal
   key: <Tab>
@@ -856,7 +856,7 @@ items:
   - D
   tag: <Tab>
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_I
   surface: mode_key.normal
   key: CTRL-I
@@ -865,7 +865,7 @@ items:
   - D
   tag: CTRL-I
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.NL
   surface: mode_key.normal
   key: <NL>
@@ -874,7 +874,7 @@ items:
   - D
   tag: <NL>
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.S-NL
   surface: mode_key.normal
   key: <S-NL>
@@ -883,7 +883,7 @@ items:
   - D
   tag: <S-NL>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_J
   surface: mode_key.normal
   key: CTRL-J
@@ -892,14 +892,14 @@ items:
   - D
   tag: CTRL-J
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_K
   surface: mode_key.normal
   key: CTRL-K
   desc: not used
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_L
   surface: mode_key.normal
   key: CTRL-L
@@ -907,7 +907,7 @@ items:
   attestation:
   - D
   tag: CTRL-L
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.CR
   surface: mode_key.normal
   key: <CR>
@@ -916,7 +916,7 @@ items:
   - D
   tag: <CR>
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.S-CR
   surface: mode_key.normal
   key: <S-CR>
@@ -925,7 +925,7 @@ items:
   - D
   tag: <S-CR>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_M
   surface: mode_key.normal
   key: CTRL-M
@@ -934,7 +934,7 @@ items:
   - D
   tag: CTRL-M
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_N
   surface: mode_key.normal
   key: CTRL-N
@@ -943,7 +943,7 @@ items:
   - D
   tag: CTRL-N
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_O
   surface: mode_key.normal
   key: CTRL-O
@@ -952,7 +952,7 @@ items:
   - D
   tag: CTRL-O
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_P
   surface: mode_key.normal
   key: CTRL-P
@@ -961,14 +961,14 @@ items:
   - D
   tag: CTRL-P
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_Q
   surface: mode_key.normal
   key: CTRL-Q
   desc: not used, or used for terminal control flow
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_R
   surface: mode_key.normal
   key: CTRL-R
@@ -977,14 +977,15 @@ items:
   - D
   tag: CTRL-R
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.c_S
   surface: mode_key.normal
   key: CTRL-S
   desc: not used, or used for terminal control flow
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_T
   surface: mode_key.normal
   key: CTRL-T
@@ -992,7 +993,7 @@ items:
   attestation:
   - D
   tag: CTRL-T
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_U
   surface: mode_key.normal
   key: CTRL-U
@@ -1000,7 +1001,7 @@ items:
   attestation:
   - D
   tag: CTRL-U
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_V
   surface: mode_key.normal
   key: CTRL-V
@@ -1008,7 +1009,8 @@ items:
   attestation:
   - D
   tag: CTRL-V
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.c_Wx20x7bcharx7d
   surface: mode_key.normal
   key: CTRL-W {char}
@@ -1016,7 +1018,7 @@ items:
   attestation:
   - D
   tag: CTRL-W
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_X
   surface: mode_key.normal
   key: CTRL-X
@@ -1025,7 +1027,7 @@ items:
   - D
   tag: CTRL-X
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_Y
   surface: mode_key.normal
   key: CTRL-Y
@@ -1033,7 +1035,7 @@ items:
   attestation:
   - D
   tag: CTRL-Y
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_Z
   surface: mode_key.normal
   key: CTRL-Z
@@ -1041,14 +1043,14 @@ items:
   attestation:
   - D
   tag: CTRL-Z
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_x5bx20Esc
   surface: mode_key.normal
   key: CTRL-[ <Esc>
   desc: not used
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_x5cx20c_N
   surface: mode_key.normal
   key: CTRL-\ CTRL-N
@@ -1056,7 +1058,7 @@ items:
   attestation:
   - D
   tag: CTRL-\_CTRL-N
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_x5cx20c_G
   surface: mode_key.normal
   key: CTRL-\ CTRL-G
@@ -1064,21 +1066,21 @@ items:
   attestation:
   - D
   tag: CTRL-\_CTRL-G
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_x5cx20ax20-x20z
   surface: mode_key.normal
   key: CTRL-\ a - z
   desc: reserved for extensions
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_x5cx20others
   surface: mode_key.normal
   key: CTRL-\ others
   desc: not used
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.c_x5d
   surface: mode_key.normal
   key: CTRL-]
@@ -1086,7 +1088,7 @@ items:
   attestation:
   - D
   tag: CTRL-]
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_x5e
   surface: mode_key.normal
   key: CTRL-^
@@ -1094,7 +1096,7 @@ items:
   attestation:
   - D
   tag: CTRL-^
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c_Tab
   surface: mode_key.normal
   key: CTRL-<Tab>
@@ -1102,14 +1104,14 @@ items:
   attestation:
   - D
   tag: CTRL-<Tab>
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.c__
   surface: mode_key.normal
   key: CTRL-_
   desc: not used
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.Space
   surface: mode_key.normal
   key: <Space>
@@ -1118,7 +1120,7 @@ items:
   - D
   tag: <Space>
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x21x7bmotionx7dx7bfilterx7d
   surface: mode_key.normal
   key: '!{motion}{filter}'
@@ -1126,7 +1128,7 @@ items:
   attestation:
   - D
   tag: '!'
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x21x21x7bfilterx7d
   surface: mode_key.normal
   key: '!!{filter}'
@@ -1135,7 +1137,7 @@ items:
   - D
   tag: '!!'
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x22x7bregisterx7d
   surface: mode_key.normal
   key: '"{register}'
@@ -1143,7 +1145,9 @@ items:
   attestation:
   - D
   tag: quote
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x23
   surface: mode_key.normal
   key: '#'
@@ -1152,7 +1156,7 @@ items:
   - D
   tag: '#'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x24
   surface: mode_key.normal
   key: $
@@ -1161,7 +1165,9 @@ items:
   - D
   tag: $
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x25
   surface: mode_key.normal
   key: '%'
@@ -1170,7 +1176,9 @@ items:
   - D
   tag: '%'
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7bcountx7dx25
   surface: mode_key.normal
   key: '{count}%'
@@ -1179,7 +1187,7 @@ items:
   - D
   tag: N%
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x26
   surface: mode_key.normal
   key: '&'
@@ -1188,7 +1196,7 @@ items:
   - D
   tag: '&'
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27x7ba-zA-Z0-9x7d
   surface: mode_key.normal
   key: '''{a-zA-Z0-9}'
@@ -1197,7 +1205,7 @@ items:
   - D
   tag: ''''
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27x27
   surface: mode_key.normal
   key: ''''''
@@ -1206,7 +1214,7 @@ items:
   - D
   tag: ''''''
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27x28
   surface: mode_key.normal
   key: '''('
@@ -1215,7 +1223,7 @@ items:
   - D
   tag: '''('
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27x29
   surface: mode_key.normal
   key: ''')'
@@ -1224,7 +1232,7 @@ items:
   - D
   tag: ''')'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27
   surface: mode_key.normal
   key: '''<'
@@ -1233,7 +1241,7 @@ items:
   - D
   tag: '''<'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27x5b
   surface: mode_key.normal
   key: '''['
@@ -1242,7 +1250,7 @@ items:
   - D
   tag: '''['
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27x5d
   surface: mode_key.normal
   key: ''']'
@@ -1251,7 +1259,7 @@ items:
   - D
   tag: ''']'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27x7b
   surface: mode_key.normal
   key: '''{'
@@ -1260,7 +1268,7 @@ items:
   - D
   tag: '''{'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x27x7d
   surface: mode_key.normal
   key: '''}'
@@ -1269,7 +1277,7 @@ items:
   - D
   tag: '''}'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x28
   surface: mode_key.normal
   key: (
@@ -1278,7 +1286,7 @@ items:
   - D
   tag: (
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x29
   surface: mode_key.normal
   key: )
@@ -1287,7 +1295,7 @@ items:
   - D
   tag: )
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x2a
   surface: mode_key.normal
   key: '*'
@@ -1296,7 +1304,7 @@ items:
   - D
   tag: star
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x2b
   surface: mode_key.normal
   key: +
@@ -1305,7 +1313,7 @@ items:
   - D
   tag: +
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.S-x2b
   surface: mode_key.normal
   key: <S-+>
@@ -1314,7 +1322,7 @@ items:
   - D
   tag: <S-Plus>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.x2c
   surface: mode_key.normal
   key: ','
@@ -1323,7 +1331,9 @@ items:
   - D
   tag: ','
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.-
   surface: mode_key.normal
   key: '-'
@@ -1332,7 +1342,7 @@ items:
   - D
   tag: '-'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.S--
   surface: mode_key.normal
   key: <S-->
@@ -1341,7 +1351,7 @@ items:
   - D
   tag: <S-Minus>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal..
   surface: mode_key.normal
   key: .
@@ -1350,7 +1360,9 @@ items:
   - D
   tag: .
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x2fx7bpatternx7dCR
   surface: mode_key.normal
   key: /{pattern}<CR>
@@ -1359,7 +1371,8 @@ items:
   - D
   tag: /
   moves_cursor: true
-  status: unclassified
+  status: deferred
+  family: FAM-NAVIGATION
 - id: nvim.key.normal.x2fCR
   surface: mode_key.normal
   key: /<CR>
@@ -1368,7 +1381,8 @@ items:
   - D
   tag: /<CR>
   moves_cursor: true
-  status: unclassified
+  status: deferred
+  family: FAM-NAVIGATION
 - id: nvim.key.normal.0
   surface: mode_key.normal
   key: '0'
@@ -1377,7 +1391,9 @@ items:
   - D
   tag: '0'
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.1
   surface: mode_key.normal
   key: '1'
@@ -1385,7 +1401,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.2
   surface: mode_key.normal
   key: '2'
@@ -1393,7 +1411,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.3
   surface: mode_key.normal
   key: '3'
@@ -1401,7 +1421,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.4
   surface: mode_key.normal
   key: '4'
@@ -1409,7 +1431,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.5
   surface: mode_key.normal
   key: '5'
@@ -1417,7 +1441,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.6
   surface: mode_key.normal
   key: '6'
@@ -1425,7 +1451,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.7
   surface: mode_key.normal
   key: '7'
@@ -1433,7 +1461,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.8
   surface: mode_key.normal
   key: '8'
@@ -1441,7 +1471,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.9
   surface: mode_key.normal
   key: '9'
@@ -1449,7 +1481,9 @@ items:
   attestation:
   - D
   tag: count
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x3a
   surface: mode_key.normal
   key: ':'
@@ -1458,7 +1492,7 @@ items:
   - D
   tag: ':'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x7bcountx7dx3a
   surface: mode_key.normal
   key: '{count}:'
@@ -1466,7 +1500,7 @@ items:
   attestation:
   - D
   tag: 'N:'
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x3b
   surface: mode_key.normal
   key: ;
@@ -1475,7 +1509,9 @@ items:
   - D
   tag: ;
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7bmotionx7d
   surface: mode_key.normal
   key: <{motion}
@@ -1484,7 +1520,7 @@ items:
   - D
   tag: <
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.empty
   surface: mode_key.normal
   key: '<<'
@@ -1493,7 +1529,9 @@ items:
   - D
   tag: '<<'
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x3dx7bmotionx7d
   surface: mode_key.normal
   key: ={motion}
@@ -1502,7 +1540,7 @@ items:
   - D
   tag: '='
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x3dx3d
   surface: mode_key.normal
   key: ==
@@ -1511,7 +1549,7 @@ items:
   - D
   tag: ==
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x3fx7bpatternx7dCR
   surface: mode_key.normal
   key: ?{pattern}<CR>
@@ -1520,7 +1558,7 @@ items:
   - D
   tag: '?'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x3fCR
   surface: mode_key.normal
   key: ?<CR>
@@ -1529,7 +1567,7 @@ items:
   - D
   tag: ?<CR>
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x40x7ba-zx7d
   surface: mode_key.normal
   key: '@{a-z}'
@@ -1538,7 +1576,7 @@ items:
   - D
   tag: '@'
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x40x3a
   surface: mode_key.normal
   key: '@:'
@@ -1546,7 +1584,7 @@ items:
   attestation:
   - D
   tag: '@:'
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x40x40
   surface: mode_key.normal
   key: '@@'
@@ -1555,7 +1593,7 @@ items:
   - D
   tag: '@@'
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.A
   surface: mode_key.normal
   key: A
@@ -1564,7 +1602,8 @@ items:
   - D
   tag: A
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.B
   surface: mode_key.normal
   key: B
@@ -1573,7 +1612,9 @@ items:
   - D
   tag: B
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dC
   surface: mode_key.normal
   key: '["x]C'
@@ -1582,7 +1623,9 @@ items:
   - D
   tag: C
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dD
   surface: mode_key.normal
   key: '["x]D'
@@ -1591,7 +1634,9 @@ items:
   - D
   tag: D
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.E
   surface: mode_key.normal
   key: E
@@ -1600,7 +1645,9 @@ items:
   - D
   tag: E
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.Fx7bcharx7d
   surface: mode_key.normal
   key: F{char}
@@ -1609,7 +1656,9 @@ items:
   - D
   tag: F
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.G
   surface: mode_key.normal
   key: G
@@ -1618,7 +1667,9 @@ items:
   - D
   tag: G
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.H
   surface: mode_key.normal
   key: H
@@ -1627,7 +1678,7 @@ items:
   - D
   tag: H
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.I
   surface: mode_key.normal
   key: I
@@ -1636,7 +1687,8 @@ items:
   - D
   tag: I
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.J
   surface: mode_key.normal
   key: J
@@ -1645,7 +1697,8 @@ items:
   - D
   tag: J
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.K
   surface: mode_key.normal
   key: K
@@ -1653,7 +1706,7 @@ items:
   attestation:
   - D
   tag: K
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.L
   surface: mode_key.normal
   key: L
@@ -1662,7 +1715,7 @@ items:
   - D
   tag: L
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.M
   surface: mode_key.normal
   key: M
@@ -1671,7 +1724,7 @@ items:
   - D
   tag: M
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.N
   surface: mode_key.normal
   key: N
@@ -1680,7 +1733,8 @@ items:
   - D
   tag: N
   moves_cursor: true
-  status: unclassified
+  status: deferred
+  family: FAM-NAVIGATION
 - id: nvim.key.normal.O
   surface: mode_key.normal
   key: O
@@ -1689,7 +1743,8 @@ items:
   - D
   tag: O
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dP
   surface: mode_key.normal
   key: '["x]P'
@@ -1698,7 +1753,9 @@ items:
   - D
   tag: P
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.R
   surface: mode_key.normal
   key: R
@@ -1707,7 +1764,8 @@ items:
   - D
   tag: R
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dS
   surface: mode_key.normal
   key: '["x]S'
@@ -1716,7 +1774,9 @@ items:
   - D
   tag: S
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.Tx7bcharx7d
   surface: mode_key.normal
   key: T{char}
@@ -1725,7 +1785,9 @@ items:
   - D
   tag: T
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.U
   surface: mode_key.normal
   key: U
@@ -1734,7 +1796,7 @@ items:
   - D
   tag: U
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.V
   surface: mode_key.normal
   key: V
@@ -1742,7 +1804,8 @@ items:
   attestation:
   - D
   tag: V
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.W
   surface: mode_key.normal
   key: W
@@ -1751,7 +1814,9 @@ items:
   - D
   tag: W
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dX
   surface: mode_key.normal
   key: '["x]X'
@@ -1760,7 +1825,7 @@ items:
   - D
   tag: X
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x5bx22xx5dY
   surface: mode_key.normal
   key: '["x]Y'
@@ -1768,7 +1833,9 @@ items:
   attestation:
   - D
   tag: Y
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.ZZ
   surface: mode_key.normal
   key: ZZ
@@ -1776,7 +1843,7 @@ items:
   attestation:
   - D
   tag: ZZ
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.ZQ
   surface: mode_key.normal
   key: ZQ
@@ -1784,7 +1851,7 @@ items:
   attestation:
   - D
   tag: ZQ
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x5bx7bcharx7d
   surface: mode_key.normal
   key: '[{char}'
@@ -1792,14 +1859,14 @@ items:
   attestation:
   - D
   tag: '['
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x5c
   surface: mode_key.normal
   key: \
   desc: not used
   attestation:
   - D
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.x5dx7bcharx7d
   surface: mode_key.normal
   key: ']{char}'
@@ -1807,7 +1874,7 @@ items:
   attestation:
   - D
   tag: ']'
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x5e
   surface: mode_key.normal
   key: ^
@@ -1816,7 +1883,7 @@ items:
   - D
   tag: ^
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal._
   surface: mode_key.normal
   key: _
@@ -1825,7 +1892,7 @@ items:
   - D
   tag: _
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x60x7ba-zA-Z0-9x7d
   surface: mode_key.normal
   key: '`{a-zA-Z0-9}'
@@ -1834,7 +1901,7 @@ items:
   - D
   tag: '`'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x60x28
   surface: mode_key.normal
   key: '`('
@@ -1843,7 +1910,7 @@ items:
   - D
   tag: '`('
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x60x29
   surface: mode_key.normal
   key: '`)'
@@ -1852,7 +1919,7 @@ items:
   - D
   tag: '`)'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x60
   surface: mode_key.normal
   key: '`<'
@@ -1861,7 +1928,7 @@ items:
   - D
   tag: '`<'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x60x5b
   surface: mode_key.normal
   key: '`['
@@ -1870,7 +1937,7 @@ items:
   - D
   tag: '`['
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x60x5d
   surface: mode_key.normal
   key: '`]'
@@ -1879,7 +1946,7 @@ items:
   - D
   tag: '`]'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x22x60x60x22
   surface: mode_key.normal
   key: '"``"'
@@ -1888,7 +1955,7 @@ items:
   - D
   tag: '``'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x60x7b
   surface: mode_key.normal
   key: '`{'
@@ -1897,7 +1964,7 @@ items:
   - D
   tag: '`{'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x60x7d
   surface: mode_key.normal
   key: '`}'
@@ -1906,7 +1973,7 @@ items:
   - D
   tag: '`}'
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.a
   surface: mode_key.normal
   key: a
@@ -1915,7 +1982,8 @@ items:
   - D
   tag: a
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.b
   surface: mode_key.normal
   key: b
@@ -1924,7 +1992,9 @@ items:
   - D
   tag: b
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dcx7bmotionx7d
   surface: mode_key.normal
   key: '["x]c{motion}'
@@ -1933,7 +2003,9 @@ items:
   - D
   tag: c
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dcc
   surface: mode_key.normal
   key: '["x]cc'
@@ -1942,7 +2014,9 @@ items:
   - D
   tag: cc
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5ddx7bmotionx7d
   surface: mode_key.normal
   key: '["x]d{motion}'
@@ -1951,7 +2025,9 @@ items:
   - D
   tag: d
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5ddd
   surface: mode_key.normal
   key: '["x]dd'
@@ -1960,7 +2036,9 @@ items:
   - D
   tag: dd
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.do
   surface: mode_key.normal
   key: do
@@ -1969,7 +2047,7 @@ items:
   - D
   tag: do
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.dp
   surface: mode_key.normal
   key: dp
@@ -1978,7 +2056,7 @@ items:
   - D
   tag: dp
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.e
   surface: mode_key.normal
   key: e
@@ -1987,7 +2065,9 @@ items:
   - D
   tag: e
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.fx7bcharx7d
   surface: mode_key.normal
   key: f{char}
@@ -1996,7 +2076,9 @@ items:
   - D
   tag: f
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.gx7bcharx7d
   surface: mode_key.normal
   key: g{char}
@@ -2004,7 +2086,8 @@ items:
   attestation:
   - D
   tag: g
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.h
   surface: mode_key.normal
   key: h
@@ -2013,7 +2096,9 @@ items:
   - D
   tag: h
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.i
   surface: mode_key.normal
   key: i
@@ -2022,7 +2107,8 @@ items:
   - D
   tag: i
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.j
   surface: mode_key.normal
   key: j
@@ -2031,7 +2117,9 @@ items:
   - D
   tag: j
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.k
   surface: mode_key.normal
   key: k
@@ -2040,7 +2128,9 @@ items:
   - D
   tag: k
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.l
   surface: mode_key.normal
   key: l
@@ -2049,7 +2139,9 @@ items:
   - D
   tag: l
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.mx7bA-Za-zx7d
   surface: mode_key.normal
   key: m{A-Za-z}
@@ -2057,7 +2149,7 @@ items:
   attestation:
   - D
   tag: m
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.n
   surface: mode_key.normal
   key: n
@@ -2066,7 +2158,8 @@ items:
   - D
   tag: n
   moves_cursor: true
-  status: unclassified
+  status: deferred
+  family: FAM-NAVIGATION
 - id: nvim.key.normal.o
   surface: mode_key.normal
   key: o
@@ -2075,7 +2168,8 @@ items:
   - D
   tag: o
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dp
   surface: mode_key.normal
   key: '["x]p'
@@ -2084,7 +2178,9 @@ items:
   - D
   tag: p
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.qx7b0-9a-zA-Zx22x7d
   surface: mode_key.normal
   key: q{0-9a-zA-Z"}
@@ -2092,7 +2188,7 @@ items:
   attestation:
   - D
   tag: q
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.q
   surface: mode_key.normal
   key: q
@@ -2100,7 +2196,7 @@ items:
   attestation:
   - D
   tag: q
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.Q
   surface: mode_key.normal
   key: Q
@@ -2109,7 +2205,7 @@ items:
   - D
   tag: Q
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.qx3a
   surface: mode_key.normal
   key: 'q:'
@@ -2117,7 +2213,7 @@ items:
   attestation:
   - D
   tag: 'q:'
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.qx2f
   surface: mode_key.normal
   key: q/
@@ -2125,7 +2221,7 @@ items:
   attestation:
   - D
   tag: q/
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.qx3f
   surface: mode_key.normal
   key: q?
@@ -2133,7 +2229,7 @@ items:
   attestation:
   - D
   tag: q?
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.rx7bcharx7d
   surface: mode_key.normal
   key: r{char}
@@ -2142,7 +2238,8 @@ items:
   - D
   tag: r
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5ds
   surface: mode_key.normal
   key: '["x]s'
@@ -2151,7 +2248,7 @@ items:
   - D
   tag: s
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.tx7bcharx7d
   surface: mode_key.normal
   key: t{char}
@@ -2160,7 +2257,9 @@ items:
   - D
   tag: t
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.u
   surface: mode_key.normal
   key: u
@@ -2169,7 +2268,8 @@ items:
   - D
   tag: u
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.v
   surface: mode_key.normal
   key: v
@@ -2177,7 +2277,8 @@ items:
   attestation:
   - D
   tag: v
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.w
   surface: mode_key.normal
   key: w
@@ -2186,7 +2287,9 @@ items:
   - D
   tag: w
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dx
   surface: mode_key.normal
   key: '["x]x'
@@ -2195,7 +2298,9 @@ items:
   - D
   tag: x
   undoable: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dyx7bmotionx7d
   surface: mode_key.normal
   key: '["x]y{motion}'
@@ -2203,7 +2308,9 @@ items:
   attestation:
   - D
   tag: y
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dyy
   surface: mode_key.normal
   key: '["x]yy'
@@ -2211,7 +2318,9 @@ items:
   attestation:
   - D
   tag: yy
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.zx7bcharx7d
   surface: mode_key.normal
   key: z{char}
@@ -2219,7 +2328,7 @@ items:
   attestation:
   - D
   tag: z
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x7b
   surface: mode_key.normal
   key: '{'
@@ -2228,7 +2337,9 @@ items:
   - D
   tag: '{'
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7c
   surface: mode_key.normal
   key: '|'
@@ -2237,7 +2348,7 @@ items:
   - D
   tag: bar
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x7d
   surface: mode_key.normal
   key: '}'
@@ -2246,7 +2357,9 @@ items:
   - D
   tag: '}'
   moves_cursor: true
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7e
   surface: mode_key.normal
   key: '~'
@@ -2255,7 +2368,8 @@ items:
   - D
   tag: '~'
   undoable: true
-  status: unclassified
+  status: deferred
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7ex7bmotionx7d
   surface: mode_key.normal
   key: ~{motion}
@@ -2263,7 +2377,7 @@ items:
   attestation:
   - D
   tag: '~'
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.C-End
   surface: mode_key.normal
   key: <C-End>
@@ -2272,7 +2386,7 @@ items:
   - D
   tag: <C-End>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.C-Home
   surface: mode_key.normal
   key: <C-Home>
@@ -2281,7 +2395,7 @@ items:
   - D
   tag: <C-Home>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.C-Left
   surface: mode_key.normal
   key: <C-Left>
@@ -2290,7 +2404,7 @@ items:
   - D
   tag: <C-Left>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.C-LeftMouse
   surface: mode_key.normal
   key: <C-LeftMouse>
@@ -2298,7 +2412,7 @@ items:
   attestation:
   - D
   tag: <C-LeftMouse>
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.C-Right
   surface: mode_key.normal
   key: <C-Right>
@@ -2307,7 +2421,7 @@ items:
   - D
   tag: <C-Right>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.C-Tab
   surface: mode_key.normal
   key: <C-Tab>
@@ -2315,7 +2429,7 @@ items:
   attestation:
   - D
   tag: <C-Tab>
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.x5bx22xx5dDel
   surface: mode_key.normal
   key: '["x]<Del>'
@@ -2324,7 +2438,7 @@ items:
   - D
   tag: <Del>
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.x7bcountx7dDel
   surface: mode_key.normal
   key: '{count}<Del>'
@@ -2332,7 +2446,7 @@ items:
   attestation:
   - D
   tag: N<Del>
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.Down
   surface: mode_key.normal
   key: <Down>
@@ -2341,7 +2455,8 @@ items:
   - D
   tag: <Down>
   moves_cursor: true
-  status: unclassified
+  status: deferred
+  family: FAM-NAVIGATION
 - id: nvim.key.normal.End
   surface: mode_key.normal
   key: <End>
@@ -2350,7 +2465,7 @@ items:
   - D
   tag: <End>
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.F1
   surface: mode_key.normal
   key: <F1>
@@ -2358,7 +2473,7 @@ items:
   attestation:
   - D
   tag: <F1>
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.Help
   surface: mode_key.normal
   key: <Help>
@@ -2366,7 +2481,7 @@ items:
   attestation:
   - D
   tag: <Help>
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.Home
   surface: mode_key.normal
   key: <Home>
@@ -2375,7 +2490,7 @@ items:
   - D
   tag: <Home>
   moves_cursor: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.Insert
   surface: mode_key.normal
   key: <Insert>
@@ -2384,7 +2499,7 @@ items:
   - D
   tag: <Insert>
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.Left
   surface: mode_key.normal
   key: <Left>
@@ -2393,7 +2508,8 @@ items:
   - D
   tag: <Left>
   moves_cursor: true
-  status: unclassified
+  status: deferred
+  family: FAM-NAVIGATION
 - id: nvim.key.normal.LeftMouse
   surface: mode_key.normal
   key: <LeftMouse>
@@ -2402,7 +2518,7 @@ items:
   - D
   tag: <LeftMouse>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.MiddleMouse
   surface: mode_key.normal
   key: <MiddleMouse>
@@ -2411,7 +2527,7 @@ items:
   - D
   tag: <MiddleMouse>
   undoable: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.PageDown
   surface: mode_key.normal
   key: <PageDown>
@@ -2419,7 +2535,7 @@ items:
   attestation:
   - D
   tag: <PageDown>
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.PageUp
   surface: mode_key.normal
   key: <PageUp>
@@ -2427,7 +2543,7 @@ items:
   attestation:
   - D
   tag: <PageUp>
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.Right
   surface: mode_key.normal
   key: <Right>
@@ -2436,7 +2552,8 @@ items:
   - D
   tag: <Right>
   moves_cursor: true
-  status: unclassified
+  status: deferred
+  family: FAM-NAVIGATION
 - id: nvim.key.normal.RightMouse
   surface: mode_key.normal
   key: <RightMouse>
@@ -2444,7 +2561,7 @@ items:
   attestation:
   - D
   tag: <RightMouse>
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.S-Down
   surface: mode_key.normal
   key: <S-Down>
@@ -2453,7 +2570,7 @@ items:
   - D
   tag: <S-Down>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.S-Left
   surface: mode_key.normal
   key: <S-Left>
@@ -2462,7 +2579,7 @@ items:
   - D
   tag: <S-Left>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.S-LeftMouse
   surface: mode_key.normal
   key: <S-LeftMouse>
@@ -2470,7 +2587,7 @@ items:
   attestation:
   - D
   tag: <S-LeftMouse>
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.S-Right
   surface: mode_key.normal
   key: <S-Right>
@@ -2479,7 +2596,7 @@ items:
   - D
   tag: <S-Right>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.S-Up
   surface: mode_key.normal
   key: <S-Up>
@@ -2488,7 +2605,7 @@ items:
   - D
   tag: <S-Up>
   moves_cursor: true
-  status: unclassified
+  status: unsupported
 - id: nvim.key.normal.Undo
   surface: mode_key.normal
   key: <Undo>
@@ -2497,7 +2614,7 @@ items:
   - D
   tag: <Undo>
   undoable: true
-  status: unclassified
+  status: deferred
 - id: nvim.key.normal.Up
   surface: mode_key.normal
   key: <Up>
@@ -2506,7 +2623,8 @@ items:
   - D
   tag: <Up>
   moves_cursor: true
-  status: unclassified
+  status: deferred
+  family: FAM-NAVIGATION
 - id: nvim.key.text_object.ax22
   surface: mode_key.text_object
   key: a"
@@ -4778,7 +4896,9 @@ items:
   attestation:
   - D
   tag: o_v
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.operator_pending.V
   surface: mode_key.operator_pending
   key: V
@@ -4786,7 +4906,9 @@ items:
   attestation:
   - D
   tag: o_V
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.operator_pending.c_V
   surface: mode_key.operator_pending
   key: CTRL-V
@@ -4794,7 +4916,9 @@ items:
   attestation:
   - D
   tag: o_CTRL-V
-  status: unclassified
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.visual.c_A
   surface: mode_key.visual
   key: CTRL-A

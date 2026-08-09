@@ -68,17 +68,12 @@ Source: `intro.txt`, `visual.txt`, `terminal.txt`.
 ## VIM-OP — Operators & Operator+Motion Grammar
 Source: `change.txt`, `motion.txt`. Grammar: `[count1] operator [count2] {motion|text-object}`; effective repeat = `count1 × count2`. Doubling → linewise (`dd yy >> == cc guu`).
 
-| ID | Operator | Action | Target | Compat | Weight |
-| --- | --- | --- | --- | --- | --- |
-| VIM-OP-1 | `d c y` | delete / change / yank | L2 | Exact | high |
-| VIM-OP-2 | `> <` | shift by `shiftwidth` | L1 | Exact | high |
-| VIM-OP-3 | `=` | reindent (`equalprg`/`indentexpr`) | L1 | Equivalent | med |
-| VIM-OP-4 | `gu gU g~` | lower / upper / toggle case | L1 | Exact | med |
-| VIM-OP-5 | `!` | filter lines through external program | L1 | Equivalent | low |
-| VIM-OP-6 | `gq gw` | format text (`gw` keeps cursor) | L1 | Equivalent | med |
-| VIM-OP-7 | `g?` | ROT13 | L2 | Exact | low |
-| VIM-OP-8 | `zf` | create fold over motion | L1 | Equivalent | low |
-| VIM-OP-9 | `g@` | call `operatorfunc` (user operator) | L2 | Equivalent | med |
+_Partially retired to the census (D-043): the IMPLEMENTED operator grammar — `d c y` (VIM-OP-1) + the
+normal aliases + `<<` (part of VIM-OP-2) — migrated to `nvim.key.normal.*` (surface `mode_key.normal`),
+screened FAM-EDIT-VIM-GRAMMAR/targeted and cited by PRD F-023. NOT repointed (un-implemented or on other
+census sub-surfaces — screen when feature-motivated): `>`/`>{motion}` (census-extraction gap: no upstream
+row, only `<` present), `=` reindent (VIM-OP-3), `!` filter (VIM-OP-5), the extended operators
+`gu gU g~ gq gw g? g@` (VIM-OP-4/6/7/9, surface `mode_key.normal.g`) and `zf` (VIM-OP-8, `mode_key.normal.z`)._
 
 Normal aliases: `x=dl X=dh D=d$ C=c$ Y=yy s=cl S=cc`.
 - **⚠️ VIM-OP-CW**: `cw`/`cW` behaves like `ce`/`cE` on a non-blank (no trailing whitespace) — preserve this Vi wart.
@@ -87,17 +82,12 @@ Normal aliases: `x=dl X=dh D=d$ C=c$ Y=yy s=cl S=cc`.
 ## VIM-MOT — Motions (types & inclusive/exclusive)
 Source: `motion.txt`. Three types: **characterwise** (inclusive/exclusive), **linewise**, **blockwise**.
 
-| ID | Class | Motions | Target | Compat | Weight |
-| --- | --- | --- | --- | --- | --- |
-| VIM-MOT-1 | char excl. | `h l 0 ^ <Space> <BS> \|` | L2 | Exact | high |
-| VIM-MOT-2 | char incl. | `$ g_`; `f t` incl., `F T` excl.; `; ,` | L2 | Exact | high |
-| VIM-MOT-3 | word | `w W b B` (excl.), `e E ge gE` (incl.) | L2 | Exact | high |
-| VIM-MOT-4 | linewise | `j k + - _ G gg H M L {n}%` | L2 | Exact | high |
-| VIM-MOT-5 | display line | `gj gk g0 g^ g$` | L1 | Exact | med |
-| VIM-MOT-6 | sentence/para | `( ) { }` (excl.) | L2 | Exact | med |
-| VIM-MOT-7 | section | `[[ ]] [] ][` | L1 | Equivalent | low |
-| VIM-MOT-8 | match | `%` (incl.), `[( ]) [{ ]} [m ]m` | L1 | Equivalent | med |
-| VIM-MOT-9 | search | `/ ? n N * # g* g#` | L2 | Exact | high |
+_Partially retired to the census (D-043): the IMPLEMENTED motions — `h l j k 0 $` (VIM-MOT-1 subset),
+`f t F T ; ,` (VIM-MOT-2), `w W b B e E` (VIM-MOT-3 subset), `G` (VIM-MOT-4 subset), `( )`/`{ }` para
+(VIM-MOT-6) and `%` match (VIM-MOT-8) — migrated to `nvim.key.normal.*`, screened FAM-EDIT-VIM-GRAMMAR/
+targeted and cited by PRD F-023. NOT repointed (un-implemented or elsewhere): `^ _ + - | H M L {n}%`,
+`ge gE` (rest of VIM-MOT-1/3/4); display-line `gj gk g0 g^ g$` (VIM-MOT-5, `mode_key.normal.g`); section
+`[[ ]] [] ][` (VIM-MOT-7, `mode_key.normal.bracket`); search `/ ? n N * #` (VIM-MOT-9 → PRD F-009)._
 
 **⚠️ VIM-MOT-PROMOTE** — replicate exactly (governs `d}`, `d/pat`):
 1. exclusive→inclusive: exclusive motion ending in column 1 → end moves to prev line's end, becomes inclusive.
@@ -119,19 +109,13 @@ _Retired to the census (D-043): VIM-TOBJ-1..5 migrated to the 34 `nvim.key.text_
 ## VIM-REG — Registers & Put
 Source: `change.txt`.
 
-| ID | Register | Contents | Target | Compat | Weight |
-| --- | --- | --- | --- | --- | --- |
-| VIM-REG-1 | `""` | unnamed; last delete/change/yank | L2 | Exact | high |
-| VIM-REG-2 | `"0` | last **yank only** | L2 | Exact | med |
-| VIM-REG-3 | `"1`–`"9` | delete/change ring (≥1 line) | L2 | Exact | med |
-| VIM-REG-4 | `"-` | small-delete (<1 line) | L2 | Exact | low |
-| VIM-REG-5 | `"a`–`"z`, `"A`–`"Z` append | named | L2 | Exact | med |
-| VIM-REG-6 | `"_` | black hole | L1 | Exact | med |
-| VIM-REG-7 | `"=` | expression register | L1 | Adapted | low |
-| VIM-REG-8 | `"+ "*` | clipboard / primary selection | L1 | Equivalent | high |
-| VIM-REG-9 | `"~ "% "# ". ": "/` | drop/file/alt/insert/cmd/search | L1 | Equivalent | low |
-
-Put: `p P gp gP ]p [p`.
+_Partially retired to the census (D-043): the IMPLEMENTED register surface — the `"{register}` selection
+prefix (`nvim.key.normal.x22x7bregisterx7d`, named `"a`-`"z`/`"A`-`"Z` append = VIM-REG-5; unnamed `""` =
+VIM-REG-1; yank-only `"0` = VIM-REG-2, a store SEMANTIC of the same key) plus put `p`/`P` — migrated to
+`nvim.key.normal.*`, screened FAM-EDIT-VIM-GRAMMAR/targeted and cited by PRD F-029. NOT modelled yet
+(carve-outs, screen when feature-motivated): numbered ring `"1`-`"9` (VIM-REG-3), small-delete `"-`
+(VIM-REG-4), black-hole `"_` (VIM-REG-6), expression `"=` (VIM-REG-7), clipboard `"+`/`"*` (VIM-REG-8),
+special `"~ "% "# ". ": "/` (VIM-REG-9); `gp gP ]p [p`._
 - **⚠️ VIM-REG-TYPE**: register **type** (char/line/blockwise) is stored and governs paste geometry.
 - **⚠️ VIM-REG-RING**: numbered-ring shifting rules; small deletes → `"-`; Visual-`p` swaps replaced text into unnamed.
 - ruse maps this to a **unified register/kill-ring model** shared with Emacs (see [emacs.md](emacs.md) EMACS-KILL, [../architecture/architecture.md](../architecture/architecture.md)); the Vim *surface* must still reproduce the above semantics.
@@ -148,7 +132,7 @@ Source: `repeat.txt`, `change.txt`.
 - Record `q{a-z}` … `q`, append `q{A-Z}`; play `@{a-z}`, `@@`, `[count]@a`, `@:`, `@=`.
 - `.` repeats last text-changing command (not motions/`:`/macros/yanks), honoring a new count.
 - `:normal[!] {keys}` runs Normal keys programmatically.
-- **⚠️ VIM-REPEAT-DOT**: `.` captures the full last change incl. inserted text; `g@`/`operatorfunc` is dot-repeatable (plugins hook this). Distinguish dot-repeat from transaction replay (anti-pattern VIM-11).
+- **⚠️ VIM-REPEAT-DOT**: `.` captures the full last change incl. inserted text; `g@`/`operatorfunc` is dot-repeatable (plugins hook this). Distinguish dot-repeat from transaction replay (anti-pattern VIM-11). _Dot-repeat retired to the census (D-043): `.` = `nvim.key.normal..`, screened FAM-EDIT-VIM-GRAMMAR/targeted, cited by PRD F-023. Macros `q`/`@` (VIM-REPEAT record/replay) stay legacy — not yet feature-motivated._
 
 ## VIM-SEARCH — Search & Substitute
 Source: `pattern.txt`, `change.txt`.
