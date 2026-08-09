@@ -2785,6 +2785,112 @@
       }
     },
     {
+      "name": "block_insert_I_replicate",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "<C-v>jjIX<Esc>",
+      "expect": {
+        "text": [
+          "Xabc",
+          "Xdef",
+          "Xghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_append_A_replicate",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "<C-v>jAX<Esc>",
+      "expect": {
+        "text": [
+          "aXbc",
+          "dXef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_change_c_replicate",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "<C-v>jcX<Esc>",
+      "expect": {
+        "text": [
+          "Xbc",
+          "Xef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_append_A_pads_short",
+      "lines": [
+        "ab",
+        "c"
+      ],
+      "keys": "<C-v>ljAX<Esc>",
+      "expect": {
+        "text": [
+          "abX",
+          "c X"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "block_ragged_short_line",
       "lines": [
         "abcd",
@@ -2804,32 +2910,6 @@
         ],
         "reg_unnamed": {
           "text": "bcd\n\nfgh",
-          "type": "blockwise"
-        },
-        "reg0": {
-          "text": "",
-          "type": ""
-        }
-      }
-    },
-    {
-      "name": "block_change_col_single_row_probe",
-      "lines": [
-        "abc",
-        "def"
-      ],
-      "keys": "<C-v>jcX<Esc>",
-      "expect": {
-        "text": [
-          "Xbc",
-          "Xef"
-        ],
-        "cursor": [
-          1,
-          0
-        ],
-        "reg_unnamed": {
-          "text": "a\nd",
           "type": "blockwise"
         },
         "reg0": {

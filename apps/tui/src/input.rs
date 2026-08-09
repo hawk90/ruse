@@ -4,7 +4,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
-use ruse_core::{Command, ForcedWise, Mode, Motion, OpKind, SearchOp, SelectKind};
+use ruse_core::{BlockInsertKind, Command, ForcedWise, Mode, Motion, OpKind, SearchOp, SelectKind};
 
 /// The outcome of feeding one key to the engine.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -838,8 +838,10 @@ impl InputEngine {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         if let Mode::Visual { kind } | Mode::Select { kind } = mode {
             // `v`/`V`/`CTRL-V` switch the selection SHAPE: pressing the key of the current shape leaves the
-            // namespace (to Normal), any other switches to that shape (F-025 c1). Blockwise Select-mode
-            // block-insert (`I`/`A`) is deferred, so `i`/`a` below still begin a text object in every shape.
+            // namespace (to Normal), any other switches to that shape (F-025 c1). `i`/`a` (lowercase) begin
+            // a text object in every shape; blockwise-only `I`/`A` (and block `c`/`s`) arm an insert-
+            // replicate session instead of the plain charwise change.
+            let is_block = kind == SelectKind::Blockwise;
             let shape_toggle = |target: SelectKind| {
                 if kind == target {
                     Command::EnterNormal
@@ -854,6 +856,17 @@ impl InputEngine {
                 }
                 KeyCode::Char('v') => return self.action(shape_toggle(SelectKind::Charwise)),
                 KeyCode::Char('V') => return self.action(shape_toggle(SelectKind::Linewise)),
+                // Blockwise insert-replicate: `I` at the left edge, `A` at the right edge, `c`/`s` delete
+                // the block then insert at the left edge — each replicates on `<Esc>` (blockwise slice 2).
+                KeyCode::Char('I') if is_block => {
+                    return self.action(Command::BlockInsert(BlockInsertKind::Insert))
+                }
+                KeyCode::Char('A') if is_block => {
+                    return self.action(Command::BlockInsert(BlockInsertKind::Append))
+                }
+                KeyCode::Char('c') | KeyCode::Char('s') if is_block => {
+                    return self.action(Command::BlockInsert(BlockInsertKind::Change))
+                }
                 KeyCode::Char('d') | KeyCode::Char('x') => {
                     return self.action(Command::DeleteSelection)
                 }
@@ -1216,6 +1229,45 @@ mod tests {
         };
         assert_eq!(e.feed(k('d'), blk), Feed::Cmd(Command::DeleteSelection));
         assert_eq!(e.feed(k('y'), blk), Feed::Cmd(Command::YankSelection));
+    }
+
+    #[test]
+    fn block_mode_i_a_c_arm_insert_replicate() {
+        let mut e = InputEngine::new();
+        let blk = Mode::Visual {
+            kind: SelectKind::Blockwise,
+        };
+        assert_eq!(
+            e.feed(KeyEvent::new(KeyCode::Char('I'), KeyModifiers::NONE), blk),
+            Feed::Cmd(Command::BlockInsert(BlockInsertKind::Insert))
+        );
+        assert_eq!(
+            e.feed(KeyEvent::new(KeyCode::Char('A'), KeyModifiers::NONE), blk),
+            Feed::Cmd(Command::BlockInsert(BlockInsertKind::Append))
+        );
+        assert_eq!(
+            e.feed(k('c'), blk),
+            Feed::Cmd(Command::BlockInsert(BlockInsertKind::Change))
+        );
+        assert_eq!(
+            e.feed(k('s'), blk),
+            Feed::Cmd(Command::BlockInsert(BlockInsertKind::Change))
+        );
+    }
+
+    #[test]
+    fn charwise_c_is_still_a_plain_change_and_lowercase_i_is_a_text_object() {
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        // In charwise/linewise, `c` is the ordinary selection change (not a block-insert).
+        assert_eq!(e.feed(k('c'), vis), Feed::Cmd(Command::ChangeSelection));
+        // Lowercase `i` begins a text object in every shape (awaits the object key).
+        let blk = Mode::Visual {
+            kind: SelectKind::Blockwise,
+        };
+        assert_eq!(e.feed(k('i'), blk), Feed::Pending);
     }
 
     #[test]

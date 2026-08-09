@@ -5,7 +5,7 @@
 //! the same commands on the same initial document is deterministic (see [`crate::trace`]). This is the split
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
-use crate::command::{Command, ForcedWise, OpKind, SearchOp, SelectKind};
+use crate::command::{BlockInsertKind, Command, ForcedWise, OpKind, SearchOp, SelectKind};
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
 use crate::effect::Effect;
@@ -96,6 +96,10 @@ pub struct EditorState {
     /// = that key OVERWROTE a char (its original bytes, to restore on backspace); `None` = it APPENDED at
     /// end-of-line (backspace deletes it). Empty outside a Replace session; cleared on leaving Replace.
     replace_stack: Vec<Option<Vec<u8>>>,
+    /// A live blockwise insert-replicate session (`CTRL-V` `I`/`A`/`c`), armed by [`Action::BlockInsertArm`]
+    /// and consumed by the next `<Esc>` ([`Command::EnterNormal`]). `None` outside such a session; cleared
+    /// on any exit from Insert. See [`BlockInsert`].
+    block_insert: Option<BlockInsert>,
     /// `editor.tab_width` — one indent level's width in columns/spaces. Schema default 4.
     tab_width: usize,
     /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
@@ -122,6 +126,36 @@ enum Action {
     /// Install the one-shot pending register (`"x`). Distinct from `Nop` so [`commit`] knows NOT to clear
     /// the pending register it just set — every other action clears it once its command has consumed it.
     SetPending(Option<char>),
+    /// Arm a blockwise insert-replicate session (`CTRL-V` then `I`/`A`/`c`): apply `edits` (the block
+    /// delete for `c`, and/or top-row padding for `A`), then install `session` so the following `<Esc>`
+    /// replicates the text typed on the top row down every other block row (see [`BlockInsert`]).
+    BlockInsertArm {
+        edits: EditList,
+        hint: GroupHint,
+        session: BlockInsert,
+    },
+}
+
+/// A live blockwise insert-replicate session (`CTRL-V` `I`/`A`/`c`). While armed, typing lands on the
+/// block's top row as normal Insert; on `<Esc>` ([`Command::EnterNormal`]) the text typed since
+/// `insert_start` is inserted at `target_col` on each of the `rows_below` rows beneath the top line.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct BlockInsert {
+    /// Byte offset where the insert began on the top row — the start of the replicated text at `<Esc>`.
+    insert_start: usize,
+    /// Byte offset of the block's top-LEFT corner (left edge on the top row) — where the cursor rests when
+    /// the session ends. Equals `insert_start` for `I`/`c`; for `A` it is the left edge, not the append col.
+    top_left: usize,
+    /// Byte offset of the top block row's line start — the stable anchor to walk down from at `<Esc>`.
+    top_line_start: usize,
+    /// Char column at which each lower row receives the typed text (left edge for `I`/`c`, right edge+1
+    /// for `A`).
+    target_col: usize,
+    /// Number of block rows below the top row (the rows to replicate onto).
+    rows_below: usize,
+    /// `A`/append semantics: pad rows shorter than `target_col` with spaces. `false` (`I`/`c`) skips a row
+    /// that does not reach `target_col`.
+    append: bool,
 }
 
 /// How a committed command should route its captured text into the register store. A `Yank` additionally
@@ -181,6 +215,7 @@ impl EditorState {
             anchor: None,
             last_visual: None,
             replace_stack: Vec::new(),
+            block_insert: None,
             // Schema defaults (spec/config-schema.yaml): editor.tab_width=4, editor.indent_style=space.
             // Runtime config wiring is deferred (as with editor.scrolloff), so the shift operators read
             // these fields, which currently always hold the defaults.
@@ -632,6 +667,13 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             )
         }
         Command::EnterNormal => {
+            // `<Esc>` closing a blockwise insert-replicate session replicates the top row's typed text down
+            // the block (see `block_replicate`); the session is cleared in `commit` as Insert is left.
+            if st.mode == Mode::Insert {
+                if let Some(session) = st.block_insert {
+                    return block_replicate(b, cur, session, hint);
+                }
+            }
             // Vim: leaving Insert OR Replace nudges the cursor left one, but never before the line start.
             // Leaving Visual (Esc) just collapses the selection in place — no nudge.
             if matches!(st.mode, Mode::Insert | Mode::Replace) {
@@ -1064,6 +1106,77 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 None => edit(one(Edit::insert(cur, ins)), cur + n, Mode::Insert, hint),
             }
         }
+        Command::BlockInsert(kind) => {
+            let Some(anchor) = st.anchor else {
+                // Not in a selection — degrade to a plain Insert entry, no session.
+                return nop(cur, Mode::Insert);
+            };
+            let (rows, col_lo, col_hi) = block_rows(b, anchor, cur);
+            let append = matches!(kind, BlockInsertKind::Append);
+            let change = matches!(kind, BlockInsertKind::Change);
+            let target_col = if append { col_hi + 1 } else { col_lo };
+            let top_start = rows.first().map_or(cur, |&(s, _)| s);
+            let top_ls = line_start(b, top_start);
+            let rows_below = rows.len().saturating_sub(1);
+
+            let mut edits: Vec<Edit> = Vec::new();
+            let mut reg: Option<Register> = None;
+            // `c`: delete the block on every row first (capture it blockwise), then insert at the left edge
+            // — where the top-row delete began, which stays valid after the delete.
+            if change {
+                let mut text: Vec<u8> = Vec::new();
+                for (i, &(s, e)) in rows.iter().enumerate() {
+                    if i > 0 {
+                        text.push(b'\n');
+                    }
+                    text.extend_from_slice(&b[s..e]);
+                }
+                reg = Some(Register::blockwise(text));
+                for &(s, e) in &rows {
+                    if e > s {
+                        edits.push(Edit::delete(s, e - s));
+                    }
+                }
+            }
+
+            // Where the insert begins on the top row. For `A` on a top row shorter than the append column,
+            // pad it out with spaces so the cursor sits at the append column.
+            let top_le = line_end(b, top_ls);
+            let toplen = col_of(b, top_ls, top_le);
+            let insert_start = if change {
+                top_start
+            } else if append && toplen < target_col {
+                edits.push(Edit::insert(top_le, vec![b' '; target_col - toplen]));
+                top_le + (target_col - toplen)
+            } else {
+                at_col(b, top_ls, target_col.min(toplen))
+            };
+
+            let session = BlockInsert {
+                insert_start,
+                top_left: at_col(b, top_ls, col_lo),
+                top_line_start: top_ls,
+                target_col,
+                rows_below,
+                append,
+            };
+            let list =
+                EditList::new(edits).expect("block-insert enter edits are disjoint (one per line)");
+            let is_edit = !list.is_empty();
+            Plan {
+                action: Action::BlockInsertArm {
+                    edits: list,
+                    hint,
+                    session,
+                },
+                cursor: insert_start,
+                mode: Mode::Insert,
+                is_edit,
+                effects: Vec::new(),
+                set_register: reg.map(RegWrite::Edit),
+                set_anchor: None,
+            }
+        }
         Command::SwapSelectionEnds => {
             // Visual/Select `o`: exchange the two ends. The cursor jumps to the anchor; the anchor becomes
             // the old cursor (`set_anchor`, which `commit` installs). The SAME text stays selected, but a
@@ -1368,6 +1481,74 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
     }
 }
 
+/// Finish a blockwise insert-replicate session (`<Esc>` after `CTRL-V` `I`/`A`/`c`): take the text typed
+/// on the top row since `session.insert_start` and insert it at `session.target_col` on each of the
+/// `rows_below` rows beneath the top line. `append` rows pad short lines with spaces; non-append (`I`/`c`)
+/// rows shorter than the target column are skipped (Vim). A newline typed on the top row aborts the
+/// replicate (Vim). The cursor returns to the block's top-left corner (`session.top_left`).
+fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) -> Plan {
+    let nop = |cursor: usize| Plan {
+        action: Action::Nop,
+        cursor,
+        mode: Mode::Normal,
+        is_edit: false,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+    };
+    let start = session.insert_start;
+    // The cursor rests at the block's top-left when the session ends (Vim), for both `I` and `A`.
+    let end_cursor = session.top_left.min(b.len());
+    // The text typed on the top row. Empty (or containing a newline) → nothing to replicate.
+    if cur <= start || b[start..cur].contains(&b'\n') {
+        return nop(end_cursor);
+    }
+    let typed = &b[start..cur];
+
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut rs = session.top_line_start;
+    for _ in 0..session.rows_below {
+        let le = line_end(b, rs);
+        if le >= b.len() {
+            break; // no further line to replicate onto
+        }
+        rs = le + 1;
+        let row_le = line_end(b, rs);
+        let rowlen = col_of(b, rs, row_le);
+        if session.append {
+            if rowlen < session.target_col {
+                let mut ins = vec![b' '; session.target_col - rowlen];
+                ins.extend_from_slice(typed);
+                edits.push(Edit::insert(row_le, ins));
+            } else {
+                edits.push(Edit::insert(
+                    at_col(b, rs, session.target_col),
+                    typed.to_vec(),
+                ));
+            }
+        } else if rowlen >= session.target_col {
+            edits.push(Edit::insert(
+                at_col(b, rs, session.target_col),
+                typed.to_vec(),
+            ));
+        }
+        // non-append + short row: skipped (Vim leaves lines shorter than the block's left edge untouched).
+    }
+    if edits.is_empty() {
+        return nop(end_cursor);
+    }
+    let list = EditList::new(edits).expect("block-replicate inserts are disjoint (one per line)");
+    Plan {
+        action: Action::Txn { edits: list, hint },
+        cursor: end_cursor,
+        mode: Mode::Normal,
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+    }
+}
+
 /// Blockwise paste (`p`/`P` of a `CTRL-V` register): drop the register's rows as a rectangle. Row `i`
 /// lands at the target column on the line `i` rows below the cursor's line; the target column is the
 /// cursor's column for `P` and one past it for `p` (Vim). Lines shorter than the target column are padded
@@ -1592,6 +1773,20 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         Action::Redo => {
             st.doc.redo();
         }
+        Action::BlockInsertArm {
+            edits,
+            hint,
+            session,
+        } => {
+            if !edits.is_empty() {
+                let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
+                    .with_hint(hint);
+                st.doc
+                    .apply(txn)
+                    .expect("planned transaction applies cleanly");
+            }
+            st.block_insert = Some(session);
+        }
         Action::Nop => {}
         // Handled by the early return above; the buffer-mutating tail never runs for it.
         Action::SetPending(_) => unreachable!("SetPending is handled before the action match"),
@@ -1604,6 +1799,11 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // The `<BS>`-restore history lives only for the duration of a Replace session; drop it on any exit.
     if st.mode != Mode::Replace {
         st.replace_stack.clear();
+    }
+    // A blockwise insert-replicate session lives only while Insert is held; drop it on any exit (the
+    // `<Esc>` that closes it already read the session to build the replicate before this runs).
+    if st.mode != Mode::Insert {
+        st.block_insert = None;
     }
     // Vim never rests the Normal-mode cursor on the newline: after an edit that leaves it beyond the final
     // char of a non-empty line, pull it back onto the last char (e.g. `dw` on the last word → the cursor
@@ -3058,6 +3258,102 @@ mod blockwise_tests {
         assert_eq!(rows, vec![(1, 4), (6, 6), (8, 11)]);
         assert_eq!(&b[1..4], b"bcd");
         assert_eq!(&b[8..11], b"fgh");
+    }
+
+    #[test]
+    fn block_insert_i_replicates_typed_text_down_all_rows() {
+        let st = run(
+            "abc\ndef\nghi",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::MoveDown, // column 0, rows 0..2
+                Command::BlockInsert(BlockInsertKind::Insert),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "Xabc\nXdef\nXghi");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.cursor(), 0, "cursor returns to the block top-left");
+    }
+
+    #[test]
+    fn block_append_a_replicates_after_the_right_edge() {
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown, // column 0, rows 0..1
+                Command::BlockInsert(BlockInsertKind::Append),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        // Append column is one past the block's right edge (col 0) → col 1 on both rows.
+        assert_eq!(text(&st), "aXbc\ndXef");
+    }
+
+    #[test]
+    fn block_change_c_deletes_then_replicates() {
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown, // column 0, rows 0..1
+                Command::BlockInsert(BlockInsertKind::Change),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "Xbc\nXef");
+        assert!(
+            st.register().is_blockwise(),
+            "the deleted block is captured"
+        );
+        assert_eq!(st.register().text(), b"a\nd");
+    }
+
+    #[test]
+    fn block_append_pads_a_short_lower_row() {
+        let st = run(
+            "ab\nc",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveRight,
+                Command::MoveDown, // block cols 0..1, rows 0..1
+                Command::BlockInsert(BlockInsertKind::Append),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        // Append column is col 2; the short second line "c" is padded with a space to reach it.
+        assert_eq!(text(&st), "abX\nc X");
+    }
+
+    #[test]
+    fn block_insert_with_no_typed_text_is_inert() {
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::BlockInsert(BlockInsertKind::Insert),
+                Command::EnterNormal, // Esc without typing
+            ],
+        );
+        assert_eq!(text(&st), "abc\ndef", "no text typed → no replicate");
+        assert_eq!(st.mode(), Mode::Normal);
     }
 
     #[test]

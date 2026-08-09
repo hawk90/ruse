@@ -362,15 +362,17 @@ FIXTURES: list[dict] = [
     {"name": "block_yank_paste_before", "lines": ["abc", "def", "ghi"], "keys": "<C-v>ljyP"},
     {"name": "block_yank_paste_after_1col", "lines": ["abc", "def"], "keys": "<C-v>jyp"},
     {"name": "forced_d_ctrl_v_j_blockwise", "lines": ["abc", "def"], "keys": "d<C-v>j"},
+    #     BLOCKWISE INSERT-REPLICATE (slice 2): `I`/`A`/`c` type on the top row and replicate the typed text
+    #     down every block row on <Esc> (`A` pads short lines; `c` deletes the block first). ----------------
+    {"name": "block_insert_I_replicate", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjIX<Esc>"},
+    {"name": "block_append_A_replicate", "lines": ["abc", "def"], "keys": "<C-v>jAX<Esc>"},
+    {"name": "block_change_c_replicate", "lines": ["abc", "def"], "keys": "<C-v>jcX<Esc>"},
+    {"name": "block_append_A_pads_short", "lines": ["ab", "c"], "keys": "<C-v>ljAX<Esc>"},
     # PROBE — blockwise over a SHORT interior line. Vim preserves the desired column (curswant) across the
     # short line so the block stays full-width; ruse recomputes the cursor column from each line's actual
     # length, so navigating down THROUGH a short line collapses the block's right edge. Same curswant family
     # as the i_CTRL-O append-column gap — a named follow-up.
     {"name": "block_ragged_short_line", "lines": ["abcd", "x", "efgh"], "keys": "l<C-v>lljjd"},
-    # PROBE — block CHANGE replicate. Vim's `c`/`I`/`A` in blockwise type on the top row and REPLICATE the
-    # typed text down every row on <Esc>; ruse ships the single-row partial (delete the column on all rows,
-    # insert on the top row only). Block insert-replicate is deferred to blockwise slice 2.
-    {"name": "block_change_col_single_row_probe", "lines": ["abc", "def"], "keys": "<C-v>jcX<Esc>"},
     #     REPLACE MODE (R): overwrite policy + <BS> restores the overwritten char / deletes an appended one.
     {"name": "replace_basic_overwrite", "lines": ["hello"], "keys": "Rxy<Esc>"},
     {"name": "replace_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"},
