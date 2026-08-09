@@ -2919,6 +2919,62 @@
       }
     },
     {
+      "name": "curswant_j_through_short_line",
+      "lines": [
+        "abc",
+        "x",
+        "lmnop"
+      ],
+      "keys": "lljjrY",
+      "expect": {
+        "text": [
+          "abc",
+          "x",
+          "lmYop"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "curswant_dollar_rides_ends",
+      "lines": [
+        "ab",
+        "wxyz",
+        "c"
+      ],
+      "keys": "$jrY",
+      "expect": {
+        "text": [
+          "ab",
+          "wxyY",
+          "c"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "replace_basic_overwrite",
       "lines": [
         "hello"

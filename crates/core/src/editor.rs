@@ -104,7 +104,15 @@ pub struct EditorState {
     tab_width: usize,
     /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
     indent_style: IndentStyle,
+    /// The STICKY desired column (Vim `curswant`): the char column `j`/`k` aim for, preserved across shorter
+    /// interior lines rather than collapsing to the short line's end. Maintained in [`apply_command`] — kept
+    /// on a vertical move, set to [`MAXCOL`] by `$`/`<End>` (ride each line's end), and recomputed from the
+    /// landing column after any other command. Read by the `plan` Move Up/Down arm via [`motion::vmove`].
+    curswant: usize,
 }
+
+/// `curswant` sentinel meaning "the end of whatever line you land on" — Vim's MAXCOL, set by `$`.
+const MAXCOL: usize = usize::MAX;
 
 enum Action {
     Txn {
@@ -221,6 +229,7 @@ impl EditorState {
             // these fields, which currently always hold the defaults.
             tab_width: 4,
             indent_style: IndentStyle::Space,
+            curswant: 0,
         }
     }
 
@@ -623,27 +632,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::MoveRight => nop(next_boundary(b, cur), st.mode),
         Command::MoveLineStart => nop(line_start(b, cur), st.mode),
         Command::MoveLineEnd => nop(line_end(b, cur), st.mode),
-        Command::MoveUp => {
-            let ls = line_start(b, cur);
-            if ls == 0 {
-                nop(cur, st.mode)
-            } else {
-                let prev_ls = line_start(b, ls - 1);
-                nop(at_col(b, prev_ls, col_of(b, ls, cur)), st.mode)
-            }
-        }
-        Command::MoveDown => {
-            let le = line_end(b, cur);
-            if le >= b.len() {
-                nop(cur, st.mode)
-            } else {
-                let next_ls = le + 1;
-                nop(
-                    at_col(b, next_ls, col_of(b, line_start(b, cur), cur)),
-                    st.mode,
-                )
-            }
-        }
+        Command::MoveUp => nop(motion::vmove(b, cur, 1, false, st.curswant), st.mode),
+        Command::MoveDown => nop(motion::vmove(b, cur, 1, true, st.curswant), st.mode),
         Command::EnterInsert => nop(cur, Mode::Insert),
         Command::EnterInsertAfter => nop(next_boundary(b, cur), Mode::Insert),
         Command::InsertLineStart => nop(motion::first_non_blank(b, cur), Mode::Insert),
@@ -886,7 +876,29 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     set_anchor: Some(s),
                 };
             }
-            nop(motion::target(b, cur, *m, *count), st.mode)
+            // Vertical motions honour the sticky desired column (curswant) so `j`/`k` keep the wanted
+            // column through shorter interior lines; every other motion computes its own landing.
+            let target = match m {
+                Motion::Up => motion::vmove(b, cur, *count, false, st.curswant),
+                Motion::Down => motion::vmove(b, cur, *count, true, st.curswant),
+                _ => motion::target(b, cur, *m, *count),
+            };
+            // Normal mode never rests on a non-empty line's trailing newline: when the wanted column
+            // overshoots a short target line (or `$`'s MAXCOL), pull back onto its last char. Insert/Visual
+            // keep the past-end column (append position / block right edge), so this is Normal-only.
+            let target =
+                if matches!(m, Motion::Up | Motion::Down) && matches!(st.mode, Mode::Normal) {
+                    let ls = line_start(b, target);
+                    let le = line_end(b, target);
+                    if target == le && le > ls {
+                        prev_boundary(b, le)
+                    } else {
+                        target
+                    }
+                } else {
+                    target
+                };
+            nop(target, st.mode)
         }
         Command::Delete(count, m) => {
             let (s, e, linewise) = op_span(b, cur, *m, *count);
@@ -1858,10 +1870,30 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     plan.effects
 }
 
-/// Convenience: plan then commit one command.
+/// Convenience: plan then commit one command, then maintain the sticky desired column (curswant).
 pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     let p = plan(st, cmd);
-    commit(st, p)
+    let effects = commit(st, p);
+    update_curswant(st, cmd);
+    effects
+}
+
+/// Maintain [`EditorState::curswant`] after a command (Vim's curswant rule): a vertical move KEEPS the
+/// wanted column (that is the whole point — ride it through short lines); `$`/`<End>` set it to [`MAXCOL`]
+/// so subsequent `j`/`k` stay at each line's end; every other command recomputes it from the cursor's new
+/// char column. Called from [`apply_command`], the single plan+commit driver.
+fn update_curswant(st: &mut EditorState, cmd: &Command) {
+    match cmd {
+        Command::Move(_, Motion::Up)
+        | Command::Move(_, Motion::Down)
+        | Command::MoveUp
+        | Command::MoveDown => {} // keep the sticky column
+        Command::Move(_, Motion::LineEnd) | Command::MoveLineEnd => st.curswant = MAXCOL,
+        _ => {
+            let b = st.doc.bytes();
+            st.curswant = col_of(b, line_start(b, st.cursor), st.cursor);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -3804,5 +3836,94 @@ mod select_tests {
         assert_eq!(text(&st), "hello");
         assert_eq!(st.mode(), Mode::Normal);
         assert_eq!(st.selection_span(), None);
+    }
+}
+
+#[cfg(test)]
+mod curswant_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    // The char column of the cursor on its line.
+    fn col(st: &EditorState) -> usize {
+        let b = st.bytes();
+        motion::col_of(b, motion::line_start(b, st.cursor()), st.cursor())
+    }
+
+    #[test]
+    fn j_keeps_wanted_column_through_a_short_interior_line() {
+        // "abc" col2 -> down onto short "x" (collapses to its end) -> down onto "lmnop": Vim restores the
+        // wanted column 2 ('n'), NOT the short line's column. Without curswant it would land on 'm' (col1).
+        let st = run(
+            "abc\nx\nlmnop\n",
+            &[
+                Command::Move(2, Motion::Right), // -> 'c' (col 2), curswant = 2
+                Command::Move(1, Motion::Down),  // -> short line "x"
+                Command::Move(1, Motion::Down),  // -> "lmnop", column restored
+            ],
+        );
+        assert_eq!(col(&st), 2);
+        assert_eq!(st.cursor(), 8); // the 'n' in "lmnop"
+    }
+
+    #[test]
+    fn k_keeps_wanted_column_through_a_short_interior_line() {
+        // Symmetric upward: reach the last line's col 3, up through short "x", up to "abcd" col 3 ('d').
+        let st = run(
+            "abcd\nx\nwxyz\n",
+            &[
+                Command::Move(1, Motion::Down),  // -> "x"
+                Command::Move(1, Motion::Down),  // -> "wxyz" (col 0, curswant still 0)
+                Command::Move(3, Motion::Right), // -> 'z' (col 3), curswant = 3
+                Command::Move(1, Motion::Up),    // -> short "x"
+                Command::Move(1, Motion::Up),    // -> "abcd", column 3 restored
+            ],
+        );
+        assert_eq!(col(&st), 3);
+        assert_eq!(st.cursor(), 3); // the 'd' in "abcd"
+    }
+
+    #[test]
+    fn dollar_makes_the_column_ride_each_line_end() {
+        // `$` sets curswant = MAXCOL, so successive `j` stay on each line's LAST char (not a fixed column),
+        // and Normal mode never rests on the trailing newline.
+        let st = run(
+            "ab\nwxyz\nc\n",
+            &[
+                Command::Move(1, Motion::LineEnd), // `$` on "ab" -> 'b', curswant = MAXCOL
+                Command::Move(1, Motion::Down),    // -> "wxyz" last char 'z'
+            ],
+        );
+        assert_eq!(st.cursor(), 6); // the 'z' in "wxyz" (not past it)
+        let st2 = run(
+            "ab\nwxyz\nc\n",
+            &[
+                Command::Move(1, Motion::LineEnd),
+                Command::Move(2, Motion::Down), // ride down two lines to short "c"
+            ],
+        );
+        assert_eq!(st2.cursor(), 8); // the 'c' (its only char)
+    }
+
+    #[test]
+    fn a_horizontal_move_resets_the_wanted_column() {
+        // After `$` (MAXCOL), an `h` resets curswant to the actual column, so a later `j` no longer rides ends.
+        let st = run(
+            "abcd\nwx\nlmnop\n",
+            &[
+                Command::Move(1, Motion::LineEnd), // 'd' (col 3), curswant = MAXCOL
+                Command::Move(1, Motion::Left),    // 'c' (col 2), curswant reset to 2
+                Command::Move(1, Motion::Down),    // "wx" -> clamps to col 1 ('x'), curswant kept 2
+                Command::Move(1, Motion::Down),    // "lmnop" col 2 ('n'), NOT the end
+            ],
+        );
+        assert_eq!(st.cursor(), 10); // the 'n' in "lmnop" (col 2), proving curswant = 2 not MAXCOL
     }
 }

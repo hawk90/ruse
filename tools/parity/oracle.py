@@ -368,11 +368,14 @@ FIXTURES: list[dict] = [
     {"name": "block_append_A_replicate", "lines": ["abc", "def"], "keys": "<C-v>jAX<Esc>"},
     {"name": "block_change_c_replicate", "lines": ["abc", "def"], "keys": "<C-v>jcX<Esc>"},
     {"name": "block_append_A_pads_short", "lines": ["ab", "c"], "keys": "<C-v>ljAX<Esc>"},
-    # PROBE — blockwise over a SHORT interior line. Vim preserves the desired column (curswant) across the
-    # short line so the block stays full-width; ruse recomputes the cursor column from each line's actual
-    # length, so navigating down THROUGH a short line collapses the block's right edge. Same curswant family
-    # as the i_CTRL-O append-column gap — a named follow-up.
+    #     CURSWANT — the sticky desired column. `j`/`k` keep the wanted column across a SHORT interior line
+    #     instead of collapsing to its end; `$` sets curswant to MAXCOL so `j`/`k` ride each line's last char.
+    # Blockwise over a short interior line: curswant keeps the block full-width (was a probe; now verified).
     {"name": "block_ragged_short_line", "lines": ["abcd", "x", "efgh"], "keys": "l<C-v>lljjd"},
+    # Plain `j` through a short line restores the wanted column on the next long line ('c' col2 -> 'n' col2).
+    {"name": "curswant_j_through_short_line", "lines": ["abc", "x", "lmnop"], "keys": "lljjrY"},
+    # `$` then `j`: the cursor rides each line's END (last char), not a fixed column.
+    {"name": "curswant_dollar_rides_ends", "lines": ["ab", "wxyz", "c"], "keys": "$jrY"},
     #     REPLACE MODE (R): overwrite policy + <BS> restores the overwritten char / deletes an appended one.
     {"name": "replace_basic_overwrite", "lines": ["hello"], "keys": "Rxy<Esc>"},
     {"name": "replace_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"},
