@@ -376,6 +376,7 @@ fn render(
                 Mode::Normal => "NORMAL",
                 Mode::Insert => "INSERT",
                 Mode::Replace => "REPLACE",
+                Mode::VirtualReplace => "V-REPLACE",
                 Mode::Visual {
                     kind: SelectKind::Charwise,
                 } => "VISUAL",

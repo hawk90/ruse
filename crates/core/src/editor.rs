@@ -31,9 +31,13 @@ pub enum Mode {
     Normal,
     Insert,
     /// Replace mode (`R`): a printable key OVERWRITES the char under the cursor instead of inserting; at
-    /// end-of-line it appends. `<BS>` restores the overwritten char (or deletes an appended one). Virtual
-    /// Replace (`gR`, tab-aware) is deferred.
+    /// end-of-line it appends. `<BS>` restores the overwritten char (or deletes an appended one).
     Replace,
+    /// Virtual Replace mode (`gR`): like [`Mode::Replace`] but TAB-AWARE — a `<Tab>` under the cursor is
+    /// eaten one virtual (display) column at a time (the char is inserted before the tab, shrinking it,
+    /// until its last column is consumed and the tab is replaced), so the on-screen layout is preserved.
+    /// Shares the `<BS>`-restore stack with Replace.
+    VirtualReplace,
     Visual {
         kind: SelectKind,
     },
@@ -61,7 +65,7 @@ impl Mode {
     fn selection(self) -> Option<SelectKind> {
         match self {
             Mode::Visual { kind } | Mode::Select { kind } => Some(kind),
-            Mode::Normal | Mode::Insert | Mode::Replace => None,
+            Mode::Normal | Mode::Insert | Mode::Replace | Mode::VirtualReplace => None,
         }
     }
 }
@@ -666,7 +670,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             // Vim: leaving Insert OR Replace nudges the cursor left one, but never before the line start.
             // Leaving Visual (Esc) just collapses the selection in place — no nudge.
-            if matches!(st.mode, Mode::Insert | Mode::Replace) {
+            if matches!(st.mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace) {
                 let ls = line_start(b, cur);
                 let c = if cur > ls { prev_boundary(b, cur) } else { cur };
                 nop(c, Mode::Normal)
@@ -706,12 +710,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 set_anchor: None,
             }
         }
+        // Shared by Replace (`R`) and Virtual Replace (`gR`) — the restore stack is identical; the mode is
+        // preserved so `<BS>` stays in whichever replace mode is active.
         Command::ReplaceBackspace => match st.replace_stack.last() {
             // At the session start `<BS>` only moves the cursor left (Vim does not restore past the start).
             None => {
                 let ls = line_start(b, cur);
                 let c = if cur > ls { prev_boundary(b, cur) } else { cur };
-                nop(c, Mode::Replace)
+                nop(c, st.mode)
             }
             Some(entry) => {
                 let start = prev_boundary(b, cur); // the last typed char occupies [start, cur)
@@ -727,7 +733,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                         pop: true,
                     },
                     cursor: start,
-                    mode: Mode::Replace,
+                    mode: st.mode,
                     is_edit: true,
                     effects: Vec::new(),
                     set_register: None,
@@ -735,6 +741,55 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 }
             }
         },
+        Command::EnterVirtualReplace => nop(cur, Mode::VirtualReplace),
+        Command::VirtualReplaceType(c) => {
+            let mut buf = [0u8; 4];
+            let typed = c.encode_utf8(&mut buf).as_bytes().to_vec();
+            let tn = typed.len();
+            let le = line_end(b, cur);
+            let (edits, push, cursor) = if cur >= le {
+                // End-of-line: nothing to overwrite — append (backspace deletes it).
+                (one(Edit::insert(cur, typed)), Some(None), cur + tn)
+            } else if b[cur] == b'\t' {
+                // Over a TAB: it spans `w` virtual columns to the next tabstop. While more than one column
+                // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column,
+                // replace the tab with the typed char (backspace restores the tab).
+                let ls = line_start(b, cur);
+                let vcol = motion::vcol_of(b, ls, cur, st.tab_width);
+                let w = st.tab_width.max(1) - (vcol % st.tab_width.max(1));
+                if w > 1 {
+                    (one(Edit::insert(cur, typed)), Some(None), cur + tn)
+                } else {
+                    (
+                        one(Edit::replace(cur, 1, typed)),
+                        Some(Some(vec![b'\t'])),
+                        cur + tn,
+                    )
+                }
+            } else {
+                // Over a normal char: overwrite it (remember the original for `<BS>`), like Replace.
+                let nb = next_boundary(b, cur);
+                (
+                    one(Edit::replace(cur, nb - cur, typed)),
+                    Some(Some(b[cur..nb].to_vec())),
+                    cur + tn,
+                )
+            };
+            Plan {
+                action: Action::ReplaceTxn {
+                    edits,
+                    hint,
+                    push,
+                    pop: false,
+                },
+                cursor,
+                mode: Mode::VirtualReplace,
+                is_edit: true,
+                effects: Vec::new(),
+                set_register: None,
+                set_anchor: None,
+            }
+        }
         Command::InsertChar(c) => {
             let mut buf = [0u8; 4];
             let bytes = c.encode_utf8(&mut buf).as_bytes().to_vec();
@@ -1808,8 +1863,8 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     st.cursor = snap(st.doc.bytes(), plan.cursor);
     st.mode = plan.mode;
     st.last_was_edit = plan.is_edit;
-    // The `<BS>`-restore history lives only for the duration of a Replace session; drop it on any exit.
-    if st.mode != Mode::Replace {
+    // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
+    if !matches!(st.mode, Mode::Replace | Mode::VirtualReplace) {
         st.replace_stack.clear();
     }
     // A blockwise insert-replicate session lives only while Insert is held; drop it on any exit (the
@@ -1914,7 +1969,8 @@ fn update_curswant(st: &mut EditorState, cmd: &Command) {
         | Command::InsertLineStart
         | Command::OpenBelow
         | Command::OpenAbove
-        | Command::EnterReplace => {
+        | Command::EnterReplace
+        | Command::EnterVirtualReplace => {
             let b = st.doc.bytes();
             st.curswant = col_of(b, line_start(b, st.cursor), st.cursor);
         }
@@ -4023,5 +4079,87 @@ mod curswant_tests {
         );
         assert_eq!(text(&st), "Xalpha\nbeta");
         assert_eq!(st.cursor(), 0);
+    }
+}
+
+#[cfg(test)]
+mod virtual_replace_tests {
+    use super::*;
+
+    // Virtual Replace (`gR`) with tab_width = 4 (the EditorState default).
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn without_tabs_it_behaves_like_replace() {
+        let st = run(
+            "hello",
+            &[
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('x'),
+                Command::VirtualReplaceType('y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "xyllo");
+    }
+
+    #[test]
+    fn typing_over_a_tab_inserts_before_it_and_shrinks_it() {
+        // "a<Tab>b" (ts=4): the tab spans virtual cols 1..3. Typing 2 chars over it keeps the tab (now 1
+        // column wide) and inserts before it: "aXY<Tab>b".
+        let st = run(
+            "a\tb",
+            &[
+                Command::Move(1, Motion::Right), // onto the tab
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('X'),
+                Command::VirtualReplaceType('Y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "aXY\tb");
+    }
+
+    #[test]
+    fn consuming_the_tabs_last_column_replaces_it() {
+        // A third char eats the tab's last virtual column, so the tab is removed: "aXYZb".
+        let st = run(
+            "a\tb",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('X'),
+                Command::VirtualReplaceType('Y'),
+                Command::VirtualReplaceType('Z'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "aXYZb");
+    }
+
+    #[test]
+    fn backspace_over_a_shrunk_tab_regrows_it() {
+        // Typing one char over the tab then <BS> deletes the inserted char, restoring the original tab.
+        let st = run(
+            "a\tb",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::EnterVirtualReplace,
+                Command::VirtualReplaceType('X'),
+                Command::ReplaceBackspace,
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "a\tb");
     }
 }

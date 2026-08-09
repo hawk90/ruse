@@ -381,6 +381,17 @@ FIXTURES: list[dict] = [
     {"name": "replace_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"},
     {"name": "replace_backspace_restores", "lines": ["hello"], "keys": "Rxy<BS><BS><Esc>"},
     {"name": "replace_backspace_deletes_appended", "lines": ["ab"], "keys": "RXYZ<BS><Esc>"},
+    #     VIRTUAL REPLACE (gR): tab-aware overwrite. Without tabs it is identical to R. Over a <Tab> the
+    #     typed char is inserted before the tab (shrinking it) until its last virtual column, then replaces
+    #     it — preserving the on-screen layout. `set tabstop=4` matches ruse's editor.tab_width default so
+    #     the virtual-column arithmetic aligns; `noexpandtab` keeps a literal <Tab> in the buffer.
+    {"name": "gr_basic_overwrite", "lines": ["hello"], "keys": "gRxy<Esc>"},
+    {"name": "gr_past_eol_appends", "lines": ["ab"], "keys": "gRXYZ<Esc>"},
+    {"name": "gr_backspace_restores", "lines": ["hello"], "keys": "gRxy<BS><BS><Esc>"},
+    {"name": "gr_over_tab_shrinks", "lines": ["a\tb"], "keys": "lgRXY<Esc>", "setup": "set tabstop=4 noexpandtab"},
+    {"name": "gr_consumes_tab_fully", "lines": ["a\tb"], "keys": "lgRXYZ<Esc>", "setup": "set tabstop=4 noexpandtab"},
+    {"name": "gr_over_tab_then_overwrite", "lines": ["a\tb"], "keys": "lgRXYZW<Esc>", "setup": "set tabstop=4 noexpandtab"},
+    {"name": "gr_over_tab_backspace_regrows", "lines": ["a\tb"], "keys": "lgRX<BS><Esc>", "setup": "set tabstop=4 noexpandtab"},
     # (No `R`-then-`u` fixture: the oracle sets the buffer via set_lines, which is NOT an undo boundary, so
     #  `u` undoes past the initial content to empty — an oracle artifact, not Vim behavior. R+undo is covered
     #  by a core unit test instead.)
