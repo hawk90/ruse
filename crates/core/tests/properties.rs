@@ -9,7 +9,7 @@
 use proptest::prelude::*;
 use ruse_core::{
     apply_command, AnchorPolicy, Bias, Command, Document, DocumentId, Edit, EditList, EditorState,
-    Motion, Revision, Trace, Transaction, TransactionOrigin,
+    Motion, Revision, SelectKind, Trace, Transaction, TransactionOrigin,
 };
 
 /// An arbitrary buffer: any sequence of Unicode scalars (incl. newlines / control chars) as UTF-8 bytes.
@@ -70,7 +70,13 @@ fn command() -> impl Strategy<Value = Command> {
         (1u32..4, motion()).prop_map(|(n, m)| Command::Change(n, m)),
         (1u32..4, motion()).prop_map(|(n, m)| Command::Yank(n, m)),
         (any::<bool>(), 1u32..4).prop_map(|(after, count)| Command::Paste { after, count }),
-        any::<bool>().prop_map(|line| Command::EnterVisual { line }),
+        (0u8..3).prop_map(|k| Command::EnterVisual {
+            kind: match k {
+                0 => SelectKind::Charwise,
+                1 => SelectKind::Linewise,
+                _ => SelectKind::Blockwise,
+            },
+        }),
         Just(Command::DeleteSelection),
         Just(Command::YankSelection),
         Just(Command::ChangeSelection),

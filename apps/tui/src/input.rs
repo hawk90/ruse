@@ -4,7 +4,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
-use ruse_core::{Command, ForcedWise, Mode, Motion, OpKind, SearchOp};
+use ruse_core::{Command, ForcedWise, Mode, Motion, OpKind, SearchOp, SelectKind};
 
 /// The outcome of feeding one key to the engine.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -752,8 +752,8 @@ impl InputEngine {
         // not implemented), which is inert, NOT the start of `gg`.
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('g') {
             return match mode {
-                Mode::Visual { line } => self.action(Command::EnterSelect { line }),
-                Mode::Select { line } => self.action(Command::EnterVisual { line }),
+                Mode::Visual { kind } => self.action(Command::EnterSelect { kind }),
+                Mode::Select { kind } => self.action(Command::EnterVisual { kind }),
                 _ => {
                     self.reset();
                     Feed::Ignored
@@ -833,27 +833,27 @@ impl InputEngine {
         // extend it. The two share every matched key here (identical selection state); they diverge ONLY
         // in the unmatched-key fallthrough — Visual ignores, Select replaces-and-inserts.
         //
-        // DEFERRED (F-025 carve-out): `gv` (restore the PREVIOUS selection) is blocked on
-        // CONCEPT-POSITION-HISTORY (C-ANCHOR) — a previous-selection store the engine does not have yet —
-        // so it is intentionally unimplemented. `g` here only ever arms `gg`.
-        if let Mode::Visual { line } | Mode::Select { line } = mode {
+        // `gv` (restore the previous selection) IS wired — it re-selects the depth-1 `last_visual` (handled
+        // in the `g`-initiator tier above); the full C-ANCHOR position history stays deferred.
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if let Mode::Visual { kind } | Mode::Select { kind } = mode {
+            // `v`/`V`/`CTRL-V` switch the selection SHAPE: pressing the key of the current shape leaves the
+            // namespace (to Normal), any other switches to that shape (F-025 c1). Blockwise Select-mode
+            // block-insert (`I`/`A`) is deferred, so `i`/`a` below still begin a text object in every shape.
+            let shape_toggle = |target: SelectKind| {
+                if kind == target {
+                    Command::EnterNormal
+                } else {
+                    Command::EnterVisual { kind: target }
+                }
+            };
             match key.code {
                 KeyCode::Esc => return self.action(Command::EnterNormal),
-                // `v`/`V` toggle: same kind exits, the other switches charwise↔linewise.
-                KeyCode::Char('v') => {
-                    return self.action(if line {
-                        Command::EnterVisual { line: false }
-                    } else {
-                        Command::EnterNormal
-                    });
+                KeyCode::Char('v') if ctrl => {
+                    return self.action(shape_toggle(SelectKind::Blockwise))
                 }
-                KeyCode::Char('V') => {
-                    return self.action(if line {
-                        Command::EnterNormal
-                    } else {
-                        Command::EnterVisual { line: true }
-                    });
-                }
+                KeyCode::Char('v') => return self.action(shape_toggle(SelectKind::Charwise)),
+                KeyCode::Char('V') => return self.action(shape_toggle(SelectKind::Linewise)),
                 KeyCode::Char('d') | KeyCode::Char('x') => {
                     return self.action(Command::DeleteSelection)
                 }
@@ -891,7 +891,6 @@ impl InputEngine {
             }
             // fall through to shared count/motion handling below (op is never set in Visual/Select)
         }
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Char(d @ '1'..='9') => {
                 self.count = self.count.saturating_mul(10) + (d as u32 - '0' as u32);
@@ -905,11 +904,14 @@ impl InputEngine {
             code if motion_key(code).is_some() => {
                 self.motion(motion_key(code).expect("guarded by is_some"))
             }
-            // With an operator armed, `v`/`V` FORCE the next motion's wise (Vim `o_v`/`o_V`): `dvj`,
-            // `dVe`. They stay operator-pending (the motion still follows); `motion` emits `OpForced`.
-            // Bare (no operator) they enter Visual/Visual-line as before. `CTRL-V` force is blockwise —
-            // deferred with the rest of blockwise, so it is not intercepted here.
-            KeyCode::Char('v') if self.op.is_some() && !ctrl => {
+            // With an operator armed, `v`/`V`/`CTRL-V` FORCE the next motion's wise (Vim `o_v`/`o_V`/
+            // `o_CTRL-V`): `dvj`, `dVe`, `d<C-v>j`. They stay operator-pending (the motion still follows);
+            // `motion` emits `OpForced`. Bare (no operator) they enter Visual/Visual-line/Visual-block.
+            KeyCode::Char('v') if self.op.is_some() && ctrl => {
+                self.forced_wise = Some(ForcedWise::Blockwise);
+                Feed::Pending
+            }
+            KeyCode::Char('v') if self.op.is_some() => {
                 self.forced_wise = Some(ForcedWise::Charwise);
                 Feed::Pending
             }
@@ -917,8 +919,15 @@ impl InputEngine {
                 self.forced_wise = Some(ForcedWise::Linewise);
                 Feed::Pending
             }
-            KeyCode::Char('v') => self.action(Command::EnterVisual { line: false }),
-            KeyCode::Char('V') => self.action(Command::EnterVisual { line: true }),
+            KeyCode::Char('v') if ctrl => self.action(Command::EnterVisual {
+                kind: SelectKind::Blockwise,
+            }),
+            KeyCode::Char('v') => self.action(Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            }),
+            KeyCode::Char('V') => self.action(Command::EnterVisual {
+                kind: SelectKind::Linewise,
+            }),
             KeyCode::Char('d') => self.operator(Op::Delete, Command::Delete),
             KeyCode::Char('c') => self.operator(Op::Change, Command::Change),
             KeyCode::Char('y') => self.operator(Op::Yank, Command::Yank),
@@ -1132,8 +1141,18 @@ mod tests {
     #[test]
     fn bare_v_still_enters_visual() {
         // Without an operator armed, `v`/`V` enter Visual as before — the force only applies operator-pending.
-        assert_eq!(feed("v"), Feed::Cmd(Command::EnterVisual { line: false }));
-        assert_eq!(feed("V"), Feed::Cmd(Command::EnterVisual { line: true }));
+        assert_eq!(
+            feed("v"),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Charwise
+            })
+        );
+        assert_eq!(
+            feed("V"),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Linewise
+            })
+        );
     }
 
     #[test]
@@ -1143,6 +1162,77 @@ mod tests {
 
     fn ctrl(c: char) -> KeyEvent {
         KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn ctrl_v_enters_blockwise_visual() {
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(ctrl('v'), Mode::Normal),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Blockwise
+            })
+        );
+    }
+
+    #[test]
+    fn v_slash_capital_v_slash_ctrl_v_switch_shape_or_leave() {
+        let mut e = InputEngine::new();
+        // From charwise: CTRL-V → blockwise, V → linewise, v → leave (Normal).
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        assert_eq!(
+            e.feed(ctrl('v'), vis),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Blockwise
+            })
+        );
+        assert_eq!(e.feed(k('v'), vis), Feed::Cmd(Command::EnterNormal));
+        // From blockwise: CTRL-V leaves, v → charwise, V → linewise.
+        let blk = Mode::Visual {
+            kind: SelectKind::Blockwise,
+        };
+        assert_eq!(e.feed(ctrl('v'), blk), Feed::Cmd(Command::EnterNormal));
+        assert_eq!(
+            e.feed(k('v'), blk),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Charwise
+            })
+        );
+        assert_eq!(
+            e.feed(k('V'), blk),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Linewise
+            })
+        );
+    }
+
+    #[test]
+    fn block_selection_operators_route_like_any_selection() {
+        let mut e = InputEngine::new();
+        let blk = Mode::Visual {
+            kind: SelectKind::Blockwise,
+        };
+        assert_eq!(e.feed(k('d'), blk), Feed::Cmd(Command::DeleteSelection));
+        assert_eq!(e.feed(k('y'), blk), Feed::Cmd(Command::YankSelection));
+    }
+
+    #[test]
+    fn ctrl_v_after_operator_forces_blockwise() {
+        // `d<C-v>j`: CTRL-V operator-pending forces the next motion blockwise (Vim o_CTRL-V).
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(ctrl('v'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('j'), Mode::Normal),
+            Feed::Cmd(Command::OpForced {
+                op: OpKind::Delete,
+                count: 1,
+                motion: Motion::Down,
+                wise: ForcedWise::Blockwise,
+            })
+        );
     }
 
     #[test]
@@ -1364,7 +1454,9 @@ mod tests {
     #[test]
     fn char_search_extends_visual() {
         let mut e = InputEngine::new();
-        let vis = Mode::Visual { line: false };
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
         assert_eq!(e.feed(k('f'), vis), Feed::Pending);
         assert_eq!(
             e.feed(k(')'), vis),
@@ -1375,14 +1467,26 @@ mod tests {
 
     #[test]
     fn enters_visual_from_normal() {
-        assert_eq!(feed("v"), Feed::Cmd(Command::EnterVisual { line: false }));
-        assert_eq!(feed("V"), Feed::Cmd(Command::EnterVisual { line: true }));
+        assert_eq!(
+            feed("v"),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Charwise
+            })
+        );
+        assert_eq!(
+            feed("V"),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Linewise
+            })
+        );
     }
 
     #[test]
     fn visual_operators_act_on_the_selection() {
         let mut e = InputEngine::new();
-        let vis = Mode::Visual { line: false };
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
         assert_eq!(e.feed(k('d'), vis), Feed::Cmd(Command::DeleteSelection));
         assert_eq!(e.feed(k('y'), vis), Feed::Cmd(Command::YankSelection));
         assert_eq!(e.feed(k('c'), vis), Feed::Cmd(Command::ChangeSelection));
@@ -1395,11 +1499,21 @@ mod tests {
         // In Visual/Select, `o` emits SwapSelectionEnds (in Normal it is OpenBelow).
         let mut e = InputEngine::new();
         assert_eq!(
-            e.feed(k('o'), Mode::Visual { line: false }),
+            e.feed(
+                k('o'),
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            ),
             Feed::Cmd(Command::SwapSelectionEnds)
         );
         assert_eq!(
-            e.feed(k('o'), Mode::Select { line: true }),
+            e.feed(
+                k('o'),
+                Mode::Select {
+                    kind: SelectKind::Linewise
+                }
+            ),
             Feed::Cmd(Command::SwapSelectionEnds)
         );
         // Sanity: `o` in Normal is still OpenBelow.
@@ -1409,7 +1523,9 @@ mod tests {
     #[test]
     fn visual_motion_extends_selection() {
         let mut e = InputEngine::new();
-        let vis = Mode::Visual { line: false };
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
         // A bare motion in Visual is a Move (no operator) — the frontend re-plans it against the anchor.
         assert_eq!(
             e.feed(k('l'), vis),
@@ -1426,16 +1542,35 @@ mod tests {
         let mut e = InputEngine::new();
         // `v` in charwise Visual exits; `V` switches it to linewise.
         assert_eq!(
-            e.feed(k('v'), Mode::Visual { line: false }),
+            e.feed(
+                k('v'),
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            ),
             Feed::Cmd(Command::EnterNormal)
         );
         assert_eq!(
-            e.feed(k('V'), Mode::Visual { line: false }),
-            Feed::Cmd(Command::EnterVisual { line: true })
+            e.feed(
+                k('V'),
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            ),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Linewise
+            })
         );
         assert_eq!(
-            e.feed(k('v'), Mode::Visual { line: true }),
-            Feed::Cmd(Command::EnterVisual { line: false })
+            e.feed(
+                k('v'),
+                Mode::Visual {
+                    kind: SelectKind::Linewise
+                }
+            ),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Charwise
+            })
         );
     }
 
@@ -1448,21 +1583,49 @@ mod tests {
         let mut e = InputEngine::new();
         // Visual -> Select, carrying the charwise/linewise shape.
         assert_eq!(
-            e.feed(ctrl_g(), Mode::Visual { line: false }),
-            Feed::Cmd(Command::EnterSelect { line: false })
+            e.feed(
+                ctrl_g(),
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            ),
+            Feed::Cmd(Command::EnterSelect {
+                kind: SelectKind::Charwise
+            })
         );
         assert_eq!(
-            e.feed(ctrl_g(), Mode::Visual { line: true }),
-            Feed::Cmd(Command::EnterSelect { line: true })
+            e.feed(
+                ctrl_g(),
+                Mode::Visual {
+                    kind: SelectKind::Linewise
+                }
+            ),
+            Feed::Cmd(Command::EnterSelect {
+                kind: SelectKind::Linewise
+            })
         );
         // Select -> Visual, back again.
         assert_eq!(
-            e.feed(ctrl_g(), Mode::Select { line: false }),
-            Feed::Cmd(Command::EnterVisual { line: false })
+            e.feed(
+                ctrl_g(),
+                Mode::Select {
+                    kind: SelectKind::Charwise
+                }
+            ),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Charwise
+            })
         );
         assert_eq!(
-            e.feed(ctrl_g(), Mode::Select { line: true }),
-            Feed::Cmd(Command::EnterVisual { line: true })
+            e.feed(
+                ctrl_g(),
+                Mode::Select {
+                    kind: SelectKind::Linewise
+                }
+            ),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Linewise
+            })
         );
         // CTRL-G is inert in Normal (no selection to toggle); it is NOT the start of `gg`.
         assert_eq!(e.feed(ctrl_g(), Mode::Normal), Feed::Ignored);
@@ -1471,7 +1634,9 @@ mod tests {
     #[test]
     fn printable_key_in_select_replaces_the_selection() {
         // A key that matches no motion/operator hits Select's `open/replace-selection` policy.
-        let sel = Mode::Select { line: false };
+        let sel = Mode::Select {
+            kind: SelectKind::Charwise,
+        };
         let mut e = InputEngine::new();
         assert_eq!(
             e.feed(k('z'), sel),
@@ -1488,7 +1653,9 @@ mod tests {
 
     #[test]
     fn select_operators_and_motions_match_visual() {
-        let sel = Mode::Select { line: false };
+        let sel = Mode::Select {
+            kind: SelectKind::Charwise,
+        };
         let mut e = InputEngine::new();
         // d/y/c act on the selection, exactly as in Visual.
         assert_eq!(e.feed(k('d'), sel), Feed::Cmd(Command::DeleteSelection));
@@ -1536,7 +1703,9 @@ mod tests {
         );
         // `"` works in Visual as well (Vim `"xy`).
         let mut e = InputEngine::new();
-        let vis = Mode::Visual { line: false };
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
         assert_eq!(e.feed(k('"'), vis), Feed::Pending);
         assert_eq!(
             e.feed(k('a'), vis),
@@ -1909,7 +2078,9 @@ mod textobj_tests {
     fn text_object_extends_a_visual_selection() {
         // In Visual, `i`/`a` begin a text object; it completes as a bare `Move` the core turns into a span.
         let mut e = InputEngine::new();
-        let vis = Mode::Visual { line: false };
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
         assert_eq!(e.feed(k('i'), vis), Feed::Pending);
         assert_eq!(
             e.feed(k('w'), vis),
@@ -1931,10 +2102,28 @@ mod textobj_tests {
         let mut e = InputEngine::new();
         assert_eq!(
             e.feed(k('v'), Mode::Normal),
-            Feed::Cmd(Command::EnterVisual { line: false })
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Charwise
+            })
         );
-        assert_eq!(e.feed(k('i'), Mode::Visual { line: false }), Feed::Pending);
-        assert_eq!(e.feed(k('t'), Mode::Visual { line: false }), Feed::Ignored);
+        assert_eq!(
+            e.feed(
+                k('i'),
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            ),
+            Feed::Pending
+        );
+        assert_eq!(
+            e.feed(
+                k('t'),
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            ),
+            Feed::Ignored
+        );
     }
 
     #[test]
@@ -2048,10 +2237,18 @@ mod state_machine_props {
             Just(Mode::Normal),
             Just(Mode::Insert),
             Just(Mode::Replace),
-            Just(Mode::Visual { line: false }),
-            Just(Mode::Visual { line: true }),
-            Just(Mode::Select { line: false }),
-            Just(Mode::Select { line: true }),
+            Just(Mode::Visual {
+                kind: SelectKind::Charwise
+            }),
+            Just(Mode::Visual {
+                kind: SelectKind::Linewise
+            }),
+            Just(Mode::Select {
+                kind: SelectKind::Charwise
+            }),
+            Just(Mode::Select {
+                kind: SelectKind::Linewise
+            }),
         ]
     }
 

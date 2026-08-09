@@ -30,7 +30,7 @@ use crossterm::terminal::{Clear, ClearType};
 use crossterm::{cursor, queue, terminal};
 
 use input::{parse_ex, Ex, Feed, InputEngine};
-use ruse_core::{apply_command, Command, EditorState, Effect, Mode, Trace};
+use ruse_core::{apply_command, Command, EditorState, Effect, Mode, SelectKind, Trace};
 
 // Headless CLI: stderr is the correct channel here (no TUI, no tracing sink yet). D-041 scoped allow.
 #[allow(clippy::print_stderr)]
@@ -318,8 +318,10 @@ fn render(
     // Draw the `text_rows` buffer lines starting at `top`. `line` tracks the buffer row so we can skip
     // everything above the viewport; `screen_row` is where it lands. Long lines are truncated at `cols`
     // (no wrap) so screen-row math stays exact — horizontal scroll is deferred (see render doc, v0).
-    // The Visual selection byte range, painted in reverse video.
+    // The Visual selection, painted in reverse video: one contiguous range for charwise/linewise, or a
+    // per-row set of ranges for a blockwise (`CTRL-V`) rectangle.
     let sel = st.selection_span();
+    let block = st.block_spans();
     let mut line: usize = 0;
     let mut col: u16 = 0;
     let mut cur = Color::Reset;
@@ -339,7 +341,10 @@ fn render(
         if line < top || col >= cols {
             continue; // above the viewport, or past the right edge (truncate)
         }
-        let selected = sel.is_some_and(|(s, e)| i >= s && i < e);
+        let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
+            || block
+                .as_deref()
+                .is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e));
         if selected != reversed {
             queue!(
                 out,
@@ -371,10 +376,24 @@ fn render(
                 Mode::Normal => "NORMAL",
                 Mode::Insert => "INSERT",
                 Mode::Replace => "REPLACE",
-                Mode::Visual { line: false } => "VISUAL",
-                Mode::Visual { line: true } => "V-LINE",
-                Mode::Select { line: false } => "SELECT",
-                Mode::Select { line: true } => "S-LINE",
+                Mode::Visual {
+                    kind: SelectKind::Charwise,
+                } => "VISUAL",
+                Mode::Visual {
+                    kind: SelectKind::Linewise,
+                } => "V-LINE",
+                Mode::Visual {
+                    kind: SelectKind::Blockwise,
+                } => "V-BLOCK",
+                Mode::Select {
+                    kind: SelectKind::Charwise,
+                } => "SELECT",
+                Mode::Select {
+                    kind: SelectKind::Linewise,
+                } => "S-LINE",
+                Mode::Select {
+                    kind: SelectKind::Blockwise,
+                } => "S-BLOCK",
             };
             let name = path
                 .map(|p| p.display().to_string())

@@ -36,14 +36,14 @@ pub mod transaction;
 pub mod undo;
 
 pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
-pub use command::{Command, CommandParseError, ForcedWise, OpKind, SearchOp};
+pub use command::{Command, CommandParseError, ForcedWise, OpKind, SearchOp, SelectKind};
 pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
 pub use editor::{apply_command, commit, plan, EditorState, IndentStyle, Mode, Plan};
 pub use effect::Effect;
 pub use motion::Motion;
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};
-pub use register::{Register, RegisterStore};
+pub use register::{RegKind, Register, RegisterStore};
 pub use snapshot::{AnchorIndex, DocumentSnapshot};
 pub use trace::{doc_hash, Trace, TraceError, TRACE_FORMAT_VERSION};
 pub use transaction::{GroupHint, Transaction, TransactionOrigin};

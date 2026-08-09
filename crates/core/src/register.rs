@@ -4,12 +4,29 @@
 //! Only the paste-geometry semantics ship now, because that is the part that is hard to retrofit; extra
 //! addressable slots are purely additive over this type.
 
-/// A captured span of text and whether it was taken linewise (whole lines) or charwise (a partial span).
-/// Linewise content is normalized to end with a newline so paste geometry is uniform.
+/// The paste GEOMETRY a register carries — the one dimension that governs how a paste lands.
+/// Charwise splices inline; linewise opens whole lines; blockwise drops a rectangle, one stored row per
+/// buffer line at a fixed column. This is the typed SHAPE of F-029 (`:help quote_bar`, blockwise via
+/// `CTRL-V`).
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum RegKind {
+    /// A partial-line span (`yw`, `x`, charwise `d`).
+    #[default]
+    Charwise,
+    /// Whole lines (`yy`, `dd`); content is normalized to a trailing newline.
+    Linewise,
+    /// A rectangle (`CTRL-V` yank/delete): the `\n`-joined per-row slices, pasted column-aligned. Rows are
+    /// ragged (each is its line's own content within the block); paste pads short target lines with spaces.
+    Blockwise,
+}
+
+/// A captured span of text and its paste geometry ([`RegKind`]). Linewise content is normalized to end
+/// with a newline so paste geometry is uniform; blockwise content is the per-row slices joined by `\n`
+/// (N rows → N-1 separators, no trailing newline).
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct Register {
     text: Vec<u8>,
-    linewise: bool,
+    kind: RegKind,
 }
 
 impl Register {
@@ -18,7 +35,7 @@ impl Register {
     pub fn charwise(text: Vec<u8>) -> Register {
         Register {
             text,
-            linewise: false,
+            kind: RegKind::Charwise,
         }
     }
 
@@ -31,7 +48,17 @@ impl Register {
         }
         Register {
             text,
-            linewise: true,
+            kind: RegKind::Linewise,
+        }
+    }
+
+    /// A blockwise register (`CTRL-V` yank/delete): the per-row slices already joined by `\n`. Stored
+    /// verbatim (ragged rows, no trailing newline); the paste path pads short target lines.
+    #[must_use]
+    pub fn blockwise(text: Vec<u8>) -> Register {
+        Register {
+            text,
+            kind: RegKind::Blockwise,
         }
     }
 
@@ -41,10 +68,22 @@ impl Register {
         &self.text
     }
 
+    /// The register's paste geometry.
+    #[must_use]
+    pub fn kind(&self) -> RegKind {
+        self.kind
+    }
+
     /// Whether the register holds whole lines (governs paste geometry).
     #[must_use]
     pub fn is_linewise(&self) -> bool {
-        self.linewise
+        self.kind == RegKind::Linewise
+    }
+
+    /// Whether the register holds a rectangle (blockwise paste geometry).
+    #[must_use]
+    pub fn is_blockwise(&self) -> bool {
+        self.kind == RegKind::Blockwise
     }
 
     /// Whether the register is empty (nothing has been yanked or deleted yet — paste is a no-op).

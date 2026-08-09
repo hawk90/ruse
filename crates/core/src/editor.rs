@@ -5,7 +5,7 @@
 //! the same commands on the same initial document is deterministic (see [`crate::trace`]). This is the split
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
-use crate::command::{Command, ForcedWise, OpKind, SearchOp};
+use crate::command::{Command, ForcedWise, OpKind, SearchOp, SelectKind};
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
 use crate::effect::Effect;
@@ -15,10 +15,11 @@ use crate::motion::{
 use crate::register::{Register, RegisterStore};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 
-/// The editor mode. `Visual { line }` and `Select { line }` are selection modes: charwise (`v`) or
-/// linewise (`V`). Blockwise (`Ctrl-V`) is deferred. A selection is the pair `(anchor, cursor)`; a bare
-/// caret is the degenerate collapsed selection, so extending to multi-selection later needs no type
-/// rewrite (D-027 trajectory).
+/// The editor mode. `Visual { kind }` and `Select { kind }` are selection modes carrying a [`SelectKind`]
+/// shape: charwise (`v`), linewise (`V`), or blockwise (`CTRL-V`). A selection is the pair `(anchor,
+/// cursor)`; the shape reinterprets that pair (charwise = one byte range, blockwise = a column-aligned
+/// rectangle). A bare caret is the degenerate collapsed selection, so extending to multi-selection later
+/// needs no type rewrite (D-027 trajectory).
 ///
 /// `Select` shares the SAME selection state as `Visual` (they toggle with `CTRL-G`) and differs only in
 /// its unmatched-key policy: in Select a printable key deletes the selection and enters Insert
@@ -34,10 +35,10 @@ pub enum Mode {
     /// Replace (`gR`, tab-aware) is deferred.
     Replace,
     Visual {
-        line: bool,
+        kind: SelectKind,
     },
     Select {
-        line: bool,
+        kind: SelectKind,
     },
 }
 
@@ -55,11 +56,11 @@ pub enum IndentStyle {
 
 impl Mode {
     /// Whether this mode carries a live selection (Visual or Select) — the anchor is `Some` exactly then.
-    /// `line` is the selection's linewise flag when it has one.
+    /// The [`SelectKind`] is the selection's shape when it has one.
     #[must_use]
-    fn selection(self) -> Option<bool> {
+    fn selection(self) -> Option<SelectKind> {
         match self {
-            Mode::Visual { line } | Mode::Select { line } => Some(line),
+            Mode::Visual { kind } | Mode::Select { kind } => Some(kind),
             Mode::Normal | Mode::Insert | Mode::Replace => None,
         }
     }
@@ -90,7 +91,7 @@ pub struct EditorState {
     /// Select mode is exited, restored by `gv` ([`Command::ReselectVisual`]). This is the depth-1
     /// degenerate of D-027's `` `< ``/`` `> `` selection history: one remembered selection, stored in the
     /// same raw-offset representation as the live `anchor` (both migrate to the anchor store together).
-    last_visual: Option<(usize, usize, bool)>,
+    last_visual: Option<(usize, usize, SelectKind)>,
     /// Replace-mode (`R`) session history for `<BS>` restore: one entry per key typed, in order. `Some(orig)`
     /// = that key OVERWROTE a char (its original bytes, to restore on backspace); `None` = it APPENDED at
     /// end-of-line (backspace deletes it). Empty outside a Replace session; cleared on leaving Replace.
@@ -216,19 +217,33 @@ impl EditorState {
         &self.registers
     }
 
-    /// The highlighted byte range `[start, end)` of the current Visual selection, or `None` in Normal/Insert.
-    /// Charwise includes the character under the active end; linewise spans whole lines. For the frontend to
-    /// paint the selection.
+    /// The highlighted byte range `[start, end)` of the current charwise/linewise Visual selection, or
+    /// `None` in Normal/Insert **and for a blockwise selection** (a rectangle is not one contiguous range —
+    /// use [`EditorState::block_spans`] to paint that). Charwise includes the character under the active
+    /// end; linewise spans whole lines. For the frontend to paint the selection.
     #[must_use]
     pub fn selection_span(&self) -> Option<(usize, usize)> {
         // Visual and Select paint the same selection (they share the anchor and toggle via CTRL-G).
-        let line = self.mode.selection()?;
-        Some(selection_range(
-            self.bytes(),
-            self.anchor?,
-            self.cursor,
-            line,
-        ))
+        match self.mode.selection()? {
+            SelectKind::Blockwise => None,
+            kind => Some(selection_range(
+                self.bytes(),
+                self.anchor?,
+                self.cursor,
+                kind == SelectKind::Linewise,
+            )),
+        }
+    }
+
+    /// The per-row highlighted byte ranges of the current BLOCKWISE selection (one `[start, end)` per line
+    /// the rectangle crosses; short lines contribute an empty range at their end), or `None` when the
+    /// selection is not blockwise. For the frontend to paint a column-aligned block.
+    #[must_use]
+    pub fn block_spans(&self) -> Option<Vec<(usize, usize)>> {
+        match self.mode.selection()? {
+            SelectKind::Blockwise => Some(block_rows(self.bytes(), self.anchor?, self.cursor).0),
+            _ => None,
+        }
     }
 
     /// The document bytes.
@@ -398,6 +413,11 @@ fn forced_span(
                 (s0, next_boundary(b, e0).min(b.len()), false)
             }
         }
+        // Blockwise force never reaches here — the `OpForced` arm routes it to `block_op` (a rectangle is
+        // not a single span, which is all `forced_span` can return).
+        ForcedWise::Blockwise => {
+            unreachable!("forced blockwise is handled by block_op before forced_span")
+        }
     }
 }
 
@@ -446,6 +466,40 @@ fn selection_range(b: &[u8], anchor: usize, cursor: usize, line: bool) -> (usize
         };
         (lo, end)
     }
+}
+
+/// The geometry of a BLOCKWISE selection whose two corners are the byte offsets `anchor` and `cursor`.
+/// Returns one `[start, end)` byte range per line the rectangle crosses (top line first), plus the block's
+/// inclusive char-column bounds `(col_lo, col_hi)`.
+///
+/// Columns are CHAR columns (via [`col_of`]/[`at_col`]) — correct for ASCII and multibyte code points;
+/// tab/wide-char VISUAL columns are a documented follow-up (the same curswant family as the i_CTRL-O gap).
+/// Each row's range is clamped to that line's own length, so a line shorter than `col_lo` yields an empty
+/// range at its end (Vim: short lines contribute nothing to a block delete/yank).
+fn block_rows(b: &[u8], anchor: usize, cursor: usize) -> (Vec<(usize, usize)>, usize, usize) {
+    let a_ls = line_start(b, anchor);
+    let c_ls = line_start(b, cursor);
+    let a_col = col_of(b, a_ls, anchor);
+    let c_col = col_of(b, c_ls, cursor);
+    let col_lo = a_col.min(c_col);
+    let col_hi = a_col.max(c_col);
+    let top_ls = a_ls.min(c_ls);
+    let bot_ls = a_ls.max(c_ls);
+
+    let mut rows = Vec::new();
+    let mut rs = top_ls;
+    loop {
+        // `at_col` clamps to the line end, so on a short line `s == e == line_end` (an empty slice).
+        let s = at_col(b, rs, col_lo);
+        let e = at_col(b, rs, col_hi + 1);
+        rows.push((s, e));
+        let le = line_end(b, rs);
+        if rs >= bot_ls || le >= b.len() {
+            break;
+        }
+        rs = le + 1;
+    }
+    (rows, col_lo, col_hi)
 }
 
 /// Walk `count` char boundaries forward from `from`, never past `limit` (typically the line end).
@@ -903,6 +957,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             motion,
             wise,
         } => {
+            // Forced blockwise (`d<C-v>j`): the cursor and the motion target are the block's two corners.
+            if *wise == ForcedWise::Blockwise {
+                let target = motion::target(b, cur, *motion, *count);
+                return block_op(b, cur, target, *op, hint);
+            }
             let (s, e, linewise) = forced_span(b, cur, *motion, *count, *wise);
             match op {
                 OpKind::Delete if s < e => {
@@ -951,18 +1010,18 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             set_register: None,
             set_anchor: None,
         },
-        Command::EnterVisual { line } => nop(cur, Mode::Visual { line: *line }),
+        Command::EnterVisual { kind } => nop(cur, Mode::Visual { kind: *kind }),
         // CTRL-G toggle: enter Select over the same selection. The anchor is preserved because both are
         // selection modes, so `commit` keeps it (see the (true, true) arm there).
-        Command::EnterSelect { line } => nop(cur, Mode::Select { line: *line }),
+        Command::EnterSelect { kind } => nop(cur, Mode::Select { kind: *kind }),
         Command::ReselectVisual => match st.last_visual {
             // Restore the remembered selection: re-enter Visual with the stored kind, put the cursor on the
             // active end, and install the stored anchor (via `set_anchor`, which `commit` applies after its
             // enter-selection bookkeeping). No prior selection → a clean no-op (Vim rings the bell).
-            Some((anchor, active, line)) => Plan {
+            Some((anchor, active, kind)) => Plan {
                 action: Action::Nop,
                 cursor: active,
-                mode: Mode::Visual { line },
+                mode: Mode::Visual { kind },
                 is_edit: false,
                 effects: Vec::new(),
                 set_register: None,
@@ -972,9 +1031,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         },
         Command::ReplaceSelection(c) => {
             // Select's `open/replace-selection`: delete the selection, insert the char, enter Insert.
+            // Blockwise Select-replace is out of scope for this slice; a block here is treated charwise.
             let line = matches!(
                 st.mode,
-                Mode::Visual { line: true } | Mode::Select { line: true }
+                Mode::Visual {
+                    kind: SelectKind::Linewise
+                } | Mode::Select {
+                    kind: SelectKind::Linewise
+                }
             );
             let mut buf = [0u8; 4];
             let ins = c.encode_utf8(&mut buf).as_bytes().to_vec();
@@ -1019,14 +1083,20 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::YankSelection | Command::DeleteSelection | Command::ChangeSelection => {
-            let line = matches!(
-                st.mode,
-                Mode::Visual { line: true } | Mode::Select { line: true }
-            );
             let Some(anchor) = st.anchor else {
                 // Not in a selection (or no anchor) — drop back to Normal, do nothing.
                 return nop(cur, Mode::Normal);
             };
+            // Blockwise (`CTRL-V`) selections operate on a rectangle of per-row slices, not one span.
+            if st.mode.selection() == Some(SelectKind::Blockwise) {
+                let op = match cmd {
+                    Command::YankSelection => OpKind::Yank,
+                    Command::ChangeSelection => OpKind::Change,
+                    _ => OpKind::Delete,
+                };
+                return block_op(b, anchor, cur, op, hint);
+            }
+            let line = st.mode.selection() == Some(SelectKind::Linewise);
             let (s, e) = selection_range(b, anchor, cur, line);
             let reg = captured(s, e, line);
             match cmd {
@@ -1234,6 +1304,161 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
 /// Build the paste plan for `p` (after) / `P` (before) from the unnamed register. Charwise pastes insert
 /// inline next to the cursor; linewise pastes open a whole new line below/above. An empty register is a
 /// no-op. This is the paste-geometry semantic D-026 pins down for v0.
+/// Blockwise (`CTRL-V`) yank/delete/change over the rectangle whose corners are the byte offsets `c1` and
+/// `c2` (the selection's anchor+cursor, or an operator's cursor+motion-target). Yank and Delete capture
+/// the per-row slices into a blockwise [`Register`]; the cursor lands at the block's top-left corner (Vim).
+/// Change deletes the block and enters Insert at the top-left — but only the SINGLE-ROW partial: block
+/// `c`/`I`/`A`'s replicate-typed-text-to-every-row behaviour is deferred to a later slice, so block change
+/// is intentionally NOT oracle-tested here.
+fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan {
+    let (rows, _col_lo, _col_hi) = block_rows(b, c1, c2);
+    let top_left = rows.first().map_or(c1.min(c2), |&(s, _)| s);
+    // The blockwise register: each row's slice, joined by '\n' (ragged rows, no trailing newline).
+    let mut text: Vec<u8> = Vec::new();
+    for (i, &(s, e)) in rows.iter().enumerate() {
+        if i > 0 {
+            text.push(b'\n');
+        }
+        text.extend_from_slice(&b[s..e]);
+    }
+    let reg = Register::blockwise(text);
+    let nop = |mode: Mode| Plan {
+        action: Action::Nop,
+        cursor: top_left,
+        mode,
+        is_edit: false,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+    };
+    match op {
+        // Yank leaves the buffer unchanged, cursor at the block's top-left, back to Normal.
+        OpKind::Yank => Plan {
+            set_register: Some(RegWrite::Yank(reg)),
+            ..nop(Mode::Normal)
+        },
+        OpKind::Delete | OpKind::Change => {
+            let after_mode = if op == OpKind::Change {
+                Mode::Insert
+            } else {
+                Mode::Normal
+            };
+            // One delete per row (rows on different lines are inherently disjoint); empty rows contribute
+            // nothing. `EditList::new` sorts + validates disjointness.
+            let edits: Vec<Edit> = rows
+                .iter()
+                .filter(|&&(s, e)| e > s)
+                .map(|&(s, e)| Edit::delete(s, e - s))
+                .collect();
+            if edits.is_empty() {
+                // The block sits entirely past every line's end — nothing to remove.
+                return nop(after_mode);
+            }
+            let list = EditList::new(edits).expect("block-row deletes are disjoint (one per line)");
+            Plan {
+                action: Action::Txn { edits: list, hint },
+                cursor: top_left,
+                mode: after_mode,
+                is_edit: true,
+                effects: Vec::new(),
+                set_register: Some(RegWrite::Edit(reg)),
+                set_anchor: None,
+            }
+        }
+    }
+}
+
+/// Blockwise paste (`p`/`P` of a `CTRL-V` register): drop the register's rows as a rectangle. Row `i`
+/// lands at the target column on the line `i` rows below the cursor's line; the target column is the
+/// cursor's column for `P` and one past it for `p` (Vim). Lines shorter than the target column are padded
+/// with spaces; rows past the last line are appended as new lines. The cursor ends at the block's
+/// top-left. `{count}p` repeats each row `count` times horizontally.
+fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) -> Plan {
+    let rows: Vec<Vec<u8>> = reg
+        .text()
+        .split(|&c| c == b'\n')
+        .map(|row| row.repeat(count))
+        .collect();
+    let cls = line_start(b, cur);
+    let ccol = col_of(b, cls, cur);
+    let has_char = cur < line_end(b, cls);
+    let target_col = if after && has_char { ccol + 1 } else { ccol };
+
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut trailing: Vec<u8> = Vec::new();
+    let mut cursor = cur;
+    let mut cursor_set = false;
+    let mut rs = cls;
+    let mut past_eof = false;
+    for (i, row) in rows.iter().enumerate() {
+        if !past_eof && rs < b.len() {
+            let le = line_end(b, rs);
+            let linelen = col_of(b, rs, le);
+            let (at, pad) = if target_col <= linelen {
+                (at_col(b, rs, target_col), 0usize)
+            } else {
+                (le, target_col - linelen)
+            };
+            if i == 0 {
+                cursor = at + pad; // the start of the pasted text on the cursor's line
+                cursor_set = true;
+            }
+            if pad > 0 || !row.is_empty() {
+                let mut ins = vec![b' '; pad];
+                ins.extend_from_slice(row);
+                edits.push(Edit::insert(at, ins));
+            }
+            if le < b.len() {
+                rs = le + 1;
+            } else {
+                past_eof = true;
+            }
+        } else {
+            // Past the last line: append the remaining rows as fresh lines at the buffer end.
+            past_eof = true;
+            trailing.push(b'\n');
+            trailing.extend(std::iter::repeat_n(b' ', target_col));
+            trailing.extend_from_slice(row);
+        }
+    }
+    if !trailing.is_empty() {
+        // Merge into a bottom-most edit already sitting at the buffer end (avoids two inserts at one
+        // position, which the disjoint-edit invariant forbids); otherwise append as its own edit.
+        match edits.last_mut() {
+            Some(last) if last.end() == b.len() => last.ins.extend_from_slice(&trailing),
+            _ => edits.push(Edit::insert(b.len(), trailing)),
+        }
+        if !cursor_set {
+            // The whole block landed past EOF: cursor at the first appended row's text start.
+            cursor = b.len() + 1 + target_col;
+        }
+    }
+    if edits.is_empty() {
+        return Plan {
+            action: Action::Nop,
+            cursor: cursor.min(b.len()),
+            mode: Mode::Normal,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+        };
+    }
+    let list = EditList::new(edits).expect("block paste inserts are disjoint (one per line)");
+    Plan {
+        action: Action::Txn {
+            edits: list,
+            hint: GroupHint::BreakBefore,
+        },
+        cursor,
+        mode: Mode::Normal,
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+    }
+}
+
 fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u32) -> Plan {
     let nop = Plan {
         action: Action::Nop,
@@ -1246,6 +1471,9 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u
     };
     if reg.is_empty() {
         return nop;
+    }
+    if reg.is_blockwise() {
+        return paste_block(b, cur, reg, after, count.max(1) as usize);
     }
     // `{count}p` pastes the register `count` times (Vim); the register itself is unchanged. The repeated
     // bytes are one contiguous insert, so the cursor math below (last pasted byte) still holds.
@@ -1405,8 +1633,8 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             // Leaving a selection: remember it (anchor, active end, kind) for `gv` BEFORE dropping the
             // anchor — the depth-1 slice of D-027's `` `< ``/`` `> `` history. Only fires on an actual exit
             // (entry_selection is None when we were already in Normal), so a plain Normal command is inert.
-            if let (Some(line), Some(a)) = (entry_selection, entry_anchor) {
-                st.last_visual = Some((a, entry_cursor, line));
+            if let (Some(kind), Some(a)) = (entry_selection, entry_anchor) {
+                st.last_visual = Some((a, entry_cursor, kind));
             }
             st.anchor = None;
         }
@@ -1722,7 +1950,9 @@ mod visual_swap_tests {
                 Command::Move(1, Motion::Right),
                 Command::Move(1, Motion::Right),
                 Command::Move(1, Motion::Right),
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::Move(1, Motion::Left),
                 Command::SwapSelectionEnds,
                 Command::Move(1, Motion::Right),
@@ -1849,7 +2079,9 @@ mod visual_swap_tests {
         let st = run(
             "hello world",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::Move(1, Motion::InnerWord),
                 Command::YankSelection,
                 Command::ReselectVisual,
@@ -1880,7 +2112,9 @@ mod visual_swap_tests {
                 Command::Move(1, Motion::Right),
                 Command::Move(1, Motion::Right),
                 Command::Move(1, Motion::Right),
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::Move(1, Motion::Left),
             ],
         );
@@ -1901,7 +2135,9 @@ mod visual_swap_tests {
             "abcde",
             &[
                 Command::Move(1, Motion::Right),
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::Move(1, Motion::Right),
                 Command::Move(1, Motion::Right),
             ],
@@ -2568,8 +2804,18 @@ mod visual_tests {
 
     #[test]
     fn entering_visual_sets_a_collapsed_selection() {
-        let st = run("hello", &[Command::EnterVisual { line: false }]);
-        assert_eq!(st.mode(), Mode::Visual { line: false });
+        let st = run(
+            "hello",
+            &[Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            }],
+        );
+        assert_eq!(
+            st.mode(),
+            Mode::Visual {
+                kind: SelectKind::Charwise
+            }
+        );
         // Anchor == cursor: the selection covers exactly the character under the caret (inclusive).
         assert_eq!(st.selection_span(), Some((0, 1)));
     }
@@ -2579,12 +2825,19 @@ mod visual_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
                 Command::MoveRight,
             ],
         );
-        assert_eq!(st.mode(), Mode::Visual { line: false });
+        assert_eq!(
+            st.mode(),
+            Mode::Visual {
+                kind: SelectKind::Charwise
+            }
+        );
         assert_eq!(st.selection_span(), Some((0, 3)), "v + l + l selects 'hel'");
     }
 
@@ -2593,7 +2846,9 @@ mod visual_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
                 Command::MoveRight,
                 Command::DeleteSelection,
@@ -2610,7 +2865,9 @@ mod visual_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight, // select "he"
                 Command::YankSelection,
                 Command::Paste {
@@ -2629,7 +2886,9 @@ mod visual_tests {
         let st = run(
             "a\nb\nc\n",
             &[
-                Command::EnterVisual { line: true },
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
                 Command::MoveDown, // extend selection to the second line
                 Command::DeleteSelection,
             ],
@@ -2644,7 +2903,9 @@ mod visual_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
                 Command::ChangeSelection,
             ],
@@ -2658,7 +2919,9 @@ mod visual_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
                 Command::EnterNormal,
             ],
@@ -2666,6 +2929,152 @@ mod visual_tests {
         assert_eq!(text(&st), "hello");
         assert_eq!(st.mode(), Mode::Normal);
         assert_eq!(st.selection_span(), None);
+    }
+}
+
+#[cfg(test)]
+mod blockwise_tests {
+    use super::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    // Enter blockwise Visual, extend right by `r` columns and down by `d` lines.
+    fn block(cols_right: usize, lines_down: usize) -> Vec<Command> {
+        let mut c = vec![Command::EnterVisual {
+            kind: SelectKind::Blockwise,
+        }];
+        c.extend(std::iter::repeat_n(Command::MoveRight, cols_right));
+        c.extend(std::iter::repeat_n(Command::MoveDown, lines_down));
+        c
+    }
+
+    #[test]
+    fn block_spans_cover_one_column_range_per_row() {
+        // A 2-wide × 2-tall block from the top-left corner spans cols [0,1] on rows 0 and 1.
+        let st = run("abc\ndef\nghi", &block(1, 1));
+        assert_eq!(
+            st.mode(),
+            Mode::Visual {
+                kind: SelectKind::Blockwise
+            }
+        );
+        assert_eq!(st.block_spans(), Some(vec![(0, 2), (4, 6)]));
+        assert_eq!(
+            st.selection_span(),
+            None,
+            "a rectangle is not one contiguous span"
+        );
+    }
+
+    #[test]
+    fn block_delete_removes_the_column_on_each_row() {
+        let mut cmds = block(1, 1);
+        cmds.push(Command::DeleteSelection);
+        let st = run("abc\ndef\nghi", &cmds);
+        assert_eq!(text(&st), "c\nf\nghi");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert!(st.register().is_blockwise());
+        assert_eq!(st.register().text(), b"ab\nde");
+        assert_eq!(st.cursor(), 0, "cursor at the block's top-left");
+    }
+
+    #[test]
+    fn block_yank_then_paste_before_reproduces_the_rectangle() {
+        let mut cmds = block(1, 1);
+        cmds.push(Command::YankSelection);
+        cmds.push(Command::Paste {
+            after: false,
+            count: 1,
+        });
+        let st = run("abc\ndef\nghi", &cmds);
+        // Yank leaves the buffer; `P` drops "ab"/"de" back at column 0 on rows 0 and 1.
+        assert!(st.register().is_blockwise());
+        assert_eq!(text(&st), "ababc\ndedef\nghi");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn block_paste_after_inserts_one_column_right() {
+        // Yank the single column "a"/"d", then `p` pastes it to the right of the cursor on each row.
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::YankSelection,
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                },
+            ],
+        );
+        assert_eq!(st.register().text(), b"a\nd");
+        assert_eq!(text(&st), "aabc\nddef");
+    }
+
+    #[test]
+    fn block_paste_extends_past_the_last_line() {
+        // A 2-row block pasted onto a 1-line buffer creates the missing second line.
+        let st = run(
+            "ab\ncd",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown, // column 0, rows 0..1 -> "a"/"c"
+                Command::YankSelection,
+                Command::EnterInsert, // bail out of any selection state
+                Command::EnterNormal,
+                Command::Paste {
+                    after: false,
+                    count: 1,
+                },
+            ],
+        );
+        // Cursor is back on row 0 col 0 after the yank; `P` pastes "a"/"c" at column 0 on rows 0 and 1.
+        assert_eq!(text(&st), "aab\nccd");
+    }
+
+    #[test]
+    fn block_rows_clamp_a_short_line_to_an_empty_range() {
+        // Geometry directly (motions through a short line collapse the tracked column — the deferred
+        // curswant gap — so exercise `block_rows` on explicit corners). Cols [1,3] over three rows; the
+        // middle line "x" is shorter than col 1, so it contributes an empty range at its end.
+        let b = b"abcd\nx\nefgh";
+        let (rows, lo, hi) = block_rows(b, 3, 8); // (row0,col3) .. (row2,col1)
+        assert_eq!((lo, hi), (1, 3));
+        assert_eq!(rows, vec![(1, 4), (6, 6), (8, 11)]);
+        assert_eq!(&b[1..4], b"bcd");
+        assert_eq!(&b[8..11], b"fgh");
+    }
+
+    #[test]
+    fn forced_blockwise_operator_deletes_a_column_across_rows() {
+        // `d<C-v>j`: the cursor and the `j` target are the block's corners — one column, two rows.
+        let st = run(
+            "abc\ndef",
+            &[Command::OpForced {
+                op: OpKind::Delete,
+                count: 1,
+                motion: Motion::Down,
+                wise: ForcedWise::Blockwise,
+            }],
+        );
+        assert_eq!(text(&st), "bc\nef");
+        assert!(st.register().is_blockwise());
+        assert_eq!(st.register().text(), b"a\nd");
     }
 }
 
@@ -2865,18 +3274,27 @@ mod text_object_tests {
         let st = run(
             "foo bar",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::Move(1, Motion::InnerWord),
             ],
         );
-        assert_eq!(st.mode(), Mode::Visual { line: false });
+        assert_eq!(
+            st.mode(),
+            Mode::Visual {
+                kind: SelectKind::Charwise
+            }
+        );
         assert_eq!(st.selection_span(), Some((0, 3)), "viw selects 'foo'");
         // `vi(` spans the interior of the enclosing pair.
         let st = run(
             "a(bc)d",
             &[
                 Command::Move(2, Motion::Right),
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::Move(1, pair('(', ')', false)),
             ],
         );
@@ -2906,13 +3324,22 @@ mod select_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
                 Command::MoveRight,
-                Command::EnterSelect { line: false },
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise,
+                },
             ],
         );
-        assert_eq!(st.mode(), Mode::Select { line: false });
+        assert_eq!(
+            st.mode(),
+            Mode::Select {
+                kind: SelectKind::Charwise
+            }
+        );
         assert_eq!(
             st.selection_span(),
             Some((0, 3)),
@@ -2925,13 +3352,24 @@ mod select_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
-                Command::EnterSelect { line: false },
-                Command::EnterVisual { line: false },
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise,
+                },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
             ],
         );
-        assert_eq!(st.mode(), Mode::Visual { line: false });
+        assert_eq!(
+            st.mode(),
+            Mode::Visual {
+                kind: SelectKind::Charwise
+            }
+        );
         assert_eq!(
             st.selection_span(),
             Some((0, 2)),
@@ -2945,9 +3383,13 @@ mod select_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
-                Command::EnterSelect { line: false },
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise,
+                },
                 Command::ReplaceSelection('Z'),
             ],
         );
@@ -2971,9 +3413,13 @@ mod select_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
-                Command::EnterSelect { line: false },
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise,
+                },
                 Command::ReplaceSelection('가'),
             ],
         );
@@ -2986,10 +3432,14 @@ mod select_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
                 Command::MoveRight,
-                Command::EnterSelect { line: false },
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise,
+                },
                 Command::DeleteSelection,
             ],
         );
@@ -3003,9 +3453,13 @@ mod select_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
-                Command::EnterSelect { line: false },
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise,
+                },
                 Command::YankSelection,
             ],
         );
@@ -3020,12 +3474,19 @@ mod select_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterSelect { line: false },
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
                 Command::MoveRight,
             ],
         );
-        assert_eq!(st.mode(), Mode::Select { line: false });
+        assert_eq!(
+            st.mode(),
+            Mode::Select {
+                kind: SelectKind::Charwise
+            }
+        );
         assert_eq!(st.selection_span(), Some((0, 3)));
     }
 
@@ -3034,9 +3495,13 @@ mod select_tests {
         let st = run(
             "hello",
             &[
-                Command::EnterVisual { line: false },
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::MoveRight,
-                Command::EnterSelect { line: false },
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise,
+                },
                 Command::EnterNormal,
             ],
         );

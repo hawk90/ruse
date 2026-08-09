@@ -33,13 +33,26 @@ pub enum OpKind {
     Yank,
 }
 
-/// A motion's forced wise-ness (Vim `o_v` / `o_V`): the operator applies the motion but overrides whether
-/// the removed span is charwise or linewise. `Charwise` also toggles the motion's exclusive/inclusive edge
-/// (Vim's rule for `v`). Blockwise (`CTRL-V`) is deferred with the rest of blockwise support.
+/// A motion's forced wise-ness (Vim `o_v` / `o_V` / `o_CTRL-V`): the operator applies the motion but
+/// overrides whether the removed span is charwise, linewise, or blockwise. `Charwise` also toggles the
+/// motion's exclusive/inclusive edge (Vim's rule for `v`). `Blockwise` treats the cursor and the motion
+/// target as the two corners of a rectangle (`d<C-v>j` deletes one column across two rows).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ForcedWise {
     Charwise,
     Linewise,
+    Blockwise,
+}
+
+/// The SHAPE of a Visual/Select selection (F-025 c1: selection shape is namespace state, not a boolean).
+/// Charwise (`v`) spans a contiguous byte range; linewise (`V`) whole lines; blockwise (`CTRL-V`) a
+/// column-aligned rectangle across lines. `v`/`V`/`CTRL-V` switch the shape or leave the namespace.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SelectKind {
+    #[default]
+    Charwise,
+    Linewise,
+    Blockwise,
 }
 
 /// A semantic command — the granularity a trace records. Beyond single motions/edits it carries the editing
@@ -122,14 +135,14 @@ pub enum Command {
     /// register name key; the editor holds it as a one-shot pending register the next such command reads,
     /// then clears (D-026's named-slot expansion). Numbered/other register names are not modelled yet.
     SetRegister(Option<char>),
-    // visual mode: enter a selection (charwise `v` / linewise `V`); operate on the current selection
+    // visual mode: enter a selection (charwise `v` / linewise `V` / blockwise `CTRL-V`); operate on it
     EnterVisual {
-        line: bool,
+        kind: SelectKind,
     },
     /// `CTRL-G` from Visual — enter Select over the SAME selection (Visual↔Select toggle). Select
     /// shares Visual's anchor/shape and differs only in its unmatched-key policy (contracts/vim-style.yaml).
     EnterSelect {
-        line: bool,
+        kind: SelectKind,
     },
     DeleteSelection,
     YankSelection,
@@ -297,6 +310,7 @@ fn forced_wise_token(w: ForcedWise) -> &'static str {
     match w {
         ForcedWise::Charwise => "charwise",
         ForcedWise::Linewise => "linewise",
+        ForcedWise::Blockwise => "blockwise",
     }
 }
 
@@ -304,6 +318,7 @@ fn forced_wise_from_token(s: &str) -> Option<ForcedWise> {
     Some(match s {
         "charwise" => ForcedWise::Charwise,
         "linewise" => ForcedWise::Linewise,
+        "blockwise" => ForcedWise::Blockwise,
         _ => return None,
     })
 }
@@ -414,20 +429,16 @@ impl Command {
                 Some(c) => format!("select_register {}", *c as u32),
                 None => "select_register".into(),
             },
-            Command::EnterVisual { line } => {
-                if *line {
-                    "enter_visual_line".into()
-                } else {
-                    "enter_visual".into()
-                }
-            }
-            Command::EnterSelect { line } => {
-                if *line {
-                    "enter_select_line".into()
-                } else {
-                    "enter_select".into()
-                }
-            }
+            Command::EnterVisual { kind } => match kind {
+                SelectKind::Charwise => "enter_visual".into(),
+                SelectKind::Linewise => "enter_visual_line".into(),
+                SelectKind::Blockwise => "enter_visual_block".into(),
+            },
+            Command::EnterSelect { kind } => match kind {
+                SelectKind::Charwise => "enter_select".into(),
+                SelectKind::Linewise => "enter_select_line".into(),
+                SelectKind::Blockwise => "enter_select_block".into(),
+            },
             Command::DeleteSelection => "delete_selection".into(),
             Command::YankSelection => "yank_selection".into(),
             Command::ChangeSelection => "change_selection".into(),
@@ -597,10 +608,24 @@ impl Command {
                 };
                 Command::SetRegister(name)
             }
-            "enter_visual" => Command::EnterVisual { line: false },
-            "enter_visual_line" => Command::EnterVisual { line: true },
-            "enter_select" => Command::EnterSelect { line: false },
-            "enter_select_line" => Command::EnterSelect { line: true },
+            "enter_visual" => Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            },
+            "enter_visual_line" => Command::EnterVisual {
+                kind: SelectKind::Linewise,
+            },
+            "enter_visual_block" => Command::EnterVisual {
+                kind: SelectKind::Blockwise,
+            },
+            "enter_select" => Command::EnterSelect {
+                kind: SelectKind::Charwise,
+            },
+            "enter_select_line" => Command::EnterSelect {
+                kind: SelectKind::Linewise,
+            },
+            "enter_select_block" => Command::EnterSelect {
+                kind: SelectKind::Blockwise,
+            },
             "delete_selection" => Command::DeleteSelection,
             "yank_selection" => Command::YankSelection,
             "change_selection" => Command::ChangeSelection,
@@ -751,6 +776,12 @@ mod tests {
                 motion: Motion::WordFwd,
                 wise: ForcedWise::Charwise,
             },
+            Command::OpForced {
+                op: OpKind::Delete,
+                count: 1,
+                motion: Motion::Down,
+                wise: ForcedWise::Blockwise,
+            },
             Command::Move(
                 1,
                 Motion::FindChar {
@@ -805,10 +836,24 @@ mod tests {
             Command::SetRegister(None),
             Command::SetRegister(Some('a')),
             Command::SetRegister(Some('Z')),
-            Command::EnterVisual { line: false },
-            Command::EnterVisual { line: true },
-            Command::EnterSelect { line: false },
-            Command::EnterSelect { line: true },
+            Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            },
+            Command::EnterVisual {
+                kind: SelectKind::Linewise,
+            },
+            Command::EnterVisual {
+                kind: SelectKind::Blockwise,
+            },
+            Command::EnterSelect {
+                kind: SelectKind::Charwise,
+            },
+            Command::EnterSelect {
+                kind: SelectKind::Linewise,
+            },
+            Command::EnterSelect {
+                kind: SelectKind::Blockwise,
+            },
             Command::DeleteSelection,
             Command::YankSelection,
             Command::ChangeSelection,
