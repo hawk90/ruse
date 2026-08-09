@@ -2649,6 +2649,196 @@
       }
     },
     {
+      "name": "block_delete_2x2",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "<C-v>ljd",
+      "expect": {
+        "text": [
+          "c",
+          "f",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\nde",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_delete_1col_3rows",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "<C-v>jjd",
+      "expect": {
+        "text": [
+          "bc",
+          "ef",
+          "hi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nd\ng",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_yank_paste_before",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "<C-v>ljyP",
+      "expect": {
+        "text": [
+          "ababc",
+          "dedef",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\nde",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "ab\nde",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "block_yank_paste_after_1col",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "<C-v>jyp",
+      "expect": {
+        "text": [
+          "aabc",
+          "ddef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\nd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "a\nd",
+          "type": "blockwise"
+        }
+      }
+    },
+    {
+      "name": "forced_d_ctrl_v_j_blockwise",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "d<C-v>j",
+      "expect": {
+        "text": [
+          "bc",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_ragged_short_line",
+      "lines": [
+        "abcd",
+        "x",
+        "efgh"
+      ],
+      "keys": "l<C-v>lljjd",
+      "expect": {
+        "text": [
+          "a",
+          "x",
+          "e"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bcd\n\nfgh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_change_col_single_row_probe",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "<C-v>jcX<Esc>",
+      "expect": {
+        "text": [
+          "Xbc",
+          "Xef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "replace_basic_overwrite",
       "lines": [
         "hello"

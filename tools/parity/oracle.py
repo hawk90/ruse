@@ -343,8 +343,8 @@ FIXTURES: list[dict] = [
     {"name": "mode_viwy_open_paste", "lines": ["hello"], "keys": "viwyo<Esc>p"},
     {"name": "mode_vjd_then_paste", "lines": ["abc", "def"], "keys": "vjdp"},
     {"name": "mode_append_then_insert_bol", "lines": ["mid"], "keys": "A!<Esc>0i?<Esc>"},
-    #     FORCED MOTION WISE (o_v / o_V): force charwise on a linewise motion, force linewise on a charwise
-    #     motion, and toggle a charwise motion's exclusive/inclusive edge. CTRL-V (blockwise) is deferred. --
+    #     FORCED MOTION WISE (o_v / o_V / o_CTRL-V): force charwise on a linewise motion, force linewise on
+    #     a charwise motion, toggle a charwise motion's exclusive/inclusive edge, and force blockwise. ------
     {"name": "forced_dvj_charwise", "lines": ["hello", "world"], "keys": "dvj"},
     {"name": "forced_dvk_charwise", "lines": ["hello", "world"], "keys": "jdvk"},
     {"name": "forced_dVe_linewise", "lines": ["hello world"], "keys": "dVe"},
@@ -354,6 +354,23 @@ FIXTURES: list[dict] = [
     {"name": "forced_dv_dollar_toggle", "lines": ["hello world"], "keys": "dv$"},
     {"name": "forced_dV_paragraph", "lines": ["one", "two", "", "three"], "keys": "dV}"},
     {"name": "forced_yvj_then_paste", "lines": ["hello", "world"], "keys": "yvjP"},
+    #     BLOCKWISE VISUAL (CTRL-V) — F-025/F-029/F-023 slice 1: a column-aligned rectangle. Yank/delete
+    #     capture per-row slices into a blockwise register; `p`/`P` drop the block back as a rectangle; the
+    #     operator-pending `CTRL-V` forces a blockwise operator (`d<C-v>j`). Byte/char columns (ASCII here).
+    {"name": "block_delete_2x2", "lines": ["abc", "def", "ghi"], "keys": "<C-v>ljd"},
+    {"name": "block_delete_1col_3rows", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjd"},
+    {"name": "block_yank_paste_before", "lines": ["abc", "def", "ghi"], "keys": "<C-v>ljyP"},
+    {"name": "block_yank_paste_after_1col", "lines": ["abc", "def"], "keys": "<C-v>jyp"},
+    {"name": "forced_d_ctrl_v_j_blockwise", "lines": ["abc", "def"], "keys": "d<C-v>j"},
+    # PROBE — blockwise over a SHORT interior line. Vim preserves the desired column (curswant) across the
+    # short line so the block stays full-width; ruse recomputes the cursor column from each line's actual
+    # length, so navigating down THROUGH a short line collapses the block's right edge. Same curswant family
+    # as the i_CTRL-O append-column gap — a named follow-up.
+    {"name": "block_ragged_short_line", "lines": ["abcd", "x", "efgh"], "keys": "l<C-v>lljjd"},
+    # PROBE — block CHANGE replicate. Vim's `c`/`I`/`A` in blockwise type on the top row and REPLICATE the
+    # typed text down every row on <Esc>; ruse ships the single-row partial (delete the column on all rows,
+    # insert on the top row only). Block insert-replicate is deferred to blockwise slice 2.
+    {"name": "block_change_col_single_row_probe", "lines": ["abc", "def"], "keys": "<C-v>jcX<Esc>"},
     #     REPLACE MODE (R): overwrite policy + <BS> restores the overwritten char / deletes an appended one.
     {"name": "replace_basic_overwrite", "lines": ["hello"], "keys": "Rxy<Esc>"},
     {"name": "replace_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"},

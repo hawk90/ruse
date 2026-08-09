@@ -141,6 +141,8 @@ fn reg_shape(r: &ruse_core::Register) -> (String, String) {
         ""
     } else if r.is_linewise() {
         "linewise"
+    } else if r.is_blockwise() {
+        "blockwise"
     } else {
         "charwise"
     };
