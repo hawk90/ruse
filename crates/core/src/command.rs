@@ -55,6 +55,17 @@ pub enum SelectKind {
     Blockwise,
 }
 
+/// A blockwise-Visual insert command: type on the block's top row, then REPLICATE the typed text down
+/// every row of the block on `<Esc>`. `Insert` (`I`) inserts at the block's left edge; `Append` (`A`)
+/// appends at the right edge (padding short lines); `Change` (`c`/`s`) deletes the block first, then
+/// inserts at the left edge.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BlockInsertKind {
+    Insert,
+    Append,
+    Change,
+}
+
 /// A semantic command — the granularity a trace records. Beyond single motions/edits it carries the editing
 /// grammar: a counted move, and the `delete`/`change` operators over a motion range (`dw`, `d2w`, `cc`).
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -158,6 +169,9 @@ pub enum Command {
     /// Select's `open/replace-selection` policy: a printable key deletes the selection, inserts the char,
     /// and enters Insert. The one behaviour that distinguishes Select from Visual over identical state.
     ReplaceSelection(char),
+    /// Blockwise Visual `I`/`A`/`c`: enter Insert on the block's top row, arming a replicate session — on
+    /// `<Esc>` the text typed on the top row is inserted at the same column on every other row of the block.
+    BlockInsert(BlockInsertKind),
     // search (literal substring for v0; the pattern is carried so traces replay deterministically)
     SearchNext(String),
     SearchPrev(String),
@@ -449,6 +463,11 @@ impl Command {
                 let _ = write!(s, "{}", *c as u32);
                 s
             }
+            Command::BlockInsert(kind) => match kind {
+                BlockInsertKind::Insert => "block_insert".into(),
+                BlockInsertKind::Append => "block_append".into(),
+                BlockInsertKind::Change => "block_change".into(),
+            },
             Command::SearchNext(p) => format!("search_next {p}"),
             Command::SearchPrev(p) => format!("search_prev {p}"),
             // Pattern LAST so it may contain spaces (parsed as the untrimmed remainder, like search_next).
@@ -639,6 +658,9 @@ impl Command {
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::ReplaceSelection(c)
             }
+            "block_insert" => Command::BlockInsert(BlockInsertKind::Insert),
+            "block_append" => Command::BlockInsert(BlockInsertKind::Append),
+            "block_change" => Command::BlockInsert(BlockInsertKind::Change),
             "search_next" => Command::SearchNext(raw.to_string()),
             "search_prev" => Command::SearchPrev(raw.to_string()),
             "search" => {
@@ -862,6 +884,9 @@ mod tests {
             Command::ReplaceSelection('z'),
             Command::ReplaceSelection('가'),
             Command::ReplaceSelection('🎉'),
+            Command::BlockInsert(BlockInsertKind::Insert),
+            Command::BlockInsert(BlockInsertKind::Append),
+            Command::BlockInsert(BlockInsertKind::Change),
             Command::SearchNext("foo bar".into()),
             Command::SearchPrev("x".into()),
             Command::Search {
