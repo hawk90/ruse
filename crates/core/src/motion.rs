@@ -581,6 +581,31 @@ fn down(b: &[u8], cur: usize) -> usize {
     }
 }
 
+/// Vertical motion (`j`/`k`) that honours a STICKY desired column (`want`, Vim `curswant`) instead of the
+/// cursor's current column, so moving through a shorter interior line does not collapse the column: `want`
+/// is clamped to each line's length by [`at_col`] but never forgotten. `want == usize::MAX` (set by `$`)
+/// rides each line's end. `down` picks the direction; `count` repeats. Char columns, like the rest of the
+/// motion model (tab/wide-char virtual columns are a documented follow-up).
+pub(crate) fn vmove(b: &[u8], cursor: usize, count: u32, down: bool, want: usize) -> usize {
+    let mut c = cursor.min(b.len());
+    for _ in 0..count.max(1) {
+        if down {
+            let le = line_end(b, c);
+            if le >= b.len() {
+                break;
+            }
+            c = at_col(b, le + 1, want);
+        } else {
+            let ls = line_start(b, c);
+            if ls == 0 {
+                break;
+            }
+            c = at_col(b, line_start(b, ls - 1), want);
+        }
+    }
+    c
+}
+
 /// The bare-move landing for a char-search (`f`/`F`/`t`/`T`), or `None` if the `count`-th match does not
 /// exist on the current line. `f`/`F` land on the char; `t`/`T` land one boundary short of it. Search is
 /// confined to the current line (Vim never crosses a newline for these).
