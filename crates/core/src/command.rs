@@ -94,8 +94,15 @@ pub enum Command {
     /// A printable key typed in Replace mode: overwrite the char under the cursor (or append at EOL).
     ReplaceType(char),
     /// `<BS>` in Replace mode: restore the last overwritten char (or delete the last appended one),
-    /// moving the cursor back; at the session start it only moves the cursor left.
+    /// moving the cursor back; at the session start it only moves the cursor left. Shared by Virtual Replace.
     ReplaceBackspace,
+    /// `gR` — enter Virtual Replace mode (overwrite policy, tab-aware): like Replace but a `<Tab>` under the
+    /// cursor is consumed one virtual column at a time rather than as a whole char.
+    EnterVirtualReplace,
+    /// A printable key typed in Virtual Replace mode (`gR`): overwrite the char under the cursor, but when
+    /// that char is a `<Tab>` insert BEFORE it (shrinking the tab) until its last virtual column, then
+    /// replace it; append at end-of-line. `<BS>` uses [`Command::ReplaceBackspace`].
+    VirtualReplaceType(char),
     // edit
     InsertChar(char),
     InsertNewline,
@@ -403,6 +410,8 @@ impl Command {
             Command::EnterReplace => "enter_replace".into(),
             Command::ReplaceType(c) => format!("replace_type {}", *c as u32),
             Command::ReplaceBackspace => "replace_backspace".into(),
+            Command::EnterVirtualReplace => "enter_virtual_replace".into(),
+            Command::VirtualReplaceType(c) => format!("virtual_replace_type {}", *c as u32),
             Command::InsertChar(c) => {
                 let mut s = String::from("insert_char ");
                 let _ = write!(s, "{}", *c as u32);
@@ -517,6 +526,15 @@ impl Command {
                 Command::ReplaceType(c)
             }
             "replace_backspace" => Command::ReplaceBackspace,
+            "enter_virtual_replace" => Command::EnterVirtualReplace,
+            "virtual_replace_type" => {
+                let cp: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::VirtualReplaceType(c)
+            }
             "insert_char" => {
                 let cp: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -710,6 +728,9 @@ mod tests {
             Command::ReplaceType('z'),
             Command::ReplaceType('가'),
             Command::ReplaceBackspace,
+            Command::EnterVirtualReplace,
+            Command::VirtualReplaceType('z'),
+            Command::VirtualReplaceType('가'),
             Command::InsertChar('h'),
             Command::ReplaceChar(1, 'z'),
             Command::ReplaceChar(3, 'z'),

@@ -145,6 +145,26 @@ pub(crate) fn at_col(b: &[u8], start: usize, col: usize) -> usize {
     i.min(end)
 }
 
+/// The VIRTUAL (display) column of `pos` on its line, where a `<Tab>` advances to the next multiple of
+/// `tabstop` and every other char is one column. `start` is the line start. Used by Virtual Replace (`gR`)
+/// to size a tab's on-screen width; distinct from [`col_of`], which counts characters. `tabstop` is clamped
+/// to at least 1.
+pub(crate) fn vcol_of(b: &[u8], start: usize, pos: usize, tabstop: usize) -> usize {
+    let ts = tabstop.max(1);
+    let mut v = 0;
+    let mut i = start;
+    while i < pos.min(b.len()) {
+        if b[i] == b'\t' {
+            v += ts - (v % ts);
+            i += 1;
+        } else {
+            v += 1;
+            i = next_boundary(b, i);
+        }
+    }
+    v
+}
+
 fn is_ws(c: u8) -> bool {
     c == b' ' || c == b'\t' || c == b'\n'
 }

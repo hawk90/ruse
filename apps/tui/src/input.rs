@@ -670,6 +670,17 @@ impl InputEngine {
                 _ => Feed::Ignored,
             };
         }
+        // Virtual Replace mode (`gR`): same policy as Replace but the type key is tab-aware; `<BS>` shares
+        // the Replace restore stack.
+        if mode == Mode::VirtualReplace {
+            return match key.code {
+                KeyCode::Esc => self.action(Command::EnterNormal),
+                KeyCode::Backspace => self.action(Command::ReplaceBackspace),
+                KeyCode::Enter => self.action(Command::InsertNewline),
+                KeyCode::Char(c) => self.action(Command::VirtualReplaceType(c)),
+                _ => Feed::Ignored,
+            };
+        }
         // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
         match self.awaiting {
             Awaiting::FindTarget { forward, till } => {
@@ -703,6 +714,8 @@ impl InputEngine {
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
+                    // `gR` — enter Virtual Replace mode (tab-aware overwrite).
+                    KeyCode::Char('R') => self.action(Command::EnterVirtualReplace),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),
