@@ -15,3 +15,11 @@ backlog:
   - { id: TERM-MOUSE-2,  feature: F-010, reason: "focus reporting (mode 1004) — neovim SETS it but never DA1-queries it, so it is absent from the TermMode probe enum" }
   - { id: TERM-GFX-4,    feature: F-010, reason: "pixel<->cell sizing (CSI 14 t / CSI 16 t) — a window-op query, not a DEC private mode; low priority" }
   - { id: TERM-OSC52-1,  feature: F-010, reason: "clipboard write over OSC 52 — a runtime clipboard provider concern (runtime/lua in neovim), not a TUI capability probe" }
+  # F-008 file/persistence facts with no census SURFACE (#93, D-043). Durable-atomic-save + recovery
+  # journal are ruse persistence ARCHITECTURE (C-PERSIST, docs/design/persistence-and-recovery.md);
+  # no editor source tree enumerates them as a table. Burn down via a persistence census surface or a
+  # ruse-choice PILLAR. Encoding/line-endings is separately covered by config editor.line_endings (D-042).
+  - { id: COM-1,  feature: F-008, reason: "open/save/reload files — a cross-editor capability, not an enumerable census surface; the save ENGINE is ruse architecture, the :w/:e command grammar is F-026/ex_command" }
+  - { id: COM-9,  feature: F-008, reason: "session recovery (Adapted) — ruse's append-only recovery journal is an ADAPTATION with no upstream denominator" }
+  - { id: COM-12, feature: F-008, reason: "large files (Adapted) — a performance/behaviour policy, not a tabulated upstream fact" }
+  - { id: COM-13, feature: F-008, reason: "encoding / line-endings — the CAPABILITY derives via config editor.line_endings (D-042 <- nvim.opt.fileformat/fileencoding); the legacy row is tracked until that config->census link is made explicit" }
