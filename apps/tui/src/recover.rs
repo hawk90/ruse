@@ -34,29 +34,17 @@ pub fn update(path: Option<&PathBuf>, bytes: &[u8], modified: bool) {
     }
 }
 
-/// The recovery-file path for a document path (or `.ruse-recovered` for an unnamed buffer).
-#[must_use]
-pub fn recovery_path(path: Option<&Path>) -> PathBuf {
-    match path {
-        Some(p) => {
-            let mut s = p.as_os_str().to_os_string();
-            s.push(".ruse-recovered");
-            PathBuf::from(s)
-        }
-        None => PathBuf::from(".ruse-recovered"),
-    }
-}
-
-/// The recovery decision for one snapshot: write only when the buffer is modified, and report the outcome so
-/// the panic hook can log a structured event. Pure w.r.t. control flow (only touches the recovery file), so
-/// it is unit-testable without installing a global hook or actually panicking.
+/// The recovery decision for one snapshot: append a journal frame only when the buffer is modified,
+/// and report the outcome so the panic hook can log a structured event. Appends to the same
+/// append-only journal (`crate::persist::journal`, F-008) the main loop throttles into, so a panic
+/// captures the EXACT latest buffer as one more recoverable record. Pure w.r.t. control flow (only
+/// touches the journal file), so it is unit-testable without installing a global hook or panicking.
 fn recover_write(path: Option<&Path>, bytes: &[u8], modified: bool) -> Recovery {
     if !modified {
         return Recovery::Clean;
     }
-    let rp = recovery_path(path);
-    match std::fs::write(&rp, bytes) {
-        Ok(()) => Recovery::Written(rp),
+    match crate::persist::journal::append(path, bytes) {
+        Ok(()) => Recovery::Written(crate::persist::journal::journal_path(path)),
         Err(e) => Recovery::Failed(e.to_string()),
     }
 }
@@ -104,11 +92,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recovery_path_appends_suffix() {
+    fn clean_buffer_appends_nothing() {
+        // An unmodified buffer must not write a recovery frame at all.
+        assert!(matches!(recover_write(None, b"x", false), Recovery::Clean));
+    }
+
+    #[test]
+    fn modified_buffer_appends_a_replayable_frame() {
+        let dir = std::env::temp_dir().join(format!("ruse-recover-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("note.txt");
+        let _ = std::fs::remove_file(crate::persist::journal::journal_path(Some(&doc)));
+        match recover_write(Some(&doc), b"unsaved work", true) {
+            Recovery::Written(_) => {}
+            other => panic!("expected Written, got {other:?}"),
+        }
         assert_eq!(
-            recovery_path(Some(Path::new("/tmp/a.rs"))),
-            PathBuf::from("/tmp/a.rs.ruse-recovered")
+            crate::persist::journal::replay(Some(&doc)).as_deref(),
+            Some(&b"unsaved work"[..])
         );
-        assert_eq!(recovery_path(None), PathBuf::from(".ruse-recovered"));
     }
 }
