@@ -539,6 +539,13 @@ pub struct Workspace {
 }
 ```
 
+<!-- design-code-ack: Workspace — the illustration above is the FULL C-WORKSPACE design; the code
+     (crates/core/src/workspace.rs) is the F-007 MVP slice, which deliberately implements only
+     { documents, views, windows, split, focus } and defers buffer_list / tabs / overlays / roots /
+     services / settings / session / health to post-MVP (see "MVP slice — F-007 minimal" below). The
+     design is ahead of the code by intent, not stale — reconcile as the slice grows. -->
+
+
 #### 8.1 Buffer list: listed / unlisted / hidden (VIM-WIN, EMACS-BUFFER)
 
 ```rust

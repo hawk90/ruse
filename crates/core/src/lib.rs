@@ -34,6 +34,7 @@ pub mod snapshot;
 pub mod trace;
 pub mod transaction;
 pub mod undo;
+pub mod workspace;
 
 pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
 pub use command::{
@@ -41,7 +42,7 @@ pub use command::{
 };
 pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
-pub use editor::{apply_command, commit, plan, EditorState, IndentStyle, Mode, Plan};
+pub use editor::{apply_command, commit, plan, EditorState, IndentStyle, Mode, Plan, View};
 pub use effect::Effect;
 pub use motion::Motion;
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};
@@ -50,6 +51,7 @@ pub use snapshot::{AnchorIndex, DocumentSnapshot};
 pub use trace::{doc_hash, Trace, TraceError, TRACE_FORMAT_VERSION};
 pub use transaction::{GroupHint, Transaction, TransactionOrigin};
 pub use undo::{MonotonicSeq, UndoHistory};
+pub use workspace::{Pane, SplitDir, ViewId, Window, Workspace};
 
 /// Reject a transaction whose base revision is stale (INV-TXN, ENG-TXN-001). Retained as the kernel's
 /// smallest invariant check; [`Document::apply`] enforces it as part of atomic apply.

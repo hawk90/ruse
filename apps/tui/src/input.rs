@@ -1178,6 +1178,12 @@ pub enum Ex {
     Quit,
     SaveQuit,
     SaveTrace(String),
+    /// `:split`/`:sp` — split the focused window horizontally onto the same buffer (F-007).
+    Split,
+    /// `:vsplit`/`:vs` — split the focused window vertically onto the same buffer (F-007).
+    VSplit,
+    /// `:close`/`:clo` — close the focused window (keeps the shared buffer while another holds it).
+    Close,
     Unknown(String),
 }
 
@@ -1189,6 +1195,9 @@ pub fn parse_ex(line: &str) -> Ex {
         "w" => Ex::Save,
         "q" | "q!" => Ex::Quit,
         "wq" | "x" => Ex::SaveQuit,
+        "split" | "sp" => Ex::Split,
+        "vsplit" | "vsp" | "vs" => Ex::VSplit,
+        "close" | "clo" => Ex::Close,
         _ => match line.strip_prefix("trace save") {
             Some(rest) => Ex::SaveTrace(rest.trim().to_string()),
             None => Ex::Unknown(line.to_string()),
