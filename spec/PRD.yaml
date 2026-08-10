@@ -370,7 +370,18 @@ features:
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only recovery journal.
     trace:
-      parity: [COM-1, COM-9, COM-13, VIM-STATE-1, COM-12]
+      # Census-N/A (#93, D-043). F-008 is ruse PERSISTENCE ARCHITECTURE (C-PERSIST), not an
+      # enumerable upstream surface: no editor's source tree TABULATES "atomic write / fsync
+      # durability / append-only recovery journal / truncation tolerance" — these are behaviours,
+      # designed in ../docs/design/persistence-and-recovery.md, not a censusable fact. The one
+      # census-derivable concern, encoding/line-endings, flows through the D-042 CONFIG path
+      # (config editor.line_endings, below), not trace.parity. The five hand-authored ids this once
+      # cited are cross-editor "all editors do files" assertions with no single census surface, now
+      # tracked in spec/parity-backlog.yaml (COM-1 open/save/reload, COM-9 recovery [Adapted],
+      # COM-12 large files [Adapted], COM-13 encoding/line-endings) — burn down when a persistence
+      # census surface or a ruse-choice PILLAR is written. VIM-STATE-1 (viminfo/session
+      # statefulness) is a vim.md prose bullet, never a catalog row — demoted to this annotation.
+      parity: []
       design: [../docs/design/persistence-and-recovery.md]
       verify: [../tests/fault-injection/truncated-journal, ../tests/unit/save-atomic]
     acceptance:
