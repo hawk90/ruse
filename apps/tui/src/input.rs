@@ -408,18 +408,52 @@ enum Awaiting {
     ShiftSecond { right: bool },
 }
 
-/// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
-/// and the one-shot `awaiting` key-expectation — plus sticky repeat state. `feed` resolves them in a fixed
-/// precedence (mode → awaiting tier → base keys), so the hierarchy is explicit, not encoded in field order.
-pub struct InputEngine {
-    /// The active profile's layers. Built once — resolution must not allocate per keystroke.
-    profile: VimProfile,
+/// The Normal-grammar layer's OWNED state (KL-OBL-4): the three orthogonal transient axes of the
+/// Normal / Visual / Select / Operator-pending family, which share one grammar. It is a field of the
+/// engine, but it BELONGS to that layer family — it is dropped (`NormalState::default()`) the instant
+/// the active namespace leaves the family (into Insert / Replace / Cmdline / Terminal), so the count
+/// or armed operator can never survive into another layer. The engine no longer reaches in to reset
+/// individual axes on a mode change; the layer's state dies with the layer.
+#[derive(Default)]
+struct NormalState {
     /// Count axis: the accumulating numeric prefix for the next motion/operator.
     count: u32,
     /// Operator axis: an armed operator awaiting its motion (`None` = none).
     op: Option<OpPending>,
     /// Key-expectation axis: what the next key must supply (the top-priority resolution tier).
     awaiting: Awaiting,
+    /// A forced motion wise armed by `v`/`V` after an operator (Vim `o_v`/`o_V`): the NEXT motion
+    /// resolves into a [`Command::OpForced`] instead of a plain operator command. `None` unless
+    /// mid-`dv…`/`dV…`.
+    forced_wise: Option<ForcedWise>,
+}
+
+/// The Insert layer's OWNED transient state (KL-OBL-4): the two one-key expectations local to Insert.
+/// Dropped (`InsertState::default()`) when the active namespace is not Insert — the layer's state dies
+/// with the layer, rather than the engine clearing named booleans on every foreign key.
+#[derive(Default)]
+struct InsertState {
+    /// Insert-mode `CTRL-O`: run exactly ONE Normal-mode command, then return to Insert (Vim
+    /// `i_CTRL-O`). While set, `feed` routes keys through the Normal grammar instead of the Insert
+    /// layer; the completed command clears it. The core needs no help — every Normal editing/motion
+    /// command inherits `st.mode` (Insert) and the Normal-only cursor clamp is gated on Normal mode, so
+    /// the command applies correctly and the buffer stays in Insert on its own. (KL-OBL-5 will make
+    /// this a return-ADDRESS on an activation stack rather than a bare flag.)
+    one_shot: bool,
+    /// Insert-mode `CTRL-G` prefix: the next key is expected to be `u` (undo-break,
+    /// [`Command::BreakUndo`]). A one-key expectation local to Insert; any other second key aborts it.
+    ctrl_g: bool,
+}
+
+/// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
+/// and the one-shot `awaiting` key-expectation — plus sticky repeat state. `feed` resolves them in a fixed
+/// precedence (mode → awaiting tier → base keys), so the hierarchy is explicit, not encoded in field order.
+pub struct InputEngine {
+    /// The active profile's layers. Built once — resolution must not allocate per keystroke.
+    profile: VimProfile,
+    /// The Normal-family grammar layer's owned transient state (count / operator / awaiting / forced
+    /// wise). Dropped when the family deactivates — KL-OBL-4.
+    normal: NormalState,
     /// Sticky (survives command completion): the last char-search `(ch, forward, till)`, for `;`/`,`.
     last_find: Option<(char, bool, bool)>,
     /// Sticky: the last search pattern, for `n`/`N`.
@@ -437,18 +471,9 @@ pub struct InputEngine {
     /// so `submit_search` can fold them into the finished command (`d/pat`, `2/pat`). `/` captures this
     /// BEFORE `reset()` wipes the axes; `None` between searches. See [`InputEngine::submit_search`].
     pending_search: Option<(SearchOp, u32)>,
-    /// A forced motion wise armed by `v`/`V` after an operator (Vim `o_v`/`o_V`): the NEXT motion resolves
-    /// into a [`Command::OpForced`] instead of a plain operator command. `None` unless mid-`dv…`/`dV…`.
-    forced_wise: Option<ForcedWise>,
-    /// Insert-mode `CTRL-O`: run exactly ONE Normal-mode command, then return to Insert (Vim `i_CTRL-O`).
-    /// While set, `feed` routes keys through the Normal grammar instead of the Insert layer; a completed
-    /// command clears it (via `reset`), so subsequent keys are Insert again. The core needs no help — every
-    /// Normal editing/motion command inherits `st.mode` (Insert) and the Normal-only cursor clamp is gated
-    /// on Normal mode, so the command applies correctly and the buffer stays in Insert on its own.
-    insert_one_shot: bool,
-    /// Insert-mode `CTRL-G` prefix: the next key is expected to be `u` (undo-break, [`Command::BreakUndo`]).
-    /// A one-key expectation local to Insert; any other second key aborts the prefix (Vim beeps).
-    insert_ctrl_g: bool,
+    /// The Insert layer's owned transient state (`CTRL-O` one-shot, `CTRL-G` prefix). Dropped when the
+    /// active namespace is not Insert — KL-OBL-4.
+    insert: InsertState,
     /// The command-line namespace (F-026): while `Some`, keys are routed into its owned line buffer
     /// rather than the Normal grammar. `None` = not on the command line. This is the engine owning the
     /// line, not an ad-hoc text buffer on the UI (anti-pattern command-line P2).
@@ -475,18 +500,14 @@ impl InputEngine {
     pub fn new() -> InputEngine {
         InputEngine {
             profile: VimProfile::new(),
-            count: 0,
-            op: None,
-            awaiting: Awaiting::Nothing,
+            normal: NormalState::default(),
             last_find: None,
             last_search: None,
             last_change: None,
             recording: None,
             pending_record_register: None,
             pending_search: None,
-            forced_wise: None,
-            insert_one_shot: false,
-            insert_ctrl_g: false,
+            insert: InsertState::default(),
             cmdline: None,
         }
     }
@@ -624,30 +645,30 @@ impl InputEngine {
         Feed::Cmd(Command::Search { op, count, pattern })
     }
 
-    /// Clear the transient command state (count, operator, key-expectation). Sticky repeat state survives.
-    /// Every non-`Pending` outcome runs through here, so no partial sequence ever leaks into the next command.
+    /// End the current Normal-grammar sequence: the Normal-family layer drops its OWN transient state
+    /// (count / operator / awaiting / forced-wise) at a command boundary. This is the layer resetting
+    /// itself, not the engine reaching into a foreign layer (KL-OBL-4) — sticky repeat state survives.
+    /// Every non-`Pending` outcome runs through here, so no partial sequence leaks into the next command.
     fn reset(&mut self) {
-        self.count = 0;
-        self.op = None;
-        self.awaiting = Awaiting::Nothing;
-        self.forced_wise = None;
+        self.normal = NormalState::default();
         // A `CTRL-O` one-shot is consumed the instant its single Normal command completes (every
-        // completion runs through here), returning the engine to plain Insert routing.
-        self.insert_one_shot = false;
+        // completion runs through here), returning the engine to plain Insert routing. PR-3 (KL-OBL-5)
+        // replaces this flag with a return address popped off the activation stack.
+        self.insert.one_shot = false;
     }
 
     fn mcount(&self) -> u32 {
-        self.count.max(1)
+        self.normal.count.max(1)
     }
 
     /// Emit `m` — an operator command if one is armed, else a bare move — then clear the transient state.
     fn motion(&mut self, m: Motion) -> Feed {
-        let cmd = match self.op {
+        let cmd = match self.normal.op {
             Some(OpPending { op, count }) => {
                 let total = count.max(1) * self.mcount();
                 // A forced wise (`dvj`/`dVe`) resolves into `OpForced`; the `cw`->`ce` rewrite is a plain-
                 // change nicety that does not apply to the (rare) forced-change form.
-                if let Some(wise) = self.forced_wise {
+                if let Some(wise) = self.normal.forced_wise {
                     let opk = match op {
                         Op::Delete => OpKind::Delete,
                         Op::Change => OpKind::Change,
@@ -689,18 +710,18 @@ impl InputEngine {
     /// Arm an operator, or emit its linewise form when doubled (`dd`/`cc`/`yy`). `linewise` builds the
     /// linewise command from the operator's count.
     fn operator(&mut self, op: Op, linewise: fn(u32, Motion) -> Command) -> Feed {
-        if let Some(OpPending { op: armed, count }) = self.op {
+        if let Some(OpPending { op: armed, count }) = self.normal.op {
             if armed == op {
                 let n = count.max(1);
                 self.reset();
                 return Feed::Cmd(linewise(n, Motion::Line));
             }
         }
-        self.op = Some(OpPending {
+        self.normal.op = Some(OpPending {
             op,
             count: self.mcount(),
         });
-        self.count = 0;
+        self.normal.count = 0;
         Feed::Pending
     }
 
@@ -764,13 +785,24 @@ impl InputEngine {
 
     /// Feed one key given the current mode.
     fn feed_impl(&mut self, key: KeyEvent, mode: Mode) -> Feed {
-        // The `CTRL-O` one-shot and the `CTRL-G` prefix are Insert-only transient state, armed and consumed
-        // between two consecutive Insert keys. Real flows keep the mode in Insert across them; a key that
-        // arrives in any other mode means the insert context is gone, so the flags are stale — drop them so
-        // they can never leak into a Normal/Visual command.
+        // KL-OBL-4: a layer's owned state is destroyed when the layer deactivates — the engine does not
+        // reach in to reset foreign fields.
+        //
+        // The Insert layer owns the `CTRL-O` one-shot and the `CTRL-G` prefix; they die the moment the
+        // active namespace is not Insert (a key in any other mode means the insert context is gone).
         if mode != Mode::Insert {
-            self.insert_one_shot = false;
-            self.insert_ctrl_g = false;
+            self.insert = InsertState::default();
+        }
+        // The Normal-family grammar layer (Normal / Visual / Select, with operator-pending as its
+        // sub-state) owns count / operator / awaiting / forced-wise. They die when neither the family
+        // nor an `i_CTRL-O` one-shot — which runs a single Normal command from WITHIN Insert, so the
+        // family is momentarily active there — is in effect.
+        let normal_family = matches!(
+            mode,
+            Mode::Normal | Mode::Visual { .. } | Mode::Select { .. }
+        );
+        if !normal_family && !self.insert.one_shot {
+            self.normal = NormalState::default();
         }
         // Insert resolves through its LAYER, not through an early return ahead of everything else.
         // The bindings and the `open/insert` policy both live in `VimProfile`, so the namespace is
@@ -780,13 +812,13 @@ impl InputEngine {
         // command, then fall through to the Normal grammar for the rest of this and following keys until it
         // completes) and `CTRL-G u` (undo-break). A `CTRL-O` already in flight (`insert_one_shot`) skips the
         // insert branch entirely so the pending Normal command keeps resolving.
-        if mode == Mode::Insert && !self.insert_one_shot {
+        if mode == Mode::Insert && !self.insert.one_shot {
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             // `CTRL-G` prefix: consume the second key. `u` (or `U`) breaks the undo group; anything else
             // aborts the prefix without inserting (Vim beeps). Checked before the layer so the printable
             // path never sees the prefixed key.
-            if self.insert_ctrl_g {
-                self.insert_ctrl_g = false;
+            if self.insert.ctrl_g {
+                self.insert.ctrl_g = false;
                 return match key.code {
                     // `action` clears the transient axes (like every other completed key), so no partial
                     // Normal state can survive an Insert key.
@@ -802,12 +834,12 @@ impl InputEngine {
                 // `reset()` disarms it and Insert routing resumes. Core mode stays Insert throughout.
                 // Reset first so the one-shot begins from a clean count/operator/awaiting state.
                 self.reset();
-                self.insert_one_shot = true;
+                self.insert.one_shot = true;
                 return Feed::Pending;
             }
             if ctrl && key.code == KeyCode::Char('g') {
                 self.reset();
-                self.insert_ctrl_g = true;
+                self.insert.ctrl_g = true;
                 return Feed::Pending;
             }
             if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code)
@@ -851,9 +883,9 @@ impl InputEngine {
             };
         }
         // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
-        match self.awaiting {
+        match self.normal.awaiting {
             Awaiting::FindTarget { forward, till } => {
-                self.awaiting = Awaiting::Nothing;
+                self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
                     KeyCode::Char(ch) => {
                         self.last_find = Some((ch, forward, till));
@@ -865,7 +897,7 @@ impl InputEngine {
                 };
             }
             Awaiting::TextObjectChar { inner } => {
-                self.awaiting = Awaiting::Nothing;
+                self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
                     // Under an operator this composes (`diw`/`da(`/`ci"`); in a selection `self.motion`
                     // emits a bare `Move` whose text-object shape the core turns into a selection (`viw`).
@@ -878,7 +910,7 @@ impl InputEngine {
                 };
             }
             Awaiting::GSecond => {
-                self.awaiting = Awaiting::Nothing;
+                self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
@@ -900,7 +932,7 @@ impl InputEngine {
                 };
             }
             Awaiting::ReplaceChar => {
-                self.awaiting = Awaiting::Nothing;
+                self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
                     // The count accumulated before `r` is still live (the `r` arm did not reset it).
                     KeyCode::Char(c) => self.action(Command::ReplaceChar(self.mcount(), c)),
@@ -910,7 +942,7 @@ impl InputEngine {
                 };
             }
             Awaiting::RegisterSelect => {
-                self.awaiting = Awaiting::Nothing;
+                self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
                     // A register name (`a`–`z` / `A`–`Z`, or the yank register `0`): emit `SetRegister` for
                     // the core to hold as the pending register the next yank/delete/change/paste reads.
@@ -926,7 +958,7 @@ impl InputEngine {
                 };
             }
             Awaiting::ShiftSecond { right } => {
-                self.awaiting = Awaiting::Nothing;
+                self.normal.awaiting = Awaiting::Nothing;
                 // The count accumulated before the first `>`/`<` is still live and becomes the line count.
                 return match key.code {
                     KeyCode::Char('>') if right => self.action(Command::ShiftRight(self.mcount())),
@@ -956,28 +988,28 @@ impl InputEngine {
         // returned for the pending cases — so a text object in flight can never be hijacked by `f`/`t`. ---
         match key.code {
             KeyCode::Char('f') => {
-                self.awaiting = Awaiting::FindTarget {
+                self.normal.awaiting = Awaiting::FindTarget {
                     forward: true,
                     till: false,
                 };
                 return Feed::Pending;
             }
             KeyCode::Char('F') => {
-                self.awaiting = Awaiting::FindTarget {
+                self.normal.awaiting = Awaiting::FindTarget {
                     forward: false,
                     till: false,
                 };
                 return Feed::Pending;
             }
             KeyCode::Char('t') => {
-                self.awaiting = Awaiting::FindTarget {
+                self.normal.awaiting = Awaiting::FindTarget {
                     forward: true,
                     till: true,
                 };
                 return Feed::Pending;
             }
             KeyCode::Char('T') => {
-                self.awaiting = Awaiting::FindTarget {
+                self.normal.awaiting = Awaiting::FindTarget {
                     forward: false,
                     till: true,
                 };
@@ -1000,11 +1032,11 @@ impl InputEngine {
             }
             // Line jumps: `g` arms `gg`; `G` jumps to `{count}` (or the last line when no count).
             KeyCode::Char('g') => {
-                self.awaiting = Awaiting::GSecond;
+                self.normal.awaiting = Awaiting::GSecond;
                 return Feed::Pending;
             }
             KeyCode::Char('G') => {
-                return if self.count > 0 {
+                return if self.normal.count > 0 {
                     self.motion(Motion::GotoLine)
                 } else {
                     self.motion(Motion::LastLine)
@@ -1015,7 +1047,7 @@ impl InputEngine {
             // count typed after it still lands (`"a3yy`). The next key is the register name (see the
             // `RegisterSelect` tier above). Shared by Normal and Visual (Vim supports `"ayiw` and `"xy`).
             KeyCode::Char('"') => {
-                self.awaiting = Awaiting::RegisterSelect;
+                self.normal.awaiting = Awaiting::RegisterSelect;
                 return Feed::Pending;
             }
             _ => {}
@@ -1071,17 +1103,17 @@ impl InputEngine {
                 // In a selection, `i`/`a` always begin a text object (there is no insert here); the next key
                 // is its selector. The completed object re-spans the selection (see the core's `Move` arm).
                 KeyCode::Char('i') => {
-                    self.awaiting = Awaiting::TextObjectChar { inner: true };
+                    self.normal.awaiting = Awaiting::TextObjectChar { inner: true };
                     return Feed::Pending;
                 }
                 KeyCode::Char('a') => {
-                    self.awaiting = Awaiting::TextObjectChar { inner: false };
+                    self.normal.awaiting = Awaiting::TextObjectChar { inner: false };
                     return Feed::Pending;
                 }
                 // Count digits and motions extend the selection; an unmatched key hits the namespace's
                 // own policy — `closed/ignore` for Visual, `open/replace-selection` for Select.
                 KeyCode::Char('1'..='9') => {}
-                KeyCode::Char('0') if self.count > 0 => {}
+                KeyCode::Char('0') if self.normal.count > 0 => {}
                 KeyCode::Char('0') => return self.motion(Motion::LineStart),
                 _ if motion_key(key.code).is_some() => {}
                 _ => {
@@ -1097,11 +1129,11 @@ impl InputEngine {
         }
         match key.code {
             KeyCode::Char(d @ '1'..='9') => {
-                self.count = self.count.saturating_mul(10) + (d as u32 - '0' as u32);
+                self.normal.count = self.normal.count.saturating_mul(10) + (d as u32 - '0' as u32);
                 Feed::Pending
             }
-            KeyCode::Char('0') if self.count > 0 => {
-                self.count = self.count.saturating_mul(10);
+            KeyCode::Char('0') if self.normal.count > 0 => {
+                self.normal.count = self.normal.count.saturating_mul(10);
                 Feed::Pending
             }
             KeyCode::Char('0') => self.motion(Motion::LineStart),
@@ -1111,16 +1143,16 @@ impl InputEngine {
             // With an operator armed, `v`/`V`/`CTRL-V` FORCE the next motion's wise (Vim `o_v`/`o_V`/
             // `o_CTRL-V`): `dvj`, `dVe`, `d<C-v>j`. They stay operator-pending (the motion still follows);
             // `motion` emits `OpForced`. Bare (no operator) they enter Visual/Visual-line/Visual-block.
-            KeyCode::Char('v') if self.op.is_some() && ctrl => {
-                self.forced_wise = Some(ForcedWise::Blockwise);
+            KeyCode::Char('v') if self.normal.op.is_some() && ctrl => {
+                self.normal.forced_wise = Some(ForcedWise::Blockwise);
                 Feed::Pending
             }
-            KeyCode::Char('v') if self.op.is_some() => {
-                self.forced_wise = Some(ForcedWise::Charwise);
+            KeyCode::Char('v') if self.normal.op.is_some() => {
+                self.normal.forced_wise = Some(ForcedWise::Charwise);
                 Feed::Pending
             }
-            KeyCode::Char('V') if self.op.is_some() => {
-                self.forced_wise = Some(ForcedWise::Linewise);
+            KeyCode::Char('V') if self.normal.op.is_some() => {
+                self.normal.forced_wise = Some(ForcedWise::Linewise);
                 Feed::Pending
             }
             KeyCode::Char('v') if ctrl => self.action(Command::EnterVisual {
@@ -1137,11 +1169,11 @@ impl InputEngine {
             KeyCode::Char('y') => self.operator(Op::Yank, Command::Yank),
             // `>`/`<` arm the doubled linewise shift; the second matching key emits it (see `ShiftSecond`).
             KeyCode::Char('>') => {
-                self.awaiting = Awaiting::ShiftSecond { right: true };
+                self.normal.awaiting = Awaiting::ShiftSecond { right: true };
                 Feed::Pending
             }
             KeyCode::Char('<') => {
-                self.awaiting = Awaiting::ShiftSecond { right: false };
+                self.normal.awaiting = Awaiting::ShiftSecond { right: false };
                 Feed::Pending
             }
             KeyCode::Char('p') => self.action(Command::Paste {
@@ -1159,12 +1191,12 @@ impl InputEngine {
             KeyCode::Char('C') => self.action(Command::Change(self.mcount(), Motion::LineEnd)),
             KeyCode::Char('Y') => self.action(Command::Yank(self.mcount(), Motion::LineEnd)),
             KeyCode::Char('S') => self.action(Command::Change(self.mcount(), Motion::Line)),
-            KeyCode::Char('i') if self.op.is_some() => {
-                self.awaiting = Awaiting::TextObjectChar { inner: true };
+            KeyCode::Char('i') if self.normal.op.is_some() => {
+                self.normal.awaiting = Awaiting::TextObjectChar { inner: true };
                 Feed::Pending
             }
-            KeyCode::Char('a') if self.op.is_some() => {
-                self.awaiting = Awaiting::TextObjectChar { inner: false };
+            KeyCode::Char('a') if self.normal.op.is_some() => {
+                self.normal.awaiting = Awaiting::TextObjectChar { inner: false };
                 Feed::Pending
             }
             KeyCode::Char('i') => self.action(Command::EnterInsert),
@@ -1177,7 +1209,7 @@ impl InputEngine {
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Char('r') if ctrl => self.action(Command::Redo),
             KeyCode::Char('r') => {
-                self.awaiting = Awaiting::ReplaceChar;
+                self.normal.awaiting = Awaiting::ReplaceChar;
                 Feed::Pending
             }
             KeyCode::Char('R') => self.action(Command::EnterReplace),
@@ -1197,7 +1229,7 @@ impl InputEngine {
             // `closed/ignore` policy — Vim rings the bell).
             KeyCode::Char('.') => {
                 if let Some(intent) = self.last_change.clone() {
-                    let count = (self.count > 0).then_some(self.count);
+                    let count = (self.normal.count > 0).then_some(self.normal.count);
                     self.reset();
                     Feed::Replay(intent.replay(count))
                 } else {
@@ -1209,7 +1241,7 @@ impl InputEngine {
                 // `2/pat`). Capture them (folded like `motion()` does: op-count × pending count) BEFORE
                 // `reset()` clears the axes, then hand off to the frontend, which collects the pattern and
                 // calls `submit_search` to build the finished command.
-                let op = match self.op {
+                let op = match self.normal.op {
                     Some(OpPending { op, .. }) => match op {
                         Op::Delete => SearchOp::Delete,
                         Op::Change => SearchOp::Change,
@@ -1217,7 +1249,7 @@ impl InputEngine {
                     },
                     None => SearchOp::Move,
                 };
-                let count = match self.op {
+                let count = match self.normal.op {
                     Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
                     None => self.mcount(),
                 };
@@ -1662,7 +1694,9 @@ mod tests {
         assert_eq!(e.feed(k('>'), Mode::Normal), Feed::Pending);
         // A mismatched second bracket aborts cleanly (operator-pending), leaking no state.
         assert_eq!(e.feed(k('<'), Mode::Normal), Feed::Ignored);
-        assert!(e.op.is_none() && e.awaiting == Awaiting::Nothing && e.count == 0);
+        assert!(
+            e.normal.op.is_none() && e.normal.awaiting == Awaiting::Nothing && e.normal.count == 0
+        );
     }
 
     #[test]
@@ -2434,7 +2468,9 @@ mod search_tests {
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
         assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
-        assert!(e.op.is_none() && e.awaiting == Awaiting::Nothing && e.count == 0);
+        assert!(
+            e.normal.op.is_none() && e.normal.awaiting == Awaiting::Nothing && e.normal.count == 0
+        );
         assert_eq!(
             e.submit_search("bar".into()),
             Feed::Cmd(Command::Search {
@@ -2520,29 +2556,29 @@ mod state_machine_props {
                 // Orthogonal-axis invariant: a text object is only ever awaited with an operator armed
                 // (`diw`) or from a selection mode (`viw`) — never bare in Normal. `mode` is the mode the
                 // arming key was fed with, so this checks the arm site directly.
-                if let Awaiting::TextObjectChar { .. } = e.awaiting {
+                if let Awaiting::TextObjectChar { .. } = e.normal.awaiting {
                     let in_selection = matches!(mode, Mode::Visual { .. } | Mode::Select { .. });
                     prop_assert!(
-                        e.op.is_some() || in_selection,
+                        e.normal.op.is_some() || in_selection,
                         "text object awaited with neither an operator nor a selection"
                     );
                 }
                 if feed == Feed::Pending {
                     // A pending outcome must correspond to real accumulated state — including the two
                     // Insert-only prefixes (`CTRL-O` one-shot, `CTRL-G u`), which are pending too.
-                    let has_state = e.count > 0
-                        || e.op.is_some()
-                        || e.awaiting != Awaiting::Nothing
-                        || e.insert_one_shot
-                        || e.insert_ctrl_g
+                    let has_state = e.normal.count > 0
+                        || e.normal.op.is_some()
+                        || e.normal.awaiting != Awaiting::Nothing
+                        || e.insert.one_shot
+                        || e.insert.ctrl_g
                         || e.cmdline.is_some(); // an open command-line namespace is real pending state (F-026)
                     prop_assert!(has_state, "Feed::Pending but the engine is idle");
                 } else {
-                    prop_assert_eq!(e.count, 0, "count leaked after {:?}", feed);
-                    prop_assert!(e.op.is_none(), "operator leaked after {:?}", feed);
-                    prop_assert!(e.awaiting == Awaiting::Nothing, "key-expectation leaked after {:?}", feed);
-                    prop_assert!(!e.insert_one_shot, "one-shot leaked after {:?}", feed);
-                    prop_assert!(!e.insert_ctrl_g, "ctrl-g prefix leaked after {:?}", feed);
+                    prop_assert_eq!(e.normal.count, 0, "count leaked after {:?}", feed);
+                    prop_assert!(e.normal.op.is_none(), "operator leaked after {:?}", feed);
+                    prop_assert!(e.normal.awaiting == Awaiting::Nothing, "key-expectation leaked after {:?}", feed);
+                    prop_assert!(!e.insert.one_shot, "one-shot leaked after {:?}", feed);
+                    prop_assert!(!e.insert.ctrl_g, "ctrl-g prefix leaked after {:?}", feed);
                 }
             }
         }
@@ -2815,6 +2851,75 @@ mod namespace_tests {
             ),
             Feed::Cmd(Command::ReplaceSelection('q')),
             "Select: printable replaces the selection (open/replace-selection)"
+        );
+    }
+}
+
+#[cfg(test)]
+mod layer_state_tests {
+    use super::tests::k;
+    use super::*;
+
+    fn ctrl(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
+    /// F-003 #5 (KL-OBL-4): the Normal-family grammar layer OWNS its count/operator/awaiting, and that
+    /// state DIES when the layer deactivates — it is not carried into another namespace, and it is the
+    /// layer's lifecycle that clears it (dropped as `NormalState::default`), not the engine resetting
+    /// named fields on a foreign key.
+    #[test]
+    fn normal_grammar_state_dies_when_the_layer_deactivates() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.normal.count, 2, "the Normal layer owns the pending count");
+        // `d` consumes the count into the armed operator (Vim moves 2 into `2d`), which the layer
+        // still owns — the point is that all of it is Normal-family state.
+        assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
+        assert!(
+            e.normal.op.is_some(),
+            "the Normal layer owns the armed operator"
+        );
+        // A key arriving in Insert means the Normal family deactivated: its state dies with it.
+        let _ = e.feed(k('x'), Mode::Insert);
+        assert_eq!(e.normal.count, 0, "count died with the Normal layer");
+        assert!(e.normal.op.is_none(), "operator died with the Normal layer");
+        assert!(
+            e.normal.awaiting == Awaiting::Nothing,
+            "key-expectation died with the Normal layer"
+        );
+    }
+
+    /// F-003 #5 (KL-OBL-4): the Insert layer owns its `CTRL-O` one-shot; it dies when Insert
+    /// deactivates rather than being cleared as an engine-wide boolean.
+    #[test]
+    fn insert_layer_state_dies_when_the_layer_deactivates() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('o'), Mode::Insert), Feed::Pending);
+        assert!(
+            e.insert.one_shot,
+            "the Insert layer owns the CTRL-O one-shot"
+        );
+        // The next key arrives back in Normal — the Insert layer is gone and takes its one-shot with it.
+        let _ = e.feed(k('l'), Mode::Normal);
+        assert!(
+            !e.insert.one_shot,
+            "the one-shot died with the Insert layer"
+        );
+    }
+
+    /// KL-OBL-4 must NOT drop the Normal state during an `i_CTRL-O` one-shot: the one-shot runs a
+    /// single Normal command from WITHIN Insert, so the Normal family is momentarily active there and
+    /// its count must survive the mode still reading `Insert` (`i<C-o>2l` moves two).
+    #[test]
+    fn one_shot_keeps_normal_state_alive_inside_insert() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('o'), Mode::Insert), Feed::Pending);
+        // Build a count through the Normal grammar while the mode is still Insert.
+        assert_eq!(e.feed(k('2'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.normal.count, 2,
+            "the one-shot keeps the Normal count alive inside Insert (not dropped by KL-OBL-4)"
         );
     }
 }
