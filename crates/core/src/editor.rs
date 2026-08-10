@@ -126,6 +126,12 @@ pub struct View {
     /// on a vertical move, set to [`MAXCOL`] by `$`/`<End>` (ride each line's end), and recomputed from the
     /// landing column after any other command. Read by the `plan` Move Up/Down arm via [`motion::vmove`].
     curswant: usize,
+    /// `'ignorecase'`: search matches case-insensitively. Default off — Vim's factory default, which is
+    /// what the differential oracle runs, so search stays case-sensitive unless a config seam turns it on.
+    search_ignore_case: bool,
+    /// `'smartcase'`: with `search_ignore_case` on, an uppercase letter in the pattern forces a
+    /// case-sensitive match (F-009 #1 "case-smart search"). No effect while `search_ignore_case` is off.
+    search_smart_case: bool,
 }
 
 /// The editor over a single [`Document`] and its [`View`] — the top-level headless handle the TUI and
@@ -157,6 +163,17 @@ impl View {
             tab_width: 4,
             indent_style: IndentStyle::Space,
             curswant: 0,
+            search_ignore_case: false,
+            search_smart_case: false,
+        }
+    }
+
+    /// The regex compile options for a search in this view (magic default; case per config).
+    fn search_options(&self) -> crate::pattern::Options {
+        crate::pattern::Options {
+            magic: crate::pattern::Magic::Magic,
+            ignore_case: self.search_ignore_case,
+            smart_case: self.search_smart_case,
         }
     }
 
@@ -347,6 +364,13 @@ impl EditorState {
     pub fn set_indent(&mut self, tab_width: usize, indent_style: IndentStyle) {
         self.view.tab_width = tab_width.max(1);
         self.view.indent_style = indent_style;
+    }
+
+    /// Set the search case config (`'ignorecase'` / `'smartcase'`, F-009 #1). The seam a config loader
+    /// (or a test) uses until runtime config lands; the default is Vim's factory case-sensitive search.
+    pub fn set_search_case(&mut self, ignore_case: bool, smart_case: bool) {
+        self.view.search_ignore_case = ignore_case;
+        self.view.search_smart_case = smart_case;
     }
 
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
@@ -675,6 +699,43 @@ fn advance_n_checked(b: &[u8], from: usize, count: u32, limit: usize) -> (usize,
 
 /// The pure decision for one command.
 #[must_use]
+/// The byte offset of the next Vim-regex match at/after `from`, wrapping to the document start (F-009).
+/// Invalid UTF-8, an unrepresentable/malformed pattern, or no match yields `None` — the caller keeps the
+/// cursor (Vim rings the bell). Replaces the v0 literal `search::find_next`.
+fn search_fwd(
+    b: &[u8],
+    pattern: &str,
+    from: usize,
+    opts: crate::pattern::Options,
+) -> Option<usize> {
+    let hay = std::str::from_utf8(b).ok()?;
+    let mut from = from.min(hay.len());
+    while from < hay.len() && !hay.is_char_boundary(from) {
+        from += 1; // a regex search must start on a char boundary
+    }
+    let re = crate::pattern::Regex::compile(pattern, opts).ok()?;
+    re.find_at(hay, from)
+        .or_else(|| re.find_at(hay, 0))
+        .map(|m| m.start)
+}
+
+/// The byte offset of the previous match starting strictly before `before`, wrapping to the last match.
+fn search_bwd(
+    b: &[u8],
+    pattern: &str,
+    before: usize,
+    opts: crate::pattern::Options,
+) -> Option<usize> {
+    let hay = std::str::from_utf8(b).ok()?;
+    let re = crate::pattern::Regex::compile(pattern, opts).ok()?;
+    let all = re.find_all(hay);
+    all.iter()
+        .rev()
+        .find(|m| m.start < before)
+        .or_else(|| all.last())
+        .map(|m| m.start)
+}
+
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     let b = st.bytes();
     let cur = st.view.cursor;
@@ -1413,11 +1474,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::SearchNext(pat) => {
-            let m = crate::search::find_next(b, pat.as_bytes(), cur + 1).unwrap_or(cur);
+            let m = search_fwd(b, pat, cur + 1, st.view.search_options()).unwrap_or(cur);
             nop(m, st.view.mode)
         }
         Command::SearchPrev(pat) => {
-            let m = crate::search::find_prev(b, pat.as_bytes(), cur).unwrap_or(cur);
+            let m = search_bwd(b, pat, cur, st.view.search_options()).unwrap_or(cur);
             nop(m, st.view.mode)
         }
         // `/pat` as a motion: step forward to the `count`-th match (each step searches from just past the
@@ -1425,9 +1486,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // (`d/pat`/`c/pat`/`y/pat`). If no forward match lands past the cursor the operator aborts (Vim
         // rings the bell) — a clean no-op, never a reversed/empty edit.
         Command::Search { op, count, pattern } => {
+            let opts = st.view.search_options();
             let mut pos = cur;
             for _ in 0..(*count).max(1) {
-                match crate::search::find_next(b, pattern.as_bytes(), pos + 1) {
+                match search_fwd(b, pattern, pos + 1, opts) {
                     Some(m) => pos = m,
                     None => break,
                 }
@@ -4299,5 +4361,90 @@ mod virtual_replace_tests {
             ],
         );
         assert_eq!(text(&st), "a\tb");
+    }
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+    use crate::command::SearchOp;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn search(pattern: &str) -> Command {
+        Command::Search {
+            op: SearchOp::Move,
+            count: 1,
+            pattern: pattern.to_string(),
+        }
+    }
+
+    /// F-009 #3: `/pat` is a Vim-REGEX search now (not literal). `a\+` matches one-or-more `a`; the
+    /// cursor lands on the start of the next match.
+    #[test]
+    fn slash_search_uses_the_vim_regex_engine() {
+        // `a\+` is a Vim-regex quantifier (magic `\+`), not the literal "a\+".
+        let st = run("x aa bbb aaa", &[search("a\\+")]);
+        // From offset 0, the next match after cur+1 is the "aa" at offset 2.
+        assert_eq!(st.cursor(), 2);
+        // `n` (SearchNext) steps to the following, non-overlapping match ("cc" at offset 9).
+        let st = run(
+            "x aa bbb cc",
+            &[search("cc"), Command::SearchNext("cc".into())],
+        );
+        // Single `cc` match at 9; `n` wraps back to it.
+        assert_eq!(st.cursor(), 9);
+    }
+
+    /// F-009 #3: `\zs` moves the reported match START — `/foo\zsbar` lands the cursor on `bar`, but
+    /// only where `bar` follows `foo`.
+    #[test]
+    fn zs_lands_the_cursor_at_the_reset_start() {
+        let st = run("a foobar foo bar", &[search("foo\\zsbar")]);
+        assert_eq!(st.cursor(), 5); // the 'b' of the bar inside "foobar"
+    }
+
+    /// F-009 #1: search is CASE-SENSITIVE by default (Vim's factory setting, what the oracle runs), so
+    /// `/Foo` does not match `foo`.
+    #[test]
+    fn search_is_case_sensitive_by_default() {
+        let st = run("a foo b", &[search("Foo")]);
+        assert_eq!(st.cursor(), 0, "no match → cursor unmoved");
+    }
+
+    /// F-009 #1: with `smartcase` on, an all-lowercase pattern matches case-insensitively, but an
+    /// uppercase in the pattern forces a case-sensitive match (case-smart search).
+    #[test]
+    fn smartcase_makes_search_case_smart() {
+        // lowercase pattern → case-insensitive → matches "FOO"
+        let mut st = EditorState::new(b"x FOO y".to_vec());
+        st.set_search_case(true, true);
+        apply_command(&mut st, &search("foo"));
+        assert_eq!(st.cursor(), 2);
+        // uppercase in the pattern → case-sensitive → "Foo" does NOT match "foo"
+        let mut st = EditorState::new(b"x foo y".to_vec());
+        st.set_search_case(true, true);
+        apply_command(&mut st, &search("Foo"));
+        assert_eq!(st.cursor(), 0, "smartcase forced case-sensitive → no match");
+    }
+
+    /// F-009: `d/pat` deletes `[cursor, match)` — the search operand still composes with operators.
+    #[test]
+    fn delete_to_search_match() {
+        let st = run(
+            "abcXYZdef",
+            &[Command::Search {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "XYZ".into(),
+            }],
+        );
+        assert_eq!(st.as_str().unwrap(), "XYZdef");
     }
 }

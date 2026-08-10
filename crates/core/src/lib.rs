@@ -30,7 +30,6 @@ pub mod motion;
 pub mod pattern;
 pub mod pos;
 pub mod register;
-pub mod search;
 pub mod snapshot;
 pub mod trace;
 pub mod transaction;
