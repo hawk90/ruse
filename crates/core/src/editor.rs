@@ -76,9 +76,17 @@ impl Mode {
 /// A **View**: the per-view state over a shared [`Document`] (F-007 Buffer/View split). Cursor,
 /// mode, selection and the transient session state are view-local — INV-DOC-VIEW — so two Views of
 /// one buffer have independent cursors. Registers and the indent config sit here for now (a single
-/// view); the F-007 Workspace step lifts them to workspace scope. The Document is NOT here: it is
-/// owned separately so many Views can share one text+undo.
+/// view); a future step lifts them to workspace scope (see the F-007 backlog). The Document is NOT
+/// here: the [`View`] only NAMES its buffer by [`DocumentId`] (never a borrow), so N Views sharing
+/// one buffer is N Views naming one id — the [`crate::workspace::Workspace`] arena owns the Document.
+#[derive(Clone)]
 pub struct View {
+    /// The buffer this View shows, named by handle (never a borrow) so many Views can share one
+    /// Document without interior mutability or reference cycles (INV-DOC-VIEW / INV-HANDLE).
+    doc: DocumentId,
+    /// First visible buffer row — this View's scroll position. View-local so two Views of one buffer
+    /// scroll independently (F-007 acceptance #1). Maintained by the frontend viewport pass.
+    top: usize,
     cursor: usize,
     mode: Mode,
     /// Whether the previous command edited text — drives undo grouping: an edit right after a non-edit
@@ -130,11 +138,13 @@ pub struct EditorState {
 }
 
 impl View {
-    /// A fresh view: cursor at the start, Normal mode, empty registers/sessions. Config fields hold
-    /// the schema defaults (spec/config-schema.yaml: editor.tab_width=4, editor.indent_style=space);
-    /// runtime config wiring is deferred (as with editor.scrolloff).
-    fn new() -> View {
+    /// A fresh view over `doc`: cursor at the start, Normal mode, empty registers/sessions. Config
+    /// fields hold the schema defaults (spec/config-schema.yaml: editor.tab_width=4,
+    /// editor.indent_style=space); runtime config wiring is deferred (as with editor.scrolloff).
+    pub(crate) fn fresh(doc: DocumentId) -> View {
         View {
+            doc,
+            top: 0,
             cursor: 0,
             mode: Mode::Normal,
             last_was_edit: false,
@@ -147,6 +157,61 @@ impl View {
             tab_width: 4,
             indent_style: IndentStyle::Space,
             curswant: 0,
+        }
+    }
+
+    /// The buffer this View shows.
+    #[must_use]
+    pub fn doc(&self) -> DocumentId {
+        self.doc
+    }
+
+    /// The cursor's byte offset (on a char boundary) — view-local.
+    #[must_use]
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// This View's mode — view-local (two Views of one buffer can be in different modes).
+    #[must_use]
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+
+    /// This View's scroll position (first visible buffer row). Maintained by the frontend.
+    #[must_use]
+    pub fn top(&self) -> usize {
+        self.top
+    }
+
+    /// Set this View's scroll position (frontend viewport pass).
+    pub fn set_top(&mut self, top: usize) {
+        self.top = top;
+    }
+
+    /// The highlighted byte range `[start, end)` of the current charwise/linewise Visual selection over
+    /// `bytes`, or `None` in Normal/Insert and for a blockwise selection (a rectangle is not one range —
+    /// use [`View::block_spans`]). See [`EditorState::selection_span`] for the full contract.
+    #[must_use]
+    pub fn selection_span(&self, bytes: &[u8]) -> Option<(usize, usize)> {
+        match self.mode.selection()? {
+            SelectKind::Blockwise => None,
+            kind => Some(selection_range(
+                bytes,
+                self.anchor?,
+                self.cursor,
+                kind == SelectKind::Linewise,
+            )),
+        }
+    }
+
+    /// The per-row highlighted byte ranges of the current BLOCKWISE selection over `bytes`, or `None`
+    /// when the selection is not blockwise. See [`EditorState::block_spans`].
+    #[must_use]
+    pub fn block_spans(&self, bytes: &[u8]) -> Option<Vec<(usize, usize)>> {
+        match self.mode.selection()? {
+            SelectKind::Blockwise => Some(block_rows(bytes, self.anchor?, self.cursor).0),
+            _ => None,
         }
     }
 }
@@ -257,10 +322,23 @@ impl EditorState {
     pub fn new(initial: impl Into<Vec<u8>>) -> EditorState {
         let mut doc = Document::new(DocumentId(1), initial);
         doc.mark_saved();
-        EditorState {
-            doc,
-            view: View::new(),
-        }
+        let view = View::fresh(doc.id());
+        EditorState { doc, view }
+    }
+
+    /// Reconstitute an editing context from a Document and a View taken out of a Workspace arena — the
+    /// inverse of [`EditorState::into_parts`]. The [`crate::workspace::Workspace`] swaps the focused
+    /// `(Document, View)` into an `EditorState` to run the UNCHANGED `plan`/`commit` pipeline, then
+    /// swaps them back; this keeps the single-window path byte-identical (F-007 step (b)).
+    #[must_use]
+    pub(crate) fn from_parts(doc: Document, view: View) -> EditorState {
+        EditorState { doc, view }
+    }
+
+    /// Split an editing context back into its owned Document and View, to return them to the arena.
+    #[must_use]
+    pub(crate) fn into_parts(self) -> (Document, View) {
+        (self.doc, self.view)
     }
 
     /// Set the indentation config the shift operators (`>>`/`<<`) use. Runtime config loading is deferred;
@@ -298,15 +376,7 @@ impl EditorState {
     #[must_use]
     pub fn selection_span(&self) -> Option<(usize, usize)> {
         // Visual and Select paint the same selection (they share the anchor and toggle via CTRL-G).
-        match self.view.mode.selection()? {
-            SelectKind::Blockwise => None,
-            kind => Some(selection_range(
-                self.bytes(),
-                self.view.anchor?,
-                self.view.cursor,
-                kind == SelectKind::Linewise,
-            )),
-        }
+        self.view.selection_span(self.bytes())
     }
 
     /// The per-row highlighted byte ranges of the current BLOCKWISE selection (one `[start, end)` per line
@@ -314,12 +384,7 @@ impl EditorState {
     /// selection is not blockwise. For the frontend to paint a column-aligned block.
     #[must_use]
     pub fn block_spans(&self) -> Option<Vec<(usize, usize)>> {
-        match self.view.mode.selection()? {
-            SelectKind::Blockwise => {
-                Some(block_rows(self.bytes(), self.view.anchor?, self.view.cursor).0)
-            }
-            _ => None,
-        }
+        self.view.block_spans(self.bytes())
     }
 
     /// The document bytes.

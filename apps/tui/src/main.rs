@@ -33,7 +33,7 @@ use crossterm::terminal::ClearType;
 use crossterm::{cursor, queue, terminal};
 
 use input::{parse_ex, Ex, Feed, InputEngine};
-use ruse_core::{apply_command, Command, EditorState, Effect, Mode, SelectKind, Trace};
+use ruse_core::{Command, Effect, Mode, SelectKind, SplitDir, Trace, Workspace};
 
 // Headless CLI: stderr is the correct channel here (no TUI, no tracing sink yet). D-041 scoped allow.
 #[allow(clippy::print_stderr)]
@@ -268,48 +268,69 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         persist::Recovery::None => (disk, String::from("ruse — :q to quit")),
     };
 
-    let mut st = EditorState::new(initial.clone());
+    // F-007: the frontend now drives a Workspace (buffers + views + windows), not a single
+    // EditorState. With one Window this is byte-identical to the pre-Workspace path; `:split`/
+    // `:vsplit` open more Windows onto the same buffer with independent cursors and scroll.
+    let mut ws = Workspace::new(initial.clone());
     let mut recorded: Vec<Command> = Vec::new();
     let mut journal_ticks: u32 = 0; // throttle: append the recovery journal every Nth modified frame
 
     let mut engine = InputEngine::new();
     let mut quit = false;
-    let mut top: usize = 0; // first visible buffer row (frontend view state; core stays view-free)
-                            // The previous frame's cell grid — the render diff emits only what changes against it (F-006).
-                            // Starts empty so the first frame paints in full.
+    // The previous frame's cell grid — the render diff emits only what changes against it (F-006).
+    // Starts empty so the first frame paints in full.
     let mut prev_frame = screen::Screen::new(0, 0);
     let sync_output = guard.sync_output(); // pinned once from the F-010 ledger (INV-RENDER-PROFILE)
+    let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
 
     while !quit {
+        // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
+        // once for the panic-rescue mirror, the recovery journal, and the highlight parse.
+        let (revision, modified, snapshot) = {
+            let f = ws.focused();
+            (
+                f.doc.revision(),
+                f.doc.is_modified(),
+                f.doc.bytes().to_vec(),
+            )
+        };
         // Keep the in-memory snapshot current so a core panic can rescue unsaved work (§6/§8).
-        recover::update(path.as_ref(), st.bytes(), st.is_modified());
+        recover::update(path.as_ref(), &snapshot, modified);
         // And throttle an append-only journal frame so a hard kill (not just a panic) loses at most
         // a few edits. Cleared on a durable save. Full journal design is post-MVP (C-PERSIST).
-        if st.is_modified() {
+        if modified {
             journal_ticks += 1;
             if journal_ticks.is_multiple_of(JOURNAL_THROTTLE) {
-                let _ = persist::journal::append(path.as_deref(), st.bytes());
+                let _ = persist::journal::append(path.as_deref(), &snapshot);
             }
         }
-        // Scroll so the cursor stays on screen with a scrolloff margin (view state, not core state).
-        let (_, term_rows) = terminal::size().unwrap_or((80, 24));
-        let text_rows = term_rows.saturating_sub(1) as usize;
-        let (cursor_row, _) = row_col(st.bytes(), st.cursor());
-        top = viewport::scroll_top(cursor_row, text_rows, SCROLLOFF, top);
-        // Recompute highlight spans only when the buffer changed (keyed on revision, D-042 win A):
-        // cursor motion, mode changes and scrolling reuse the cached parse.
+        // Per-window viewport pass: scroll each pane so ITS cursor stays visible in ITS rectangle
+        // (F-007 acceptance #1 — independent scroll). Geometry is shared with render below.
+        let (cols, term_rows) = terminal::size().unwrap_or((80, 24));
+        let text_rows = term_rows.saturating_sub(1);
+        let rects = window_rects(cols, text_rows, ws.window_count(), ws.split_dir());
+        for (i, rect) in rects.iter().enumerate() {
+            let (cursor_row, cur_top) = {
+                let p = ws.pane(i);
+                (row_col(p.doc.bytes(), p.view.cursor()).0, p.view.top())
+            };
+            let new_top = viewport::scroll_top(cursor_row, rect.h as usize, SCROLLOFF, cur_top);
+            ws.set_top(i, new_top);
+        }
+        // Recompute highlight spans only when the focused buffer changed (keyed on revision, D-042
+        // win A). All panes share that buffer in MVP, so one parse colours every pane showing it.
         let spans: &[highlight::Span] = highlighter
             .as_mut()
-            .map(|h| h.spans(st.doc.revision(), st.bytes()))
+            .map(|h| h.spans(revision, &snapshot))
             .unwrap_or(&[]);
         render(
             &mut out,
-            &st,
+            &ws,
             path.as_ref(),
             engine.cmdline().map(|(p, t, _)| (p, t)),
             &status,
             spans,
-            top,
+            &rects,
             &mut prev_frame,
             sync_output,
         )?;
@@ -319,14 +340,27 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if key.kind == KeyEventKind::Release {
             continue;
         }
-        // Every key — command-line included — goes through the engine now (F-026): the command-line
+        // F-007 window layer: a `C-w` prefix (Normal mode, no command-line, not Insert where `C-w`
+        // deletes a word) arms the next key as a window command. A thin frontend intercept for MVP;
+        // F-003's keymap router will absorb it into a proper layer.
+        if pending_window {
+            pending_window = false;
+            dispatch_window(key, &mut ws, &mut quit);
+            continue;
+        }
+        let normal = matches!(ws.focused().view.mode(), Mode::Normal) && engine.cmdline().is_none();
+        if normal && is_ctrl(key, 'w') {
+            pending_window = true;
+            continue;
+        }
+        // Every other key — command-line included — goes through the engine (F-026): the command-line
         // namespace owns its buffer, so the frontend no longer special-cases `:`/`/` typing.
-        match engine.feed(key, st.mode()) {
+        match engine.feed(key, ws.focused().view.mode()) {
             // A finished `:`-line (F-026): parse + run it. `submit_search` already folded a `/`-line
             // into `Feed::Cmd` inside the engine, so the frontend only sees the ex case here.
             Feed::ExecuteEx(text) => run_ex(
                 &parse_ex(&text),
-                &mut st,
+                &mut ws,
                 &path,
                 fmt,
                 &initial,
@@ -337,7 +371,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => run_cmd(
                 cmd,
-                &mut st,
+                &mut ws,
                 &path,
                 fmt,
                 &mut recorded,
@@ -350,7 +384,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 for cmd in cmds {
                     run_cmd(
                         cmd,
-                        &mut st,
+                        &mut ws,
                         &path,
                         fmt,
                         &mut recorded,
@@ -364,10 +398,38 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
-/// Record a command and apply it, performing any effects.
+/// Whether `key` is `CTRL-<c>`.
+fn is_ctrl(key: crossterm::event::KeyEvent, c: char) -> bool {
+    key.modifiers
+        .contains(crossterm::event::KeyModifiers::CONTROL)
+        && key.code == KeyCode::Char(c)
+}
+
+/// Dispatch the key after a `C-w` prefix (F-007 MVP window commands): `w`/`C-w` focus next, `s` split
+/// horizontally, `v` split vertically, `c` close focused, `q` close (or quit on the last window). An
+/// unrecognised key is ignored (Vim beeps). The full `C-w` family is post-MVP.
+fn dispatch_window(key: crossterm::event::KeyEvent, ws: &mut Workspace, quit: &mut bool) {
+    match key.code {
+        KeyCode::Char('w') => ws.focus_next(),
+        KeyCode::Char('s') => {
+            ws.split(SplitDir::Horizontal);
+        }
+        KeyCode::Char('v') => {
+            ws.split(SplitDir::Vertical);
+        }
+        KeyCode::Char('c') => {
+            ws.close_focused();
+        }
+        // `C-w q`: close the focused window, or quit if it was the last one.
+        KeyCode::Char('q') => *quit = !ws.close_focused(),
+        _ => {}
+    }
+}
+
+/// Record a command and apply it to the focused window, performing any effects.
 fn run_cmd(
     cmd: Command,
-    st: &mut EditorState,
+    ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
     recorded: &mut Vec<Command>,
@@ -375,8 +437,8 @@ fn run_cmd(
     quit: &mut bool,
 ) {
     recorded.push(cmd.clone());
-    for eff in apply_command(st, &cmd) {
-        apply_effect(eff, st, path, fmt, status, quit);
+    for eff in ws.apply(&cmd) {
+        apply_effect(eff, ws, path, fmt, status, quit);
     }
 }
 
@@ -386,7 +448,7 @@ fn run_cmd(
 #[allow(clippy::too_many_arguments)]
 fn run_ex(
     ex: &Ex,
-    st: &mut EditorState,
+    ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
     initial: &[u8],
@@ -395,11 +457,25 @@ fn run_ex(
     quit: &mut bool,
 ) {
     match ex {
-        Ex::Save => save(st, path, fmt, status),
+        Ex::Save => save(ws, path, fmt, status),
         Ex::Quit => *quit = true,
         Ex::SaveQuit => {
-            save(st, path, fmt, status);
+            save(ws, path, fmt, status);
             *quit = true;
+        }
+        // F-007 window commands: split the focused window onto the same buffer, or close it.
+        Ex::Split => {
+            ws.split(SplitDir::Horizontal);
+            *status = "window split".into();
+        }
+        Ex::VSplit => {
+            ws.split(SplitDir::Vertical);
+            *status = "window vsplit".into();
+        }
+        Ex::Close => {
+            if !ws.close_focused() {
+                *status = "cannot close last window (:q to quit)".into();
+            }
         }
         Ex::SaveTrace(p) => {
             let trace = Trace::record(initial, recorded.to_vec());
@@ -414,21 +490,21 @@ fn run_ex(
 
 fn apply_effect(
     eff: Effect,
-    st: &mut EditorState,
+    ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
     status: &mut String,
     quit: &mut bool,
 ) {
     match eff {
-        Effect::Save => save(st, path, fmt, status),
+        Effect::Save => save(ws, path, fmt, status),
         Effect::Quit => *quit = true,
         Effect::Status(s) => *status = s,
     }
 }
 
 fn save(
-    st: &mut EditorState,
+    ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
     status: &mut String,
@@ -438,10 +514,10 @@ fn save(
         return;
     };
     // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).
-    let bytes = fmt.to_disk(st.bytes());
+    let bytes = fmt.to_disk(ws.focused().doc.bytes());
     match persist::atomic::save(p, &bytes) {
         Ok(()) => {
-            st.doc.mark_saved();
+            ws.focused_doc_mut().mark_saved();
             persist::journal::clear(path.as_deref()); // saved bytes are durable — no work to recover
             tracing::info!(event = "save", path = %p.display(), bytes = bytes.len());
             *status = format!("\"{}\" written", p.display());
@@ -457,82 +533,209 @@ fn save(
 /// One indent level's width in display columns — matches the editor's `editor.tab_width` default.
 const TAB_WIDTH: u16 = 4;
 
+/// A window's on-screen sub-rectangle in cells: origin `(x, y)` and size `w × h` (F-007 layout).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Rect {
+    x: u16,
+    y: u16,
+    w: u16,
+    h: u16,
+}
+
+/// Tile `count` windows into the text area (`cols` × `text_rows`) as equal bands/columns separated by
+/// a one-cell divider (F-007 MVP flat layout — no recursive tree). `Horizontal` stacks panes top to
+/// bottom, `Vertical` places them side by side. The `count-1` dividers are subtracted first, then the
+/// remaining cells split evenly with any remainder handed to the earliest panes (so the area is fully
+/// used). Always returns `count.max(1)` rects.
+fn window_rects(cols: u16, text_rows: u16, count: usize, split: SplitDir) -> Vec<Rect> {
+    let n = count.max(1) as u16;
+    let seps = n.saturating_sub(1);
+    let mut rects = Vec::with_capacity(n as usize);
+    match split {
+        SplitDir::Horizontal => {
+            let avail = text_rows.saturating_sub(seps);
+            let (base, extra) = (avail / n, avail % n);
+            let mut y = 0u16;
+            for i in 0..n {
+                let h = base + u16::from(i < extra);
+                rects.push(Rect {
+                    x: 0,
+                    y,
+                    w: cols,
+                    h,
+                });
+                y = y.saturating_add(h + 1); // + the divider row
+            }
+        }
+        SplitDir::Vertical => {
+            let avail = cols.saturating_sub(seps);
+            let (base, extra) = (avail / n, avail % n);
+            let mut x = 0u16;
+            for i in 0..n {
+                let w = base + u16::from(i < extra);
+                rects.push(Rect {
+                    x,
+                    y: 0,
+                    w,
+                    h: text_rows,
+                });
+                x = x.saturating_add(w + 1); // + the divider column
+            }
+        }
+    }
+    rects
+}
+
+/// Paint one buffer view into its `rect`: `rect.h` lines from `top`, one GRAPHEME CLUSTER per cell at
+/// its true display width (F-006 #4), clipped to the rectangle. Tabs expand to the next stop measured
+/// from the pane's left edge; a wide glyph that would straddle the right edge is dropped and the rest
+/// of that line is skipped. `sel`/`block` paint the Visual selection in reverse video; `byte_color`
+/// carries the syntax colour per byte (empty ⇒ default).
+fn paint_pane(
+    cur: &mut screen::Screen,
+    rect: Rect,
+    bytes: &[u8],
+    byte_color: &[crossterm::style::Color],
+    top: usize,
+    sel: Option<(usize, usize)>,
+    block: Option<&[(usize, usize)]>,
+) {
+    use crossterm::style::Color;
+    use unicode_segmentation::UnicodeSegmentation;
+    if rect.w == 0 || rect.h == 0 {
+        return;
+    }
+    let (x0, x1) = (rect.x, rect.x + rect.w);
+    let bottom = top + rect.h as usize;
+    let text = std::str::from_utf8(bytes).unwrap_or("<binary>");
+    let mut line: usize = 0;
+    let mut scol: u16 = x0;
+    for (i, g) in text.grapheme_indices(true) {
+        if g == "\n" {
+            line += 1;
+            scol = x0;
+            if line >= bottom {
+                break; // past the bottom of this pane
+            }
+            continue;
+        }
+        if line < top || scol >= x1 {
+            continue; // above the pane, or past its right edge (truncate)
+        }
+        let srow = rect.y + (line - top) as u16;
+        let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
+            || block.is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e));
+        let fg = byte_color.get(i).copied().unwrap_or(Color::Reset);
+        if g == "\t" {
+            let stop = TAB_WIDTH - ((scol - x0) % TAB_WIDTH); // stops measured from the pane's left
+            for _ in 0..stop {
+                if scol >= x1 {
+                    break;
+                }
+                scol = cur.put(srow, scol, " ", fg, selected);
+            }
+        } else if scol + screen::cluster_width(g) > x1 {
+            scol = x1; // a wide glyph would cross the edge — drop it and skip the rest of the line
+        } else {
+            scol = cur.put(srow, scol, g, fg, selected);
+        }
+    }
+}
+
+/// Draw the one-cell dividers between adjacent panes (F-007): a `─` band for a horizontal split, a
+/// `│` column for a vertical split. Only interior gaps are drawn (never past the text area).
+fn draw_separators(
+    cur: &mut screen::Screen,
+    rects: &[Rect],
+    split: SplitDir,
+    cols: u16,
+    text_rows: u16,
+) {
+    use crossterm::style::Color;
+    for pair in rects.windows(2) {
+        match split {
+            SplitDir::Horizontal => {
+                let y = pair[0].y + pair[0].h;
+                if y < text_rows {
+                    for x in 0..cols {
+                        cur.put(y, x, "─", Color::Reset, false);
+                    }
+                }
+            }
+            SplitDir::Vertical => {
+                let x = pair[0].x + pair[0].w;
+                if x < cols {
+                    for y in 0..text_rows {
+                        cur.put(y, x, "│", Color::Reset, false);
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)] // the frame render legitimately needs the full view context
 fn render(
     out: &mut io::Stdout,
-    st: &EditorState,
+    ws: &Workspace,
     path: Option<&PathBuf>,
     cmd_line: Option<(char, &str)>,
     status: &str,
     spans: &[highlight::Span],
-    top: usize,
+    rects: &[Rect],
     prev: &mut screen::Screen,
     sync: bool,
 ) -> io::Result<()> {
     use crossterm::style::Color;
-    use unicode_segmentation::UnicodeSegmentation;
 
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
-    let text_rows = rows.saturating_sub(1) as usize;
+    let text_rows = rows.saturating_sub(1);
     // Paint the whole frame into a fresh cell grid; the diff against `prev` emits only what changed.
     let mut cur = screen::Screen::new(cols, rows);
 
-    let bytes = st.bytes();
-    // Flatten the highlight spans into a per-byte color, then walk the text applying it.
-    let mut byte_color = vec![Color::Reset; bytes.len()];
+    // Flatten the focused buffer's highlight spans into a per-byte colour (spans index into it). Panes
+    // showing the SAME buffer reuse it; a pane on a different buffer (post-MVP) renders uncoloured.
+    let focus = ws.focused();
+    let focus_doc = focus.view.doc();
+    let fbytes = focus.doc.bytes();
+    let mut byte_color = vec![Color::Reset; fbytes.len()];
     for s in spans {
         for slot in byte_color
             .iter_mut()
-            .take(s.end.min(bytes.len()))
+            .take(s.end.min(fbytes.len()))
             .skip(s.start)
         {
             *slot = s.color;
         }
     }
-    let text = st.as_str().unwrap_or("<binary>");
-    // Paint `text_rows` buffer lines from `top` into the grid, one GRAPHEME CLUSTER per cell (F-006
-    // #4: a ZWJ emoji / base+combining is one user-perceived char at its true display width). Long
-    // lines truncate at `cols` (no wrap; horizontal scroll deferred — render doc v0). Visual selection
-    // paints in reverse video (a charwise/linewise span, or a blockwise rectangle).
-    let sel = st.selection_span();
-    let block = st.block_spans();
-    let mut line: usize = 0;
-    let mut col: u16 = 0;
-    for (i, g) in text.grapheme_indices(true) {
-        if g == "\n" {
-            line += 1;
-            col = 0;
-            if line >= top + text_rows {
-                break; // past the bottom of the viewport
-            }
-            continue;
-        }
-        if line < top || col >= cols {
-            continue; // above the viewport, or past the right edge (truncate)
-        }
-        let srow = (line - top) as u16;
-        let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
-            || block
-                .as_deref()
-                .is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e));
-        let fg = byte_color.get(i).copied().unwrap_or(Color::Reset);
-        if g == "\t" {
-            let stop = TAB_WIDTH - (col % TAB_WIDTH); // expand the tab to blanks up to the next stop
-            for _ in 0..stop {
-                if col >= cols {
-                    break;
-                }
-                col = cur.put(srow, col, " ", fg, selected);
-            }
+
+    // Paint every window into its sub-rectangle; the focused view owns the terminal cursor below.
+    for (i, &rect) in rects.iter().enumerate().take(ws.window_count()) {
+        let p = ws.pane(i);
+        let pbytes = p.doc.bytes();
+        let color: &[Color] = if p.view.doc() == focus_doc {
+            &byte_color
         } else {
-            col = cur.put(srow, col, g, fg, selected);
-        }
+            &[]
+        };
+        let sel = p.view.selection_span(pbytes);
+        let block = p.view.block_spans(pbytes);
+        paint_pane(
+            &mut cur,
+            rect,
+            pbytes,
+            color,
+            p.view.top(),
+            sel,
+            block.as_deref(),
+        );
     }
+    draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
 
     let bar = match cmd_line {
         Some((prefix, text)) => format!("{prefix}{text}"),
         None => {
-            let mode = match st.mode() {
+            let mode = match focus.view.mode() {
                 Mode::Normal => "NORMAL",
                 Mode::Insert => "INSERT",
                 Mode::Replace => "REPLACE",
@@ -559,8 +762,14 @@ fn render(
             let name = path
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|| "[No Name]".into());
-            let dirty = if st.is_modified() { " [+]" } else { "" };
-            format!("{mode}  {name}{dirty}  {status}")
+            let dirty = if focus.doc.is_modified() { " [+]" } else { "" };
+            // Show the window position only once split, so the single-window status line is unchanged.
+            let win = if ws.window_count() > 1 {
+                format!("  [win {}/{}]", ws.focus() + 1, ws.window_count())
+            } else {
+                String::new()
+            };
+            format!("{mode}  {name}{dirty}{win}  {status}")
         }
     };
     // Paint the status / command line into the last row (put_str truncates at the right edge).
@@ -579,13 +788,18 @@ fn render(
             cursor::Show
         )?;
     } else {
-        // The cursor's DISPLAY column is grapheme-cluster / width based (F-006 #4), never a char count.
-        let (screen_row, screen_col) = cursor_cell(st.bytes(), st.cursor(), top);
-        queue!(
-            out,
-            cursor::MoveTo(screen_col.min(cols.saturating_sub(1)), screen_row),
-            cursor::Show
-        )?;
+        // The focused view owns the cursor; its DISPLAY column is grapheme-cluster / width based
+        // (F-006 #4), offset into the focused window's rectangle (F-007).
+        let frect = rects.get(ws.focus()).copied().unwrap_or(Rect {
+            x: 0,
+            y: 0,
+            w: cols,
+            h: text_rows,
+        });
+        let (row, col) = cursor_cell(focus.doc.bytes(), focus.view.cursor(), focus.view.top());
+        let screen_row = (frect.y + row).min(rows.saturating_sub(1));
+        let screen_col = (frect.x + col).min(cols.saturating_sub(1));
+        queue!(out, cursor::MoveTo(screen_col, screen_row), cursor::Show)?;
     }
     out.flush()
 }
@@ -711,6 +925,76 @@ mod render_tests {
         let s = String::from_utf8_lossy(&buf);
         assert!(s.contains('O'), "the changed glyph is emitted");
         assert!(!s.contains("hello"), "the unchanged run is NOT re-emitted");
+    }
+
+    /// F-007: a single window fills the whole text area (the single-pane path is unchanged).
+    #[test]
+    fn one_window_fills_the_area() {
+        let r = window_rects(80, 24, 1, SplitDir::Horizontal);
+        assert_eq!(
+            r,
+            vec![Rect {
+                x: 0,
+                y: 0,
+                w: 80,
+                h: 24
+            }]
+        );
+    }
+
+    /// F-007: `:split` tiles two equal horizontal bands with a one-row divider between them; the rows
+    /// partition the area exactly (band + divider + band = text_rows).
+    #[test]
+    fn horizontal_split_tiles_equal_bands_with_a_divider() {
+        let r = window_rects(80, 25, 2, SplitDir::Horizontal);
+        assert_eq!(r.len(), 2);
+        assert_eq!(
+            r[0],
+            Rect {
+                x: 0,
+                y: 0,
+                w: 80,
+                h: 12
+            }
+        );
+        assert_eq!(
+            r[1],
+            Rect {
+                x: 0,
+                y: 13,
+                w: 80,
+                h: 12
+            }
+        ); // y = 12 (band) + 1 (divider)
+        assert_eq!(r[0].h + 1 + r[1].h, 25, "bands + divider fill the height");
+    }
+
+    /// F-007: `:vsplit` tiles two columns side by side with a one-column divider; remainder cells go
+    /// to the earliest pane so the width is fully used.
+    #[test]
+    fn vertical_split_tiles_columns_with_a_divider() {
+        let r = window_rects(80, 24, 2, SplitDir::Vertical);
+        assert_eq!(r.len(), 2);
+        // (80 - 1 divider) / 2 = 39 rem 1 → first pane gets the extra column.
+        assert_eq!(
+            r[0],
+            Rect {
+                x: 0,
+                y: 0,
+                w: 40,
+                h: 24
+            }
+        );
+        assert_eq!(
+            r[1],
+            Rect {
+                x: 41,
+                y: 0,
+                w: 39,
+                h: 24
+            }
+        ); // x = 40 (col) + 1 (divider)
+        assert_eq!(r[0].w + 1 + r[1].w, 80, "columns + divider fill the width");
     }
 
     /// F-006 #3: with sync support the batch is fenced in DEC synchronized output (?2026h/l).
