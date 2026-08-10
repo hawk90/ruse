@@ -46,17 +46,18 @@ Source: `intro.txt`, `visual.txt`, `terminal.txt`.
 > `runtime/doc/map.txt` map-table as the [`map_mode`](../../spec/parity/inventory/neovim/map_mode.yaml)
 > census surface (`nvim.mapmode.*`), and what ruse promises for them lives in the
 > [`vim-style.yaml`](../../spec/parity/contracts/vim-style.yaml) contract. The old transition-table rows
-> (VIM-MODE-1/2/4/5/6/7/9) have been dropped: they are superseded by census IDs the PRD now cites directly.
-> Two rows survive here because they are **not** map_mode namespaces and have no census ID of their own:
+> (VIM-MODE-1/2/3/4/5/6/7/9) have been dropped: they are superseded by census IDs the PRD now cites directly
+> (VIM-MODE-3 retired in #90 — its overwrite policy is backed by `nvim.mapmode.ins`, see the bullet below).
+> One row survives here because it is **not** a map_mode namespace and has no census ID of its own:
 
 | ID | Mode | Enter | Exit | Target | Compat | Weight |
 | --- | --- | --- | --- | --- | --- | --- |
-| VIM-MODE-3 | Replace / Virtual Replace | `R` / `gR gr` | `<Esc>`; `<BS>` restores | L1 | Equivalent | low |
 | VIM-MODE-8 | Ex mode | `gQ` | `:visual` | L1 | Adapted | low |
 
 - **VIM-MODE-3** (Replace / Virtual Replace) is not a keymap namespace: it is the *overwrite* unmatched-key
-  policy *inside* the Insert namespace (`nvim.mapmode.ins`), so it stays as a human annotation on F-024
-  rather than becoming its own census ID.
+  policy *inside* the Insert namespace (`nvim.mapmode.ins`). As of #90 F-024 no longer *cites* it — the
+  policy is backed by `nvim.mapmode.ins` and VIM-MODE-3 survives only as a `#` comment annotation on F-024,
+  never a census ID of its own. (`R` #77, `gR` #89 implement it, `<BS>` restores the original char.)
 - **VIM-MODE-8** (Ex mode) is entered by `gQ` only — at the pinned Neovim revision `Q` is *replay-last-register*,
   not an Ex-mode key (see `vim-style.yaml` census_corrections). Ex mode is not one of the eight map_mode
   namespaces, so it too is kept as a legacy annotation (on F-026) rather than forced onto a census ID.
@@ -105,6 +106,8 @@ _Retired to the census (D-043): VIM-TOBJ-1..5 migrated to the 34 `nvim.key.text_
 ## VIM-CNT — Counts
 - Count multiplies across operator and motion: `2d3w` = 6 words. Count on `G`/`gg`/`%` = line/percent.
 - **⚠️ VIM-CNT-INS**: count on Insert repeats inserted text (`3ohello<Esc>`); count on `.` overrides original.
+  This is the count grammar applied to Ins-namespace entry, not a distinct parity surface; deferred (not an
+  F-024 acceptance criterion). As of #90 it is a human annotation only — F-024 no longer cites it (D-043).
 
 ## VIM-REG — Registers & Put
 Source: `change.txt`.
