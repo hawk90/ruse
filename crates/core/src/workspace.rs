@@ -24,8 +24,9 @@
 
 use crate::command::Command;
 use crate::document::{Document, DocumentId};
-use crate::editor::{apply_command, EditorState, View};
+use crate::editor::{apply_command, EditorState, SubFlags, SubOutcome, SubRange, View};
 use crate::effect::Effect;
+use crate::pattern::RegexError;
 
 /// A handle to a [`View`] in the workspace arena (INV-HANDLE). Distinct from [`DocumentId`] (a buffer)
 /// so the type system keeps Buffer ≠ View (F-007 acceptance #4). The inner index is the arena slot;
@@ -176,6 +177,30 @@ impl Workspace {
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
         effects
+    }
+
+    /// Run `:[range]s/pat/rep/flags` against the FOCUSED Window (the swap-trick, like [`Workspace::apply`]),
+    /// applying every substitution as one undo group. Returns the count, or a [`RegexError`] (F-009 #2).
+    pub fn substitute(
+        &mut self,
+        range: SubRange,
+        pattern: &str,
+        replacement: &str,
+        flags: SubFlags,
+    ) -> Result<SubOutcome, RegexError> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let did = view.doc();
+        let slot = Self::doc_slot(did);
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let result = st.substitute(range, pattern, replacement, flags);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        result
     }
 
     /// Move focus to the next Window in tile order, wrapping (Vim `C-w w`). No-op with one Window.

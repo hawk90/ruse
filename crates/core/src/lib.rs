@@ -42,7 +42,10 @@ pub use command::{
 };
 pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
-pub use editor::{apply_command, commit, plan, EditorState, IndentStyle, Mode, Plan, View};
+pub use editor::{
+    apply_command, commit, plan, EditorState, IndentStyle, Mode, Plan, SubFlags, SubOutcome,
+    SubRange, View,
+};
 pub use effect::Effect;
 pub use motion::Motion;
 pub use pattern::{Magic, Match, Options as RegexOptions, Regex, RegexError};

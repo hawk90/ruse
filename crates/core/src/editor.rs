@@ -13,6 +13,7 @@ use crate::motion::{
     self, at_col, col_of, line_end, line_start, next_boundary, next_grapheme, prev_boundary,
     prev_grapheme, snap, Motion,
 };
+use crate::pattern::RegexError;
 use crate::register::{Register, RegisterStore};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
 
@@ -373,6 +374,94 @@ impl EditorState {
         self.view.search_smart_case = smart_case;
     }
 
+    /// Execute `:[range]s/pattern/replacement/flags` (F-009 #2). Every substitution across the range is
+    /// applied as ONE undo group (a single [`Transaction`]). Matches are found with the Vim-regex engine
+    /// (magic + `\zs`/`\ze`); the REPORTED span is what gets replaced, so `:s/foo\zsbar/X/` rewrites only
+    /// `bar`. The replacement supports `&`/`\0` (the whole reported match) and `\n`/`\t`/`\\`/`\&`
+    /// escapes; capture backreferences `\1`-`\9` are a documented follow-up (they need the lowering to
+    /// expose a group-index map). The cursor lands on the start of the last changed line (Vim).
+    ///
+    /// # Errors
+    /// [`RegexError`] if the pattern is unrepresentable or malformed, or the buffer is not UTF-8.
+    pub fn substitute(
+        &mut self,
+        range: SubRange,
+        pattern: &str,
+        replacement: &str,
+        flags: SubFlags,
+    ) -> Result<SubOutcome, RegexError> {
+        // Case: an explicit `i`/`I` flag overrides the config (and disables smartcase for this command).
+        let base = self.view.search_options();
+        let opts = crate::pattern::Options {
+            magic: base.magic,
+            ignore_case: flags.ignore_case.unwrap_or(base.ignore_case),
+            smart_case: flags.ignore_case.is_none() && base.smart_case,
+        };
+        let re = crate::pattern::Regex::compile(pattern, opts)?;
+
+        let bytes = self.doc.bytes();
+        let hay = std::str::from_utf8(bytes)
+            .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
+        let lines = line_spans(hay); // (start, end-excluding-newline) per line
+        let cursor_line = line_index(hay, self.view.cursor);
+        let (first, last) = match range {
+            SubRange::CurrentLine => (cursor_line, cursor_line),
+            SubRange::WholeFile => (0, lines.len().saturating_sub(1)),
+            // 1-based inclusive from the user; clamp into range.
+            SubRange::Lines(a, b) => (
+                a.saturating_sub(1).min(lines.len().saturating_sub(1)),
+                b.saturating_sub(1).min(lines.len().saturating_sub(1)),
+            ),
+        };
+
+        let mut edits: Vec<Edit> = Vec::new();
+        let mut affected_lines = 0usize;
+        let mut last_line_idx = None;
+        for (li, &(ls, le)) in lines.iter().enumerate().take(last + 1).skip(first) {
+            let line = &hay[ls..le];
+            let matches: Vec<crate::pattern::Match> = if flags.global {
+                re.find_all(line)
+            } else {
+                re.find_at(line, 0).into_iter().collect()
+            };
+            if matches.is_empty() {
+                continue;
+            }
+            affected_lines += 1;
+            last_line_idx = Some(li);
+            for m in matches {
+                let matched = &line[m.start..m.end];
+                let rep = expand_replacement(replacement, matched);
+                edits.push(Edit::replace(ls + m.start, m.end - m.start, rep));
+            }
+        }
+
+        if edits.is_empty() {
+            return Ok(SubOutcome {
+                replacements: 0,
+                lines: 0,
+            });
+        }
+        let replacements = edits.len();
+        let list = EditList::new(edits)
+            .map_err(|_| RegexError::Syntax("overlapping substitutions".into()))?;
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc
+            .apply(txn)
+            .expect("substitute transaction applies cleanly");
+        self.view.last_was_edit = true;
+        // Cursor to the start of the last changed line (recomputed in the NEW buffer).
+        if let Some(li) = last_line_idx {
+            let nb = self.doc.bytes();
+            self.view.cursor = nth_line_start(nb, li).min(nb.len());
+        }
+        Ok(SubOutcome {
+            replacements,
+            lines: affected_lines,
+        })
+    }
+
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
     fn indent_unit(&self) -> Vec<u8> {
         match self.view.indent_style {
@@ -699,6 +788,107 @@ fn advance_n_checked(b: &[u8], from: usize, count: u32, limit: usize) -> (usize,
 
 /// The pure decision for one command.
 #[must_use]
+/// The line range a `:s` acts on. `Lines` is 1-based inclusive (as the user types `:N,Ms`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SubRange {
+    /// No range prefix: only the cursor's line.
+    CurrentLine,
+    /// `:%s` — every line.
+    WholeFile,
+    /// `:N,Ms` — 1-based inclusive line numbers.
+    Lines(usize, usize),
+}
+
+/// The `:s///` flags this MVP honors (F-009 #2). `c` (confirm) is an interactive frontend loop, not a
+/// field here; `'gdefault'` is applied by the caller (it inverts `g`) before constructing this.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct SubFlags {
+    /// `g`: replace ALL matches on each line. Default (no `g`) = the first match per line only.
+    pub global: bool,
+    /// Case override from a flag: `i` → `Some(true)` (ignore case), `I` → `Some(false)`
+    /// (case-sensitive); `None` = use the search config.
+    pub ignore_case: Option<bool>,
+}
+
+/// What a `:s` did, for the status echo ("N substitutions on M lines").
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SubOutcome {
+    /// Total matches replaced.
+    pub replacements: usize,
+    /// Distinct lines that had at least one replacement.
+    pub lines: usize,
+}
+
+/// The byte span `(start, end)` of every line (`end` excludes the `\n`). Always at least one line.
+fn line_spans(hay: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    for (i, b) in hay.bytes().enumerate() {
+        if b == b'\n' {
+            out.push((start, i));
+            start = i + 1;
+        }
+    }
+    out.push((start, hay.len())); // the final line (unterminated, or empty after a trailing newline)
+    out
+}
+
+/// The 0-based index of the line containing byte offset `pos`.
+fn line_index(hay: &str, pos: usize) -> usize {
+    hay.as_bytes()[..pos.min(hay.len())]
+        .iter()
+        .filter(|&&b| b == b'\n')
+        .count()
+}
+
+/// Byte offset of the start of the 0-based `idx`-th line (clamped to the buffer end).
+fn nth_line_start(bytes: &[u8], idx: usize) -> usize {
+    if idx == 0 {
+        return 0;
+    }
+    let mut seen = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'\n' {
+            seen += 1;
+            if seen == idx {
+                return i + 1;
+            }
+        }
+    }
+    bytes.len()
+}
+
+/// Expand a `:s` replacement: `&` / `\0` → the whole matched text; `\n` `\t` `\r` `\\` `\&` escapes.
+/// Capture backreferences `\1`-`\9` are a documented follow-up — an unsupported `\<d>` keeps the digit
+/// literal rather than erroring.
+fn expand_replacement(replacement: &str, matched: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut chars = replacement.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '&' => out.extend_from_slice(matched.as_bytes()),
+            '\\' => match chars.next() {
+                Some('0') => out.extend_from_slice(matched.as_bytes()),
+                Some('n') => out.push(b'\n'),
+                Some('t') => out.push(b'\t'),
+                Some('r') => out.push(b'\r'),
+                Some('&') => out.push(b'&'),
+                Some('\\') => out.push(b'\\'),
+                Some(other) => {
+                    let mut buf = [0u8; 4];
+                    out.extend_from_slice(other.encode_utf8(&mut buf).as_bytes());
+                }
+                None => out.push(b'\\'),
+            },
+            _ => {
+                let mut buf = [0u8; 4];
+                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+            }
+        }
+    }
+    out
+}
+
 /// The byte offset of the next Vim-regex match at/after `from`, wrapping to the document start (F-009).
 /// Invalid UTF-8, an unrepresentable/malformed pattern, or no match yields `None` — the caller keeps the
 /// cursor (Vim rings the bell). Replaces the v0 literal `search::find_next`.
@@ -4446,5 +4636,110 @@ mod search_tests {
             }],
         );
         assert_eq!(st.as_str().unwrap(), "XYZdef");
+    }
+}
+
+#[cfg(test)]
+mod substitute_tests {
+    use super::*;
+
+    fn sub(
+        initial: &str,
+        range: SubRange,
+        pat: &str,
+        rep: &str,
+        flags: SubFlags,
+    ) -> (EditorState, SubOutcome) {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        let out = st.substitute(range, pat, rep, flags).expect("compiles");
+        (st, out)
+    }
+
+    /// F-009 #2: `:s/pat/rep/` replaces the FIRST match on the current line only.
+    #[test]
+    fn substitute_first_match_on_current_line() {
+        let (st, out) = sub(
+            "foo foo\nfoo",
+            SubRange::CurrentLine,
+            "foo",
+            "bar",
+            SubFlags::default(),
+        );
+        assert_eq!(st.as_str().unwrap(), "bar foo\nfoo");
+        assert_eq!((out.replacements, out.lines), (1, 1));
+    }
+
+    /// F-009 #2: the `g` flag replaces ALL matches on each line.
+    #[test]
+    fn substitute_global_flag() {
+        let flags = SubFlags {
+            global: true,
+            ignore_case: None,
+        };
+        let (st, out) = sub("foo foo foo", SubRange::CurrentLine, "foo", "X", flags);
+        assert_eq!(st.as_str().unwrap(), "X X X");
+        assert_eq!(out.replacements, 3);
+    }
+
+    /// F-009 #2: `:%s///g` spans the whole file as ONE undo group.
+    #[test]
+    fn substitute_whole_file_is_one_undo_group() {
+        let flags = SubFlags {
+            global: true,
+            ignore_case: None,
+        };
+        let (mut st, _) = sub("a a\nb a\na", SubRange::WholeFile, "a", "Z", flags);
+        assert_eq!(st.as_str().unwrap(), "Z Z\nb Z\nZ");
+        // A single `u` reverts the ENTIRE substitution (it was one transaction).
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(st.as_str().unwrap(), "a a\nb a\na");
+    }
+
+    /// F-009 #2: a `:N,Ms` line range restricts the substitution.
+    #[test]
+    fn substitute_line_range() {
+        let flags = SubFlags {
+            global: true,
+            ignore_case: None,
+        };
+        let (st, _) = sub("a\na\na\na", SubRange::Lines(2, 3), "a", "X", flags);
+        assert_eq!(st.as_str().unwrap(), "a\nX\nX\na");
+    }
+
+    /// F-009 #2: `&` in the replacement is the whole matched text (`:s/foo/[&]/`).
+    #[test]
+    fn ampersand_is_the_whole_match() {
+        let (st, _) = sub(
+            "say foo",
+            SubRange::CurrentLine,
+            "foo",
+            "[&]",
+            SubFlags::default(),
+        );
+        assert_eq!(st.as_str().unwrap(), "say [foo]");
+    }
+
+    /// F-009 #3: `:s/foo\zsbar/X/` rewrites only the reported (`\zs`) span — `foo` is kept.
+    #[test]
+    fn substitute_honors_zs_reported_span() {
+        let (st, _) = sub(
+            "a foobar b",
+            SubRange::CurrentLine,
+            "foo\\zsbar",
+            "X",
+            SubFlags::default(),
+        );
+        assert_eq!(st.as_str().unwrap(), "a fooX b");
+    }
+
+    /// F-009 #2: the `i` flag forces a case-insensitive substitution regardless of config.
+    #[test]
+    fn substitute_i_flag_ignores_case() {
+        let flags = SubFlags {
+            global: true,
+            ignore_case: Some(true),
+        };
+        let (st, _) = sub("Foo FOO foo", SubRange::CurrentLine, "foo", "x", flags);
+        assert_eq!(st.as_str().unwrap(), "x x x");
     }
 }
