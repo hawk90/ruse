@@ -109,6 +109,46 @@ fn multibyte_cursor_moves_by_char_not_byte() {
 }
 
 #[test]
+fn cursor_moves_by_grapheme_cluster_not_codepoint() {
+    // F-002 #2: `l`/`h` must cross a whole user-perceived character so the cursor never lands
+    // mid-emoji/ZWJ/combining. "a👨‍👩‍👧b": 'a'(1) + a 5-codepoint family emoji(18) + 'b'(1).
+    let s = "a👨\u{200D}👩\u{200D}👧b";
+    let emoji_end = 1 + "👨\u{200D}👩\u{200D}👧".len(); // 19
+    let mut st = EditorState::new(s.as_bytes().to_vec());
+    apply_command(&mut st, &Command::MoveRight);
+    assert_eq!(st.cursor(), 1, "past 'a'");
+    apply_command(&mut st, &Command::MoveRight);
+    assert_eq!(
+        st.cursor(),
+        emoji_end,
+        "one `l` crosses the ENTIRE ZWJ emoji, not one codepoint"
+    );
+    apply_command(&mut st, &Command::MoveRight);
+    assert_eq!(st.cursor(), emoji_end + 1, "past 'b'");
+    // And back: `h` returns over the whole cluster in one step.
+    apply_command(&mut st, &Command::MoveLeft);
+    assert_eq!(st.cursor(), emoji_end);
+    apply_command(&mut st, &Command::MoveLeft);
+    assert_eq!(
+        st.cursor(),
+        1,
+        "h crosses the whole emoji back to just after 'a'"
+    );
+}
+
+#[test]
+fn cursor_crosses_a_combining_sequence_as_one() {
+    // "e" + U+0301 (combining acute) is one grapheme (3 bytes); `l` skips both codepoints.
+    let mut st = EditorState::new("e\u{0301}z".as_bytes().to_vec());
+    apply_command(&mut st, &Command::MoveRight);
+    assert_eq!(
+        st.cursor(),
+        3,
+        "past the base+combining cluster, not stopping on the mark"
+    );
+}
+
+#[test]
 fn save_and_quit_emit_effects_but_no_io() {
     let mut st = EditorState::new(b"x".to_vec());
     assert_eq!(apply_command(&mut st, &Command::Save), vec![Effect::Save]);

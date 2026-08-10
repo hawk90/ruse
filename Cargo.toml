@@ -1,5 +1,8 @@
-# ruse — Cargo workspace. Two crates today (RFC-0012 collapse): crates/core — the dependency-free kernel
-# (document, transaction, undo, anchors, registers, editing grammar) — and apps/tui — the `ruse` binary
+# ruse — Cargo workspace. Two crates today (RFC-0012 collapse): crates/core — the kernel (document,
+# transaction, undo, anchors, registers, editing grammar). Once dependency-free; as of F-002 it carries
+# exactly two data-only Unicode-table crates (unicode-segmentation, unicode-width) for grapheme/cell
+# coordinate resolution — hand-rolling UAX#29 + wcwidth would be a larger liability (decided 2026-08-10).
+# And apps/tui — the `ruse` binary
 # (Vim input engine + terminal rendering). Later PRD component layers (workspace < plugin < remote) add
 # crates as the build order reaches them. The two crates are implemented and tested (`cargo test` runs a
 # real suite incl. a Neovim-oracle parity comparator); version stays 0.0.0 until the MVP milestone.

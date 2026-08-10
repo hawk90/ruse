@@ -30,3 +30,17 @@ backlog:
   # "Adapted" — it is NOT one of the 8 map_mode namespaces, so it has no census home. gQ entry + reprompt
   # is implemented; the full Ex-mode UX (q:/wildmenu/incsearch/history) is deferred.
   - { id: VIM-MODE-8, feature: F-026, reason: "Ex mode (gQ) — Adapted, not a map_mode census namespace; entry+reprompt shipped, full Ex UX deferred" }
+  # F-002 coordinate/anchor model (#98, D-043) — ruse KERNEL ARCHITECTURE (C-DOCUMENT/C-ANCHOR).
+  # extmarks (nvim API), markers (emacs runtime), and grapheme/cell width are cross-editor coordinate
+  # FACTS with no enumerable census surface (building nvim-extmark / emacs-marker census surfaces is a
+  # future evidence-layer project like the terminal census). TERM-WIDTH-1 stays derived via its render
+  # (F-006) co-citer. The model is IMPLEMENTED (pos.rs grapheme/cell, motion grapheme cursor).
+  - { id: TERM-WIDTH-2, feature: F-002, reason: "grapheme/cell width — implemented (unicode-width), but width is ruse coordinate architecture with no upstream census surface" }
+  - { id: TERM-WIDTH-3, feature: F-002, reason: "wide/emoji/combining width — implemented (unicode-segmentation+width); no enumerable upstream census surface" }
+  - { id: NVIM-EXT-1, feature: F-002, reason: "extmark/decoration anchors — the anchor model (anchor.rs Bias) is ruse architecture; nvim extmarks are an API, not a source-tree census surface" }
+  - { id: NVIM-EXT-3, feature: F-002, reason: "extmark gravity/positioning — modelled by anchor.rs; no census surface (nvim extmark API)" }
+  - { id: NVIM-EXT-4, feature: F-002, reason: "extmark survive-edits semantics — anchor update rule; no census surface" }
+  - { id: NVIM-EXT-5, feature: F-002, reason: "extmark coordinate resolution — pos.rs typed coords; no census surface" }
+  - { id: NVIM-EXT-6, feature: F-002, reason: "extmark/decoration model — anchor store; no census surface" }
+  - { id: NVIM-EXT-7, feature: F-002, reason: "extmark namespace/lifetime — anchor policy; no census surface" }
+  - { id: EMACS-EDIT-2, feature: F-002, reason: "Emacs markers (position objects surviving edits) — the ruse anchor is the counterpart; markers are emacs runtime, not an enumerable census surface" }

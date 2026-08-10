@@ -10,7 +10,8 @@ use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
 use crate::effect::Effect;
 use crate::motion::{
-    self, at_col, col_of, line_end, line_start, next_boundary, prev_boundary, snap, Motion,
+    self, at_col, col_of, line_end, line_start, next_boundary, next_grapheme, prev_boundary,
+    prev_grapheme, snap, Motion,
 };
 use crate::register::{Register, RegisterStore};
 use crate::transaction::{GroupHint, Transaction, TransactionOrigin};
@@ -636,8 +637,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     let one = |e: Edit| EditList::new(vec![e]).expect("single edit is always valid");
 
     match cmd {
-        Command::MoveLeft => nop(prev_boundary(b, cur), st.mode),
-        Command::MoveRight => nop(next_boundary(b, cur), st.mode),
+        // `h`/`l` move by whole grapheme cluster so the cursor never lands mid-emoji/ZWJ/combining
+        // (F-002 #2). Operator/selection internals below still step by char boundary — grapheme-aware
+        // deletion is a follow-up; this slice makes the CURSOR stay synced to user-perceived chars.
+        Command::MoveLeft => nop(prev_grapheme(b, cur), st.mode),
+        Command::MoveRight => nop(next_grapheme(b, cur), st.mode),
         Command::MoveLineStart => nop(line_start(b, cur), st.mode),
         Command::MoveLineEnd => nop(line_end(b, cur), st.mode),
         Command::MoveUp => nop(motion::vmove(b, cur, 1, false, st.curswant), st.mode),
