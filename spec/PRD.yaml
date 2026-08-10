@@ -371,11 +371,23 @@ features:
     title: TUI rendering (ANSI/Unicode)
     stage: mvp
     priority: must
-    status: active
+    # done (#99): the compatibility-path render is a cell-grid DOUBLE-BUFFER (apps/tui/src/screen.rs).
+    # #1 only-changed-cells: render paints into a Screen; flush_diff emits just the changed runs
+    # (tested: unchanged frame -> 0 bytes; one-cell change -> only that glyph). #4 grapheme widths:
+    # cells hold whole grapheme CLUSTERS painted at true display width (wide=2/combining=0), cursor
+    # column is cluster-based (cursor_cell) — a ZWJ emoji is one cell pair, not three glyphs. #3
+    # synchronized output: the diff batch is fenced in ?2026h/l when the F-010 ledger confirms it
+    # (tested). #2 profile pinned: F-010 probes once in TermGuard; sync_output read once + held
+    # (INV-RENDER-PROFILE). The full semantic Render-Tree IR (render-and-frontends.md §1-7) + enhanced
+    # tier (kitty graphics/inline images, TERM-GFX) + horizontal scroll stay post-MVP.
+    # Repoint (D-043): TERM-SYNC-1 -> census nvim.termmode.synchronizedoutput (from #91); the render-
+    # architecture / heuristic / post-MVP-graphics ids (TERM-COLOR-1 truecolor, TERM-WIDTH-1 width,
+    # TERM-GFX-1/2/3 images) are backlogged; NVIM-UI-2 stays derived via its other UI citer.
+    status: done
     depends_on: [C-RENDER, C-TERMINAL]
     summary: Render-diff output on the compatibility path; grapheme-correct widths.
     trace:
-      parity: [TERM-SYNC-1, TERM-COLOR-1, TERM-WIDTH-1, NVIM-UI-2, TERM-GFX-1, TERM-GFX-2, TERM-GFX-3]
+      parity: [nvim.termmode.synchronizedoutput]
       design: [../docs/design/render-and-frontends.md, ../docs/architecture/architecture.md#6]
       verify: [../tests/unit/render-diff, ../tests/integration/render-profile-pin]
     acceptance:
