@@ -12,6 +12,11 @@ license.workspace = true
 # hand-rolling UAX#29 + wcwidth would be a larger, worse liability. Both are data-only, no_std-capable.
 unicode-segmentation = "1"
 unicode-width = "0.2"
+# F-009 / DEP-REGEX (D-028): the DEFAULT regex engine behind the C-REGEX abstraction — linear-time,
+# ReDoS-immune. The Vim-dialect front-end (pattern.rs) lowers a magic-resolved pattern onto it; the
+# crate's types never reach ruse's public API (public_api_exposure: none). The owned NFA engine for
+# lookbehind/backrefs/full-\zs is post-MVP; MVP uses this one alone (scope decided 2026-08-11).
+regex = "1"
 
 [dev-dependencies]
 # Benchmarking harness (D-042). Lean features: keep cargo-bench integration, drop rayon + plotters/gnuplot.

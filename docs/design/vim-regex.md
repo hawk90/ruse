@@ -176,6 +176,13 @@ trait Program {
 struct Match { start: BytePos, end: BytePos, consumed: Range<BytePos> }
 ```
 
+<!-- design-code-ack: Match — the F-009 MVP `Match` (crates/core/src/pattern.rs) carries only the
+     REPORTED span { start, end } (already \zs/\ze-adjusted). The `consumed` true-automaton range is
+     deferred: it is needed only for search-offset math (`/e`, `/s+2`) and multi-\zs edge cases, which
+     are post-MVP (the command layer PRs cover plain search + :s/:g). Design is ahead of the code by
+     intent — add `consumed` when offsets land, not stale. -->
+
+
 `C-REGEX`'s public surface is `compile(dialect, pattern, opts) -> Regex` + `Regex::find/find_all/captures`.
 Callers pass a **`Dialect`** and a **`Context`** (§7); the router owns engine choice. Concrete engine types and
 the `regex` crate are confined to `core` (DEP-REGEX `allowed_layers`).
