@@ -400,7 +400,14 @@ features:
     title: Terminal capability detection
     stage: mvp
     priority: must   # promoted: F-006 (must) depends on the capability ledger (V-18)
-    status: active
+    # done (#92): apps/tui/src/caps/ — a DA1-fenced probe (probe.rs: query_batch ends with the DA1
+    # fence, ProbeParser stops at it, no per-cap timeout) feeding the {value,source,confidence}
+    # ledger (ledger.rs: Source precedence Default<EnvHint<Probed<UserOverride, override always
+    # wins) with enter/exit push-pop (sequences.rs: exit reverses enter). Wired in main.rs TermGuard
+    # (poll() is a liveness net only; is_terminal-guarded; env hints + RUSE_NO_* overrides). All 3
+    # acceptance criteria met + tested: 12 unit + 7 integration (tests/caps_probe.rs) over canned
+    # DA1-fenced streams (modern/bare/split/stray-input/not-recognised).
+    status: done
     depends_on: [C-TERMINAL]
     summary: Active probing with a confidence ledger and user override; not TERM-only.
     trace:

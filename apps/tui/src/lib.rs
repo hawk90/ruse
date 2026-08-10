@@ -9,4 +9,5 @@
 //! `main.rs` keeps its own `mod input;` and does not depend on this face, so exposing it here is
 //! purely additive to the binary.
 
+pub mod caps;
 pub mod input;
