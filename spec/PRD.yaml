@@ -270,11 +270,18 @@ features:
     title: Command-line namespace
     stage: mvp
     priority: must
-    status: planned
+    # done (#97): the command-line is now an engine-owned namespace, not an ad-hoc UI buffer.
+    # InputEngine.cmdline (CmdLine{prefix,buffer,cursor,ex_mode}) owns the line; `:`/`/` open it via
+    # feed(), printable keys append, <BS> deletes, <Esc> aborts, <CR> finalises (search folds through
+    # submit_search -> Feed::Cmd, `:` -> Feed::ExecuteEx). main.rs deleted its `cmd_line` and renders
+    # engine.cmdline(). `gQ` (only) enters Ex mode (re-prompts until `:visual`); bare `Q` does not.
+    # 6 namespace tests + property no-leak updated + oracle comparator simplified (still green).
+    # VIM-MODE-8 (Ex mode, Adapted, gQ-only) has no map_mode census home -> backlogged.
+    status: done
     depends_on: [C-INPUT, C-COMMAND]
     summary: A real namespace with its own line editor, not an ad-hoc text buffer on the UI.
     trace:
-      parity: [nvim.mapmode.cmd, VIM-MODE-8]   # Cmd namespace onto census; VIM-MODE-8 (Ex mode) is NOT a map_mode namespace (gQ-only; `Q` is replay per census_corrections) — kept legacy
+      parity: [nvim.mapmode.cmd]   # Cmd namespace onto the map_mode census (D-043); VIM-MODE-8 (Ex mode) backlogged in #97 — gQ-only, Adapted, not a map_mode namespace
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md, ../docs/design/command-engine.md]
       verify: [../tests/parity/vim/command-line.yaml]

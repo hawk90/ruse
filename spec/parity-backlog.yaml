@@ -26,3 +26,7 @@ backlog:
   # F-005 undo model (#96, D-043) — ruse kernel ARCHITECTURE (C-UNDO/C-TRANSACTION), no upstream
   # SURFACE tabulates it. COM-7/VIM-UNDO-1/EMACS-EDIT-1 stay derived via F-001; COM-8 is F-005-only.
   - { id: COM-8,  feature: F-005, reason: "undo TREE (branching history) — implemented in undo.rs, but the branching-undo MODEL is ruse architecture with no enumerable upstream census surface; the catalog row is tracked debt until a persistence/history PILLAR is written" }
+  # F-026 (#97): VIM-MODE-8 Ex mode is entered by gQ only (Q is replay-last-register at the pin) and is
+  # "Adapted" — it is NOT one of the 8 map_mode namespaces, so it has no census home. gQ entry + reprompt
+  # is implemented; the full Ex-mode UX (q:/wildmenu/incsearch/history) is deferred.
+  - { id: VIM-MODE-8, feature: F-026, reason: "Ex mode (gQ) — Adapted, not a map_mode census namespace; entry+reprompt shipped, full Ex UX deferred" }
