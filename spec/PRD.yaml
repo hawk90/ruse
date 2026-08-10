@@ -172,7 +172,15 @@ features:
     title: Text objects — inner/around targets
     stage: mvp
     priority: must
-    status: active
+    # done (#95): text objects implemented in apps/tui/src/input.rs (`text_object()` maps
+    # iw/aw/i(/a"/it/... to Motions, Vim alias collapse b/B/[/]). Both acceptance criteria are
+    # oracle-verified in tests/parity/vim/fixtures/corpus.yaml: operator operand (daw_a_word,
+    # diw_inner_word, di(, f(di(), visual extend (viwd_visual_inner_word, viwc_visual_change_text,
+    # viwygvd), and inner-vs-around delimiter/whitespace spans. Chain closed (34 census, 0 legacy,
+    # READY-WITH-SCOPE). NOTE: trace.verify below names a per-feature file like its siblings
+    # (F-023/025/029) — those fixtures live in corpus.yaml today; the per-feature split is a shared
+    # symbolic-pointer cleanup, not an F-028 gap.
+    status: done
     depends_on: [C-INPUT, C-EDITLANG]
     summary: Text-object targets (iw/aw/i(/a"/it/...) as operator and visual operands (census surface mode_key.text_object).
     trace:
