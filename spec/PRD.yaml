@@ -400,12 +400,34 @@ features:
     title: Buffers, views, windows, splits
     stage: mvp
     priority: must
-    status: planned
+    # done (#102 impl + #103 repoint): crates/core/src/workspace.rs — Workspace owns docs/views/
+    # windows arenas (no Rc/RefCell; a View NAMES its buffer by DocumentId), edits the focused
+    # (Document, View) via a swap into the UNCHANGED EditorState pipeline (single-window path byte-
+    # identical), split clones the focused View onto the same buffer, close_focused retires the View
+    # and retires the Document only when no surviving View names it (refcount-by-scan). TUI drives it:
+    # window_rects tiling + paint_pane clip-to-rect + separators + focused-view cursor/status;
+    # C-w w/s/v/c/q and :split/:vsplit/:close. All four acceptance criteria implemented + tested
+    # (6 core Workspace tests + 3 tiling tests, #102). MVP-minimal per ruse-mvp-minimal-slice: the
+    # full recursive layout tree / tab pages / resize / folds / session persistence / global-registers-
+    # across-views are the post-MVP C-WORKSPACE elaboration (design-code-ack in view-window-workspace.md).
+    status: done
     depends_on: [C-VIEW, C-WORKSPACE]
     summary: Same buffer openable in multiple views; view-local state stays in the view.
     trace:
-      parity: [COM-2, COM-3, COM-4, VIM-WIN-1, EMACS-BUFFER-2, EMACS-BUFFER-1, WS-1, WS-2, WS-6, WS-9]
-      design: [../docs/architecture/architecture.md#7, ../docs/design/render-and-frontends.md]
+      # Census-N/A (#103, D-043). F-007 is ruse WORKSPACE ARCHITECTURE (C-VIEW/C-WORKSPACE) plus
+      # layer:host UI: no editor's source tree TABULATES "Buffer != View != Window / view-local
+      # cursor+scroll / last-View retirement" as a censusable fact — these are the ownership+lifecycle
+      # behaviours designed in ../docs/design/view-window-workspace.md. The window split/buffer
+      # COMMANDS do have ex_command census homes (nvim.ex.split/vsplit/close), but families.yaml
+      # classifies window-split as layer:host ("Window/frame SPLIT layout is layer:host (UI), not this
+      # family"), so they are NOT a parity FAM fact to cite as targeted. The 10 hand-authored ids this
+      # once cited are cross-editor "all editors have buffers/windows" assertions with no single census
+      # surface, now tracked in spec/parity-backlog.yaml (COM-2/3/4 open/switch/close, VIM-WIN-1
+      # splits, EMACS-BUFFER-1/2 buffer-list/same-buffer-many-windows, WS-1/2/6/9 workspace facts) —
+      # burn down when a workspace census surface or a ruse-choice PILLAR is written (as with
+      # F-002/005/008). Chain closes via parity_na (gov implementable F-007 = READY).
+      parity: []
+      design: [../docs/design/view-window-workspace.md, ../docs/architecture/architecture.md#7, ../docs/design/render-and-frontends.md]
       verify: [../tests/integration/split-independent-cursors, ../tests/unit/view-local-state]
     acceptance:
       - Splitting shows two views of one document with independent cursors and scroll.
