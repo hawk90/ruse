@@ -1320,6 +1320,8 @@ pub enum Ex {
     Substitute(SubSpec),
     /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
     Global(GlobalSpec),
+    /// `:noh` / `:nohlsearch` — clear the search highlight (F-009 #1).
+    NoHighlight,
     Unknown(String),
 }
 
@@ -1541,6 +1543,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "split" | "sp" => Ex::Split,
         "vsplit" | "vsp" | "vs" => Ex::VSplit,
         "close" | "clo" => Ex::Close,
+        "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         _ => match line.strip_prefix("trace save") {
             Some(rest) => Ex::SaveTrace(rest.trim().to_string()),
             // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
@@ -3329,5 +3332,17 @@ mod global_parse_tests {
         // `:vsplit` must stay the window command, not be parsed as `:v`-global.
         assert_eq!(parse_ex("vsplit"), Ex::VSplit);
         assert_eq!(parse_ex("vs"), Ex::VSplit);
+    }
+}
+
+#[cfg(test)]
+mod nohighlight_parse_tests {
+    use super::*;
+
+    #[test]
+    fn noh_variants_parse() {
+        assert_eq!(parse_ex("noh"), Ex::NoHighlight);
+        assert_eq!(parse_ex("nohl"), Ex::NoHighlight);
+        assert_eq!(parse_ex("nohlsearch"), Ex::NoHighlight);
     }
 }

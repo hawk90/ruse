@@ -283,6 +283,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let sync_output = guard.sync_output(); // pinned once from the F-010 ledger (INV-RENDER-PROFILE)
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
+    let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -331,10 +332,24 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             .as_mut()
             .map(|h| h.spans(revision, &snapshot))
             .unwrap_or(&[]);
-        let confirm_hl = confirm
-            .as_ref()
-            .and_then(|c| c.subs.get(c.idx))
-            .map(|s| (s.start, s.end));
+        // The focused pane's extra reverse-video highlights: a `:s///c` confirm match, else the
+        // incsearch pattern being typed in `/`…`?`, else the last search (hlsearch) — F-009 #1.
+        let focus_hl: Vec<(usize, usize)> = if let Some(c) = &confirm {
+            c.subs
+                .get(c.idx)
+                .map(|s| vec![(s.start, s.end)])
+                .unwrap_or_default()
+        } else {
+            let active = match engine.cmdline() {
+                Some(('/', buf, _)) | Some(('?', buf, _)) if !buf.is_empty() => {
+                    Some(buf.to_string())
+                }
+                _ => search_hl.clone(),
+            };
+            active
+                .map(|p| search_highlights(&p, &snapshot))
+                .unwrap_or_default()
+        };
         render(
             &mut out,
             &ws,
@@ -345,7 +360,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &rects,
             &mut prev_frame,
             sync_output,
-            confirm_hl,
+            &focus_hl,
         )?;
         let Event::Key(key) = event::read()? else {
             continue;
@@ -376,27 +391,40 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         match engine.feed(key, ws.focused().view.mode()) {
             // A finished `:`-line (F-026): parse + run it. `submit_search` already folded a `/`-line
             // into `Feed::Cmd` inside the engine, so the frontend only sees the ex case here.
-            Feed::ExecuteEx(text) => run_ex(
-                &parse_ex(&text),
-                &mut ws,
-                &path,
-                fmt,
-                &initial,
-                &recorded,
-                &mut status,
-                &mut quit,
-                &mut confirm,
-            ),
+            Feed::ExecuteEx(text) => {
+                let ex = parse_ex(&text);
+                if matches!(ex, Ex::NoHighlight) {
+                    search_hl = None; // `:noh` clears the search highlight (F-009 #1)
+                } else {
+                    run_ex(
+                        &ex,
+                        &mut ws,
+                        &path,
+                        fmt,
+                        &initial,
+                        &recorded,
+                        &mut status,
+                        &mut quit,
+                        &mut confirm,
+                    );
+                }
+            }
             Feed::Pending | Feed::Ignored => {}
-            Feed::Cmd(cmd) => run_cmd(
-                cmd,
-                &mut ws,
-                &path,
-                fmt,
-                &mut recorded,
-                &mut status,
-                &mut quit,
-            ),
+            Feed::Cmd(cmd) => {
+                // A completed search turns on hlsearch for that pattern (F-009 #1).
+                if let Some(p) = search_pattern(&cmd) {
+                    search_hl = Some(p);
+                }
+                run_cmd(
+                    cmd,
+                    &mut ws,
+                    &path,
+                    fmt,
+                    &mut recorded,
+                    &mut status,
+                    &mut quit,
+                );
+            }
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
@@ -538,6 +566,8 @@ fn run_ex(
                 Err(e) => regex_error_msg(&e),
             };
         }
+        // `:noh` is handled in the run loop (it clears the frontend's search highlight); never reaches here.
+        Ex::NoHighlight => {}
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }
@@ -728,6 +758,7 @@ fn window_rects(cols: u16, text_rows: u16, count: usize, split: SplitDir) -> Vec
 /// from the pane's left edge; a wide glyph that would straddle the right edge is dropped and the rest
 /// of that line is skipped. `sel`/`block` paint the Visual selection in reverse video; `byte_color`
 /// carries the syntax colour per byte (empty ⇒ default).
+#[allow(clippy::too_many_arguments)] // painting one pane legitimately needs the full cell context
 fn paint_pane(
     cur: &mut screen::Screen,
     rect: Rect,
@@ -736,6 +767,7 @@ fn paint_pane(
     top: usize,
     sel: Option<(usize, usize)>,
     block: Option<&[(usize, usize)]>,
+    hl: &[(usize, usize)],
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
@@ -761,7 +793,8 @@ fn paint_pane(
         }
         let srow = rect.y + (line - top) as u16;
         let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
-            || block.is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e));
+            || block.is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e))
+            || hl.iter().any(|&(s, e)| i >= s && i < e);
         let fg = byte_color.get(i).copied().unwrap_or(Color::Reset);
         if g == "\t" {
             let stop = TAB_WIDTH - ((scol - x0) % TAB_WIDTH); // stops measured from the pane's left
@@ -811,6 +844,31 @@ fn draw_separators(
     }
 }
 
+/// The pattern a search command carries (turns on hlsearch for it), else `None` (F-009 #1).
+fn search_pattern(cmd: &Command) -> Option<String> {
+    match cmd {
+        Command::Search { pattern, .. } => Some(pattern.clone()),
+        Command::SearchNext(p) | Command::SearchPrev(p) => Some(p.clone()),
+        _ => None,
+    }
+}
+
+/// All matches of `pattern` in `bytes` as byte spans, for the incsearch/hlsearch reverse-video
+/// highlight (F-009 #1). Uses the default search options (case-sensitive magic — the search default);
+/// an unrepresentable/malformed pattern or a non-UTF-8 buffer highlights nothing (never an error path).
+fn search_highlights(pattern: &str, bytes: &[u8]) -> Vec<(usize, usize)> {
+    let Ok(hay) = std::str::from_utf8(bytes) else {
+        return Vec::new();
+    };
+    let Ok(re) = ruse_core::Regex::compile(pattern, ruse_core::RegexOptions::default()) else {
+        return Vec::new();
+    };
+    re.find_all(hay)
+        .into_iter()
+        .map(|m| (m.start, m.end))
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)] // the frame render legitimately needs the full view context
 fn render(
     out: &mut io::Stdout,
@@ -822,7 +880,7 @@ fn render(
     rects: &[Rect],
     prev: &mut screen::Screen,
     sync: bool,
-    confirm_hl: Option<(usize, usize)>,
+    focus_hl: &[(usize, usize)],
 ) -> io::Result<()> {
     use crossterm::style::Color;
 
@@ -856,13 +914,11 @@ fn render(
         } else {
             &[]
         };
-        // The focused pane paints a `:s///c` confirm highlight (the current match) as a selection
-        // when there is no live Visual selection to show.
-        let sel = p
-            .view
-            .selection_span(pbytes)
-            .or(if i == ws.focus() { confirm_hl } else { None });
+        let sel = p.view.selection_span(pbytes);
         let block = p.view.block_spans(pbytes);
+        // The focused pane also paints the `:s///c` confirm match / incsearch+hlsearch matches (F-009
+        // #1) in reverse video, on top of any live Visual selection.
+        let hl: &[(usize, usize)] = if i == ws.focus() { focus_hl } else { &[] };
         paint_pane(
             &mut cur,
             rect,
@@ -871,6 +927,7 @@ fn render(
             p.view.top(),
             sel,
             block.as_deref(),
+            hl,
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -1042,6 +1099,26 @@ fn row_col(bytes: &[u8], pos: usize) -> (usize, usize) {
 mod render_tests {
     use super::*;
     use crossterm::style::Color;
+
+    /// F-009 #1: the hlsearch/incsearch highlight computes every match span of the pattern (Vim regex).
+    #[test]
+    fn search_highlights_all_matches() {
+        assert_eq!(search_highlights("a", b"a b a"), vec![(0, 1), (4, 5)]);
+        // Magic quantifier, not literal.
+        assert_eq!(search_highlights("a\\+", b"aa b aaa"), vec![(0, 2), (5, 8)]);
+        // An unrepresentable/invalid pattern highlights nothing (never errors).
+        assert!(search_highlights("\\1", b"abc").is_empty());
+    }
+
+    /// F-009 #1: a search command carries its pattern for hlsearch; other commands do not.
+    #[test]
+    fn search_pattern_extracts_only_from_search_commands() {
+        assert_eq!(
+            search_pattern(&ruse_core::Command::SearchNext("foo".into())),
+            Some("foo".to_string())
+        );
+        assert_eq!(search_pattern(&ruse_core::Command::MoveLeft), None);
+    }
 
     /// F-006 #1: an unchanged frame emits ZERO bytes — no full-screen redraw.
     #[test]
