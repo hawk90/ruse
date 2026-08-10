@@ -4,7 +4,9 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
-use ruse_core::{BlockInsertKind, Command, ForcedWise, Mode, Motion, OpKind, SearchOp, SelectKind};
+use ruse_core::{
+    BlockInsertKind, Command, ForcedWise, Mode, Motion, OpKind, SearchOp, SelectKind, SubRange,
+};
 
 /// The outcome of feeding one key to the engine.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -1313,7 +1315,118 @@ pub enum Ex {
     VSplit,
     /// `:close`/`:clo` — close the focused window (keeps the shared buffer while another holds it).
     Close,
+    /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
+    Substitute(SubSpec),
     Unknown(String),
+}
+
+/// A parsed `:s///` command (F-009 #2): the line range, the Vim pattern + replacement, and the flags.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SubSpec {
+    /// The line range the substitution acts on.
+    pub range: SubRange,
+    /// The Vim search pattern (between the first two delimiters).
+    pub pattern: String,
+    /// The replacement text (between the second and third delimiters).
+    pub replacement: String,
+    /// `g`: replace all matches on each line. (Already gdefault-adjusted by [`parse_ex`].)
+    pub global: bool,
+    /// Case override: `i` → `Some(true)`, `I` → `Some(false)`, else `None`.
+    pub ignore_case: Option<bool>,
+    /// `c`: confirm each substitution interactively (handled by the frontend; PR-c2).
+    pub confirm: bool,
+}
+
+/// Parse a `:[range]s/pat/rep/flags` line into a [`SubSpec`], or `None` if it is not a substitute.
+/// `gdefault` inverts the meaning of the `g` flag (Vim `'gdefault'`); pass it through so the caller's
+/// config toggles it. MVP ranges: none (current line), `%` (whole file), `N` / `N,M` (line numbers).
+fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
+    // Split the leading range prefix (chars `[0-9,%.$]`) from the command.
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+    // The command verb is `s` or `substitute`, then a single-char delimiter.
+    let rest = rest
+        .strip_prefix("substitute")
+        .or_else(|| rest.strip_prefix('s'))?;
+    let delim = rest.chars().next()?;
+    if !delim.is_ascii_punctuation() {
+        return None; // e.g. `:sort` — `o` is not a delimiter
+    }
+    let body = &rest[delim.len_utf8()..];
+    // Split into up to three parts on UNESCAPED delimiters (`\/` stays literal in the pattern/rep).
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            cur.push('\\');
+            if let Some(n) = chars.next() {
+                cur.push(n);
+            }
+        } else if c == delim {
+            parts.push(std::mem::take(&mut cur));
+            if parts.len() == 2 {
+                // Everything after the third delimiter is the flags run (no more splitting).
+                parts.push(chars.as_str().to_string());
+                cur.clear();
+                break;
+            }
+        } else {
+            cur.push(c);
+        }
+    }
+    if !cur.is_empty() || parts.len() < 2 {
+        parts.push(cur);
+    }
+    let pattern = parts.first().cloned().unwrap_or_default();
+    let replacement = parts.get(1).cloned().unwrap_or_default();
+    let flags = parts.get(2).map(String::as_str).unwrap_or("");
+
+    let mut global = flags.contains('g');
+    if gdefault {
+        global = !global; // 'gdefault' inverts the g flag
+    }
+    let ignore_case = if flags.contains('i') {
+        Some(true)
+    } else if flags.contains('I') {
+        Some(false)
+    } else {
+        None
+    };
+    let range = parse_sub_range(range_str)?;
+    Some(SubSpec {
+        range,
+        pattern,
+        replacement,
+        global,
+        ignore_case,
+        confirm: flags.contains('c'),
+    })
+}
+
+/// Parse a `:s` line-range prefix. MVP: empty → current line, `%` → whole file, `N` → that line,
+/// `N,M` → the inclusive span. Unsupported forms (`.`, `$`, marks) yield `None`.
+fn parse_sub_range(s: &str) -> Option<SubRange> {
+    let s = s.trim();
+    if s.is_empty() || s == "." {
+        return Some(SubRange::CurrentLine);
+    }
+    if s == "%" {
+        return Some(SubRange::WholeFile);
+    }
+    match s.split_once(',') {
+        Some((a, b)) => {
+            let a = a.trim().parse::<usize>().ok()?;
+            let b = b.trim().parse::<usize>().ok()?;
+            Some(SubRange::Lines(a.min(b), a.max(b)))
+        }
+        None => {
+            let n = s.parse::<usize>().ok()?;
+            Some(SubRange::Lines(n, n))
+        }
+    }
 }
 
 /// Parse the text typed after `:` (without the leading colon).
@@ -1329,7 +1442,11 @@ pub fn parse_ex(line: &str) -> Ex {
         "close" | "clo" => Ex::Close,
         _ => match line.strip_prefix("trace save") {
             Some(rest) => Ex::SaveTrace(rest.trim().to_string()),
-            None => Ex::Unknown(line.to_string()),
+            // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
+            None => match parse_substitute(line, false) {
+                Some(spec) => Ex::Substitute(spec),
+                None => Ex::Unknown(line.to_string()),
+            },
         },
     }
 }
@@ -2987,5 +3104,67 @@ mod layer_state_tests {
             Feed::Cmd(Command::InsertChar('x')),
             "in Normal the same key is a command, not inserted text"
         );
+    }
+}
+
+#[cfg(test)]
+mod substitute_parse_tests {
+    use super::*;
+
+    fn sub(line: &str) -> SubSpec {
+        match parse_ex(line) {
+            Ex::Substitute(s) => s,
+            other => panic!("expected Substitute, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plain_substitute_current_line() {
+        let s = sub("s/foo/bar/");
+        assert_eq!(s.range, SubRange::CurrentLine);
+        assert_eq!(s.pattern, "foo");
+        assert_eq!(s.replacement, "bar");
+        assert!(!s.global && s.ignore_case.is_none() && !s.confirm);
+    }
+
+    #[test]
+    fn whole_file_global() {
+        let s = sub("%s/a/b/g");
+        assert_eq!(s.range, SubRange::WholeFile);
+        assert!(s.global);
+    }
+
+    #[test]
+    fn line_range_and_flags() {
+        let s = sub("2,5s/a/b/gi");
+        assert_eq!(s.range, SubRange::Lines(2, 5));
+        assert!(s.global);
+        assert_eq!(s.ignore_case, Some(true));
+    }
+
+    #[test]
+    fn capital_i_forces_case_sensitive_and_c_is_confirm() {
+        let s = sub("s/a/b/Ic");
+        assert_eq!(s.ignore_case, Some(false));
+        assert!(s.confirm);
+    }
+
+    #[test]
+    fn gdefault_inverts_the_g_flag() {
+        // With gdefault ON, a BARE `:s///` is global and `:s///g` is single.
+        assert!(parse_substitute("s/a/b/", true).unwrap().global);
+        assert!(!parse_substitute("s/a/b/g", true).unwrap().global);
+    }
+
+    #[test]
+    fn escaped_delimiter_stays_in_the_pattern() {
+        let s = sub("s/a\\/b/c/");
+        assert_eq!(s.pattern, "a\\/b");
+        assert_eq!(s.replacement, "c");
+    }
+
+    #[test]
+    fn sort_is_not_a_substitute() {
+        assert!(matches!(parse_ex("sort"), Ex::Unknown(_)));
     }
 }

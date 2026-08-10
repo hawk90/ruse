@@ -484,6 +484,28 @@ fn run_ex(
                 Err(e) => *status = format!("trace save failed: {e}"),
             }
         }
+        // `:[range]s/pat/rep/flags` (F-009 #2). The `c` (confirm) flag is the interactive loop (PR-c2);
+        // for now it is declined rather than silently applied.
+        Ex::Substitute(spec) => {
+            if spec.confirm {
+                *status = ":s///c (confirm) is not implemented yet — omit c to substitute".into();
+            } else {
+                let flags = ruse_core::SubFlags {
+                    global: spec.global,
+                    ignore_case: spec.ignore_case,
+                };
+                *status = match ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags) {
+                    Ok(out) if out.replacements == 0 => {
+                        format!("E486: pattern not found: {}", spec.pattern)
+                    }
+                    Ok(out) => format!("{} substitutions on {} lines", out.replacements, out.lines),
+                    Err(ruse_core::RegexError::Unsupported(m)) => {
+                        format!("E: unsupported pattern: {m}")
+                    }
+                    Err(ruse_core::RegexError::Syntax(m)) => format!("E: bad pattern: {m}"),
+                };
+            }
+        }
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }
