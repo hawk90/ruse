@@ -1430,20 +1430,7 @@ fn parse_global(line: &str) -> Option<GlobalSpec> {
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
         .unwrap_or(line.len());
     let (range_str, rest) = line.split_at(split);
-    // Command verb: `vglobal` / `global` / `g!` / `g` / `v` (longest first; `!` marks the inverse).
-    let (rest, negate) = if let Some(r) = rest.strip_prefix("vglobal") {
-        (r, true)
-    } else if let Some(r) = rest.strip_prefix("global") {
-        (r, false)
-    } else if let Some(r) = rest.strip_prefix("g!") {
-        (r, true)
-    } else if let Some(r) = rest.strip_prefix('g') {
-        (r, false)
-    } else if let Some(r) = rest.strip_prefix('v') {
-        (r, true)
-    } else {
-        return None;
-    };
+    let (rest, negate) = strip_global_verb(rest)?;
     let delim = rest.chars().next()?;
     if !delim.is_ascii_punctuation() {
         return None;
@@ -1462,6 +1449,25 @@ fn parse_global(line: &str) -> Option<GlobalSpec> {
         negate,
         cmd,
     })
+}
+
+/// Strip the `:g` command verb — `vglobal` / `global` / `g!` / `g` / `v` (longest first; `!` and `v`
+/// mark the inverse) — returning the remainder and whether the selection is negated, or `None` if the
+/// line is not a global command.
+fn strip_global_verb(rest: &str) -> Option<(&str, bool)> {
+    if let Some(r) = rest.strip_prefix("vglobal") {
+        Some((r, true))
+    } else if let Some(r) = rest.strip_prefix("global") {
+        Some((r, false))
+    } else if let Some(r) = rest.strip_prefix("g!") {
+        Some((r, true))
+    } else if let Some(r) = rest.strip_prefix('g') {
+        Some((r, false))
+    } else if let Some(r) = rest.strip_prefix('v') {
+        Some((r, true))
+    } else {
+        None
+    }
 }
 
 /// Split `s` at the FIRST unescaped `delim` into `(before, after)`; `None` if there is no delimiter.
