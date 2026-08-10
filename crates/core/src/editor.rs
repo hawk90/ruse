@@ -134,6 +134,10 @@ enum Action {
     },
     Undo,
     Redo,
+    /// `g-`/`g+`: step along chronological creation order (`older` = `g-`), across branches.
+    UndoChrono {
+        older: bool,
+    },
     Nop,
     /// Install the one-shot pending register (`"x`). Distinct from `Nop` so [`commit`] knows NOT to clear
     /// the pending register it just set — every other action clears it once its command has consumed it.
@@ -1370,6 +1374,24 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             set_register: None,
             set_anchor: None,
         },
+        Command::UndoOlder => Plan {
+            action: Action::UndoChrono { older: true },
+            cursor: cur,
+            mode: Mode::Normal,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+        },
+        Command::UndoNewer => Plan {
+            action: Action::UndoChrono { older: false },
+            cursor: cur,
+            mode: Mode::Normal,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+        },
         Command::Save => Plan {
             action: Action::Nop,
             cursor: cur,
@@ -1839,6 +1861,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         }
         Action::Redo => {
             st.doc.redo();
+        }
+        Action::UndoChrono { older } => {
+            st.doc.undo_chronological(older);
         }
         Action::BlockInsertArm {
             edits,

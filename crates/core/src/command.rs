@@ -195,6 +195,10 @@ pub enum Command {
     // history / file / control
     Undo,
     Redo,
+    /// `g-` — step to the chronologically older text state, across branches (Vim undo-time travel).
+    UndoOlder,
+    /// `g+` — step to the chronologically newer text state, across branches.
+    UndoNewer,
     Save,
     Quit,
 }
@@ -485,6 +489,8 @@ impl Command {
             }
             Command::Undo => "undo".into(),
             Command::Redo => "redo".into(),
+            Command::UndoOlder => "undo_older".into(),
+            Command::UndoNewer => "undo_newer".into(),
             Command::Save => "save".into(),
             Command::Quit => "quit".into(),
         }
@@ -697,6 +703,8 @@ impl Command {
             }
             "undo" => Command::Undo,
             "redo" => Command::Redo,
+            "undo_older" => Command::UndoOlder,
+            "undo_newer" => Command::UndoNewer,
             "save" => Command::Save,
             "quit" => Command::Quit,
             other => return Err(CommandParseError::UnknownVerb(other.to_string())),

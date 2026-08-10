@@ -189,6 +189,21 @@ impl Document {
         Some(self.revision)
     }
 
+    /// Move one logical change along CHRONOLOGICAL creation order — `g-` (`older = true`) to the
+    /// previously-created state, `g+` (`older = false`) to the next — crossing branches so a state
+    /// abandoned by a new edit is still reachable (Vim `g-`/`g+`). Returns the new revision, or
+    /// `None` at either end. Re-applies the transforming edits; no new node is created.
+    pub fn undo_chronological(&mut self, older: bool) -> Option<Revision> {
+        let edits = self.undo.to_chronological(older);
+        if edits.is_empty() {
+            return None;
+        }
+        for e in &edits {
+            self.reapply(e);
+        }
+        Some(self.revision)
+    }
+
     /// Whether undo/redo can move.
     #[must_use]
     pub fn can_undo(&self) -> bool {

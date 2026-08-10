@@ -53,6 +53,33 @@ fn an_insert_session_is_one_undo_step() {
 }
 
 #[test]
+fn g_minus_reaches_a_state_a_new_edit_branched_away() {
+    // F-005 #3: a new change after an undo BRANCHES history without losing the undone state, and
+    // `g-`/`g+` travel chronological creation order (across branches) to reach it.
+    let mut st = EditorState::new(Vec::new());
+    // Change 1: insert "X".
+    apply_command(&mut st, &Command::EnterInsert);
+    apply_command(&mut st, &Command::InsertChar('X'));
+    apply_command(&mut st, &Command::EnterNormal);
+    assert_eq!(st.as_str(), Some("X"));
+    // Undo back to empty, then a DIFFERENT change: insert "Y". "X" is now on an abandoned branch.
+    apply_command(&mut st, &Command::Undo);
+    apply_command(&mut st, &Command::EnterInsert);
+    apply_command(&mut st, &Command::InsertChar('Y'));
+    apply_command(&mut st, &Command::EnterNormal);
+    assert_eq!(st.as_str(), Some("Y"));
+    // `u`/redo could never reach "X" (it is off the current lineage) — `g-` can.
+    apply_command(&mut st, &Command::UndoOlder);
+    assert_eq!(
+        st.as_str(),
+        Some("X"),
+        "g- crosses into the branched-away state"
+    );
+    apply_command(&mut st, &Command::UndoNewer);
+    assert_eq!(st.as_str(), Some("Y"), "g+ returns along creation order");
+}
+
+#[test]
 fn motions_and_deletes() {
     let mut st = EditorState::new(b"abc".to_vec());
     apply_command(&mut st, &Command::MoveRight); // cursor 1

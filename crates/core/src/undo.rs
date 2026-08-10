@@ -13,6 +13,8 @@
 //! counter still advances on undo (INV-TXN §2), which is why dirty-tracking compares node identity (`seq`),
 //! not revision magnitude (persistence §1).
 
+use std::collections::HashSet;
+
 use crate::edit::EditList;
 use crate::pos::Revision;
 use crate::transaction::{GroupHint, TransactionOrigin};
@@ -200,6 +202,105 @@ impl UndoHistory {
         out
     }
 
+    /// Move `current` to any node, returning the edits that transform the buffer from the current
+    /// state into `target`'s: the inverses from `current` up to the lowest common ancestor, then the
+    /// forwards from the LCA down to `target`. This is what lets `g-`/`g+` cross into a branch the
+    /// parent/child walk of `undo`/`redo` cannot reach. Empty when already at `target`.
+    fn navigate_to(&mut self, target: UndoNodeId) -> Vec<EditList> {
+        if target == self.current {
+            return Vec::new();
+        }
+        let current_ancestry: HashSet<UndoNodeId> =
+            self.ancestry(self.current).into_iter().collect();
+        // Walk target->root until we meet an ancestor of current: that node is the LCA. Collect the
+        // strictly-below-LCA path (target first) to replay forward afterwards.
+        let mut down = Vec::new();
+        let mut node = target;
+        let lca = loop {
+            if current_ancestry.contains(&node) {
+                break node;
+            }
+            down.push(node);
+            match self.nodes[node.0].parent {
+                Some(p) => node = p,
+                None => break node, // reached the root without meeting: the root is the LCA
+            }
+        };
+        let mut out = Vec::new();
+        // Inverses from current up to (not including) the LCA.
+        let mut c = self.current;
+        while c != lca {
+            out.push(
+                self.nodes[c.0]
+                    .inverse
+                    .clone()
+                    .expect("non-root node carries an inverse"),
+            );
+            c = self.nodes[c.0]
+                .parent
+                .expect("a node above the LCA has a parent");
+        }
+        // Forwards from just below the LCA down to the target (down is target-first, so reverse).
+        for &n in down.iter().rev() {
+            out.push(
+                self.nodes[n.0]
+                    .forward
+                    .clone()
+                    .expect("non-root node carries a forward"),
+            );
+        }
+        self.current = target;
+        self.last_was_nav = true;
+        out
+    }
+
+    /// `current` and every ancestor up to the root, nearest first.
+    fn ancestry(&self, mut n: UndoNodeId) -> Vec<UndoNodeId> {
+        let mut v = vec![n];
+        while let Some(p) = self.nodes[n.0].parent {
+            v.push(p);
+            n = p;
+        }
+        v
+    }
+
+    /// The tip node of each undo GROUP in creation order — the state after each logical change. A
+    /// group's nodes are created consecutively (coalescing only merges adjacent edits) and groups
+    /// never recur, so each maximal same-group run in `chronological` contributes one tip.
+    fn group_tips(&self) -> Vec<UndoNodeId> {
+        let mut tips = Vec::new();
+        for (i, &id) in self.chronological.iter().enumerate() {
+            let last_of_run = match self.chronological.get(i + 1) {
+                Some(&next) => self.nodes[next.0].group != self.nodes[id.0].group,
+                None => true,
+            };
+            if last_of_run {
+                tips.push(id);
+            }
+        }
+        tips
+    }
+
+    /// `g-` (`older = true`) / `g+` (`older = false`): step one logical change along CHRONOLOGICAL
+    /// creation order — across branches, unlike `undo`/`redo` which follow the tree — and return the
+    /// edits to reach that state. One step crosses a whole group (e.g. an insert session), matching
+    /// Vim's undo-block granularity. Empty at either end of history.
+    pub fn to_chronological(&mut self, older: bool) -> Vec<EditList> {
+        let tips = self.group_tips();
+        let Some(pos) = tips.iter().position(|&id| id == self.current) else {
+            return Vec::new();
+        };
+        let target = if older {
+            pos.checked_sub(1)
+        } else {
+            (pos + 1 < tips.len()).then_some(pos + 1)
+        };
+        match target {
+            Some(tp) => self.navigate_to(tips[tp]),
+            None => Vec::new(),
+        }
+    }
+
     /// The `seq` of the current node — the identity dirty-tracking compares against `saved_node`.
     #[must_use]
     pub fn current_seq(&self) -> MonotonicSeq {
@@ -236,5 +337,68 @@ impl UndoHistory {
                 (n.seq, n.origin, n.group)
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_edits() -> EditList {
+        EditList::new(Vec::new()).expect("empty edit list is valid")
+    }
+
+    /// Record a change with an explicit origin/hint; edit CONTENT is irrelevant to grouping.
+    fn record(h: &mut UndoHistory, origin: TransactionOrigin, hint: GroupHint) -> u64 {
+        h.record(empty_edits(), empty_edits(), origin, hint, Revision::ZERO);
+        h.current_group()
+    }
+
+    #[test]
+    fn same_origin_continue_coalesces_but_a_different_origin_does_not() {
+        // F-008/F-005 #2: a formatter/LSP edit must NOT coalesce into the user's edit group.
+        let mut h = UndoHistory::new(Revision::ZERO);
+        let g1 = record(&mut h, TransactionOrigin::UserInput, GroupHint::Continue);
+        let g2 = record(&mut h, TransactionOrigin::UserInput, GroupHint::Continue);
+        assert_eq!(g1, g2, "consecutive same-origin edits share one undo group");
+        let g3 = record(&mut h, TransactionOrigin::Lsp, GroupHint::Continue);
+        assert_ne!(
+            g2, g3,
+            "an LSP edit starts its own undo unit, even with a Continue hint"
+        );
+    }
+
+    #[test]
+    fn g_minus_then_g_plus_round_trips_across_a_branch() {
+        // root -> A (userinput), undo to root, root -> B (branch). Chronological: root, A, B.
+        let mut h = UndoHistory::new(Revision::ZERO);
+        h.record(
+            empty_edits(),
+            empty_edits(),
+            TransactionOrigin::UserInput,
+            GroupHint::BreakBefore,
+            Revision::ZERO,
+        );
+        let a_seq = h.current_seq();
+        h.undo();
+        h.record(
+            empty_edits(),
+            empty_edits(),
+            TransactionOrigin::UserInput,
+            GroupHint::BreakBefore,
+            Revision::ZERO,
+        );
+        let b_seq = h.current_seq();
+        // g- lands on A (the branched-away state), g+ returns to B.
+        h.to_chronological(true);
+        assert_eq!(
+            h.current_seq(),
+            a_seq,
+            "g- reaches the abandoned branch by creation order"
+        );
+        h.to_chronological(false);
+        assert_eq!(h.current_seq(), b_seq, "g+ returns to the newest state");
+        // g+ at the tip is a no-op (empty), not a panic.
+        assert!(h.to_chronological(false).is_empty());
     }
 }

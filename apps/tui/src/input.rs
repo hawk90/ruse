@@ -716,6 +716,9 @@ impl InputEngine {
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // `gR` — enter Virtual Replace mode (tab-aware overwrite).
                     KeyCode::Char('R') => self.action(Command::EnterVirtualReplace),
+                    // `g-` / `g+` — chronological undo-time travel across branches (F-005 #3).
+                    KeyCode::Char('-') => self.action(Command::UndoOlder),
+                    KeyCode::Char('+') => self.action(Command::UndoNewer),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),

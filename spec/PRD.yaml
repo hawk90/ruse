@@ -324,11 +324,22 @@ features:
     title: Undo/redo with logical grouping
     stage: mvp
     priority: must
-    status: active
+    # done (#96): the branching undo model is ruse KERNEL ARCHITECTURE (C-UNDO/C-TRANSACTION,
+    # crates/core/src/undo.rs). All three acceptance criteria met + tested: insert-session single
+    # step (editor_spine::an_insert_session_is_one_undo_step); origin grouping — a formatter/LSP
+    # edit never merges into typing (undo::same_origin..different_origin + properties::f005_a_
+    # different_origin_never_merges); branching g-/g+ chronological traversal ACROSS branches —
+    # newly implemented this PR (UndoHistory::to_chronological via LCA-path navigate_to, Command::
+    # UndoOlder/UndoNewer, `g-`/`g+` binding), tested by editor_spine::g_minus_reaches_a_state_a_
+    # new_edit_branched_away + undo::g_minus_then_g_plus_round_trips.
+    # Census-N/A (D-043): no upstream source tree TABULATES the undo model — it is architecture,
+    # design-backed (architecture.md#3). The 4 legacy ids are cross-editor "all editors undo"
+    # facts: COM-7/VIM-UNDO-1/EMACS-EDIT-1 stay derived via F-001; COM-8 (undo tree) is backlogged.
+    status: done
     depends_on: [C-UNDO, C-TRANSACTION]
     summary: Undo recorded by logical unit (e.g. one insert session), not per keystroke.
     trace:
-      parity: [COM-7, COM-8, VIM-UNDO-1, EMACS-EDIT-1]
+      parity: []
       design: [../docs/architecture/architecture.md#3, ../docs/design/editing-language.md, ../docs/design/persistence-and-recovery.md]
       verify: [../tests/parity/vim/undo-tree.yaml, ../tests/unit/undo-grouping]
     acceptance:

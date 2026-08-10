@@ -7,5 +7,5 @@ version: 1
 buckets:
   config_untraced: 8      # config-schema keys with `derives_from: []`      (see gov prd_cfg)
   cap_untraced: 18        # capabilities with an empty `prd:`               (see gov capability_coverage)
-  legacy_in_prd: 128      # hand-authored parity IDs still cited by the PRD (see gov parity_discovery)
-  backlog: 9              # entries in spec/parity-backlog.yaml
+  legacy_in_prd: 127      # hand-authored parity IDs still cited by the PRD (see gov parity_discovery)
+  backlog: 10             # entries in spec/parity-backlog.yaml
