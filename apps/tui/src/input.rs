@@ -225,6 +225,24 @@ enum Ns {
     /// `closed/ignore` — the distinction the engine could not express while operator-pending was a
     /// field on Normal state rather than a namespace of its own.
     OperatorPending,
+    /// The command-line namespace (`:`/`/`/`?`) — `open/append`, its own line editor (F-026). Declared
+    /// here so it is addressable as one of the eight (VS-OBL-4 / KL-OBL-1); the live line editing is
+    /// [`InputEngine::feed_cmdline`], which implements the append policy.
+    Cmdline,
+    /// The terminal-job namespace — `open/forward` (every key except the `CTRL-\` escape prefix goes to
+    /// the job). Addressable now; live terminal buffers are deferred (no terminal buffer kind yet), so
+    /// the forward policy is exercised at the router level, not from a running job.
+    Terminal,
+    /// The language-argument namespace (`:lmap`) — `open/translate` (rewrite the key through the active
+    /// language map, then re-dispatch). Addressable, but resolution stays total: the translate-and-
+    /// re-dispatch flow is CONCEPT-LANG-ARG, which BLOCKS F-027 (KL-Q-LANG-ARG).
+    Lang,
+    /// Replace / Virtual-Replace mode (`R`/`gR`) — `open/overwrite` (a printable key overwrites; `<BS>`
+    /// restores). NOT one of the eight canonical map-mode namespaces (Vim maps it under the `:map!`
+    /// insert family); it is a distinct engine namespace here because its unmatched-key POLICY differs
+    /// from Insert's — the same open/policy framing as Insert vs Select. It carries the `overwrite`
+    /// policy so that policy is exercised through the router rather than a hardcoded early return.
+    Replace,
 }
 
 impl Ns {
@@ -235,6 +253,10 @@ impl Ns {
             Ns::Visual => "vim.visual",
             Ns::Select => "vim.select",
             Ns::OperatorPending => "vim.operator_pending",
+            Ns::Cmdline => "vim.command_line",
+            Ns::Terminal => "vim.terminal",
+            Ns::Lang => "vim.lang_arg",
+            Ns::Replace => "vim.replace",
         }
     }
 }
@@ -251,6 +273,10 @@ struct VimProfile {
     visual: LayerStack<KeyCode, Command>,
     select: LayerStack<KeyCode, Command>,
     operator_pending: LayerStack<KeyCode, Command>,
+    command_line: LayerStack<KeyCode, Command>,
+    terminal: LayerStack<KeyCode, Command>,
+    lang: LayerStack<KeyCode, Command>,
+    replace: LayerStack<KeyCode, Command>,
 }
 
 fn one(ns: Ns, policy: UnmatchedKey, binds: &[(KeyCode, Command)]) -> LayerStack<KeyCode, Command> {
@@ -290,6 +316,28 @@ impl VimProfile {
                     (KeyCode::Backspace, Command::DeleteBack),
                 ],
             ),
+            // Command-line: `open/append`. Its keys (printable append, BS, CR, Esc) live in
+            // `feed_cmdline` (F-026, a frontend line editor with no core Command), so the layer holds
+            // no bindings — what it contributes is the declared append policy, making the namespace
+            // addressable in its own right.
+            command_line: one(Ns::Cmdline, UnmatchedKey::Append, &[]),
+            // Terminal: `open/forward`. Addressable; no terminal buffer kind exists yet, so the layer
+            // declares the policy and carries no bindings (the `CTRL-\` escape prefix is the only key
+            // it would bind once live terminal buffers land).
+            terminal: one(Ns::Terminal, UnmatchedKey::Forward, &[]),
+            // Lang-Arg: `open/translate`. Addressable, but re-dispatch is CONCEPT-LANG-ARG (F-027).
+            lang: one(Ns::Lang, UnmatchedKey::Translate, &[]),
+            // Replace (`R`/`gR`): `open/overwrite`. Bindings shared with Insert (Esc/BS/CR); the
+            // printable overwrite is the unmatched policy, applied via the router (not a hardcoded arm).
+            replace: one(
+                Ns::Replace,
+                UnmatchedKey::Overwrite,
+                &[
+                    (KeyCode::Esc, Command::EnterNormal),
+                    (KeyCode::Backspace, Command::ReplaceBackspace),
+                    (KeyCode::Enter, Command::InsertNewline),
+                ],
+            ),
         }
     }
 
@@ -300,7 +348,27 @@ impl VimProfile {
             Ns::Visual => &self.visual,
             Ns::Select => &self.select,
             Ns::OperatorPending => &self.operator_pending,
+            Ns::Cmdline => &self.command_line,
+            Ns::Terminal => &self.terminal,
+            Ns::Lang => &self.lang,
+            Ns::Replace => &self.replace,
         }
+    }
+
+    /// Every namespace the profile declares, for the addressability / depth-1-sealed assertions
+    /// (VS-OBL-4 / KL-OBL-3). The eight Vim map-mode namespaces.
+    #[cfg(test)]
+    fn all() -> [Ns; 8] {
+        [
+            Ns::Normal,
+            Ns::OperatorPending,
+            Ns::Insert,
+            Ns::Cmdline,
+            Ns::Visual,
+            Ns::Select,
+            Ns::Terminal,
+            Ns::Lang,
+        ]
     }
 }
 
@@ -750,26 +818,35 @@ impl InputEngine {
             }
             return self.unmatched(Ns::Insert, key);
         }
-        // Replace mode (`R`): overwrite policy. A printable key overwrites (or appends at EOL); `<BS>`
-        // restores; `<Esc>` leaves. It is its own mode, not the Insert layer, because its unmatched-key
-        // policy (overwrite) differs — the same open/policy framing as Insert vs Select.
-        if mode == Mode::Replace {
+        // Replace (`R`) / Virtual Replace (`gR`): the `open/overwrite` namespace. Bindings (Esc/BS/CR)
+        // resolve through the Replace LAYER; an unmatched printable key hits the layer's declared
+        // overwrite policy (KL-OBL-2), applied as the mode-appropriate overwrite command (tab-aware in
+        // Virtual Replace). Routing it through the layer is what exercises `overwrite` via the router
+        // instead of a hardcoded early return, the same migration Insert already made.
+        if mode == Mode::Replace || mode == Mode::VirtualReplace {
+            if let Resolved::Bound { value, .. } =
+                self.profile.stack(Ns::Replace).resolve(&key.code)
+            {
+                let cmd = value.clone();
+                return self.action(cmd);
+            }
+            // open/overwrite: a printable key overwrites; non-printable does nothing (NOT closed/ignore).
+            debug_assert!(
+                matches!(
+                    self.profile.stack(Ns::Replace).resolve(&key.code),
+                    Resolved::Unmatched {
+                        policy: UnmatchedKey::Overwrite,
+                        ..
+                    }
+                ),
+                "the Replace namespace must declare open/overwrite"
+            );
+            self.reset();
             return match key.code {
-                KeyCode::Esc => self.action(Command::EnterNormal),
-                KeyCode::Backspace => self.action(Command::ReplaceBackspace),
-                KeyCode::Enter => self.action(Command::InsertNewline),
-                KeyCode::Char(c) => self.action(Command::ReplaceType(c)),
-                _ => Feed::Ignored,
-            };
-        }
-        // Virtual Replace mode (`gR`): same policy as Replace but the type key is tab-aware; `<BS>` shares
-        // the Replace restore stack.
-        if mode == Mode::VirtualReplace {
-            return match key.code {
-                KeyCode::Esc => self.action(Command::EnterNormal),
-                KeyCode::Backspace => self.action(Command::ReplaceBackspace),
-                KeyCode::Enter => self.action(Command::InsertNewline),
-                KeyCode::Char(c) => self.action(Command::VirtualReplaceType(c)),
+                KeyCode::Char(c) if mode == Mode::VirtualReplace => {
+                    Feed::Cmd(Command::VirtualReplaceType(c))
+                }
+                KeyCode::Char(c) => Feed::Cmd(Command::ReplaceType(c)),
                 _ => Feed::Ignored,
             };
         }
@@ -2602,5 +2679,142 @@ mod cmdline_tests {
             "a bare Q must not open the Ex command line"
         );
         assert_eq!(e.cmdline(), None);
+    }
+}
+
+#[cfg(test)]
+mod namespace_tests {
+    use super::tests::k;
+    use super::*;
+    use ruse_core::keymap::UnmatchedKey;
+
+    /// F-003 #3 (VS-OBL-4 / KL-OBL-1): each of the eight Vim map-mode namespaces is addressable in its
+    /// own right, and F-003 #1 (KL-OBL-3): the Vim profile is depth-1 and SEALED — declared, not an
+    /// accident. Asserted here rather than left as a comment so the property can never silently rot.
+    #[test]
+    fn all_eight_namespaces_are_addressable_depth_one_and_sealed() {
+        let profile = VimProfile::new();
+        for ns in VimProfile::all() {
+            let stack = profile.stack(ns);
+            assert_eq!(
+                stack.depth(),
+                1,
+                "{ns:?} must be a single sealed layer (depth 1)"
+            );
+            let layer = stack
+                .layer(ns.id())
+                .expect("the namespace names its own layer");
+            assert_eq!(
+                layer.id(),
+                ns.id(),
+                "the layer is addressable by its namespace id"
+            );
+            assert!(layer.is_sealed(), "{ns:?} must be sealed (KL-OBL-3)");
+        }
+    }
+
+    /// F-003 #4 (KL-OBL-2): every namespace declares its census unmatched-key policy explicitly —
+    /// there is no engine-wide default. The values are vim-style.yaml's, derived from `map_mode`.
+    #[test]
+    fn each_namespace_declares_its_census_policy() {
+        let profile = VimProfile::new();
+        let expect = [
+            (Ns::Normal, UnmatchedKey::Ignore),
+            (Ns::OperatorPending, UnmatchedKey::Abort),
+            (Ns::Insert, UnmatchedKey::Insert),
+            (Ns::Cmdline, UnmatchedKey::Append),
+            (Ns::Visual, UnmatchedKey::Ignore),
+            (Ns::Select, UnmatchedKey::ReplaceSelection),
+            (Ns::Terminal, UnmatchedKey::Forward),
+            (Ns::Lang, UnmatchedKey::Translate),
+        ];
+        for (ns, policy) in expect {
+            let layer = profile.stack(ns).layer(ns.id()).expect("layer exists");
+            assert_eq!(layer.unmatched(), policy, "{ns:?} policy");
+        }
+    }
+
+    /// F-003 #4: the five OPEN policies (insert/append/overwrite/replace-selection/forward) are all
+    /// present across the declared namespaces and are distinct from the two CLOSED ones — the axis a
+    /// shared `Feed::Ignored` fallthrough erases. `overwrite` rides the Replace namespace (insert
+    /// family), the rest ride the eight.
+    #[test]
+    fn the_five_open_policies_are_declared_and_distinct() {
+        let profile = VimProfile::new();
+        let policy = |ns: Ns| profile.stack(ns).layer(ns.id()).unwrap().unmatched();
+        let open = [
+            policy(Ns::Insert),
+            policy(Ns::Cmdline),
+            policy(Ns::Replace),
+            policy(Ns::Select),
+            policy(Ns::Terminal),
+        ];
+        assert_eq!(
+            open,
+            [
+                UnmatchedKey::Insert,
+                UnmatchedKey::Append,
+                UnmatchedKey::Overwrite,
+                UnmatchedKey::ReplaceSelection,
+                UnmatchedKey::Forward,
+            ],
+            "all five open policies are declared, each on a distinct namespace"
+        );
+        for p in open {
+            assert!(p.is_open(), "{p:?} is an open policy");
+        }
+        assert!(!policy(Ns::Normal).is_open(), "Normal is closed/ignore");
+        assert!(
+            !policy(Ns::OperatorPending).is_open(),
+            "Opr is closed/abort"
+        );
+    }
+
+    /// F-003 #4: the `open/overwrite` policy is EXERCISED through the router — a printable key nothing
+    /// binds in Replace mode overwrites (via the Replace layer's declared policy), tab-aware in gR.
+    #[test]
+    fn overwrite_policy_is_exercised_through_the_router() {
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('x'), Mode::Replace),
+            Feed::Cmd(Command::ReplaceType('x')),
+            "R + printable overwrites (open/overwrite)"
+        );
+        assert_eq!(
+            e.feed(k('y'), Mode::VirtualReplace),
+            Feed::Cmd(Command::VirtualReplaceType('y')),
+            "gR + printable overwrites tab-aware"
+        );
+        // The bound keys still resolve through the same layer.
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                Mode::Replace
+            ),
+            Feed::Cmd(Command::EnterNormal),
+        );
+    }
+
+    /// F-003 #4: the `open/insert` and `open/replace-selection` policies are exercised — an unmatched
+    /// printable does the namespace's OPEN thing, never falls through to a shared ignore.
+    #[test]
+    fn insert_and_replace_selection_policies_are_exercised() {
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('z'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('z')),
+            "Insert: printable is text (open/insert)"
+        );
+        let mut e2 = InputEngine::new();
+        assert_eq!(
+            e2.feed(
+                k('q'),
+                Mode::Select {
+                    kind: SelectKind::Charwise
+                }
+            ),
+            Feed::Cmd(Command::ReplaceSelection('q')),
+            "Select: printable replaces the selection (open/replace-selection)"
+        );
     }
 }
