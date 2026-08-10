@@ -261,7 +261,6 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 
     let mut st = EditorState::new(initial.clone());
     let mut recorded: Vec<Command> = Vec::new();
-    let mut cmd_line: Option<(char, String)> = None; // ':' ex-line or '/' search-line + typed text
     let mut journal_ticks: u32 = 0; // throttle: append the recovery journal every Nth modified frame
 
     let mut engine = InputEngine::new();
@@ -294,7 +293,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &mut out,
             &st,
             path.as_ref(),
-            cmd_line.as_ref().map(|(p, t)| (*p, t.as_str())),
+            engine.cmdline().map(|(p, t, _)| (p, t)),
             &status,
             spans,
             top,
@@ -305,47 +304,21 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if key.kind == KeyEventKind::Release {
             continue;
         }
-        if let Some((_, line)) = cmd_line.as_mut() {
-            match key.code {
-                KeyCode::Esc => cmd_line = None,
-                KeyCode::Backspace => {
-                    line.pop();
-                }
-                KeyCode::Char(c) => line.push(c),
-                KeyCode::Enter => {
-                    let (prefix, text) = cmd_line.take().unwrap_or((':', String::new()));
-                    if prefix == ':' {
-                        run_ex(
-                            &parse_ex(&text),
-                            &mut st,
-                            &path,
-                            fmt,
-                            &initial,
-                            &recorded,
-                            &mut status,
-                            &mut quit,
-                        );
-                    } else if let Feed::Cmd(cmd) = engine.submit_search(text) {
-                        // `submit_search` folds the pattern into any operator/count that preceded `/`
-                        // (`d/pat`, `2/pat`) and records it for `n`/`N`; an empty pattern yields Ignored.
-                        run_cmd(
-                            cmd,
-                            &mut st,
-                            &path,
-                            fmt,
-                            &mut recorded,
-                            &mut status,
-                            &mut quit,
-                        );
-                    }
-                }
-                _ => {}
-            }
-            continue;
-        }
+        // Every key — command-line included — goes through the engine now (F-026): the command-line
+        // namespace owns its buffer, so the frontend no longer special-cases `:`/`/` typing.
         match engine.feed(key, st.mode()) {
-            Feed::OpenExLine => cmd_line = Some((':', String::new())),
-            Feed::OpenSearch => cmd_line = Some(('/', String::new())),
+            // A finished `:`-line (F-026): parse + run it. `submit_search` already folded a `/`-line
+            // into `Feed::Cmd` inside the engine, so the frontend only sees the ex case here.
+            Feed::ExecuteEx(text) => run_ex(
+                &parse_ex(&text),
+                &mut st,
+                &path,
+                fmt,
+                &initial,
+                &recorded,
+                &mut status,
+                &mut quit,
+            ),
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => run_cmd(
                 cmd,

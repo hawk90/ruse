@@ -16,11 +16,11 @@ pub enum Feed {
     /// if the original keys were re-typed at the current cursor. Kept distinct from `Cmd` because one
     /// keypress expands to a compound edit, and because the driver must NOT re-record it as a new change.
     Replay(Vec<Command>),
-    /// `:` — open the ex command line.
-    OpenExLine,
-    /// `/` — open the search line.
-    OpenSearch,
-    /// The key was consumed but the command is not complete yet (a count digit or a pending operator).
+    /// A completed `:`-line to execute (F-026). The command-line namespace owns the buffer while it is
+    /// being typed; on `<CR>` it hands the finished text to the frontend to parse+run as an ex command.
+    ExecuteEx(String),
+    /// The key was consumed but the command is not complete yet (a count digit, a pending operator, or a
+    /// keystroke absorbed into the open command-line buffer).
     Pending,
     /// Nothing bound.
     Ignored,
@@ -381,6 +381,25 @@ pub struct InputEngine {
     /// Insert-mode `CTRL-G` prefix: the next key is expected to be `u` (undo-break, [`Command::BreakUndo`]).
     /// A one-key expectation local to Insert; any other second key aborts the prefix (Vim beeps).
     insert_ctrl_g: bool,
+    /// The command-line namespace (F-026): while `Some`, keys are routed into its owned line buffer
+    /// rather than the Normal grammar. `None` = not on the command line. This is the engine owning the
+    /// line, not an ad-hoc text buffer on the UI (anti-pattern command-line P2).
+    cmdline: Option<CmdLine>,
+}
+
+/// The command-line namespace's owned state (F-026 acceptance #2): a prefix, a line buffer, and a
+/// cursor. `ex_mode` distinguishes the `gQ` Ex namespace (stays open, re-prompting after each `<CR>`)
+/// from a one-shot `:`/`/` line. History index / wildmenu / incsearch UX are deferred (acceptance #3).
+struct CmdLine {
+    /// `:` (ex) or `/` (search) — also the glyph the status line shows.
+    prefix: char,
+    /// The text typed so far. Owned HERE, never on the frontend.
+    buffer: String,
+    /// Insertion point as a char index. MVP edits append/backspace at the end (mid-line editing is the
+    /// deferred full line-editor); the field exists because the namespace owns the cursor (acceptance #2).
+    cursor: usize,
+    /// `gQ` Ex mode: `<CR>` executes AND re-opens the line; `:visual`/`:vi`/empty exits.
+    ex_mode: bool,
 }
 
 impl InputEngine {
@@ -400,6 +419,73 @@ impl InputEngine {
             forced_wise: None,
             insert_one_shot: false,
             insert_ctrl_g: false,
+            cmdline: None,
+        }
+    }
+
+    /// The active command-line as `(prefix, text, cursor)` for the frontend to render — `None` when
+    /// not on the command line. The frontend reads this instead of owning any line buffer (F-026).
+    #[must_use]
+    pub fn cmdline(&self) -> Option<(char, &str, usize)> {
+        self.cmdline
+            .as_ref()
+            .map(|c| (c.prefix, c.buffer.as_str(), c.cursor))
+    }
+
+    /// Open the command-line namespace with `prefix` (`:`/`/`), optionally as `gQ` Ex mode.
+    fn open_cmdline(&mut self, prefix: char, ex_mode: bool) {
+        self.cmdline = Some(CmdLine {
+            prefix,
+            buffer: String::new(),
+            cursor: 0,
+            ex_mode,
+        });
+    }
+
+    /// Route a key into the open command-line buffer (F-026). The namespace owns the buffer: a printable
+    /// key appends (open/append policy), `<BS>` deletes back, `<Esc>` aborts, `<CR>` finalises — a
+    /// search folds through [`Self::submit_search`], an ex line becomes [`Feed::ExecuteEx`]. In `gQ` Ex
+    /// mode the line re-opens after `<CR>` until `:visual`/`:vi`/an empty line exits.
+    fn feed_cmdline(&mut self, key: KeyEvent) -> Feed {
+        let Some(cl) = self.cmdline.as_mut() else {
+            return Feed::Ignored;
+        };
+        match key.code {
+            KeyCode::Esc => {
+                self.cmdline = None;
+                Feed::Ignored
+            }
+            KeyCode::Backspace => {
+                cl.buffer.pop();
+                cl.cursor = cl.buffer.chars().count();
+                Feed::Pending
+            }
+            KeyCode::Char(c) => {
+                cl.buffer.push(c);
+                cl.cursor = cl.buffer.chars().count();
+                Feed::Pending
+            }
+            KeyCode::Enter => {
+                let prefix = cl.prefix;
+                let ex_mode = cl.ex_mode;
+                let text = std::mem::take(&mut cl.buffer);
+                if ex_mode {
+                    // Ex mode: `:visual`/`:vi`/empty leaves it; anything else runs and re-prompts.
+                    if text.is_empty() || text == "visual" || text == "vi" {
+                        self.cmdline = None;
+                        return Feed::Ignored;
+                    }
+                    cl.cursor = 0;
+                    return Feed::ExecuteEx(text);
+                }
+                self.cmdline = None;
+                if prefix == '/' {
+                    self.submit_search(text)
+                } else {
+                    Feed::ExecuteEx(text)
+                }
+            }
+            _ => Feed::Pending,
         }
     }
 
@@ -455,12 +541,13 @@ impl InputEngine {
         }
     }
 
-    /// Complete a `/pattern` line the frontend collected after a [`Feed::OpenSearch`]. Folds the pattern
+    /// Complete a `/pattern` line (called by the command-line namespace on `<CR>`). Folds the pattern
     /// into the operator/count captured when `/` was pressed and yields the finished [`Command::Search`]:
     /// bare (`/pat`, `2/pat`) moves, or `d/pat`/`c/pat`/`y/pat` deletes/changes/yanks `[cursor, match)`.
     /// Also records the pattern for `n`/`N`. An empty pattern aborts (Vim's `<CR>` on an empty line is a
     /// no-op / reuse-last, which v0 treats as inert) — the armed operator is dropped, nothing is emitted.
     pub fn submit_search(&mut self, pattern: String) -> Feed {
+        self.cmdline = None; // completing a search closes the command-line namespace (F-026)
         let (op, count) = self.pending_search.take().unwrap_or((SearchOp::Move, 1));
         if pattern.is_empty() {
             return Feed::Ignored;
@@ -553,6 +640,11 @@ impl InputEngine {
     /// the dot-repeat record (so `.` can later replay the last change). The two steps are split so the
     /// resolution grammar stays untouched by the recording concern.
     pub fn feed(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        // The command-line namespace owns the keystream while open (F-026); its typing is not a
+        // dot-repeatable change, so it bypasses the recorder.
+        if self.cmdline.is_some() {
+            return self.feed_cmdline(key);
+        }
         let out = self.feed_impl(key, mode);
         self.record(&out, mode);
         out
@@ -719,6 +811,12 @@ impl InputEngine {
                     // `g-` / `g+` — chronological undo-time travel across branches (F-005 #3).
                     KeyCode::Char('-') => self.action(Command::UndoOlder),
                     KeyCode::Char('+') => self.action(Command::UndoNewer),
+                    // `gQ` — enter Ex mode (F-026 #3). `Q` alone is NOT Ex at the pinned Neovim
+                    // revision, so only this two-key form opens it; the line re-prompts until `:visual`.
+                    KeyCode::Char('Q') => {
+                        self.open_cmdline(':', true);
+                        Feed::Pending
+                    }
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),
@@ -1048,11 +1146,13 @@ impl InputEngine {
                 };
                 self.pending_search = Some((op, count));
                 self.reset();
-                Feed::OpenSearch
+                self.open_cmdline('/', false);
+                Feed::Pending
             }
             KeyCode::Char(':') => {
                 self.reset();
-                Feed::OpenExLine
+                self.open_cmdline(':', false);
+                Feed::Pending
             }
             // The base namespace's own declared policy — not a shared fallthrough. In Visual this
             // line is unreachable (the Visual arm above returns first), which is why the two are
@@ -1822,7 +1922,7 @@ mod tests {
             e.feed(k('z'), Mode::Insert),
             Feed::Cmd(Command::InsertChar('z'))
         );
-        assert_eq!(e.feed(k(':'), Mode::Normal), Feed::OpenExLine);
+        assert_eq!(e.feed(k(':'), Mode::Normal), Feed::Pending);
         assert_eq!(parse_ex("wq"), Ex::SaveQuit);
         assert_eq!(
             parse_ex("trace save t.trace"),
@@ -2213,7 +2313,7 @@ mod search_tests {
     fn slash_opens_search_and_n_repeats() {
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('n'), Mode::Normal), Feed::Ignored); // no prior search yet
-        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
         // Submitting the pattern yields a bare-move Search AND records it for `n`/`N`.
         assert_eq!(
             e.submit_search("foo".into()),
@@ -2236,7 +2336,7 @@ mod search_tests {
     #[test]
     fn empty_search_pattern_is_inert() {
         let mut e = InputEngine::new();
-        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
         assert_eq!(e.submit_search(String::new()), Feed::Ignored);
     }
 
@@ -2247,7 +2347,7 @@ mod search_tests {
         // `2/pat`. This is the fix for the old behaviour that dropped the operator on `/`.
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
-        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
         assert!(e.op.is_none() && e.awaiting == Awaiting::Nothing && e.count == 0);
         assert_eq!(
             e.submit_search("bar".into()),
@@ -2263,7 +2363,7 @@ mod search_tests {
     fn count_before_slash_selects_the_nth_match() {
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending);
-        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::OpenSearch);
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
         assert_eq!(
             e.submit_search("foo".into()),
             Feed::Cmd(Command::Search {
@@ -2348,7 +2448,8 @@ mod state_machine_props {
                         || e.op.is_some()
                         || e.awaiting != Awaiting::Nothing
                         || e.insert_one_shot
-                        || e.insert_ctrl_g;
+                        || e.insert_ctrl_g
+                        || e.cmdline.is_some(); // an open command-line namespace is real pending state (F-026)
                     prop_assert!(has_state, "Feed::Pending but the engine is idle");
                 } else {
                     prop_assert_eq!(e.count, 0, "count leaked after {:?}", feed);
@@ -2370,5 +2471,127 @@ mod state_machine_props {
                 prop_assert_eq!(a.feed(key, mode), b.feed(key, mode));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod cmdline_tests {
+    use super::tests::k;
+    use super::*;
+
+    fn special(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+    fn enter() -> KeyEvent {
+        special(KeyCode::Enter)
+    }
+
+    #[test]
+    fn colon_opens_the_namespace_the_engine_owns_the_line_and_cr_executes() {
+        // F-026 #1/#2: `:` enters the namespace; the engine (not the UI) owns the buffer; <CR> runs it.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k(':'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.cmdline(), Some((':', "", 0)));
+        assert_eq!(e.feed(k('w'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('q'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.cmdline(),
+            Some((':', "wq", 2)),
+            "the namespace owns the line buffer + cursor"
+        );
+        assert_eq!(e.feed(enter(), Mode::Normal), Feed::ExecuteEx("wq".into()));
+        assert_eq!(e.cmdline(), None, "<CR> closes the one-shot command line");
+    }
+
+    #[test]
+    fn slash_search_now_flows_entirely_through_the_engine() {
+        // F-026: no ad-hoc UI buffer — `/`, the pattern chars, and <CR> all go through feed().
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
+        for c in "foo".chars() {
+            assert_eq!(e.feed(k(c), Mode::Normal), Feed::Pending);
+        }
+        assert_eq!(
+            e.feed(enter(), Mode::Normal),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into()
+            })
+        );
+        assert_eq!(e.cmdline(), None);
+        // And the operator-fold still works because the buffer moved INTO the engine: `d/bar`.
+        assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
+        for c in "bar".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(
+            e.feed(enter(), Mode::Normal),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "bar".into()
+            })
+        );
+    }
+
+    #[test]
+    fn esc_aborts_the_command_line_without_executing() {
+        let mut e = InputEngine::new();
+        e.feed(k(':'), Mode::Normal);
+        e.feed(k('x'), Mode::Normal);
+        assert_eq!(e.feed(special(KeyCode::Esc), Mode::Normal), Feed::Ignored);
+        assert_eq!(e.cmdline(), None, "<Esc> closes the line and runs nothing");
+    }
+
+    #[test]
+    fn backspace_deletes_back_in_the_owned_buffer() {
+        let mut e = InputEngine::new();
+        e.feed(k(':'), Mode::Normal);
+        e.feed(k('a'), Mode::Normal);
+        e.feed(k('b'), Mode::Normal);
+        e.feed(special(KeyCode::Backspace), Mode::Normal);
+        assert_eq!(e.cmdline(), Some((':', "a", 1)));
+    }
+
+    #[test]
+    fn gq_enters_ex_mode_reprompts_and_visual_exits() {
+        // F-026 #3: `gQ` (only) enters Ex mode; <CR> runs AND re-opens; `:visual` leaves it.
+        let mut e = InputEngine::new();
+        e.feed(k('g'), Mode::Normal);
+        assert_eq!(e.feed(k('Q'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.cmdline(),
+            Some((':', "", 0)),
+            "gQ opens the Ex command line"
+        );
+        for c in "set".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(e.feed(enter(), Mode::Normal), Feed::ExecuteEx("set".into()));
+        assert_eq!(
+            e.cmdline(),
+            Some((':', "", 0)),
+            "Ex mode re-prompts after <CR>"
+        );
+        for c in "visual".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(e.feed(enter(), Mode::Normal), Feed::Ignored);
+        assert_eq!(e.cmdline(), None, "`:visual` exits Ex mode");
+    }
+
+    #[test]
+    fn bare_q_is_not_an_ex_mode_key() {
+        // At the pinned Neovim revision `Q` is replay-last-register, NOT Ex mode — only `gQ` opens it.
+        let mut e = InputEngine::new();
+        let out = e.feed(k('Q'), Mode::Normal);
+        assert_ne!(
+            out,
+            Feed::Pending,
+            "a bare Q must not open the Ex command line"
+        );
+        assert_eq!(e.cmdline(), None);
     }
 }

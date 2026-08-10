@@ -80,34 +80,11 @@ fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
                     apply_command(&mut st, &cmd);
                 }
             }
-            // `/` opens the search minibuffer. The real frontend (main.rs) collects the typed pattern
-            // in a command line — raw keystrokes the input engine does NOT parse — until `<CR>`, then
-            // hands the pattern back via `engine.submit_search`, which folds it into any operator/count
-            // that preceded `/` (`d/pat`, `2/pat`) and records it for `n`/`N`. Mirror that exactly:
-            // consume the SUBSEQUENT keys as raw pattern chars (not via `engine.feed`) up to the
-            // terminating Enter, then resume normal feeding. `?` (backward search) is not wired to the
-            // engine at all — it never yields `OpenSearch` — so only `/` needs this path.
-            Feed::OpenSearch => {
-                let mut pattern = String::new();
-                i += 1;
-                while i < events.len() {
-                    match events[i].code {
-                        KeyCode::Enter => break, // `<CR>` submits the search line
-                        KeyCode::Char(c) => pattern.push(c),
-                        KeyCode::Backspace => {
-                            pattern.pop();
-                        }
-                        _ => {} // Esc/other: the corpus never types these mid-pattern
-                    }
-                    i += 1;
-                }
-                if let Feed::Cmd(cmd) = engine.submit_search(pattern) {
-                    apply_command(&mut st, &cmd);
-                }
-            }
-            // The ex-line minibuffer (`:`) is a separate concern (no ex fixtures in the corpus);
-            // pending/ignored are no-ops.
-            Feed::OpenExLine | Feed::Pending | Feed::Ignored => {}
+            // `/` opens the command-line namespace (F-026); the engine now OWNS the pattern buffer, so
+            // the subsequent pattern chars and the terminating `<CR>` are fed straight through
+            // `engine.feed` — the Enter yields the folded `Feed::Cmd(Search…)` (or `Feed::ExecuteEx`
+            // for a `:`-line, of which the corpus has none). No manual pattern collection needed.
+            Feed::ExecuteEx(_) | Feed::Pending | Feed::Ignored => {}
         }
         i += 1;
     }
