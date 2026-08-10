@@ -5,4 +5,13 @@
 # move an item into a PRD feature's trace.parity (and add any config-schema keys it implies),
 # then delete its line here. Goal: this list trends to zero.
 version: 1
-backlog: []
+backlog:
+  # F-010 terminal capabilities with NO DA1-probe census home (#91, D-043). The two neovim TUI census
+  # surfaces (term_mode, key_encoding) carry the DECRQM-probed + keyboard-encoding facts; these six are
+  # real parity items evidenced OUTSIDE that probe surface, so they are tracked debt, not silently
+  # dropped. Burn down by giving each a census surface (or a ruse-choice PILLAR) and repointing F-010.
+  - { id: TERM-PROBE-2,  feature: F-010, reason: "confidence ledger + user override — ruse-ADAPTED (F-010 acceptance #2), a ruse-choice with no upstream denominator; belongs in a PILLAR, not a FAM parity fact" }
+  - { id: TERM-PROBE-3,  feature: F-010, reason: "tmux/screen passthrough (L2) — DCS-wrapping, not a DECRQM mode; needs a multiplexer census surface" }
+  - { id: TERM-MOUSE-2,  feature: F-010, reason: "focus reporting (mode 1004) — neovim SETS it but never DA1-queries it, so it is absent from the TermMode probe enum" }
+  - { id: TERM-GFX-4,    feature: F-010, reason: "pixel<->cell sizing (CSI 14 t / CSI 16 t) — a window-op query, not a DEC private mode; low priority" }
+  - { id: TERM-OSC52-1,  feature: F-010, reason: "clipboard write over OSC 52 — a runtime clipboard provider concern (runtime/lua in neovim), not a TUI capability probe" }

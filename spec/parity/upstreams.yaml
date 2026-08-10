@@ -56,6 +56,8 @@ source_of_record:
   ex_command:  { primary: S, corroborate: [R, D], note: "ex_cmds.lua; the builtin=true API is unreliable" }
   event:       { primary: R, corroborate: [S, D] }
   map_mode:    { primary: D, corroborate: [S],    note: "runtime/doc/map.txt map-table — the 8 disjoint keymap namespaces" }
+  term_mode:   { primary: S, corroborate: [],     note: "src/nvim/tui/tui_defs.h enum TermMode — the DEC private modes probed via DECRQM and fenced by a trailing DA1; each member carries its on-the-wire code. No runtime introspection: the enum is the only enumeration of the negotiated set" }
+  key_encoding: { primary: S, corroborate: [],    note: "src/nvim/tui/input.h enum KeyEncoding — legacy/kitty/xterm, the outcome of the CSI?u progressive-enhancement query fenced by DA1" }
   # --- emacs surfaces (probe) ---
   keymap_tier: { primary: D, corroborate: [R],    note: "(elisp) Searching the Active Keymaps + src/keyboard.c. The ORDER is not returned by any runtime call — current-active-maps reports what is live now, which in batch is a degenerate 2 — so D is primary and R only confirms each symbol is bound. This is the Emacs counterpart of map_mode and the two are NOT the same shape: map_mode is a disjoint set, keymap_tier is an ordered stack (concepts/irreconcilable.yaml#CONCEPT-KEYMAP-DISPATCH)" }
   keymap:      { primary: R, corroborate: [S],    note: "mapatoms + keymapp, scoped to the load set; named keymap variables are the namespace inventory" }

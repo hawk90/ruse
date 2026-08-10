@@ -1,0 +1,95 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py neovim && python3 tools/parity/extract_neovim.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+version: 1
+generated: true
+generator: tools/parity/extract_neovim.py
+upstream: neovim
+revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
+version_label: v0.12.4
+surface: term_mode
+source_of_record: 'S: src/nvim/tui/tui_defs.h'
+items:
+- id: nvim.termmode.leftandrightmargins
+  surface: term_mode
+  mode: LeftAndRightMargins
+  code: 69
+  attestation:
+  - S
+  status: intentionally-different
+  note: 'ruse render owns its own cell diff (arch #6.2); it does not delegate scroll-region margins to the terminal'
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.termmode.mousebuttonevent
+  surface: term_mode
+  mode: MouseButtonEvent
+  code: 1002
+  attestation:
+  - S
+  status: targeted
+  note: button-press reporting — part of the optional SGR mouse probe set
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.termmode.mouseanyevent
+  surface: term_mode
+  mode: MouseAnyEvent
+  code: 1003
+  attestation:
+  - S
+  status: targeted
+  note: any-motion (drag) reporting — SGR mouse probe set
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.termmode.mousesgrext
+  surface: term_mode
+  mode: MouseSGRExt
+  code: 1006
+  attestation:
+  - S
+  status: targeted
+  note: SGR-1006 extended coordinates — F-010 TERM-MOUSE-1 (optional feature, still probed)
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.termmode.bracketedpaste
+  surface: term_mode
+  mode: BracketedPaste
+  code: 2004
+  attestation:
+  - S
+  status: targeted
+  note: F-010 TERM-PASTE-1 — paste is distinguished from typed input, keymaps never applied to paste
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.termmode.synchronizedoutput
+  surface: term_mode
+  mode: SynchronizedOutput
+  code: 2026
+  attestation:
+  - S
+  status: targeted
+  note: '2026 — atomic flush of large frames (render pillar, arch #6.2)'
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.termmode.graphemeclusters
+  surface: term_mode
+  mode: GraphemeClusters
+  code: 2027
+  attestation:
+  - S
+  status: intentionally-different
+  note: 'ruse computes grapheme width itself (East-Asian/emoji/ZWJ, arch #6.2); it does not delegate clustering to the terminal'
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.termmode.themeupdates
+  surface: term_mode
+  mode: ThemeUpdates
+  code: 2031
+  attestation:
+  - S
+  status: deferred
+  note: 2031 — light/dark theme-change notification; post-MVP
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.termmode.resizeevents
+  surface: term_mode
+  mode: ResizeEvents
+  code: 2048
+  attestation:
+  - S
+  status: targeted
+  note: 2048 — in-band resize reporting, an alternative to SIGWINCH polling
+  family: FAM-TERMINAL-CAPABILITY

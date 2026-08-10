@@ -1,0 +1,41 @@
+# GENERATED — do not hand-edit item enumeration. Regenerate:
+#   python3 tools/parity/fetch.py neovim && python3 tools/parity/extract_neovim.py
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
+# enumeration is not. `status: unclassified` is legitimate and expected — discovery is
+# strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
+version: 1
+generated: true
+generator: tools/parity/extract_neovim.py
+upstream: neovim
+revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
+version_label: v0.12.4
+surface: key_encoding
+source_of_record: 'S: src/nvim/tui/input.h'
+items:
+- id: nvim.keyenc.legacy
+  surface: key_encoding
+  encoding: Legacy
+  desc: Legacy key encoding
+  attestation:
+  - S
+  status: targeted
+  note: F-010 TERM-KBD-4 — legacy escape parser with the ESC/Alt disambiguation timeout
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.keyenc.kitty
+  surface: key_encoding
+  encoding: Kitty
+  desc: Kitty keyboard protocol encoding
+  attestation:
+  - S
+  status: targeted
+  note: F-010 TERM-KBD-1 — kitty keyboard protocol (disambiguate + report event types)
+  family: FAM-TERMINAL-CAPABILITY
+- id: nvim.keyenc.xterm
+  surface: key_encoding
+  encoding: Xterm
+  desc: Xterm's modifyOtherKeys encoding (XTMODKEYS)
+  attestation:
+  - S
+  status: targeted
+  note: F-010 TERM-KBD-3 — xterm modifyOtherKeys (XTMODKEYS) legacy encoding
+  family: FAM-TERMINAL-CAPABILITY
