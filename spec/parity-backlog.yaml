@@ -23,3 +23,6 @@ backlog:
   - { id: COM-9,  feature: F-008, reason: "session recovery (Adapted) — ruse's append-only recovery journal is an ADAPTATION with no upstream denominator" }
   - { id: COM-12, feature: F-008, reason: "large files (Adapted) — a performance/behaviour policy, not a tabulated upstream fact" }
   - { id: COM-13, feature: F-008, reason: "encoding / line-endings — the CAPABILITY derives via config editor.line_endings (D-042 <- nvim.opt.fileformat/fileencoding); the legacy row is tracked until that config->census link is made explicit" }
+  # F-005 undo model (#96, D-043) — ruse kernel ARCHITECTURE (C-UNDO/C-TRANSACTION), no upstream
+  # SURFACE tabulates it. COM-7/VIM-UNDO-1/EMACS-EDIT-1 stay derived via F-001; COM-8 is F-005-only.
+  - { id: COM-8,  feature: F-005, reason: "undo TREE (branching history) — implemented in undo.rs, but the branching-undo MODEL is ruse architecture with no enumerable upstream census surface; the catalog row is tracked debt until a persistence/history PILLAR is written" }
