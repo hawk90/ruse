@@ -53,3 +53,19 @@ backlog:
   - { id: TERM-GFX-1, feature: F-006, reason: "inline image protocol (kitty/sixel/iTerm) — post-MVP enhanced tier (INV-CAP-DEGRADE); no census surface" }
   - { id: TERM-GFX-2, feature: F-006, reason: "image placement/cell-vs-pixel sizing — post-MVP enhanced tier; no census surface" }
   - { id: TERM-GFX-3, feature: F-006, reason: "image delete/reposition/animation throttle — post-MVP enhanced tier; no census surface" }
+  # F-007 buffers/views/windows/splits (#103, D-043) — ruse WORKSPACE ARCHITECTURE (C-VIEW/
+  # C-WORKSPACE) + layer:host UI. The split/buffer COMMANDS have ex_command census homes
+  # (nvim.ex.split/vsplit/close) but families.yaml deems window-split layer:host, not a parity FAM;
+  # the ownership/lifecycle GUARANTEES have no enumerable surface. Burn down via a workspace census
+  # surface or a ruse-choice PILLAR. Implemented + tested in #102 (Workspace + 2-way splits).
+  - { id: COM-2, feature: F-007, reason: "open/switch buffers — cross-editor buffer management; the :buffer/:bnext command grammar is future ex_command work, the ownership model is ruse workspace architecture with no census surface" }
+  - { id: COM-3, feature: F-007, reason: "window splits — :split/:vsplit have ex_command homes but window-split layout is layer:host (families.yaml), not a parity FAM; MVP flat 2-way split shipped" }
+  - { id: COM-4, feature: F-007, reason: "close buffer/window — :close/C-w c shipped; the retirement (refcount-by-scan) model is ruse architecture, no census surface" }
+  # VIM-WIN-1 (Vim tabs = window layouts, buffer!=view!=window) is ⚠️ intentionally-different in
+  # vim.md — non-targeted, so it is NOT a backlog item; it simply drops out of F-007's trace.parity.
+  - { id: EMACS-BUFFER-1, feature: F-007, reason: "buffer list (:ls / list-buffers) — a buffer-management surface deferred (BufferList is post-MVP); no enumerable census surface for the disposition model" }
+  - { id: EMACS-BUFFER-2, feature: F-007, reason: "same buffer in many windows — IMPLEMENTED (Workspace shares one Document across N Views), but 'one buffer many windows' is ruse architecture (INV-DOC-VIEW), not an enumerable upstream census fact" }
+  - { id: WS-1, feature: F-007, reason: "buffer/view/window distinctness — IMPLEMENTED (DocumentId/ViewId/Window distinct types), a ruse workspace ARCHITECTURE guarantee with no census surface" }
+  - { id: WS-2, feature: F-007, reason: "view-local state (cursor/selection/scroll in the View) — IMPLEMENTED (INV-DOC-VIEW); architecture guarantee, no enumerable surface" }
+  - { id: WS-6, feature: F-007, reason: "shared-buffer editing across views — IMPLEMENTED (swap-trick over a shared Document); architecture, no census surface" }
+  - { id: WS-9, feature: F-007, reason: "window close keeps the shared buffer (last-View retirement) — IMPLEMENTED (refcount-by-scan); architecture, no census surface" }
