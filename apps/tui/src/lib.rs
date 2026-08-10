@@ -11,3 +11,4 @@
 
 pub mod caps;
 pub mod input;
+pub mod persist;

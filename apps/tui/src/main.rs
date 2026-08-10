@@ -17,6 +17,7 @@ mod caps;
 mod highlight;
 mod input;
 mod log;
+mod persist;
 mod recover;
 mod viewport;
 
@@ -43,11 +44,12 @@ fn main() -> ExitCode {
         return replay(&args[1..]);
     }
     let path = args.first().map(PathBuf::from);
-    let initial = path
+    // Raw on-disk bytes (BOM/CRLF intact); run() detects the format and normalises for the buffer.
+    let raw = path
         .as_ref()
         .and_then(|p| fs::read(p).ok())
         .unwrap_or_default();
-    match run(path, initial) {
+    match run(path, raw) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("ruse: {e}");
@@ -190,11 +192,43 @@ impl Drop for TermGuard {
 /// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
 const SCROLLOFF: usize = 3;
 
-fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
-    let mut st = EditorState::new(initial.clone());
-    let mut recorded: Vec<Command> = Vec::new();
-    let mut cmd_line: Option<(char, String)> = None; // ':' ex-line or '/' search-line + typed text
-    let mut status = String::from("ruse — :q to quit");
+/// Append a recovery-journal frame every Nth modified command — a coarse hard-kill safety net (a
+/// panic captures the exact latest state separately). Full incremental journaling is post-MVP.
+const JOURNAL_THROTTLE: u32 = 8;
+
+/// Ask the user whether to load recovered unsaved changes (F-008 #3). Renders a minimal full-screen
+/// prompt and blocks for one key: `y`/`r` = recover, anything else = discard and open the disk file.
+/// The original file is never touched here — the choice only decides the initial BUFFER (#4).
+fn prompt_recovery(out: &mut io::Stdout) -> io::Result<bool> {
+    queue!(
+        out,
+        terminal::Clear(ClearType::All),
+        cursor::MoveTo(0, 0),
+        Print("ruse: unsaved changes were recovered from a previous session."),
+        cursor::MoveTo(0, 1),
+        Print("Press 'r' to RECOVER them, or any other key to open the on-disk file."),
+    )?;
+    out.flush()?;
+    loop {
+        if let Event::Key(k) = event::read()? {
+            if k.kind == KeyEventKind::Release {
+                continue; // act on the press, not its release (kitty/Windows send both)
+            }
+            return Ok(matches!(
+                k.code,
+                KeyCode::Char('r') | KeyCode::Char('y') | KeyCode::Char('R')
+            ));
+        }
+    }
+}
+
+fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
+    // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
+    let fmt = persist::encoding::FileFormat::detect(&raw);
+    let disk = fmt.to_buffer(&raw);
+    // A crash may have left an append-only journal of unsaved work; offer it, never auto-apply it.
+    let recovered = persist::journal::replay(path.as_deref());
+    let recovery = persist::assess_recovery(&disk, recovered.as_deref());
 
     // Syntax highlighting (Rust only for v0) lives in the frontend; core stays dep-free.
     let mut highlighter = match path
@@ -208,13 +242,43 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
 
     let _guard = TermGuard::enter()?;
     let mut out = io::stdout();
+
+    // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
+    let (initial, mut status) = match recovery {
+        persist::Recovery::Available(rec) if prompt_recovery(&mut out)? => (
+            rec,
+            String::from("ruse — recovered unsaved changes (:w to save)"),
+        ),
+        persist::Recovery::Available(_) => {
+            persist::journal::clear(path.as_deref()); // discarded on the user's say-so
+            (
+                disk,
+                String::from("ruse — recovery discarded; opened disk version"),
+            )
+        }
+        persist::Recovery::None => (disk, String::from("ruse — :q to quit")),
+    };
+
+    let mut st = EditorState::new(initial.clone());
+    let mut recorded: Vec<Command> = Vec::new();
+    let mut cmd_line: Option<(char, String)> = None; // ':' ex-line or '/' search-line + typed text
+    let mut journal_ticks: u32 = 0; // throttle: append the recovery journal every Nth modified frame
+
     let mut engine = InputEngine::new();
     let mut quit = false;
     let mut top: usize = 0; // first visible buffer row (frontend view state; core stays view-free)
 
     while !quit {
-        // Keep the crash-recovery snapshot current so a core panic can rescue unsaved work (§6/§8).
+        // Keep the in-memory snapshot current so a core panic can rescue unsaved work (§6/§8).
         recover::update(path.as_ref(), st.bytes(), st.is_modified());
+        // And throttle an append-only journal frame so a hard kill (not just a panic) loses at most
+        // a few edits. Cleared on a durable save. Full journal design is post-MVP (C-PERSIST).
+        if st.is_modified() {
+            journal_ticks += 1;
+            if journal_ticks.is_multiple_of(JOURNAL_THROTTLE) {
+                let _ = persist::journal::append(path.as_deref(), st.bytes());
+            }
+        }
         // Scroll so the cursor stays on screen with a scrolloff margin (view state, not core state).
         let (_, term_rows) = terminal::size().unwrap_or((80, 24));
         let text_rows = term_rows.saturating_sub(1) as usize;
@@ -255,6 +319,7 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
                             &parse_ex(&text),
                             &mut st,
                             &path,
+                            fmt,
                             &initial,
                             &recorded,
                             &mut status,
@@ -263,7 +328,15 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
                     } else if let Feed::Cmd(cmd) = engine.submit_search(text) {
                         // `submit_search` folds the pattern into any operator/count that preceded `/`
                         // (`d/pat`, `2/pat`) and records it for `n`/`N`; an empty pattern yields Ignored.
-                        run_cmd(cmd, &mut st, &path, &mut recorded, &mut status, &mut quit);
+                        run_cmd(
+                            cmd,
+                            &mut st,
+                            &path,
+                            fmt,
+                            &mut recorded,
+                            &mut status,
+                            &mut quit,
+                        );
                     }
                 }
                 _ => {}
@@ -274,12 +347,28 @@ fn run(path: Option<PathBuf>, initial: Vec<u8>) -> io::Result<()> {
             Feed::OpenExLine => cmd_line = Some((':', String::new())),
             Feed::OpenSearch => cmd_line = Some(('/', String::new())),
             Feed::Pending | Feed::Ignored => {}
-            Feed::Cmd(cmd) => run_cmd(cmd, &mut st, &path, &mut recorded, &mut status, &mut quit),
+            Feed::Cmd(cmd) => run_cmd(
+                cmd,
+                &mut st,
+                &path,
+                fmt,
+                &mut recorded,
+                &mut status,
+                &mut quit,
+            ),
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
                 for cmd in cmds {
-                    run_cmd(cmd, &mut st, &path, &mut recorded, &mut status, &mut quit);
+                    run_cmd(
+                        cmd,
+                        &mut st,
+                        &path,
+                        fmt,
+                        &mut recorded,
+                        &mut status,
+                        &mut quit,
+                    );
                 }
             }
         }
@@ -292,30 +381,36 @@ fn run_cmd(
     cmd: Command,
     st: &mut EditorState,
     path: &Option<PathBuf>,
+    fmt: persist::encoding::FileFormat,
     recorded: &mut Vec<Command>,
     status: &mut String,
     quit: &mut bool,
 ) {
     recorded.push(cmd.clone());
     for eff in apply_command(st, &cmd) {
-        apply_effect(eff, st, path, status, quit);
+        apply_effect(eff, st, path, fmt, status, quit);
     }
 }
 
+// The ex-line dispatcher legitimately needs the full editor context (buffer, file identity+format,
+// the trace baseline+recording, and the status/quit sinks); grouping them into a struct would only
+// move the wiring, not reduce it.
+#[allow(clippy::too_many_arguments)]
 fn run_ex(
     ex: &Ex,
     st: &mut EditorState,
     path: &Option<PathBuf>,
+    fmt: persist::encoding::FileFormat,
     initial: &[u8],
     recorded: &[Command],
     status: &mut String,
     quit: &mut bool,
 ) {
     match ex {
-        Ex::Save => save(st, path, status),
+        Ex::Save => save(st, path, fmt, status),
         Ex::Quit => *quit = true,
         Ex::SaveQuit => {
-            save(st, path, status);
+            save(st, path, fmt, status);
             *quit = true;
         }
         Ex::SaveTrace(p) => {
@@ -333,25 +428,34 @@ fn apply_effect(
     eff: Effect,
     st: &mut EditorState,
     path: &Option<PathBuf>,
+    fmt: persist::encoding::FileFormat,
     status: &mut String,
     quit: &mut bool,
 ) {
     match eff {
-        Effect::Save => save(st, path, status),
+        Effect::Save => save(st, path, fmt, status),
         Effect::Quit => *quit = true,
         Effect::Status(s) => *status = s,
     }
 }
 
-fn save(st: &mut EditorState, path: &Option<PathBuf>, status: &mut String) {
+fn save(
+    st: &mut EditorState,
+    path: &Option<PathBuf>,
+    fmt: persist::encoding::FileFormat,
+    status: &mut String,
+) {
     let Some(p) = path else {
         *status = "no file name (open with `ruse <file>`)".into();
         return;
     };
-    match fs::write(p, st.bytes()) {
+    // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).
+    let bytes = fmt.to_disk(st.bytes());
+    match persist::atomic::save(p, &bytes) {
         Ok(()) => {
             st.doc.mark_saved();
-            tracing::info!(event = "save", path = %p.display(), bytes = st.bytes().len());
+            persist::journal::clear(path.as_deref()); // saved bytes are durable — no work to recover
+            tracing::info!(event = "save", path = %p.display(), bytes = bytes.len());
             *status = format!("\"{}\" written", p.display());
         }
         Err(e) => {

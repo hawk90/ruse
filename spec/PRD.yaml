@@ -366,7 +366,13 @@ features:
     title: File open / save / crash recovery
     stage: mvp
     priority: must
-    status: active
+    # done (#94): apps/tui/src/persist/ — atomic::save (temp+fsync+rename+dir-fsync, #1),
+    # encoding::FileFormat (detect+preserve BOM/CRLF, #2), journal (append-only framed records,
+    # torn-tail-tolerant replay, #4), assess_recovery + prompt_recovery (open-time 3-way, never
+    # auto-overwrites, #3/#4). MVP-minimal per ruse-mvp-minimal-slice: the full four-state /
+    # inverse-edit / incremental journal in persistence-and-recovery.md is the post-MVP C-PERSIST
+    # elaboration. 20 unit + 3 integration (tests/persist_roundtrip.rs) tests; all 4 acceptance met.
+    status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only recovery journal.
     trace:
