@@ -498,6 +498,103 @@ impl EditorState {
         }
     }
 
+    /// Execute `:[range]g/pat/cmd` (F-009 #4) as a genuine TWO-PASS: pass 1 marks every line in range
+    /// whose text the pattern matches (or does NOT match, when `negate` — `:g!` / `:v`); pass 2 runs
+    /// `cmd` on the marked lines. Marking happens against the ORIGINAL buffer, so pass-2 edits never
+    /// change which lines were selected — the property the acceptance names. The whole command is ONE
+    /// undo group. Returns the number of lines acted on.
+    ///
+    /// # Errors
+    /// [`RegexError`] if the `:g` pattern (or a `:g/pat/s///` sub-pattern) is unrepresentable/malformed.
+    pub fn global(
+        &mut self,
+        range: SubRange,
+        pattern: &str,
+        negate: bool,
+        cmd: &GlobalCmd,
+    ) -> Result<usize, RegexError> {
+        let opts = self.view.search_options();
+        let re = crate::pattern::Regex::compile(pattern, opts)?;
+        let bytes = self.doc.bytes();
+        let hay = std::str::from_utf8(bytes)
+            .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
+        let lines = line_spans(hay);
+        // `:g` with no range is the WHOLE FILE (unlike `:s`, whose default is the current line).
+        let (first, last) = match range {
+            SubRange::CurrentLine | SubRange::WholeFile => (0, lines.len().saturating_sub(1)),
+            SubRange::Lines(a, b) => (
+                a.saturating_sub(1).min(lines.len().saturating_sub(1)),
+                b.saturating_sub(1).min(lines.len().saturating_sub(1)),
+            ),
+        };
+        // PASS 1: mark the matching (or non-matching) lines against the untouched buffer.
+        let marked: Vec<usize> = (first..=last)
+            .filter(|&li| {
+                let (ls, le) = lines[li];
+                re.find_at(&hay[ls..le], 0).is_some() != negate
+            })
+            .collect();
+        if marked.is_empty() {
+            return Ok(0);
+        }
+
+        // PASS 2: run the command over the marked lines.
+        match cmd {
+            GlobalCmd::Delete => {
+                // Delete each marked line including its trailing newline; disjoint + ascending, so one
+                // transaction from the original offsets deletes them all atomically.
+                let edits: Vec<Edit> = marked
+                    .iter()
+                    .map(|&li| {
+                        let (ls, le) = lines[li];
+                        let end = if le < hay.len() { le + 1 } else { le };
+                        Edit::delete(ls, end - ls)
+                    })
+                    .collect();
+                let list =
+                    EditList::new(edits).expect("whole-line deletes are disjoint and ordered");
+                let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+                    .with_hint(GroupHint::BreakBefore);
+                self.doc.apply(txn).expect("global-delete applies cleanly");
+                self.view.last_was_edit = true;
+                let nb = self.doc.bytes();
+                self.view.cursor = self.view.cursor.min(nb.len());
+                Ok(marked.len())
+            }
+            GlobalCmd::Substitute {
+                pattern: sp,
+                replacement,
+                flags,
+            } => {
+                let sopts = crate::pattern::Options {
+                    magic: opts.magic,
+                    ignore_case: flags.ignore_case.unwrap_or(opts.ignore_case),
+                    smart_case: flags.ignore_case.is_none() && opts.smart_case,
+                };
+                let sre = crate::pattern::Regex::compile(sp, sopts)?;
+                let mut subs: Vec<Substitution> = Vec::new();
+                for &li in &marked {
+                    let (ls, le) = lines[li];
+                    let line = &hay[ls..le];
+                    let matches: Vec<crate::pattern::Match> = if flags.global {
+                        sre.find_all(line)
+                    } else {
+                        sre.find_at(line, 0).into_iter().collect()
+                    };
+                    for m in matches {
+                        subs.push(Substitution {
+                            start: ls + m.start,
+                            end: ls + m.end,
+                            replacement: expand_replacement(replacement, &line[m.start..m.end]),
+                            line: li,
+                        });
+                    }
+                }
+                Ok(self.apply_substitutions(&subs).lines)
+            }
+        }
+    }
+
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
     fn indent_unit(&self) -> Vec<u8> {
         match self.view.indent_style {
@@ -869,6 +966,23 @@ pub struct SubOutcome {
     pub replacements: usize,
     /// Distinct lines that had at least one replacement.
     pub lines: usize,
+}
+
+/// The command a `:g/pat/cmd` runs on each marked line (F-009 #4). MVP supports the two most common
+/// forms; `:normal`, `:m`/`:t`, `:p`, etc. are post-MVP.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum GlobalCmd {
+    /// `:g/pat/d` — delete the matched line.
+    Delete,
+    /// `:g/pat/s/pat2/rep/flags` — substitute on the matched line.
+    Substitute {
+        /// The substitute pattern (the `:s` pattern, independent of the `:g` selector).
+        pattern: String,
+        /// The substitute replacement.
+        replacement: String,
+        /// The substitute flags (`g`/`i`/`I`; `c` confirm is not offered inside `:g`).
+        flags: SubFlags,
+    },
 }
 
 /// The byte span `(start, end)` of every line (`end` excludes the `\n`). Always at least one line.
@@ -4833,5 +4947,68 @@ mod substitute_confirm_tests {
         let out = st.apply_substitutions(&[]);
         assert_eq!((out.replacements, out.lines), (0, 0));
         assert_eq!(st.as_str().unwrap(), "a a");
+    }
+}
+
+#[cfg(test)]
+mod global_tests {
+    use super::*;
+
+    fn run_global(initial: &str, pat: &str, negate: bool, cmd: GlobalCmd) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        st.global(SubRange::WholeFile, pat, negate, &cmd)
+            .expect("compiles");
+        st
+    }
+
+    /// F-009 #4: `:g/pat/d` deletes every line matching the pattern (two-pass: mark then execute).
+    #[test]
+    fn global_delete_matching_lines() {
+        let st = run_global(
+            "keep\ndrop me\nkeep2\ndrop\n",
+            "drop",
+            false,
+            GlobalCmd::Delete,
+        );
+        assert_eq!(st.as_str().unwrap(), "keep\nkeep2\n");
+    }
+
+    /// F-009 #4: `:g!/pat/d` (== `:v/pat/d`) deletes the NON-matching lines.
+    #[test]
+    fn global_negate_deletes_non_matching() {
+        let st = run_global("a1\nb\na2\nc\n", "a", true, GlobalCmd::Delete);
+        assert_eq!(st.as_str().unwrap(), "a1\na2\n");
+    }
+
+    /// F-009 #4: the two-pass mark-then-execute means a `:g/pat/s///` only substitutes on lines that
+    /// matched the `:g` selector, and marking is unaffected by the substitutions.
+    #[test]
+    fn global_substitute_on_matching_lines_only() {
+        let st = run_global(
+            "foo x\nbar x\nfoo x\n",
+            "foo",
+            false,
+            GlobalCmd::Substitute {
+                pattern: "x".into(),
+                replacement: "Y".into(),
+                flags: SubFlags {
+                    global: true,
+                    ignore_case: None,
+                },
+            },
+        );
+        // Only the two "foo" lines get their x -> Y; the "bar" line is untouched.
+        assert_eq!(st.as_str().unwrap(), "foo Y\nbar x\nfoo Y\n");
+    }
+
+    /// F-009 #4: the whole `:g` is ONE undo group.
+    #[test]
+    fn global_delete_is_one_undo_group() {
+        let mut st = EditorState::new(b"a\ndrop\nb\ndrop\nc\n".to_vec());
+        st.global(SubRange::WholeFile, "drop", false, &GlobalCmd::Delete)
+            .unwrap();
+        assert_eq!(st.as_str().unwrap(), "a\nb\nc\n");
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(st.as_str().unwrap(), "a\ndrop\nb\ndrop\nc\n");
     }
 }

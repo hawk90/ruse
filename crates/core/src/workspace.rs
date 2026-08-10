@@ -25,7 +25,7 @@
 use crate::command::Command;
 use crate::document::{Document, DocumentId};
 use crate::editor::{
-    apply_command, EditorState, SubFlags, SubOutcome, SubRange, Substitution, View,
+    apply_command, EditorState, GlobalCmd, SubFlags, SubOutcome, SubRange, Substitution, View,
 };
 use crate::effect::Effect;
 use crate::pattern::RegexError;
@@ -262,6 +262,29 @@ impl Workspace {
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
         out
+    }
+
+    /// Run `:[range]g/pat/cmd` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]):
+    /// two-pass mark-then-execute, one undo group. Returns the lines acted on (F-009 #4).
+    pub fn global(
+        &mut self,
+        range: SubRange,
+        pattern: &str,
+        negate: bool,
+        cmd: &GlobalCmd,
+    ) -> Result<usize, RegexError> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let result = st.global(range, pattern, negate, cmd);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        result
     }
 
     /// Move focus to the next Window in tile order, wrapping (Vim `C-w w`). No-op with one Window.

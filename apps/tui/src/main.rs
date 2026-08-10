@@ -530,6 +530,14 @@ fn run_ex(
                 };
             }
         }
+        // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window.
+        Ex::Global(spec) => {
+            *status = match ws.global(spec.range, &spec.pattern, spec.negate, &spec.cmd) {
+                Ok(0) => format!("E486: pattern not found: {}", spec.pattern),
+                Ok(n) => format!("{n} lines changed"),
+                Err(e) => regex_error_msg(&e),
+            };
+        }
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }
