@@ -282,6 +282,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut prev_frame = screen::Screen::new(0, 0);
     let sync_output = guard.sync_output(); // pinned once from the F-010 ledger (INV-RENDER-PROFILE)
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
+    let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -304,6 +305,13 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 let _ = persist::journal::append(path.as_deref(), &snapshot);
             }
         }
+        // During a `:s///c` confirm, follow the current match so the viewport scrolls it into view.
+        if let Some(c) = &confirm {
+            if let Some(s) = c.subs.get(c.idx) {
+                ws.place_focused_cursor(s.start);
+                status = confirm_prompt(c);
+            }
+        }
         // Per-window viewport pass: scroll each pane so ITS cursor stays visible in ITS rectangle
         // (F-007 acceptance #1 — independent scroll). Geometry is shared with render below.
         let (cols, term_rows) = terminal::size().unwrap_or((80, 24));
@@ -323,6 +331,10 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             .as_mut()
             .map(|h| h.spans(revision, &snapshot))
             .unwrap_or(&[]);
+        let confirm_hl = confirm
+            .as_ref()
+            .and_then(|c| c.subs.get(c.idx))
+            .map(|s| (s.start, s.end));
         render(
             &mut out,
             &ws,
@@ -333,11 +345,17 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &rects,
             &mut prev_frame,
             sync_output,
+            confirm_hl,
         )?;
         let Event::Key(key) = event::read()? else {
             continue;
         };
         if key.kind == KeyEventKind::Release {
+            continue;
+        }
+        // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
+        if confirm.is_some() {
+            confirm_key(&mut confirm, key, &mut ws, &mut status);
             continue;
         }
         // F-007 window layer: a `C-w` prefix (Normal mode, no command-line, not Insert where `C-w`
@@ -367,6 +385,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 &recorded,
                 &mut status,
                 &mut quit,
+                &mut confirm,
             ),
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => run_cmd(
@@ -455,6 +474,7 @@ fn run_ex(
     recorded: &[Command],
     status: &mut String,
     quit: &mut bool,
+    confirm: &mut Option<Confirm>,
 ) {
     match ex {
         Ex::Save => save(ws, path, fmt, status),
@@ -487,26 +507,113 @@ fn run_ex(
         // `:[range]s/pat/rep/flags` (F-009 #2). The `c` (confirm) flag is the interactive loop (PR-c2);
         // for now it is declined rather than silently applied.
         Ex::Substitute(spec) => {
+            let flags = ruse_core::SubFlags {
+                global: spec.global,
+                ignore_case: spec.ignore_case,
+            };
             if spec.confirm {
-                *status = ":s///c (confirm) is not implemented yet — omit c to substitute".into();
+                // `c`: compute the matches and hand control to the interactive confirm loop (F-009 #2).
+                match ws.substitute_preview(spec.range, &spec.pattern, &spec.replacement, flags) {
+                    Ok(subs) if subs.is_empty() => {
+                        *status = format!("E486: pattern not found: {}", spec.pattern);
+                    }
+                    Ok(subs) => *confirm = Some(Confirm::new(subs)),
+                    Err(e) => *status = regex_error_msg(&e),
+                }
             } else {
-                let flags = ruse_core::SubFlags {
-                    global: spec.global,
-                    ignore_case: spec.ignore_case,
-                };
                 *status = match ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags) {
                     Ok(out) if out.replacements == 0 => {
                         format!("E486: pattern not found: {}", spec.pattern)
                     }
                     Ok(out) => format!("{} substitutions on {} lines", out.replacements, out.lines),
-                    Err(ruse_core::RegexError::Unsupported(m)) => {
-                        format!("E: unsupported pattern: {m}")
-                    }
-                    Err(ruse_core::RegexError::Syntax(m)) => format!("E: bad pattern: {m}"),
+                    Err(e) => regex_error_msg(&e),
                 };
             }
         }
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
+    }
+}
+
+/// The state of an in-progress `:s///c` confirm loop (F-009 #2): the pending substitutions, the index
+/// of the one being confirmed, and the subset accepted so far. The buffer is NOT edited until the loop
+/// ends (all confirmed, or `a`/`l`/`q`), so the absolute offsets stay valid throughout; the accepted
+/// subset is then applied as one undo group.
+struct Confirm {
+    subs: Vec<ruse_core::Substitution>,
+    idx: usize,
+    accepted: Vec<ruse_core::Substitution>,
+}
+
+impl Confirm {
+    fn new(subs: Vec<ruse_core::Substitution>) -> Confirm {
+        Confirm {
+            subs,
+            idx: 0,
+            accepted: Vec::new(),
+        }
+    }
+}
+
+/// The status-line prompt shown while confirming the current match.
+fn confirm_prompt(c: &Confirm) -> String {
+    let rep = c
+        .subs
+        .get(c.idx)
+        .map(|s| String::from_utf8_lossy(&s.replacement).into_owned())
+        .unwrap_or_default();
+    format!(
+        "replace with {rep} ({}/{})?  (y)es (n)o (a)ll (l)ast (q)uit",
+        c.idx + 1,
+        c.subs.len()
+    )
+}
+
+/// Handle one key of the `:s///c` confirm loop. Applies the accepted subset (one undo group) and clears
+/// `confirm` when the loop ends; otherwise advances to the next match.
+fn confirm_key(
+    confirm: &mut Option<Confirm>,
+    key: crossterm::event::KeyEvent,
+    ws: &mut Workspace,
+    status: &mut String,
+) {
+    let Some(mut c) = confirm.take() else {
+        return;
+    };
+    match key.code {
+        KeyCode::Char('y') => {
+            if let Some(s) = c.subs.get(c.idx) {
+                c.accepted.push(s.clone());
+            }
+            c.idx += 1;
+        }
+        KeyCode::Char('n') => c.idx += 1,
+        KeyCode::Char('a') => {
+            c.accepted.extend(c.subs[c.idx..].iter().cloned());
+            c.idx = c.subs.len();
+        }
+        KeyCode::Char('l') => {
+            if let Some(s) = c.subs.get(c.idx) {
+                c.accepted.push(s.clone());
+            }
+            c.idx = c.subs.len();
+        }
+        KeyCode::Char('q') | KeyCode::Esc => c.idx = c.subs.len(),
+        _ => {} // any other key: re-prompt (Vim ignores it)
+    }
+    if c.idx >= c.subs.len() {
+        let out = ws.apply_substitutions(&c.accepted);
+        *status = format!("{} substitutions on {} lines", out.replacements, out.lines);
+        // `confirm` was taken and stays None — the loop is over.
+    } else {
+        *confirm = Some(c);
+    }
+}
+
+/// Human-readable status for a regex compile error (F-009).
+fn regex_error_msg(e: &ruse_core::RegexError) -> String {
+    match e {
+        ruse_core::RegexError::Unsupported(m) => format!("E: unsupported pattern: {m}"),
+        ruse_core::RegexError::Syntax(m) => format!("E: bad pattern: {m}"),
     }
 }
 
@@ -707,6 +814,7 @@ fn render(
     rects: &[Rect],
     prev: &mut screen::Screen,
     sync: bool,
+    confirm_hl: Option<(usize, usize)>,
 ) -> io::Result<()> {
     use crossterm::style::Color;
 
@@ -740,7 +848,12 @@ fn render(
         } else {
             &[]
         };
-        let sel = p.view.selection_span(pbytes);
+        // The focused pane paints a `:s///c` confirm highlight (the current match) as a selection
+        // when there is no live Visual selection to show.
+        let sel = p
+            .view
+            .selection_span(pbytes)
+            .or(if i == ws.focus() { confirm_hl } else { None });
         let block = p.view.block_spans(pbytes);
         paint_pane(
             &mut cur,
