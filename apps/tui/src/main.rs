@@ -13,6 +13,7 @@
     clippy::disallowed_methods
 )]
 
+mod caps;
 mod highlight;
 mod input;
 mod log;
@@ -89,20 +90,99 @@ fn replay(args: &[String]) -> ExitCode {
     }
 }
 
-/// Restores the terminal on drop, even on panic.
-struct TermGuard;
+/// Build the capability ledger (F-010): safe-fallback defaults, then a low-confidence env seed,
+/// then — on a real Unix tty — a DA1-fenced active probe that upgrades what the terminal confirms.
+/// Every step is non-fatal: a probe that fails or is skipped leaves the honest env/default belief.
+fn detect_capabilities() -> caps::ledger::Ledger {
+    let mut ledger = caps::ledger::Ledger::with_defaults();
+    caps::seed_env(
+        &mut ledger,
+        &std::env::var("TERM").unwrap_or_default(),
+        &std::env::var("COLORTERM").unwrap_or_default(),
+        &std::env::var("TERM_PROGRAM").unwrap_or_default(),
+    );
+    #[cfg(unix)]
+    {
+        use std::io::IsTerminal;
+        if io::stdin().is_terminal() {
+            let _ = live_probe(&mut ledger); // best-effort; env/default belief stands on failure
+        }
+    }
+    // User overrides win over everything the probe found (architecture §6.3).
+    caps::apply_overrides(
+        &mut ledger,
+        &std::env::var("RUSE_NO_KITTY").unwrap_or_default(),
+        &std::env::var("RUSE_NO_MOUSE").unwrap_or_default(),
+        &std::env::var("RUSE_NO_PASTE").unwrap_or_default(),
+    );
+    ledger
+}
+
+/// Emit the probe batch and drain the terminal's replies until the DA1 fence (F-010 acceptance #1).
+/// The `poll` deadline is a LIVENESS net for a terminal that never answers DA1 — NOT a
+/// per-capability timeout; the fence, not the clock, decides support (see `caps::probe`).
+#[cfg(unix)]
+fn live_probe(ledger: &mut caps::ledger::Ledger) -> io::Result<()> {
+    use std::io::Read;
+    use std::os::unix::io::AsRawFd;
+
+    let mut out = io::stdout();
+    out.write_all(&caps::probe::query_batch())?;
+    out.flush()?;
+
+    let fd = io::stdin().as_raw_fd();
+    let mut parser = caps::probe::ProbeParser::new();
+    let mut buf = [0u8; 512];
+    // Up to ~20 × 50 ms only if the terminal keeps sending nothing; a real terminal answers in the
+    // first poll and the fence breaks the loop immediately.
+    for _ in 0..20 {
+        // SAFETY: `pfd` is a valid, initialised `pollfd`; `poll` reads/writes only that one struct.
+        let mut pfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let ready = unsafe { libc::poll(&mut pfd, 1, 50) };
+        if ready <= 0 {
+            break; // timeout or error — stop; whatever replied so far stands, defaults for the rest
+        }
+        let n = io::stdin().read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        parser.feed(&buf[..n], ledger);
+        if parser.is_fenced() {
+            break; // the DA1 fence replied — the ledger is final
+        }
+    }
+    Ok(())
+}
+
+/// Restores the terminal on drop, even on panic. Owns the capability ledger so the exact set of
+/// modes pushed on enter is the exact set reset on exit (F-010 acceptance #3 — no shell corruption).
+struct TermGuard {
+    ledger: caps::ledger::Ledger,
+}
 impl TermGuard {
     fn enter() -> io::Result<TermGuard> {
         terminal::enable_raw_mode()?;
         queue!(io::stdout(), terminal::EnterAlternateScreen)?;
         io::stdout().flush()?;
-        Ok(TermGuard)
+        // Probe AFTER raw mode (so replies arrive as raw bytes) and inside the alt screen (so query
+        // echoes, if any, never touch the parent scrollback).
+        let ledger = detect_capabilities();
+        let mut out = io::stdout();
+        out.write_all(&caps::sequences::enter(&ledger))?;
+        out.flush()?;
+        Ok(TermGuard { ledger })
     }
 }
 impl Drop for TermGuard {
     fn drop(&mut self) {
-        let _ = queue!(io::stdout(), terminal::LeaveAlternateScreen, cursor::Show);
-        let _ = io::stdout().flush();
+        let mut out = io::stdout();
+        let _ = out.write_all(&caps::sequences::exit(&self.ledger)); // pop/reset before leaving
+        let _ = queue!(out, terminal::LeaveAlternateScreen, cursor::Show);
+        let _ = out.flush();
         let _ = terminal::disable_raw_mode();
     }
 }
