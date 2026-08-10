@@ -73,8 +73,12 @@ impl Mode {
 
 /// Editor state over one document: the buffer, a byte cursor (always on a char boundary), and the mode.
 /// View-local state lives here for the headless spine; a real multi-view split comes later (INV-DOC-VIEW).
-pub struct EditorState {
-    pub doc: Document,
+/// A **View**: the per-view state over a shared [`Document`] (F-007 Buffer/View split). Cursor,
+/// mode, selection and the transient session state are view-local — INV-DOC-VIEW — so two Views of
+/// one buffer have independent cursors. Registers and the indent config sit here for now (a single
+/// view); the F-007 Workspace step lifts them to workspace scope. The Document is NOT here: it is
+/// owned separately so many Views can share one text+undo.
+pub struct View {
     cursor: usize,
     mode: Mode,
     /// Whether the previous command edited text — drives undo grouping: an edit right after a non-edit
@@ -114,6 +118,37 @@ pub struct EditorState {
     /// on a vertical move, set to [`MAXCOL`] by `$`/`<End>` (ride each line's end), and recomputed from the
     /// landing column after any other command. Read by the `plan` Move Up/Down arm via [`motion::vmove`].
     curswant: usize,
+}
+
+/// The editor over a single [`Document`] and its [`View`] — the top-level headless handle the TUI and
+/// tests drive. F-007's Workspace will own many `(Document, View)` pairs referenced by handle; today
+/// there is exactly one of each, composed here so the public API (`apply_command`, `cursor()`, …) is
+/// unchanged while the buffer and view state are now cleanly separable.
+pub struct EditorState {
+    pub doc: Document,
+    view: View,
+}
+
+impl View {
+    /// A fresh view: cursor at the start, Normal mode, empty registers/sessions. Config fields hold
+    /// the schema defaults (spec/config-schema.yaml: editor.tab_width=4, editor.indent_style=space);
+    /// runtime config wiring is deferred (as with editor.scrolloff).
+    fn new() -> View {
+        View {
+            cursor: 0,
+            mode: Mode::Normal,
+            last_was_edit: false,
+            registers: RegisterStore::new(),
+            pending_register: None,
+            anchor: None,
+            last_visual: None,
+            replace_stack: Vec::new(),
+            block_insert: None,
+            tab_width: 4,
+            indent_style: IndentStyle::Space,
+            curswant: 0,
+        }
+    }
 }
 
 /// `curswant` sentinel meaning "the end of whatever line you land on" — Vim's MAXCOL, set by `$`.
@@ -224,21 +259,7 @@ impl EditorState {
         doc.mark_saved();
         EditorState {
             doc,
-            cursor: 0,
-            mode: Mode::Normal,
-            last_was_edit: false,
-            registers: RegisterStore::new(),
-            pending_register: None,
-            anchor: None,
-            last_visual: None,
-            replace_stack: Vec::new(),
-            block_insert: None,
-            // Schema defaults (spec/config-schema.yaml): editor.tab_width=4, editor.indent_style=space.
-            // Runtime config wiring is deferred (as with editor.scrolloff), so the shift operators read
-            // these fields, which currently always hold the defaults.
-            tab_width: 4,
-            indent_style: IndentStyle::Space,
-            curswant: 0,
+            view: View::new(),
         }
     }
 
@@ -246,14 +267,14 @@ impl EditorState {
     /// until it lands this is the seam a loader (or a test) uses to install `editor.tab_width` /
     /// `editor.indent_style`. No new schema key — both are existing keys (spec/config-schema.yaml).
     pub fn set_indent(&mut self, tab_width: usize, indent_style: IndentStyle) {
-        self.tab_width = tab_width.max(1);
-        self.indent_style = indent_style;
+        self.view.tab_width = tab_width.max(1);
+        self.view.indent_style = indent_style;
     }
 
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
     fn indent_unit(&self) -> Vec<u8> {
-        match self.indent_style {
-            IndentStyle::Space => vec![b' '; self.tab_width],
+        match self.view.indent_style {
+            IndentStyle::Space => vec![b' '; self.view.tab_width],
             IndentStyle::Tab => vec![b'\t'],
         }
     }
@@ -261,13 +282,13 @@ impl EditorState {
     /// The unnamed register's current contents (for tests / a future `:registers`).
     #[must_use]
     pub fn register(&self) -> &Register {
-        self.registers.unnamed()
+        self.view.registers.unnamed()
     }
 
     /// The whole register store (for tests / a future `:registers`), giving access to the named slots.
     #[must_use]
     pub fn registers(&self) -> &RegisterStore {
-        &self.registers
+        &self.view.registers
     }
 
     /// The highlighted byte range `[start, end)` of the current charwise/linewise Visual selection, or
@@ -277,12 +298,12 @@ impl EditorState {
     #[must_use]
     pub fn selection_span(&self) -> Option<(usize, usize)> {
         // Visual and Select paint the same selection (they share the anchor and toggle via CTRL-G).
-        match self.mode.selection()? {
+        match self.view.mode.selection()? {
             SelectKind::Blockwise => None,
             kind => Some(selection_range(
                 self.bytes(),
-                self.anchor?,
-                self.cursor,
+                self.view.anchor?,
+                self.view.cursor,
                 kind == SelectKind::Linewise,
             )),
         }
@@ -293,8 +314,10 @@ impl EditorState {
     /// selection is not blockwise. For the frontend to paint a column-aligned block.
     #[must_use]
     pub fn block_spans(&self) -> Option<Vec<(usize, usize)>> {
-        match self.mode.selection()? {
-            SelectKind::Blockwise => Some(block_rows(self.bytes(), self.anchor?, self.cursor).0),
+        match self.view.mode.selection()? {
+            SelectKind::Blockwise => {
+                Some(block_rows(self.bytes(), self.view.anchor?, self.view.cursor).0)
+            }
             _ => None,
         }
     }
@@ -314,13 +337,13 @@ impl EditorState {
     /// The cursor's byte offset (on a char boundary).
     #[must_use]
     pub fn cursor(&self) -> usize {
-        self.cursor
+        self.view.cursor
     }
 
     /// The current mode.
     #[must_use]
     pub fn mode(&self) -> Mode {
-        self.mode
+        self.view.mode
     }
 
     /// Whether the buffer differs from what is on disk (delegates to the document's node-identity check).
@@ -589,7 +612,7 @@ fn advance_n_checked(b: &[u8], from: usize, count: u32, limit: usize) -> (usize,
 #[must_use]
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     let b = st.bytes();
-    let cur = st.cursor;
+    let cur = st.view.cursor;
     let nop = |cursor: usize, mode: Mode| Plan {
         action: Action::Nop,
         cursor,
@@ -629,7 +652,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             Register::charwise(bytes)
         }
     };
-    let hint = if st.last_was_edit {
+    let hint = if st.view.last_was_edit {
         GroupHint::Continue
     } else {
         GroupHint::BreakBefore
@@ -640,12 +663,18 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // `h`/`l` move by whole grapheme cluster so the cursor never lands mid-emoji/ZWJ/combining
         // (F-002 #2). Operator/selection internals below still step by char boundary — grapheme-aware
         // deletion is a follow-up; this slice makes the CURSOR stay synced to user-perceived chars.
-        Command::MoveLeft => nop(prev_grapheme(b, cur), st.mode),
-        Command::MoveRight => nop(next_grapheme(b, cur), st.mode),
-        Command::MoveLineStart => nop(line_start(b, cur), st.mode),
-        Command::MoveLineEnd => nop(line_end(b, cur), st.mode),
-        Command::MoveUp => nop(motion::vmove(b, cur, 1, false, st.curswant), st.mode),
-        Command::MoveDown => nop(motion::vmove(b, cur, 1, true, st.curswant), st.mode),
+        Command::MoveLeft => nop(prev_grapheme(b, cur), st.view.mode),
+        Command::MoveRight => nop(next_grapheme(b, cur), st.view.mode),
+        Command::MoveLineStart => nop(line_start(b, cur), st.view.mode),
+        Command::MoveLineEnd => nop(line_end(b, cur), st.view.mode),
+        Command::MoveUp => nop(
+            motion::vmove(b, cur, 1, false, st.view.curswant),
+            st.view.mode,
+        ),
+        Command::MoveDown => nop(
+            motion::vmove(b, cur, 1, true, st.view.curswant),
+            st.view.mode,
+        ),
         Command::EnterInsert => nop(cur, Mode::Insert),
         Command::EnterInsertAfter => nop(next_boundary(b, cur), Mode::Insert),
         Command::InsertLineStart => nop(motion::first_non_blank(b, cur), Mode::Insert),
@@ -671,14 +700,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::EnterNormal => {
             // `<Esc>` closing a blockwise insert-replicate session replicates the top row's typed text down
             // the block (see `block_replicate`); the session is cleared in `commit` as Insert is left.
-            if st.mode == Mode::Insert {
-                if let Some(session) = st.block_insert {
+            if st.view.mode == Mode::Insert {
+                if let Some(session) = st.view.block_insert {
                     return block_replicate(b, cur, session, hint);
                 }
             }
             // Vim: leaving Insert OR Replace nudges the cursor left one, but never before the line start.
             // Leaving Visual (Esc) just collapses the selection in place — no nudge.
-            if matches!(st.mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace) {
+            if matches!(
+                st.view.mode,
+                Mode::Insert | Mode::Replace | Mode::VirtualReplace
+            ) {
                 let ls = line_start(b, cur);
                 let c = if cur > ls { prev_boundary(b, cur) } else { cur };
                 nop(c, Mode::Normal)
@@ -720,12 +752,12 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         // Shared by Replace (`R`) and Virtual Replace (`gR`) — the restore stack is identical; the mode is
         // preserved so `<BS>` stays in whichever replace mode is active.
-        Command::ReplaceBackspace => match st.replace_stack.last() {
+        Command::ReplaceBackspace => match st.view.replace_stack.last() {
             // At the session start `<BS>` only moves the cursor left (Vim does not restore past the start).
             None => {
                 let ls = line_start(b, cur);
                 let c = if cur > ls { prev_boundary(b, cur) } else { cur };
-                nop(c, st.mode)
+                nop(c, st.view.mode)
             }
             Some(entry) => {
                 let start = prev_boundary(b, cur); // the last typed char occupies [start, cur)
@@ -741,7 +773,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                         pop: true,
                     },
                     cursor: start,
-                    mode: st.mode,
+                    mode: st.view.mode,
                     is_edit: true,
                     effects: Vec::new(),
                     set_register: None,
@@ -763,8 +795,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column,
                 // replace the tab with the typed char (backspace restores the tab).
                 let ls = line_start(b, cur);
-                let vcol = motion::vcol_of(b, ls, cur, st.tab_width);
-                let w = st.tab_width.max(1) - (vcol % st.tab_width.max(1));
+                let vcol = motion::vcol_of(b, ls, cur, st.view.tab_width);
+                let w = st.view.tab_width.max(1) - (vcol % st.view.tab_width.max(1));
                 if w > 1 {
                     (one(Edit::insert(cur, typed)), Some(None), cur + tn)
                 } else {
@@ -812,10 +844,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         ),
         Command::DeleteBack => {
             if cur == 0 {
-                nop(cur, st.mode)
+                nop(cur, st.view.mode)
             } else {
                 let p = prev_boundary(b, cur);
-                edit(one(Edit::delete(p, cur - p)), p, st.mode, hint)
+                edit(one(Edit::delete(p, cur - p)), p, st.view.mode, hint)
             }
         }
         Command::DeleteUnder(count) => {
@@ -824,10 +856,16 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let le = line_end(b, cur);
             let end = advance_n(b, cur, *count, le);
             if end <= cur {
-                nop(cur, st.mode)
+                nop(cur, st.view.mode)
             } else {
                 let reg = captured(cur, end, false);
-                edit_yank(one(Edit::delete(cur, end - cur)), cur, st.mode, hint, reg)
+                edit_yank(
+                    one(Edit::delete(cur, end - cur)),
+                    cur,
+                    st.view.mode,
+                    hint,
+                    reg,
+                )
             }
         }
         Command::ReplaceChar(count, c) => {
@@ -836,7 +874,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let le = line_end(b, cur);
             let (end, reached) = advance_n_checked(b, cur, *count, le);
             if !reached {
-                nop(cur, st.mode)
+                nop(cur, st.view.mode)
             } else {
                 let mut buf = [0u8; 4];
                 let one_ch = c.encode_utf8(&mut buf).as_bytes();
@@ -848,7 +886,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 edit(
                     one(Edit::replace(cur, end - cur, bytes)),
                     last,
-                    st.mode,
+                    st.view.mode,
                     hint,
                 )
             }
@@ -863,7 +901,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let le = line_end(b, cur);
             let end = advance_n(b, cur, *count, le);
             if end <= cur {
-                nop(cur, st.mode)
+                nop(cur, st.view.mode)
             } else {
                 // `[cur, end)` is on char boundaries (`advance_n` walks boundaries), so it is valid UTF-8.
                 let src =
@@ -886,13 +924,13 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     }
                 }
                 if flipped == b[cur..end] {
-                    nop(end, st.mode) // nothing was a letter: `~` just moves right
+                    nop(end, st.view.mode) // nothing was a letter: `~` just moves right
                 } else {
                     let cursor = cur + flipped.len();
                     edit(
                         one(Edit::replace(cur, end - cur, flipped)),
                         cursor,
-                        st.mode,
+                        st.view.mode,
                         hint,
                     )
                 }
@@ -902,7 +940,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // Join the current line with the next on a single space (Vim `J`). No-op on the last line.
             let le = line_end(b, cur);
             if le >= b.len() {
-                nop(cur, st.mode)
+                nop(cur, st.view.mode)
             } else {
                 // Delete the newline plus the next line's leading blanks, insert one space.
                 let mut ws_end = le + 1;
@@ -912,7 +950,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 edit(
                     one(Edit::replace(le, ws_end - le, b" ".to_vec())),
                     le,
-                    st.mode,
+                    st.view.mode,
                     hint,
                 )
             }
@@ -920,19 +958,19 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
         // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
         // group starts here mid-insert-session (Vim `i_CTRL-G_u`). Cursor and mode are untouched.
-        Command::BreakUndo => nop(cur, st.mode),
+        Command::BreakUndo => nop(cur, st.view.mode),
         Command::Move(count, m) => {
             // A text object issued in a selection mode (`viw`, `vi(`) sets BOTH ends: anchor at the object's
             // start, cursor on its last char (inclusive selection). A bare motion only moves the cursor.
-            if st.mode.selection().is_some() && is_text_object(*m) {
+            if st.view.mode.selection().is_some() && is_text_object(*m) {
                 let (s, e) = motion::char_span(b, cur, *m, *count);
                 if s >= e {
-                    return nop(cur, st.mode);
+                    return nop(cur, st.view.mode);
                 }
                 return Plan {
                     action: Action::Nop,
                     cursor: prev_boundary(b, e),
-                    mode: st.mode,
+                    mode: st.view.mode,
                     is_edit: false,
                     effects: Vec::new(),
                     set_register: None,
@@ -942,15 +980,15 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // Vertical motions honour the sticky desired column (curswant) so `j`/`k` keep the wanted
             // column through shorter interior lines; every other motion computes its own landing.
             let target = match m {
-                Motion::Up => motion::vmove(b, cur, *count, false, st.curswant),
-                Motion::Down => motion::vmove(b, cur, *count, true, st.curswant),
+                Motion::Up => motion::vmove(b, cur, *count, false, st.view.curswant),
+                Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant),
                 _ => motion::target(b, cur, *m, *count),
             };
             // Normal mode never rests on a non-empty line's trailing newline: when the wanted column
             // overshoots a short target line (or `$`'s MAXCOL), pull back onto its last char. Insert/Visual
             // keep the past-end column (append position / block right edge), so this is Normal-only.
             let target =
-                if matches!(m, Motion::Up | Motion::Down) && matches!(st.mode, Mode::Normal) {
+                if matches!(m, Motion::Up | Motion::Down) && matches!(st.view.mode, Mode::Normal) {
                     let ls = line_start(b, target);
                     let le = line_end(b, target);
                     if target == le && le > ls {
@@ -961,12 +999,12 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 } else {
                     target
                 };
-            nop(target, st.mode)
+            nop(target, st.view.mode)
         }
         Command::Delete(count, m) => {
             let (s, e, linewise) = op_span(b, cur, *m, *count);
             if s >= e {
-                nop(cur, st.mode)
+                nop(cur, st.view.mode)
             } else if linewise && e == b.len() && s > 0 && b[e - 1] != b'\n' {
                 // Deleting the buffer's LAST line while earlier lines remain, where that line has no
                 // trailing newline (so the span itself does not already eat one): Vim removes the line
@@ -981,13 +1019,13 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 edit_yank(
                     one(Edit::delete(del_start, e - del_start)),
                     cursor,
-                    st.mode,
+                    st.view.mode,
                     hint,
                     reg,
                 )
             } else {
                 let reg = captured(s, e, linewise);
-                edit_yank(one(Edit::delete(s, e - s)), s, st.mode, hint, reg)
+                edit_yank(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
             }
         }
         Command::Change(count, m) => {
@@ -1050,14 +1088,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Yank(count, m) => {
             let (s, e, linewise) = op_span(b, cur, *m, *count);
             if s >= e {
-                nop(cur, st.mode)
+                nop(cur, st.view.mode)
             } else {
                 // Yank captures without editing; Vim leaves the cursor at the start of the yanked span.
                 let reg = captured(s, e, linewise);
                 Plan {
                     action: Action::Nop,
                     cursor: s,
-                    mode: st.mode,
+                    mode: st.view.mode,
                     is_edit: false,
                     effects: Vec::new(),
                     set_register: Some(RegWrite::Yank(reg)),
@@ -1083,14 +1121,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             match op {
                 OpKind::Delete if s < e => {
                     let reg = captured(s, e, linewise);
-                    edit_yank(one(Edit::delete(s, e - s)), s, st.mode, hint, reg)
+                    edit_yank(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
                 }
                 OpKind::Yank if s < e => {
                     let reg = captured(s, e, linewise);
                     Plan {
                         action: Action::Nop,
                         cursor: s,
-                        mode: st.mode,
+                        mode: st.view.mode,
                         is_edit: false,
                         effects: Vec::new(),
                         set_register: Some(RegWrite::Yank(reg)),
@@ -1103,7 +1141,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 }
                 // Empty span: delete/yank are a clean no-op; change still drops into Insert (Vim).
                 OpKind::Change => nop(s, Mode::Insert),
-                _ => nop(cur, st.mode),
+                _ => nop(cur, st.view.mode),
             }
         }
         Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
@@ -1112,8 +1150,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Paste { after, count } => paste(
             b,
             cur,
-            st.mode,
-            st.registers.get(st.pending_register),
+            st.view.mode,
+            st.view.registers.get(st.view.pending_register),
             *after,
             *count,
         ),
@@ -1121,7 +1159,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::SetRegister(name) => Plan {
             action: Action::SetPending(*name),
             cursor: cur,
-            mode: st.mode,
+            mode: st.view.mode,
             is_edit: false,
             effects: Vec::new(),
             set_register: None,
@@ -1131,7 +1169,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // CTRL-G toggle: enter Select over the same selection. The anchor is preserved because both are
         // selection modes, so `commit` keeps it (see the (true, true) arm there).
         Command::EnterSelect { kind } => nop(cur, Mode::Select { kind: *kind }),
-        Command::ReselectVisual => match st.last_visual {
+        Command::ReselectVisual => match st.view.last_visual {
             // Restore the remembered selection: re-enter Visual with the stored kind, put the cursor on the
             // active end, and install the stored anchor (via `set_anchor`, which `commit` applies after its
             // enter-selection bookkeeping). No prior selection → a clean no-op (Vim rings the bell).
@@ -1144,13 +1182,13 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 set_register: None,
                 set_anchor: Some(anchor),
             },
-            None => nop(cur, st.mode),
+            None => nop(cur, st.view.mode),
         },
         Command::ReplaceSelection(c) => {
             // Select's `open/replace-selection`: delete the selection, insert the char, enter Insert.
             // Blockwise Select-replace is out of scope for this slice; a block here is treated charwise.
             let line = matches!(
-                st.mode,
+                st.view.mode,
                 Mode::Visual {
                     kind: SelectKind::Linewise
                 } | Mode::Select {
@@ -1160,7 +1198,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let mut buf = [0u8; 4];
             let ins = c.encode_utf8(&mut buf).as_bytes().to_vec();
             let n = ins.len();
-            match st.anchor {
+            match st.view.anchor {
                 Some(anchor) => {
                     let (s, e) = selection_range(b, anchor, cur, line);
                     if s < e {
@@ -1182,7 +1220,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::BlockInsert(kind) => {
-            let Some(anchor) = st.anchor else {
+            let Some(anchor) = st.view.anchor else {
                 // Not in a selection — degrade to a plain Insert entry, no session.
                 return nop(cur, Mode::Insert);
             };
@@ -1257,26 +1295,26 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // the old cursor (`set_anchor`, which `commit` installs). The SAME text stays selected, but a
             // later bare motion now extends the OTHER end (it re-plans against the new anchor). Involutive.
             // Outside a selection (no anchor) it is a clean no-op.
-            match (st.mode.selection(), st.anchor) {
+            match (st.view.mode.selection(), st.view.anchor) {
                 (Some(_), Some(anchor)) => Plan {
                     action: Action::Nop,
                     cursor: anchor,
-                    mode: st.mode,
+                    mode: st.view.mode,
                     is_edit: false,
                     effects: Vec::new(),
                     set_register: None,
                     set_anchor: Some(cur),
                 },
-                _ => nop(cur, st.mode),
+                _ => nop(cur, st.view.mode),
             }
         }
         Command::YankSelection | Command::DeleteSelection | Command::ChangeSelection => {
-            let Some(anchor) = st.anchor else {
+            let Some(anchor) = st.view.anchor else {
                 // Not in a selection (or no anchor) — drop back to Normal, do nothing.
                 return nop(cur, Mode::Normal);
             };
             // Blockwise (`CTRL-V`) selections operate on a rectangle of per-row slices, not one span.
-            if st.mode.selection() == Some(SelectKind::Blockwise) {
+            if st.view.mode.selection() == Some(SelectKind::Blockwise) {
                 let op = match cmd {
                     Command::YankSelection => OpKind::Yank,
                     Command::ChangeSelection => OpKind::Change,
@@ -1284,7 +1322,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 };
                 return block_op(b, anchor, cur, op, hint);
             }
-            let line = st.mode.selection() == Some(SelectKind::Linewise);
+            let line = st.view.mode.selection() == Some(SelectKind::Linewise);
             let (s, e) = selection_range(b, anchor, cur, line);
             let reg = captured(s, e, line);
             match cmd {
@@ -1311,11 +1349,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         Command::SearchNext(pat) => {
             let m = crate::search::find_next(b, pat.as_bytes(), cur + 1).unwrap_or(cur);
-            nop(m, st.mode)
+            nop(m, st.view.mode)
         }
         Command::SearchPrev(pat) => {
             let m = crate::search::find_prev(b, pat.as_bytes(), cur).unwrap_or(cur);
-            nop(m, st.mode)
+            nop(m, st.view.mode)
         }
         // `/pat` as a motion: step forward to the `count`-th match (each step searches from just past the
         // last), then either move there (`Move`) or fold `[cursor, match)` into a charwise-exclusive edit
@@ -1330,11 +1368,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 }
             }
             match op {
-                SearchOp::Move => nop(pos, st.mode),
-                _ if pos <= cur => nop(cur, st.mode),
+                SearchOp::Move => nop(pos, st.view.mode),
+                _ if pos <= cur => nop(cur, st.view.mode),
                 SearchOp::Delete => {
                     let reg = captured(cur, pos, false);
-                    edit_yank(one(Edit::delete(cur, pos - cur)), cur, st.mode, hint, reg)
+                    edit_yank(
+                        one(Edit::delete(cur, pos - cur)),
+                        cur,
+                        st.view.mode,
+                        hint,
+                        reg,
+                    )
                 }
                 SearchOp::Change => {
                     let reg = captured(cur, pos, false);
@@ -1351,7 +1395,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     Plan {
                         action: Action::Nop,
                         cursor: cur,
-                        mode: st.mode,
+                        mode: st.view.mode,
                         is_edit: false,
                         effects: Vec::new(),
                         set_register: Some(RegWrite::Yank(reg)),
@@ -1399,7 +1443,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Save => Plan {
             action: Action::Nop,
             cursor: cur,
-            mode: st.mode,
+            mode: st.view.mode,
             is_edit: false,
             effects: vec![Effect::Save],
             set_register: None,
@@ -1408,7 +1452,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Quit => Plan {
             action: Action::Nop,
             cursor: cur,
-            mode: st.mode,
+            mode: st.view.mode,
             is_edit: false,
             effects: vec![Effect::Quit],
             set_register: None,
@@ -1454,7 +1498,7 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
                 edits.push(Edit::insert(ls, unit.clone()));
             }
         } else {
-            let remove = shift_left_remove(b, ls, le, st.tab_width);
+            let remove = shift_left_remove(b, ls, le, st.view.tab_width);
             if i == 0 {
                 first_removed = remove;
             }
@@ -1826,13 +1870,13 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // `"x` sets the one-shot pending register and nothing else — it must NOT be cleared by the tail below
     // (that clear is what consumes the selection on the FOLLOWING command), so it returns early.
     if let Action::SetPending(name) = plan.action {
-        st.pending_register = name;
+        st.view.pending_register = name;
         return plan.effects;
     }
-    let entry_selection = st.mode.selection();
+    let entry_selection = st.view.mode.selection();
     let was_selection = entry_selection.is_some();
-    let entry_cursor = st.cursor;
-    let entry_anchor = st.anchor;
+    let entry_cursor = st.view.cursor;
+    let entry_anchor = st.view.anchor;
     match plan.action {
         Action::Txn { edits, hint } => {
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
@@ -1854,10 +1898,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 .apply(txn)
                 .expect("planned transaction applies cleanly");
             if pop {
-                st.replace_stack.pop();
+                st.view.replace_stack.pop();
             }
             if let Some(entry) = push {
-                st.replace_stack.push(entry);
+                st.view.replace_stack.push(entry);
             }
         }
         Action::Undo => {
@@ -1881,7 +1925,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                     .apply(txn)
                     .expect("planned transaction applies cleanly");
             }
-            st.block_insert = Some(session);
+            st.view.block_insert = Some(session);
         }
         Action::Nop => {}
         // Handled by the early return above; the buffer-mutating tail never runs for it.
@@ -1889,68 +1933,68 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     }
     // The cursor the plan computed is valid for the post-action buffer, except undo/redo which resize the
     // text unpredictably — clamp and snap to a char boundary either way.
-    st.cursor = snap(st.doc.bytes(), plan.cursor);
-    st.mode = plan.mode;
-    st.last_was_edit = plan.is_edit;
+    st.view.cursor = snap(st.doc.bytes(), plan.cursor);
+    st.view.mode = plan.mode;
+    st.view.last_was_edit = plan.is_edit;
     // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
-    if !matches!(st.mode, Mode::Replace | Mode::VirtualReplace) {
-        st.replace_stack.clear();
+    if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {
+        st.view.replace_stack.clear();
     }
     // A blockwise insert-replicate session lives only while Insert is held; drop it on any exit (the
     // `<Esc>` that closes it already read the session to build the replicate before this runs).
-    if st.mode != Mode::Insert {
-        st.block_insert = None;
+    if st.view.mode != Mode::Insert {
+        st.view.block_insert = None;
     }
     // Vim never rests the Normal-mode cursor on the newline: after an edit that leaves it beyond the final
     // char of a non-empty line, pull it back onto the last char (e.g. `dw` on the last word → the cursor
     // clamps to the trailing char rather than the line end). Scoped to edits in Normal mode so it never
     // touches Insert's legitimate cursor-past-end, and guarded by `ls < le` so an empty line keeps `[n,0]`.
-    if plan.is_edit && st.mode == Mode::Normal {
+    if plan.is_edit && st.view.mode == Mode::Normal {
         let b = st.doc.bytes();
-        let le = line_end(b, st.cursor);
-        let ls = line_start(b, st.cursor);
-        if st.cursor == le && ls < le {
-            st.cursor = prev_boundary(b, le);
+        let le = line_end(b, st.view.cursor);
+        let ls = line_start(b, st.view.cursor);
+        if st.view.cursor == le && ls < le {
+            st.view.cursor = prev_boundary(b, le);
         }
     }
     // A yank/delete/change writes its captured span into the pending register (or unnamed when none),
     // mirroring the unnamed slot on a named write; append (`"A`) is handled inside the store.
     match plan.set_register {
-        Some(RegWrite::Edit(reg)) => st.registers.write(st.pending_register, reg),
-        Some(RegWrite::Yank(reg)) => st.registers.yank(st.pending_register, reg),
+        Some(RegWrite::Edit(reg)) => st.view.registers.write(st.view.pending_register, reg),
+        Some(RegWrite::Yank(reg)) => st.view.registers.yank(st.view.pending_register, reg),
         None => {}
     }
     // Maintain the selection anchor: set it when entering a selection mode (Visual/Select; the fixed end
     // is where the cursor was), keep it while staying in one — including across a Visual↔Select CTRL-G
     // toggle, since both are selection modes — and clear it on any exit to Normal/Insert.
-    match (was_selection, st.mode.selection().is_some()) {
-        (false, true) => st.anchor = Some(entry_cursor),
+    match (was_selection, st.view.mode.selection().is_some()) {
+        (false, true) => st.view.anchor = Some(entry_cursor),
         (_, false) => {
             // Leaving a selection: remember it (anchor, active end, kind) for `gv` BEFORE dropping the
             // anchor — the depth-1 slice of D-027's `` `< ``/`` `> `` history. Only fires on an actual exit
             // (entry_selection is None when we were already in Normal), so a plain Normal command is inert.
             if let (Some(kind), Some(a)) = (entry_selection, entry_anchor) {
-                st.last_visual = Some((a, entry_cursor, kind));
+                st.view.last_visual = Some((a, entry_cursor, kind));
             }
-            st.anchor = None;
+            st.view.anchor = None;
         }
         (true, true) => {}
     }
     // A text object in a selection mode overrides the anchor to span the object (both ends move at once).
     if let Some(a) = plan.set_anchor {
-        st.anchor = Some(a);
+        st.view.anchor = Some(a);
     }
     // Keep the raw-offset anchor valid: an edit applied while in Visual mode can resize the buffer under it,
     // and a stale anchor past the new end would make `selection_range` slice out of bounds (a core panic).
     // Snapping clamps it into range and onto a char boundary. The edit-tracking anchor-store position that
     // would move the anchor *semantically* with the edit is deferred (D-027); v0 only guarantees totality.
-    if let Some(a) = st.anchor {
-        st.anchor = Some(snap(st.doc.bytes(), a));
+    if let Some(a) = st.view.anchor {
+        st.view.anchor = Some(snap(st.doc.bytes(), a));
     }
     // The pending register (`"x`) is one-shot: any command other than `SetRegister` (which returned early
     // above) consumes it. Cleared here AFTER the register write so a stray `"x` before a non-register
     // command is simply forgotten, and a later plain edit never leaks into the named slot.
-    st.pending_register = None;
+    st.view.pending_register = None;
     plan.effects
 }
 
@@ -1973,7 +2017,7 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
 /// `X` at the end of the line dd left behind, and `i<C-o>$X` appends at end. Called from [`apply_command`],
 /// the single plan+commit driver, so `cmd` is always in scope.
 fn update_curswant(st: &mut EditorState, cmd: &Command) {
-    let insert = matches!(st.mode, Mode::Insert);
+    let insert = matches!(st.view.mode, Mode::Insert);
     match cmd {
         Command::Move(_, Motion::Up)
         | Command::Move(_, Motion::Down)
@@ -1981,7 +2025,7 @@ fn update_curswant(st: &mut EditorState, cmd: &Command) {
         | Command::MoveDown => {} // keep the sticky column
         // `$`/`<End>` and `A` (append) want the line's end.
         Command::Move(_, Motion::LineEnd) | Command::MoveLineEnd | Command::AppendLineEnd => {
-            st.curswant = MAXCOL
+            st.view.curswant = MAXCOL
         }
         // Commands that establish a definite column: horizontal moves, the Insert-native keys, and every
         // insert-ENTRY except `A` (which is the append/MAXCOL case above) reset the wanted column — they
@@ -2001,21 +2045,21 @@ fn update_curswant(st: &mut EditorState, cmd: &Command) {
         | Command::EnterReplace
         | Command::EnterVirtualReplace => {
             let b = st.doc.bytes();
-            st.curswant = col_of(b, line_start(b, st.cursor), st.cursor);
+            st.view.curswant = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
         }
         // Everything else (edits like `dd`/`x`, mode changes): in Insert with an append intent (a one-shot
         // `CTRL-O` command run while `curswant == MAXCOL`), PRESERVE MAXCOL; otherwise recompute the column.
         _ => {
-            if !(insert && st.curswant == MAXCOL) {
+            if !(insert && st.view.curswant == MAXCOL) {
                 let b = st.doc.bytes();
-                st.curswant = col_of(b, line_start(b, st.cursor), st.cursor);
+                st.view.curswant = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
             }
         }
     }
     // In Insert, a MAXCOL wanted column parks the caret at the append position (end of line).
-    if insert && st.curswant == MAXCOL {
+    if insert && st.view.curswant == MAXCOL {
         let b = st.doc.bytes();
-        st.cursor = line_end(b, st.cursor);
+        st.view.cursor = line_end(b, st.view.cursor);
     }
 }
 
