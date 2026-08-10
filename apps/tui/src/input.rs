@@ -5,7 +5,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
 use ruse_core::{
-    BlockInsertKind, Command, ForcedWise, Mode, Motion, OpKind, SearchOp, SelectKind, SubRange,
+    BlockInsertKind, Command, ForcedWise, GlobalCmd, Mode, Motion, OpKind, SearchOp, SelectKind,
+    SubFlags, SubRange,
 };
 
 /// The outcome of feeding one key to the engine.
@@ -1317,7 +1318,22 @@ pub enum Ex {
     Close,
     /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
     Substitute(SubSpec),
+    /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
+    Global(GlobalSpec),
     Unknown(String),
+}
+
+/// A parsed `:g/pat/cmd` command (F-009 #4).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct GlobalSpec {
+    /// The line range (default whole file for `:g`).
+    pub range: SubRange,
+    /// The `:g` selector pattern.
+    pub pattern: String,
+    /// `:g!` / `:v` — act on NON-matching lines.
+    pub negate: bool,
+    /// The command to run on each marked line.
+    pub cmd: GlobalCmd,
 }
 
 /// A parsed `:s///` command (F-009 #2): the line range, the Vim pattern + replacement, and the flags.
@@ -1406,6 +1422,91 @@ fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
     })
 }
 
+/// Parse a `:[range]g/pat/cmd` line (or `:g!` / `:v` for the inverse) into a [`GlobalSpec`], or `None`
+/// if it is not a global command. The `:g` default range is the WHOLE FILE. MVP commands: `d` and
+/// `s/pat/rep/flags`.
+fn parse_global(line: &str) -> Option<GlobalSpec> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+    let (rest, negate) = strip_global_verb(rest)?;
+    let delim = rest.chars().next()?;
+    if !delim.is_ascii_punctuation() {
+        return None;
+    }
+    let body = &rest[delim.len_utf8()..];
+    let (pattern, cmd_str) = split_first_unescaped(body, delim)?;
+    let cmd = parse_global_cmd(&cmd_str)?;
+    let range = if range_str.is_empty() {
+        SubRange::WholeFile
+    } else {
+        parse_sub_range(range_str)?
+    };
+    Some(GlobalSpec {
+        range,
+        pattern,
+        negate,
+        cmd,
+    })
+}
+
+/// Strip the `:g` command verb — `vglobal` / `global` / `g!` / `g` / `v` (longest first; `!` and `v`
+/// mark the inverse) — returning the remainder and whether the selection is negated, or `None` if the
+/// line is not a global command.
+fn strip_global_verb(rest: &str) -> Option<(&str, bool)> {
+    if let Some(r) = rest.strip_prefix("vglobal") {
+        Some((r, true))
+    } else if let Some(r) = rest.strip_prefix("global") {
+        Some((r, false))
+    } else if let Some(r) = rest.strip_prefix("g!") {
+        Some((r, true))
+    } else if let Some(r) = rest.strip_prefix('g') {
+        Some((r, false))
+    } else if let Some(r) = rest.strip_prefix('v') {
+        Some((r, true))
+    } else {
+        None
+    }
+}
+
+/// Split `s` at the FIRST unescaped `delim` into `(before, after)`; `None` if there is no delimiter.
+fn split_first_unescaped(s: &str, delim: char) -> Option<(String, String)> {
+    let mut before = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            before.push('\\');
+            if let Some(n) = chars.next() {
+                before.push(n);
+            }
+        } else if c == delim {
+            return Some((before, chars.as_str().to_string()));
+        } else {
+            before.push(c);
+        }
+    }
+    None
+}
+
+/// Parse the command that follows `:g/pat/`. MVP: `d`/`delete` and a `s/pat/rep/flags` substitute.
+fn parse_global_cmd(cmd: &str) -> Option<GlobalCmd> {
+    match cmd.trim() {
+        "d" | "delete" => Some(GlobalCmd::Delete),
+        other => {
+            let spec = parse_substitute(other, false)?;
+            Some(GlobalCmd::Substitute {
+                pattern: spec.pattern,
+                replacement: spec.replacement,
+                flags: SubFlags {
+                    global: spec.global,
+                    ignore_case: spec.ignore_case,
+                },
+            })
+        }
+    }
+}
+
 /// Parse a `:s` line-range prefix. MVP: empty → current line, `%` → whole file, `N` → that line,
 /// `N,M` → the inclusive span. Unsupported forms (`.`, `$`, marks) yield `None`.
 fn parse_sub_range(s: &str) -> Option<SubRange> {
@@ -1445,7 +1546,11 @@ pub fn parse_ex(line: &str) -> Ex {
             // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
             None => match parse_substitute(line, false) {
                 Some(spec) => Ex::Substitute(spec),
-                None => Ex::Unknown(line.to_string()),
+                // `:[range]g/pat/cmd` (or `:g!` / `:v`).
+                None => match parse_global(line) {
+                    Some(spec) => Ex::Global(spec),
+                    None => Ex::Unknown(line.to_string()),
+                },
             },
         },
     }
@@ -3166,5 +3271,63 @@ mod substitute_parse_tests {
     #[test]
     fn sort_is_not_a_substitute() {
         assert!(matches!(parse_ex("sort"), Ex::Unknown(_)));
+    }
+}
+
+#[cfg(test)]
+mod global_parse_tests {
+    use super::*;
+
+    fn glob(line: &str) -> GlobalSpec {
+        match parse_ex(line) {
+            Ex::Global(g) => g,
+            other => panic!("expected Global, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn global_delete_defaults_to_whole_file() {
+        let g = glob("g/foo/d");
+        assert_eq!(g.range, SubRange::WholeFile);
+        assert_eq!(g.pattern, "foo");
+        assert!(!g.negate);
+        assert_eq!(g.cmd, GlobalCmd::Delete);
+    }
+
+    #[test]
+    fn bang_and_v_negate() {
+        assert!(glob("g!/foo/d").negate);
+        assert!(glob("v/foo/d").negate);
+        assert!(glob("vglobal/foo/d").negate);
+    }
+
+    #[test]
+    fn global_substitute_subcommand() {
+        let g = glob("g/foo/s/x/y/g");
+        assert_eq!(g.pattern, "foo");
+        assert_eq!(
+            g.cmd,
+            GlobalCmd::Substitute {
+                pattern: "x".into(),
+                replacement: "y".into(),
+                flags: SubFlags {
+                    global: true,
+                    ignore_case: None
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn ranged_global() {
+        let g = glob("2,5g/foo/d");
+        assert_eq!(g.range, SubRange::Lines(2, 5));
+    }
+
+    #[test]
+    fn vsplit_is_not_a_global() {
+        // `:vsplit` must stay the window command, not be parsed as `:v`-global.
+        assert_eq!(parse_ex("vsplit"), Ex::VSplit);
+        assert_eq!(parse_ex("vs"), Ex::VSplit);
     }
 }

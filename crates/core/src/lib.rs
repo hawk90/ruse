@@ -43,8 +43,8 @@ pub use command::{
 pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
 pub use editor::{
-    apply_command, commit, plan, EditorState, IndentStyle, Mode, Plan, SubFlags, SubOutcome,
-    SubRange, Substitution, View,
+    apply_command, commit, plan, EditorState, GlobalCmd, IndentStyle, Mode, Plan, SubFlags,
+    SubOutcome, SubRange, Substitution, View,
 };
 pub use effect::Effect;
 pub use motion::Motion;
