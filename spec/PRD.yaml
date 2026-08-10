@@ -90,11 +90,24 @@ features:
     title: Document & coordinate model
     stage: mvp
     priority: must
-    status: active
+    # done (#98): the coordinate/anchor model is ruse KERNEL ARCHITECTURE (C-DOCUMENT/C-ANCHOR). All
+    # four acceptance criteria met+tested. #1 anchors survive edits (anchor.rs + property tests). #3
+    # anchor gravity left/right (anchor.rs Bias truth table). #4 byte/char/grapheme/cell are distinct
+    # types, each REAL now: pos.rs byte_to_grapheme/grapheme_to_byte (UAX#29, unicode-segmentation) +
+    # byte_to_cell (wcwidth, unicode-width, tab-aware). #2 the CURSOR moves by GRAPHEME CLUSTER
+    # (motion::next_grapheme/prev_grapheme via GraphemeCursor; MoveLeft/MoveRight) so emoji/ZWJ/
+    # combining never desync it — tested (editor_spine::cursor_moves_by_grapheme_cluster + combining;
+    # pos::tests). This relaxed the dep-free-core rule (approach A, decided 2026-08-10): core now
+    # carries unicode-segmentation + unicode-width. Display-cell CURSOR PLACEMENT (rendering wide
+    # chars at the right column) is F-006's job; #2 here is the LOGICAL cursor staying on clusters.
+    # Census-N/A (D-043): extmarks (NVIM-EXT), markers (EMACS-EDIT-2), width (TERM-WIDTH) are
+    # cross-editor coordinate FACTS with no enumerable census surface; the 9 F-002-only rows are
+    # backlogged (TERM-WIDTH-1 stays derived via its render co-citer).
+    status: done
     depends_on: [C-DOCUMENT, C-ANCHOR]
     summary: Typed byte/char/grapheme/screen-cell coordinates; positions tracked as anchors.
     trace:
-      parity: [TERM-WIDTH-1, TERM-WIDTH-2, NVIM-EXT-1, NVIM-EXT-6, EMACS-EDIT-2, NVIM-EXT-3, NVIM-EXT-4, NVIM-EXT-5, NVIM-EXT-7, TERM-WIDTH-3]
+      parity: []
       design: [../docs/architecture/architecture.md#3, ../docs/design/positions-history.md]
       verify: [../tests/property/anchor-stability, ../tests/unit/coordinate-widths]
     acceptance:

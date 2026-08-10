@@ -5,6 +5,13 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
+# F-002: cursor/coordinate resolution over user-perceived characters. `unicode-segmentation` gives
+# UAX#29 extended grapheme clusters (so the cursor never lands mid-emoji/ZWJ/combining sequence);
+# `unicode-width` gives East-Asian/wide/zero cell widths. This deliberately relaxes the previously
+# dep-free-core rule (decided 2026-08-10): a correct coordinate model needs the Unicode tables, and
+# hand-rolling UAX#29 + wcwidth would be a larger, worse liability. Both are data-only, no_std-capable.
+unicode-segmentation = "1"
+unicode-width = "0.2"
 
 [dev-dependencies]
 # Benchmarking harness (D-042). Lean features: keep cargo-bench integration, drop rayon + plotters/gnuplot.

@@ -6,6 +6,8 @@
 //! (whitespace / word = alnum+`_`+non-ASCII / punctuation), and WORD (`W`/`B`/`E`) split on whitespace only.
 //! All positions land on char boundaries.
 
+use unicode_segmentation::GraphemeCursor;
+
 /// A motion in the editing grammar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Motion {
@@ -101,6 +103,37 @@ pub(crate) fn next_boundary(b: &[u8], pos: usize) -> usize {
         i += 1;
     }
     i
+}
+
+/// The byte offset of the next **grapheme cluster** boundary after `pos` (F-002): one `l`/`MoveRight`
+/// step crosses a whole user-perceived character — an emoji ZWJ sequence, a base+combining mark, a
+/// wide CJK glyph — not a single `char`, so the cursor never desyncs from the logical text (UAX#29).
+/// Falls back to the char boundary if the buffer is not valid UTF-8 (a binary file has no graphemes).
+pub(crate) fn next_grapheme(b: &[u8], pos: usize) -> usize {
+    match std::str::from_utf8(b) {
+        Ok(s) => {
+            let mut gc = GraphemeCursor::new(pos.min(s.len()), s.len(), true);
+            gc.next_boundary(s, 0)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| next_boundary(b, pos))
+        }
+        Err(_) => next_boundary(b, pos),
+    }
+}
+
+/// The byte offset of the previous grapheme-cluster boundary before `pos` (the `h`/`MoveLeft` step).
+pub(crate) fn prev_grapheme(b: &[u8], pos: usize) -> usize {
+    match std::str::from_utf8(b) {
+        Ok(s) => {
+            let mut gc = GraphemeCursor::new(pos.min(s.len()), s.len(), true);
+            gc.prev_boundary(s, 0)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| prev_boundary(b, pos))
+        }
+        Err(_) => prev_boundary(b, pos),
+    }
 }
 
 pub(crate) fn snap(b: &[u8], pos: usize) -> usize {
