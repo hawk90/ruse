@@ -860,6 +860,77 @@ absent from the early build order): the workspace stage is placed here, early, a
 - **OQ-7** — Interaction of `winfixwidth`/`winfixheight` with priority degradation when even the fixed
   windows cannot all fit (which fixed window yields first).
 
+## MVP slice — F-007 minimal (Buffer/View split + 2-way splits)
+
+> Sections above are the **full** C-VIEW/C-WORKSPACE design (layout TREE, tab pages, resize
+> constraints, the whole `C-w`/`:split` family, session/undo persistence). This section fixes the
+> **MVP subset** that F-007's four acceptance criteria actually require — the same "nail the
+> contract, ship the simplest mechanism" posture as render-and-frontends.md's *v0* section. Anything
+> not listed here is deferred to post-MVP without changing the model above.
+
+**What the four criteria need, and nothing more:**
+
+1. **Split → two views of one Document, independent cursors + scroll.** Needs the Buffer/View split
+   (below) and a way to open a second Window on the same `DocumentId`.
+2. **View-local state stays in the View.** The refactor's whole point: cursor/selection/mode-bits
+   move OFF the shared buffer.
+3. **Closing one View keeps the shared Document while another View holds it.** Needs refcounted /
+   arena-owned Documents: a Document is retired only when its last View is dropped.
+4. **Buffer / View / Window are distinct.** Three handle types, no "buffers-as-tabs".
+
+### The core refactor (the crux, and the whole cost)
+
+Today `EditorState` (crates/core/src/editor.rs) entangles the **buffer** and the **view**. Split it:
+
+| Field(s) | Moves to | Why |
+|---|---|---|
+| `doc: Document`, `last_was_edit` | **Document/Buffer** (shared) | text + undo + the grouping bit are buffer facts |
+| `cursor`, `mode`, `anchor`, `last_visual`, `curswant`, `block_insert`, `replace_stack`, `pending_register`, viewport `top` | **`View`** (per-View, `ViewId`) | INV-DOC-VIEW: two Views of one buffer have independent cursors/selection/mode |
+| `registers` | **Workspace** (shared) | Vim registers are global, not per-buffer or per-view |
+| `tab_width`, `indent_style` | **Workspace/config** | editor config, not view or buffer |
+
+`apply_command(st, cmd)` becomes `apply_command(view: &mut View, doc: &mut Document, ctx: &mut EditCtx, cmd)`
+where `EditCtx` carries the shared registers + config. **This touches every command handler and every
+core test** — it is a mechanical but large diff, and it is why F-007 is design-first. The proposed
+sequencing (see the change plan) is: (a) land the Buffer/View split with a **single** View so behaviour
+is provably unchanged (the whole test suite still passes over one View); (b) add the Workspace +
+2-way split + focus; (c) repoint + flip.
+
+### Document ownership — arena + handles, not `Rc<RefCell>`
+
+The Workspace owns `Documents` and `Views` in arenas keyed by `DocumentId` / `ViewId` (matching G1's
+typed-handle model). A View stores a `DocumentId`, never a borrow, so "same buffer in N Views" is N
+Views naming one id — no interior mutability, no reference cycles. Retirement is refcount-by-scan
+(retire a Document when no View names it), deferred GC acceptable for MVP.
+
+### Minimal layout (defer the tree)
+
+MVP layout is a **flat list of Windows with one split direction + a focus index** — enough for
+`:split` (horizontal) / `:vsplit` (vertical) into 2+ equal Windows, `C-w w` (focus next), `C-w c`
+(close focused). The full recursive layout **tree**, tab pages, resize/sizing constraints, `winfix*`,
+and the rest of the `C-w` family are **deferred** (the model above stands; MVP just instantiates a
+degenerate one-level layout). Equal-split sizing only.
+
+### Rendering (consumes F-006)
+
+Each Window renders its View into its **sub-rectangle** of the F-006 cell grid (`screen.rs`); the
+existing per-frame diff already emits only changed cells, so N split panes cost N region paints and
+one diff. A one-column/row separator between panes. The focused View owns the terminal cursor.
+
+### Repoint plan (D-043, 10 legacy)
+
+`COM-2/3/4` (open/switch/close buffers & windows), `VIM-WIN-1` (window splits), `EMACS-BUFFER-1/2`
+(buffer list / same buffer many windows), `WS-1/2/6/9` (workspace facts). At repoint time: the
+`:split`/`:vsplit`/`:buffer`/`:bnext` **commands** map to the neovim `ex_command` census (screen that
+sub-surface or cite the specific ids); the view-local-ownership / lifecycle-decoupling **guarantees**
+are ruse workspace ARCHITECTURE (census-N/A → backlog), like F-002/005/008. Decide per-id then.
+
+### Deferred to post-MVP (explicit)
+
+Full layout tree · tab pages · resize/sizing constraints + `winfix*` · the full `C-w` command set ·
+folds (the View holds a fold-state field, empty in MVP) · session/undo persistence across restart ·
+multi-client render pinning. None require re-opening the model above.
+
 ## Reference Invariants
 
 This doc depends on / enforces (registry: [reference-invariants.md](../invariants/reference-invariants.md);
