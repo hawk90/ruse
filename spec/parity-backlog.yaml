@@ -69,3 +69,16 @@ backlog:
   - { id: WS-2, feature: F-007, reason: "view-local state (cursor/selection/scroll in the View) — IMPLEMENTED (INV-DOC-VIEW); architecture guarantee, no enumerable surface" }
   - { id: WS-6, feature: F-007, reason: "shared-buffer editing across views — IMPLEMENTED (swap-trick over a shared Document); architecture, no census surface" }
   - { id: WS-9, feature: F-007, reason: "window close keeps the shared buffer (last-View retirement) — IMPLEMENTED (refcount-by-scan); architecture, no census surface" }
+  # F-009 search & substitute (#113, D-043) — the ruse C-REGEX ENGINE (D-028) + search/substitute
+  # commands. The engine (magic/\zs\ze/dialect) is ARCHITECTURE with no census surface; the :s/:g
+  # COMMANDS have ex_command homes (nvim.ex.substitute/global/vglobal) but citing an ex_command item
+  # trips the whole-surface lock (~3800 items) — so census-N/A, like F-007. Burn down when the
+  # ex_command surface is classified or a C-REGEX PILLAR is written. Implemented + tested #107-#112.
+  - { id: COM-5, feature: F-009, reason: "search — /pat/?pat/n/N over the Vim-regex engine + incsearch/hlsearch shipped; the search MOTION has a mode_key census home but the regex dialect engine is ruse architecture, and citing the command trips the ex_command whole-surface lock" }
+  - { id: COM-6, feature: F-009, reason: "substitute — :[range]s///[g][c][i] + gdefault shipped; :substitute has an ex_command home (nvim.ex.substitute) but citing it trips the whole-surface lock, so census-N/A like F-007" }
+  # VIM-SEARCH-1 (regex dialect: magic/\zs/\ze) and VIM-EX-GLOBAL (:g) are ⚠️ non-targeted catalog
+  # rows in vim.md — not targeted, so they are NOT backlog items; they simply drop out of F-009's
+  # trace.parity (the DIALECT is C-REGEX architecture, tracked via VIM-SEARCH-1's vim.md annotation).
+  - { id: EMACS-MINI-2, feature: F-009, reason: "Emacs incremental search (isearch) — the incsearch UX is shipped as ruse's own; isearch is emacs runtime, not an enumerable source-tree census surface" }
+  - { id: EMACS-MINI-3, feature: F-009, reason: "Emacs query-replace — the :s///c confirm loop is the ruse counterpart; query-replace is emacs runtime, no census surface" }
+  - { id: WS-3, feature: F-009, reason: "workspace/project search — MVP is single-buffer search (Regex over the focused document); cross-file/workspace search is post-MVP with no census surface yet" }

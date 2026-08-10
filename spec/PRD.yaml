@@ -488,11 +488,33 @@ features:
     title: Search & substitute
     stage: mvp
     priority: should
-    status: active
+    # done (#107-#112): the C-REGEX Vim-dialect engine (crates/core/src/pattern.rs — magic levels +
+    # \zs/\ze over wrapped `regex`, DEP-REGEX; owned NFA for lookbehind/backrefs is post-MVP) plus the
+    # search + substitute command layer. #1 search+smartcase (#108) + incremental hlsearch/incsearch
+    # highlight (#112); #2 :[range]s///[g][c][i] + gdefault, the c-confirm interactive loop (#109/#110);
+    # #3 Vim regex dialect incl \zs/\ze + magic (#107); #4 :g/pat/cmd genuine two-pass mark-then-execute
+    # (#111). All four acceptance criteria met + tested (pattern 9, search 5, substitute 9, global 4,
+    # highlight 5, + parser tests). MVP-minimal per ruse-mvp-minimal-slice: the owned NFA engine
+    # (lookbehind/backrefs), \1-\9 replacement backrefs, search offsets (/e /s+2), and a runtime
+    # ignorecase/smartcase/gdefault config seam are the explicit post-MVP C-REGEX elaboration.
+    status: done
     depends_on: [C-DOCUMENT, C-COMMAND, C-REGEX, C-QUERY]
     summary: Incremental search and range substitution.
     trace:
-      parity: [COM-5, COM-6, VIM-SEARCH-1, VIM-EX-GLOBAL, EMACS-MINI-2, EMACS-MINI-3, WS-3]
+      # Census-N/A (#113, D-043). F-009 is the ruse C-REGEX ENGINE (D-028, docs/design/vim-regex.md) plus
+      # search/substitute COMMANDS. The engine — magic-level literalness, \zs/\ze, the Vim regex dialect,
+      # ReDoS-bounding — is ARCHITECTURE no editor source tree TABULATES as a censusable fact. The
+      # commands DO have ex_command census homes (nvim.ex.substitute / .global / .vglobal) and the search
+      # motions a mode_key home, BUT citing an ex_command item as `targeted` trips the whole-surface lock
+      # (gov parity_discovery: classifying ANY ex_command item forces ALL ~3800 off unclassified) — the
+      # exact reason F-007 also went census-N/A. So trace.parity is [] and chain-closes via parity_na;
+      # the 7 hand-authored ids move to spec/parity-backlog.yaml (COM-5 search, COM-6 substitute,
+      # VIM-SEARCH-1, VIM-EX-GLOBAL, EMACS-MINI-2/3 isearch/query-replace, WS-3), burned down when the
+      # ex_command surface is classified (a future evidence-layer project) or a C-REGEX PILLAR is written.
+      # C-COMMAND's pending CONCEPT-COUNT-VS-PREFIX governs count/prefix parsing, NOT the search/
+      # substitute grammar F-009 ships, so it downgrades to READY-WITH-SCOPE (carve-out), not a blocker —
+      # as F-003/F-025 shipped done.
+      parity: []
       design: [../docs/design/vim-regex.md]
       verify: [../tests/parity/vim/search-substitute.yaml]
     acceptance:
