@@ -400,11 +400,25 @@ features:
     title: Terminal capability detection
     stage: mvp
     priority: must   # promoted: F-006 (must) depends on the capability ledger (V-18)
-    status: planned
+    status: active
     depends_on: [C-TERMINAL]
     summary: Active probing with a confidence ledger and user override; not TERM-only.
     trace:
-      parity: [TERM-PROBE-1, TERM-PROBE-2, TERM-KBD-1, TERM-COLOR-1, TERM-GFX-4, TERM-KBD-2, TERM-KBD-3, TERM-KBD-4, TERM-MOUSE-1, TERM-MOUSE-2, TERM-OSC52-1, TERM-PASTE-1, TERM-PROBE-3]
+      # Census-repointed off 13 legacy TERM-* onto the two neovim TUI census surfaces (#91, D-043):
+      #   term_mode   (src/nvim/tui/tui_defs.h enum TermMode)  — the DECRQM private modes, DA1-fenced
+      #   key_encoding(src/nvim/tui/input.h  enum KeyEncoding) — legacy/kitty/xterm, CSI?u+DA1 fenced
+      # The DA1-fence PROBING MECHANISM (TERM-PROBE-1) is the term_mode surface itself; kitty/xterm/legacy
+      # keyboard (TERM-KBD-1/3/4) = nvim.keyenc.*; push/pop (TERM-KBD-2) = the key_encoding set/reset
+      # lifecycle; paste (TERM-PASTE-1) = bracketedpaste; SGR mouse (TERM-MOUSE-1) = mousesgrext + the
+      # button/any probe pair. Six concerns have NO DA1-probe census home and are tracked in
+      # spec/parity-backlog.yaml, not silently dropped: TERM-PROBE-2 (confidence ledger — ruse-ADAPTED,
+      # F-010 acceptance #2, no upstream denominator), TERM-PROBE-3 (tmux/screen passthrough, L2),
+      # TERM-MOUSE-2 (focus 1004 — SET-only, never DA1-queried), TERM-GFX-4 (cell-pixel CSI 14/16 t),
+      # TERM-OSC52-1 (clipboard write — a runtime provider, not a TUI probe). TERM-COLOR-1 (truecolor)
+      # is NOT F-010's — it is a render concern already derived by F-006's trace.parity.
+      parity: [nvim.termmode.bracketedpaste, nvim.termmode.mousesgrext, nvim.termmode.mousebuttonevent,
+               nvim.termmode.mouseanyevent, nvim.termmode.synchronizedoutput, nvim.termmode.resizeevents,
+               nvim.keyenc.kitty, nvim.keyenc.xterm, nvim.keyenc.legacy]
       design: [../docs/architecture/architecture.md#6]
       verify: [../tests/unit/capability-ledger, ../tests/integration/da1-probe]
     acceptance:

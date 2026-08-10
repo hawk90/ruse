@@ -38,12 +38,13 @@ these map directly to anti-patterns [TERMIN-*](../anti-patterns/anti-patterns.md
 ## TERM-KBD — Keyboard protocol
 Source: kitty keyboard-protocol; xterm modifyOtherKeys; fixterms.
 
-| ID | Capability | Detection | Fallback | Target | Compat | Weight |
-| --- | --- | --- | --- | --- | --- | --- |
-| TERM-KBD-1 | **Kitty keyboard protocol** (disambiguate esc, report event types/all-keys/text; modifiers = `1+bitmask`) | `CSI ? u` → `CSI ? <flags> u`, fenced by DA1 | modifyOtherKeys, else legacy + ESC timeout | L1 | Equivalent | high |
-| TERM-KBD-2 | Push/pop flags on enter/exit (`CSI > <flags> u` / `CSI < u`) | — | reset on exit (avoid corrupting parent shell) | L1 | Equivalent | med |
-| TERM-KBD-3 | Legacy `modifyOtherKeys` (`CSI > 4 ; 2 m`, `CSI 27;<mod>;<key>~`) | terminfo | legacy encoding | L1 | Equivalent | med |
-| TERM-KBD-4 | **ESC/Alt ambiguity + timeout** (`Alt+C` ≡ `ESC c`) resolved by ~25–50 ms timeout | — | Kitty disambiguate eliminates the timeout | L2 | Equivalent | med |
+Retired as hand-authored rows in #91 — census-backed by the neovim `key_encoding` surface
+(`src/nvim/tui/input.h` enum `KeyEncoding`, D-043). The three encoding regimes ARE the upstream fact:
+`nvim.keyenc.kitty` (was TERM-KBD-1, kitty progressive enhancement), `nvim.keyenc.xterm`
+(was TERM-KBD-3, modifyOtherKeys / XTMODKEYS), `nvim.keyenc.legacy` (was TERM-KBD-4, the ESC/Alt
+timeout regime). Push/pop-on-exit (was TERM-KBD-2) is the set/reset LIFECYCLE of that surface, not a
+separate fact. F-010 derives all four from `nvim.keyenc.*`; the negotiation is fenced by DA1 exactly
+as `CSI ? u` `CSI c` in `tui_query_kitty_keyboard`.
 
 **⚠️ TERMIN-2/3/4**: disambiguate `Ctrl+I`/Tab, `Ctrl+M`/Enter, `Ctrl+[`/Esc; report release/repeat. This
 enables ruse's rich profile bindings (architecture §1) without the legacy timeout footgun. Always
@@ -55,8 +56,12 @@ Source: xterm paste64; cirw.in.
 
 | ID | Capability | Target | Compat | Weight |
 | --- | --- | --- | --- | --- |
-| TERM-PASTE-1 | Distinguish paste from typed input | L1 | Equivalent | high |
 | TERM-PASTE-2 | **Strip/neutralize escape sequences inside the paste payload** | L1 (security, SEC-5) | Equivalent | high |
+
+<!-- TERM-PASTE-1 (distinguish paste from typed input) retired in #91 — census-backed by
+     nvim.termmode.bracketedpaste (mode 2004, src/nvim/tui/tui_defs.h). F-010 derives it from there. -->
+<!-- TERM-PASTE-2 is a ruse security requirement (SEC-5), not an upstream probe fact — it stays. -->
+
 
 **⚠️ TERMIN-5/6**: do not treat paste as key input; do not apply keymaps to paste content (guards a
 security + correctness bug — some terminals leak `ESC` through the brackets).
@@ -117,8 +122,11 @@ Source: xterm ctlseqs.
 
 | ID | Capability | Target | Compat | Weight |
 | --- | --- | --- | --- | --- |
-| TERM-MOUSE-1 | SGR-1006 mouse (optional feature, not required) | L1 | Equivalent | med |
-| TERM-MOUSE-2 | Focus events | L1 | Equivalent | med |
+| TERM-MOUSE-2 | Focus events (backlogged #91 — mode 1004 is SET-only in neovim, never DA1-queried) | L1 | Equivalent | med |
+
+<!-- TERM-MOUSE-1 (SGR-1006 mouse) retired in #91 — census-backed by nvim.termmode.mousesgrext (1006)
+     plus the nvim.termmode.mousebuttonevent/mouseanyevent probe pair (1002/1003). F-010 derives it there. -->
+
 
 **⚠️ TERMIN-9/10 + hygiene**: distinguish focus vs key events; mouse is optional; **disable all
 mouse/focus modes on exit** (else the shell is flooded with raw sequences — common bug).
@@ -132,9 +140,15 @@ Source: terminfo.dev; xterm ctlseqs; tmux passthrough.
 
 | ID | Capability | Target | Compat | Weight |
 | --- | --- | --- | --- | --- |
-| TERM-PROBE-1 | Active capability probing with a DA1 fence (no arbitrary timeouts) | L1 | Equivalent | med |
-| TERM-PROBE-2 | Confidence ledger + user override per capability | L1 | Adapted | med |
-| TERM-PROBE-3 | Multiplexer (tmux/screen) passthrough handling | L2 | Equivalent | low |
+| TERM-PROBE-2 | Confidence ledger + user override per capability (backlogged #91 — ruse-ADAPTED, no upstream denominator) | L1 | Adapted | med |
+| TERM-PROBE-3 | Multiplexer (tmux/screen) passthrough handling (backlogged #91 — needs a mux census surface) | L2 | Equivalent | low |
+
+<!-- TERM-PROBE-1 (active probing with a DA1 fence) retired in #91 — it IS the neovim term_mode surface
+     (src/nvim/tui/tui_defs.h enum TermMode): the DECRQM private modes whose support is proven by reply
+     order against a trailing DA1, exactly the "no arbitrary timeout" mechanism. F-010 derives the probe
+     mechanism from the nvim.termmode.* set. TERM-PROBE-2 (the confidence ledger) is ruse's own ADAPTATION
+     — F-010 acceptance #2 — so it has no upstream fact to census; it stays tracked in the backlog. -->
+
 
 **⚠️ TERMIN-1/13, TERMOUT-14/15/16/17**: don't judge by `TERM`; don't hardcode tmux; capability is not a
 few bools; provide safe fallback + user override.

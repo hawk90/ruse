@@ -292,6 +292,27 @@ families:
       stay out as application surface). Kill ring is CONCEPT-REGISTER-STORE (resolution: unified) — one
       store, two surfaces; primary classification lives with the registers.
 
+  FAM-TERMINAL-CAPABILITY:
+    title: Terminal capability negotiation — DA1-fenced probing of private modes and keyboard encoding
+    axis: parity-fact
+    layer: host
+    covers_surfaces: [term_mode, key_encoding]
+    upstreams: { neovim: pinned }
+    census_status: measured
+    caps: [CAP-TERMINAL]
+    prd: [F-010, F-011]
+    excludes:
+      - "truecolor is a $COLORTERM/terminfo heuristic, not a DECRQM-probed mode -> an F-010 ledger entry
+         (the color-depth ladder), not this census surface"
+      - "OSC 52 clipboard write and focus reporting (mode 1004) are SET-only, never DA1-queried -> real
+         F-010 ledger entries but not probed facts; conflating them would inflate the denominator"
+    tension: >
+      The DECRQM private-mode set (tui_defs.h) and the keyboard-encoding regimes (input.h) are the two
+      enumerable halves of Neovim's startup capability negotiation; both are fenced by a trailing DA1 so the
+      reply ORDER proves support without an arbitrary timeout — which is exactly F-010's TERM-PROBE-1. Modes
+      Neovim sets-but-never-queries and heuristically-detected capabilities are deliberately outside this
+      surface: they are honest ledger entries, not probed upstream facts.
+
   # ============================ RUSE-CHOICE PILLARS (host/presentation) ============================
 
   PILLAR-RICH-PRESENTATION:
@@ -375,6 +396,8 @@ surface_cover:
   ex_command.scripting: { primary: [], note: "the 29 Vimscript-language commands (:let/:if/:function/:call/:eval/...); intentionally-different by MVP non_goal 'running-vimscript-or-elisp', owned by no family — sub-surfaced so it opens without locking the 528-command editing set" }
   option:      { primary: [], classified_by: subsystem, note: "unowned by families; covered by config-schema derivation (D-042)" }
   event:       { primary: [FAM-EVENT-HOOKS], note: "Vim-side hook denominator only" }
+  term_mode:    { primary: [FAM-TERMINAL-CAPABILITY], note: "9 DECRQM private modes (tui_defs.h); single-family cover by design — this surface IS terminal-capability negotiation" }
+  key_encoding: { primary: [FAM-TERMINAL-CAPABILITY], note: "3 keyboard-encoding regimes (input.h): legacy/kitty/xterm — the CSI?u+DA1 fence outcome" }
   # --- emacs (D-044) ---
   keymap_tier: { primary: [FAM-KEYMAP-MODEL], note: "the 9-tier precedence stack; the Emacs counterpart of map_mode and the evidence for CONCEPT-KEYMAP-DISPATCH" }
   keymap:      { primary: [FAM-KEYMAP-MODEL], secondary: [FAM-BUFFER-MODEL, FAM-FILE-PROJECT], note: "87 named keymap variables; a major-mode map is BOTH a namespace (this family) and evidence that a buffer carries its own command surface (FAM-BUFFER-MODEL)" }

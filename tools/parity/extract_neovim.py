@@ -309,6 +309,42 @@ def extract_events(root: str) -> list[dict]:
     return out
 
 
+def _c_enum_body(path: str, typedef_name: str) -> str:
+    """The body of a specific `typedef enum { ... } <typedef_name>;`. Scoping to the closing name
+    matters: tui_defs.h holds TWO anonymous enums (TermMode, then TermModeState) and a `kTermMode`
+    prefix match would splice them — the census must enumerate exactly one surface per source."""
+    text = open(path, encoding="utf-8", errors="replace").read()
+    m = re.search(r"typedef\s+enum\s*\{(.*?)\}\s*" + re.escape(typedef_name) + r"\s*;", text, re.S)
+    return m.group(1) if m else ""
+
+
+def extract_term_modes(root: str) -> list[dict]:
+    """src/nvim/tui/tui_defs.h enum `TermMode` — the terminal private modes Neovim actively PROBES
+    via DECRQM (`CSI ? <code> $ p`) fenced by a trailing Primary Device Attributes request, so the
+    reply order proves support without an arbitrary timeout. This enum IS the DA1-fenced capability
+    set: each member carries its exact DEC private-mode code (the number sent on the wire)."""
+    body = _c_enum_body(os.path.join(root, "src/nvim/tui/tui_defs.h"), "TermMode")
+    out = []
+    for m in re.finditer(r"kTermMode(\w+)\s*=\s*(\d+)", body):
+        name, code = m.group(1), int(m.group(2))
+        out.append({"id": f"nvim.termmode.{name.lower()}", "surface": "term_mode",
+                    "mode": name, "code": code, "attestation": ["S"]})
+    return out
+
+
+def extract_key_encodings(root: str) -> list[dict]:
+    """src/nvim/tui/input.h enum `KeyEncoding` — the three keyboard-encoding regimes Neovim resolves
+    from the terminal's answer to the kitty progressive-enhancement query (`CSI ? u`), itself fenced
+    by DA1. The enum's own doc comment is captured verbatim as the fact's description."""
+    body = _c_enum_body(os.path.join(root, "src/nvim/tui/input.h"), "KeyEncoding")
+    out = []
+    for m in re.finditer(r"kKeyEncoding(\w+)\s*,?\s*(?://+<?\s*(.*?))?\s*$", body, re.M):
+        name, desc = m.group(1), (m.group(2) or "").strip()
+        out.append({"id": f"nvim.keyenc.{name.lower()}", "surface": "key_encoding",
+                    "encoding": name, "desc": desc or None, "attestation": ["S"]})
+    return out
+
+
 # ---- runtime introspection (source of record for options; cross-check elsewhere) ----
 
 
@@ -463,6 +499,8 @@ def main(argv=None) -> int:
         ("option.yaml", "option", "R: nvim_get_all_options_info() (S: src/nvim/options.lua)", options),
         ("ex_command.yaml", "ex_command", "S: src/nvim/ex_cmds.lua", extract_ex_commands(root)),
         ("event.yaml", "event", "S: src/nvim/auevents.lua", extract_events(root)),
+        ("term_mode.yaml", "term_mode", "S: src/nvim/tui/tui_defs.h", extract_term_modes(root)),
+        ("key_encoding.yaml", "key_encoding", "S: src/nvim/tui/input.h", extract_key_encodings(root)),
     ]
 
     total = 0
