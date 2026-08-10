@@ -428,18 +428,23 @@ struct NormalState {
     forced_wise: Option<ForcedWise>,
 }
 
-/// The Insert layer's OWNED transient state (KL-OBL-4): the two one-key expectations local to Insert.
+/// A SUSPENDED layer awaiting return (KL-OBL-5): while a one-shot command is borrowed to run in
+/// another namespace, this records the ADDRESS to resume — *whence* control came. `i_CTRL-O` suspends
+/// Insert to run one Normal command (`resume: Insert`); `t_CTRL-\ CTRL-O` (deferred, no terminal
+/// buffers yet) is the SAME construct with `resume: Terminal`. A flat boolean edge cannot record
+/// whence; a stack of these can, and nests for free.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Suspended {
+    /// The namespace to resume once the borrowed one-shot command completes.
+    resume: Ns,
+}
+
+/// The Insert layer's OWNED transient state (KL-OBL-4): the one-key `CTRL-G` prefix local to Insert.
 /// Dropped (`InsertState::default()`) when the active namespace is not Insert — the layer's state dies
-/// with the layer, rather than the engine clearing named booleans on every foreign key.
+/// with the layer. (The `i_CTRL-O` one-shot is no longer a bool here; its RETURN ADDRESS lives on the
+/// engine's activation stack — KL-OBL-5 — because a return spans two layers, not one.)
 #[derive(Default)]
 struct InsertState {
-    /// Insert-mode `CTRL-O`: run exactly ONE Normal-mode command, then return to Insert (Vim
-    /// `i_CTRL-O`). While set, `feed` routes keys through the Normal grammar instead of the Insert
-    /// layer; the completed command clears it. The core needs no help — every Normal editing/motion
-    /// command inherits `st.mode` (Insert) and the Normal-only cursor clamp is gated on Normal mode, so
-    /// the command applies correctly and the buffer stays in Insert on its own. (KL-OBL-5 will make
-    /// this a return-ADDRESS on an activation stack rather than a bare flag.)
-    one_shot: bool,
     /// Insert-mode `CTRL-G` prefix: the next key is expected to be `u` (undo-break,
     /// [`Command::BreakUndo`]). A one-key expectation local to Insert; any other second key aborts it.
     ctrl_g: bool,
@@ -471,9 +476,14 @@ pub struct InputEngine {
     /// so `submit_search` can fold them into the finished command (`d/pat`, `2/pat`). `/` captures this
     /// BEFORE `reset()` wipes the axes; `None` between searches. See [`InputEngine::submit_search`].
     pending_search: Option<(SearchOp, u32)>,
-    /// The Insert layer's owned transient state (`CTRL-O` one-shot, `CTRL-G` prefix). Dropped when the
-    /// active namespace is not Insert — KL-OBL-4.
+    /// The Insert layer's owned transient state (the `CTRL-G` prefix). Dropped when the active
+    /// namespace is not Insert — KL-OBL-4.
     insert: InsertState,
+    /// The activation stack (KL-OBL-5): return ADDRESSES for one-shot commands one layer borrows to
+    /// run in another. `i_CTRL-O` pushes `Suspended{resume: Insert}`; the completing command pops it,
+    /// resuming Insert. Empty in steady state. A stack rather than a bool so it records *whence* and
+    /// nests for free (the general form; `i_CTRL-O` is its depth-1 case, `t_CTRL-\ CTRL-O` its second).
+    activations: Vec<Suspended>,
     /// The command-line namespace (F-026): while `Some`, keys are routed into its owned line buffer
     /// rather than the Normal grammar. `None` = not on the command line. This is the engine owning the
     /// line, not an ad-hoc text buffer on the UI (anti-pattern command-line P2).
@@ -508,8 +518,15 @@ impl InputEngine {
             pending_record_register: None,
             pending_search: None,
             insert: InsertState::default(),
+            activations: Vec::new(),
             cmdline: None,
         }
+    }
+
+    /// Whether a one-shot command borrowed from another layer is in flight (`i_CTRL-O`): keys resolve
+    /// through the Normal grammar until it completes and pops its return address (KL-OBL-5).
+    fn in_one_shot(&self) -> bool {
+        !self.activations.is_empty()
     }
 
     /// The active command-line as `(prefix, text, cursor)` for the frontend to render — `None` when
@@ -651,10 +668,10 @@ impl InputEngine {
     /// Every non-`Pending` outcome runs through here, so no partial sequence leaks into the next command.
     fn reset(&mut self) {
         self.normal = NormalState::default();
-        // A `CTRL-O` one-shot is consumed the instant its single Normal command completes (every
-        // completion runs through here), returning the engine to plain Insert routing. PR-3 (KL-OBL-5)
-        // replaces this flag with a return address popped off the activation stack.
-        self.insert.one_shot = false;
+        // A borrowed one-shot command is consumed the instant it completes (every completion runs
+        // through here): pop its return address off the activation stack, resuming the layer it came
+        // from (KL-OBL-5). A no-op when no one-shot is in flight (the stack is empty).
+        self.activations.pop();
     }
 
     fn mcount(&self) -> u32 {
@@ -788,10 +805,12 @@ impl InputEngine {
         // KL-OBL-4: a layer's owned state is destroyed when the layer deactivates — the engine does not
         // reach in to reset foreign fields.
         //
-        // The Insert layer owns the `CTRL-O` one-shot and the `CTRL-G` prefix; they die the moment the
-        // active namespace is not Insert (a key in any other mode means the insert context is gone).
+        // The Insert layer owns the `CTRL-G` prefix; it dies the moment the active namespace is not
+        // Insert (a key in any other mode means the insert context is gone). A pending Insert one-shot
+        // return (KL-OBL-5) is likewise abandoned — its resume address no longer applies.
         if mode != Mode::Insert {
             self.insert = InsertState::default();
+            self.activations.retain(|a| a.resume != Ns::Insert);
         }
         // The Normal-family grammar layer (Normal / Visual / Select, with operator-pending as its
         // sub-state) owns count / operator / awaiting / forced-wise. They die when neither the family
@@ -801,18 +820,18 @@ impl InputEngine {
             mode,
             Mode::Normal | Mode::Visual { .. } | Mode::Select { .. }
         );
-        if !normal_family && !self.insert.one_shot {
+        if !normal_family && !self.in_one_shot() {
             self.normal = NormalState::default();
         }
         // Insert resolves through its LAYER, not through an early return ahead of everything else.
         // The bindings and the `open/insert` policy both live in `VimProfile`, so the namespace is
         // addressable in its own right (KL-OBL-1) and its policy is declared (KL-OBL-2).
         //
-        // Two multi-key insert sequences are handled BEFORE the layer: `CTRL-O` (arm a one-shot Normal
-        // command, then fall through to the Normal grammar for the rest of this and following keys until it
-        // completes) and `CTRL-G u` (undo-break). A `CTRL-O` already in flight (`insert_one_shot`) skips the
-        // insert branch entirely so the pending Normal command keeps resolving.
-        if mode == Mode::Insert && !self.insert.one_shot {
+        // Two multi-key insert sequences are handled BEFORE the layer: `CTRL-O` (push a one-shot Normal
+        // activation, then fall through to the Normal grammar for the rest of this and following keys until
+        // it completes) and `CTRL-G u` (undo-break). A `CTRL-O` already in flight (on the activation stack)
+        // skips the insert branch entirely so the pending Normal command keeps resolving.
+        if mode == Mode::Insert && !self.in_one_shot() {
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             // `CTRL-G` prefix: consume the second key. `u` (or `U`) breaks the undo group; anything else
             // aborts the prefix without inserting (Vim beeps). Checked before the layer so the printable
@@ -830,11 +849,12 @@ impl InputEngine {
                 };
             }
             if ctrl && key.code == KeyCode::Char('o') {
-                // Arm the one-shot: the NEXT keys resolve through the Normal grammar; on completion
-                // `reset()` disarms it and Insert routing resumes. Core mode stays Insert throughout.
-                // Reset first so the one-shot begins from a clean count/operator/awaiting state.
+                // Push a one-shot activation whose RETURN ADDRESS is Insert (KL-OBL-5): the NEXT keys
+                // resolve through the Normal grammar; on completion `reset()` pops the address and Insert
+                // routing resumes. Core mode stays Insert throughout. Reset first so the one-shot begins
+                // from a clean count/operator/awaiting state (the pop is a no-op — the stack is empty here).
                 self.reset();
-                self.insert.one_shot = true;
+                self.activations.push(Suspended { resume: Ns::Insert });
                 return Feed::Pending;
             }
             if ctrl && key.code == KeyCode::Char('g') {
@@ -2569,7 +2589,7 @@ mod state_machine_props {
                     let has_state = e.normal.count > 0
                         || e.normal.op.is_some()
                         || e.normal.awaiting != Awaiting::Nothing
-                        || e.insert.one_shot
+                        || !e.activations.is_empty()
                         || e.insert.ctrl_g
                         || e.cmdline.is_some(); // an open command-line namespace is real pending state (F-026)
                     prop_assert!(has_state, "Feed::Pending but the engine is idle");
@@ -2577,7 +2597,7 @@ mod state_machine_props {
                     prop_assert_eq!(e.normal.count, 0, "count leaked after {:?}", feed);
                     prop_assert!(e.normal.op.is_none(), "operator leaked after {:?}", feed);
                     prop_assert!(e.normal.awaiting == Awaiting::Nothing, "key-expectation leaked after {:?}", feed);
-                    prop_assert!(!e.insert.one_shot, "one-shot leaked after {:?}", feed);
+                    prop_assert!(e.activations.is_empty(), "one-shot leaked after {:?}", feed);
                     prop_assert!(!e.insert.ctrl_g, "ctrl-g prefix leaked after {:?}", feed);
                 }
             }
@@ -2890,21 +2910,21 @@ mod layer_state_tests {
         );
     }
 
-    /// F-003 #5 (KL-OBL-4): the Insert layer owns its `CTRL-O` one-shot; it dies when Insert
-    /// deactivates rather than being cleared as an engine-wide boolean.
+    /// F-003 #5/#6: an `i_CTRL-O` one-shot is a return address on the activation stack (KL-OBL-5); a
+    /// key arriving back in Normal abandons the pending Insert resume rather than leaking it.
     #[test]
-    fn insert_layer_state_dies_when_the_layer_deactivates() {
+    fn insert_one_shot_activation_is_abandoned_when_insert_deactivates() {
         let mut e = InputEngine::new();
         assert_eq!(e.feed(ctrl('o'), Mode::Insert), Feed::Pending);
         assert!(
-            e.insert.one_shot,
-            "the Insert layer owns the CTRL-O one-shot"
+            !e.activations.is_empty(),
+            "CTRL-O pushed a one-shot activation"
         );
-        // The next key arrives back in Normal — the Insert layer is gone and takes its one-shot with it.
+        // The next key arrives back in Normal — the Insert resume address no longer applies.
         let _ = e.feed(k('l'), Mode::Normal);
         assert!(
-            !e.insert.one_shot,
-            "the one-shot died with the Insert layer"
+            e.activations.is_empty(),
+            "the pending Insert one-shot was abandoned"
         );
     }
 
@@ -2920,6 +2940,52 @@ mod layer_state_tests {
         assert_eq!(
             e.normal.count, 2,
             "the one-shot keeps the Normal count alive inside Insert (not dropped by KL-OBL-4)"
+        );
+    }
+
+    /// F-003 #6 (KL-OBL-5): `i_CTRL-O` records a return ADDRESS (`resume: Insert`) on the activation
+    /// stack — WHENCE control came, which a flat boolean edge cannot express — and the completing
+    /// command pops it, resuming Insert. `t_CTRL-\ CTRL-O` is the SAME construct (`resume: Terminal`),
+    /// deferred only because no terminal buffers exist yet.
+    #[test]
+    fn one_shot_records_a_return_address_and_pops_it_on_completion() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('o'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.activations,
+            vec![Suspended { resume: Ns::Insert }],
+            "the return address is Insert — whence the one-shot came"
+        );
+        // One Normal command (`l` = move right) completes the one-shot; its return address pops.
+        let out = e.feed(k('l'), Mode::Insert);
+        assert!(
+            matches!(out, Feed::Cmd(_)),
+            "the borrowed Normal command ran"
+        );
+        assert!(
+            e.activations.is_empty(),
+            "completion popped the return address, resuming Insert"
+        );
+    }
+
+    /// F-003 #7 (VS-OBL-1): mode is per-window/per-buffer — the same key resolves through DIFFERENT
+    /// namespaces depending on the mode the engine is fed (F-007 gives each View its own mode, and the
+    /// frontend feeds the focused View's mode). Here the same engine dispatches one window's Insert
+    /// keystroke as text and another window's Normal keystroke as a command.
+    #[test]
+    fn the_same_key_resolves_by_the_per_window_mode() {
+        let mut e = InputEngine::new();
+        // Window A is in Insert: `x` is literal text (open/insert).
+        assert_eq!(
+            e.feed(k('x'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('x'))
+        );
+        // Window B (same engine, next keystroke) is in Normal: `x` is delete-char, NOT text.
+        let out = e.feed(k('x'), Mode::Normal);
+        assert_ne!(
+            out,
+            Feed::Cmd(Command::InsertChar('x')),
+            "in Normal the same key is a command, not inserted text"
         );
     }
 }

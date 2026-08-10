@@ -128,7 +128,22 @@ features:
     title: Keymap layer router + the Vim profile as its depth-1 configuration
     stage: mvp
     priority: must
-    status: active
+    # done (#104 namespaces + #105 layer-owned state + #106 return-address): the keymap layer router
+    # (crates/core/src/keymap.rs LayerStack: rank-ordered resolve, sealed-stops-walk, DuplicateRank,
+    # collapse) + the Vim profile as eight addressable depth-1 SEALED namespaces (apps/tui/src/input.rs
+    # VimProfile), each declaring its census unmatched-key policy (KL-OBL-1/2/3). The five open policies
+    # are exercised through the router — insert/replace-selection/overwrite live, append via feed_cmdline,
+    # forward/translate declared (#4). Operator-pending is a namespace that ABORTS (#5, PR-1). Layer state
+    # is OWNED by its layer and dies with it — NormalState / InsertState, dropped when the layer
+    # deactivates, no central reset (KL-OBL-4, #105). Return is a stack with an ADDRESS — i_CTRL-O pushes
+    # Suspended{resume:Insert} and the completing command pops it; t_CTRL-\ CTRL-O is the same construct
+    # (KL-OBL-5, #106). gv restores an outlived selection (View.last_visual, F-007); mode is per-window
+    # (F-007 per-View mode, fed per keystroke) — #6/#7. KL-OBL-6 (collapse==dispatch) is unit-tested in
+    # keymap.rs. Deferred (post-MVP, not acceptance): live terminal buffers (t_CTRL-\ CTRL-O flow),
+    # Lang-Arg translate re-dispatch (CONCEPT-LANG-ARG blocks F-027), Emacs depth-9 / Helix depth-2 as
+    # shipped profiles (the router proves them by test). READY-WITH-SCOPE (C-INPUT/C-EDITLANG concepts
+    # pending) — ships done as F-025 did, the parity chain is closed on census map_mode ids.
+    status: done
     depends_on: [C-INPUT, C-COMMAND, C-EDITLANG, C-CONFIG]
     summary: >
       Keys resolve against an ORDERED STACK OF KEYMAP LAYERS (D-045). The eight Vim namespaces are that
