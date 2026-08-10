@@ -190,6 +190,12 @@ impl View {
         self.cursor
     }
 
+    /// Place the cursor at byte offset `pos` (the frontend uses this to follow a `:s///c` match; the
+    /// caller passes an on-boundary offset). View-local; does not touch the document.
+    pub fn set_cursor(&mut self, pos: usize) {
+        self.cursor = pos;
+    }
+
     /// This View's mode — view-local (two Views of one buffer can be in different modes).
     #[must_use]
     pub fn mode(&self) -> Mode {
@@ -390,6 +396,25 @@ impl EditorState {
         replacement: &str,
         flags: SubFlags,
     ) -> Result<SubOutcome, RegexError> {
+        let subs = self.substitute_preview(range, pattern, replacement, flags)?;
+        Ok(self.apply_substitutions(&subs))
+    }
+
+    /// Compute — but do NOT apply — the substitutions `:[range]s/pat/rep/flags` would make (F-009 #2).
+    /// Returns each pending [`Substitution`] (absolute byte span + replacement) in document order, so an
+    /// interactive `c`-confirm loop can present them one by one and apply only the accepted subset with
+    /// [`EditorState::apply_substitutions`]. Offsets are valid only until the buffer is edited — which is
+    /// why confirm collects the accepted set and applies it in one pass at the end.
+    ///
+    /// # Errors
+    /// [`RegexError`] if the pattern is unrepresentable/malformed or the buffer is not UTF-8.
+    pub fn substitute_preview(
+        &self,
+        range: SubRange,
+        pattern: &str,
+        replacement: &str,
+        flags: SubFlags,
+    ) -> Result<Vec<Substitution>, RegexError> {
         // Case: an explicit `i`/`I` flag overrides the config (and disables smartcase for this command).
         let base = self.view.search_options();
         let opts = crate::pattern::Options {
@@ -414,9 +439,7 @@ impl EditorState {
             ),
         };
 
-        let mut edits: Vec<Edit> = Vec::new();
-        let mut affected_lines = 0usize;
-        let mut last_line_idx = None;
+        let mut out: Vec<Substitution> = Vec::new();
         for (li, &(ls, le)) in lines.iter().enumerate().take(last + 1).skip(first) {
             let line = &hay[ls..le];
             let matches: Vec<crate::pattern::Match> = if flags.global {
@@ -424,42 +447,55 @@ impl EditorState {
             } else {
                 re.find_at(line, 0).into_iter().collect()
             };
-            if matches.is_empty() {
-                continue;
-            }
-            affected_lines += 1;
-            last_line_idx = Some(li);
             for m in matches {
                 let matched = &line[m.start..m.end];
-                let rep = expand_replacement(replacement, matched);
-                edits.push(Edit::replace(ls + m.start, m.end - m.start, rep));
+                out.push(Substitution {
+                    start: ls + m.start,
+                    end: ls + m.end,
+                    replacement: expand_replacement(replacement, matched),
+                    line: li,
+                });
             }
         }
+        Ok(out)
+    }
 
-        if edits.is_empty() {
-            return Ok(SubOutcome {
+    /// Apply a set of pending [`Substitution`]s as ONE undo group (a single [`Transaction`]) and move the
+    /// cursor to the start of the last changed line (Vim). The subs must be disjoint and in document
+    /// order (as [`EditorState::substitute_preview`] returns them, or an accepted subset of it).
+    pub fn apply_substitutions(&mut self, subs: &[Substitution]) -> SubOutcome {
+        if subs.is_empty() {
+            return SubOutcome {
                 replacements: 0,
                 lines: 0,
-            });
+            };
         }
+        let mut lines_seen = std::collections::BTreeSet::new();
+        let edits: Vec<Edit> = subs
+            .iter()
+            .map(|s| {
+                lines_seen.insert(s.line);
+                Edit::replace(s.start, s.end - s.start, s.replacement.clone())
+            })
+            .collect();
         let replacements = edits.len();
-        let list = EditList::new(edits)
-            .map_err(|_| RegexError::Syntax("overlapping substitutions".into()))?;
+        let last_line_idx = subs.iter().map(|s| s.line).max();
+        // Disjoint + ordered by construction; `new` re-validates (a bad accepted set is a caller bug).
+        let list = EditList::new(edits).expect("substitutions are disjoint and ordered");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
         self.doc
             .apply(txn)
             .expect("substitute transaction applies cleanly");
         self.view.last_was_edit = true;
-        // Cursor to the start of the last changed line (recomputed in the NEW buffer).
         if let Some(li) = last_line_idx {
             let nb = self.doc.bytes();
             self.view.cursor = nth_line_start(nb, li).min(nb.len());
         }
-        Ok(SubOutcome {
+        SubOutcome {
             replacements,
-            lines: affected_lines,
-        })
+            lines: lines_seen.len(),
+        }
     }
 
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
@@ -808,6 +844,22 @@ pub struct SubFlags {
     /// Case override from a flag: `i` → `Some(true)` (ignore case), `I` → `Some(false)`
     /// (case-sensitive); `None` = use the search config.
     pub ignore_case: Option<bool>,
+}
+
+/// One pending substitution from [`EditorState::substitute_preview`]: the byte span `[start, end)` to
+/// replace and the (expanded) replacement bytes, plus the 0-based line it sits on. Absolute offsets into
+/// the CURRENT buffer — valid only until the buffer is edited, so an interactive confirm loop collects
+/// the ACCEPTED subset and applies it all at once ([`EditorState::apply_substitutions`]).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Substitution {
+    /// Byte offset of the reported match start (the `\zs`-adjusted start).
+    pub start: usize,
+    /// Byte offset of the reported match end.
+    pub end: usize,
+    /// The replacement bytes to write over `[start, end)`.
+    pub replacement: Vec<u8>,
+    /// 0-based line index the match sits on (for the "M lines" echo + cursor placement).
+    pub line: usize,
 }
 
 /// What a `:s` did, for the status echo ("N substitutions on M lines").
@@ -4741,5 +4793,45 @@ mod substitute_tests {
         };
         let (st, _) = sub("Foo FOO foo", SubRange::CurrentLine, "foo", "x", flags);
         assert_eq!(st.as_str().unwrap(), "x x x");
+    }
+}
+
+#[cfg(test)]
+mod substitute_confirm_tests {
+    use super::*;
+
+    /// F-009 #2 (`:s///c`): preview finds all candidate matches WITHOUT editing; applying only an
+    /// ACCEPTED subset (as the confirm loop does on y/n) replaces just those, in one undo group.
+    #[test]
+    fn preview_then_apply_accepted_subset() {
+        let flags = SubFlags {
+            global: true,
+            ignore_case: None,
+        };
+        let mut st = EditorState::new(b"a a a".to_vec());
+        let subs = st
+            .substitute_preview(SubRange::CurrentLine, "a", "X", flags)
+            .expect("compiles");
+        assert_eq!(subs.len(), 3, "three candidate matches");
+        assert_eq!(st.as_str().unwrap(), "a a a", "preview does not edit");
+
+        // Accept the first and last, skip the middle (as `y n y` would).
+        let accepted = vec![subs[0].clone(), subs[2].clone()];
+        let out = st.apply_substitutions(&accepted);
+        assert_eq!(st.as_str().unwrap(), "X a X");
+        assert_eq!(out.replacements, 2);
+        // One `u` reverts BOTH accepted substitutions (they were one transaction).
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(st.as_str().unwrap(), "a a a");
+    }
+
+    /// Applying an EMPTY accepted set (the confirm loop when the user answered `n` to everything or
+    /// quit immediately) is a clean no-op.
+    #[test]
+    fn apply_no_substitutions_is_a_noop() {
+        let mut st = EditorState::new(b"a a".to_vec());
+        let out = st.apply_substitutions(&[]);
+        assert_eq!((out.replacements, out.lines), (0, 0));
+        assert_eq!(st.as_str().unwrap(), "a a");
     }
 }

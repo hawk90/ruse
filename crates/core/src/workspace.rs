@@ -24,7 +24,9 @@
 
 use crate::command::Command;
 use crate::document::{Document, DocumentId};
-use crate::editor::{apply_command, EditorState, SubFlags, SubOutcome, SubRange, View};
+use crate::editor::{
+    apply_command, EditorState, SubFlags, SubOutcome, SubRange, Substitution, View,
+};
 use crate::effect::Effect;
 use crate::pattern::RegexError;
 
@@ -142,6 +144,21 @@ impl Workspace {
         self.pane(self.focus)
     }
 
+    /// Place the FOCUSED view's cursor at byte offset `pos` (the frontend uses this to scroll a
+    /// `:s///c` match into view during the confirm loop). Clamped to the buffer.
+    pub fn place_focused_cursor(&mut self, pos: usize) {
+        let vid = self.windows[self.focus].view;
+        let did = self.views[vid.0].as_ref().expect("focused view live").doc();
+        let len = self.docs[Self::doc_slot(did)]
+            .as_ref()
+            .expect("focused doc live")
+            .bytes()
+            .len();
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.set_cursor(pos.min(len));
+        }
+    }
+
     /// Set the `i`th Window's scroll position (the frontend viewport pass, after computing it from the
     /// pane's cursor and its sub-rectangle height).
     pub fn set_top(&mut self, i: usize, top: usize) {
@@ -201,6 +218,50 @@ impl Workspace {
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
         result
+    }
+
+    /// Compute (do NOT apply) the substitutions `:s///c` would offer on the focused window — the
+    /// interactive confirm loop presents these and applies the accepted subset with
+    /// [`Workspace::apply_substitutions`] (F-009 #2, PR-c2).
+    pub fn substitute_preview(
+        &mut self,
+        range: SubRange,
+        pattern: &str,
+        replacement: &str,
+        flags: SubFlags,
+    ) -> Result<Vec<Substitution>, RegexError> {
+        // `substitute_preview` reads only, but `EditorState` owns its parts and `Document` is not
+        // `Clone`, so swap the focused (Document, View) out, compute, and swap them back unchanged
+        // (like `apply`, but the document is never mutated). Runs once per `:s///c`, not per keystroke.
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let st = EditorState::from_parts(doc, view);
+        let out = st.substitute_preview(range, pattern, replacement, flags);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        out
+    }
+
+    /// Apply an accepted set of [`Substitution`]s to the focused window as one undo group (the tail of
+    /// the `:s///c` confirm loop). Swap-trick like [`Workspace::apply`].
+    pub fn apply_substitutions(&mut self, subs: &[Substitution]) -> SubOutcome {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let out = st.apply_substitutions(subs);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        out
     }
 
     /// Move focus to the next Window in tile order, wrapping (Vim `C-w w`). No-op with one Window.
