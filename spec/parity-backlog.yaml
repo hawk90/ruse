@@ -44,3 +44,12 @@ backlog:
   - { id: NVIM-EXT-6, feature: F-002, reason: "extmark/decoration model — anchor store; no census surface" }
   - { id: NVIM-EXT-7, feature: F-002, reason: "extmark namespace/lifetime — anchor policy; no census surface" }
   - { id: EMACS-EDIT-2, feature: F-002, reason: "Emacs markers (position objects surviving edits) — the ruse anchor is the counterpart; markers are emacs runtime, not an enumerable census surface" }
+  # F-006 rendering (#99, D-043). TERM-SYNC-1 repointed onto census nvim.termmode.synchronizedoutput;
+  # these are ruse render ARCHITECTURE / heuristics / post-MVP graphics with no census surface. NVIM-UI-2
+  # stays derived via its other UI citer (not backlogged).
+  - { id: TERM-SYNC-1, feature: F-006, reason: "synchronized output — SUPERSEDED by census nvim.termmode.synchronizedoutput (F-006 now cites that); the legacy row is tracked until deleted" }
+  - { id: TERM-COLOR-1, feature: F-006, reason: "truecolor with detection — a $COLORTERM/terminfo heuristic (F-010's ledger), not an enumerable render census surface; 256/nearest-color fallback is ruse render architecture" }
+  - { id: TERM-WIDTH-1, feature: F-006, reason: "grapheme-correct cell widths — IMPLEMENTED (screen.rs cluster_width, unicode-width) but width is ruse render/coordinate architecture, no upstream census surface" }
+  - { id: TERM-GFX-1, feature: F-006, reason: "inline image protocol (kitty/sixel/iTerm) — post-MVP enhanced tier (INV-CAP-DEGRADE); no census surface" }
+  - { id: TERM-GFX-2, feature: F-006, reason: "image placement/cell-vs-pixel sizing — post-MVP enhanced tier; no census surface" }
+  - { id: TERM-GFX-3, feature: F-006, reason: "image delete/reposition/animation throttle — post-MVP enhanced tier; no census surface" }

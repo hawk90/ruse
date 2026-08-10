@@ -19,6 +19,7 @@ mod input;
 mod log;
 mod persist;
 mod recover;
+mod screen;
 mod viewport;
 
 use std::fs;
@@ -28,7 +29,7 @@ use std::process::ExitCode;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::style::Print;
-use crossterm::terminal::{Clear, ClearType};
+use crossterm::terminal::ClearType;
 use crossterm::{cursor, queue, terminal};
 
 use input::{parse_ex, Ex, Feed, InputEngine};
@@ -166,6 +167,14 @@ struct TermGuard {
     ledger: caps::ledger::Ledger,
 }
 impl TermGuard {
+    /// Whether the terminal confirmed DEC synchronized output (mode 2026) at startup — read once
+    /// and held (INV-RENDER-PROFILE: the profile is pinned, never re-probed on frame noise). The
+    /// render diff fences a repaint in `?2026h`/`l` when this is true so the frame lands atomically.
+    fn sync_output(&self) -> bool {
+        self.ledger
+            .enabled(caps::ledger::Capability::SynchronizedOutput)
+    }
+
     fn enter() -> io::Result<TermGuard> {
         terminal::enable_raw_mode()?;
         queue!(io::stdout(), terminal::EnterAlternateScreen)?;
@@ -240,7 +249,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         _ => None,
     };
 
-    let _guard = TermGuard::enter()?;
+    let guard = TermGuard::enter()?;
     let mut out = io::stdout();
 
     // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
@@ -266,6 +275,10 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut engine = InputEngine::new();
     let mut quit = false;
     let mut top: usize = 0; // first visible buffer row (frontend view state; core stays view-free)
+                            // The previous frame's cell grid — the render diff emits only what changes against it (F-006).
+                            // Starts empty so the first frame paints in full.
+    let mut prev_frame = screen::Screen::new(0, 0);
+    let sync_output = guard.sync_output(); // pinned once from the F-010 ledger (INV-RENDER-PROFILE)
 
     while !quit {
         // Keep the in-memory snapshot current so a core panic can rescue unsaved work (§6/§8).
@@ -297,6 +310,8 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &status,
             spans,
             top,
+            &mut prev_frame,
+            sync_output,
         )?;
         let Event::Key(key) = event::read()? else {
             continue;
@@ -439,6 +454,10 @@ fn save(
     }
 }
 
+/// One indent level's width in display columns — matches the editor's `editor.tab_width` default.
+const TAB_WIDTH: u16 = 4;
+
+#[allow(clippy::too_many_arguments)] // the frame render legitimately needs the full view context
 fn render(
     out: &mut io::Stdout,
     st: &EditorState,
@@ -447,17 +466,16 @@ fn render(
     status: &str,
     spans: &[highlight::Span],
     top: usize,
+    prev: &mut screen::Screen,
+    sync: bool,
 ) -> io::Result<()> {
-    use crossterm::style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor};
+    use crossterm::style::Color;
+    use unicode_segmentation::UnicodeSegmentation;
 
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
-    let text_rows = rows.saturating_sub(1);
-    queue!(
-        out,
-        cursor::Hide,
-        Clear(ClearType::All),
-        cursor::MoveTo(0, 0)
-    )?;
+    let text_rows = rows.saturating_sub(1) as usize;
+    // Paint the whole frame into a fresh cell grid; the diff against `prev` emits only what changed.
+    let mut cur = screen::Screen::new(cols, rows);
 
     let bytes = st.bytes();
     // Flatten the highlight spans into a per-byte color, then walk the text applying it.
@@ -472,59 +490,44 @@ fn render(
         }
     }
     let text = st.as_str().unwrap_or("<binary>");
-    // Draw the `text_rows` buffer lines starting at `top`. `line` tracks the buffer row so we can skip
-    // everything above the viewport; `screen_row` is where it lands. Long lines are truncated at `cols`
-    // (no wrap) so screen-row math stays exact — horizontal scroll is deferred (see render doc, v0).
-    // The Visual selection, painted in reverse video: one contiguous range for charwise/linewise, or a
-    // per-row set of ranges for a blockwise (`CTRL-V`) rectangle.
+    // Paint `text_rows` buffer lines from `top` into the grid, one GRAPHEME CLUSTER per cell (F-006
+    // #4: a ZWJ emoji / base+combining is one user-perceived char at its true display width). Long
+    // lines truncate at `cols` (no wrap; horizontal scroll deferred — render doc v0). Visual selection
+    // paints in reverse video (a charwise/linewise span, or a blockwise rectangle).
     let sel = st.selection_span();
     let block = st.block_spans();
     let mut line: usize = 0;
     let mut col: u16 = 0;
-    let mut cur = Color::Reset;
-    let mut reversed = false;
-    for (i, ch) in text.char_indices() {
-        if ch == '\n' {
+    for (i, g) in text.grapheme_indices(true) {
+        if g == "\n" {
             line += 1;
-            if line >= top + text_rows as usize {
+            col = 0;
+            if line >= top + text_rows {
                 break; // past the bottom of the viewport
-            }
-            if line >= top {
-                col = 0;
-                queue!(out, cursor::MoveTo(0, (line - top) as u16))?;
             }
             continue;
         }
         if line < top || col >= cols {
             continue; // above the viewport, or past the right edge (truncate)
         }
+        let srow = (line - top) as u16;
         let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
             || block
                 .as_deref()
                 .is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e));
-        if selected != reversed {
-            queue!(
-                out,
-                SetAttribute(if selected {
-                    Attribute::Reverse
-                } else {
-                    Attribute::NoReverse
-                })
-            )?;
-            reversed = selected;
+        let fg = byte_color.get(i).copied().unwrap_or(Color::Reset);
+        if g == "\t" {
+            let stop = TAB_WIDTH - (col % TAB_WIDTH); // expand the tab to blanks up to the next stop
+            for _ in 0..stop {
+                if col >= cols {
+                    break;
+                }
+                col = cur.put(srow, col, " ", fg, selected);
+            }
+        } else {
+            col = cur.put(srow, col, g, fg, selected);
         }
-        let c = byte_color.get(i).copied().unwrap_or(Color::Reset);
-        if c != cur {
-            queue!(out, SetForegroundColor(c))?;
-            cur = c;
-        }
-        queue!(out, Print(ch))?;
-        col += 1;
     }
-    if reversed {
-        queue!(out, SetAttribute(Attribute::NoReverse))?;
-    }
-    queue!(out, ResetColor)?;
 
     let bar = match cmd_line {
         Some((prefix, text)) => format!("{prefix}{text}"),
@@ -560,23 +563,108 @@ fn render(
             format!("{mode}  {name}{dirty}  {status}")
         }
     };
-    let bar: String = bar.chars().take(cols as usize).collect();
-    queue!(out, cursor::MoveTo(0, rows.saturating_sub(1)), Print(bar))?;
+    // Paint the status / command line into the last row (put_str truncates at the right edge).
+    cur.put_str(rows.saturating_sub(1), 0, &bar, Color::Reset, false);
+
+    // Diff the finished grid against the previous frame and emit ONLY the changed runs (F-006 #1),
+    // wrapped in synchronized output when supported so a big repaint lands atomically (#3).
+    flush_diff(out, &cur, prev, sync)?;
+    *prev = cur;
 
     if let Some((_, text)) = cmd_line {
+        let ccol = (text.chars().count() as u16 + 1).min(cols.saturating_sub(1));
         queue!(
             out,
-            cursor::MoveTo((text.len() + 1) as u16, rows.saturating_sub(1)),
+            cursor::MoveTo(ccol, rows.saturating_sub(1)),
             cursor::Show
         )?;
     } else {
-        // Place the terminal cursor relative to the viewport top; clamp col to the truncation width.
-        let (row, col) = row_col(st.bytes(), st.cursor());
-        let screen_row = row.saturating_sub(top) as u16;
-        let screen_col = (col as u16).min(cols.saturating_sub(1));
-        queue!(out, cursor::MoveTo(screen_col, screen_row), cursor::Show)?;
+        // The cursor's DISPLAY column is grapheme-cluster / width based (F-006 #4), never a char count.
+        let (screen_row, screen_col) = cursor_cell(st.bytes(), st.cursor(), top);
+        queue!(
+            out,
+            cursor::MoveTo(screen_col.min(cols.saturating_sub(1)), screen_row),
+            cursor::Show
+        )?;
     }
     out.flush()
+}
+
+/// Emit only the cells that changed between `cur` and `prev` (F-006 #1). Each changed run is one
+/// `MoveTo` then its cells, printed with lazy SGR (colour/reverse) changes; a continuation cell is
+/// skipped (the wide glyph to its left already advanced over it). When `sync` is set the whole batch
+/// is fenced in DEC synchronized-output (`?2026h`/`l`) so the terminal shows the frame atomically (#3).
+fn flush_diff(
+    out: &mut impl Write,
+    cur: &screen::Screen,
+    prev: &screen::Screen,
+    sync: bool,
+) -> io::Result<()> {
+    use crossterm::style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor};
+
+    let runs = cur.diff(prev);
+    if runs.is_empty() {
+        return Ok(()); // nothing changed — no full-screen redraw
+    }
+    queue!(out, cursor::Hide)?;
+    if sync {
+        out.write_all(b"\x1b[?2026h")?;
+    }
+    let mut fg = Color::Reset;
+    let mut reversed = false;
+    queue!(out, ResetColor, SetAttribute(Attribute::NoReverse))?;
+    for (row, start, cells) in runs {
+        queue!(out, cursor::MoveTo(start, row))?;
+        for cell in &cells {
+            let text: &str = match &cell.content {
+                screen::Content::Continuation => continue, // covered by the wide glyph on the left
+                screen::Content::Blank => " ",
+                screen::Content::Cluster(s) => s,
+            };
+            if cell.reverse != reversed {
+                let a = if cell.reverse {
+                    Attribute::Reverse
+                } else {
+                    Attribute::NoReverse
+                };
+                queue!(out, SetAttribute(a))?;
+                reversed = cell.reverse;
+            }
+            if cell.fg != fg {
+                queue!(out, SetForegroundColor(cell.fg))?;
+                fg = cell.fg;
+            }
+            queue!(out, Print(text))?;
+        }
+    }
+    queue!(out, SetAttribute(Attribute::NoReverse), ResetColor)?;
+    if sync {
+        out.write_all(b"\x1b[?2026l")?;
+    }
+    Ok(())
+}
+
+/// The cursor's on-screen `(row, col)`: `row` relative to the viewport `top`, `col` in DISPLAY cells
+/// (wide glyphs count 2, combining marks 0, tabs to the next stop) — grapheme-correct, not a char
+/// count (F-006 #4).
+fn cursor_cell(bytes: &[u8], pos: usize, top: usize) -> (u16, u16) {
+    use unicode_segmentation::UnicodeSegmentation;
+    let pos = pos.min(bytes.len());
+    let row = bytes[..pos].iter().filter(|&&c| c == b'\n').count();
+    let line_start = bytes[..pos]
+        .iter()
+        .rposition(|&c| c == b'\n')
+        .map_or(0, |i| i + 1);
+    let line = std::str::from_utf8(&bytes[line_start..pos]).unwrap_or("");
+    let mut col: u16 = 0;
+    for g in line.graphemes(true) {
+        if g == "\t" {
+            col += TAB_WIDTH - (col % TAB_WIDTH);
+        } else {
+            col += screen::cluster_width(g);
+        }
+    }
+    (row.saturating_sub(top) as u16, col)
 }
 
 /// (row, col) of a byte offset — row = newlines before it, col = char count since the line start.
@@ -591,4 +679,61 @@ fn row_col(bytes: &[u8], pos: usize) -> (usize, usize) {
         .map(|s| s.chars().count())
         .unwrap_or(0);
     (row, col)
+}
+
+#[cfg(test)]
+mod render_tests {
+    use super::*;
+    use crossterm::style::Color;
+
+    /// F-006 #1: an unchanged frame emits ZERO bytes — no full-screen redraw.
+    #[test]
+    fn an_unchanged_frame_emits_nothing() {
+        let mut a = screen::Screen::new(20, 3);
+        a.put_str(0, 0, "hello world", Color::Reset, false);
+        let mut b = screen::Screen::new(20, 3);
+        b.put_str(0, 0, "hello world", Color::Reset, false);
+        let mut buf: Vec<u8> = Vec::new();
+        flush_diff(&mut buf, &b, &a, false).unwrap();
+        assert!(buf.is_empty(), "identical frames must produce no output");
+    }
+
+    /// F-006 #1: a one-cell change emits a small, bounded batch containing just the new glyph — not
+    /// the whole screen. (A full redraw of 60 cells would be far larger.)
+    #[test]
+    fn a_one_cell_change_emits_only_that_cell() {
+        let mut a = screen::Screen::new(20, 3);
+        a.put_str(0, 0, "hello world", Color::Reset, false);
+        let mut b = screen::Screen::new(20, 3);
+        b.put_str(0, 0, "hello wOrld", Color::Reset, false); // one char differs
+        let mut buf: Vec<u8> = Vec::new();
+        flush_diff(&mut buf, &b, &a, false).unwrap();
+        let s = String::from_utf8_lossy(&buf);
+        assert!(s.contains('O'), "the changed glyph is emitted");
+        assert!(!s.contains("hello"), "the unchanged run is NOT re-emitted");
+    }
+
+    /// F-006 #3: with sync support the batch is fenced in DEC synchronized output (?2026h/l).
+    #[test]
+    fn sync_output_fences_the_batch_when_supported() {
+        let a = screen::Screen::new(10, 1);
+        let mut b = screen::Screen::new(10, 1);
+        b.put(0, 0, "Z", Color::Reset, false);
+        let mut on: Vec<u8> = Vec::new();
+        flush_diff(&mut on, &b, &a, true).unwrap();
+        assert!(
+            on.windows(8).any(|w| w == b"\x1b[?2026h"),
+            "begins synchronized output"
+        );
+        assert!(
+            on.windows(8).any(|w| w == b"\x1b[?2026l"),
+            "ends synchronized output"
+        );
+        let mut off: Vec<u8> = Vec::new();
+        flush_diff(&mut off, &b, &a, false).unwrap();
+        assert!(
+            !off.windows(8).any(|w| w == b"\x1b[?2026h"),
+            "no fence when unsupported"
+        );
+    }
 }
