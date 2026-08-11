@@ -43,3 +43,7 @@ harness = false
 [[bench]]
 name = "input_dispatch"
 harness = false
+
+[[bench]]
+name = "line_index"
+harness = false

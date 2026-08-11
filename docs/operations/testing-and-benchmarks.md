@@ -171,6 +171,22 @@ Auditing my own claims with benches rather than analogy:
   now measurement-justified for large-file support, still correctly deferred if the target stays
   daily-driver sizes (≤10k = fine). The line index is the next real perf lever, not storage.
 
+#### Win (D) landed — revision-cached line index (`line_index` bench)
+
+`apps/tui/src/line_index.rs` (`LineIndex`) caches the line-start byte offsets, rebuilt only on a revision
+change (sound per INV-TXN); `render` refreshes it once per frame and does `line_of` / `nth_line_start`
+as binary search / array index. Measured vs the O(n) `pos` scan it replaces on the hot path:
+
+| Op @ 100k lines | `pos::` (old, per frame) | `LineIndex` (new) |
+| --- | --- | --- |
+| `line_of` (cursor row) | 623 µs | 12.6 ns (~49 000×) |
+| `nth_line_start` (viewport) | 2.13 ms | 0.32 ns (~6.6 M×) |
+| `refresh` (rebuild) | — | 1.32 ms, **once per EDIT**, not per frame |
+
+The O(n) cost moves from per-FRAME to per-EDIT (a revision change), amortized like the buffer copy
+`edit_apply` already pays. A 100k-line buffer scrolled near the bottom went from ~4 ms/frame (2×
+`nth_line_start`) to sub-ns per-frame lookups. This was measured before claiming — the lesson from #130.
+
 ---
 
 ## 1. Test taxonomy — the layers and their formats
