@@ -4,6 +4,11 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 
+# Don't run the lib's unit tests under `cargo bench` — only the criterion `[[bench]]` targets, which
+# accept criterion's flags (`ruse bench` relies on this).
+[lib]
+bench = false
+
 [dependencies]
 # F-002: cursor/coordinate resolution over user-perceived characters. `unicode-segmentation` gives
 # UAX#29 extended grapheme clusters (so the cursor never lands mid-emoji/ZWJ/combining sequence);

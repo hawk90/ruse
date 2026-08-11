@@ -1,0 +1,32 @@
+# Nightly benchmark trend (D-019: perf budgets gate on a FIXED machine, nightly, trend + warn — NOT a
+# required PR check, because a shared CI runner's numbers are noisy). Runs the workspace benches and
+# compares them to spec/perf-baseline.yaml with a generous threshold; a regression is a WARNING to
+# investigate, not a hard failure. The deterministic PR gate is `gov perf` (every [[bench]] has a
+# baseline), which runs in the normal `gov check`; THIS job supplies the live numbers.
+name: perf
+on:
+  schedule:
+    - cron: "0 6 * * *"   # nightly ~06:00 UTC
+  workflow_dispatch: {}
+permissions: { contents: read }
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('Cargo.toml') != '' }}
+    steps:
+      - uses: actions/checkout@v4          # TODO pin SHA
+      - uses: dtolnay/rust-toolchain@stable # TODO pin SHA
+      - uses: Swatinem/rust-cache@v2        # TODO pin SHA
+      - uses: actions/setup-python@v5       # TODO pin SHA
+        with: { python-version: '3.12' }
+      - run: pip install pyyaml
+      # Trend + warn: numbers are machine-relative, so this never fails the job — it reports regressions
+      # for a human to confirm on the fixed baseline machine before touching spec/perf-baseline.yaml.
+      - run: python3 tools/ruse.py bench --check --measurement-time 2 | tee perf-report.txt
+      - uses: actions/upload-artifact@v4    # TODO pin SHA
+        with:
+          name: perf-report
+          path: perf-report.txt

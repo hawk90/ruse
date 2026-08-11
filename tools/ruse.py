@@ -22,6 +22,7 @@ spec/ (change-kinds.yaml, PRD/POLICY/...), never in a Makefile or here.
   pr render        generate the PR body from the contract + evidence
   pr check         the merge gate (classify + artifacts + blast radius + evidence)
   status           show the active change workspace
+  bench            run the workspace benchmarks (--check compares to spec/perf-baseline.yaml)
 """
 from __future__ import annotations
 
@@ -260,6 +261,10 @@ def main() -> int:
 
     if cmd == "status":
         return cmd_status(rest)
+
+    if cmd == "bench":
+        from rusekit import bench
+        return bench.main(rest)
 
     render.fail(f"unknown command: {cmd}")
     return _usage(2)

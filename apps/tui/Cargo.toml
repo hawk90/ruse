@@ -4,9 +4,15 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 
+# `bench = false` on the lib+bin so `cargo bench` runs ONLY the criterion `[[bench]]` targets (which
+# accept criterion's flags), not the unit tests under the std harness (`ruse bench` relies on this).
+[lib]
+bench = false
+
 [[bin]]
 name = "ruse"
 path = "src/main.rs"
+bench = false
 
 [dependencies]
 ruse-core = { path = "../../crates/core" }
