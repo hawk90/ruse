@@ -348,6 +348,35 @@ mod tests {
     }
 
     #[test]
+    fn emacs_kill_and_yank_over_the_unnamed_register() {
+        // F-012 / D-026: `C-k` kills to end of line — a delete that captures into the unnamed register
+        // (the depth-1 kill ring). `C-y` yanks it back before point (Vim `P`), honouring a prefix count.
+        let mut e = InputEngine::emacs();
+
+        assert_eq!(
+            e.feed(ctrl('k'), Mode::Insert),
+            Feed::Cmd(Command::Delete(1, Motion::LineEnd))
+        );
+        assert_eq!(
+            e.feed(ctrl('y'), Mode::Insert),
+            Feed::Cmd(Command::Paste {
+                after: false,
+                count: 1,
+            })
+        );
+        // `C-u 3 C-y` yanks three copies — the prefix argument is the yank's repeat count.
+        assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('3'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('y'), Mode::Insert),
+            Feed::Cmd(Command::Paste {
+                after: false,
+                count: 3,
+            })
+        );
+    }
+
+    #[test]
     fn ctrl_v_enters_blockwise_visual() {
         let mut e = InputEngine::new();
         assert_eq!(
