@@ -279,7 +279,12 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut recorded: Vec<Command> = Vec::new();
     let mut journal_ticks: u32 = 0; // throttle: append the recovery journal every Nth modified frame
 
-    let mut engine = InputEngine::new();
+    // Profile selection (F-012): no config loader exists yet, so `RUSE_PROFILE=emacs` picks the Emacs
+    // profile (the same env-override seam as the terminal caps). Defaults to Vim.
+    let mut engine = match std::env::var("RUSE_PROFILE").as_deref() {
+        Ok("emacs") => InputEngine::emacs(),
+        _ => InputEngine::new(),
+    };
     let mut quit = false;
     // The previous frame's cell grid — the render diff emits only what changes against it (F-006).
     // Starts empty so the first frame paints in full.

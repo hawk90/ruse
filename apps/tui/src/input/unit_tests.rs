@@ -238,6 +238,46 @@ mod tests {
     }
 
     #[test]
+    fn emacs_profile_is_non_modal() {
+        // F-012 seam: the Emacs profile resolves global-map C- motions to commands and self-inserts a
+        // printable key — regardless of the (Vim) mode passed, and without the modal grammar.
+        let mut e = InputEngine::emacs();
+        assert_eq!(
+            e.feed(ctrl('f'), Mode::Insert),
+            Feed::Cmd(Command::MoveRight)
+        );
+        assert_eq!(
+            e.feed(ctrl('b'), Mode::Insert),
+            Feed::Cmd(Command::MoveLeft)
+        );
+        assert_eq!(
+            e.feed(ctrl('n'), Mode::Insert),
+            Feed::Cmd(Command::MoveDown)
+        );
+        assert_eq!(e.feed(ctrl('p'), Mode::Insert), Feed::Cmd(Command::MoveUp));
+        assert_eq!(
+            e.feed(ctrl('a'), Mode::Insert),
+            Feed::Cmd(Command::MoveLineStart)
+        );
+        assert_eq!(
+            e.feed(ctrl('e'), Mode::Insert),
+            Feed::Cmd(Command::MoveLineEnd)
+        );
+        // A printable key self-inserts (no Insert mode needed) — proof of "move + insert in one state".
+        assert_eq!(
+            e.feed(k('x'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('x'))
+        );
+        // `d` is a literal char here, NOT the Vim delete operator (the modal grammar is not consulted).
+        assert_eq!(
+            e.feed(k('d'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('d'))
+        );
+        // An unbound control key is inert (not the start of a Vim construct).
+        assert_eq!(e.feed(ctrl('z'), Mode::Insert), Feed::Ignored);
+    }
+
+    #[test]
     fn ctrl_v_enters_blockwise_visual() {
         let mut e = InputEngine::new();
         assert_eq!(
