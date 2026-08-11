@@ -27,3 +27,7 @@ proptest = { version = "1", default-features = false, features = ["std"] }
 [[bench]]
 name = "edit_apply"
 harness = false
+
+[[bench]]
+name = "line_math"
+harness = false
