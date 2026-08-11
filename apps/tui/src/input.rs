@@ -2,6 +2,8 @@
 //! (`d`, `2w`, `d3w`, `dd`, `cw`=`ce`), plus ex-command (`:…`) parsing. The trace records the resulting
 //! commands, so re-keymapping never invalidates a corpus. Pure and unit-tested.
 
+use std::collections::HashMap;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
 use ruse_core::{
@@ -237,8 +239,9 @@ enum Ns {
     /// the forward policy is exercised at the router level, not from a running job.
     Terminal,
     /// The language-argument namespace (`:lmap`) — `open/translate` (rewrite the key through the active
-    /// language map, then re-dispatch). Addressable, but resolution stays total: the translate-and-
-    /// re-dispatch flow is CONCEPT-LANG-ARG, which BLOCKS F-027 (KL-Q-LANG-ARG).
+    /// language map). Addressable here as a DECLARED policy, but the translation itself is REALISED by
+    /// the pre-dispatch stage (`translate_lang`, above the layer stack), NOT inside `resolve` — so
+    /// resolution stays total (D-048 / RFC-0013 answering KL-Q-LANG-ARG). F-027 is realised on that stage.
     Lang,
     /// Replace / Virtual-Replace mode (`R`/`gR`) — `open/overwrite` (a printable key overwrites; `<BS>`
     /// restores). NOT one of the eight canonical map-mode namespaces (Vim maps it under the `:map!`
@@ -491,6 +494,14 @@ pub struct InputEngine {
     /// rather than the Normal grammar. `None` = not on the command line. This is the engine owning the
     /// line, not an ad-hoc text buffer on the UI (anti-pattern command-line P2).
     cmdline: Option<CmdLine>,
+    /// The active Lang-Arg language map (`lmap`, F-027): a char→char rewrite applied by the pre-dispatch
+    /// translation stage. Populated by `:lmap` at runtime (the persistent form is `keymap.lang`; no
+    /// config-file loader exists for any `keymap.*` key yet). MVP restricts both sides to a single char.
+    lang_map: HashMap<char, char>,
+    /// Whether the language map is currently active (Vim `iminsert`/`imsearch`, toggled by `i_CTRL-^`).
+    /// One boolean for MVP (RFC-0013); the per-context iminsert/imsearch model is a follow-up. `false`
+    /// by default so a configured map never silently rewrites the command line you type to define it.
+    lang_active: bool,
 }
 
 /// The command-line namespace's owned state (F-026 acceptance #2): a prefix, a line buffer, and a
@@ -535,6 +546,8 @@ impl InputEngine {
             insert: InsertState::default(),
             activations: Vec::new(),
             cmdline: None,
+            lang_map: HashMap::new(),
+            lang_active: false,
         }
     }
 
@@ -777,7 +790,78 @@ impl InputEngine {
     /// Feed one key given the current mode. Resolves the key into an outcome, then folds that outcome into
     /// the dot-repeat record (so `.` can later replay the last change). The two steps are split so the
     /// resolution grammar stays untouched by the recording concern.
+    /// Install/replace one Lang-Arg mapping (`:lmap {lhs} {rhs}`, F-027). MVP is single-char → single-char.
+    pub fn set_lang_mapping(&mut self, lhs: char, rhs: char) {
+        self.lang_map.insert(lhs, rhs);
+    }
+
+    /// Remove one Lang-Arg mapping (`:lunmap {lhs}`). A no-op if it was not mapped.
+    pub fn clear_lang_mapping(&mut self, lhs: char) {
+        self.lang_map.remove(&lhs);
+    }
+
+    /// Whether `mode` (plus the engine's live state) is a Lang-Arg-eligible context: the Command-line or
+    /// Insert namespace, or a command reading a single character (`f`/`t`/`F`/`T`/`r`). Everything else —
+    /// Normal, Visual, Operator-pending, Replace — is inert, which is the whole point of a SEPARATE Lang
+    /// namespace (F-027 acceptance #2: "and to nothing else"): operators and motions are never translated.
+    fn lang_eligible(&self, mode: Mode) -> bool {
+        // Command-line namespace (typing on the `:`/`/` line).
+        if self.cmdline.is_some() {
+            return true;
+        }
+        // A command reading a single character as its argument: `f`/`t`/`F`/`T` (find target) or `r`
+        // (replace). Vim's Lang-Arg translates that argument regardless of how the command was reached.
+        if matches!(
+            self.normal.awaiting,
+            Awaiting::FindTarget { .. } | Awaiting::ReplaceChar
+        ) {
+            return true;
+        }
+        // Insert namespace — but NOT mid-`CTRL-G` prefix (its second key is a command selector, not
+        // text) and NOT while an `i_CTRL-O` one-shot has borrowed the Normal grammar (that key is a
+        // Normal command, not inserted text).
+        mode == Mode::Insert && !self.insert.ctrl_g && !self.in_one_shot()
+    }
+
+    /// The Lang-Arg TRANSLATION STAGE (F-027, D-048 / RFC-0013). Rewrites a decoded key through the
+    /// active language map BEFORE any dispatch, in the Lang-Arg contexts only, applying AT MOST ONE
+    /// substitution: the mapped key is returned and dispatched literally, never fed back through this
+    /// stage — so a cyclic map (`a→b`, `b→a`) cannot loop, resolution stays TOTAL, and the work stays
+    /// BOUNDED (INV-FAIL-BOUNDED). The stage lives ABOVE the layer stack (D-045 `resolve` is untouched):
+    /// it is a preprocessor that always yields a concrete key, not a resolution layer that yields.
+    ///
+    /// Terminal-side IME composition is a DIFFERENT, disjoint mechanism (acceptance #3): the terminal
+    /// composes keystrokes into a finished CHARACTER and delivers it as TEXT on the paste/IME path, which
+    /// never reaches `feed` as a single decoded `KeyEvent`. So this stage only ever sees a bare printable
+    /// key with no CTRL/ALT modifier, and a given unit of input is translated by AT MOST ONE of {terminal
+    /// IME, lmap} — never both.
+    fn translate_lang(&self, key: KeyEvent, mode: Mode) -> KeyEvent {
+        if !self.lang_active || self.lang_map.is_empty() {
+            return key;
+        }
+        // Only a bare printable key is a candidate; a modified key (CTRL-*/ALT-*) is a command, and
+        // composed IME text never arrives here at all.
+        let plain = key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT;
+        let KeyCode::Char(c) = key.code else {
+            return key;
+        };
+        if !plain || !self.lang_eligible(mode) {
+            return key;
+        }
+        match self.lang_map.get(&c) {
+            Some(&mapped) => KeyEvent {
+                code: KeyCode::Char(mapped),
+                ..key
+            },
+            None => key,
+        }
+    }
+
     pub fn feed(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        // Lang-Arg translation stage (F-027 / D-048): rewrite the key through the active language map
+        // before ANY dispatch, in the three Lang-Arg contexts only. One substitution, then literal —
+        // the translated key flows through normal dispatch and never re-enters this stage.
+        let key = self.translate_lang(key, mode);
         // The command-line namespace owns the keystream while open (F-026); its typing is not a
         // dot-repeatable change, so it bypasses the recorder.
         if self.cmdline.is_some() {
@@ -879,6 +963,14 @@ impl InputEngine {
                         Feed::Ignored
                     }
                 };
+            }
+            // `i_CTRL-^` toggles the language map (Lang-Arg / lmap) on or off within Insert (F-027 /
+            // D-048). MVP flips one boolean; the per-context iminsert/imsearch model is a follow-up.
+            // Checked before the printable path so `^`/`6` under CTRL never reach text insertion.
+            if ctrl && matches!(key.code, KeyCode::Char('^') | KeyCode::Char('6')) {
+                self.reset();
+                self.lang_active = !self.lang_active;
+                return Feed::Pending;
             }
             if ctrl && key.code == KeyCode::Char('o') {
                 // Push a one-shot activation whose RETURN ADDRESS is Insert (KL-OBL-5): the NEXT keys
@@ -1351,6 +1443,15 @@ pub enum Ex {
     Global(GlobalSpec),
     /// `:noh` / `:nohlsearch` — clear the search highlight (F-009 #1).
     NoHighlight,
+    /// `:lmap {lhs} {rhs}` — install a Lang-Arg (`lmap`) mapping (F-027). Single-char lhs/rhs for MVP.
+    Lmap {
+        lhs: char,
+        rhs: char,
+    },
+    /// `:lunmap {lhs}` — remove a Lang-Arg mapping (F-027).
+    Lunmap {
+        lhs: char,
+    },
     Unknown(String),
 }
 
@@ -1573,19 +1674,55 @@ pub fn parse_ex(line: &str) -> Ex {
         "vsplit" | "vsp" | "vs" => Ex::VSplit,
         "close" | "clo" => Ex::Close,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
-        _ => match line.strip_prefix("trace save") {
-            Some(rest) => Ex::SaveTrace(rest.trim().to_string()),
-            // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
-            None => match parse_substitute(line, false) {
-                Some(spec) => Ex::Substitute(spec),
+        // `:lmap`/`:lunmap` (F-027), then `:trace save`, `:[range]s///`, `:[range]g//` — each returns
+        // `None`/falls through to the next so an unrecognised line lands on `Ex::Unknown`.
+        _ => {
+            if let Some(ex) = parse_lmap(line) {
+                ex
+            } else if let Some(rest) = line.strip_prefix("trace save") {
+                Ex::SaveTrace(rest.trim().to_string())
+            } else if let Some(spec) = parse_substitute(line, false) {
+                // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
+                Ex::Substitute(spec)
+            } else if let Some(spec) = parse_global(line) {
                 // `:[range]g/pat/cmd` (or `:g!` / `:v`).
-                None => match parse_global(line) {
-                    Some(spec) => Ex::Global(spec),
-                    None => Ex::Unknown(line.to_string()),
-                },
-            },
-        },
+                Ex::Global(spec)
+            } else {
+                Ex::Unknown(line.to_string())
+            }
+        }
     }
+}
+
+/// Parse `:lmap {lhs} {rhs}` / `:lunmap {lhs}` (F-027 Lang-Arg mappings). Returns `None` for any other
+/// line so [`parse_ex`] falls through. MVP is single-char lhs and rhs — a multi-key RHS is an RFC-0013
+/// follow-up. A verb must be followed by whitespace, so `:lmapx` stays `Unknown`, not `:lmap x`.
+fn parse_lmap(line: &str) -> Option<Ex> {
+    if let Some(rest) = line.strip_prefix("lunmap") {
+        if !rest.starts_with(char::is_whitespace) {
+            return None;
+        }
+        return single_char(rest.trim()).map(|lhs| Ex::Lunmap { lhs });
+    }
+    let rest = line.strip_prefix("lmap")?;
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let mut parts = rest.split_whitespace();
+    let lhs = single_char(parts.next()?)?;
+    let rhs = single_char(parts.next()?)?;
+    // Extra tokens are not the single-char MVP form.
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(Ex::Lmap { lhs, rhs })
+}
+
+/// The one `char` of `s`, or `None` if `s` is empty or holds more than one char.
+fn single_char(s: &str) -> Option<char> {
+    let mut cs = s.chars();
+    let c = cs.next()?;
+    cs.next().is_none().then_some(c)
 }
 
 #[cfg(test)]
@@ -1617,6 +1754,148 @@ mod tests {
         assert_eq!(feed("d2w"), Feed::Cmd(Command::Delete(2, Motion::WordFwd)));
         assert_eq!(feed("2dw"), Feed::Cmd(Command::Delete(2, Motion::WordFwd)));
         assert_eq!(feed("2d3w"), Feed::Cmd(Command::Delete(6, Motion::WordFwd)));
+    }
+
+    // --- F-027 Lang-Arg translation stage (D-048 / RFC-0013) ---------------------------------------
+
+    fn ctrl_caret() -> KeyEvent {
+        KeyEvent::new(KeyCode::Char('^'), KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn lang_stage_translates_in_insert_one_substitution() {
+        // Acceptance #1 + INV-FAIL-BOUNDED: a mapped key is rewritten exactly ONCE and dispatched
+        // literally. A cyclic map (a<->b) cannot loop — `a` becomes `b`, never re-translated back to `a`.
+        let mut e = InputEngine::new();
+        e.lang_map.insert('a', 'b');
+        e.lang_map.insert('b', 'a');
+        e.lang_active = true;
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('b'))
+        );
+        assert_eq!(
+            e.feed(k('b'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('a'))
+        );
+    }
+
+    #[test]
+    fn lang_stage_inert_outside_the_three_contexts() {
+        // Acceptance #2 ("and to nothing else"): Normal/Replace never translate — operators and motions
+        // are immune. Map `d`->`w`; in Normal `d` still ARMS the delete operator (Pending), it is NOT
+        // rewritten to the `w` motion.
+        let mut e = InputEngine::new();
+        e.lang_map.insert('d', 'w');
+        e.lang_active = true;
+        assert_eq!(
+            e.translate_lang(k('d'), Mode::Normal).code,
+            KeyCode::Char('d')
+        );
+        assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.translate_lang(k('d'), Mode::Replace).code,
+            KeyCode::Char('d')
+        );
+    }
+
+    #[test]
+    fn lang_stage_translates_single_char_argument() {
+        // Acceptance #2 (positive half): a command reading a single character (`f`/`r`) has its ARGUMENT
+        // translated, regardless of how the command was reached.
+        let mut e = InputEngine::new();
+        e.lang_map.insert('a', 'x');
+        e.lang_active = true;
+        // `f a` finds the TRANSLATED char `x`.
+        assert_eq!(e.feed(k('f'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), Mode::Normal),
+            Feed::Cmd(Command::Move(
+                1,
+                Motion::FindChar {
+                    ch: 'x',
+                    forward: true,
+                    till: false
+                }
+            ))
+        );
+        // `r a` replaces with the TRANSLATED char `x`.
+        assert_eq!(e.feed(k('r'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), Mode::Normal),
+            Feed::Cmd(Command::ReplaceChar(1, 'x'))
+        );
+    }
+
+    #[test]
+    fn lang_stage_off_by_default_and_toggled_by_ctrl_caret() {
+        // The map is inert until activated (so `:lmap`-defining keystrokes are never rewritten), and
+        // `i_CTRL-^` toggles it within Insert (RFC-0013).
+        let mut e = InputEngine::new();
+        e.lang_map.insert('a', 'б');
+        // Off by default: `a` inserts `a`.
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('a'))
+        );
+        // CTRL-^ activates (a silent, non-inserting toggle).
+        assert_eq!(e.feed(ctrl_caret(), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('б'))
+        );
+        // CTRL-^ again deactivates.
+        assert_eq!(e.feed(ctrl_caret(), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('a'))
+        );
+    }
+
+    #[test]
+    fn lang_stage_translates_on_the_command_line() {
+        // The Command-line namespace is Lang-Arg-eligible: a mapped key appends its TRANSLATION to the
+        // owned line buffer (F-026 owns the buffer; the stage rewrites the key before it lands there).
+        let mut e = InputEngine::new();
+        e.lang_map.insert('a', 'б');
+        e.lang_active = true;
+        assert_eq!(e.feed(k(':'), Mode::Normal), Feed::Pending); // opens the command line
+        let _ = e.feed(k('a'), Mode::Normal);
+        assert_eq!(e.cmdline.as_ref().map(|c| c.buffer.as_str()), Some("б"));
+    }
+
+    #[test]
+    fn lang_map_maintenance_methods() {
+        // `set_lang_mapping` / `clear_lang_mapping` (the `:lmap` / `:lunmap` back-ends).
+        let mut e = InputEngine::new();
+        e.set_lang_mapping('a', 'б');
+        e.lang_active = true;
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('б'))
+        );
+        e.clear_lang_mapping('a');
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('a'))
+        );
+    }
+
+    #[test]
+    fn parse_lmap_and_lunmap() {
+        assert_eq!(
+            parse_ex("lmap a б"),
+            Ex::Lmap {
+                lhs: 'a', rhs: 'б'
+            }
+        );
+        assert_eq!(parse_ex("lunmap a"), Ex::Lunmap { lhs: 'a' });
+        // A verb needs whitespace, both sides are single chars, and no trailing tokens — else Unknown.
+        assert!(matches!(parse_ex("lmapx"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("lmap a"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("lmap ab cd"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("lmap a b c"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("lunmapx"), Ex::Unknown(_)));
     }
 
     #[test]

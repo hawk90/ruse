@@ -438,11 +438,13 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             // A finished `:`-line (F-026): parse + run it. `submit_search` already folded a `/`-line
             // into `Feed::Cmd` inside the engine, so the frontend only sees the ex case here.
             Feed::ExecuteEx(text) => {
-                let ex = parse_ex(&text);
-                if matches!(ex, Ex::NoHighlight) {
-                    search_hl = None; // `:noh` clears the search highlight (F-009 #1)
-                } else {
-                    run_ex(
+                match parse_ex(&text) {
+                    Ex::NoHighlight => search_hl = None, // `:noh` clears the search highlight (F-009 #1)
+                    // Lang-Arg map maintenance (F-027): the map is engine state, so it is applied here
+                    // where `engine` is in scope, not in `run_ex` (which owns only workspace/file state).
+                    Ex::Lmap { lhs, rhs } => engine.set_lang_mapping(lhs, rhs),
+                    Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),
+                    ex => run_ex(
                         &ex,
                         &mut ws,
                         &path,
@@ -452,7 +454,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         &mut status,
                         &mut quit,
                         &mut confirm,
-                    );
+                    ),
                 }
             }
             Feed::Pending | Feed::Ignored => {}
@@ -614,6 +616,9 @@ fn run_ex(
         }
         // `:noh` is handled in the run loop (it clears the frontend's search highlight); never reaches here.
         Ex::NoHighlight => {}
+        // `:lmap`/`:lunmap` are handled in the run loop (they mutate engine-owned Lang-Arg state — the
+        // `engine` this fn does not borrow); never reach here.
+        Ex::Lmap { .. } | Ex::Lunmap { .. } => {}
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }

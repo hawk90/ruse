@@ -601,3 +601,31 @@ related:
 - **Consequence:** fixes C-EDITLANG's primitive STRUCTURE and unblocks `C-INPUT` (operator-pending) + `F-003`'s keymap router — `input.rs` may rewire operator-pending as a deferred change-intent that RESOLVES to a selection, never a flag. Because the change-intent (D-025) is retained unresolved, **Vim dot-repeat replays it** (re-runs the motion at the new cursor); that is not deferred. `D-EDITLANG-DOT-REPEAT` is therefore scoped to the **selection-first** repeat semantics only (last edit re-applied per current selection), which the Vim primitive does not need. **Count** has a home — it is part of the change-intent; only its cross-profile SEMANTICS (multiplier vs prefix-arg) stay `CONCEPT-COUNT-VS-PREFIX` (pending, profile-scoped), so D-047 fixes the count CHANNEL, not its interpretation. **Kind** (charwise/linewise/blockwise) lives on the Selection (D-025 `Range{kind}`), so register-type round-trips. `FAM-EDIT-SELECTION` verification and the Helix oracle remain open (`HOLE-SELECTION-BEHAVIOUR`).
 - **Re-evaluate if:** a built Helix oracle observes selection-first behavior the primitive cannot express without a phantom stage (it turns out NOT to contain both grammars); OR `CONCEPT-COUNT-VS-PREFIX` resolves toward a count/prefix input that is neither part of the change-intent nor the selection — a third dispatch channel the pair cannot carry.
 - Refs: D-025 (change-intent this primitive carries), D-027 (the Selection type), D-043, D-045, D-046, [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), [parity/contracts/vim-style.yaml](parity/contracts/vim-style.yaml), C-EDITLANG, C-INPUT, F-003, F-023, OBS-BARE-MOTION, OBS-SELECTION-PERSISTENCE.
+
+## D-048 — Lang-Arg is a pre-dispatch translation stage, not a resolution layer · decided
+- **Decision:** Vim's Lang-Arg (`lmap`, the 8th keymap namespace, `nvim.mapmode.lang`) is realised as a
+  **translation stage that runs BEFORE keymap resolution** (accepting RFC-0013), not as a layer in the
+  D-045 stack. When the active context is Lang-Arg-eligible — **Insert, Command-line, or a command
+  reading a single character** (`f`/`t`/`F`/`T`/`r`) — a decoded key is looked up in the active language
+  map; if it maps, the mapped key **replaces** the input and is dispatched **as literal input, exactly
+  once** (never re-translated). Everywhere else the stage is inert, so `d` stays `d` (acceptance #2). This
+  answers D-045's own re-evaluation trigger (KL-Q-LANG-ARG): a layer that TRANSLATES-and-yields would make
+  `resolve` non-total; a pre-dispatch stage keeps `resolve` **total** (it is a preprocessor that always
+  yields a concrete key, never a partial resolution) and the work **bounded** (INV-FAIL-BOUNDED: one
+  lookup, one substitution — a cyclic map `a→b`, `b→a` cannot loop because the RHS is literal). Terminal
+  IME composition is a **different, disjoint mechanism** (acceptance #3): it delivers composed TEXT on the
+  paste/IME no-keymap path, which never enters the stage — so a given unit of input is translated by AT
+  MOST ONE of {terminal IME, lmap}, never both. Runtime population is `:lmap`/`:lunmap`; `i_CTRL-^` toggles
+  the map (one boolean for MVP). `keymap.lang` is the persistent form (already in `config-schema`); no
+  config-file loader is built (none exists for any `keymap.*` key yet).
+- **Reason:** `C-INPUT`/F-027 promised the namespace but D-045 had no re-dispatch stage where a translation
+  layer could sit, and the terminal may already apply an IME — the tension recorded as CONCEPT-LANG-ARG
+  (`pending`, blocked F-027, the last MVP feature). Modelling it as a resolution layer that yields was
+  rejected precisely because it breaks totality and invites unbounded re-dispatch (the hazard D-045
+  flagged); a pre-dispatch stage contains the feature without touching the layer stack (`keymap.rs`
+  `resolve` is unchanged). Deferring to the terminal IME entirely was rejected because `lmap` is a targeted
+  parity namespace that works without any terminal IME (over SSH, in tests).
+- **Re-evaluate if:** a profile needs a multi-key RHS whose intermediate keys must themselves re-enter
+  resolution (not just be queued literally), or the per-context iminsert/imsearch model proves that one
+  global boolean is observably wrong — either would extend the stage, not overturn the pre-dispatch shape.
+- Refs: [../docs/rfc/proposed/RFC-0013-lang-arg-translation-stage.md](../docs/rfc/proposed/RFC-0013-lang-arg-translation-stage.md), D-045, D-046, [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), [parity/contracts/keymap-layers.yaml](parity/contracts/keymap-layers.yaml), INV-FAIL-BOUNDED, C-INPUT, F-027, nvim.mapmode.lang.

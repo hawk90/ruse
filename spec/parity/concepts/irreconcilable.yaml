@@ -118,8 +118,32 @@ concepts:
       The Lang namespace is targeted (product decision), yet ruse's input model has no re-dispatch
       stage where a translation layer could sit, and the terminal itself may already apply an IME.
       Promising the namespace without deciding the stage means the promise is unimplementable.
-    resolution: pending
+    resolution: unified
+    kernel_concept: >
+      A PRE-DISPATCH TRANSLATION STAGE (RFC-0013's INPUT-LANGXLATE): a single slot that rewrites a
+      decoded key BEFORE keymap resolution, active only in the three Lang-Arg contexts, applying exactly
+      one substitution then dispatching the result literally. Both upstream surfaces map onto this one
+      slot: Vim's `lmap` IS the stage (ruse sources it from `keymap.lang`), and the Emacs-style input
+      method occupies the SAME pre-dispatch slot but is served by the terminal IME on a disjoint
+      no-keymap path (composed TEXT never enters the stage), so the two never double-apply. The layer
+      router (D-045) is untouched — the stage is a preprocessor, not a resolution layer, which is what
+      keeps `resolve` total and answers KL-Q-LANG-ARG.
+    decided_by: D-048
     blocks: [C-INPUT]
+    contract: contracts/keymap-layers.yaml
+    refs:
+      - nvim.mapmode.lang
+      - contracts/vim-style.yaml#namespaces.lang_arg
+      - D-045                          # the layer router whose re-eval trigger this closes
+      - D-048
+    note: >
+      Filed here despite `resolution: unified` on purpose, like CONCEPT-KEYMAP-DISPATCH: the risk this
+      entry tracked was not a two-grammar conflict but that the namespace might be UNIMPLEMENTABLE on the
+      layer router (a translate-and-yield layer makes resolution non-total — D-045's own re-evaluation
+      trigger, KL-Q-LANG-ARG). D-048 resolves it by moving translation OUT of the stack into a bounded
+      pre-dispatch stage, so the router stays total. The Emacs-input-method side is not projected onto
+      `lmap`; it is served disjointly by the terminal IME — recorded honestly as the "same slot, different
+      source" split rather than a single projected surface.
 
   CONCEPT-KEYMAP-DISPATCH:
     title: Vim namespaces are disjoint and state-selected; Emacs keymaps are a layered buffer-selected stack
