@@ -1095,6 +1095,15 @@ fn search_bwd(
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     let b = st.bytes();
     let cur = st.view.cursor;
+    // Undo/redo restore DOCUMENT state, not mode. The engine only reaches them from Normal or from
+    // Insert via `i_CTRL-O` (Vim's `u` in Visual is not an undo), so preserving Insert makes
+    // `i_CTRL-O u` return to Insert — the one-shot's resume (KL-OBL-5) — while everything else
+    // collapses to Normal exactly as before.
+    let undo_resume_mode = if st.view.mode == Mode::Insert {
+        Mode::Insert
+    } else {
+        Mode::Normal
+    };
     let nop = |cursor: usize, mode: Mode| Plan {
         action: Action::Nop,
         cursor,
@@ -1890,7 +1899,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Undo => Plan {
             action: Action::Undo,
             cursor: cur,
-            mode: Mode::Normal,
+            mode: undo_resume_mode,
             is_edit: false,
             effects: Vec::new(),
             set_register: None,
@@ -1899,7 +1908,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Redo => Plan {
             action: Action::Redo,
             cursor: cur,
-            mode: Mode::Normal,
+            mode: undo_resume_mode,
             is_edit: false,
             effects: Vec::new(),
             set_register: None,
@@ -1908,7 +1917,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::UndoOlder => Plan {
             action: Action::UndoChrono { older: true },
             cursor: cur,
-            mode: Mode::Normal,
+            mode: undo_resume_mode,
             is_edit: false,
             effects: Vec::new(),
             set_register: None,
@@ -1917,7 +1926,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::UndoNewer => Plan {
             action: Action::UndoChrono { older: false },
             cursor: cur,
-            mode: Mode::Normal,
+            mode: undo_resume_mode,
             is_edit: false,
             effects: Vec::new(),
             set_register: None,
@@ -3308,6 +3317,40 @@ mod insert_entry_tests {
         let st = run("ab\ncd", &[Command::OpenBelow, Command::InsertChar('X')]);
         assert_eq!(text(&st), "ab\nX\ncd");
         assert_eq!(st.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn undo_via_insert_one_shot_returns_to_insert() {
+        // `i_CTRL-O u`: the engine borrows Undo through the Insert one-shot (KL-OBL-5). Undo restores
+        // the document but must NOT drop out of Insert — it is only reachable from Insert via that
+        // one-shot (Vim's `u` in Insert is literal text), so undo/redo preserve Insert rather than
+        // hardcoding Normal. Regression for the session-fuzzer finding on `i h CTRL-O u`.
+        let st = run(
+            "",
+            &[
+                Command::EnterInsert,
+                Command::InsertChar('h'),
+                Command::Undo, // stands in for the one-shot-borrowed `u`
+            ],
+        );
+        assert_eq!(text(&st), "", "undo removes the inserted char");
+        assert_eq!(
+            st.mode(),
+            Mode::Insert,
+            "i_CTRL-O u must resume Insert, not fall to Normal"
+        );
+    }
+
+    #[test]
+    fn undo_from_normal_stays_in_normal() {
+        // The other side of the fix: a plain Normal-mode undo must still land in Normal.
+        let st = run("x", &[Command::DeleteUnder(1), Command::Undo]);
+        assert_eq!(text(&st), "x", "undo restores the deleted char");
+        assert_eq!(
+            st.mode(),
+            Mode::Normal,
+            "a Normal-mode undo stays in Normal"
+        );
     }
 
     #[test]
