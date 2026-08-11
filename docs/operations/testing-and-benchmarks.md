@@ -127,6 +127,23 @@ residual cost at 10k+ lines; threading the actual edit deltas from the core `com
 it O(edit). Injections / folds / indent / multi-language (F-015 #4) are still unbuilt, so F-015 stays
 `planned` — only the parse path (#3) is done.
 
+#### hlsearch spans cached (F-009) — measured, not assumed
+
+The hlsearch/incsearch highlight ran a full-buffer Vim regex (compile + `find_all`) every frame while a
+search was active. `CachedSearch` keys it on `(revision, viewport, pattern)` (`search_hl` bench):
+
+| N (lines) | `full_buffer` (old, per frame) | `cached_hit` (idle frame) | `cached_miss` (scroll/edit) |
+| --- | --- | --- | --- |
+| 1 000 | 37 µs | 4.3 ns | 2.1 µs |
+| 10 000 | 351 µs | 4.3 ns | 2.4 µs |
+| 100 000 | 3.35 ms | — | 2.3 µs |
+
+**Honest read:** the regex is far cheaper than a tree-sitter parse (37 µs vs 7.5 ms at 1k), so at
+daily-driver sizes the old cost was minor (~0.2 % of a frame) — the "same severe class as the highlighter"
+framing was an over-claim corrected by measuring. The real wins are (1) **idle frames** — cursor motion /
+mode switches now cost 4.3 ns instead of a full regex, and (2) **large files** — the viewport-bounded miss
+is ~2.3 µs *regardless of buffer size* vs the old O(n) 3.35 ms at 100k lines. Measure before claiming.
+
 ---
 
 ## 1. Test taxonomy — the layers and their formats
