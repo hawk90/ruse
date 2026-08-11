@@ -248,6 +248,9 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         Some("rs") => highlight::CachedHighlight::rust(),
         _ => None,
     };
+    // hlsearch/incsearch match spans, cached on (revision, viewport, pattern) like the syntax highlighter
+    // — no full-buffer regex per frame (F-009 #1).
+    let mut cached_search = highlight::CachedSearch::default();
 
     let guard = TermGuard::enter()?;
     let mut out = io::stdout();
@@ -350,10 +353,11 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         };
         let spans: &[highlight::Span] = highlighter
             .as_mut()
-            .map(|h| h.spans(revision, &snapshot, visible))
+            .map(|h| h.spans(revision, &snapshot, visible.clone()))
             .unwrap_or(&[]);
         // The focused pane's extra reverse-video highlights: a `:s///c` confirm match, else the
-        // incsearch pattern being typed in `/`…`?`, else the last search (hlsearch) — F-009 #1.
+        // incsearch pattern being typed in `/`…`?`, else the last search (hlsearch) — F-009 #1. The
+        // search matches are viewport-cached (CachedSearch), not a per-frame full-buffer regex.
         let focus_hl: Vec<(usize, usize)> = if let Some(c) = &confirm {
             c.subs
                 .get(c.idx)
@@ -367,7 +371,11 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 _ => search_hl.clone(),
             };
             active
-                .map(|p| search_highlights(&p, &snapshot))
+                .map(|p| {
+                    cached_search
+                        .spans(revision, &snapshot, visible.clone(), &p)
+                        .to_vec()
+                })
                 .unwrap_or_default()
         };
         // The palette (F-004 #2), when open, owns the command line (its query, prefixed `>`) and paints
@@ -1020,19 +1028,6 @@ fn search_pattern(cmd: &Command) -> Option<String> {
 /// All matches of `pattern` in `bytes` as byte spans, for the incsearch/hlsearch reverse-video
 /// highlight (F-009 #1). Uses the default search options (case-sensitive magic — the search default);
 /// an unrepresentable/malformed pattern or a non-UTF-8 buffer highlights nothing (never an error path).
-fn search_highlights(pattern: &str, bytes: &[u8]) -> Vec<(usize, usize)> {
-    let Ok(hay) = std::str::from_utf8(bytes) else {
-        return Vec::new();
-    };
-    let Ok(re) = ruse_core::Regex::compile(pattern, ruse_core::RegexOptions::default()) else {
-        return Vec::new();
-    };
-    re.find_all(hay)
-        .into_iter()
-        .map(|m| (m.start, m.end))
-        .collect()
-}
-
 #[allow(clippy::too_many_arguments)] // the frame render legitimately needs the full view context
 fn render(
     out: &mut io::Stdout,
@@ -1278,16 +1273,6 @@ fn row_col(bytes: &[u8], pos: usize) -> (usize, usize) {
 mod render_tests {
     use super::*;
     use crossterm::style::Color;
-
-    /// F-009 #1: the hlsearch/incsearch highlight computes every match span of the pattern (Vim regex).
-    #[test]
-    fn search_highlights_all_matches() {
-        assert_eq!(search_highlights("a", b"a b a"), vec![(0, 1), (4, 5)]);
-        // Magic quantifier, not literal.
-        assert_eq!(search_highlights("a\\+", b"aa b aaa"), vec![(0, 2), (5, 8)]);
-        // An unrepresentable/invalid pattern highlights nothing (never errors).
-        assert!(search_highlights("\\1", b"abc").is_empty());
-    }
 
     /// F-009 #1: a search command carries its pattern for hlsearch; other commands do not.
     #[test]

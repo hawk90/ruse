@@ -7,7 +7,7 @@
 //! which is D-042's stated trigger for incremental parsing.
 
 use crossterm::style::Color;
-use ruse_core::Revision;
+use ruse_core::{Regex, RegexOptions, Revision};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{InputEdit, Parser, Point, Query, QueryCursor, Tree};
 
@@ -161,6 +161,57 @@ fn point_at(src: &[u8], byte: usize) -> Point {
     }
 }
 
+/// Cached hlsearch / incsearch match spans for the focused pane (F-009 #1). Same shape as
+/// [`CachedHighlight`]: keyed on `(revision, viewport, pattern)`, so an unchanged frame — cursor motion,
+/// a mode switch — does no work, and a scroll or a new revision recomputes only the VISIBLE byte range
+/// rather than re-running a full-buffer regex every frame. The Vim regex is compiled only when the
+/// pattern changes (incsearch re-types the pattern each keystroke; hlsearch holds it fixed).
+#[derive(Default)]
+pub struct CachedSearch {
+    key: Option<(Revision, std::ops::Range<usize>, String)>,
+    compiled: Option<(String, Regex)>,
+    spans: Vec<(usize, usize)>,
+}
+
+impl CachedSearch {
+    /// Match spans of `pattern` within the `visible` byte range of `bytes` at `rev`. Empty on an
+    /// unmatchable pattern (highlighting is best-effort). Spans are in absolute buffer byte offsets.
+    pub fn spans(
+        &mut self,
+        rev: Revision,
+        bytes: &[u8],
+        visible: std::ops::Range<usize>,
+        pattern: &str,
+    ) -> &[(usize, usize)] {
+        if self
+            .key
+            .as_ref()
+            .is_some_and(|(r, v, p)| *r == rev && *v == visible && p == pattern)
+        {
+            return &self.spans;
+        }
+        // Recompile only when the pattern itself changed (a scroll or an edit keeps the same regex).
+        if self.compiled.as_ref().is_none_or(|(p, _)| p != pattern) {
+            self.compiled = Regex::compile(pattern, RegexOptions::default())
+                .ok()
+                .map(|re| (pattern.to_string(), re));
+        }
+        self.spans.clear();
+        let vis = visible.start.min(bytes.len())..visible.end.min(bytes.len());
+        if let Some((_, re)) = &self.compiled {
+            // The viewport range is line-aligned (see `nth_line_start`), so a match on any visible line
+            // is fully inside it — searching the slice and offsetting is complete for what render paints.
+            if let Ok(hay) = std::str::from_utf8(&bytes[vis.clone()]) {
+                for m in re.find_all(hay) {
+                    self.spans.push((vis.start + m.start, vis.start + m.end));
+                }
+            }
+        }
+        self.key = Some((rev, visible, pattern.to_string()));
+        &self.spans
+    }
+}
+
 fn color_for(name: &str) -> Color {
     match name.split('.').next().unwrap_or(name) {
         "keyword" => Color::Magenta,
@@ -249,6 +300,36 @@ mod tests {
                 .any(|s| s.start == 10 && s.color == Color::Magenta),
             "the visible line's `fn` keyword is colored"
         );
+    }
+
+    #[test]
+    fn cached_search_matches_and_bounds_to_viewport() {
+        let mut s = CachedSearch::default();
+        let bytes = b"a b a";
+        // Full range: every match (Vim-magic regex).
+        assert_eq!(
+            s.spans(Revision(0), bytes, 0..bytes.len(), "a"),
+            &[(0, 1), (4, 5)]
+        );
+        // Magic quantifier, not literal.
+        assert_eq!(
+            s.spans(Revision(1), b"aa b aaa", 0..8, "a\\+"),
+            &[(0, 2), (5, 8)]
+        );
+        // An unrepresentable/invalid pattern highlights nothing (never errors).
+        assert!(s.spans(Revision(2), b"abc", 0..3, "\\1").is_empty());
+        // Viewport bound: the first line's match is excluded when only the second line is visible.
+        let two = b"a\na\n";
+        assert_eq!(s.spans(Revision(3), two, 2..4, "a"), &[(2, 3)]);
+    }
+
+    #[test]
+    fn cached_search_reuses_on_unchanged_key() {
+        // Same (revision, viewport, pattern) but different bytes → a cache hit returns the stale spans.
+        let mut s = CachedSearch::default();
+        let n = s.spans(Revision(0), b"a a", 0..3, "a").len();
+        let stale = s.spans(Revision(0), b"zzzzz", 0..3, "a").len();
+        assert_eq!(stale, n, "an unchanged key does not re-search");
     }
 
     #[test]
