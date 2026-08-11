@@ -39,3 +39,7 @@ serde_json = "1"
 [[bench]]
 name = "highlight_parse"
 harness = false
+
+[[bench]]
+name = "input_dispatch"
+harness = false

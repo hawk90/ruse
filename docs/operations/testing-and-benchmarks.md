@@ -144,6 +144,33 @@ framing was an over-claim corrected by measuring. The real wins are (1) **idle f
 mode switches now cost 4.3 ns instead of a full regex, and (2) **large files** — the viewport-bounded miss
 is ~2.3 µs *regardless of buffer size* vs the old O(n) 3.35 ms at 100k lines. Measure before claiming.
 
+#### Every other perf claim, re-measured (`line_math`, `input_dispatch`, `edit_apply`)
+
+Auditing my own claims with benches rather than analogy:
+
+- **Refactor perf-neutrality (`edit_apply`, post-decomposition):** 581 ns / 10.1 µs / 25.7 µs at
+  100 / 1k / 10k lines — unchanged from before `plan()`/`commit` were decomposed and before the DRY
+  line-math extraction. The refactors are perf-neutral (Rust inlines the extracted free fns/methods).
+  `edit_apply` also covers the `anchor_index` rebuild, so that eager-rebuild is measured here too.
+- **Input dispatch (`input_dispatch`):** a 9-key Normal sequence is ~1.34 µs (~150 ns/key). feed_impl's
+  decomposition is negligible, and dispatch is human-rate (once per keystroke, never per frame) anyway.
+- **Line math (`line_math`) — a claim that was only PARTLY right.** `line_of`/`line_start` (what `row_col`
+  runs, once per pane per frame) and `nth_line_start` (the viewport range):
+
+  | N (lines) | `line_of` (cursor at end) | `nth_line_start` (last line) |
+  | --- | --- | --- |
+  | 1 000 | 6.6 µs | — |
+  | 10 000 | 61 µs | — |
+  | 100 000 | 623 µs | 2.13 ms |
+
+  "O(pos), fine at daily sizes" is TRUE at ≤10k lines (≤61 µs) but FALSE at 100k: `row_col` is ~0.6–1.2 ms
+  and the viewport's `nth_line_start` is ~2.1 ms — and the F-015 viewport work calls `nth_line_start`
+  **twice per pane per frame** (vis-start + vis-end), so a 100k-line buffer scrolled near the bottom pays
+  several ms/frame just to compute the viewport range. Irony noted: the syntax query is viewport-bounded,
+  but the viewport COMPUTATION is O(n). This is exactly D-042's deferred **(D) incremental line index** —
+  now measurement-justified for large-file support, still correctly deferred if the target stays
+  daily-driver sizes (≤10k = fine). The line index is the next real perf lever, not storage.
+
 ---
 
 ## 1. Test taxonomy — the layers and their formats
