@@ -515,6 +515,68 @@ pub struct InputEngine {
     /// One boolean for MVP (RFC-0013); the per-context iminsert/imsearch model is a follow-up. `false`
     /// by default so a configured map never silently rewrites the command line you type to define it.
     lang_active: bool,
+    /// The Emacs prefix argument being read (F-012 / D-049): `Some` while `C-u`/digits accumulate an
+    /// argument that the NEXT command consumes. `None` in steady state and always `None` under the Vim
+    /// profile (that profile folds the count into its own grammar). The value is held OPAQUE — each
+    /// command decides how to fold it (motions multiply); this is the raw channel D-049 resolved.
+    emacs_arg: Option<EmacsArg>,
+}
+
+/// An Emacs prefix argument mid-read (F-012 / D-049). `C-u` seeds it (default 4); a further `C-u`
+/// multiplies by four; a digit turns it into an explicit decimal count. The engine hands the finished
+/// value to the next command OPAQUELY — Vim would fold an equivalent count as a motion multiplier, Emacs
+/// lets each command interpret it (motions multiply, `C-u C-SPC` would pop a mark, etc.).
+#[derive(Clone, Copy)]
+struct EmacsArg {
+    /// The accumulated numeric value.
+    value: i32,
+    /// True once an explicit digit was typed: later digits append decimally rather than re-seeding, and a
+    /// following `C-u` stops multiplying (the digits ARE the literal count the user asked for).
+    has_digits: bool,
+}
+
+impl EmacsArg {
+    /// A bare `C-u` — the universal argument's default value of four.
+    fn ctrl_u() -> EmacsArg {
+        EmacsArg {
+            value: 4,
+            has_digits: false,
+        }
+    }
+
+    /// Another `C-u` while no digit has been typed multiplies the running value by four (`C-u C-u` = 16).
+    fn times_four(self) -> EmacsArg {
+        if self.has_digits {
+            self
+        } else {
+            EmacsArg {
+                value: self.value.saturating_mul(4),
+                has_digits: false,
+            }
+        }
+    }
+
+    /// A digit `0`–`9`: the first replaces the `C-u` seed, later ones append decimally (`C-u 3 7` = 37).
+    fn push_digit(self, d: u32) -> EmacsArg {
+        let d = d as i32;
+        if self.has_digits {
+            EmacsArg {
+                value: self.value.saturating_mul(10).saturating_add(d),
+                has_digits: true,
+            }
+        } else {
+            EmacsArg {
+                value: d,
+                has_digits: true,
+            }
+        }
+    }
+
+    /// The count a multiplicative command (a motion) should use — clamped non-negative (negative args are
+    /// not read yet; a `count` consumer never wants a negative repeat).
+    fn count(self) -> u32 {
+        self.value.max(0) as u32
+    }
 }
 
 /// The command-line namespace's owned state (F-026 acceptance #2): a prefix, a line buffer, and a
@@ -530,6 +592,16 @@ struct CmdLine {
     cursor: usize,
     /// `gQ` Ex mode: `<CR>` executes AND re-opens the line; `:visual`/`:vi`/empty exits.
     ex_mode: bool,
+}
+
+/// Fold an Emacs prefix count into a directional motion: `count == 1` keeps the grapheme-aware bare command
+/// (the no-argument path stays byte-identical to the seam), a larger count issues the counted `Move`.
+fn move_by(count: u32, motion: Motion, bare: Command) -> Command {
+    if count == 1 {
+        bare
+    } else {
+        Command::Move(count, motion)
+    }
 }
 
 /// A short human label for a key, for the palette's binding column (F-004 #2).
@@ -573,6 +645,7 @@ impl InputEngine {
             cmdline: None,
             lang_map: HashMap::new(),
             lang_active: false,
+            emacs_arg: None,
         }
     }
 
@@ -904,28 +977,55 @@ impl InputEngine {
     }
 
     /// The Emacs profile's dispatch (F-012, minimal slice). Non-modal: the global-map's `C-` motions
-    /// resolve to commands; an unmodified printable key inserts literally. This is the seam — the nine-tier
-    /// stack, the `C-x` prefix maps, the prefix argument, the kill ring and the mark ring layer on from
-    /// here (RFC-0014 / D-049). Motions work while the buffer stays editable because a `Move*` command
-    /// keeps the current mode and only moves the cursor, so "move + insert in one state" needs no new mode.
+    /// resolve to commands; an unmodified printable key inserts literally. A `C-u`/digit prefix argument
+    /// (D-049) accumulates ahead of the command it modifies. This is the seam — the nine-tier stack, the
+    /// `C-x` prefix maps, the kill ring and the mark ring layer on from here (RFC-0014). Motions work while
+    /// the buffer stays editable because a `Move*` command keeps the current mode and only moves the cursor,
+    /// so "move + insert in one state" needs no new mode.
     fn feed_emacs(&mut self, key: KeyEvent) -> Feed {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // `C-u` (universal argument): seed the prefix argument, or multiply an in-progress one by four.
+        // It never completes a command — it always leaves the argument pending for the next key.
+        if ctrl && key.code == KeyCode::Char('u') {
+            self.emacs_arg = Some(match self.emacs_arg {
+                Some(arg) => arg.times_four(),
+                None => EmacsArg::ctrl_u(),
+            });
+            return Feed::Pending;
+        }
+        // While an argument is being read, an unmodified digit extends it (an explicit numeric count) rather
+        // than self-inserting. Only when an argument is already pending — a bare digit is ordinary text.
+        if self.emacs_arg.is_some() && !ctrl {
+            if let KeyCode::Char(d @ '0'..='9') = key.code {
+                let arg = self.emacs_arg.unwrap_or_else(EmacsArg::ctrl_u);
+                self.emacs_arg = Some(arg.push_digit(d as u32 - '0' as u32));
+                return Feed::Pending;
+            }
+        }
+        // Any other key completes the argument: take the accumulated count (default 1) and let this command
+        // fold it in. Motions multiply; a self-insert repeats. An unbound key discards the argument (a beep).
+        let count = self.emacs_arg.take().map(EmacsArg::count).unwrap_or(1);
         if ctrl {
-            // global-map core motions (emacs.keymaptier.09.global-map).
+            // global-map core motions (emacs.keymaptier.09.global-map). Directional motions honour the
+            // count as a multiplier; `C-a`/`C-e` (line ends) ignore it in this slice. `count == 1` keeps the
+            // grapheme-aware bare `Move*` so the no-argument path is byte-identical to the seam (#139).
             let cmd = match key.code {
-                KeyCode::Char('f') => Command::MoveRight,
-                KeyCode::Char('b') => Command::MoveLeft,
-                KeyCode::Char('n') => Command::MoveDown,
-                KeyCode::Char('p') => Command::MoveUp,
+                KeyCode::Char('f') => move_by(count, Motion::Right, Command::MoveRight),
+                KeyCode::Char('b') => move_by(count, Motion::Left, Command::MoveLeft),
+                KeyCode::Char('n') => move_by(count, Motion::Down, Command::MoveDown),
+                KeyCode::Char('p') => move_by(count, Motion::Up, Command::MoveUp),
                 KeyCode::Char('a') => Command::MoveLineStart,
                 KeyCode::Char('e') => Command::MoveLineEnd,
                 _ => return Feed::Ignored,
             };
             return Feed::Cmd(cmd);
         }
-        // An unmodified printable key is self-inserting text; anything else is unbound (inert) for now.
+        // An unmodified printable key is self-inserting text; with an argument it repeats `count` times (Emacs
+        // `C-u 3 a` → "aaa"). Replay carries the ordered list — the Emacs path never records, so it is a pure
+        // "apply each in turn" here, not dot-repeat.
         match key.code {
-            KeyCode::Char(c) => Feed::Cmd(Command::InsertChar(c)),
+            KeyCode::Char(c) if count == 1 => Feed::Cmd(Command::InsertChar(c)),
+            KeyCode::Char(c) => Feed::Replay(vec![Command::InsertChar(c); count as usize]),
             _ => Feed::Ignored,
         }
     }
