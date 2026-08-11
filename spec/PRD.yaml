@@ -619,15 +619,15 @@ features:
       # EMACS-KEYMAP-2 (runtime-layered keymap resolution) is superseded by the nine keymap_tier census
       # ids below — they ARE the stack contracts/keymap-layers.yaml#profiles.emacs-style installs
       # (depth 9, unsealed, buffer-selected). D-043 burn-down.
+      # The keymap SHAPE is backed by the nine keymap_tier census ids (namespace-id backing, F-024 pattern);
+      # the kill-ring / prefix-arg / mark-ring / motions are decided architecture (D-026/D-049/D-027) or
+      # ecosystem, so the 24 legacy EMACS-* are backlogged (spec/parity-backlog.yaml), NOT enumerated onto
+      # the 2083-item emacs.key.* surface (that would trip the whole-surface lock). D-043 burn-down (#138).
       parity: [emacs.keymaptier.01.overriding-terminal-local-map, emacs.keymaptier.02.overriding-local-map,
                emacs.keymaptier.03.keymap, emacs.keymaptier.04.emulation-mode-map-alists,
                emacs.keymaptier.05.minor-mode-overriding-map-alist, emacs.keymaptier.06.minor-mode-map-alist,
                emacs.keymaptier.07.local-map, emacs.keymaptier.08.current-local-map,
-               emacs.keymaptier.09.global-map,
-               EMACS-KEYMAP-1, EMACS-CMD-1, EMACS-REGION-1, EMACS-KILL-1, EMACS-KILL-2, EMACS-ARG-1,
-               EMACS-MODE-1, EMACS-MODE-2, EMACS-ARG-2, EMACS-EDIT-3, EMACS-EDIT-4, EMACS-EDIT-5,
-               EMACS-KEYMAP-3, EMACS-KILL-3, EMACS-KILL-4, EMACS-MACRO-1, EMACS-MACRO-2, EMACS-MACRO-3,
-               EMACS-MODE-3, EMACS-REGION-2, EMACS-REGION-3, EMACS-TRANSIENT-1, EMACS-VAR-1, EMACS-VAR-2]
+               emacs.keymaptier.09.global-map]
       design: [../docs/design/editing-language.md, ../docs/design/register-model.md, ../docs/design/positions-history.md]
       verify: [../tests/parity/emacs/kill-ring.yaml, ../tests/parity/emacs/prefix-keys.yaml, ../tests/parity/emacs/universal-arg.yaml]
     acceptance:
