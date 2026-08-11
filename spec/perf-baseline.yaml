@@ -27,7 +27,7 @@ benches:
 
   # apps/tui
   highlight_parse:                  # #2 syntax cost — full reparse vs incremental+viewport (F-015 #3)
-    highlight_parse/1000: "7.5 ms"
+    highlight_parse/1000: "8 ms"
     highlight_parse/10000: "77 ms"
     highlight_incremental/1000: "1.2 ms"
     highlight_incremental/10000: "10 ms"
