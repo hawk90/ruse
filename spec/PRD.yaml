@@ -612,6 +612,12 @@ features:
     title: Emacs input profile
     stage: post-mvp
     priority: should
+    # progress (#139): the profile SEAM is in — InputProfile{Vim,Emacs} on the engine; `feed` branches to
+    # the non-modal `feed_emacs` BEFORE any Vim modal handling (Emacs has no Normal/Insert grammar). Minimal
+    # global-map: C-f/C-b/C-n/C-p/C-a/C-e motions + self-insert; `d` is literal, not the Vim operator.
+    # `RUSE_PROFILE=emacs` selects it (no config loader yet). Motions work in one state because Move* keeps
+    # the mode. REMAINING: 9-tier stack, C-x/C-c prefix maps, prefix-arg channel (D-049), kill-ring view
+    # (D-026), mark-ring (D-027), M-x (C-COMMAND). Stays `planned` — this is the seam, not the profile.
     status: planned
     depends_on: [C-INPUT, C-COMMAND, C-POSHIST]
     summary: Prefix keys, M-x, mark/region, kill ring, universal argument, major/minor modes.

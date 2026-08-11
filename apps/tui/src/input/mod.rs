@@ -456,10 +456,23 @@ struct InsertState {
     ctrl_g: bool,
 }
 
+/// The active input profile (F-012 / RFC-0014). Vim is a MODAL grammar (Normal/Insert/Visual, operator-
+/// pending); Emacs is NON-MODAL (always editable, `C-` bindings are commands). The two dispatch
+/// differently, so `feed` branches on this before any modal handling — they are not two keymaps over one
+/// state machine. `input.profile` (config-schema) selects it; no config loader exists yet, so it is set at
+/// construction (`InputEngine::new` = Vim, `::emacs` = Emacs).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InputProfile {
+    Vim,
+    Emacs,
+}
+
 /// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
 /// and the one-shot `awaiting` key-expectation — plus sticky repeat state. `feed` resolves them in a fixed
 /// precedence (mode → awaiting tier → base keys), so the hierarchy is explicit, not encoded in field order.
 pub struct InputEngine {
+    /// Which input profile is active — Vim (modal grammar) or Emacs (non-modal). Chosen at construction.
+    input_profile: InputProfile,
     /// The active profile's layers. Built once — resolution must not allocate per keystroke.
     profile: VimProfile,
     /// The Normal-family grammar layer's owned transient state (count / operator / awaiting / forced
@@ -534,7 +547,19 @@ fn key_label(code: KeyCode) -> String {
 impl InputEngine {
     #[must_use]
     pub fn new() -> InputEngine {
+        Self::with_profile(InputProfile::Vim)
+    }
+
+    /// An Emacs-profile engine (F-012). Same state; `feed` takes the non-modal Emacs path.
+    #[must_use]
+    pub fn emacs() -> InputEngine {
+        Self::with_profile(InputProfile::Emacs)
+    }
+
+    #[must_use]
+    fn with_profile(input_profile: InputProfile) -> InputEngine {
         InputEngine {
+            input_profile,
             profile: VimProfile::new(),
             normal: NormalState::default(),
             last_find: None,
@@ -862,6 +887,12 @@ impl InputEngine {
         // before ANY dispatch, in the three Lang-Arg contexts only. One substitution, then literal —
         // the translated key flows through normal dispatch and never re-enters this stage.
         let key = self.translate_lang(key, mode);
+        // Emacs is NON-MODAL: no Normal/Insert grammar, no operator-pending, no dot-repeat recorder — a
+        // key is either a `C-`/`M-` command or literal text. So it takes its own dispatch, never the Vim
+        // modal path below (F-012 / RFC-0014).
+        if self.input_profile == InputProfile::Emacs {
+            return self.feed_emacs(key);
+        }
         // The command-line namespace owns the keystream while open (F-026); its typing is not a
         // dot-repeatable change, so it bypasses the recorder.
         if self.cmdline.is_some() {
@@ -870,6 +901,33 @@ impl InputEngine {
         let out = self.feed_impl(key, mode);
         self.record(&out, mode);
         out
+    }
+
+    /// The Emacs profile's dispatch (F-012, minimal slice). Non-modal: the global-map's `C-` motions
+    /// resolve to commands; an unmodified printable key inserts literally. This is the seam — the nine-tier
+    /// stack, the `C-x` prefix maps, the prefix argument, the kill ring and the mark ring layer on from
+    /// here (RFC-0014 / D-049). Motions work while the buffer stays editable because a `Move*` command
+    /// keeps the current mode and only moves the cursor, so "move + insert in one state" needs no new mode.
+    fn feed_emacs(&mut self, key: KeyEvent) -> Feed {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if ctrl {
+            // global-map core motions (emacs.keymaptier.09.global-map).
+            let cmd = match key.code {
+                KeyCode::Char('f') => Command::MoveRight,
+                KeyCode::Char('b') => Command::MoveLeft,
+                KeyCode::Char('n') => Command::MoveDown,
+                KeyCode::Char('p') => Command::MoveUp,
+                KeyCode::Char('a') => Command::MoveLineStart,
+                KeyCode::Char('e') => Command::MoveLineEnd,
+                _ => return Feed::Ignored,
+            };
+            return Feed::Cmd(cmd);
+        }
+        // An unmodified printable key is self-inserting text; anything else is unbound (inert) for now.
+        match key.code {
+            KeyCode::Char(c) => Feed::Cmd(Command::InsertChar(c)),
+            _ => Feed::Ignored,
+        }
     }
 
     /// Fold a just-produced outcome into the dot-repeat record. In Insert mode, extend the in-flight change
