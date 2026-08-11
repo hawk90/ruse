@@ -16,6 +16,7 @@
 mod caps;
 mod highlight;
 mod input;
+mod line_index;
 mod log;
 mod persist;
 mod recover;
@@ -251,6 +252,9 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // hlsearch/incsearch match spans, cached on (revision, viewport, pattern) like the syntax highlighter
     // — no full-buffer regex per frame (F-009 #1).
     let mut cached_search = highlight::CachedSearch::default();
+    // Revision-cached line index: O(log n) row/line lookups instead of an O(buffer) newline scan per
+    // pane per frame (D-042 win D).
+    let mut line_idx = line_index::LineIndex::default();
 
     let guard = TermGuard::enter()?;
     let mut out = io::stdout();
@@ -300,6 +304,9 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 f.doc.bytes().to_vec(),
             )
         };
+        // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
+        // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
+        line_idx.refresh(revision, &snapshot);
         // Keep the in-memory snapshot current so a core panic can rescue unsaved work (§6/§8).
         recover::update(path.as_ref(), &snapshot, modified);
         // And throttle an append-only journal frame so a hard kill (not just a panic) loses at most
@@ -325,7 +332,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         for (i, rect) in rects.iter().enumerate() {
             let (cursor_row, cur_top) = {
                 let p = ws.pane(i);
-                (row_col(p.doc.bytes(), p.view.cursor()).0, p.view.top())
+                (line_idx.line_of(p.view.cursor()), p.view.top())
             };
             let new_top = viewport::scroll_top(cursor_row, rect.h as usize, SCROLLOFF, cur_top);
             ws.set_top(i, new_top);
@@ -340,11 +347,8 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             if p.view.doc() != focus_doc {
                 continue;
             }
-            vis_start = vis_start.min(ruse_core::pos::nth_line_start(&snapshot, p.view.top()));
-            vis_end = vis_end.max(ruse_core::pos::nth_line_start(
-                &snapshot,
-                p.view.top() + rect.h as usize + 1,
-            ));
+            vis_start = vis_start.min(line_idx.nth_line_start(p.view.top()));
+            vis_end = vis_end.max(line_idx.nth_line_start(p.view.top() + rect.h as usize + 1));
         }
         let visible = if vis_start <= vis_end {
             vis_start..vis_end
@@ -1255,18 +1259,6 @@ fn cursor_cell(bytes: &[u8], pos: usize, top: usize) -> (u16, u16) {
         }
     }
     (row.saturating_sub(top) as u16, col)
-}
-
-/// (row, col) of a byte offset — row = newlines before it, col = char count since the line start.
-/// `(row, char-column)` of byte `pos`. Row and line-start come from the shared `ruse_core::pos` line
-/// math; the column is the CHAR count within the line (what the grapheme renderer wants).
-fn row_col(bytes: &[u8], pos: usize) -> (usize, usize) {
-    let pos = pos.min(bytes.len());
-    let ls = ruse_core::pos::line_start(bytes, pos);
-    let col = std::str::from_utf8(&bytes[ls..pos])
-        .map(|s| s.chars().count())
-        .unwrap_or(0);
-    (ruse_core::pos::line_of(bytes, pos), col)
 }
 
 #[cfg(test)]
