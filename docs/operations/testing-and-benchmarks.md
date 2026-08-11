@@ -106,6 +106,27 @@ human feels: **storage is confirmed the wrong first move.** The wins are **(A) c
 on frames where nothing changed) and **(C) incremental tree-sitter** (re-parse only the edited region) —
 exactly where the next slices go.
 
+#### Win (C) landed — incremental parse + viewport-bounded query (F-015 #3)
+
+`apps/tui/src/highlight.rs` was rewritten off `tree_sitter_highlight` (which re-parses internally each
+call and hides the `Tree`) onto raw `tree_sitter`: it keeps the previous `Tree`, computes the `InputEdit`
+from a prefix/suffix diff of old vs new bytes, and reparses with `parser.parse(src, Some(&old_tree))`. It
+also bounds the highlights query to the **visible byte range** (`QueryCursor::set_byte_range`) — the real
+lever, since the parse is cheap but walking the whole document's captures is O(buffer). Per-keystroke cost
+(`highlight_incremental`, 1-byte edit against a primed tree, ~50-line viewport):
+
+| N (lines) | full re-parse | incremental + viewport | speed-up |
+| --- | --- | --- | --- |
+| 1 000 | ~7.5 ms | **~1.2 ms** | ~6× |
+| 10 000 | ~77 ms | **~10 ms** | ~7.5× |
+
+At daily-driver sizes (≤1k lines) the per-keystroke syntax cost is now well within a frame. Correctness is
+pinned by `incremental_matches_full_parse_across_edits` (incremental spans must equal a full parse across
+an edit sequence). **Remaining lever:** the `InputEdit` is derived by an O(buffer) byte-diff, which is the
+residual cost at 10k+ lines; threading the actual edit deltas from the core `commit` (INV-TXN) would make
+it O(edit). Injections / folds / indent / multi-language (F-015 #4) are still unbuilt, so F-015 stays
+`planned` — only the parse path (#3) is done.
+
 ---
 
 ## 1. Test taxonomy — the layers and their formats
