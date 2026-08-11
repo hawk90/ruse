@@ -397,11 +397,13 @@ Two layers now drive the whole vertical, not just in-library units:
   each a readable regression guard for a known-tricky cross-feature interaction. All pass, i.e. the
   compound behaviours match Vim, not just the single ops the oracle corpus covers.
 
-**Fuzzer finding (open, not a regression):** the session fuzzer showed that `i`…`CTRL-O u` (undo via the
-Insert one-shot) drops to **Normal** mode instead of returning to Insert — `apply_command(Undo)` restores
-the pre-insert snapshot's mode, clobbering the KL-OBL-5 one-shot resume. A minor `i_CTRL-O` parity edge
-(Vim returns to Insert). Filed as a follow-up against the input engine / undo-mode interaction; the
-fuzzer's own invariants are unaffected (they hold).
+**Fuzzer finding (FIXED):** the session fuzzer showed that `i`…`CTRL-O u` (undo via the Insert one-shot)
+dropped to **Normal** mode instead of returning to Insert — the undo/redo command plans hardcoded
+`mode: Mode::Normal`, clobbering the KL-OBL-5 one-shot resume. Fixed by making undo/redo PRESERVE Insert
+(they restore document state, not mode; the engine only reaches them from Normal or from Insert via
+`i_CTRL-O`, so preserving Insert is correct and Normal is unchanged). Regression tests:
+`crates/core/src/editor.rs` `undo_via_insert_one_shot_returns_to_insert` + `undo_from_normal_stays_in_normal`.
+This is the loop working as intended — the fuzzer found a real parity edge and it was closed.
 
 **Honest gap (still MANUAL):** the *live-terminal* path — the raw-key event loop, raw-mode, and the render
 diff painting to an actual tty — has **no automated coverage**. `--replay` bypasses the input engine
