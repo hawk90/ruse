@@ -31,6 +31,7 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.02.overriding-local-map
   surface: keymap_tier
@@ -43,6 +44,7 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.03.keymap
   surface: keymap_tier
@@ -55,6 +57,7 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.04.emulation-mode-map-alists
   surface: keymap_tier
@@ -67,6 +70,7 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.05.minor-mode-overriding-map-alist
   surface: keymap_tier
@@ -79,6 +83,7 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.06.minor-mode-map-alist
   surface: keymap_tier
@@ -91,6 +96,7 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.07.local-map
   surface: keymap_tier
@@ -103,6 +109,7 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.08.current-local-map
   surface: keymap_tier
@@ -115,6 +122,7 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
 - id: emacs.keymaptier.09.global-map
   surface: keymap_tier
@@ -127,4 +135,5 @@ items:
   - D
   - R
   status: targeted
+  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style

@@ -94,3 +94,30 @@ backlog:
   - { id: EMACS-HELP-1, feature: F-004, reason: "describe-command / help — the CommandSpec title/category is the seed; the full describe/apropos help surface is post-MVP, no census home" }
   - { id: EMACS-HELP-2, feature: F-004, reason: "generated docs from command metadata — the descriptor is the source (design §9); doc generation is post-MVP, no census surface" }
   - { id: EMACS-MINI-1, feature: F-004, reason: "minibuffer completion — the palette's query filter is the MVP counterpart; full minibuffer/completion is post-MVP, and it is emacs runtime not a source-tree census surface" }
+  # F-012 Emacs profile (#138): the keymap SHAPE is backed by the 9 emacs.keymaptier.* census ids; these
+  # legacy EMACS-* are decided architecture (D-026/D-027/D-049), ecosystem, or post-MVP — no enumerable
+  # census home without tripping the 2083-item emacs.key.* whole-surface lock (D-043).
+  - { id: EMACS-KEYMAP-1, feature: F-012, reason: "runtime-layered keymap resolution — the SHAPE is the 9 keymap_tier census ids (D-045 stack); the specific tier behaviours are ecosystem, no separate census home" }
+  - { id: EMACS-KEYMAP-3, feature: F-012, reason: "keymap composition/inheritance — D-045 layer model; an architecture guarantee, not an enumerable upstream fact" }
+  - { id: EMACS-CMD-1, feature: F-012, reason: "M-x command-by-name — REUSES the C-COMMAND registry (F-004); the invocation mechanism is ruse architecture, no census surface" }
+  - { id: EMACS-REGION-1, feature: F-012, reason: "mark/region — decided C-POSHIST (D-027/D-049): the mark is an anchor-based Selection; architecture, not a census fact" }
+  - { id: EMACS-REGION-2, feature: F-012, reason: "region operations — over the D-027 Selection primitive; architecture" }
+  - { id: EMACS-REGION-3, feature: F-012, reason: "transient-mark-mode — a Selection-liveness policy (D-027); post-MVP UX, no census home" }
+  - { id: EMACS-KILL-1, feature: F-012, reason: "kill ring — decided C-REGISTER view/policy (D-026); one store, no separate census surface" }
+  - { id: EMACS-KILL-2, feature: F-012, reason: "kill-ring-save / yank — the D-026 kill-ring view; architecture" }
+  - { id: EMACS-KILL-3, feature: F-012, reason: "yank-pop (M-y) — the D-026 transient post-yank state; architecture" }
+  - { id: EMACS-KILL-4, feature: F-012, reason: "kill-ring coalescing — a D-026 policy over C-REGISTER; architecture" }
+  - { id: EMACS-ARG-1, feature: F-012, reason: "universal argument (C-u) — decided prefix channel (D-049): raw value on the D-047 change-intent, interpreted per command; architecture" }
+  - { id: EMACS-ARG-2, feature: F-012, reason: "numeric/negative prefix (M-digit / M--) — the same D-049 prefix channel; architecture" }
+  - { id: EMACS-EDIT-3, feature: F-012, reason: "Emacs editing commands — the shared C-EDITLANG kernel over the Emacs profile; behaviour, not an enumerable surface" }
+  - { id: EMACS-EDIT-4, feature: F-012, reason: "Emacs motions — the kernel motion set under the Emacs bindings; behaviour" }
+  - { id: EMACS-EDIT-5, feature: F-012, reason: "transpose/case/fill editing — post-MVP command surface, no census home for the MVP slice" }
+  - { id: EMACS-MODE-1, feature: F-012, reason: "major modes — the 613 major-mode-map bindings are the ECOSYSTEM (CONCEPT-KEYMAP-DISPATCH), post-MVP" }
+  - { id: EMACS-MODE-2, feature: F-012, reason: "minor modes — the minor-mode-map alists (tiers 4-6); ecosystem, post-MVP" }
+  - { id: EMACS-MODE-3, feature: F-012, reason: "mode-line/derived-mode machinery — ecosystem, post-MVP" }
+  - { id: EMACS-MACRO-1, feature: F-012, reason: "keyboard macro record (C-x () — macro recording is post-MVP (shared with the Vim macro follow-up)" }
+  - { id: EMACS-MACRO-2, feature: F-012, reason: "macro replay (C-x )/C-x e) — post-MVP" }
+  - { id: EMACS-MACRO-3, feature: F-012, reason: "macro counters/edit — post-MVP" }
+  - { id: EMACS-TRANSIENT-1, feature: F-012, reason: "transient state (yank-pop, etc.) — the D-026/D-027 transient-state pattern; architecture" }
+  - { id: EMACS-VAR-1, feature: F-012, reason: "buffer-local variables — Elisp runtime, a standing NON-GOAL (D-020, D-007 L3)" }
+  - { id: EMACS-VAR-2, feature: F-012, reason: "customization (defcustom) — the config system (config-schema), not the Emacs Elisp runtime; post-MVP" }

@@ -212,7 +212,7 @@ families:
     upstreams: { vim: not-surveyed, neovim: pinned, emacs: pinned }
     census_status: measured
     caps: [CAP-VIM-PROFILE, CAP-NATIVE-PROFILE]
-    prd: [F-003, F-013]
+    prd: [F-003, F-012, F-013]
     contract: contracts/vim-style.yaml
     concepts: [CONCEPT-LANG-ARG, CONCEPT-KEYMAP-DISPATCH]
     excludes:
