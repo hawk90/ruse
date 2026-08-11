@@ -1035,6 +1035,16 @@ impl InputEngine {
                 KeyCode::Char('p') => move_by(count, Motion::Up, Command::MoveUp),
                 KeyCode::Char('a') => Command::MoveLineStart,
                 KeyCode::Char('e') => Command::MoveLineEnd,
+                // `C-k` (kill-line): delete from point to end of line. The delete captures the killed text
+                // into the unnamed register — the depth-1 view of the kill ring (D-026). The at-EOL case
+                // (killing the newline to join the next line) needs a dedicated kill-line command; deferred.
+                KeyCode::Char('k') => Command::Delete(1, Motion::LineEnd),
+                // `C-y` (yank): reinsert the most recent kill at point (Vim `P` — before the cursor). Honours
+                // the prefix argument as a repeat count (Emacs `C-u 3 C-y` yanks three copies).
+                KeyCode::Char('y') => Command::Paste {
+                    after: false,
+                    count,
+                },
                 _ => return Feed::Ignored,
             };
             return Feed::Cmd(cmd);
