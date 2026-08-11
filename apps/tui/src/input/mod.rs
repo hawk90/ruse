@@ -520,6 +520,11 @@ pub struct InputEngine {
     /// profile (that profile folds the count into its own grammar). The value is held OPAQUE — each
     /// command decides how to fold it (motions multiply); this is the raw channel D-049 resolved.
     emacs_arg: Option<EmacsArg>,
+    /// The pending Emacs prefix key (F-012): `Some('x')` after `C-x`, so the NEXT key resolves inside that
+    /// prefix's map (`C-x C-s` = save) rather than the global map. `None` in steady state. This is the
+    /// depth-1 case of the multi-key dispatch the nine-tier stack generalises; more prefixes (`C-c`, `C-h`)
+    /// slot in by tag. Always `None` under the Vim profile.
+    emacs_prefix: Option<char>,
 }
 
 /// An Emacs prefix argument mid-read (F-012 / D-049). `C-u` seeds it (default 4); a further `C-u`
@@ -646,6 +651,7 @@ impl InputEngine {
             lang_map: HashMap::new(),
             lang_active: false,
             emacs_arg: None,
+            emacs_prefix: None,
         }
     }
 
@@ -984,6 +990,12 @@ impl InputEngine {
     /// so "move + insert in one state" needs no new mode.
     fn feed_emacs(&mut self, key: KeyEvent) -> Feed {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // A pending prefix key owns the NEXT keystroke: resolve it in that prefix's map before any global
+        // dispatch. `C-g` (keyboard-quit) or any unbound key cancels the prefix (Emacs beeps). The prefix
+        // is always cleared here, so a single stray key can never leave the engine wedged in a prefix.
+        if let Some(prefix) = self.emacs_prefix.take() {
+            return self.feed_emacs_prefix(prefix, key, ctrl);
+        }
         // `C-u` (universal argument): seed the prefix argument, or multiply an in-progress one by four.
         // It never completes a command — it always leaves the argument pending for the next key.
         if ctrl && key.code == KeyCode::Char('u') {
@@ -1006,6 +1018,13 @@ impl InputEngine {
         // fold it in. Motions multiply; a self-insert repeats. An unbound key discards the argument (a beep).
         let count = self.emacs_arg.take().map(EmacsArg::count).unwrap_or(1);
         if ctrl {
+            // `C-x` opens the extended-command prefix map: the next key resolves there, not in the global
+            // map. Any pending argument is dropped in this slice (arg-passthrough to a prefixed command is a
+            // follow-up). Returns Pending — the command is not complete until the second key arrives.
+            if key.code == KeyCode::Char('x') {
+                self.emacs_prefix = Some('x');
+                return Feed::Pending;
+            }
             // global-map core motions (emacs.keymaptier.09.global-map). Directional motions honour the
             // count as a multiplier; `C-a`/`C-e` (line ends) ignore it in this slice. `count == 1` keeps the
             // grapheme-aware bare `Move*` so the no-argument path is byte-identical to the seam (#139).
@@ -1028,6 +1047,22 @@ impl InputEngine {
             KeyCode::Char(c) => Feed::Replay(vec![Command::InsertChar(c); count as usize]),
             _ => Feed::Ignored,
         }
+    }
+
+    /// Resolve the second key of an Emacs prefix sequence (F-012). Only the `C-x` map exists in this slice:
+    /// `C-x C-s` saves, `C-x C-c` quits, `C-x u` undoes. An unbound key (including `C-g`) cancels the prefix
+    /// and is inert — the prefix was already cleared by the caller, so the engine is never left wedged.
+    fn feed_emacs_prefix(&mut self, prefix: char, key: KeyEvent, ctrl: bool) -> Feed {
+        if prefix == 'x' {
+            let cmd = match key.code {
+                KeyCode::Char('s') if ctrl => Command::Save, // C-x C-s — save-buffer
+                KeyCode::Char('c') if ctrl => Command::Quit, // C-x C-c — save-buffers-kill-terminal
+                KeyCode::Char('u') if !ctrl => Command::Undo, // C-x u — undo
+                _ => return Feed::Ignored,
+            };
+            return Feed::Cmd(cmd);
+        }
+        Feed::Ignored
     }
 
     /// Fold a just-produced outcome into the dot-repeat record. In Insert mode, extend the in-flight change

@@ -321,6 +321,33 @@ mod tests {
     }
 
     #[test]
+    fn emacs_cx_prefix_map_dispatches_second_key() {
+        // F-012: `C-x` opens the extended-command prefix map — the first key is Pending, the second
+        // resolves inside the map. `C-x C-s` saves, `C-x C-c` quits, `C-x u` undoes.
+        let mut e = InputEngine::emacs();
+
+        assert_eq!(e.feed(ctrl('x'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(ctrl('s'), Mode::Insert), Feed::Cmd(Command::Save));
+
+        assert_eq!(e.feed(ctrl('x'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(ctrl('c'), Mode::Insert), Feed::Cmd(Command::Quit));
+
+        assert_eq!(e.feed(ctrl('x'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('u'), Mode::Insert), Feed::Cmd(Command::Undo));
+
+        // An unbound second key (here `C-g`, keyboard-quit) cancels the prefix and is inert — and the engine
+        // is not left wedged: the very next key dispatches normally in the global map.
+        assert_eq!(e.feed(ctrl('x'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(ctrl('g'), Mode::Insert), Feed::Ignored);
+        assert_eq!(
+            e.feed(ctrl('f'), Mode::Insert),
+            Feed::Cmd(Command::MoveRight)
+        );
+        // A bare `C-s` with no prefix is unbound in the global map (not a save) — prefix scoping holds.
+        assert_eq!(e.feed(ctrl('s'), Mode::Insert), Feed::Ignored);
+    }
+
+    #[test]
     fn ctrl_v_enters_blockwise_visual() {
         let mut e = InputEngine::new();
         assert_eq!(
