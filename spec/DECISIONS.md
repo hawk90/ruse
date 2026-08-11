@@ -629,3 +629,29 @@ related:
   resolution (not just be queued literally), or the per-context iminsert/imsearch model proves that one
   global boolean is observably wrong — either would extend the stage, not overturn the pre-dispatch shape.
 - Refs: [../docs/rfc/proposed/RFC-0013-lang-arg-translation-stage.md](../docs/rfc/proposed/RFC-0013-lang-arg-translation-stage.md), D-045, D-046, [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), [parity/contracts/keymap-layers.yaml](parity/contracts/keymap-layers.yaml), INV-FAIL-BOUNDED, C-INPUT, F-027, nvim.mapmode.lang.
+
+## D-049 — The Emacs profile: prefix-arg is profile-scoped, mark-ring is a C-POSHIST container · decided
+- **Decision:** Emacs Style (F-012) is a CONFIGURATION of decided machinery, not a second engine (accepting
+  RFC-0014). Two pending tensions are resolved:
+  - **CONCEPT-COUNT-VS-PREFIX → profile-scoped.** The kernel carries ONE raw prefix value on the D-047
+    change-intent (`prefix: None | Numeric(i64) | Raw(u32)`, `Raw(n)` = `C-u`×n = 4ⁿ). The **Vim profile**
+    folds it into the engine multiplier (`count1 × count2`, unchanged); the **Emacs profile** passes it
+    OPAQUE to the resolved command via the Context, which interprets it (`C-u C-f` repeats; `C-u C-SPC`
+    pops the mark — no repetition, which a Vim count could never express). One channel, two interpretation
+    policies; INV-CMD-SEMANTIC holds (the command's identity is unchanged, only the argument's reading).
+  - **CONCEPT-POSITION-HISTORY → unified on C-POSHIST (D-027).** The Emacs mark ring is a per-buffer
+    `Ring<Selection>` (pop-rotate: `C-SPC` push, `C-u C-SPC` pop), the global mark ring a global
+    `Ring<Selection>`, and Vim's jumplist a `CursoredList` — one anchor-backed `Selection` primitive with
+    different membership/traversal policies. The mark IS the region anchor (Emacs's dual role), a
+    one-caret degenerate selection (NAT-5), so the two never drift.
+  - **Keymap** is D-045's ordered layer stack in its Emacs arrangement: the nine `emacs.keymaptier.*` tiers,
+    unsealed, buffer-selected; `C-x`/`C-c` are prefix keymaps the router resolves INTO. `M-x` reuses the
+    C-COMMAND registry (F-004). Kill ring is D-026's view over C-REGISTER.
+- **Reason:** F-012 was NOT-READY only on these two `pending` concepts; both became decidable because the
+  substrate that decides them already shipped (D-047 fixed the count CHANNEL, D-027 the position-history
+  containers), so what remained was a per-profile POLICY, not a kernel shape. Deciding them now, before the
+  profile hardens, is the point of the risk register (irreconcilable.yaml).
+- **Re-evaluate if:** a real command needs a prefix argument that is neither the Vim multiplier nor an
+  opaque Emacs value (a third interpretation the channel cannot carry); or a position-history surface needs
+  a container beyond {NamedMap, Ring, CursoredList}.
+- Refs: [../docs/rfc/proposed/RFC-0014-emacs-input-profile.md](../docs/rfc/proposed/RFC-0014-emacs-input-profile.md), D-045, D-026, D-027, D-047, RFC-0004, [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), INV-CMD-SEMANTIC, INV-PROFILE-ISOLATION, F-012, C-COMMAND, C-POSHIST.
