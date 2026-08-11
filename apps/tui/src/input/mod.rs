@@ -917,202 +917,89 @@ impl InputEngine {
     }
 
     /// Feed one key given the current mode.
-    fn feed_impl(&mut self, key: KeyEvent, mode: Mode) -> Feed {
-        // KL-OBL-4: a layer's owned state is destroyed when the layer deactivates — the engine does not
-        // reach in to reset foreign fields.
-        //
-        // The Insert layer owns the `CTRL-G` prefix; it dies the moment the active namespace is not
-        // Insert (a key in any other mode means the insert context is gone). A pending Insert one-shot
-        // return (KL-OBL-5) is likewise abandoned — its resume address no longer applies.
-        if mode != Mode::Insert {
-            self.insert = InsertState::default();
-            self.activations.retain(|a| a.resume != Ns::Insert);
-        }
-        // The Normal-family grammar layer (Normal / Visual / Select, with operator-pending as its
-        // sub-state) owns count / operator / awaiting / forced-wise. They die when neither the family
-        // nor an `i_CTRL-O` one-shot — which runs a single Normal command from WITHIN Insert, so the
-        // family is momentarily active there — is in effect.
-        let normal_family = matches!(
-            mode,
-            Mode::Normal | Mode::Visual { .. } | Mode::Select { .. }
-        );
-        if !normal_family && !self.in_one_shot() {
-            self.normal = NormalState::default();
-        }
-        // Insert resolves through its LAYER, not through an early return ahead of everything else.
-        // The bindings and the `open/insert` policy both live in `VimProfile`, so the namespace is
-        // addressable in its own right (KL-OBL-1) and its policy is declared (KL-OBL-2).
-        //
-        // Two multi-key insert sequences are handled BEFORE the layer: `CTRL-O` (push a one-shot Normal
-        // activation, then fall through to the Normal grammar for the rest of this and following keys until
-        // it completes) and `CTRL-G u` (undo-break). A `CTRL-O` already in flight (on the activation stack)
-        // skips the insert branch entirely so the pending Normal command keeps resolving.
-        if mode == Mode::Insert && !self.in_one_shot() {
-            let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-            // `CTRL-G` prefix: consume the second key. `u` (or `U`) breaks the undo group; anything else
-            // aborts the prefix without inserting (Vim beeps). Checked before the layer so the printable
-            // path never sees the prefixed key.
-            if self.insert.ctrl_g {
-                self.insert.ctrl_g = false;
-                return match key.code {
-                    // `action` clears the transient axes (like every other completed key), so no partial
-                    // Normal state can survive an Insert key.
-                    KeyCode::Char('u') | KeyCode::Char('U') => self.action(Command::BreakUndo),
-                    _ => {
-                        self.reset();
-                        Feed::Ignored
-                    }
-                };
-            }
-            // `i_CTRL-^` toggles the language map (Lang-Arg / lmap) on or off within Insert (F-027 /
-            // D-048). MVP flips one boolean; the per-context iminsert/imsearch model is a follow-up.
-            // Checked before the printable path so `^`/`6` under CTRL never reach text insertion.
-            if ctrl && matches!(key.code, KeyCode::Char('^') | KeyCode::Char('6')) {
-                self.reset();
-                self.lang_active = !self.lang_active;
-                return Feed::Pending;
-            }
-            if ctrl && key.code == KeyCode::Char('o') {
-                // Push a one-shot activation whose RETURN ADDRESS is Insert (KL-OBL-5): the NEXT keys
-                // resolve through the Normal grammar; on completion `reset()` pops the address and Insert
-                // routing resumes. Core mode stays Insert throughout. Reset first so the one-shot begins
-                // from a clean count/operator/awaiting state (the pop is a no-op — the stack is empty here).
-                self.reset();
-                self.activations.push(Suspended { resume: Ns::Insert });
-                return Feed::Pending;
-            }
-            if ctrl && key.code == KeyCode::Char('g') {
-                self.reset();
-                self.insert.ctrl_g = true;
-                return Feed::Pending;
-            }
-            if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code)
-            {
-                let cmd = value.clone();
-                self.reset();
-                return Feed::Cmd(cmd);
-            }
-            return self.unmatched(Ns::Insert, key);
-        }
-        // Replace (`R`) / Virtual Replace (`gR`): the `open/overwrite` namespace. Bindings (Esc/BS/CR)
-        // resolve through the Replace LAYER; an unmatched printable key hits the layer's declared
-        // overwrite policy (KL-OBL-2), applied as the mode-appropriate overwrite command (tab-aware in
-        // Virtual Replace). Routing it through the layer is what exercises `overwrite` via the router
-        // instead of a hardcoded early return, the same migration Insert already made.
-        if mode == Mode::Replace || mode == Mode::VirtualReplace {
-            if let Resolved::Bound { value, .. } =
-                self.profile.stack(Ns::Replace).resolve(&key.code)
-            {
-                let cmd = value.clone();
-                return self.action(cmd);
-            }
-            // open/overwrite: a printable key overwrites; non-printable does nothing (NOT closed/ignore).
-            debug_assert!(
-                matches!(
-                    self.profile.stack(Ns::Replace).resolve(&key.code),
-                    Resolved::Unmatched {
-                        policy: UnmatchedKey::Overwrite,
-                        ..
-                    }
-                ),
-                "the Replace namespace must declare open/overwrite"
-            );
-            self.reset();
+    /// The Insert namespace (mode is Insert, no one-shot in flight). Two multi-key sequences resolve
+    /// before the layer — `CTRL-G u` (undo-break), `i_CTRL-^` (Lang-Arg toggle), `CTRL-O` (one-shot
+    /// Normal), `CTRL-G` (prefix) — then the Insert layer binds, else the `open/insert` policy applies.
+    fn feed_insert(&mut self, key: KeyEvent) -> Feed {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // `CTRL-G` prefix: consume the second key. `u` (or `U`) breaks the undo group; anything else
+        // aborts the prefix without inserting (Vim beeps). Checked before the layer so the printable
+        // path never sees the prefixed key.
+        if self.insert.ctrl_g {
+            self.insert.ctrl_g = false;
             return match key.code {
-                KeyCode::Char(c) if mode == Mode::VirtualReplace => {
-                    Feed::Cmd(Command::VirtualReplaceType(c))
+                // `action` clears the transient axes (like every other completed key), so no partial
+                // Normal state can survive an Insert key.
+                KeyCode::Char('u') | KeyCode::Char('U') => self.action(Command::BreakUndo),
+                _ => {
+                    self.reset();
+                    Feed::Ignored
                 }
-                KeyCode::Char(c) => Feed::Cmd(Command::ReplaceType(c)),
-                _ => Feed::Ignored,
             };
         }
-        // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
-        match self.normal.awaiting {
-            Awaiting::FindTarget { forward, till } => {
-                self.normal.awaiting = Awaiting::Nothing;
-                return match key.code {
-                    KeyCode::Char(ch) => {
-                        self.last_find = Some((ch, forward, till));
-                        self.motion(Motion::FindChar { ch, forward, till })
-                    }
-                    // A pending construct is in flight, so this is `closed/abort` — the policy
-                    // that distinguishes operator-pending from Normal (VS-OBL-3).
-                    _ => self.unmatched(Ns::OperatorPending, key),
-                };
-            }
-            Awaiting::TextObjectChar { inner } => {
-                self.normal.awaiting = Awaiting::Nothing;
-                return match key.code {
-                    // Under an operator this composes (`diw`/`da(`/`ci"`); in a selection `self.motion`
-                    // emits a bare `Move` whose text-object shape the core turns into a selection (`viw`).
-                    KeyCode::Char(ch) if text_object(ch, inner).is_some() => {
-                        self.motion(text_object(ch, inner).expect("guarded by is_some"))
-                    }
-                    // Not a text object (includes the deferred `t`/`T` tag objects): a pending construct is
-                    // in flight, so this is `closed/abort` — the operator-pending policy (VS-OBL-3).
-                    _ => self.unmatched(Ns::OperatorPending, key),
-                };
-            }
-            Awaiting::GSecond => {
-                self.normal.awaiting = Awaiting::Nothing;
-                return match key.code {
-                    KeyCode::Char('g') => self.motion(Motion::GotoLine),
-                    // `gv` — re-select the last visual selection (D-027 depth-1 slice).
-                    KeyCode::Char('v') => self.action(Command::ReselectVisual),
-                    // `gR` — enter Virtual Replace mode (tab-aware overwrite).
-                    KeyCode::Char('R') => self.action(Command::EnterVirtualReplace),
-                    // `g-` / `g+` — chronological undo-time travel across branches (F-005 #3).
-                    KeyCode::Char('-') => self.action(Command::UndoOlder),
-                    KeyCode::Char('+') => self.action(Command::UndoNewer),
-                    // `gQ` — enter Ex mode (F-026 #3). `Q` alone is NOT Ex at the pinned Neovim
-                    // revision, so only this two-key form opens it; the line re-prompts until `:visual`.
-                    KeyCode::Char('Q') => {
-                        self.open_cmdline(':', true);
-                        Feed::Pending
-                    }
-                    // A pending construct is in flight, so this is `closed/abort` — the policy
-                    // that distinguishes operator-pending from Normal (VS-OBL-3).
-                    _ => self.unmatched(Ns::OperatorPending, key),
-                };
-            }
-            Awaiting::ReplaceChar => {
-                self.normal.awaiting = Awaiting::Nothing;
-                return match key.code {
-                    // The count accumulated before `r` is still live (the `r` arm did not reset it).
-                    KeyCode::Char(c) => self.action(Command::ReplaceChar(self.mcount(), c)),
-                    // A pending construct is in flight, so this is `closed/abort` — the policy
-                    // that distinguishes operator-pending from Normal (VS-OBL-3).
-                    _ => self.unmatched(Ns::OperatorPending, key),
-                };
-            }
-            Awaiting::RegisterSelect => {
-                self.normal.awaiting = Awaiting::Nothing;
-                return match key.code {
-                    // A register name (`a`–`z` / `A`–`Z`, or the yank register `0`): emit `SetRegister` for
-                    // the core to hold as the pending register the next yank/delete/change/paste reads.
-                    // `action` clears the transient axes — which is why the register PREFIX must precede a
-                    // count (`"a3yy`, as in Vim). `"0p` pastes the last yank (`"0` is read-only from edits).
-                    KeyCode::Char(c) if c.is_ascii_alphabetic() || c == '0' => {
-                        self.action(Command::SetRegister(Some(c)))
-                    }
-                    // The numbered delete-ring (`"1`–`"9`) and other registers are not modelled yet; a
-                    // pending construct is in flight, so an unusable name is `closed/abort` (operator-
-                    // pending), leaking no state.
-                    _ => self.unmatched(Ns::OperatorPending, key),
-                };
-            }
-            Awaiting::ShiftSecond { right } => {
-                self.normal.awaiting = Awaiting::Nothing;
-                // The count accumulated before the first `>`/`<` is still live and becomes the line count.
-                return match key.code {
-                    KeyCode::Char('>') if right => self.action(Command::ShiftRight(self.mcount())),
-                    KeyCode::Char('<') if !right => self.action(Command::ShiftLeft(self.mcount())),
-                    // Anything else (including the mismatched bracket, e.g. `><`): operator-pending abort.
-                    _ => self.unmatched(Ns::OperatorPending, key),
-                };
-            }
-            Awaiting::Nothing => {}
+        // `i_CTRL-^` toggles the language map (Lang-Arg / lmap) on or off within Insert (F-027 / D-048).
+        // MVP flips one boolean; the per-context iminsert/imsearch model is a follow-up. Checked before
+        // the printable path so `^`/`6` under CTRL never reach text insertion.
+        if ctrl && matches!(key.code, KeyCode::Char('^') | KeyCode::Char('6')) {
+            self.reset();
+            self.lang_active = !self.lang_active;
+            return Feed::Pending;
         }
+        if ctrl && key.code == KeyCode::Char('o') {
+            // Push a one-shot activation whose RETURN ADDRESS is Insert (KL-OBL-5): the NEXT keys resolve
+            // through the Normal grammar; on completion `reset()` pops the address and Insert routing
+            // resumes. Core mode stays Insert throughout. Reset first so the one-shot begins from a clean
+            // count/operator/awaiting state (the pop is a no-op — the stack is empty here).
+            self.reset();
+            self.activations.push(Suspended { resume: Ns::Insert });
+            return Feed::Pending;
+        }
+        if ctrl && key.code == KeyCode::Char('g') {
+            self.reset();
+            self.insert.ctrl_g = true;
+            return Feed::Pending;
+        }
+        if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code) {
+            let cmd = value.clone();
+            self.reset();
+            return Feed::Cmd(cmd);
+        }
+        self.unmatched(Ns::Insert, key)
+    }
+
+    /// Replace (`R`) / Virtual Replace (`gR`): the `open/overwrite` namespace. Bindings (Esc/BS/CR)
+    /// resolve through the Replace LAYER; an unmatched printable key hits the layer's declared overwrite
+    /// policy (KL-OBL-2), applied as the mode-appropriate overwrite command (tab-aware in Virtual Replace).
+    fn feed_replace(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Replace).resolve(&key.code) {
+            let cmd = value.clone();
+            return self.action(cmd);
+        }
+        // open/overwrite: a printable key overwrites; non-printable does nothing (NOT closed/ignore).
+        debug_assert!(
+            matches!(
+                self.profile.stack(Ns::Replace).resolve(&key.code),
+                Resolved::Unmatched {
+                    policy: UnmatchedKey::Overwrite,
+                    ..
+                }
+            ),
+            "the Replace namespace must declare open/overwrite"
+        );
+        self.reset();
+        match key.code {
+            KeyCode::Char(c) if mode == Mode::VirtualReplace => {
+                Feed::Cmd(Command::VirtualReplaceType(c))
+            }
+            KeyCode::Char(c) => Feed::Cmd(Command::ReplaceType(c)),
+            _ => Feed::Ignored,
+        }
+    }
+
+    /// The base Normal-family dispatch, reached only with `awaiting == Nothing` (the tier above
+    /// returned for the pending cases). Shared char-search initiators, then the count/operator/motion
+    /// grammar and the mode-specific keys.
+    fn feed_base(&mut self, key: KeyEvent, mode: Mode) -> Feed {
         // `CTRL-G` toggles Visual<->Select over the SAME selection (Vim's documented behaviour). Handled
         // here, before the shared `g` initiator below, so it is never mistaken for the start of `gg` — and
         // fully consumed in every mode: outside a selection nothing is bound (Vim's file-info `CTRL-G` is
@@ -1412,6 +1299,132 @@ impl InputEngine {
             // separate calls rather than one `mode`-derived namespace.
             _ => self.unmatched(Ns::Normal, key),
         }
+    }
+
+    fn feed_impl(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        // KL-OBL-4: a layer's owned state is destroyed when the layer deactivates — the engine does not
+        // reach in to reset foreign fields.
+        //
+        // The Insert layer owns the `CTRL-G` prefix; it dies the moment the active namespace is not
+        // Insert (a key in any other mode means the insert context is gone). A pending Insert one-shot
+        // return (KL-OBL-5) is likewise abandoned — its resume address no longer applies.
+        if mode != Mode::Insert {
+            self.insert = InsertState::default();
+            self.activations.retain(|a| a.resume != Ns::Insert);
+        }
+        // The Normal-family grammar layer (Normal / Visual / Select, with operator-pending as its
+        // sub-state) owns count / operator / awaiting / forced-wise. They die when neither the family
+        // nor an `i_CTRL-O` one-shot — which runs a single Normal command from WITHIN Insert, so the
+        // family is momentarily active there — is in effect.
+        let normal_family = matches!(
+            mode,
+            Mode::Normal | Mode::Visual { .. } | Mode::Select { .. }
+        );
+        if !normal_family && !self.in_one_shot() {
+            self.normal = NormalState::default();
+        }
+        // Insert resolves through its LAYER, not through an early return ahead of everything else.
+        // The bindings and the `open/insert` policy both live in `VimProfile`, so the namespace is
+        // addressable in its own right (KL-OBL-1) and its policy is declared (KL-OBL-2).
+        //
+        // Two multi-key insert sequences are handled BEFORE the layer: `CTRL-O` (push a one-shot Normal
+        // activation, then fall through to the Normal grammar for the rest of this and following keys until
+        // it completes) and `CTRL-G u` (undo-break). A `CTRL-O` already in flight (on the activation stack)
+        // skips the insert branch entirely so the pending Normal command keeps resolving.
+        if mode == Mode::Insert && !self.in_one_shot() {
+            return self.feed_insert(key);
+        }
+        if mode == Mode::Replace || mode == Mode::VirtualReplace {
+            return self.feed_replace(key, mode);
+        }
+        // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
+        match self.normal.awaiting {
+            Awaiting::FindTarget { forward, till } => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    KeyCode::Char(ch) => {
+                        self.last_find = Some((ch, forward, till));
+                        self.motion(Motion::FindChar { ch, forward, till })
+                    }
+                    // A pending construct is in flight, so this is `closed/abort` — the policy
+                    // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::TextObjectChar { inner } => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // Under an operator this composes (`diw`/`da(`/`ci"`); in a selection `self.motion`
+                    // emits a bare `Move` whose text-object shape the core turns into a selection (`viw`).
+                    KeyCode::Char(ch) if text_object(ch, inner).is_some() => {
+                        self.motion(text_object(ch, inner).expect("guarded by is_some"))
+                    }
+                    // Not a text object (includes the deferred `t`/`T` tag objects): a pending construct is
+                    // in flight, so this is `closed/abort` — the operator-pending policy (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::GSecond => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    KeyCode::Char('g') => self.motion(Motion::GotoLine),
+                    // `gv` — re-select the last visual selection (D-027 depth-1 slice).
+                    KeyCode::Char('v') => self.action(Command::ReselectVisual),
+                    // `gR` — enter Virtual Replace mode (tab-aware overwrite).
+                    KeyCode::Char('R') => self.action(Command::EnterVirtualReplace),
+                    // `g-` / `g+` — chronological undo-time travel across branches (F-005 #3).
+                    KeyCode::Char('-') => self.action(Command::UndoOlder),
+                    KeyCode::Char('+') => self.action(Command::UndoNewer),
+                    // `gQ` — enter Ex mode (F-026 #3). `Q` alone is NOT Ex at the pinned Neovim
+                    // revision, so only this two-key form opens it; the line re-prompts until `:visual`.
+                    KeyCode::Char('Q') => {
+                        self.open_cmdline(':', true);
+                        Feed::Pending
+                    }
+                    // A pending construct is in flight, so this is `closed/abort` — the policy
+                    // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::ReplaceChar => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // The count accumulated before `r` is still live (the `r` arm did not reset it).
+                    KeyCode::Char(c) => self.action(Command::ReplaceChar(self.mcount(), c)),
+                    // A pending construct is in flight, so this is `closed/abort` — the policy
+                    // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::RegisterSelect => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // A register name (`a`–`z` / `A`–`Z`, or the yank register `0`): emit `SetRegister` for
+                    // the core to hold as the pending register the next yank/delete/change/paste reads.
+                    // `action` clears the transient axes — which is why the register PREFIX must precede a
+                    // count (`"a3yy`, as in Vim). `"0p` pastes the last yank (`"0` is read-only from edits).
+                    KeyCode::Char(c) if c.is_ascii_alphabetic() || c == '0' => {
+                        self.action(Command::SetRegister(Some(c)))
+                    }
+                    // The numbered delete-ring (`"1`–`"9`) and other registers are not modelled yet; a
+                    // pending construct is in flight, so an unusable name is `closed/abort` (operator-
+                    // pending), leaking no state.
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::ShiftSecond { right } => {
+                self.normal.awaiting = Awaiting::Nothing;
+                // The count accumulated before the first `>`/`<` is still live and becomes the line count.
+                return match key.code {
+                    KeyCode::Char('>') if right => self.action(Command::ShiftRight(self.mcount())),
+                    KeyCode::Char('<') if !right => self.action(Command::ShiftLeft(self.mcount())),
+                    // Anything else (including the mismatched bracket, e.g. `><`): operator-pending abort.
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::Nothing => {}
+        }
+        self.feed_base(key, mode)
     }
 }
 
