@@ -64,7 +64,7 @@ settings:
   keymap.visual:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-025], desc: "Visual-namespace bindings (map_mode Vis). Unmatched key: ignore." }
   keymap.select:           { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-025], desc: "Select-namespace bindings (map_mode Sel). Unmatched printable key: replace the selection and enter Insert." }
   keymap.terminal:         { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-011], desc: "Terminal-namespace bindings (map_mode Term). Unmatched key: forward to the job, except the CTRL-\\ escape prefix." }
-  keymap.lang:             { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-027], desc: "Lang-Arg-namespace bindings (map_mode Lang). Unmatched key: translate via the active language map, then re-dispatch. Blocked on CONCEPT-LANG-ARG." }
+  keymap.lang:             { type: map, default: {}, scope: user, merge: deep-merge, security_locked: false, derives_from: [F-027], desc: "Lang-Arg-namespace bindings (map_mode Lang). The persistent form of the `:lmap` map read by the pre-dispatch translation stage (D-048); no config-file loader is built yet (no keymap.* key is runtime-loaded)." }
 
   # ---- editor ----
   editor.tab_width:     { type: int,    default: 4,      scope: workspace, merge: replace,   security_locked: false, min: 1, max: 16, derives_from: [], desc: Number of columns a tab renders/indents as. }

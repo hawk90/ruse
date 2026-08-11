@@ -182,8 +182,17 @@ open_questions:
     question: "Can Vim's Lang-Arg be a layer, given it TRANSLATES a key and re-dispatches rather than binding it?"
     blocks: [F-027]
     concept: CONCEPT-LANG-ARG
+    resolved_by: D-048
+    answer: >
+      NO — and it must not be. D-048 (accepting RFC-0013) makes Lang-Arg a PRE-DISPATCH translation
+      stage that runs BEFORE the layer stack, not a layer in it. It rewrites a decoded key through the
+      active language map in the three Lang-Arg contexts only (Insert, Command-line, single-character
+      argument), applies exactly one substitution, and dispatches the result literally — so the stack's
+      `resolve` stays TOTAL (the stage is a preprocessor that always yields a concrete key) and the work
+      stays BOUNDED (INV-FAIL-BOUNDED). The Lang namespace remains addressable as `UnmatchedKey::Translate`
+      (a declared policy), but the translation is REALISED by the pre-dispatch stage, never inside `resolve`.
     note: >
-      This is D-045's own stated re-evaluation trigger. A layer that rewrites the event and yields
-      (rather than resolving it) is expressible, but it makes resolution non-total, so it needs to be
-      designed rather than assumed. Recorded here so the decision's weak point is visible from the
-      contract, not only from DECISIONS.md.
+      This was D-045's own stated re-evaluation trigger. A layer that rewrites the event and yields
+      (rather than resolving it) is expressible, but it makes resolution non-total, so it was designed
+      rather than assumed — RFC-0013 / D-048. Kept here so the decision's former weak point, and how it
+      was closed, is visible from the contract, not only from DECISIONS.md.

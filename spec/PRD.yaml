@@ -322,11 +322,24 @@ features:
     title: Lang-Arg namespace
     stage: mvp
     priority: must
-    status: blocked
+    # done (#118): CONCEPT-LANG-ARG resolved by D-048 (accepting RFC-0013) — Lang-Arg is a PRE-DISPATCH
+    # translation stage (apps/tui/src/input.rs `translate_lang`, called at the top of `feed` ABOVE the
+    # D-045 layer stack), NOT a resolution layer. It rewrites a decoded key through the active language
+    # map in exactly the three Lang-Arg contexts — Insert, Command-line, and a command reading a single
+    # character (f/t/F/T/r) — and nowhere else (#2), applying ONE substitution then dispatching the
+    # result literally, so `resolve` stays total and the work bounded (INV-FAIL-BOUNDED — a cyclic map
+    # cannot loop). #1 = the stage exists (translate_lang). #3 = terminal-IME interaction is DEFINED:
+    # composed text arrives on the no-keymap paste/IME path and bypasses the stage, so lmap and the
+    # terminal IME are disjoint by construction. Runtime population is `:lmap`/`:lunmap`; `i_CTRL-^`
+    # toggles the map (one boolean; per-context iminsert/imsearch is post-MVP). All three acceptance
+    # criteria met + tested (7 tests: insert/one-substitution, inert-outside, single-char-arg, toggle,
+    # command-line, map-maintenance, parse). keymap.lang is the persistent form (config-schema); no
+    # config-file loader is built — none exists for any keymap.* key yet (matches every other namespace).
+    status: done
     depends_on: [C-INPUT]
     summary: The language-mapping namespace (`lmap`) applied to Insert, Command-line and single-character command arguments.
     trace:
-      parity: [nvim.mapmode.lang]   # the 8th namespace; blocked on CONCEPT-LANG-ARG / KL-Q-LANG-ARG (D-045)
+      parity: [nvim.mapmode.lang]   # the 8th namespace, realised on the pre-dispatch stage (D-048 answering KL-Q-LANG-ARG)
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/input-engine.md]
       verify: [../tests/parity/vim/lang-arg.yaml]
@@ -334,10 +347,6 @@ features:
       - "A translation stage exists in the input pipeline where a language map can rewrite a key before dispatch."
       - "The stage applies to the Insert and Command-line namespaces and to commands reading a single character, and to nothing else."
       - "Interaction with a terminal-side input method is defined rather than left to chance."
-    blocked_on: >
-      CONCEPT-LANG-ARG (spec/parity/concepts/irreconcilable.yaml) — ruse's input model has no
-      re-dispatch stage for a translation layer and the terminal may already apply an IME. The
-      namespace is targeted by decision; the stage it lives in needs a Decision first.
 
   F-004:
     title: Semantic command engine + palette
