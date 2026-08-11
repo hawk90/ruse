@@ -176,6 +176,18 @@ impl<K: PartialEq, V> Layer<K, V> {
     }
 }
 
+impl<K, V: PartialEq> Layer<K, V> {
+    /// The key bound to `value` in this layer, if any — the REVERSE of resolution, for showing a
+    /// command's current binding in the palette (F-004 #2). First match wins.
+    #[must_use]
+    pub fn key_for(&self, value: &V) -> Option<&K> {
+        self.bindings
+            .iter()
+            .find(|(_, v)| v == value)
+            .map(|(k, _)| k)
+    }
+}
+
 /// The outcome of resolving one key against a stack.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Resolved<'a, V> {
@@ -270,6 +282,15 @@ impl<K: PartialEq, V> LayerStack<K, V> {
             },
             None => Resolved::NoLayer,
         }
+    }
+}
+
+impl<K, V: PartialEq> LayerStack<K, V> {
+    /// The key bound to `value` anywhere in the stack (highest rank first), if any — the reverse of
+    /// resolution, for the palette's binding column (F-004 #2).
+    #[must_use]
+    pub fn key_for(&self, value: &V) -> Option<&K> {
+        self.layers.iter().find_map(|l| l.key_for(value))
     }
 }
 
@@ -496,5 +517,20 @@ mod tests {
         ] {
             assert!(p.is_open(), "{p:?} must be open");
         }
+    }
+
+    /// F-004 #2: the reverse lookup finds the key bound to a value (for the palette's binding column),
+    /// searching highest rank first; `None` when nothing binds it.
+    #[test]
+    fn key_for_reverse_lookup() {
+        let s = stack(vec![
+            Layer::new("hi", 20, false, UnmatchedKey::Ignore).bind('x', "hi-x"),
+            Layer::new("lo", 10, true, UnmatchedKey::Ignore)
+                .bind('d', "delete")
+                .bind('x', "lo-x"),
+        ]);
+        assert_eq!(s.key_for(&"delete"), Some(&'d'));
+        assert_eq!(s.key_for(&"hi-x"), Some(&'x'), "highest rank wins");
+        assert_eq!(s.key_for(&"unbound"), None);
     }
 }

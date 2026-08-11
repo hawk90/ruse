@@ -359,8 +359,8 @@ impl VimProfile {
     }
 
     /// Every namespace the profile declares, for the addressability / depth-1-sealed assertions
-    /// (VS-OBL-4 / KL-OBL-3). The eight Vim map-mode namespaces.
-    #[cfg(test)]
+    /// (VS-OBL-4 / KL-OBL-3) and the palette's binding reverse-lookup (F-004 #2). The eight Vim
+    /// map-mode namespaces.
     fn all() -> [Ns; 8] {
         [
             Ns::Normal,
@@ -508,6 +508,18 @@ struct CmdLine {
     ex_mode: bool,
 }
 
+/// A short human label for a key, for the palette's binding column (F-004 #2).
+fn key_label(code: KeyCode) -> String {
+    match code {
+        KeyCode::Esc => "Esc".into(),
+        KeyCode::Enter => "CR".into(),
+        KeyCode::Backspace => "BS".into(),
+        KeyCode::Tab => "Tab".into(),
+        KeyCode::Char(c) => c.to_string(),
+        other => format!("{other:?}"),
+    }
+}
+
 impl InputEngine {
     #[must_use]
     pub fn new() -> InputEngine {
@@ -530,6 +542,23 @@ impl InputEngine {
     /// through the Normal grammar until it completes and pops its return address (KL-OBL-5).
     fn in_one_shot(&self) -> bool {
         !self.activations.is_empty()
+    }
+
+    /// A human label for `command`'s STATIC keymap-layer binding (F-004 #2 palette column), or `None`
+    /// if it is not bound in any namespace's layer table. Grammar-driven commands (motions, operators
+    /// built by `feed`, not the layer tables) and ex commands have no static binding here — the
+    /// deliberate MVP scope (static layer bindings only), so most Normal commands return `None`.
+    #[must_use]
+    pub fn binding_label(&self, command: &Command) -> Option<String> {
+        for ns in VimProfile::all()
+            .into_iter()
+            .chain(std::iter::once(Ns::Replace))
+        {
+            if let Some(code) = self.profile.stack(ns).key_for(command) {
+                return Some(key_label(*code));
+            }
+        }
+        None
     }
 
     /// The active command-line as `(prefix, text, cursor)` for the frontend to render — `None` when
@@ -3344,5 +3373,30 @@ mod nohighlight_parse_tests {
         assert_eq!(parse_ex("noh"), Ex::NoHighlight);
         assert_eq!(parse_ex("nohl"), Ex::NoHighlight);
         assert_eq!(parse_ex("nohlsearch"), Ex::NoHighlight);
+    }
+}
+
+#[cfg(test)]
+mod binding_label_tests {
+    use super::*;
+
+    /// F-004 #2: a command with a STATIC layer binding reports it; a grammar/ex command (no layer
+    /// binding) reports None — the deliberate MVP scope (static layer bindings only).
+    #[test]
+    fn binding_label_reports_static_layer_bindings_only() {
+        let e = InputEngine::new();
+        // The Insert layer binds Esc -> EnterNormal, Enter -> InsertNewline, Backspace -> DeleteBack.
+        assert_eq!(
+            e.binding_label(&Command::EnterNormal).as_deref(),
+            Some("Esc")
+        );
+        assert_eq!(
+            e.binding_label(&Command::InsertNewline).as_deref(),
+            Some("CR")
+        );
+        assert_eq!(e.binding_label(&Command::DeleteBack).as_deref(), Some("BS"));
+        // Undo (`u`) is Normal grammar, not a layer binding, so it has no static binding here.
+        assert_eq!(e.binding_label(&Command::Undo), None);
+        assert_eq!(e.binding_label(&Command::Save), None);
     }
 }
