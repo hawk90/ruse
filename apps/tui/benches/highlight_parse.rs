@@ -64,5 +64,41 @@ fn bench_incremental(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_full, bench_incremental);
+/// hlsearch spans: the OLD per-frame cost (compile + full-buffer find_all) vs the new CachedSearch
+/// (cache hit on an unchanged key; viewport-bounded miss on a scroll/edit).
+fn bench_search(c: &mut Criterion) {
+    use ruse_core::{Regex, RegexOptions};
+    let mut g = c.benchmark_group("search_hl");
+    for &n in &[1_000usize, 10_000, 100_000] {
+        let bytes = source(n);
+        // OLD: recompile + scan the whole buffer, every frame.
+        g.bench_with_input(BenchmarkId::new("full_buffer", n), &bytes, |b, bytes| {
+            b.iter(|| {
+                let re = Regex::compile("value", RegexOptions::default()).expect("compiles");
+                let hay = std::str::from_utf8(bytes).expect("utf8");
+                re.find_all(hay).len()
+            });
+        });
+        // NEW cache HIT: unchanged (revision, viewport, pattern) — cursor motion / mode switch.
+        g.bench_with_input(BenchmarkId::new("cached_hit", n), &bytes, |b, bytes| {
+            let mut s = highlight::CachedSearch::default();
+            let vis = 0..bytes.len().min(2400);
+            s.spans(Revision(0), bytes, vis.clone(), "value"); // prime
+            b.iter(|| s.spans(Revision(0), bytes, vis.clone(), "value").len());
+        });
+        // NEW cache MISS (scroll/edit): new key each iter, but only the viewport is searched.
+        g.bench_with_input(BenchmarkId::new("cached_miss", n), &bytes, |b, bytes| {
+            let mut s = highlight::CachedSearch::default();
+            let mut rev: u64 = 0;
+            b.iter(|| {
+                rev += 1;
+                s.spans(Revision(rev), bytes, 0..bytes.len().min(2400), "value")
+                    .len()
+            });
+        });
+    }
+    g.finish();
+}
+
+criterion_group!(benches, bench_full, bench_incremental, bench_search);
 criterion_main!(benches);
