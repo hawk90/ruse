@@ -33,7 +33,7 @@ fn bench_full(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::from_parameter(n), &bytes, |b, bytes| {
             // ONE highlighter (query compiled once, as at startup); `clear()` forces a full from-scratch
             // parse each iteration so this measures the PARSE, not the one-time query build.
-            let mut h = highlight::CachedHighlight::rust().expect("rust grammar loads");
+            let mut h = highlight::CachedHighlight::for_ext("rs").expect("rust grammar loads");
             b.iter(|| {
                 h.clear();
                 h.spans(Revision(0), bytes, 0..bytes.len()).len()
@@ -49,7 +49,7 @@ fn bench_incremental(c: &mut Criterion) {
     for &n in &[100usize, 1_000, 10_000, 100_000] {
         let base = source(n);
         g.bench_with_input(BenchmarkId::from_parameter(n), &base, |b, base| {
-            let mut h = highlight::CachedHighlight::rust().expect("rust grammar loads");
+            let mut h = highlight::CachedHighlight::for_ext("rs").expect("rust grammar loads");
             h.spans(Revision(0), base, 0..base.len().min(2400)); // prime (viewport ~50 lines)
             let mut edited = base.clone();
             let mut rev: u64 = 1;

@@ -241,14 +241,11 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let recovery = persist::assess_recovery(&disk, recovered.as_deref());
 
     // Syntax highlighting (Rust only for v0) lives in the frontend; core stays dep-free.
-    let mut highlighter = match path
+    let mut highlighter = path
         .as_ref()
         .and_then(|p| p.extension())
         .and_then(|e| e.to_str())
-    {
-        Some("rs") => highlight::CachedHighlight::rust(),
-        _ => None,
-    };
+        .and_then(highlight::CachedHighlight::for_ext);
     // hlsearch/incsearch match spans, cached on (revision, viewport, pattern) like the syntax highlighter
     // — no full-buffer regex per frame (F-009 #1).
     let mut cached_search = highlight::CachedSearch::default();

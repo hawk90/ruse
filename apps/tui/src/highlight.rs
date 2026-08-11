@@ -25,13 +25,34 @@ pub struct Highlight {
     query: Query,
 }
 
+/// The grammar + highlights query for a file extension, or `None` for an unsupported type. Adding a
+/// language is one arm here plus its `tree-sitter-<lang>` dep — the rest of the pipeline is generic.
+fn grammar_for(ext: &str) -> Option<(tree_sitter::Language, &'static str)> {
+    Some(match ext {
+        "rs" => (
+            tree_sitter_rust::LANGUAGE.into(),
+            tree_sitter_rust::HIGHLIGHTS_QUERY,
+        ),
+        "json" => (
+            tree_sitter_json::LANGUAGE.into(),
+            tree_sitter_json::HIGHLIGHTS_QUERY,
+        ),
+        "py" => (
+            tree_sitter_python::LANGUAGE.into(),
+            tree_sitter_python::HIGHLIGHTS_QUERY,
+        ),
+        _ => return None,
+    })
+}
+
 impl Highlight {
-    /// A Rust highlighter, or `None` if the grammar/query fails to load.
-    pub fn rust() -> Option<Highlight> {
-        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    /// A highlighter for the file extension `ext`, or `None` if the type is unsupported or its
+    /// grammar/query fails to load.
+    pub fn for_ext(ext: &str) -> Option<Highlight> {
+        let (language, query_src) = grammar_for(ext)?;
         let mut parser = Parser::new();
         parser.set_language(&language).ok()?;
-        let query = Query::new(&language, tree_sitter_rust::HIGHLIGHTS_QUERY).ok()?;
+        let query = Query::new(&language, query_src).ok()?;
         Some(Highlight { parser, query })
     }
 
@@ -82,10 +103,10 @@ pub struct CachedHighlight {
 }
 
 impl CachedHighlight {
-    /// A cached Rust highlighter, or `None` if the grammar/query fails to load.
-    pub fn rust() -> Option<CachedHighlight> {
+    /// A cached highlighter for the file extension `ext`, or `None` if unsupported.
+    pub fn for_ext(ext: &str) -> Option<CachedHighlight> {
         Some(CachedHighlight {
-            hl: Highlight::rust()?,
+            hl: Highlight::for_ext(ext)?,
             rev: None,
             key: None,
             tree: None,
@@ -256,7 +277,7 @@ mod tests {
 
     #[test]
     fn highlights_rust() {
-        let mut h = CachedHighlight::rust().expect("rust grammar loads");
+        let mut h = CachedHighlight::for_ext("rs").expect("rust grammar loads");
         let src = b"fn main() { let x = 1; }";
         let spans = h.spans(Revision(0), src, all(src));
         assert!(!spans.is_empty(), "produces highlight spans for real Rust");
@@ -271,7 +292,7 @@ mod tests {
 
     #[test]
     fn cache_recomputes_only_on_revision_change() {
-        let mut h = CachedHighlight::rust().expect("rust grammar loads");
+        let mut h = CachedHighlight::for_ext("rs").expect("rust grammar loads");
         let r0 = Revision(0);
         let r1 = Revision(1);
 
@@ -299,7 +320,7 @@ mod tests {
     fn query_is_bounded_to_the_visible_range() {
         // The viewport win: a capture entirely OUTSIDE the visible range is not returned. Two functions;
         // ask only for the second line's bytes → only its `fn` keyword shows.
-        let mut h = CachedHighlight::rust().expect("rust grammar loads");
+        let mut h = CachedHighlight::for_ext("rs").expect("rust grammar loads");
         let src = b"fn a() {}\nfn b() {}\n";
         let line2 = 10..src.len(); // from the start of `fn b`
         let spans = h.spans(Revision(0), src, line2);
@@ -312,6 +333,26 @@ mod tests {
                 .iter()
                 .any(|s| s.start == 10 && s.color == Color::Magenta),
             "the visible line's `fn` keyword is colored"
+        );
+    }
+
+    #[test]
+    fn highlights_other_languages_by_extension() {
+        // JSON and Python load + produce spans (multi-language, F-015). An unknown extension is None.
+        let mut j = CachedHighlight::for_ext("json").expect("json grammar loads");
+        assert!(
+            !j.spans(Revision(0), br#"{"k": 1}"#, 0..8).is_empty(),
+            "json produces highlight spans"
+        );
+        let src = b"def f():\n    return 1\n";
+        let mut p = CachedHighlight::for_ext("py").expect("python grammar loads");
+        assert!(
+            !p.spans(Revision(0), src, all(src)).is_empty(),
+            "python produces highlight spans"
+        );
+        assert!(
+            CachedHighlight::for_ext("xyz").is_none(),
+            "an unsupported extension has no highlighter"
         );
     }
 
@@ -361,10 +402,10 @@ mod tests {
             b"",
             b"struct S { field: String }",
         ];
-        let mut inc = CachedHighlight::rust().expect("grammar");
+        let mut inc = CachedHighlight::for_ext("rs").expect("grammar");
         for (i, s) in states.iter().enumerate() {
             let inc_spans = inc.spans(Revision(i as u64), s, all(s)).to_vec();
-            let mut fresh = CachedHighlight::rust().expect("grammar");
+            let mut fresh = CachedHighlight::for_ext("rs").expect("grammar");
             let fresh_spans = fresh.spans(Revision(0), s, all(s)).to_vec();
             assert_eq!(
                 key(&inc_spans),
