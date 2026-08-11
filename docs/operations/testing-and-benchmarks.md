@@ -384,6 +384,24 @@ Two layers now drive the whole vertical, not just in-library units:
   F-027 vertical the inline `feed` unit tests cannot reach (translated edits on a real document,
   dot-repeat replaying the translated char, and the adversarial "and to nothing else" boundary at the
   document level).
+- **`apps/tui/tests/session_fuzz.rs`** is the **full-stack keystroke fuzzer**: random Vim keystroke
+  sessions (up to 140 keys) driven through the real engine with the mode following the REAL editor state,
+  applied to the core. It asserts the load-bearing kernel invariants after EVERY key (valid UTF-8, cursor
+  on a char boundary) and that a full undo of any session restores the initial buffer; a separate
+  monotonic-alphabet variant (no in-session `u`/CTRL-R) asserts the full undo↔redo round trip. This is the
+  first test to fuzz the COMPOSED stack over long sessions — where mode × operator × register × dot ×
+  undo-grouping interactions live. (It already surfaced one finding — see below.)
+- **`apps/tui/tests/scenarios.rs`** is a curated set of realistic multi-step sessions with exact
+  end-states — dot-repeat × count, named-register yank/paste, visual + operator, search → change → `n` →
+  `.`, substitute + undo grouping, blockwise-insert replication + undo, and multi-window buffer sharing —
+  each a readable regression guard for a known-tricky cross-feature interaction. All pass, i.e. the
+  compound behaviours match Vim, not just the single ops the oracle corpus covers.
+
+**Fuzzer finding (open, not a regression):** the session fuzzer showed that `i`…`CTRL-O u` (undo via the
+Insert one-shot) drops to **Normal** mode instead of returning to Insert — `apply_command(Undo)` restores
+the pre-insert snapshot's mode, clobbering the KL-OBL-5 one-shot resume. A minor `i_CTRL-O` parity edge
+(Vim returns to Insert). Filed as a follow-up against the input engine / undo-mode interaction; the
+fuzzer's own invariants are unaffected (they hold).
 
 **Honest gap (still MANUAL):** the *live-terminal* path — the raw-key event loop, raw-mode, and the render
 diff painting to an actual tty — has **no automated coverage**. `--replay` bypasses the input engine
