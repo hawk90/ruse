@@ -337,8 +337,8 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             if p.view.doc() != focus_doc {
                 continue;
             }
-            vis_start = vis_start.min(nth_line_start(&snapshot, p.view.top()));
-            vis_end = vis_end.max(nth_line_start(
+            vis_start = vis_start.min(ruse_core::pos::nth_line_start(&snapshot, p.view.top()));
+            vis_end = vis_end.max(ruse_core::pos::nth_line_start(
                 &snapshot,
                 p.view.top() + rect.h as usize + 1,
             ));
@@ -1263,34 +1263,15 @@ fn cursor_cell(bytes: &[u8], pos: usize, top: usize) -> (u16, u16) {
 }
 
 /// (row, col) of a byte offset — row = newlines before it, col = char count since the line start.
-/// Byte offset where 0-indexed `line` starts (after that many newlines), or `bytes.len()` if beyond.
-fn nth_line_start(bytes: &[u8], line: usize) -> usize {
-    if line == 0 {
-        return 0;
-    }
-    let mut seen = 0;
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b'\n' {
-            seen += 1;
-            if seen == line {
-                return i + 1;
-            }
-        }
-    }
-    bytes.len()
-}
-
+/// `(row, char-column)` of byte `pos`. Row and line-start come from the shared `ruse_core::pos` line
+/// math; the column is the CHAR count within the line (what the grapheme renderer wants).
 fn row_col(bytes: &[u8], pos: usize) -> (usize, usize) {
     let pos = pos.min(bytes.len());
-    let row = bytes[..pos].iter().filter(|&&c| c == b'\n').count();
-    let ls = bytes[..pos]
-        .iter()
-        .rposition(|&c| c == b'\n')
-        .map_or(0, |i| i + 1);
+    let ls = ruse_core::pos::line_start(bytes, pos);
     let col = std::str::from_utf8(&bytes[ls..pos])
         .map(|s| s.chars().count())
         .unwrap_or(0);
-    (row, col)
+    (ruse_core::pos::line_of(bytes, pos), col)
 }
 
 #[cfg(test)]

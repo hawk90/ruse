@@ -428,7 +428,7 @@ impl EditorState {
         let hay = std::str::from_utf8(bytes)
             .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
         let lines = line_spans(hay); // (start, end-excluding-newline) per line
-        let cursor_line = line_index(hay, self.view.cursor);
+        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = match range {
             SubRange::CurrentLine => (cursor_line, cursor_line),
             SubRange::WholeFile => (0, lines.len().saturating_sub(1)),
@@ -490,7 +490,7 @@ impl EditorState {
         self.view.last_was_edit = true;
         if let Some(li) = last_line_idx {
             let nb = self.doc.bytes();
-            self.view.cursor = nth_line_start(nb, li).min(nb.len());
+            self.view.cursor = crate::pos::nth_line_start(nb, li).min(nb.len());
         }
         SubOutcome {
             replacements,
@@ -997,31 +997,6 @@ fn line_spans(hay: &str) -> Vec<(usize, usize)> {
     }
     out.push((start, hay.len())); // the final line (unterminated, or empty after a trailing newline)
     out
-}
-
-/// The 0-based index of the line containing byte offset `pos`.
-fn line_index(hay: &str, pos: usize) -> usize {
-    hay.as_bytes()[..pos.min(hay.len())]
-        .iter()
-        .filter(|&&b| b == b'\n')
-        .count()
-}
-
-/// Byte offset of the start of the 0-based `idx`-th line (clamped to the buffer end).
-fn nth_line_start(bytes: &[u8], idx: usize) -> usize {
-    if idx == 0 {
-        return 0;
-    }
-    let mut seen = 0;
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b'\n' {
-            seen += 1;
-            if seen == idx {
-                return i + 1;
-            }
-        }
-    }
-    bytes.len()
 }
 
 /// Expand a `:s` replacement: `&` / `\0` → the whole matched text; `\n` `\t` `\r` `\\` `\&` escapes.

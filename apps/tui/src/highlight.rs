@@ -152,17 +152,12 @@ fn input_edit(old: &[u8], new: &[u8]) -> Option<InputEdit> {
     })
 }
 
-/// The tree-sitter `Point` (row, byte-column) of `byte` in `src`.
+/// The tree-sitter `Point` (row, byte-column) of `byte` in `src`, over the shared `ruse_core::pos`
+/// line math (tree-sitter columns are byte offsets within the line).
 fn point_at(src: &[u8], byte: usize) -> Point {
-    let byte = byte.min(src.len());
-    let row = src[..byte].iter().filter(|&&c| c == b'\n').count();
-    let line_start = src[..byte]
-        .iter()
-        .rposition(|&c| c == b'\n')
-        .map_or(0, |i| i + 1);
     Point {
-        row,
-        column: byte - line_start,
+        row: ruse_core::pos::line_of(src, byte),
+        column: byte.min(src.len()) - ruse_core::pos::line_start(src, byte),
     }
 }
 

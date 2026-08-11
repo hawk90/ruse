@@ -116,6 +116,57 @@ pub fn byte_to_cell(text: &str, b: BytePos, tab_width: usize) -> CellCol {
     CellCol(col)
 }
 
+// --- Line math over raw bytes ------------------------------------------------------------------------
+// The single home for "where do lines start / which row is this byte on". These are byte-oriented (line
+// breaks are `\n`, columns are the caller's business — byte vs char vs cell) so both the core and the
+// frontend share ONE implementation instead of each re-scanning for newlines.
+
+/// The 0-based row of `byte` — the number of `\n` before it.
+#[must_use]
+pub fn line_of(bytes: &[u8], byte: usize) -> usize {
+    bytes[..byte.min(bytes.len())]
+        .iter()
+        .filter(|&&b| b == b'\n')
+        .count()
+}
+
+/// The byte offset where the line CONTAINING `byte` starts (just after the previous `\n`, or 0).
+#[must_use]
+pub fn line_start(bytes: &[u8], byte: usize) -> usize {
+    bytes[..byte.min(bytes.len())]
+        .iter()
+        .rposition(|&c| c == b'\n')
+        .map_or(0, |i| i + 1)
+}
+
+/// The byte offset where the line CONTAINING `byte` ends (at the next `\n`, or the buffer end).
+#[must_use]
+pub fn line_end(bytes: &[u8], byte: usize) -> usize {
+    let p = byte.min(bytes.len());
+    bytes[p..]
+        .iter()
+        .position(|&c| c == b'\n')
+        .map_or(bytes.len(), |i| p + i)
+}
+
+/// The byte offset where the 0-based `line`-th line starts (clamped to `bytes.len()`).
+#[must_use]
+pub fn nth_line_start(bytes: &[u8], line: usize) -> usize {
+    if line == 0 {
+        return 0;
+    }
+    let mut seen = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'\n' {
+            seen += 1;
+            if seen == line {
+                return i + 1;
+            }
+        }
+    }
+    bytes.len()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
