@@ -145,20 +145,9 @@ pub(crate) fn snap(b: &[u8], pos: usize) -> usize {
     }
 }
 
-pub(crate) fn line_start(b: &[u8], pos: usize) -> usize {
-    b[..pos.min(b.len())]
-        .iter()
-        .rposition(|&c| c == b'\n')
-        .map_or(0, |i| i + 1)
-}
-
-pub(crate) fn line_end(b: &[u8], pos: usize) -> usize {
-    let p = pos.min(b.len());
-    b[p..]
-        .iter()
-        .position(|&c| c == b'\n')
-        .map_or(b.len(), |i| p + i)
-}
+// Line boundaries are the one implementation in `crate::pos`; re-exported here so motion call sites
+// (`line_start`/`line_end`) read unchanged.
+pub(crate) use crate::pos::{line_end, line_start};
 
 pub(crate) fn col_of(b: &[u8], start: usize, pos: usize) -> usize {
     std::str::from_utf8(&b[start..pos])
