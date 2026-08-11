@@ -278,6 +278,49 @@ mod tests {
     }
 
     #[test]
+    fn emacs_prefix_argument_multiplies_motions_and_repeats_text() {
+        // F-012 / D-049: `C-u` seeds a prefix argument (default 4); digits make it explicit; a further
+        // `C-u` multiplies by four. The next command consumes it OPAQUELY — a motion multiplies, a
+        // self-insert repeats. Each accumulating key is Pending (consumed, not yet a command).
+        let mut e = InputEngine::emacs();
+
+        // Bare `C-u` → default 4: `C-u C-f` moves right four graphemes.
+        assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('f'), Mode::Insert),
+            Feed::Cmd(Command::Move(4, Motion::Right))
+        );
+
+        // Explicit decimal: `C-u 3 7 C-b` moves left 37.
+        assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('3'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('7'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('b'), Mode::Insert),
+            Feed::Cmd(Command::Move(37, Motion::Left))
+        );
+
+        // `C-u C-u` → 16: a self-insert repeats sixteen times (Replay, not a single Cmd).
+        assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Replay(vec![Command::InsertChar('a'); 16])
+        );
+
+        // count == 1 keeps the grapheme-aware bare motion — the no-argument path is unchanged.
+        assert_eq!(
+            e.feed(ctrl('f'), Mode::Insert),
+            Feed::Cmd(Command::MoveRight)
+        );
+        // A bare digit with no pending argument is ordinary self-inserting text, not an argument.
+        assert_eq!(
+            e.feed(k('3'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('3'))
+        );
+    }
+
+    #[test]
     fn ctrl_v_enters_blockwise_visual() {
         let mut e = InputEngine::new();
         assert_eq!(
