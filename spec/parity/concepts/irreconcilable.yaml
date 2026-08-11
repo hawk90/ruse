@@ -66,11 +66,17 @@ concepts:
       One is a multiplier the engine applies; the other is an argument the command interprets. A
       kernel that models "count" as a number folded into the command loses Emacs semantics; one that
       passes it through as an opaque argument loses Vim's count1 x count2 multiplication rule.
-    resolution: pending
-    # C-EDITLANG's count CHANNEL is decided by D-047 (count is part of D-025's change-intent); only the
-    # cross-profile count/prefix SEMANTICS remain pending, so this no longer blocks the primitive STRUCTURE.
+    resolution: profile-scoped
+    # C-EDITLANG's count CHANNEL is decided by D-047 (count is part of D-025's change-intent); the
+    # cross-profile count/prefix SEMANTICS are decided by D-049 (RFC-0014): both ship, selected by profile.
     blocks: [C-COMMAND]
     decided_structure_by: D-047
+    decided_by: D-049
+    note: >
+      profile-scoped (RFC-0014 / D-049): ONE raw prefix value rides the D-047 change-intent
+      (None|Numeric(i64)|Raw(u32)). The Vim profile folds it into the engine multiplier (count1 × count2);
+      the Emacs profile passes it OPAQUE to the resolved command, which interprets it (C-u C-f repeats;
+      C-u C-SPC pops the mark — no repetition). Both semantics ship, selected by input.profile.
 
   CONCEPT-POSITION-HISTORY:
     title: Jumplist and mark-ring are different data structures with different invariants
@@ -85,7 +91,15 @@ concepts:
       In Emacs the mark is simultaneously position history AND the selection anchor; in Vim those
       are different objects (jumplist vs visual anchor). C-POSHIST cannot be one ring without
       breaking one profile's invariants.
-    resolution: pending
+    resolution: unified
+    kernel_concept: >
+      C-POSHIST (D-027): pluggable membership + traversal policies over three containers (NamedMap / Ring /
+      CursoredList) plus the live selection set. The Emacs mark ring is a per-buffer Ring<Selection>
+      (pop-rotate: C-SPC push, C-u C-SPC pop), the global mark ring another Ring, and Vim's jumplist a
+      CursoredList — one anchor-backed Selection primitive, different membership/traversal policies. It is
+      NOT "one ring": the containers differ per surface. The mark IS the region anchor (a one-caret
+      degenerate Selection, NAT-5), so position history and selection are never two objects that can drift.
+    decided_by: D-049
     blocks: [C-POSHIST, C-ANCHOR]
 
   CONCEPT-REGISTER-STORE:
