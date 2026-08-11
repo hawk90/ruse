@@ -676,6 +676,11 @@ features:
     title: Tree-sitter highlighting
     stage: post-mvp
     priority: should
+    # progress: #1 (capture-group colours) + #2 (snapshot parse) done; #3 (incremental parse) DONE — the
+    # highlighter keeps the Tree + reparses incrementally (InputEdit from a byte-diff) and bounds the query
+    # to the visible range (~6-7× per-keystroke win, testing-and-benchmarks.md). Stays `planned`: #4
+    # (injections / folds / indent / multi-language) is unbuilt, and the parity chain (legacy NVIM-TS-*)
+    # is not yet repointed. Rust-only, single grammar.
     status: planned
     depends_on: [C-DOCUMENT, C-RENDER, C-SCHEDULER]
     summary: Incremental structural highlighting from snapshots; injections; TS folds/indent.

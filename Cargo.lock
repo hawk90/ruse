@@ -537,6 +537,7 @@ dependencies = [
  "proptest",
  "ruse-core",
  "serde_json",
+ "streaming-iterator",
  "tracing",
  "tracing-subscriber",
  "tree-sitter",

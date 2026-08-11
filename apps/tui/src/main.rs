@@ -327,11 +327,30 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             let new_top = viewport::scroll_top(cursor_row, rect.h as usize, SCROLLOFF, cur_top);
             ws.set_top(i, new_top);
         }
-        // Recompute highlight spans only when the focused buffer changed (keyed on revision, D-042
-        // win A). All panes share that buffer in MVP, so one parse colours every pane showing it.
+        // Highlight only the VISIBLE byte range of the focused buffer (F-015 #3): the union of the
+        // viewports of every pane showing it. The tree is reparsed incrementally on edit (keyed on
+        // revision); the viewport-bounded query keeps the per-keystroke cost O(viewport), not O(buffer).
+        let focus_doc = ws.focused().view.doc();
+        let (mut vis_start, mut vis_end) = (usize::MAX, 0usize);
+        for (i, rect) in rects.iter().enumerate() {
+            let p = ws.pane(i);
+            if p.view.doc() != focus_doc {
+                continue;
+            }
+            vis_start = vis_start.min(nth_line_start(&snapshot, p.view.top()));
+            vis_end = vis_end.max(nth_line_start(
+                &snapshot,
+                p.view.top() + rect.h as usize + 1,
+            ));
+        }
+        let visible = if vis_start <= vis_end {
+            vis_start..vis_end
+        } else {
+            0..snapshot.len()
+        };
         let spans: &[highlight::Span] = highlighter
             .as_mut()
-            .map(|h| h.spans(revision, &snapshot))
+            .map(|h| h.spans(revision, &snapshot, visible))
             .unwrap_or(&[]);
         // The focused pane's extra reverse-video highlights: a `:s///c` confirm match, else the
         // incsearch pattern being typed in `/`…`?`, else the last search (hlsearch) — F-009 #1.
@@ -1244,6 +1263,23 @@ fn cursor_cell(bytes: &[u8], pos: usize, top: usize) -> (u16, u16) {
 }
 
 /// (row, col) of a byte offset — row = newlines before it, col = char count since the line start.
+/// Byte offset where 0-indexed `line` starts (after that many newlines), or `bytes.len()` if beyond.
+fn nth_line_start(bytes: &[u8], line: usize) -> usize {
+    if line == 0 {
+        return 0;
+    }
+    let mut seen = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'\n' {
+            seen += 1;
+            if seen == line {
+                return i + 1;
+            }
+        }
+    }
+    bytes.len()
+}
+
 fn row_col(bytes: &[u8], pos: usize) -> (usize, usize) {
     let pos = pos.min(bytes.len());
     let row = bytes[..pos].iter().filter(|&&c| c == b'\n').count();
