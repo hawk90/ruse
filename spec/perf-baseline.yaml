@@ -1,0 +1,43 @@
+# Benchmark baseline — the committed record of what each `[[bench]]` measures, so a perf CLAIM is
+# checkable against a number instead of asserted (the "measure before claiming" lesson, D-019).
+#
+# Numbers are one dev machine's (see `machine`) — RELATIVE, not a budget (D-019: budgets live in
+# ci-cd-and-release.md §10). Regenerate with `ruse bench` after a perf-relevant change. `gov perf` gates
+# that every registered bench appears here (deterministic, no bench run); a nightly CI compares a live
+# run to these with a generous threshold (D-019 trend+warn on a fixed machine).
+#
+# `p50` values are criterion's central estimate at the recorded date; keep the headline cases, not every
+# data point. Adding a `[[bench]]` without an entry here FAILS `gov perf` — record its numbers.
+
+version: 1
+machine: "darwin / arm64 dev laptop (relative baseline, not a budget)"
+recorded: "2026-08-11"
+
+benches:
+  # crates/core
+  edit_apply:                       # #1 per-edit buffer cost — O(n) flat Arc<[u8]>, fine at daily sizes
+    edit_apply/100: "581 ns"
+    edit_apply/1000: "10.1 us"
+    edit_apply/10000: "25.7 us"
+  line_math:                        # the O(buffer) pos:: scan the LineIndex replaces on the hot path
+    line_of_end/1000: "6.6 us"
+    line_of_end/10000: "61 us"
+    line_of_end/100000: "623 us"
+    nth_line_start_last/100000: "2.13 ms"
+
+  # apps/tui
+  highlight_parse:                  # #2 syntax cost — full reparse vs incremental+viewport (F-015 #3)
+    highlight_parse/1000: "7.5 ms"
+    highlight_parse/10000: "77 ms"
+    highlight_incremental/1000: "1.2 ms"
+    highlight_incremental/10000: "10 ms"
+    search_hl/full_buffer/1000: "37 us"
+    search_hl/full_buffer/100000: "3.35 ms"
+    search_hl/cached_hit/1000: "4.3 ns"
+    search_hl/cached_miss/100000: "2.3 us"
+  input_dispatch:                   # keystroke dispatch (feed) — human-rate, never per frame
+    input_feed_sequence: "1.34 us"
+  line_index:                       # D-042 win D — cached line lookups vs the O(n) line_math scan
+    line_of_end/100000: "12.6 ns"
+    nth_line_start_last/100000: "0.32 ns"
+    refresh/100000: "1.32 ms"
