@@ -60,6 +60,24 @@ pub enum IndentStyle {
     Tab,
 }
 
+/// The indent config a shift/indent operator (`>>`/`<<`) reads: `editor.tab_width` +
+/// `editor.indent_style`. Grouped so the "config" concern is one field on [`View`], not four loose ones.
+#[derive(Clone, Copy)]
+struct IndentConfig {
+    /// `editor.tab_width` — one indent level's width in columns/spaces. Schema default 4.
+    tab_width: usize,
+    /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
+    style: IndentStyle,
+}
+
+/// The search-case config: `'ignorecase'` and `'smartcase'` (F-009). Default off — the factory Vim
+/// default the differential oracle runs against.
+#[derive(Clone, Copy)]
+struct SearchCase {
+    ignore: bool,
+    smart: bool,
+}
+
 impl Mode {
     /// Whether this mode carries a live selection (Visual or Select) — the anchor is `Some` exactly then.
     /// The [`SelectKind`] is the selection's shape when it has one.
@@ -118,21 +136,15 @@ pub struct View {
     /// and consumed by the next `<Esc>` ([`Command::EnterNormal`]). `None` outside such a session; cleared
     /// on any exit from Insert. See [`BlockInsert`].
     block_insert: Option<BlockInsert>,
-    /// `editor.tab_width` — one indent level's width in columns/spaces. Schema default 4.
-    tab_width: usize,
-    /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
-    indent_style: IndentStyle,
+    /// The indent config (`editor.tab_width` + `editor.indent_style`).
+    indent: IndentConfig,
     /// The STICKY desired column (Vim `curswant`): the char column `j`/`k` aim for, preserved across shorter
     /// interior lines rather than collapsing to the short line's end. Maintained in [`apply_command`] — kept
     /// on a vertical move, set to [`MAXCOL`] by `$`/`<End>` (ride each line's end), and recomputed from the
     /// landing column after any other command. Read by the `plan` Move Up/Down arm via [`motion::vmove`].
     curswant: usize,
-    /// `'ignorecase'`: search matches case-insensitively. Default off — Vim's factory default, which is
-    /// what the differential oracle runs, so search stays case-sensitive unless a config seam turns it on.
-    search_ignore_case: bool,
-    /// `'smartcase'`: with `search_ignore_case` on, an uppercase letter in the pattern forces a
-    /// case-sensitive match (F-009 #1 "case-smart search"). No effect while `search_ignore_case` is off.
-    search_smart_case: bool,
+    /// The search-case config (`'ignorecase'` + `'smartcase'`, F-009).
+    search_case: SearchCase,
 }
 
 /// The editor over a single [`Document`] and its [`View`] — the top-level headless handle the TUI and
@@ -161,11 +173,15 @@ impl View {
             last_visual: None,
             replace_stack: Vec::new(),
             block_insert: None,
-            tab_width: 4,
-            indent_style: IndentStyle::Space,
+            indent: IndentConfig {
+                tab_width: 4,
+                style: IndentStyle::Space,
+            },
             curswant: 0,
-            search_ignore_case: false,
-            search_smart_case: false,
+            search_case: SearchCase {
+                ignore: false,
+                smart: false,
+            },
         }
     }
 
@@ -173,8 +189,8 @@ impl View {
     fn search_options(&self) -> crate::pattern::Options {
         crate::pattern::Options {
             magic: crate::pattern::Magic::Magic,
-            ignore_case: self.search_ignore_case,
-            smart_case: self.search_smart_case,
+            ignore_case: self.search_case.ignore,
+            smart_case: self.search_case.smart,
         }
     }
 
@@ -369,15 +385,15 @@ impl EditorState {
     /// until it lands this is the seam a loader (or a test) uses to install `editor.tab_width` /
     /// `editor.indent_style`. No new schema key — both are existing keys (spec/config-schema.yaml).
     pub fn set_indent(&mut self, tab_width: usize, indent_style: IndentStyle) {
-        self.view.tab_width = tab_width.max(1);
-        self.view.indent_style = indent_style;
+        self.view.indent.tab_width = tab_width.max(1);
+        self.view.indent.style = indent_style;
     }
 
     /// Set the search case config (`'ignorecase'` / `'smartcase'`, F-009 #1). The seam a config loader
     /// (or a test) uses until runtime config lands; the default is Vim's factory case-sensitive search.
     pub fn set_search_case(&mut self, ignore_case: bool, smart_case: bool) {
-        self.view.search_ignore_case = ignore_case;
-        self.view.search_smart_case = smart_case;
+        self.view.search_case.ignore = ignore_case;
+        self.view.search_case.smart = smart_case;
     }
 
     /// Execute `:[range]s/pattern/replacement/flags` (F-009 #2). Every substitution across the range is
@@ -597,8 +613,8 @@ impl EditorState {
 
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
     fn indent_unit(&self) -> Vec<u8> {
-        match self.view.indent_style {
-            IndentStyle::Space => vec![b' '; self.view.tab_width],
+        match self.view.indent.style {
+            IndentStyle::Space => vec![b' '; self.view.indent.tab_width],
             IndentStyle::Tab => vec![b'\t'],
         }
     }

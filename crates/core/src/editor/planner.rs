@@ -217,8 +217,8 @@ fn plan_virtual_replace_type(
         // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column, replace
         // the tab with the typed char (backspace restores the tab).
         let ls = line_start(b, cur);
-        let vcol = motion::vcol_of(b, ls, cur, st.view.tab_width);
-        let w = st.view.tab_width.max(1) - (vcol % st.view.tab_width.max(1));
+        let vcol = motion::vcol_of(b, ls, cur, st.view.indent.tab_width);
+        let w = st.view.indent.tab_width.max(1) - (vcol % st.view.indent.tab_width.max(1));
         if w > 1 {
             (one(Edit::insert(cur, typed)), Some(None), cur + tn)
         } else {
@@ -946,7 +946,7 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
                 edits.push(Edit::insert(ls, unit.clone()));
             }
         } else {
-            let remove = shift_left_remove(b, ls, le, st.view.tab_width);
+            let remove = shift_left_remove(b, ls, le, st.view.indent.tab_width);
             if i == 0 {
                 first_removed = remove;
             }
