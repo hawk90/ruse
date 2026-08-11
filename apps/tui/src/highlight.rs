@@ -94,6 +94,19 @@ impl CachedHighlight {
         })
     }
 
+    /// Drop the cached tree/spans but KEEP the compiled parser + query, so the next `spans` call does a
+    /// full from-scratch parse. Used by the `highlight_parse` bench to measure a full reparse WITHOUT
+    /// re-paying the one-time query compilation (which a fresh `rust()` would, inflating the number).
+    /// Also the right primitive for a future buffer-switch; unused in the bin today.
+    #[allow(dead_code)]
+    pub fn clear(&mut self) {
+        self.rev = None;
+        self.key = None;
+        self.tree = None;
+        self.src.clear();
+        self.spans.clear();
+    }
+
     /// Spans for the `visible` byte range of the document at `rev`. Reuses the cache when neither the
     /// revision nor the viewport changed. The TREE is reparsed only on a revision change (incrementally,
     /// against the previous tree); a scroll re-runs only the viewport-bounded query.

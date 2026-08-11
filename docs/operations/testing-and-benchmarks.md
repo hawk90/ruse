@@ -187,6 +187,16 @@ The O(n) cost moves from per-FRAME to per-EDIT (a revision change), amortized li
 `edit_apply` already pays. A 100k-line buffer scrolled near the bottom went from ~4 ms/frame (2×
 `nth_line_start`) to sub-ns per-frame lookups. This was measured before claiming — the lesson from #130.
 
+#### The harness caught a bad bench (`ruse bench --check`, #133)
+
+First use of the perf harness flagged `highlight_parse/1000` at 2.6× the baseline. Not noise: the full-
+parse bench had been rewritten to build a fresh `CachedHighlight` (and recompile the tree-sitter query,
+~12 ms) EVERY iteration, so "full parse" measured query-build + parse (~20 ms), while the incremental
+bench built the query once — an unfair comparison inflating the win. Fixed by reusing one highlighter and
+`clear()`-ing its tree per iteration: `highlight_parse/100` dropped 12.9 ms → 0.8 ms (pure parse), and
+`/1000` returned to ~8 ms, matching the baseline and the honest ~6× incremental win. Exactly what the
+harness is for — it caught a measurement defect the eye missed.
+
 ---
 
 ## 1. Test taxonomy — the layers and their formats

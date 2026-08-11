@@ -31,8 +31,11 @@ fn bench_full(c: &mut Criterion) {
     for &n in &[100usize, 1_000, 10_000, 100_000] {
         let bytes = source(n);
         g.bench_with_input(BenchmarkId::from_parameter(n), &bytes, |b, bytes| {
+            // ONE highlighter (query compiled once, as at startup); `clear()` forces a full from-scratch
+            // parse each iteration so this measures the PARSE, not the one-time query build.
+            let mut h = highlight::CachedHighlight::rust().expect("rust grammar loads");
             b.iter(|| {
-                let mut h = highlight::CachedHighlight::rust().expect("rust grammar loads");
+                h.clear();
                 h.spans(Revision(0), bytes, 0..bytes.len()).len()
             });
         });
