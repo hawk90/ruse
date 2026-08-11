@@ -30,6 +30,7 @@ pub mod motion;
 pub mod pattern;
 pub mod pos;
 pub mod register;
+pub mod registry;
 pub mod snapshot;
 pub mod trace;
 pub mod transaction;
@@ -51,6 +52,9 @@ pub use motion::Motion;
 pub use pattern::{Magic, Match, Options as RegexOptions, Regex, RegexError};
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};
 pub use register::{RegKind, Register, RegisterStore};
+pub use registry::{
+    available, command_by_id, ArgSchema, Category, CommandId, CommandSpec, Context, When,
+};
 pub use snapshot::{AnchorIndex, DocumentSnapshot};
 pub use trace::{doc_hash, Trace, TraceError, TRACE_FORMAT_VERSION};
 pub use transaction::{GroupHint, Transaction, TransactionOrigin};

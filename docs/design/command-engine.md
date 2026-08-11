@@ -216,6 +216,13 @@ pub struct CommandSpec {
 }
 ```
 
+<!-- design-code-ack: CommandSpec — the illustration above is the FULL C-COMMAND descriptor; the F-004
+     MVP (crates/core/src/registry.rs) carries only { id, title, category, args, when } plus the no-arg
+     `command` it dispatches, and DEFERS the ecosystem fields (doc, capabilities, trust, effects,
+     undoable, exec, palette, repeatable, api_since) to post-MVP, when plugins / AI-review / trust
+     prompts consume them. Design ahead of the code by intent — add each field when its consumer lands,
+     not stale. (See "MVP slice" reasoning in spec/PRD.yaml F-004.) -->
+
 Notes:
 
 - `title`/`doc`/`category` exist **only** for humans and generated surfaces; they never affect resolution.
