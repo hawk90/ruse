@@ -343,12 +343,34 @@ features:
     title: Semantic command engine + palette
     stage: mvp
     priority: must
-    status: planned
+    # done (#114 registry + #115 palette): the C-COMMAND registry (crates/core/src/registry.rs —
+    # CommandSpec{id,title,category,args,when,command}, command_by_id, available(ctx)) makes named,
+    # namespaced commands invocable by STABLE id independent of any key (#1); metadata (typed ArgSchema,
+    # category, when) is introspectable (#3); the frontend palette (C-P) lists context-appropriate
+    # commands filtered by the minimal C-CONTEXT (When over Context{mode,has_selection}) and shows each
+    # command's static keymap-layer binding via LayerStack::key_for/InputEngine::binding_label (#2). All
+    # three acceptance criteria met + tested (registry 5, keymap key_for 1, binding_label 1, palette 2).
+    # MVP-minimal per ruse-mvp-minimal-slice: the full CommandSpec ecosystem fields (capabilities/trust/
+    # declared side-effects/undoable/exec/repeatable/api_since), the when-expression DSL + full Context
+    # Key registry, typed-argument commands, macros, and grammar-command binding reverse-lookup are the
+    # explicit post-MVP C-COMMAND/C-CONTEXT elaboration (design-code-ack on CommandSpec).
+    status: done
     depends_on: [C-COMMAND, C-CONTEXT, C-QUERY]
     summary: Namespaced typed commands decoupled from keybindings; context-aware palette.
     trace:
-      parity: [EMACS-CMD-1, EMACS-CMD-3, ECO-1, ECO-6, COM-10, EMACS-CMD-2, EMACS-HELP-1, EMACS-HELP-2, EMACS-MINI-1]
-      design: [../docs/architecture/architecture.md#2, ../docs/design/render-and-frontends.md]
+      # Census-N/A (#116, D-043). F-004 is ruse C-COMMAND / C-CONTEXT ARCHITECTURE (docs/design/
+      # command-engine.md): no editor source tree TABULATES "a named command registry with typed args +
+      # when-context + a context-aware palette" as a censusable fact — the registry, the availability
+      # predicate, and the palette are ruse-designed structures. The 8 hand-authored ids this once cited
+      # (EMACS-CMD-2/3 named-command/self-describing-args, ECO-1/6 ecosystem command surface, COM-10
+      # command palette, EMACS-HELP-1/2 describe-command/apropos, EMACS-MINI-1 minibuffer completion) are
+      # cross-editor "there is a command system" assertions with no single census surface — moved to
+      # spec/parity-backlog.yaml, burned down when a command-engine census surface or a ruse-choice
+      # PILLAR is written. EMACS-CMD-1 stays derived via its other citer (the Emacs profile feature). As
+      # with F-009, C-COMMAND's pending CONCEPT-COUNT-VS-PREFIX governs count/prefix parsing, not the
+      # command-registry/palette this feature ships, so it is READY-WITH-SCOPE (carve-out), not a blocker.
+      parity: []
+      design: [../docs/design/command-engine.md, ../docs/architecture/architecture.md#2, ../docs/design/render-and-frontends.md]
       verify: [../tests/unit/command-registry, ../tests/integration/palette-context]
     acceptance:
       - Commands are invocable by stable namespaced ID independent of any key binding.
