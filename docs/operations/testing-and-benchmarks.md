@@ -370,6 +370,28 @@ Full lifecycle: **launch → edit → save → restart → recover** ([ci-cd-and
 Plus a **dogfood corpus** — real editing sessions of the ruse repo itself, replayed nightly as a soak test.
 E2E complements, never replaces, the lower layers (guards TEST-1: not "only UI tests").
 
+#### v0 status — SHIPPED (system level: the binary as a process)
+
+Two layers now drive the whole vertical, not just in-library units:
+
+- **`apps/tui/tests/system_replay.rs`** spawns the **real compiled `ruse` binary** (`CARGO_BIN_EXE_ruse`)
+  through its headless `--replay` entry (F-022) and asserts on **stdout + exit code** — argument parsing,
+  trace/file IO, the core replay pipeline, and every FAILURE path (missing args, unreadable inputs,
+  malformed trace, and a base-hash mismatch that must be *rejected*, not misapplied). This is the only
+  test that exercises the finished binary as a process.
+- **`apps/tui/tests/lang_arg_e2e.rs`** drives the **real input engine + core together** exactly as
+  `main.rs::run` composes them (keystroke → Lang-Arg translate → `Feed` → `Command` → edit), covering the
+  F-027 vertical the inline `feed` unit tests cannot reach (translated edits on a real document,
+  dot-repeat replaying the translated char, and the adversarial "and to nothing else" boundary at the
+  document level).
+
+**Honest gap (still MANUAL):** the *live-terminal* path — the raw-key event loop, raw-mode, and the render
+diff painting to an actual tty — has **no automated coverage**. `--replay` bypasses the input engine
+(it replays `Command`s), and the e2e test drives the engine below the terminal, so the crossterm read
+loop + screen flush in `main.rs::run` is verified only by hand. A PTY-driven harness (§1.7 TUI golden)
+is the eventual home for it; it is deliberately not built yet (a flaky screen-scraping harness would cost
+more than the thin glue it covers). Recorded here so the boundary is visible, not assumed.
+
 ### 1.10 Deterministic replay — `tests/replay/`
 
 The replay log is a **semantic-event log** (commands + origins), *not* the raw keyboard byte stream and *not*
@@ -383,6 +405,13 @@ DET-3; timestamps are injected, not sampled).
   (guards DET-4, TEST-20).
 - The replay corpus is also the **real command-sequence replay corpus** the DoD requires (§5; guards
   TEST-21).
+
+#### v0 status — SHIPPED (determinism at the process boundary)
+
+`apps/tui/tests/system_replay.rs` asserts the DET-1 contract on the real binary: the **same trace against
+the same base reproduces identical final bytes** across runs, and a trace whose recorded `doc_hash` does
+not match the file is **rejected** (`TraceError::HashMismatch`) rather than run against the wrong base —
+the failure mode this contract exists to forbid. Fuzz-counterexample-as-fixture (DET-4) remains future.
 
 ---
 
