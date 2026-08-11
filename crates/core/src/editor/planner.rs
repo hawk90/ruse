@@ -1,5 +1,309 @@
 use super::*;
 
+/// Enter a blockwise insert-replicate session (`CTRL-V` `I`/`A`/`c`): compute the top-row insert point
+/// and, for `c`, the block-delete edits + captured blockwise register. The typed text is replicated down
+/// the block by [`block_replicate`] when the session's `<Esc>` closes it.
+fn plan_block_insert(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    hint: GroupHint,
+    kind: &BlockInsertKind,
+) -> Plan {
+    let Some(anchor) = st.view.anchor else {
+        // Not in a selection — degrade to a plain Insert entry, no session.
+        return nop(cur, Mode::Insert);
+    };
+    let (rows, col_lo, col_hi) = block_rows(b, anchor, cur);
+    let append = matches!(kind, BlockInsertKind::Append);
+    let change = matches!(kind, BlockInsertKind::Change);
+    let target_col = if append { col_hi + 1 } else { col_lo };
+    let top_start = rows.first().map_or(cur, |&(s, _)| s);
+    let top_ls = line_start(b, top_start);
+    let rows_below = rows.len().saturating_sub(1);
+
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut reg: Option<Register> = None;
+    // `c`: delete the block on every row first (capture it blockwise), then insert at the left edge
+    // — where the top-row delete began, which stays valid after the delete.
+    if change {
+        let mut text: Vec<u8> = Vec::new();
+        for (i, &(s, e)) in rows.iter().enumerate() {
+            if i > 0 {
+                text.push(b'\n');
+            }
+            text.extend_from_slice(&b[s..e]);
+        }
+        reg = Some(Register::blockwise(text));
+        for &(s, e) in &rows {
+            if e > s {
+                edits.push(Edit::delete(s, e - s));
+            }
+        }
+    }
+
+    // Where the insert begins on the top row. For `A` on a top row shorter than the append column,
+    // pad it out with spaces so the cursor sits at the append column.
+    let top_le = line_end(b, top_ls);
+    let toplen = col_of(b, top_ls, top_le);
+    let insert_start = if change {
+        top_start
+    } else if append && toplen < target_col {
+        edits.push(Edit::insert(top_le, vec![b' '; target_col - toplen]));
+        top_le + (target_col - toplen)
+    } else {
+        at_col(b, top_ls, target_col.min(toplen))
+    };
+
+    let session = BlockInsert {
+        insert_start,
+        top_left: at_col(b, top_ls, col_lo),
+        top_line_start: top_ls,
+        target_col,
+        rows_below,
+        append,
+    };
+    let list = EditList::new(edits).expect("block-insert enter edits are disjoint (one per line)");
+    let is_edit = !list.is_empty();
+    Plan {
+        action: Action::BlockInsertArm {
+            edits: list,
+            hint,
+            session,
+        },
+        cursor: insert_start,
+        mode: Mode::Insert,
+        is_edit,
+        effects: Vec::new(),
+        set_register: reg.map(RegWrite::Edit),
+        set_anchor: None,
+    }
+}
+
+/// `c{motion}` / `cc`: delete the change span, capture it to a register, and enter Insert. `cc`/`S` is
+/// the linewise case that preserves the leading indent (Vim autoindent-like).
+fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) -> Plan {
+    if *m == Motion::Line {
+        // `cc` / `{count}cc` / `S`: a LINEWISE change. Vim keeps the leading indent of the first line
+        // (the existing indent TEXT is preserved), deletes the rest of the line content down through
+        // `count` lines, keeps the trailing newline, and enters Insert at the end of the kept indent.
+        let (ls, content_end) = change_range(b, cur, *m, count);
+        let indent_end = motion::first_non_blank(b, ls).min(content_end);
+        // Register span: whole lines including the terminating newline where one is present.
+        let reg_end = if content_end < b.len() && b[content_end] == b'\n' {
+            content_end + 1
+        } else {
+            content_end
+        };
+        let reg = captured(b, ls, reg_end, true);
+        if indent_end >= content_end {
+            // Nothing after the indent to delete (empty/blank line): keep the buffer, but still capture
+            // the register linewise and drop into Insert at the indent end.
+            Plan {
+                action: Action::Nop,
+                cursor: indent_end,
+                mode: Mode::Insert,
+                is_edit: false,
+                effects: Vec::new(),
+                set_register: Some(RegWrite::Edit(reg)),
+                set_anchor: None,
+            }
+        } else {
+            edit_yank(
+                one(Edit::delete(indent_end, content_end - indent_end)),
+                indent_end,
+                Mode::Insert,
+                hint,
+                reg,
+            )
+        }
+    } else {
+        let (s, e) = change_range(b, cur, *m, count);
+        if s >= e {
+            Plan {
+                action: Action::Nop,
+                cursor: s,
+                mode: Mode::Insert,
+                is_edit: false,
+                effects: Vec::new(),
+                set_register: None,
+                set_anchor: None,
+            }
+        } else {
+            // The register captures the removed content charwise (a partial-line change like `c$` pastes
+            // inline).
+            let reg = captured(b, s, e, false);
+            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+        }
+    }
+}
+
+/// `[op]/pat` — search forward `count` times, then apply the pending operator (move/delete/change/yank)
+/// over `[cur, match)`. An operator with no match (or a backward match) is a no-op.
+fn plan_search(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    op: &SearchOp,
+    count: u32,
+    pattern: &str,
+    hint: GroupHint,
+) -> Plan {
+    let opts = st.view.search_options();
+    let mut pos = cur;
+    for _ in 0..count.max(1) {
+        match search_fwd(b, pattern, pos + 1, opts) {
+            Some(m) => pos = m,
+            None => break,
+        }
+    }
+    match op {
+        SearchOp::Move => nop(pos, st.view.mode),
+        _ if pos <= cur => nop(cur, st.view.mode),
+        SearchOp::Delete => {
+            let reg = captured(b, cur, pos, false);
+            edit_yank(
+                one(Edit::delete(cur, pos - cur)),
+                cur,
+                st.view.mode,
+                hint,
+                reg,
+            )
+        }
+        SearchOp::Change => {
+            let reg = captured(b, cur, pos, false);
+            edit_yank(
+                one(Edit::delete(cur, pos - cur)),
+                cur,
+                Mode::Insert,
+                hint,
+                reg,
+            )
+        }
+        SearchOp::Yank => {
+            let reg = captured(b, cur, pos, false);
+            Plan {
+                action: Action::Nop,
+                cursor: cur,
+                mode: st.view.mode,
+                is_edit: false,
+                effects: Vec::new(),
+                set_register: Some(RegWrite::Yank(reg)),
+                set_anchor: None,
+            }
+        }
+    }
+}
+
+/// `gR`-mode typing (Virtual Replace): tab-aware overwrite — over a multi-column tab, insert before it
+/// (it shrinks) until its last column, then replace it; at end-of-line, append; else overwrite one char,
+/// remembering the original for `<BS>`.
+fn plan_virtual_replace_type(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    c: char,
+    hint: GroupHint,
+) -> Plan {
+    let mut buf = [0u8; 4];
+    let typed = c.encode_utf8(&mut buf).as_bytes().to_vec();
+    let tn = typed.len();
+    let le = line_end(b, cur);
+    let (edits, push, cursor) = if cur >= le {
+        // End-of-line: nothing to overwrite — append (backspace deletes it).
+        (one(Edit::insert(cur, typed)), Some(None), cur + tn)
+    } else if b[cur] == b'\t' {
+        // Over a TAB: it spans `w` virtual columns to the next tabstop. While more than one column
+        // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column, replace
+        // the tab with the typed char (backspace restores the tab).
+        let ls = line_start(b, cur);
+        let vcol = motion::vcol_of(b, ls, cur, st.view.tab_width);
+        let w = st.view.tab_width.max(1) - (vcol % st.view.tab_width.max(1));
+        if w > 1 {
+            (one(Edit::insert(cur, typed)), Some(None), cur + tn)
+        } else {
+            (
+                one(Edit::replace(cur, 1, typed)),
+                Some(Some(vec![b'\t'])),
+                cur + tn,
+            )
+        }
+    } else {
+        // Over a normal char: overwrite it (remember the original for `<BS>`), like Replace.
+        let nb = next_boundary(b, cur);
+        (
+            one(Edit::replace(cur, nb - cur, typed)),
+            Some(Some(b[cur..nb].to_vec())),
+            cur + tn,
+        )
+    };
+    Plan {
+        action: Action::ReplaceTxn {
+            edits,
+            hint,
+            push,
+            pop: false,
+        },
+        cursor,
+        mode: Mode::VirtualReplace,
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+    }
+}
+
+fn nop(cursor: usize, mode: Mode) -> Plan {
+    Plan {
+        action: Action::Nop,
+        cursor,
+        mode,
+        is_edit: false,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+    }
+}
+
+fn edit(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint) -> Plan {
+    Plan {
+        action: Action::Txn { edits, hint },
+        cursor,
+        mode,
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+    }
+}
+
+/// An `edit` that also captures the removed span into a register (`d`/`c`/`x` fill the unnamed slot).
+fn edit_yank(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: Register) -> Plan {
+    Plan {
+        action: Action::Txn { edits, hint },
+        cursor,
+        mode,
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: Some(RegWrite::Edit(reg)),
+        set_anchor: None,
+    }
+}
+
+fn one(e: Edit) -> EditList {
+    EditList::new(vec![e]).expect("single edit is always valid")
+}
+
+/// Capture `b[s..e]` as a register value with the given paste geometry.
+fn captured(b: &[u8], s: usize, e: usize, linewise: bool) -> Register {
+    let bytes = b[s..e].to_vec();
+    if linewise {
+        Register::linewise(bytes)
+    } else {
+        Register::charwise(bytes)
+    }
+}
+
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     let b = st.bytes();
     let cur = st.view.cursor;
@@ -12,51 +316,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     } else {
         Mode::Normal
     };
-    let nop = |cursor: usize, mode: Mode| Plan {
-        action: Action::Nop,
-        cursor,
-        mode,
-        is_edit: false,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-    };
-    let edit = |edits: EditList, cursor: usize, mode: Mode, hint: GroupHint| Plan {
-        action: Action::Txn { edits, hint },
-        cursor,
-        mode,
-        is_edit: true,
-        effects: Vec::new(),
-        set_register: None,
-        set_anchor: None,
-    };
-    // A delete/change that also captures the removed span into the unnamed register (Vim: `d`/`c`/`x` fill
-    // the register). `linewise` picks the register's paste geometry.
-    let edit_yank =
-        |edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: Register| Plan {
-            action: Action::Txn { edits, hint },
-            cursor,
-            mode,
-            is_edit: true,
-            effects: Vec::new(),
-            set_register: Some(RegWrite::Edit(reg)),
-            set_anchor: None,
-        };
-    // Capture `b[s..e]` as a register value with the given geometry.
-    let captured = |s: usize, e: usize, linewise: bool| {
-        let bytes = b[s..e].to_vec();
-        if linewise {
-            Register::linewise(bytes)
-        } else {
-            Register::charwise(bytes)
-        }
-    };
     let hint = if st.view.last_was_edit {
         GroupHint::Continue
     } else {
         GroupHint::BreakBefore
     };
-    let one = |e: Edit| EditList::new(vec![e]).expect("single edit is always valid");
 
     match cmd {
         // `h`/`l` move by whole grapheme cluster so the cursor never lands mid-emoji/ZWJ/combining
@@ -181,54 +445,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         },
         Command::EnterVirtualReplace => nop(cur, Mode::VirtualReplace),
-        Command::VirtualReplaceType(c) => {
-            let mut buf = [0u8; 4];
-            let typed = c.encode_utf8(&mut buf).as_bytes().to_vec();
-            let tn = typed.len();
-            let le = line_end(b, cur);
-            let (edits, push, cursor) = if cur >= le {
-                // End-of-line: nothing to overwrite — append (backspace deletes it).
-                (one(Edit::insert(cur, typed)), Some(None), cur + tn)
-            } else if b[cur] == b'\t' {
-                // Over a TAB: it spans `w` virtual columns to the next tabstop. While more than one column
-                // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column,
-                // replace the tab with the typed char (backspace restores the tab).
-                let ls = line_start(b, cur);
-                let vcol = motion::vcol_of(b, ls, cur, st.view.tab_width);
-                let w = st.view.tab_width.max(1) - (vcol % st.view.tab_width.max(1));
-                if w > 1 {
-                    (one(Edit::insert(cur, typed)), Some(None), cur + tn)
-                } else {
-                    (
-                        one(Edit::replace(cur, 1, typed)),
-                        Some(Some(vec![b'\t'])),
-                        cur + tn,
-                    )
-                }
-            } else {
-                // Over a normal char: overwrite it (remember the original for `<BS>`), like Replace.
-                let nb = next_boundary(b, cur);
-                (
-                    one(Edit::replace(cur, nb - cur, typed)),
-                    Some(Some(b[cur..nb].to_vec())),
-                    cur + tn,
-                )
-            };
-            Plan {
-                action: Action::ReplaceTxn {
-                    edits,
-                    hint,
-                    push,
-                    pop: false,
-                },
-                cursor,
-                mode: Mode::VirtualReplace,
-                is_edit: true,
-                effects: Vec::new(),
-                set_register: None,
-                set_anchor: None,
-            }
-        }
+        Command::VirtualReplaceType(c) => plan_virtual_replace_type(st, b, cur, *c, hint),
         Command::InsertChar(c) => {
             let mut buf = [0u8; 4];
             let bytes = c.encode_utf8(&mut buf).as_bytes().to_vec();
@@ -257,7 +474,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             if end <= cur {
                 nop(cur, st.view.mode)
             } else {
-                let reg = captured(cur, end, false);
+                let reg = captured(b, cur, end, false);
                 edit_yank(
                     one(Edit::delete(cur, end - cur)),
                     cur,
@@ -412,7 +629,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 // the line content linewise ("beta\n"), not the leading newline we splice away.
                 // (`dG` on a newline-terminated buffer keeps its own trailing newline and takes the plain
                 // branch, since the span already ends in `\n`.)
-                let reg = captured(s, e, true);
+                let reg = captured(b, s, e, true);
                 let del_start = s - 1; // the '\n' terminating the previous line (s is a line start, s > 0)
                 let cursor = line_start(b, del_start);
                 edit_yank(
@@ -423,74 +640,18 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     reg,
                 )
             } else {
-                let reg = captured(s, e, linewise);
+                let reg = captured(b, s, e, linewise);
                 edit_yank(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
             }
         }
-        Command::Change(count, m) => {
-            if *m == Motion::Line {
-                // `cc` / `{count}cc` / `S`: a LINEWISE change. Vim keeps the leading indent of the first
-                // line (autoindent-like, but here config-independent — the existing indent TEXT is
-                // preserved), deletes the rest of the line content down through `count` lines, keeps the
-                // trailing newline, and enters Insert at the end of the kept indent. The register captures
-                // the whole affected line(s) LINEWISE, including their indent and trailing newline.
-                let (ls, content_end) = change_range(b, cur, *m, *count);
-                let indent_end = motion::first_non_blank(b, ls).min(content_end);
-                // Register span: whole lines including the terminating newline where one is present.
-                let reg_end = if content_end < b.len() && b[content_end] == b'\n' {
-                    content_end + 1
-                } else {
-                    content_end
-                };
-                let reg = captured(ls, reg_end, true);
-                if indent_end >= content_end {
-                    // Nothing after the indent to delete (empty/blank line): keep the buffer, but still
-                    // capture the register linewise and drop into Insert at the indent end.
-                    Plan {
-                        action: Action::Nop,
-                        cursor: indent_end,
-                        mode: Mode::Insert,
-                        is_edit: false,
-                        effects: Vec::new(),
-                        set_register: Some(RegWrite::Edit(reg)),
-                        set_anchor: None,
-                    }
-                } else {
-                    edit_yank(
-                        one(Edit::delete(indent_end, content_end - indent_end)),
-                        indent_end,
-                        Mode::Insert,
-                        hint,
-                        reg,
-                    )
-                }
-            } else {
-                let (s, e) = change_range(b, cur, *m, *count);
-                if s >= e {
-                    Plan {
-                        action: Action::Nop,
-                        cursor: s,
-                        mode: Mode::Insert,
-                        is_edit: false,
-                        effects: Vec::new(),
-                        set_register: None,
-                        set_anchor: None,
-                    }
-                } else {
-                    // The register captures the removed content charwise (a partial-line change like `c$`
-                    // pastes inline).
-                    let reg = captured(s, e, false);
-                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
-                }
-            }
-        }
+        Command::Change(count, m) => plan_change(b, cur, *count, m, hint),
         Command::Yank(count, m) => {
             let (s, e, linewise) = op_span(b, cur, *m, *count);
             if s >= e {
                 nop(cur, st.view.mode)
             } else {
                 // Yank captures without editing; Vim leaves the cursor at the start of the yanked span.
-                let reg = captured(s, e, linewise);
+                let reg = captured(b, s, e, linewise);
                 Plan {
                     action: Action::Nop,
                     cursor: s,
@@ -519,11 +680,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let (s, e, linewise) = forced_span(b, cur, *motion, *count, *wise);
             match op {
                 OpKind::Delete if s < e => {
-                    let reg = captured(s, e, linewise);
+                    let reg = captured(b, s, e, linewise);
                     edit_yank(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
                 }
                 OpKind::Yank if s < e => {
-                    let reg = captured(s, e, linewise);
+                    let reg = captured(b, s, e, linewise);
                     Plan {
                         action: Action::Nop,
                         cursor: s,
@@ -535,7 +696,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     }
                 }
                 OpKind::Change if s < e => {
-                    let reg = captured(s, e, linewise);
+                    let reg = captured(b, s, e, linewise);
                     edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
                 }
                 // Empty span: delete/yank are a clean no-op; change still drops into Insert (Vim).
@@ -602,7 +763,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     let (s, e) = selection_range(b, anchor, cur, line);
                     if s < e {
                         // The removed span fills the unnamed register, as a Visual/Normal delete does.
-                        let reg = captured(s, e, line);
+                        let reg = captured(b, s, e, line);
                         edit_yank(
                             one(Edit::replace(s, e - s, ins)),
                             s + n,
@@ -618,77 +779,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 None => edit(one(Edit::insert(cur, ins)), cur + n, Mode::Insert, hint),
             }
         }
-        Command::BlockInsert(kind) => {
-            let Some(anchor) = st.view.anchor else {
-                // Not in a selection — degrade to a plain Insert entry, no session.
-                return nop(cur, Mode::Insert);
-            };
-            let (rows, col_lo, col_hi) = block_rows(b, anchor, cur);
-            let append = matches!(kind, BlockInsertKind::Append);
-            let change = matches!(kind, BlockInsertKind::Change);
-            let target_col = if append { col_hi + 1 } else { col_lo };
-            let top_start = rows.first().map_or(cur, |&(s, _)| s);
-            let top_ls = line_start(b, top_start);
-            let rows_below = rows.len().saturating_sub(1);
-
-            let mut edits: Vec<Edit> = Vec::new();
-            let mut reg: Option<Register> = None;
-            // `c`: delete the block on every row first (capture it blockwise), then insert at the left edge
-            // — where the top-row delete began, which stays valid after the delete.
-            if change {
-                let mut text: Vec<u8> = Vec::new();
-                for (i, &(s, e)) in rows.iter().enumerate() {
-                    if i > 0 {
-                        text.push(b'\n');
-                    }
-                    text.extend_from_slice(&b[s..e]);
-                }
-                reg = Some(Register::blockwise(text));
-                for &(s, e) in &rows {
-                    if e > s {
-                        edits.push(Edit::delete(s, e - s));
-                    }
-                }
-            }
-
-            // Where the insert begins on the top row. For `A` on a top row shorter than the append column,
-            // pad it out with spaces so the cursor sits at the append column.
-            let top_le = line_end(b, top_ls);
-            let toplen = col_of(b, top_ls, top_le);
-            let insert_start = if change {
-                top_start
-            } else if append && toplen < target_col {
-                edits.push(Edit::insert(top_le, vec![b' '; target_col - toplen]));
-                top_le + (target_col - toplen)
-            } else {
-                at_col(b, top_ls, target_col.min(toplen))
-            };
-
-            let session = BlockInsert {
-                insert_start,
-                top_left: at_col(b, top_ls, col_lo),
-                top_line_start: top_ls,
-                target_col,
-                rows_below,
-                append,
-            };
-            let list =
-                EditList::new(edits).expect("block-insert enter edits are disjoint (one per line)");
-            let is_edit = !list.is_empty();
-            Plan {
-                action: Action::BlockInsertArm {
-                    edits: list,
-                    hint,
-                    session,
-                },
-                cursor: insert_start,
-                mode: Mode::Insert,
-                is_edit,
-                effects: Vec::new(),
-                set_register: reg.map(RegWrite::Edit),
-                set_anchor: None,
-            }
-        }
+        Command::BlockInsert(kind) => plan_block_insert(st, b, cur, hint, kind),
         Command::SwapSelectionEnds => {
             // Visual/Select `o`: exchange the two ends. The cursor jumps to the anchor; the anchor becomes
             // the old cursor (`set_anchor`, which `commit` installs). The SAME text stays selected, but a
@@ -723,7 +814,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             let line = st.view.mode.selection() == Some(SelectKind::Linewise);
             let (s, e) = selection_range(b, anchor, cur, line);
-            let reg = captured(s, e, line);
+            let reg = captured(b, s, e, line);
             match cmd {
                 // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal.
                 Command::YankSelection => Plan {
@@ -759,50 +850,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // (`d/pat`/`c/pat`/`y/pat`). If no forward match lands past the cursor the operator aborts (Vim
         // rings the bell) — a clean no-op, never a reversed/empty edit.
         Command::Search { op, count, pattern } => {
-            let opts = st.view.search_options();
-            let mut pos = cur;
-            for _ in 0..(*count).max(1) {
-                match search_fwd(b, pattern, pos + 1, opts) {
-                    Some(m) => pos = m,
-                    None => break,
-                }
-            }
-            match op {
-                SearchOp::Move => nop(pos, st.view.mode),
-                _ if pos <= cur => nop(cur, st.view.mode),
-                SearchOp::Delete => {
-                    let reg = captured(cur, pos, false);
-                    edit_yank(
-                        one(Edit::delete(cur, pos - cur)),
-                        cur,
-                        st.view.mode,
-                        hint,
-                        reg,
-                    )
-                }
-                SearchOp::Change => {
-                    let reg = captured(cur, pos, false);
-                    edit_yank(
-                        one(Edit::delete(cur, pos - cur)),
-                        cur,
-                        Mode::Insert,
-                        hint,
-                        reg,
-                    )
-                }
-                SearchOp::Yank => {
-                    let reg = captured(cur, pos, false);
-                    Plan {
-                        action: Action::Nop,
-                        cursor: cur,
-                        mode: st.view.mode,
-                        is_edit: false,
-                        effects: Vec::new(),
-                        set_register: Some(RegWrite::Yank(reg)),
-                        set_anchor: None,
-                    }
-                }
-            }
+            plan_search(st, b, cur, op, *count, pattern, hint)
         }
         Command::Undo => Plan {
             action: Action::Undo,
