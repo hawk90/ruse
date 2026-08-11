@@ -284,6 +284,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
+    let mut palette: Option<Palette> = None; // the command palette overlay, when open (F-004)
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -350,17 +351,42 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 .map(|p| search_highlights(&p, &snapshot))
                 .unwrap_or_default()
         };
+        // The palette (F-004 #2), when open, owns the command line (its query, prefixed `>`) and paints
+        // its context-filtered matches with each command's static binding above the status line.
+        let palette_rows: Vec<(String, bool)> = palette
+            .as_ref()
+            .map(|p| {
+                p.matches
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| {
+                        let binding = engine
+                            .binding_label(&s.command)
+                            .unwrap_or_else(|| "—".into());
+                        (
+                            format!("{:<28} {:>5}   {:?}", s.title, binding, s.category),
+                            i == p.selected,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let cmd_line: Option<(char, &str)> = match &palette {
+            Some(p) => Some(('>', p.query.as_str())),
+            None => engine.cmdline().map(|(pfx, t, _)| (pfx, t)),
+        };
         render(
             &mut out,
             &ws,
             path.as_ref(),
-            engine.cmdline().map(|(p, t, _)| (p, t)),
+            cmd_line,
             &status,
             spans,
             &rects,
             &mut prev_frame,
             sync_output,
             &focus_hl,
+            &palette_rows,
         )?;
         let Event::Key(key) = event::read()? else {
             continue;
@@ -371,6 +397,21 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
         if confirm.is_some() {
             confirm_key(&mut confirm, key, &mut ws, &mut status);
+            continue;
+        }
+        // The command palette owns the keystream while open (F-004 #2): type to filter, Up/Down to
+        // select, Enter to dispatch the selected command by its stable id, Esc to close.
+        if palette.is_some() {
+            palette_key(
+                &mut palette,
+                key,
+                &mut ws,
+                &path,
+                fmt,
+                &mut recorded,
+                &mut status,
+                &mut quit,
+            );
             continue;
         }
         // F-007 window layer: a `C-w` prefix (Normal mode, no command-line, not Insert where `C-w`
@@ -384,6 +425,11 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         let normal = matches!(ws.focused().view.mode(), Mode::Normal) && engine.cmdline().is_none();
         if normal && is_ctrl(key, 'w') {
             pending_window = true;
+            continue;
+        }
+        // `C-p` opens the command palette (F-004 #2), context-filtered to the focused view.
+        if normal && is_ctrl(key, 'p') {
+            palette = Some(Palette::open(&focused_context(&ws)));
             continue;
         }
         // Every other key — command-line included — goes through the engine (F-026): the command-line
@@ -647,6 +693,100 @@ fn confirm_key(
     }
 }
 
+/// The command-palette overlay state (F-004 #2): the commands AVAILABLE in the current context, the
+/// query filtering them, and the selected row. Opened with a dedicated key; Enter dispatches the
+/// selected command by its stable id (never a key), Esc closes.
+struct Palette {
+    /// The typed filter.
+    query: String,
+    /// Commands available in the opening context (before the query filter).
+    available: Vec<ruse_core::CommandSpec>,
+    /// The current query's matches (a subset of `available`).
+    matches: Vec<ruse_core::CommandSpec>,
+    /// Selected row into `matches`.
+    selected: usize,
+}
+
+impl Palette {
+    fn open(ctx: &ruse_core::Context) -> Palette {
+        let mut p = Palette {
+            query: String::new(),
+            available: ruse_core::available(ctx),
+            matches: Vec::new(),
+            selected: 0,
+        };
+        p.refilter();
+        p
+    }
+
+    /// Recompute `matches` from `available` and the query (case-insensitive substring on title or id).
+    fn refilter(&mut self) {
+        let q = self.query.to_lowercase();
+        self.matches = self
+            .available
+            .iter()
+            .filter(|s| q.is_empty() || s.title.to_lowercase().contains(&q) || s.id.contains(&q))
+            .cloned()
+            .collect();
+        self.selected = self.selected.min(self.matches.len().saturating_sub(1));
+    }
+
+    fn selected_command(&self) -> Option<ruse_core::Command> {
+        self.matches.get(self.selected).map(|s| s.command.clone())
+    }
+}
+
+/// The command-availability context of the focused view (F-004 #2 C-CONTEXT).
+fn focused_context(ws: &Workspace) -> ruse_core::Context {
+    let f = ws.focused();
+    let bytes = f.doc.bytes();
+    let has_selection =
+        f.view.selection_span(bytes).is_some() || f.view.block_spans(bytes).is_some();
+    ruse_core::Context {
+        mode: f.view.mode(),
+        has_selection,
+    }
+}
+
+/// Handle one key of the command palette (F-004 #2). Enter dispatches the selected command by its id
+/// (through the normal command path, so it undoes/records like any other); Esc closes.
+#[allow(clippy::too_many_arguments)]
+fn palette_key(
+    palette: &mut Option<Palette>,
+    key: crossterm::event::KeyEvent,
+    ws: &mut Workspace,
+    path: &Option<PathBuf>,
+    fmt: persist::encoding::FileFormat,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    let Some(p) = palette.as_mut() else {
+        return;
+    };
+    match key.code {
+        KeyCode::Esc => *palette = None,
+        KeyCode::Enter => {
+            let cmd = p.selected_command();
+            *palette = None;
+            if let Some(cmd) = cmd {
+                run_cmd(cmd, ws, path, fmt, recorded, status, quit);
+            }
+        }
+        KeyCode::Up => p.selected = p.selected.saturating_sub(1),
+        KeyCode::Down if p.selected + 1 < p.matches.len() => p.selected += 1,
+        KeyCode::Backspace => {
+            p.query.pop();
+            p.refilter();
+        }
+        KeyCode::Char(c) => {
+            p.query.push(c);
+            p.refilter();
+        }
+        _ => {}
+    }
+}
+
 /// Human-readable status for a regex compile error (F-009).
 fn regex_error_msg(e: &ruse_core::RegexError) -> String {
     match e {
@@ -881,6 +1021,7 @@ fn render(
     prev: &mut screen::Screen,
     sync: bool,
     focus_hl: &[(usize, usize)],
+    palette_rows: &[(String, bool)],
 ) -> io::Result<()> {
     use crossterm::style::Color;
 
@@ -931,6 +1072,22 @@ fn render(
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
+
+    // The command palette (F-004): paint its match rows just above the status line, newest selection
+    // in reverse video. Rows beyond the available height are dropped (the list scrolls with selection
+    // in a fuller build; MVP shows the top window).
+    if !palette_rows.is_empty() {
+        let shown = palette_rows.len().min(text_rows.saturating_sub(1) as usize);
+        let top = text_rows.saturating_sub(shown as u16); // first palette row
+        for (i, (label, selected)) in palette_rows.iter().take(shown).enumerate() {
+            let row = top + i as u16;
+            // Clear the row then paint the label (reverse for the selected match).
+            for x in 0..cols {
+                cur.put(row, x, " ", Color::Reset, *selected);
+            }
+            cur.put_str(row, 1, label, Color::Reset, *selected);
+        }
+    }
 
     let bar = match cmd_line {
         Some((prefix, text)) => format!("{prefix}{text}"),
@@ -1239,5 +1396,53 @@ mod render_tests {
             !off.windows(8).any(|w| w == b"\x1b[?2026h"),
             "no fence when unsupported"
         );
+    }
+}
+
+#[cfg(test)]
+mod palette_tests {
+    use super::*;
+    use ruse_core::{Context, Mode};
+
+    fn normal_ctx() -> Context {
+        Context {
+            mode: Mode::Normal,
+            has_selection: false,
+        }
+    }
+
+    /// F-004 #2: the palette opens context-filtered and the query narrows it further; Enter yields the
+    /// selected command (by id, decoupled from any key).
+    #[test]
+    fn palette_filters_by_context_then_query() {
+        let mut p = Palette::open(&normal_ctx());
+        let opened: Vec<_> = p.matches.iter().map(|s| s.id).collect();
+        assert!(
+            opened.contains(&"editor.undo"),
+            "Normal-family command is offered"
+        );
+        assert!(
+            !opened.contains(&"editor.delete_back"),
+            "Insert-only command is hidden in Normal"
+        );
+
+        for c in "save".chars() {
+            p.query.push(c);
+            p.refilter();
+        }
+        assert_eq!(
+            p.matches.len(),
+            1,
+            "query narrows to the single 'Save File' match"
+        );
+        assert_eq!(p.selected_command(), Some(ruse_core::Command::Save));
+    }
+
+    /// F-004: an empty query keeps the full available set; selection clamps to the match count.
+    #[test]
+    fn palette_empty_query_keeps_all_available() {
+        let p = Palette::open(&normal_ctx());
+        assert_eq!(p.matches.len(), p.available.len());
+        assert!(!p.matches.is_empty());
     }
 }
