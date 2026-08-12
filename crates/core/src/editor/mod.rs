@@ -685,6 +685,20 @@ impl EditorState {
         self.view.cursor
     }
 
+    /// The mark's byte offset, or `None` when no mark is set. The mark is the Emacs profile's other end of
+    /// the region (`set-mark-command` and the region ops); one-caret degenerate is `None`. View-local. For
+    /// the Emacs parity comparator and a future `:marks`.
+    #[must_use]
+    pub fn mark(&self) -> Option<usize> {
+        self.view.mark
+    }
+
+    /// Place the cursor at byte offset `pos` (on a char boundary). View-local; does not touch the document.
+    /// Used to home a fixture's starting point in the parity comparator (mirrors the frontend seam).
+    pub fn set_cursor(&mut self, pos: usize) {
+        self.view.cursor = pos;
+    }
+
     /// The current mode.
     #[must_use]
     pub fn mode(&self) -> Mode {
