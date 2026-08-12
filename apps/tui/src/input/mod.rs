@@ -609,6 +609,17 @@ fn move_by(count: u32, motion: Motion, bare: Command) -> Command {
     }
 }
 
+/// Fold an Emacs prefix count into a command that has no native count field by repeating it: `count <= 1`
+/// is the bare command, more is an ordered `Replay` (`C-u 3 RET` → three newlines). The Emacs path never
+/// records, so `Replay` here is a pure "apply each in turn", not dot-repeat.
+fn emacs_repeat(cmd: Command, count: u32) -> Feed {
+    if count <= 1 {
+        Feed::Cmd(cmd)
+    } else {
+        Feed::Replay(vec![cmd; count as usize])
+    }
+}
+
 /// A short human label for a key, for the palette's binding column (F-004 #2).
 fn key_label(code: KeyCode) -> String {
     match code {
@@ -1025,6 +1036,10 @@ impl InputEngine {
                 self.emacs_prefix = Some('x');
                 return Feed::Pending;
             }
+            // `C-j` (newline): repeatable, so it takes the `Replay` path rather than a bare `Cmd`.
+            if key.code == KeyCode::Char('j') {
+                return emacs_repeat(Command::InsertNewline, count);
+            }
             // global-map core motions (emacs.keymaptier.09.global-map). Directional motions honour the
             // count as a multiplier; `C-a`/`C-e` (line ends) ignore it in this slice. `count == 1` keeps the
             // grapheme-aware bare `Move*` so the no-argument path is byte-identical to the seam (#139).
@@ -1035,6 +1050,10 @@ impl InputEngine {
                 KeyCode::Char('p') => move_by(count, Motion::Up, Command::MoveUp),
                 KeyCode::Char('a') => Command::MoveLineStart,
                 KeyCode::Char('e') => Command::MoveLineEnd,
+                // `C-d` (delete-char): delete `count` chars forward, clamped at end-of-line (Vim `x`).
+                KeyCode::Char('d') => Command::DeleteUnder(count),
+                // `C-/` and `C-_` are both undo (Emacs). The count would repeat the undo; not honoured here.
+                KeyCode::Char('/') | KeyCode::Char('_') => Command::Undo,
                 // `C-k` (kill-line): delete from point to end of line. The delete captures the killed text
                 // into the unnamed register — the depth-1 view of the kill ring (D-026). The at-EOL case
                 // (killing the newline to join the next line) needs a dedicated kill-line command; deferred.
@@ -1064,12 +1083,13 @@ impl InputEngine {
             };
             return Feed::Cmd(cmd);
         }
-        // An unmodified printable key is self-inserting text; with an argument it repeats `count` times (Emacs
-        // `C-u 3 a` → "aaa"). Replay carries the ordered list — the Emacs path never records, so it is a pure
-        // "apply each in turn" here, not dot-repeat.
+        // An unmodified printable key is self-inserting text; `RET` inserts a newline and `DEL` deletes the
+        // char before point. Each honours the prefix count by repetition (Emacs `C-u 3 a` → "aaa"). Any
+        // other key is unbound (inert).
         match key.code {
-            KeyCode::Char(c) if count == 1 => Feed::Cmd(Command::InsertChar(c)),
-            KeyCode::Char(c) => Feed::Replay(vec![Command::InsertChar(c); count as usize]),
+            KeyCode::Char(c) => emacs_repeat(Command::InsertChar(c), count),
+            KeyCode::Enter => emacs_repeat(Command::InsertNewline, count),
+            KeyCode::Backspace => emacs_repeat(Command::DeleteBack, count),
             _ => Feed::Ignored,
         }
     }

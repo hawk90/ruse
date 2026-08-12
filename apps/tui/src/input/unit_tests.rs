@@ -423,6 +423,51 @@ mod tests {
     }
 
     #[test]
+    fn emacs_essential_editing_keys() {
+        // F-012: the editing keys that make the profile usable — RET / C-j newline, DEL / C-d delete,
+        // C-/ and C-_ undo. Repeatable keys honour the prefix count via Replay.
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let backspace = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+        let mut e = InputEngine::emacs();
+
+        // RET and C-j both insert a newline.
+        assert_eq!(
+            e.feed(enter, Mode::Insert),
+            Feed::Cmd(Command::InsertNewline)
+        );
+        assert_eq!(
+            e.feed(ctrl('j'), Mode::Insert),
+            Feed::Cmd(Command::InsertNewline)
+        );
+        // DEL deletes the char before point; C-d deletes the char under point (with a count).
+        assert_eq!(
+            e.feed(backspace, Mode::Insert),
+            Feed::Cmd(Command::DeleteBack)
+        );
+        assert_eq!(
+            e.feed(ctrl('d'), Mode::Insert),
+            Feed::Cmd(Command::DeleteUnder(1))
+        );
+        // C-/ and C-_ are undo.
+        assert_eq!(e.feed(ctrl('/'), Mode::Insert), Feed::Cmd(Command::Undo));
+        assert_eq!(e.feed(ctrl('_'), Mode::Insert), Feed::Cmd(Command::Undo));
+
+        // Counts: `C-u 2 RET` inserts two newlines (Replay); `C-u 3 C-d` deletes three chars (native count).
+        assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('2'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(enter, Mode::Insert),
+            Feed::Replay(vec![Command::InsertNewline; 2])
+        );
+        assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('3'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('d'), Mode::Insert),
+            Feed::Cmd(Command::DeleteUnder(3))
+        );
+    }
+
+    #[test]
     fn ctrl_v_enters_blockwise_visual() {
         let mut e = InputEngine::new();
         assert_eq!(
