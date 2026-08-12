@@ -16,7 +16,7 @@ bench = false
 
 [dependencies]
 ruse-core = { path = "../../crates/core" }
-crossterm = "0.28"
+crossterm = "0.29"
 tree-sitter = "0.26.11"
 tree-sitter-rust = "0.24.2"
 streaming-iterator = "0.1"
