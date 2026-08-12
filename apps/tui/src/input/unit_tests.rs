@@ -468,6 +468,39 @@ mod tests {
     }
 
     #[test]
+    fn emacs_profile_is_a_nine_tier_stack() {
+        // F-012 / D-045: the Emacs profile is ONE nine-tier LayerStack (not Vim's separate sealed
+        // namespaces), walked highest-priority first down to global-map. This locks the promotion so a
+        // later edit cannot silently drop a tier or reorder the walk.
+        let e = InputEngine::emacs();
+        assert_eq!(e.emacs.map.depth(), 9);
+        let order: Vec<&str> = e.emacs.map.order().collect();
+        assert_eq!(
+            order.first().copied(),
+            Some("emacs.keymaptier.01.overriding-terminal-local-map")
+        );
+        assert_eq!(
+            order.last().copied(),
+            Some("emacs.keymaptier.09.global-map")
+        );
+        // global-map carries every binding; the eight upper tiers are transparent (no minor/major modes).
+        assert_eq!(
+            e.emacs
+                .map
+                .layer("emacs.keymaptier.09.global-map")
+                .map(|l| l.is_empty()),
+            Some(false)
+        );
+        assert_eq!(
+            e.emacs
+                .map
+                .layer("emacs.keymaptier.01.overriding-terminal-local-map")
+                .map(|l| l.is_empty()),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn ctrl_v_enters_blockwise_visual() {
         let mut e = InputEngine::new();
         assert_eq!(
