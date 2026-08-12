@@ -495,6 +495,40 @@ mod tests {
     }
 
     #[test]
+    fn emacs_mx_reads_a_command_name_and_runs_it() {
+        // F-012: M-x opens the minibuffer; typing a command name is Pending; <CR> resolves it via the
+        // registry into a Command. An unknown name is inert.
+        let meta = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT);
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+
+        let mut e = InputEngine::emacs();
+        assert_eq!(e.feed(meta('x'), Mode::Insert), Feed::Pending);
+        for c in "save-buffer".chars() {
+            assert_eq!(e.feed(k(c), Mode::Insert), Feed::Pending);
+        }
+        assert_eq!(e.feed(enter, Mode::Insert), Feed::Cmd(Command::Save));
+
+        // A named region command routes through M-x too.
+        assert_eq!(e.feed(meta('x'), Mode::Insert), Feed::Pending);
+        for c in "kill-region".chars() {
+            assert_eq!(e.feed(k(c), Mode::Insert), Feed::Pending);
+        }
+        assert_eq!(e.feed(enter, Mode::Insert), Feed::Cmd(Command::KillRegion));
+
+        // An unknown command name is a no-op (Emacs "[No match]").
+        assert_eq!(e.feed(meta('x'), Mode::Insert), Feed::Pending);
+        for c in "no-such-command".chars() {
+            assert_eq!(e.feed(k(c), Mode::Insert), Feed::Pending);
+        }
+        assert_eq!(e.feed(enter, Mode::Insert), Feed::Ignored);
+        // After the minibuffer closes, normal dispatch resumes.
+        assert_eq!(
+            e.feed(ctrl('f'), Mode::Insert),
+            Feed::Cmd(Command::MoveRight)
+        );
+    }
+
+    #[test]
     fn emacs_profile_is_a_nine_tier_stack() {
         // F-012 / D-045: the Emacs profile is ONE nine-tier LayerStack (not Vim's separate sealed
         // namespaces), walked highest-priority first down to global-map. This locks the promotion so a
