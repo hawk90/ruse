@@ -525,6 +525,9 @@ pub struct InputEngine {
     /// depth-1 case of the multi-key dispatch the nine-tier stack generalises; more prefixes (`C-c`, `C-h`)
     /// slot in by tag. Always `None` under the Vim profile.
     emacs_prefix: Option<char>,
+    /// The Emacs profile's nine-tier keymap (F-012 / D-045). Built once; consulted only on the Emacs path.
+    /// Present regardless of profile, mirroring `profile: VimProfile` — both are cheap to build.
+    emacs: EmacsProfile,
 }
 
 /// An Emacs prefix argument mid-read (F-012 / D-049). `C-u` seeds it (default 4); a further `C-u`
@@ -584,6 +587,247 @@ impl EmacsArg {
     }
 }
 
+/// A resolved Emacs key: the code plus whether Control / Meta (Alt) were held. Emacs bindings are
+/// fundamentally `modifier+key` (`C-f` ≠ `f`), so the keymap is keyed on this rather than a bare
+/// [`KeyCode`] as the Vim namespaces are. Shift is folded into the char already, so it is not tracked.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct EmacsKey {
+    code: KeyCode,
+    ctrl: bool,
+    alt: bool,
+}
+
+impl EmacsKey {
+    fn of(key: KeyEvent) -> EmacsKey {
+        EmacsKey {
+            code: key.code,
+            ctrl: key.modifiers.contains(KeyModifiers::CONTROL),
+            alt: key.modifiers.contains(KeyModifiers::ALT),
+        }
+    }
+
+    fn ctrl(c: char) -> EmacsKey {
+        EmacsKey {
+            code: KeyCode::Char(c),
+            ctrl: true,
+            alt: false,
+        }
+    }
+
+    fn alt(c: char) -> EmacsKey {
+        EmacsKey {
+            code: KeyCode::Char(c),
+            ctrl: false,
+            alt: true,
+        }
+    }
+
+    fn plain(code: KeyCode) -> EmacsKey {
+        EmacsKey {
+            code,
+            ctrl: false,
+            alt: false,
+        }
+    }
+}
+
+/// How a bound Emacs key folds the pending prefix argument (D-049) into a concrete command. The count
+/// policy is per-binding — `C-k` (kill-line) ignores it, `M-d` (kill-word) multiplies — so the layer
+/// stores the policy alongside the command rather than a bare [`Command`] the way the Vim layers do.
+#[derive(Clone)]
+enum EmacsBinding {
+    /// A directional motion: the grapheme-aware bare command at count 1 (so the no-argument path matches
+    /// the seam), a counted `Move(count, motion)` above. (`C-f`/`C-b`/`C-n`/`C-p`.)
+    Directional { bare: Command, motion: Motion },
+    /// A command rebuilt with the count in a native field. (`C-d`, `C-y`, `M-f`/`M-b`/`M-d`.)
+    Counted(CountedCmd),
+    /// A count-less command repeated `count` times via `Replay`. (`C-j`, `RET`, `DEL`.)
+    Repeat(Command),
+    /// A fixed command; the count is ignored. (`C-a`/`C-e` line ends, `C-/` undo, `M-<`/`M->` buffer ends,
+    /// `C-k` kill-line.)
+    Fixed(Command),
+    /// Enter a prefix map — the next key resolves in that sub-map. (`C-x`.)
+    Prefix(char),
+}
+
+/// A command whose count lives in a native field, named so the binding table stays declarative.
+#[derive(Clone, Copy)]
+enum CountedCmd {
+    DeleteUnder,    // C-d — DeleteUnder(count)
+    PasteBefore,    // C-y — Paste { after: false, count }
+    Move(Motion),   // M-f / M-b — Move(count, motion)
+    Delete(Motion), // M-d — Delete(count, motion)
+}
+
+/// Fold the pending prefix count into a bound key's command. `Prefix` is handled by the caller (it mutates
+/// engine state); it is inert here.
+fn fold_emacs_count(binding: &EmacsBinding, count: u32) -> Feed {
+    match binding {
+        EmacsBinding::Directional { bare, motion } => Feed::Cmd(if count == 1 {
+            bare.clone()
+        } else {
+            Command::Move(count, *motion)
+        }),
+        EmacsBinding::Counted(c) => Feed::Cmd(match c {
+            CountedCmd::DeleteUnder => Command::DeleteUnder(count),
+            CountedCmd::PasteBefore => Command::Paste {
+                after: false,
+                count,
+            },
+            CountedCmd::Move(m) => Command::Move(count, *m),
+            CountedCmd::Delete(m) => Command::Delete(count, *m),
+        }),
+        EmacsBinding::Repeat(cmd) => emacs_repeat(cmd.clone(), count),
+        EmacsBinding::Fixed(cmd) => Feed::Cmd(cmd.clone()),
+        EmacsBinding::Prefix(_) => Feed::Pending,
+    }
+}
+
+/// The outcome of resolving one Emacs key, computed while `self.emacs` is borrowed and then acted on once
+/// the borrow is released — so entering a prefix map (which mutates engine state) does not fight the
+/// keymap borrow. `SelfInsert` carries the char the `global-map` self-insert policy matched.
+enum Step {
+    Bound(EmacsBinding),
+    SelfInsert(char),
+    Ignore,
+}
+
+/// The Emacs input profile (F-012 / D-045): ONE unsealed nine-tier layer stack, walked highest-priority
+/// first, falling through to `global-map` at the bottom. This is the same [`LayerStack`] the Vim profile
+/// uses — the shared resolution model D-045 posits — but arranged as Emacs's buffer-selected tier order
+/// rather than Vim's eight sealed depth-1 namespaces. The eight upper tiers hold no bindings yet (no
+/// minor/major modes exist); they are present so resolution walks the real order and future tiers slot in
+/// by rank. `global-map`'s `Insert` policy IS `self-insert-command` — an unbound printable key self-inserts.
+struct EmacsProfile {
+    map: LayerStack<EmacsKey, EmacsBinding>,
+}
+
+/// The eight tiers above `global-map`, in Emacs's consultation order (highest priority first), ranked so
+/// the stack walks them before it. Ids match the parity census (`emacs.keymaptier.NN.*`).
+const EMACS_UPPER_TIERS: [(&str, u16); 8] = [
+    ("emacs.keymaptier.01.overriding-terminal-local-map", 900),
+    ("emacs.keymaptier.02.overriding-local-map", 800),
+    ("emacs.keymaptier.03.keymap", 700),
+    ("emacs.keymaptier.04.emulation-mode-map-alists", 600),
+    ("emacs.keymaptier.05.minor-mode-overriding-map-alist", 500),
+    ("emacs.keymaptier.06.minor-mode-map-alist", 400),
+    ("emacs.keymaptier.07.local-map", 300),
+    ("emacs.keymaptier.08.current-local-map", 200),
+];
+
+impl EmacsProfile {
+    fn new() -> EmacsProfile {
+        let mut map = LayerStack::new();
+        for (id, rank) in EMACS_UPPER_TIERS {
+            // Unsealed → transparent: an empty upper tier never stops the walk, so a miss always reaches
+            // global-map, whose policy governs. `Ignore` is a placeholder these tiers never report today.
+            map.push(Layer::new(id, rank, false, UnmatchedKey::Ignore))
+                .expect("emacs tier ids and ranks are unique");
+        }
+        // global-map (tier 9): the base bindings + the self-insert policy. Unsealed like the rest so the
+        // model stays uniform; being last, its policy is the one a miss reports.
+        let global = Layer::new(
+            "emacs.keymaptier.09.global-map",
+            100,
+            false,
+            UnmatchedKey::Insert,
+        )
+        // Directional motions (count 1 keeps the grapheme-aware bare command = the #139 seam).
+        .bind(
+            EmacsKey::ctrl('f'),
+            EmacsBinding::Directional {
+                bare: Command::MoveRight,
+                motion: Motion::Right,
+            },
+        )
+        .bind(
+            EmacsKey::ctrl('b'),
+            EmacsBinding::Directional {
+                bare: Command::MoveLeft,
+                motion: Motion::Left,
+            },
+        )
+        .bind(
+            EmacsKey::ctrl('n'),
+            EmacsBinding::Directional {
+                bare: Command::MoveDown,
+                motion: Motion::Down,
+            },
+        )
+        .bind(
+            EmacsKey::ctrl('p'),
+            EmacsBinding::Directional {
+                bare: Command::MoveUp,
+                motion: Motion::Up,
+            },
+        )
+        // Line ends / undo / buffer ends — count-agnostic.
+        .bind(
+            EmacsKey::ctrl('a'),
+            EmacsBinding::Fixed(Command::MoveLineStart),
+        )
+        .bind(
+            EmacsKey::ctrl('e'),
+            EmacsBinding::Fixed(Command::MoveLineEnd),
+        )
+        .bind(EmacsKey::ctrl('/'), EmacsBinding::Fixed(Command::Undo))
+        .bind(EmacsKey::ctrl('_'), EmacsBinding::Fixed(Command::Undo))
+        .bind(
+            EmacsKey::alt('<'),
+            EmacsBinding::Fixed(Command::Move(1, Motion::GotoLine)),
+        )
+        .bind(
+            EmacsKey::alt('>'),
+            EmacsBinding::Fixed(Command::Move(1, Motion::LastLine)),
+        )
+        // Kill-line: a delete to end-of-line that captures into the unnamed register (kill ring). The
+        // at-EOL join and the line-count argument are follow-ups, so it stays Fixed (count ignored).
+        .bind(
+            EmacsKey::ctrl('k'),
+            EmacsBinding::Fixed(Command::Delete(1, Motion::LineEnd)),
+        )
+        // Counted edits: delete-char, yank, word motions, kill-word.
+        .bind(
+            EmacsKey::ctrl('d'),
+            EmacsBinding::Counted(CountedCmd::DeleteUnder),
+        )
+        .bind(
+            EmacsKey::ctrl('y'),
+            EmacsBinding::Counted(CountedCmd::PasteBefore),
+        )
+        .bind(
+            EmacsKey::alt('f'),
+            EmacsBinding::Counted(CountedCmd::Move(Motion::WordFwd)),
+        )
+        .bind(
+            EmacsKey::alt('b'),
+            EmacsBinding::Counted(CountedCmd::Move(Motion::WordBack)),
+        )
+        .bind(
+            EmacsKey::alt('d'),
+            EmacsBinding::Counted(CountedCmd::Delete(Motion::WordFwd)),
+        )
+        // Newline / backspace — repeatable via Replay under a count.
+        .bind(
+            EmacsKey::ctrl('j'),
+            EmacsBinding::Repeat(Command::InsertNewline),
+        )
+        .bind(
+            EmacsKey::plain(KeyCode::Enter),
+            EmacsBinding::Repeat(Command::InsertNewline),
+        )
+        .bind(
+            EmacsKey::plain(KeyCode::Backspace),
+            EmacsBinding::Repeat(Command::DeleteBack),
+        )
+        // Prefix map.
+        .bind(EmacsKey::ctrl('x'), EmacsBinding::Prefix('x'));
+        map.push(global)
+            .expect("emacs tier ids and ranks are unique");
+        EmacsProfile { map }
+    }
+}
+
 /// The command-line namespace's owned state (F-026 acceptance #2): a prefix, a line buffer, and a
 /// cursor. `ex_mode` distinguishes the `gQ` Ex namespace (stays open, re-prompting after each `<CR>`)
 /// from a one-shot `:`/`/` line. History index / wildmenu / incsearch UX are deferred (acceptance #3).
@@ -597,16 +841,6 @@ struct CmdLine {
     cursor: usize,
     /// `gQ` Ex mode: `<CR>` executes AND re-opens the line; `:visual`/`:vi`/empty exits.
     ex_mode: bool,
-}
-
-/// Fold an Emacs prefix count into a directional motion: `count == 1` keeps the grapheme-aware bare command
-/// (the no-argument path stays byte-identical to the seam), a larger count issues the counted `Move`.
-fn move_by(count: u32, motion: Motion, bare: Command) -> Command {
-    if count == 1 {
-        bare
-    } else {
-        Command::Move(count, motion)
-    }
 }
 
 /// Fold an Emacs prefix count into a command that has no native count field by repeating it: `count <= 1`
@@ -663,6 +897,7 @@ impl InputEngine {
             lang_active: false,
             emacs_arg: None,
             emacs_prefix: None,
+            emacs: EmacsProfile::new(),
         }
     }
 
@@ -1025,72 +1260,34 @@ impl InputEngine {
                 return Feed::Pending;
             }
         }
-        // Any other key completes the argument: take the accumulated count (default 1) and let this command
-        // fold it in. Motions multiply; a self-insert repeats. An unbound key discards the argument (a beep).
+        // Any other key completes the argument: take the accumulated count (default 1) and resolve the key
+        // through the nine-tier stack (F-012 / D-045). The count is folded per the bound key's policy.
         let count = self.emacs_arg.take().map(EmacsArg::count).unwrap_or(1);
-        if ctrl {
-            // `C-x` opens the extended-command prefix map: the next key resolves there, not in the global
-            // map. Any pending argument is dropped in this slice (arg-passthrough to a prefixed command is a
-            // follow-up). Returns Pending — the command is not complete until the second key arrives.
-            if key.code == KeyCode::Char('x') {
-                self.emacs_prefix = Some('x');
-                return Feed::Pending;
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
+        // Resolve, then drop the borrow of `self.emacs` before mutating engine state (the prefix map).
+        let step = match self.emacs.map.resolve(&EmacsKey::of(key)) {
+            Resolved::Bound { value, .. } => Step::Bound(value.clone()),
+            // global-map's `self-insert-command`: an UNMODIFIED printable key inserts. A `C-`/`M-` key that
+            // reached here is unbound, not text, so it stays inert.
+            Resolved::Unmatched {
+                policy: UnmatchedKey::Insert,
+                ..
+            } if !ctrl && !alt => match key.code {
+                KeyCode::Char(c) => Step::SelfInsert(c),
+                _ => Step::Ignore,
+            },
+            _ => Step::Ignore,
+        };
+        match step {
+            Step::Bound(EmacsBinding::Prefix(p)) => {
+                // Enter the prefix map: the next key resolves there. Any pending argument is dropped in this
+                // slice (arg-passthrough to a prefixed command is a follow-up).
+                self.emacs_prefix = Some(p);
+                Feed::Pending
             }
-            // `C-j` (newline): repeatable, so it takes the `Replay` path rather than a bare `Cmd`.
-            if key.code == KeyCode::Char('j') {
-                return emacs_repeat(Command::InsertNewline, count);
-            }
-            // global-map core motions (emacs.keymaptier.09.global-map). Directional motions honour the
-            // count as a multiplier; `C-a`/`C-e` (line ends) ignore it in this slice. `count == 1` keeps the
-            // grapheme-aware bare `Move*` so the no-argument path is byte-identical to the seam (#139).
-            let cmd = match key.code {
-                KeyCode::Char('f') => move_by(count, Motion::Right, Command::MoveRight),
-                KeyCode::Char('b') => move_by(count, Motion::Left, Command::MoveLeft),
-                KeyCode::Char('n') => move_by(count, Motion::Down, Command::MoveDown),
-                KeyCode::Char('p') => move_by(count, Motion::Up, Command::MoveUp),
-                KeyCode::Char('a') => Command::MoveLineStart,
-                KeyCode::Char('e') => Command::MoveLineEnd,
-                // `C-d` (delete-char): delete `count` chars forward, clamped at end-of-line (Vim `x`).
-                KeyCode::Char('d') => Command::DeleteUnder(count),
-                // `C-/` and `C-_` are both undo (Emacs). The count would repeat the undo; not honoured here.
-                KeyCode::Char('/') | KeyCode::Char('_') => Command::Undo,
-                // `C-k` (kill-line): delete from point to end of line. The delete captures the killed text
-                // into the unnamed register — the depth-1 view of the kill ring (D-026). The at-EOL case
-                // (killing the newline to join the next line) needs a dedicated kill-line command; deferred.
-                KeyCode::Char('k') => Command::Delete(1, Motion::LineEnd),
-                // `C-y` (yank): reinsert the most recent kill at point (Vim `P` — before the cursor). Honours
-                // the prefix argument as a repeat count (Emacs `C-u 3 C-y` yanks three copies).
-                KeyCode::Char('y') => Command::Paste {
-                    after: false,
-                    count,
-                },
-                _ => return Feed::Ignored,
-            };
-            return Feed::Cmd(cmd);
-        }
-        // The Meta (`M-`, Alt) tier of the global map: word-granularity motions and buffer ends. Word motions
-        // multiply by the count; `M-<`/`M->` (buffer ends) ignore it. `M-f`/`M-b` are approximate — Emacs
-        // `forward-word` lands after the word where Vim `w`/`b` land on a boundary; the exact landing is a
-        // follow-up once word motions gain an Emacs variant.
-        if key.modifiers.contains(KeyModifiers::ALT) {
-            let cmd = match key.code {
-                KeyCode::Char('f') => Command::Move(count, Motion::WordFwd), // M-f forward-word
-                KeyCode::Char('b') => Command::Move(count, Motion::WordBack), // M-b backward-word
-                KeyCode::Char('d') => Command::Delete(count, Motion::WordFwd), // M-d kill-word (into the ring)
-                KeyCode::Char('<') => Command::Move(1, Motion::GotoLine), // M-< beginning-of-buffer
-                KeyCode::Char('>') => Command::Move(1, Motion::LastLine), // M-> end-of-buffer
-                _ => return Feed::Ignored,
-            };
-            return Feed::Cmd(cmd);
-        }
-        // An unmodified printable key is self-inserting text; `RET` inserts a newline and `DEL` deletes the
-        // char before point. Each honours the prefix count by repetition (Emacs `C-u 3 a` → "aaa"). Any
-        // other key is unbound (inert).
-        match key.code {
-            KeyCode::Char(c) => emacs_repeat(Command::InsertChar(c), count),
-            KeyCode::Enter => emacs_repeat(Command::InsertNewline, count),
-            KeyCode::Backspace => emacs_repeat(Command::DeleteBack, count),
-            _ => Feed::Ignored,
+            Step::Bound(binding) => fold_emacs_count(&binding, count),
+            Step::SelfInsert(c) => emacs_repeat(Command::InsertChar(c), count),
+            Step::Ignore => Feed::Ignored,
         }
     }
 
