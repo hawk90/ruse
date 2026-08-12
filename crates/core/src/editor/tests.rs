@@ -2498,3 +2498,136 @@ mod global_tests {
         assert_eq!(st.as_str().unwrap(), "a\ndrop\nb\ndrop\nc\n");
     }
 }
+
+#[cfg(test)]
+mod mark_tests {
+    use crate::editor::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    // C-SPC then move then C-w: the region [mark, point) is killed into the register and mark clears.
+    #[test]
+    fn set_mark_then_kill_region_deletes_and_fills_register() {
+        let st = run(
+            "hello world\n",
+            &[
+                Command::SetMark,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::KillRegion,
+            ],
+        );
+        assert_eq!(text(&st), " world\n");
+        assert_eq!(st.view.cursor, 0);
+        assert_eq!(st.view.mark, None);
+    }
+
+    // The killed text is in the register: a following paste-before restores it.
+    #[test]
+    fn kill_region_text_round_trips_through_paste() {
+        let st = run(
+            "hello world\n",
+            &[
+                Command::SetMark,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::KillRegion,
+                Command::Paste {
+                    after: false,
+                    count: 1,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "hello world\n");
+    }
+
+    // M-w copies without deleting; the mark survives (Emacs leaves it set).
+    #[test]
+    fn copy_region_yanks_without_deleting_and_keeps_the_mark() {
+        let st = run(
+            "abcdef\n",
+            &[
+                Command::SetMark,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::CopyRegion,
+            ],
+        );
+        assert_eq!(text(&st), "abcdef\n");
+        assert_eq!(st.view.cursor, 3);
+        assert_eq!(st.view.mark, Some(0));
+    }
+
+    // C-x C-x swaps point and mark, and is involutive.
+    #[test]
+    fn exchange_point_and_mark_swaps_and_is_involutive() {
+        let mut st = EditorState::new(b"abcdef\n".to_vec());
+        for c in &[
+            Command::SetMark,
+            Command::MoveRight,
+            Command::MoveRight,
+            Command::MoveRight,
+        ] {
+            apply_command(&mut st, c);
+        }
+        assert_eq!((st.view.cursor, st.view.mark), (3, Some(0)));
+        apply_command(&mut st, &Command::ExchangePointMark);
+        assert_eq!((st.view.cursor, st.view.mark), (0, Some(3)));
+        apply_command(&mut st, &Command::ExchangePointMark);
+        assert_eq!((st.view.cursor, st.view.mark), (3, Some(0)));
+    }
+
+    // The region is order-independent: killing works when point is BEFORE the mark too.
+    #[test]
+    fn kill_region_uses_min_max_when_point_precedes_mark() {
+        let st = run(
+            "abcdef\n",
+            &[
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::SetMark,
+                Command::MoveLeft,
+                Command::MoveLeft,
+                Command::KillRegion,
+            ],
+        );
+        assert_eq!(text(&st), "abef\n");
+    }
+
+    // No mark set: C-w / M-w / C-x C-x are inert (no panic, no change).
+    #[test]
+    fn region_commands_with_no_mark_are_inert() {
+        let st = run(
+            "abc\n",
+            &[
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::KillRegion,
+                Command::CopyRegion,
+                Command::ExchangePointMark,
+            ],
+        );
+        assert_eq!(text(&st), "abc\n");
+        assert_eq!(st.view.cursor, 2);
+        assert_eq!(st.view.mark, None);
+    }
+}

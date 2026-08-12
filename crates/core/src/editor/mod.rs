@@ -123,6 +123,11 @@ pub struct View {
     /// The Visual-mode selection anchor (the fixed end; the cursor is the moving end). `Some` exactly while
     /// in `Mode::Visual`. The full anchor-store-backed `Selection` set is deferred (D-027).
     anchor: Option<usize>,
+    /// The Emacs mark (F-012 / D-027 depth-1): a single per-buffer position defining the region `point..mark`,
+    /// the degenerate one-caret `Ring<Selection>` of the full mark-ring. Independent of `anchor` — it survives
+    /// across motions and edits (Emacs is non-modal, so the region is not a mode) until a kill or a new mark
+    /// moves it. `None` when no mark is set. The per-buffer/global mark RINGS remain deferred (D-027).
+    mark: Option<usize>,
     /// The LAST selection left behind, as `(anchor, active_end, linewise)` — captured whenever a Visual/
     /// Select mode is exited, restored by `gv` ([`Command::ReselectVisual`]). This is the depth-1
     /// degenerate of D-027's `` `< ``/`` `> `` selection history: one remembered selection, stored in the
@@ -170,6 +175,7 @@ impl View {
             registers: RegisterStore::new(),
             pending_register: None,
             anchor: None,
+            mark: None,
             last_visual: None,
             replace_stack: Vec::new(),
             block_insert: None,
@@ -323,6 +329,15 @@ enum RegWrite {
     Yank(Register),
 }
 
+/// How a committed command updates the Emacs mark (D-027 depth-1). `None` on a plan leaves the mark
+/// untouched — the common case, since the mark survives ordinary motions and edits.
+enum MarkWrite {
+    /// Install the mark at this byte offset (`C-SPC`, or the old point on `C-x C-x`).
+    Set(usize),
+    /// Drop the mark (after a kill consumes the region).
+    Clear,
+}
+
 /// The pure result of [`plan`]: what a command would do, before any mutation.
 pub struct Plan {
     action: Action,
@@ -337,6 +352,9 @@ pub struct Plan {
     /// (`viw`/`vi(`) must move BOTH ends, unlike a bare motion that only moves the cursor. `None` leaves the
     /// anchor to the mode-transition logic in [`commit`].
     set_anchor: Option<usize>,
+    /// How this command updates the Emacs mark (D-027). `None` leaves it untouched — the common case, so
+    /// only the mark commands (`SetMark`/`KillRegion`/`ExchangePointMark`) set it.
+    set_mark: Option<MarkWrite>,
 }
 
 /// Whether a motion is a text object (a range around the cursor), as opposed to a bare cursor movement. In a
@@ -1211,6 +1229,16 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // would move the anchor *semantically* with the edit is deferred (D-027); v0 only guarantees totality.
     if let Some(a) = st.view.anchor {
         st.view.anchor = Some(snap(st.doc.bytes(), a));
+    }
+    // The Emacs mark (D-027): a plan installs or drops it; otherwise it persists. Snap it into range like the
+    // anchor so an edit that resized the buffer under it can never make `KillRegion` slice out of bounds.
+    match plan.set_mark {
+        Some(MarkWrite::Set(m)) => st.view.mark = Some(m),
+        Some(MarkWrite::Clear) => st.view.mark = None,
+        None => {}
+    }
+    if let Some(m) = st.view.mark {
+        st.view.mark = Some(snap(st.doc.bytes(), m));
     }
     // The pending register (`"x`) is one-shot: any command other than `SetRegister` (which returned early
     // above) consumes it. Cleared here AFTER the register write so a stray `"x` before a non-register
