@@ -873,7 +873,12 @@ fn emacs_repeat(cmd: Command, count: u32) -> Feed {
 /// Resolve an Emacs command name to a [`Command`], for `M-x` (F-012). A minimal static registry covering the
 /// commands the profile already binds — the depth-1 slice of F-004's fuller registry (completion, docstrings,
 /// dynamic discovery are deferred). An unknown name returns `None` (Emacs "[No match]").
-fn emacs_command_by_name(name: &str) -> Option<Command> {
+///
+/// `pub` because it is the shared vocabulary between the M-x path and the Emacs parity comparator
+/// (apps/tui/tests/emacs_parity_compare.rs): a fixture speaks Emacs command names, the oracle runs them in
+/// Emacs, and ruse runs the SAME names through this registry — so one fixture drives both editors.
+#[must_use]
+pub fn emacs_command_by_name(name: &str) -> Option<Command> {
     Some(match name.trim() {
         "forward-char" => Command::MoveRight,
         "backward-char" => Command::MoveLeft,
