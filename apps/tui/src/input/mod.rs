@@ -1049,6 +1049,21 @@ impl InputEngine {
             };
             return Feed::Cmd(cmd);
         }
+        // The Meta (`M-`, Alt) tier of the global map: word-granularity motions and buffer ends. Word motions
+        // multiply by the count; `M-<`/`M->` (buffer ends) ignore it. `M-f`/`M-b` are approximate — Emacs
+        // `forward-word` lands after the word where Vim `w`/`b` land on a boundary; the exact landing is a
+        // follow-up once word motions gain an Emacs variant.
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            let cmd = match key.code {
+                KeyCode::Char('f') => Command::Move(count, Motion::WordFwd), // M-f forward-word
+                KeyCode::Char('b') => Command::Move(count, Motion::WordBack), // M-b backward-word
+                KeyCode::Char('d') => Command::Delete(count, Motion::WordFwd), // M-d kill-word (into the ring)
+                KeyCode::Char('<') => Command::Move(1, Motion::GotoLine), // M-< beginning-of-buffer
+                KeyCode::Char('>') => Command::Move(1, Motion::LastLine), // M-> end-of-buffer
+                _ => return Feed::Ignored,
+            };
+            return Feed::Cmd(cmd);
+        }
         // An unmodified printable key is self-inserting text; with an argument it repeats `count` times (Emacs
         // `C-u 3 a` → "aaa"). Replay carries the ordered list — the Emacs path never records, so it is a pure
         // "apply each in turn" here, not dot-repeat.

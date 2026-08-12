@@ -377,6 +377,52 @@ mod tests {
     }
 
     #[test]
+    fn emacs_meta_tier_word_motions_and_buffer_ends() {
+        // F-012: the Meta (`M-`, Alt) tier — word motions and buffer ends. Word motions honour the prefix
+        // count; `M-<`/`M->` (buffer ends) ignore it. A plain `f` still self-inserts (no Alt, no C-).
+        let meta = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT);
+        let mut e = InputEngine::emacs();
+
+        assert_eq!(
+            e.feed(meta('f'), Mode::Insert),
+            Feed::Cmd(Command::Move(1, Motion::WordFwd))
+        );
+        assert_eq!(
+            e.feed(meta('b'), Mode::Insert),
+            Feed::Cmd(Command::Move(1, Motion::WordBack))
+        );
+        // `M-d` kills a word forward — a delete that captures into the register (kill ring).
+        assert_eq!(
+            e.feed(meta('d'), Mode::Insert),
+            Feed::Cmd(Command::Delete(1, Motion::WordFwd))
+        );
+        // Buffer ends: `M-<` to the top (line 1), `M->` to the last line — count-agnostic.
+        assert_eq!(
+            e.feed(meta('<'), Mode::Insert),
+            Feed::Cmd(Command::Move(1, Motion::GotoLine))
+        );
+        assert_eq!(
+            e.feed(meta('>'), Mode::Insert),
+            Feed::Cmd(Command::Move(1, Motion::LastLine))
+        );
+
+        // The prefix argument multiplies a word motion: `C-u M-f` = forward four words.
+        assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(meta('f'), Mode::Insert),
+            Feed::Cmd(Command::Move(4, Motion::WordFwd))
+        );
+
+        // A plain printable key (no Alt) still self-inserts — the Meta tier does not shadow text entry.
+        assert_eq!(
+            e.feed(k('f'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('f'))
+        );
+        // An unbound Meta key is inert (not self-inserted).
+        assert_eq!(e.feed(meta('z'), Mode::Insert), Feed::Ignored);
+    }
+
+    #[test]
     fn ctrl_v_enters_blockwise_visual() {
         let mut e = InputEngine::new();
         assert_eq!(
