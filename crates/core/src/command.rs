@@ -201,6 +201,17 @@ pub enum Command {
     UndoNewer,
     Save,
     Quit,
+    // Emacs region (D-027 depth-1: a single per-buffer mark, the degenerate one-caret `Ring<Selection>`).
+    /// `C-SPC` (set-mark-command) — set the mark at point. The region is the span between point and mark.
+    SetMark,
+    /// `C-w` (kill-region) — delete the region `[min(point,mark), max)` charwise into the unnamed register
+    /// (the kill ring), leaving point and mark together at its start. A no-op when no mark is set.
+    KillRegion,
+    /// `M-w` (kill-ring-save) — copy the region into the register without deleting; point and mark are
+    /// unchanged. A no-op when no mark is set.
+    CopyRegion,
+    /// `C-x C-x` (exchange-point-and-mark) — swap point and mark. A no-op when no mark is set.
+    ExchangePointMark,
 }
 
 fn motion_token(m: Motion) -> String {
@@ -493,6 +504,10 @@ impl Command {
             Command::UndoNewer => "undo_newer".into(),
             Command::Save => "save".into(),
             Command::Quit => "quit".into(),
+            Command::SetMark => "set_mark".into(),
+            Command::KillRegion => "kill_region".into(),
+            Command::CopyRegion => "copy_region".into(),
+            Command::ExchangePointMark => "exchange_point_mark".into(),
         }
     }
 
@@ -707,6 +722,10 @@ impl Command {
             "undo_newer" => Command::UndoNewer,
             "save" => Command::Save,
             "quit" => Command::Quit,
+            "set_mark" => Command::SetMark,
+            "kill_region" => Command::KillRegion,
+            "copy_region" => Command::CopyRegion,
+            "exchange_point_mark" => Command::ExchangePointMark,
             other => return Err(CommandParseError::UnknownVerb(other.to_string())),
         })
     }

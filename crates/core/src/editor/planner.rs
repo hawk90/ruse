@@ -77,6 +77,7 @@ fn plan_block_insert(
         effects: Vec::new(),
         set_register: reg.map(RegWrite::Edit),
         set_anchor: None,
+        set_mark: None,
     }
 }
 
@@ -107,6 +108,7 @@ fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) ->
                 effects: Vec::new(),
                 set_register: Some(RegWrite::Edit(reg)),
                 set_anchor: None,
+                set_mark: None,
             }
         } else {
             edit_yank(
@@ -128,6 +130,7 @@ fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) ->
                 effects: Vec::new(),
                 set_register: None,
                 set_anchor: None,
+                set_mark: None,
             }
         } else {
             // The register captures the removed content charwise (a partial-line change like `c$` pastes
@@ -190,6 +193,7 @@ fn plan_search(
                 effects: Vec::new(),
                 set_register: Some(RegWrite::Yank(reg)),
                 set_anchor: None,
+                set_mark: None,
             }
         }
     }
@@ -250,6 +254,7 @@ fn plan_virtual_replace_type(
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     }
 }
 
@@ -262,6 +267,7 @@ fn nop(cursor: usize, mode: Mode) -> Plan {
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     }
 }
 
@@ -274,6 +280,7 @@ fn edit(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint) -> Plan {
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     }
 }
 
@@ -287,6 +294,7 @@ fn edit_yank(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: R
         effects: Vec::new(),
         set_register: Some(RegWrite::Edit(reg)),
         set_anchor: None,
+        set_mark: None,
     }
 }
 
@@ -411,6 +419,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 effects: Vec::new(),
                 set_register: None,
                 set_anchor: None,
+                set_mark: None,
             }
         }
         // Shared by Replace (`R`) and Virtual Replace (`gR`) — the restore stack is identical; the mode is
@@ -441,6 +450,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     effects: Vec::new(),
                     set_register: None,
                     set_anchor: None,
+                    set_mark: None,
                 }
             }
         },
@@ -591,6 +601,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     effects: Vec::new(),
                     set_register: None,
                     set_anchor: Some(s),
+                    set_mark: None,
                 };
             }
             // Vertical motions honour the sticky desired column (curswant) so `j`/`k` keep the wanted
@@ -660,6 +671,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     effects: Vec::new(),
                     set_register: Some(RegWrite::Yank(reg)),
                     set_anchor: None,
+                    set_mark: None,
                 }
             }
         }
@@ -693,6 +705,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                         effects: Vec::new(),
                         set_register: Some(RegWrite::Yank(reg)),
                         set_anchor: None,
+                        set_mark: None,
                     }
                 }
                 OpKind::Change if s < e => {
@@ -724,6 +737,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             effects: Vec::new(),
             set_register: None,
             set_anchor: None,
+            set_mark: None,
         },
         Command::EnterVisual { kind } => nop(cur, Mode::Visual { kind: *kind }),
         // CTRL-G toggle: enter Select over the same selection. The anchor is preserved because both are
@@ -741,6 +755,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 effects: Vec::new(),
                 set_register: None,
                 set_anchor: Some(anchor),
+                set_mark: None,
             },
             None => nop(cur, st.view.mode),
         },
@@ -794,6 +809,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     effects: Vec::new(),
                     set_register: None,
                     set_anchor: Some(cur),
+                    set_mark: None,
                 },
                 _ => nop(cur, st.view.mode),
             }
@@ -825,6 +841,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     effects: Vec::new(),
                     set_register: Some(RegWrite::Yank(reg)),
                     set_anchor: None,
+                    set_mark: None,
                 },
                 Command::DeleteSelection if s < e => {
                     edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
@@ -860,6 +877,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             effects: Vec::new(),
             set_register: None,
             set_anchor: None,
+            set_mark: None,
         },
         Command::Redo => Plan {
             action: Action::Redo,
@@ -869,6 +887,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             effects: Vec::new(),
             set_register: None,
             set_anchor: None,
+            set_mark: None,
         },
         Command::UndoOlder => Plan {
             action: Action::UndoChrono { older: true },
@@ -878,6 +897,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             effects: Vec::new(),
             set_register: None,
             set_anchor: None,
+            set_mark: None,
         },
         Command::UndoNewer => Plan {
             action: Action::UndoChrono { older: false },
@@ -887,6 +907,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             effects: Vec::new(),
             set_register: None,
             set_anchor: None,
+            set_mark: None,
         },
         Command::Save => Plan {
             action: Action::Nop,
@@ -896,6 +917,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             effects: vec![Effect::Save],
             set_register: None,
             set_anchor: None,
+            set_mark: None,
         },
         Command::Quit => Plan {
             action: Action::Nop,
@@ -905,6 +927,73 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             effects: vec![Effect::Quit],
             set_register: None,
             set_anchor: None,
+            set_mark: None,
+        },
+        // Emacs region (D-027 depth-1). `C-SPC` drops the mark at point.
+        Command::SetMark => Plan {
+            action: Action::Nop,
+            cursor: cur,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: Some(MarkWrite::Set(cur)),
+        },
+        // `C-x C-x` swaps point and mark; the mark takes the old point. No mark set → inert.
+        Command::ExchangePointMark => match st.view.mark {
+            Some(m) => Plan {
+                action: Action::Nop,
+                cursor: m,
+                mode: st.view.mode,
+                is_edit: false,
+                effects: Vec::new(),
+                set_register: None,
+                set_anchor: None,
+                set_mark: Some(MarkWrite::Set(cur)),
+            },
+            None => nop(cur, st.view.mode),
+        },
+        // `M-w` copies the region `[min,max)` charwise into the register; point and mark are untouched. An
+        // empty region or no mark is inert.
+        Command::CopyRegion => match st.view.mark {
+            Some(m) if m != cur => {
+                let (s, e) = (cur.min(m), cur.max(m));
+                let reg = captured(b, s, e, false);
+                Plan {
+                    action: Action::Nop,
+                    cursor: cur,
+                    mode: st.view.mode,
+                    is_edit: false,
+                    effects: Vec::new(),
+                    set_register: Some(RegWrite::Yank(reg)),
+                    set_anchor: None,
+                    set_mark: None,
+                }
+            }
+            _ => nop(cur, st.view.mode),
+        },
+        // `C-w` kills the region into the register (the kill ring) and leaves point and mark together at its
+        // start. An empty region or no mark is inert.
+        Command::KillRegion => match st.view.mark {
+            Some(m) if m != cur => {
+                let (s, e) = (cur.min(m), cur.max(m));
+                let reg = captured(b, s, e, false);
+                Plan {
+                    action: Action::Txn {
+                        edits: one(Edit::delete(s, e - s)),
+                        hint,
+                    },
+                    cursor: s,
+                    mode: st.view.mode,
+                    is_edit: true,
+                    effects: Vec::new(),
+                    set_register: Some(RegWrite::Edit(reg)),
+                    set_anchor: None,
+                    set_mark: Some(MarkWrite::Clear),
+                }
+            }
+            _ => nop(cur, st.view.mode),
         },
     }
 }
@@ -984,6 +1073,7 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
             effects: Vec::new(),
             set_register: None,
             set_anchor: None,
+            set_mark: None,
         };
     }
     let edits = EditList::new(edits)
@@ -996,6 +1086,7 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     }
 }
 
@@ -1028,6 +1119,7 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     };
     match op {
         // Yank leaves the buffer unchanged, cursor at the block's top-left, back to Normal.
@@ -1061,6 +1153,7 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
                 effects: Vec::new(),
                 set_register: Some(RegWrite::Edit(reg)),
                 set_anchor: None,
+                set_mark: None,
             }
         }
     }
@@ -1080,6 +1173,7 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) 
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     };
     let start = session.insert_start;
     // The cursor rests at the block's top-left when the session ends (Vim), for both `I` and `A`.
@@ -1131,6 +1225,7 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) 
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     }
 }
 
@@ -1208,6 +1303,7 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
             effects: Vec::new(),
             set_register: None,
             set_anchor: None,
+            set_mark: None,
         };
     }
     let list = EditList::new(edits).expect("block paste inserts are disjoint (one per line)");
@@ -1222,6 +1318,7 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     }
 }
 
@@ -1234,6 +1331,7 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     };
     if reg.is_empty() {
         return nop;
@@ -1257,6 +1355,7 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u
         effects: Vec::new(),
         set_register: None,
         set_anchor: None,
+        set_mark: None,
     };
 
     if reg.is_linewise() {
