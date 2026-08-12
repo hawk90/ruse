@@ -262,15 +262,29 @@ oracles:
     version_note: "The pinned revision is v9.1.2148; a developer's local `vim` will differ. The oracle records its own --version in every run and coverage.yaml carries the mismatch."
   emacs:
     binary: emacs
-    invoke: TBD
-    status: blocked
+    invoke: "emacs -Q --batch -l <script>"        # tools/parity/emacs_oracle.py
+    status: prototyped                              # harness proven by --selftest; fixture corpus follows (see resolution)
     observable: [text, point, mark, kill_ring]      # NOT undo: see below
     hazards:
       - "`--batch` + execute-kbd-macro SILENTLY produces wrong buffer state: `M-d` on \"hello world\" leaves the buffer EMPTY while kill-ring is correctly \"hello\". Calling kill-word directly is correct. The batch command loop is not the interactive one."
       - "`--batch` + read-from-minibuffer HANGS forever rather than erroring (no timeout, no diagnostic)."
       - "redisplay-dependent commands (recenter, window scroll, isearch lazy-highlight) error or no-op under --batch."
       - "buffer-undo-list is a list of change records ((1 . 2) (t . 0)) with no sequence identity; Vim/Neovim undotree() is a TREE with seq numbers. The two are NOT normalizable, so undo is comparable vim<->nvim ONLY."
-    resolution: "Requires a pty-hosted `emacs -nw` harness (expect-style). Prototype before any Emacs fixture is authored."
+    resolution: >
+      RESOLVED by a COMMAND-SEMANTICS oracle (tools/parity/emacs_oracle.py), not the key-replay approach
+      the hazards above rule out. Both batch traps are traps of KEY replay (execute-kbd-macro, minibuffer);
+      what ruse's Emacs profile conforms to is command SEMANTICS, so the harness applies each op with
+      `call-interactively` — exactly the "calling kill-word directly is correct" observation in hazard #1,
+      generalized (call-interactively supplies each command's `(interactive)` args as a keypress would, with
+      no macro engine and no minibuffer in the path). The global-variable leak (kill-ring/mark-ring persist
+      across `with-temp-buffer` in one image — the Emacs analogue of Neovim's shada) is isolated by one fresh
+      `emacs -Q --batch` process per fixture. The pin is verified (`emacs --version` must carry version_label)
+      and `--selftest` gates the corpus (identity, determinism, kill-ring isolation, known ops) before any
+      fixture is trusted — the same non-corruption discipline as the Neovim oracle (#oracle_selftest). A
+      pty-hosted `emacs -nw` harness is no longer required for the command-semantics observables above; it
+      would only be needed for redisplay-dependent commands, which are out of scope. Fixtures speak Emacs
+      command NAMES, which the ruse M-x registry (apps/tui `emacs_command_by_name`) also resolves, so one
+      fixture drives both editors. undo stays vim<->nvim ONLY (hazard #4 is unchanged).
 
 # Fixture comparison is declared PER EDITOR PAIR, not globally — an observable that exists in one
 # oracle may have no comparable representation in another (see the undo hazard above).

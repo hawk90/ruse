@@ -1,0 +1,444 @@
+#!/usr/bin/env python3
+"""Emacs command-semantics oracle — the executable half of the Emacs parity axis.
+
+This is the Emacs sibling of tools/parity/oracle.py (the Neovim oracle). It runs the pinned Emacs as a
+black box, applies a fixture's editing COMMANDS to a scratch buffer, and reads back the resulting state.
+The captured state becomes the `expect` of a fixture; a fixture is a hand-verified claim about what
+Emacs's editing commands *do*, pinned to an exact upstream revision (spec/parity/upstreams.yaml).
+
+WHY COMMANDS, NOT KEYS (the trap the Neovim oracle documents and this harness sidesteps):
+    Two earlier Emacs oracle attempts drove KEYS and both corrupted their observation — `emacs --batch
+    execute-kbd-macro` left the buffer empty while the kill-ring was correct, and `emacs --batch
+    read-from-minibuffer` hung forever (see tools/parity/oracle.py, module docstring). The failures were
+    KEY replay. What ruse's Emacs profile actually needs to conform to is COMMAND SEMANTICS — what
+    `kill-region` / `forward-word` / `exchange-point-and-mark` DO — so this harness drives commands
+    directly with `call-interactively`, exactly as a keypress dispatches through Emacs's command loop
+    (it supplies each command's `(interactive)` arguments), with no minibuffer and no macro engine in the
+    path. A fixture's `ops` are Emacs command NAMES; the same names resolve on the ruse side through the
+    M-x registry (apps/tui `emacs_command_by_name`), so fixture -> oracle -> ruse share one vocabulary.
+
+THE NON-CORRUPTION TECHNIQUE (this harness's answer to the oracle hazard):
+    1. Observation is READ-ONLY and happens AFTER mutation, never through a mutating call. Commands are
+       applied with `call-interactively`; every read (`buffer-string`, `point`, `mark`, `car kill-ring`)
+       runs against already-settled state. No read is itself an editing command (the `vim -es` /
+       `execute-kbd-macro` trap).
+    2. One fresh `emacs --batch` PROCESS per fixture. `kill-ring` (and `mark-ring`, registers, ...) are
+       GLOBAL variables that persist across `with-temp-buffer` calls in one image — the exact analogue of
+       Neovim's shada leak. A fresh process per fixture is the only leak-proof isolation, so every fixture
+       pays for its own `emacs -Q --batch`.
+    3. The pin is VERIFIED, not assumed. `emacs --version` is parsed and asserted to carry the pinned
+       version number (spec/parity/upstreams.yaml emacs.version_label), and that version string is
+       recorded in every emitted document. A wrong binary refuses rather than silently recording a lie.
+
+SCOPE OF THE SEED CORPUS (char vs byte): point/mark are emitted as 0-based CHARACTER offsets. ruse's
+core addresses the buffer by BYTE offset; for the ASCII seed corpus the two coincide, so the ruse
+comparator can compare them directly. Multibyte fixtures (where char != byte) are a later expansion,
+exactly as the Neovim corpus added its unicode fixtures after the ASCII core — see the corpus `note`.
+
+Stdlib only (D-034): no PyYAML, no pip deps. The fixture corpus is emitted as JSON, which is a strict
+subset of YAML 1.2 — so `corpus.yaml` is valid YAML *and* parses with `serde_json` on the Rust side.
+
+Usage:
+    python3 tools/parity/emacs_oracle.py --selftest        # prove non-corruption + determinism; gates the corpus
+    python3 tools/parity/emacs_oracle.py --generate [PATH]  # capture the fixture corpus from the oracle
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+UPSTREAMS = REPO_ROOT / "spec" / "parity" / "upstreams.yaml"
+DEFAULT_CORPUS = REPO_ROOT / "tests" / "parity" / "emacs" / "fixtures" / "corpus.yaml"
+
+INVOKE = "emacs -Q --batch -l <script>"
+
+# The Elisp probe. It sets the buffer, homes point to the fixture's 0-based char offset, turns on
+# transient-mark-mode (so mark/region commands behave as they do interactively), applies each op via
+# `call-interactively`, then reads state. Every line after the dolist is a pure read — this ordering is
+# the non-corruption guarantee. Emacs's native JSON (json-parse-string / json-serialize, 27+) keeps this
+# stdlib-only on both ends; a list must be `vconcat`-ed to a vector to serialize as a JSON array.
+_ELISP = r"""
+(let* ((input (json-parse-string %s :object-type 'alist :array-type 'list))
+       (text  (alist-get 'text input))
+       (start (alist-get 'point input))
+       (ops   (alist-get 'ops input)))
+  (with-temp-buffer
+    (transient-mark-mode 1)
+    (insert text)
+    (goto-char (+ (point-min) (or start 0)))
+    (dolist (op ops)
+      (call-interactively (intern op)))
+    (princ (json-serialize
+            (list :text (vconcat (split-string (buffer-string) "\n"))
+                  :point (1- (point))
+                  :mark (if (mark t) (1- (mark t)) :null)
+                  :kill (if kill-ring (substring-no-properties (car kill-ring)) :null))))))
+"""
+
+
+class OracleError(RuntimeError):
+    """The harness cannot make a trustworthy observation (bad binary, version mismatch, emacs error)."""
+
+
+def _read_block_fields(block_key: str, fields: tuple[str, ...]) -> dict[str, str]:
+    """Pull scalar `fields` from the 2-space-indented `block_key` under `upstreams:` (stdlib parse).
+
+    Mirrors oracle.py's hand parse: locate `upstreams:`, then the `  <block_key>:` line, then read the
+    named scalar fields until the block dedents. No PyYAML — the oracle must run with nothing installed.
+    """
+    lines = UPSTREAMS.read_text(encoding="utf-8").splitlines()
+    try:
+        start = next(i for i, ln in enumerate(lines) if ln.rstrip() == "upstreams:")
+    except StopIteration as exc:  # pragma: no cover - the file always has this key
+        raise OracleError(f"no `upstreams:` section in {UPSTREAMS}") from exc
+    head = f"  {block_key}:"
+    blk = next((i for i in range(start + 1, len(lines)) if lines[i] == head), None)
+    if blk is None:
+        raise OracleError(f"no `{block_key}:` upstream block")
+    found: dict[str, str] = {}
+    for ln in lines[blk + 1 :]:
+        # Stop at the next upstream (2-space key) or a top-level key (dedent).
+        if re.match(r"^  \S", ln) or re.match(r"^\S", ln):
+            break
+        for f in fields:
+            m = re.match(rf"\s*{f}:\s*(\S+)", ln)
+            if m and f not in found:
+                found[f] = m.group(1)
+    missing = [f for f in fields if f not in found]
+    if missing:
+        raise OracleError(f"{block_key} block missing {'/'.join(missing)}")
+    return found
+
+
+def read_pin() -> dict[str, str]:
+    """Extract Emacs's pinned revision + version_label from spec/parity/upstreams.yaml."""
+    return _read_block_fields("emacs", ("revision", "version_label"))
+
+
+def emacs_version() -> str:
+    """The first line of `emacs --version`, e.g. 'GNU Emacs 30.2'. Recorded in every run."""
+    try:
+        out = subprocess.run(
+            ["emacs", "--version"], capture_output=True, text=True, check=True
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise OracleError(f"cannot run `emacs --version`: {exc}") from exc
+    return out.stdout.splitlines()[0].strip()
+
+
+def _pin_number(version_label: str) -> str:
+    """The bare version number from the pin label: 'emacs-30.2' -> '30.2'. `emacs --version` reports
+    'GNU Emacs 30.2', so the number (not the label's `emacs-` prefix) is what we match."""
+    return re.sub(r"^emacs-", "", version_label)
+
+
+def assert_pin(version_line: str, pin: dict[str, str]) -> None:
+    """Refuse to observe through a binary that is not the pinned version (contract: warn/refuse)."""
+    number = _pin_number(pin["version_label"])
+    if not re.search(rf"\b{re.escape(number)}\b", version_line):
+        raise OracleError(
+            f"emacs version mismatch: `{version_line}` is not the pinned {pin['version_label']} "
+            f"(spec/parity/upstreams.yaml emacs revision {pin['revision']}). "
+            "Refusing: a fixture captured through the wrong binary is not evidence."
+        )
+
+
+def run_emacs(text: str, ops: list[str], point: int = 0) -> dict:
+    """Run the pinned Emacs on `text`, apply each op in `ops` via call-interactively, return the state.
+
+    Returns {text:[lines], point:int(0-based char), mark:int|None, kill:str|None, emacs_version}.
+    The read happens strictly after the commands settle — see the module docstring for why that is the
+    whole point. `point` homes the caret to a 0-based char offset before the ops (Emacs buffers open at
+    point-min; a fixture that must start elsewhere records it explicitly rather than prefixing a motion).
+    """
+    payload = json.dumps({"text": text, "ops": ops, "point": point})
+    # Embed the payload as an Elisp string literal (json.dumps already produced a valid one).
+    src = _ELISP % json.dumps(payload)
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".el", delete=False, encoding="utf-8"
+    ) as fh:
+        fh.write(src)
+        script = fh.name
+    try:
+        proc = subprocess.run(
+            ["emacs", "-Q", "--batch", "-l", script],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        Path(script).unlink(missing_ok=True)
+    if proc.returncode != 0 or not proc.stdout:
+        raise OracleError(
+            f"emacs failed (rc={proc.returncode}) on ops={ops!r}: "
+            f"{proc.stderr.strip() or '<no stderr>'}"
+        )
+    raw = json.loads(proc.stdout)
+    return {
+        "text": raw["text"],
+        "point": raw["point"],
+        "mark": raw["mark"] if raw["mark"] is not None else None,
+        "kill": raw["kill"] if raw["kill"] is not None else None,
+        "emacs_version": emacs_version(),
+    }
+
+
+# --- The fixture corpus: ALREADY-IMPLEMENTED ruse Emacs-profile ops. `expect` is captured from the
+#     oracle, never hand-written; the (text, ops, point) here are the only human-authored part. Every
+#     op name is an Emacs command that the ruse M-x registry (emacs_command_by_name) also resolves, so
+#     the same fixture drives both editors. ASCII only for the seed (char offset == byte offset); see
+#     the module docstring's scope note.
+FIXTURES: list[dict] = [
+    # --- motion (point only; text/mark/kill unchanged) ------------------------------------------------
+    {"name": "forward_char", "text": "hello", "ops": ["forward-char"]},
+    {"name": "forward_char_twice", "text": "hello", "ops": ["forward-char", "forward-char"]},
+    {"name": "backward_char", "text": "hello", "ops": ["backward-char"], "point": 3},
+    {"name": "forward_word", "text": "foo bar baz", "ops": ["forward-word"]},
+    {"name": "backward_word", "text": "foo bar baz", "ops": ["backward-word"], "point": 11},
+    {"name": "move_end_of_line", "text": "hello world", "ops": ["move-end-of-line"]},
+    {"name": "move_beginning_of_line", "text": "hello world", "ops": ["move-beginning-of-line"], "point": 6},
+    {"name": "beginning_of_buffer", "text": "alpha\nbeta\ngamma", "ops": ["beginning-of-buffer"], "point": 12},
+    {"name": "end_of_buffer", "text": "alpha\nbeta\ngamma", "ops": ["end-of-buffer"]},
+    {"name": "next_line", "text": "alpha\nbeta\ngamma", "ops": ["next-line"]},
+    {"name": "previous_line", "text": "alpha\nbeta\ngamma", "ops": ["previous-line"], "point": 12},
+    # --- deletion / kill (text + kill-ring) -----------------------------------------------------------
+    {"name": "delete_char", "text": "hello", "ops": ["delete-char"]},
+    {"name": "kill_line", "text": "hello world", "ops": ["kill-line"], "point": 6},
+    {"name": "kill_word", "text": "foo bar baz", "ops": ["kill-word"]},
+    {"name": "kill_word_from_mid", "text": "foobar baz", "ops": ["kill-word"], "point": 3},
+    # --- mark / region: set-mark, move, then a region op (text + point + mark + kill) -----------------
+    {"name": "set_mark_only", "text": "hello world", "ops": ["set-mark-command"], "point": 2},
+    {
+        "name": "kill_region",
+        "text": "hello world",
+        "ops": ["set-mark-command", "forward-char", "forward-char", "kill-region"],
+        "point": 2,
+    },
+    {
+        "name": "kill_region_word",
+        "text": "foo bar baz",
+        "ops": ["set-mark-command", "forward-word", "kill-region"],
+    },
+    {
+        "name": "copy_region_keeps_text",
+        "text": "abcdef",
+        "ops": ["set-mark-command", "forward-char", "forward-char", "forward-char", "kill-ring-save"],
+    },
+    {
+        "name": "exchange_point_and_mark",
+        "text": "abcdef",
+        "ops": ["set-mark-command", "forward-char", "forward-char", "forward-char", "exchange-point-and-mark"],
+    },
+    # --- yank: kill then reinsert (unnamed register round-trip) ---------------------------------------
+    {
+        "name": "kill_word_then_yank",
+        "text": "foo bar",
+        "ops": ["kill-word", "move-end-of-line", "yank"],
+    },
+    {
+        "name": "copy_region_then_yank",
+        "text": "abc",
+        "ops": ["set-mark-command", "move-end-of-line", "kill-ring-save", "yank"],
+    },
+    # --- composite: kill-region then yank elsewhere (cross-command register state) --------------------
+    {
+        "name": "kill_region_then_yank_at_end",
+        "text": "abcdef",
+        "ops": ["set-mark-command", "forward-char", "forward-char", "forward-char", "kill-region", "move-end-of-line", "yank"],
+    },
+]
+
+
+def _entry(spec: dict, state: dict) -> dict:
+    entry = {"name": spec["name"], "text": spec["text"], "ops": spec["ops"]}
+    # Emit `point` only for fixtures that start off point-min, so the corpus stays byte-identical for the
+    # start-at-0 majority and records exactly which runs were homed elsewhere.
+    if spec.get("point", 0):
+        entry["point"] = spec["point"]
+    entry["expect"] = {
+        "text": state["text"],
+        "point": state["point"],
+        "mark": state["mark"],
+        "kill": state["kill"],
+    }
+    return entry
+
+
+def generate(path: Path) -> int:
+    """Capture every fixture's `expect` from the oracle and write the corpus as JSON-in-YAML."""
+    pin = read_pin()
+    version_line = emacs_version()
+    assert_pin(version_line, pin)
+
+    fixtures = [
+        _entry(spec, run_emacs(spec["text"], spec["ops"], spec.get("point", 0)))
+        for spec in FIXTURES
+    ]
+
+    corpus = {
+        "version": 1,
+        "generator": "tools/parity/emacs_oracle.py",
+        "note": (
+            "GENERATED — every `expect` was captured from the pinned Emacs oracle via "
+            "call-interactively, never hand-written. Regenerate with "
+            "`python3 tools/parity/emacs_oracle.py --generate`. point/mark are 0-based CHARACTER "
+            "offsets; the seed corpus is ASCII so char == byte and the ruse comparator (byte offsets) "
+            "compares them directly. JSON is a subset of YAML 1.2, so this .yaml parses on both ends."
+        ),
+        "oracle": {
+            "editor": "emacs",
+            "invoke": INVOKE,
+            "emacs_version": version_line,
+            "pin_version_label": pin["version_label"],
+            "pin_revision": pin["revision"],
+            "captured_observables": ["text", "point", "mark", "kill"],
+            "ruse_compare_observables": ["text", "point", "mark", "kill"],
+            "kill_note": (
+                "`kill` is the head of Emacs's kill-ring (car kill-ring); it maps to ruse's single "
+                "unnamed register (D-026). Emacs's full ring is out of scope for the seed corpus."
+            ),
+        },
+        "fixtures": fixtures,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(corpus, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    print(f"wrote {len(fixtures)} oracle-captured fixtures to {path}")
+    print(f"oracle: {version_line} (pin {pin['version_label']} / {pin['revision']})")
+    return 0
+
+
+# --- Selftest: the gate. Every case below has an answer known independently of this harness. ---
+
+
+def _fail(msg: str) -> None:
+    print(f"FAIL: {msg}")
+
+
+def selftest() -> int:
+    """Prove the harness does not corrupt its own observation. Exit non-zero on any disagreement."""
+    pin = read_pin()
+    version_line = emacs_version()
+    print(f"emacs oracle selftest — {version_line} (pin {pin['version_label']})")
+    try:
+        assert_pin(version_line, pin)
+    except OracleError as exc:
+        _fail(str(exc))
+        return 1
+
+    failures = 0
+
+    # 1. IDENTITY — no ops must not perturb text, point, mark, or kill. A harness that mutates on
+    #    observation (the core hazard) fails here first.
+    ident = run_emacs("hello\nworld", [])
+    if ident["text"] != ["hello", "world"]:
+        _fail(f"identity: text changed on ops=[] -> {ident['text']}")
+        failures += 1
+    if ident["point"] != 0:
+        _fail(f"identity: point moved on ops=[] -> {ident['point']}")
+        failures += 1
+    if ident["mark"] is not None or ident["kill"] is not None:
+        _fail(f"identity: mark/kill non-nil on ops=[] -> mark={ident['mark']} kill={ident['kill']!r}")
+        failures += 1
+
+    # 2. DETERMINISM — the same run twice must yield identical observations. Non-determinism means
+    #    shared state leaked between processes (the global-var hazard the fresh process guards).
+    a = run_emacs("foo bar baz", ["kill-word"])
+    b = run_emacs("foo bar baz", ["kill-word"])
+    for k in ("text", "point", "mark", "kill"):
+        if a[k] != b[k]:
+            _fail(f"determinism: {k} differs across identical runs: {a[k]!r} != {b[k]!r}")
+            failures += 1
+
+    # 3. KILL-RING ISOLATION — the fixture-to-fixture leak that mandates a fresh process. A run whose
+    #    text produces NO kill must observe an EMPTY kill-ring, even right after a run that killed. If
+    #    this fails, processes are being reused and every kill observable is suspect.
+    run_emacs("foo bar", ["kill-word"])  # populates a kill-ring — in its OWN process
+    clean = run_emacs("hello", ["forward-char"])  # no kill here
+    if clean["kill"] is not None:
+        _fail(f"isolation: kill-ring leaked across processes -> {clean['kill']!r}")
+        failures += 1
+
+    # 4. KNOWN OPS — hand-verified expectations. If the oracle disagrees, it is LYING and no fixture
+    #    recorded through it can be trusted. Answers are known independently of this harness.
+    known = [
+        (
+            "forward-char on 'hello' -> point 1",
+            "hello",
+            ["forward-char"],
+            0,
+            lambda s: s["text"] == ["hello"] and s["point"] == 1,
+        ),
+        (
+            "delete-char on 'hello' -> 'ello'",
+            "hello",
+            ["delete-char"],
+            0,
+            lambda s: s["text"] == ["ello"] and s["point"] == 0,
+        ),
+        (
+            "kill-word on 'foo bar' -> 'bar', kill 'foo'",
+            "foo bar",
+            ["kill-word"],
+            0,
+            lambda s: s["text"] == [" bar"] and s["kill"] == "foo",
+        ),
+        (
+            "set-mark + fwd*2 + kill-region on 'hello world' -> 'heo world', kill 'll'",
+            "hello world",
+            ["set-mark-command", "forward-char", "forward-char", "kill-region"],
+            2,
+            lambda s: s["text"] == ["heo world"] and s["point"] == 2 and s["kill"] == "ll",
+        ),
+        (
+            "set-mark + fwd*3 + exchange-point-and-mark on 'abcdef' -> point 0, mark 3",
+            "abcdef",
+            ["set-mark-command", "forward-char", "forward-char", "forward-char", "exchange-point-and-mark"],
+            0,
+            lambda s: s["point"] == 0 and s["mark"] == 3 and s["text"] == ["abcdef"],
+        ),
+    ]
+    for label, text, ops, point, ok in known:
+        state = run_emacs(text, ops, point)
+        if not ok(state):
+            _fail(
+                f"known-op disagreement: {label} — got text={state['text']} "
+                f"point={state['point']} mark={state['mark']} kill={state['kill']!r}"
+            )
+            failures += 1
+
+    if failures:
+        print(f"emacs oracle selftest FAILED ({failures} check(s)) — the corpus is NOT trustworthy.")
+        return 1
+    print("emacs oracle selftest PASSED — identity, determinism, isolation, and known ops all hold.")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    args = argv[1:]
+    try:
+        if "--selftest" in args:
+            return selftest()
+        if "--generate" in args:
+            i = args.index("--generate")
+            path = (
+                Path(args[i + 1]).resolve()
+                if i + 1 < len(args) and not args[i + 1].startswith("-")
+                else DEFAULT_CORPUS
+            )
+            return generate(path)
+    except OracleError as exc:
+        print(f"oracle error: {exc}")
+        return 2
+    print(__doc__)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
