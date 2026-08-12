@@ -648,6 +648,8 @@ enum EmacsBinding {
     Fixed(Command),
     /// Enter a prefix map — the next key resolves in that sub-map. (`C-x`.)
     Prefix(char),
+    /// Open the `M-x` minibuffer to read a command name. (`M-x`.)
+    Minibuffer,
 }
 
 /// A command whose count lives in a native field, named so the binding table stays declarative.
@@ -679,7 +681,7 @@ fn fold_emacs_count(binding: &EmacsBinding, count: u32) -> Feed {
         }),
         EmacsBinding::Repeat(cmd) => emacs_repeat(cmd.clone(), count),
         EmacsBinding::Fixed(cmd) => Feed::Cmd(cmd.clone()),
-        EmacsBinding::Prefix(_) => Feed::Pending,
+        EmacsBinding::Prefix(_) | EmacsBinding::Minibuffer => Feed::Pending,
     }
 }
 
@@ -816,6 +818,8 @@ impl EmacsProfile {
             EmacsKey::alt('d'),
             EmacsBinding::Counted(CountedCmd::Delete(Motion::WordFwd)),
         )
+        // M-x opens the minibuffer to read a command name (execute-extended-command).
+        .bind(EmacsKey::alt('x'), EmacsBinding::Minibuffer)
         // Newline / backspace — repeatable via Replay under a count.
         .bind(
             EmacsKey::ctrl('j'),
@@ -850,6 +854,9 @@ struct CmdLine {
     cursor: usize,
     /// `gQ` Ex mode: `<CR>` executes AND re-opens the line; `:visual`/`:vi`/empty exits.
     ex_mode: bool,
+    /// Emacs `M-x` minibuffer (F-012): the buffer holds a COMMAND NAME (not an ex line), resolved on `<CR>`
+    /// against the command registry into a [`Command`]. `false` for the Vim `:`/`/` line.
+    mx: bool,
 }
 
 /// Fold an Emacs prefix count into a command that has no native count field by repeating it: `count <= 1`
@@ -861,6 +868,40 @@ fn emacs_repeat(cmd: Command, count: u32) -> Feed {
     } else {
         Feed::Replay(vec![cmd; count as usize])
     }
+}
+
+/// Resolve an Emacs command name to a [`Command`], for `M-x` (F-012). A minimal static registry covering the
+/// commands the profile already binds — the depth-1 slice of F-004's fuller registry (completion, docstrings,
+/// dynamic discovery are deferred). An unknown name returns `None` (Emacs "[No match]").
+fn emacs_command_by_name(name: &str) -> Option<Command> {
+    Some(match name.trim() {
+        "forward-char" => Command::MoveRight,
+        "backward-char" => Command::MoveLeft,
+        "next-line" => Command::MoveDown,
+        "previous-line" => Command::MoveUp,
+        "move-beginning-of-line" => Command::MoveLineStart,
+        "move-end-of-line" => Command::MoveLineEnd,
+        "beginning-of-buffer" => Command::Move(1, Motion::GotoLine),
+        "end-of-buffer" => Command::Move(1, Motion::LastLine),
+        "forward-word" => Command::Move(1, Motion::WordFwd),
+        "backward-word" => Command::Move(1, Motion::WordBack),
+        "delete-char" => Command::DeleteUnder(1),
+        "kill-line" => Command::Delete(1, Motion::LineEnd),
+        "kill-word" => Command::Delete(1, Motion::WordFwd),
+        "yank" => Command::Paste {
+            after: false,
+            count: 1,
+        },
+        "newline" => Command::InsertNewline,
+        "undo" => Command::Undo,
+        "save-buffer" => Command::Save,
+        "save-buffers-kill-terminal" => Command::Quit,
+        "set-mark-command" => Command::SetMark,
+        "kill-region" => Command::KillRegion,
+        "kill-ring-save" => Command::CopyRegion,
+        "exchange-point-and-mark" => Command::ExchangePointMark,
+        _ => return None,
+    })
 }
 
 /// A short human label for a key, for the palette's binding column (F-004 #2).
@@ -949,6 +990,19 @@ impl InputEngine {
             buffer: String::new(),
             cursor: 0,
             ex_mode,
+            mx: false,
+        });
+    }
+
+    /// Open the Emacs `M-x` minibuffer (F-012): the same command-line namespace, reading a command NAME.
+    /// The prompt glyph is a placeholder here; the frontend shows the `M-x ` prompt (a rendering follow-up).
+    fn open_minibuffer(&mut self) {
+        self.cmdline = Some(CmdLine {
+            prefix: ':',
+            buffer: String::new(),
+            cursor: 0,
+            ex_mode: false,
+            mx: true,
         });
     }
 
@@ -978,7 +1032,17 @@ impl InputEngine {
             KeyCode::Enter => {
                 let prefix = cl.prefix;
                 let ex_mode = cl.ex_mode;
+                let mx = cl.mx;
                 let text = std::mem::take(&mut cl.buffer);
+                if mx {
+                    // `M-x <name> <CR>`: resolve the command name against the registry; an unknown name is a
+                    // no-op (Emacs shows "[No match]"). Completion / history are deferred (F-004).
+                    self.cmdline = None;
+                    return match emacs_command_by_name(&text) {
+                        Some(cmd) => Feed::Cmd(cmd),
+                        None => Feed::Ignored,
+                    };
+                }
                 if ex_mode {
                     // Ex mode: `:visual`/`:vi`/empty leaves it; anything else runs and re-prompts.
                     if text.is_empty() || text == "visual" || text == "vi" {
@@ -1244,6 +1308,11 @@ impl InputEngine {
     /// the buffer stays editable because a `Move*` command keeps the current mode and only moves the cursor,
     /// so "move + insert in one state" needs no new mode.
     fn feed_emacs(&mut self, key: KeyEvent) -> Feed {
+        // The `M-x` minibuffer owns the keystream while open (F-026 command-line namespace), reused verbatim
+        // from the Vim `:`-line handler — its `<CR>` resolves the command NAME (the `cl.mx` branch).
+        if self.cmdline.is_some() {
+            return self.feed_cmdline(key);
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         // A pending prefix key owns the NEXT keystroke: resolve it in that prefix's map before any global
         // dispatch. `C-g` (keyboard-quit) or any unbound key cancels the prefix (Emacs beeps). The prefix
@@ -1292,6 +1361,11 @@ impl InputEngine {
                 // Enter the prefix map: the next key resolves there. Any pending argument is dropped in this
                 // slice (arg-passthrough to a prefixed command is a follow-up).
                 self.emacs_prefix = Some(p);
+                Feed::Pending
+            }
+            Step::Bound(EmacsBinding::Minibuffer) => {
+                // M-x: open the minibuffer; subsequent keys route through `feed_cmdline` until `<CR>`.
+                self.open_minibuffer();
                 Feed::Pending
             }
             Step::Bound(binding) => fold_emacs_count(&binding, count),
