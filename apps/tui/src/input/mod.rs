@@ -786,6 +786,15 @@ impl EmacsProfile {
             EmacsKey::ctrl('k'),
             EmacsBinding::Fixed(Command::Delete(1, Motion::LineEnd)),
         )
+        // Emacs region (D-027): set-mark, kill-region, kill-ring-save. `C-x C-x` (exchange) lives in the
+        // C-x prefix map. `C-SPC` is bound as Ctrl+Space; some terminals deliver it as NUL — a delivery
+        // detail for the frontend, not this map.
+        .bind(EmacsKey::ctrl(' '), EmacsBinding::Fixed(Command::SetMark))
+        .bind(
+            EmacsKey::ctrl('w'),
+            EmacsBinding::Fixed(Command::KillRegion),
+        )
+        .bind(EmacsKey::alt('w'), EmacsBinding::Fixed(Command::CopyRegion))
         // Counted edits: delete-char, yank, word motions, kill-word.
         .bind(
             EmacsKey::ctrl('d'),
@@ -1292,14 +1301,16 @@ impl InputEngine {
     }
 
     /// Resolve the second key of an Emacs prefix sequence (F-012). Only the `C-x` map exists in this slice:
-    /// `C-x C-s` saves, `C-x C-c` quits, `C-x u` undoes. An unbound key (including `C-g`) cancels the prefix
-    /// and is inert — the prefix was already cleared by the caller, so the engine is never left wedged.
+    /// `C-x C-s` saves, `C-x C-c` quits, `C-x u` undoes, `C-x C-x` exchanges point and mark. An unbound key
+    /// (including `C-g`) cancels the prefix and is inert — the prefix was already cleared by the caller, so
+    /// the engine is never left wedged.
     fn feed_emacs_prefix(&mut self, prefix: char, key: KeyEvent, ctrl: bool) -> Feed {
         if prefix == 'x' {
             let cmd = match key.code {
                 KeyCode::Char('s') if ctrl => Command::Save, // C-x C-s — save-buffer
                 KeyCode::Char('c') if ctrl => Command::Quit, // C-x C-c — save-buffers-kill-terminal
                 KeyCode::Char('u') if !ctrl => Command::Undo, // C-x u — undo
+                KeyCode::Char('x') if ctrl => Command::ExchangePointMark, // C-x C-x — exchange point/mark
                 _ => return Feed::Ignored,
             };
             return Feed::Cmd(cmd);

@@ -468,6 +468,33 @@ mod tests {
     }
 
     #[test]
+    fn emacs_mark_and_region_bindings() {
+        // F-012 / D-027: C-SPC set-mark, C-w kill-region, M-w kill-ring-save, C-x C-x exchange-point-mark.
+        let meta = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT);
+        let ctrl_space = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL);
+        let mut e = InputEngine::emacs();
+
+        assert_eq!(
+            e.feed(ctrl_space, Mode::Insert),
+            Feed::Cmd(Command::SetMark)
+        );
+        assert_eq!(
+            e.feed(ctrl('w'), Mode::Insert),
+            Feed::Cmd(Command::KillRegion)
+        );
+        assert_eq!(
+            e.feed(meta('w'), Mode::Insert),
+            Feed::Cmd(Command::CopyRegion)
+        );
+        // C-x C-x resolves inside the C-x prefix map (first key Pending).
+        assert_eq!(e.feed(ctrl('x'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('x'), Mode::Insert),
+            Feed::Cmd(Command::ExchangePointMark)
+        );
+    }
+
+    #[test]
     fn emacs_profile_is_a_nine_tier_stack() {
         // F-012 / D-045: the Emacs profile is ONE nine-tier LayerStack (not Vim's separate sealed
         // namespaces), walked highest-priority first down to global-map. This locks the promotion so a
