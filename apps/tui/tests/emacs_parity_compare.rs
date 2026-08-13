@@ -19,7 +19,7 @@
 //! The corpus is `tests/parity/emacs/fixtures/corpus.yaml` — JSON-in-YAML (a subset of YAML 1.2), captured
 //! by `tools/parity/emacs_oracle.py`. Run with `-- --nocapture` to see the tally.
 
-use ruse_core::{apply_command, EditorState};
+use ruse_core::{apply_command, CaretGravity, EditorState};
 use ruse_tui::input::emacs_command_by_name;
 use serde_json::Value;
 
@@ -28,6 +28,9 @@ use serde_json::Value;
 /// settled state plus any op names the registry did not know (a coverage gap, surfaced not silently eaten).
 fn drive_ruse(text: &str, ops: &[String], point: usize) -> (EditorState, Vec<String>) {
     let mut st = EditorState::new(text.as_bytes().to_vec());
+    // The Emacs profile rests point BETWEEN characters (D-050 / RFC-0015), the same gravity the frontend
+    // installs for `RUSE_PROFILE=emacs`; without it every Emacs edit would be Vim-clamped one column short.
+    st.set_caret_gravity(CaretGravity::BetweenChar);
     st.set_cursor(point); // char offset == byte offset for the ASCII seed corpus
     let mut unknown = Vec::new();
     for op in ops {

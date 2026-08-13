@@ -25,7 +25,8 @@
 use crate::command::Command;
 use crate::document::{Document, DocumentId};
 use crate::editor::{
-    apply_command, EditorState, GlobalCmd, SubFlags, SubOutcome, SubRange, Substitution, View,
+    apply_command, CaretGravity, EditorState, GlobalCmd, SubFlags, SubOutcome, SubRange,
+    Substitution, View,
 };
 use crate::effect::Effect;
 use crate::pattern::RegexError;
@@ -156,6 +157,15 @@ impl Workspace {
             .len();
         if let Some(v) = self.views[vid.0].as_mut() {
             v.set_cursor(pos.min(len));
+        }
+    }
+
+    /// Select the caret gravity for every live View (D-050 / RFC-0015): the frontend calls this once at
+    /// startup with `BetweenChar` when the Emacs profile is active, so its edits rest on Emacs point rather
+    /// than being Vim-clamped. Splits clone the focused View, so a later `:split` inherits the gravity.
+    pub fn set_caret_gravity(&mut self, gravity: CaretGravity) {
+        for v in self.views.iter_mut().flatten() {
+            v.set_caret_gravity(gravity);
         }
     }
 

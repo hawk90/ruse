@@ -36,12 +36,20 @@ The Emacs command-semantics oracle (`tools/parity/emacs_oracle.py`, #152), its s
 (D-043). The comparator replays each fixture's Emacs command NAMES through ruse's real M-x registry
 (`emacs_command_by_name`) + core and compares `{text, point, mark, kill}` to what the pinned emacs-30.2
 produced. Its contract — identical to the Neovim comparator — is that **a divergence is a finding, not a
-failure**: the harness only asserts it ran. On the seed corpus the tally is **10/23 verified, 13 divergent**.
+failure**: the harness only asserts it ran. On the seed corpus the tally opened at **10/23 verified, 13
+divergent**; **Family 1 (caret gravity) has since landed and moved it to 12/23** (`kill_line`, `previous_line`).
 
-Those 13 divergences are an oracle-backed specification of where ruse's Emacs profile is not yet
+Those divergences are an oracle-backed specification of where ruse's Emacs profile is not yet
 Emacs-faithful. This doc classifies them and decides, per family, whether and how ruse closes them — so the
 fixes are principled and sequenced rather than reactive. The comparator is the acceptance test for each
 slice: a closed finding is a fixture that flips divergent → verified with no regression elsewhere.
+
+> **Status — Family 1 LANDED.** `CaretGravity{OnChar, BetweenChar}` (D-050) now gates the Normal-mode edit
+> clamp AND the charwise-paste cursor rule; `EditorState::set_cursor` seeds `curswant`; `RUSE_PROFILE=emacs`
+> installs `BetweenChar` via `Workspace::set_caret_gravity`. Tally 10→12: `kill_line` and `previous_line`
+> verified. The yank fixtures (`copy_region_then_yank`, `kill_region_then_yank_at_end`) now diverge ONLY on
+> the mark — their point half is fixed — so they flip when Family 3 lands. Vim/Neovim byte-identical
+> (nvim comparator 143/143, full suite green).
 
 ## The root cause of the largest family: the caret model
 
