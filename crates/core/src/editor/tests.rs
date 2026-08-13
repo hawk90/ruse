@@ -2631,3 +2631,92 @@ mod mark_tests {
         assert_eq!(st.view.mark, None);
     }
 }
+
+#[cfg(test)]
+mod caret_gravity_tests {
+    //! D-050 / RFC-0015: the Emacs profile's caret is BETWEEN characters, so its edits are not Vim-clamped.
+    //! These lock the two seams the slice gated (the Normal-mode edit clamp and the charwise-paste cursor)
+    //! independent of the parity comparator, and pin that `OnChar` stays byte-identical to Vim.
+    use crate::editor::*;
+
+    fn run_with(
+        gravity: CaretGravity,
+        initial: &str,
+        start: usize,
+        cmds: &[Command],
+    ) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        st.set_caret_gravity(gravity);
+        st.set_cursor(start);
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    #[test]
+    fn edit_clamp_is_on_char_only() {
+        // `hello world`, delete to end-of-line from col 6 -> `hello `. Vim rests the caret ON the last char
+        // (5); Emacs point rests AFTER it (6, the empty end-of-line slot).
+        let cmds = [Command::Delete(1, Motion::LineEnd)];
+        let vim = run_with(CaretGravity::OnChar, "hello world", 6, &cmds);
+        assert_eq!(
+            vim.cursor(),
+            5,
+            "Vim clamps the Normal-mode caret onto the last char"
+        );
+        let emacs = run_with(CaretGravity::BetweenChar, "hello world", 6, &cmds);
+        assert_eq!(
+            emacs.cursor(),
+            6,
+            "Emacs point rests on the after-last slot (not clamped)"
+        );
+        assert_eq!(String::from_utf8(emacs.bytes().to_vec()).unwrap(), "hello ");
+    }
+
+    #[test]
+    fn charwise_paste_cursor_follows_gravity() {
+        // Isolate the paste-cursor rule from any motion difference: yank `abc`, then paste it inline (both
+        // gravities insert at the same offset, so the TEXT is identical) and check only where point lands.
+        // Vim rests ON the last pasted byte; the Emacs profile rests AFTER it.
+        let cmds = [
+            Command::Yank(1, Motion::LineEnd), // register := "abc", caret stays at 0
+            Command::Paste {
+                after: true,
+                count: 1,
+            }, // insert "abc" after the caret char
+        ];
+        let vim = run_with(CaretGravity::OnChar, "abc", 0, &cmds);
+        assert_eq!(String::from_utf8(vim.bytes().to_vec()).unwrap(), "aabcbc");
+        assert_eq!(vim.cursor(), 3, "Vim paste rests on the last pasted byte");
+        let emacs = run_with(CaretGravity::BetweenChar, "abc", 0, &cmds);
+        assert_eq!(String::from_utf8(emacs.bytes().to_vec()).unwrap(), "aabcbc");
+        assert_eq!(
+            emacs.cursor(),
+            4,
+            "Emacs profile rests point after the pasted text"
+        );
+    }
+
+    #[test]
+    fn set_cursor_seeds_curswant_for_vertical_move() {
+        // Placing point at col 1 of the last line then moving up must aim at col 1, not col 0 (curswant).
+        let st = run_with(
+            CaretGravity::BetweenChar,
+            "alpha\nbeta\ngamma",
+            12,
+            &[Command::Move(1, Motion::Up)],
+        );
+        assert_eq!(
+            st.cursor(),
+            7,
+            "vertical move keeps the placed column (curswant seeded by set_cursor)"
+        );
+    }
+
+    #[test]
+    fn default_gravity_is_on_char() {
+        let st = EditorState::new(b"x".to_vec());
+        assert_eq!(st.caret_gravity(), CaretGravity::OnChar);
+    }
+}

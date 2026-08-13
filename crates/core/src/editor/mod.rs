@@ -90,6 +90,20 @@ impl Mode {
     }
 }
 
+/// How a caret rests relative to text (D-050 / RFC-0015). A View-local property SELECTED BY THE INPUT
+/// PROFILE, orthogonal to [`Mode`]: it decides whether the line-/buffer-end position is the last character
+/// or the empty slot after it, which is where Vim and Emacs disagree.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum CaretGravity {
+    /// Vim Normal mode: the caret rests ON a character; on a non-empty line it can rest at most on the LAST
+    /// character, never the slot after it. The Normal-mode edit clamp enforces this. The default.
+    #[default]
+    OnChar,
+    /// Emacs point (also Vim Insert): the caret rests BETWEEN characters; the line/buffer end is the slot
+    /// AFTER the last character. The Emacs profile constructs its View with this so edits are not Vim-clamped.
+    BetweenChar,
+}
+
 /// Editor state over one document: the buffer, a byte cursor (always on a char boundary), and the mode.
 /// View-local state lives here for the headless spine; a real multi-view split comes later (INV-DOC-VIEW).
 /// A **View**: the per-view state over a shared [`Document`] (F-007 Buffer/View split). Cursor,
@@ -150,6 +164,9 @@ pub struct View {
     curswant: usize,
     /// The search-case config (`'ignorecase'` + `'smartcase'`, F-009).
     search_case: SearchCase,
+    /// Caret gravity (D-050): `OnChar` for Vim/Neovim (default), `BetweenChar` for the Emacs profile. Gates
+    /// the Normal-mode on-character edit clamp in [`commit`] so Emacs point rests after the last char.
+    caret: CaretGravity,
 }
 
 /// The editor over a single [`Document`] and its [`View`] — the top-level headless handle the TUI and
@@ -188,6 +205,7 @@ impl View {
                 ignore: false,
                 smart: false,
             },
+            caret: CaretGravity::OnChar,
         }
     }
 
@@ -216,6 +234,12 @@ impl View {
     /// caller passes an on-boundary offset). View-local; does not touch the document.
     pub fn set_cursor(&mut self, pos: usize) {
         self.cursor = pos;
+    }
+
+    /// Select this View's caret gravity (D-050): the Emacs profile constructs `BetweenChar` views so its
+    /// edits are not Vim-clamped; Vim/Neovim keep the `OnChar` default. The Workspace profile-init seam.
+    pub fn set_caret_gravity(&mut self, gravity: CaretGravity) {
+        self.caret = gravity;
     }
 
     /// This View's mode — view-local (two Views of one buffer can be in different modes).
@@ -695,8 +719,27 @@ impl EditorState {
 
     /// Place the cursor at byte offset `pos` (on a char boundary). View-local; does not touch the document.
     /// Used to home a fixture's starting point in the parity comparator (mirrors the frontend seam).
+    ///
+    /// Placing the caret also SEEDS the sticky desired column (`curswant`) to `pos`'s column, exactly as a
+    /// committed motion would: a subsequent `j`/`k` (`next-line`/`previous-line`) aims at the column the
+    /// caret was placed on, not column 0. Without this a teleport (goto, mouse, a fixture's start point)
+    /// would leave `curswant` stale at 0 and vertical moves would snap to the line start.
     pub fn set_cursor(&mut self, pos: usize) {
         self.view.cursor = pos;
+        let b = self.doc.bytes();
+        self.view.curswant = col_of(b, line_start(b, pos), pos);
+    }
+
+    /// This View's caret gravity (D-050): `OnChar` (Vim/Neovim) or `BetweenChar` (Emacs profile).
+    #[must_use]
+    pub fn caret_gravity(&self) -> CaretGravity {
+        self.view.caret
+    }
+
+    /// Select this View's caret gravity (D-050 / RFC-0015). The Emacs profile sets `BetweenChar` so its
+    /// edits are not Vim-clamped; Vim/Neovim leave the `OnChar` default. Profile-init seam.
+    pub fn set_caret_gravity(&mut self, gravity: CaretGravity) {
+        self.view.caret = gravity;
     }
 
     /// The current mode.
@@ -1202,7 +1245,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // char of a non-empty line, pull it back onto the last char (e.g. `dw` on the last word → the cursor
     // clamps to the trailing char rather than the line end). Scoped to edits in Normal mode so it never
     // touches Insert's legitimate cursor-past-end, and guarded by `ls < le` so an empty line keeps `[n,0]`.
-    if plan.is_edit && st.view.mode == Mode::Normal {
+    // Gated on `CaretGravity::OnChar` (D-050): the Emacs profile is BetweenChar, so Emacs point legitimately
+    // rests on the after-last slot and must NOT be clamped (`kill-line`/`yank` land point N+1, not N).
+    if plan.is_edit && st.view.mode == Mode::Normal && st.view.caret == CaretGravity::OnChar {
         let b = st.doc.bytes();
         let le = line_end(b, st.view.cursor);
         let ls = line_start(b, st.view.cursor);

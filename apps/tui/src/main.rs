@@ -34,7 +34,7 @@ use crossterm::terminal::ClearType;
 use crossterm::{cursor, queue, terminal};
 
 use input::{parse_ex, Ex, Feed, InputEngine};
-use ruse_core::{Command, Effect, Mode, SelectKind, SplitDir, Trace, Workspace};
+use ruse_core::{CaretGravity, Command, Effect, Mode, SelectKind, SplitDir, Trace, Workspace};
 
 // Headless CLI: stderr is the correct channel here (no TUI, no tracing sink yet). D-041 scoped allow.
 #[allow(clippy::print_stderr)]
@@ -281,10 +281,17 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 
     // Profile selection (F-012): no config loader exists yet, so `RUSE_PROFILE=emacs` picks the Emacs
     // profile (the same env-override seam as the terminal caps). Defaults to Vim.
-    let mut engine = match std::env::var("RUSE_PROFILE").as_deref() {
-        Ok("emacs") => InputEngine::emacs(),
-        _ => InputEngine::new(),
+    let emacs_profile = matches!(std::env::var("RUSE_PROFILE").as_deref(), Ok("emacs"));
+    let mut engine = if emacs_profile {
+        InputEngine::emacs()
+    } else {
+        InputEngine::new()
     };
+    // Caret gravity follows the profile (D-050 / RFC-0015): the Emacs profile rests point BETWEEN chars
+    // (line/buffer end = after the last char), so its edits are not Vim-clamped. Vim keeps `OnChar`.
+    if emacs_profile {
+        ws.set_caret_gravity(CaretGravity::BetweenChar);
+    }
     let mut quit = false;
     // The previous frame's cell grid — the render diff emits only what changes against it (F-006).
     // Starts empty so the first frame paints in full.

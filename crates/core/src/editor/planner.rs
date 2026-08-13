@@ -727,6 +727,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             st.view.registers.get(st.view.pending_register),
             *after,
             *count,
+            st.view.caret,
         ),
         // `"x` — install the one-shot pending register. A pure state set: no edit, no cursor/mode change.
         Command::SetRegister(name) => Plan {
@@ -1322,7 +1323,15 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
     }
 }
 
-fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u32) -> Plan {
+fn paste(
+    b: &[u8],
+    cur: usize,
+    mode: Mode,
+    reg: &Register,
+    after: bool,
+    count: u32,
+    gravity: CaretGravity,
+) -> Plan {
     let nop = Plan {
         action: Action::Nop,
         cursor: cur,
@@ -1385,28 +1394,29 @@ fn paste(b: &[u8], cur: usize, mode: Mode, reg: &Register, after: bool, count: u
         let text = repeat(reg.text());
         let n = text.len();
         let multiline = text.contains(&b'\n');
+        // Single-line charwise paste: Vim (OnChar) rests the cursor ON the LAST pasted byte; the Emacs
+        // profile (BetweenChar, D-050) rests point AFTER the pasted text — Emacs `yank` leaves point past
+        // what it inserted. `end` is the after-last boundary; back it up one grapheme only under OnChar.
+        // `end` is a position in the POST-insert buffer, so back up by one byte (Vim's existing rule) and
+        // let `commit`'s `snap` land it on a char boundary — byte-identical to the pre-D-050 path.
+        let tail = |end: usize| match gravity {
+            CaretGravity::BetweenChar => end,
+            CaretGravity::OnChar => end.saturating_sub(1),
+        };
         if after {
             // Insert after the cursor char; cursor lands on the first pasted byte for multi-line content,
-            // else on the last pasted byte's boundary (Vim behavior).
+            // else per gravity on/after the last pasted byte.
             let at = if cur < b.len() {
                 next_boundary(b, cur)
             } else {
                 cur
             };
-            let cursor = if multiline {
-                at
-            } else {
-                (at + n).saturating_sub(1)
-            };
+            let cursor = if multiline { at } else { tail(at + n) };
             mk(at, text, cursor)
         } else {
             // Insert before the cursor; cursor lands on the first pasted byte for multi-line content, else
-            // on the last pasted byte.
-            let cursor = if multiline {
-                cur
-            } else {
-                (cur + n).saturating_sub(1)
-            };
+            // per gravity on/after the last pasted byte.
+            let cursor = if multiline { cur } else { tail(cur + n) };
             mk(cur, text, cursor)
         }
     }
