@@ -36,6 +36,8 @@ compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 | [RFC-0009](proposed/RFC-0009-render-model.md) | Render Model & Frontends | D-014, D-015, D-012 | [render-and-frontends](../design/render-and-frontends.md), [parity/terminal](../parity/terminal.md) |
 | [RFC-0010](proposed/RFC-0010-stability-observability.md) | Stability & Observability | D-016, D-017 | [stability-and-observability](../design/stability-and-observability.md) |
 | [RFC-0011](proposed/RFC-0011-layer-axis-terminology.md) | Layer-axis terminology (build_stage / architecture_tier) | D-036 | [glossary](../../spec/glossary.yaml), [spec-validate](../operations/spec-validate.md) |
+| [RFC-0014](proposed/RFC-0014-emacs-input-profile.md) | The Emacs input profile (F-012) | D-049 | [register-model](../design/register-model.md), [positions-history](../design/positions-history.md) |
+| [RFC-0015](proposed/RFC-0015-emacs-caret-gravity.md) | Caret gravity (Emacs point is between-character) | D-050 | [emacs-cursor-and-mark-fidelity](../design/emacs-cursor-and-mark-fidelity.md) |
 
 ## Rejected (do-not-relitigate)
 

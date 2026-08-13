@@ -16,6 +16,7 @@ status: draft
 source_of_truth: false
 verified_against_upstream: false
 related:
+  - ../rfc/proposed/RFC-0015-emacs-caret-gravity.md
   - input-engine.md
   - positions-history.md
   - register-model.md
@@ -73,7 +74,7 @@ which is why the caret family shows up specifically on *edits*:
 | `kill_word_then_yank` | (text/point) | | clamp + the word-motion family below |
 | `previous_line` | 6 | 7 | column preservation across the between-char end (curswant) |
 
-### Decision (proposed): the Emacs profile uses a non-modal, between-character caret
+### Decision (D-050 / RFC-0015): the Emacs profile uses a non-modal, between-character caret
 
 ruse should model the Emacs profile's caret as between-character everywhere, not just for non-edit motions.
 The recommended seam is a **view-level caret policy** rather than reusing `Mode::Insert` (which carries
@@ -88,9 +89,10 @@ enum CaretGravity { OnChar /* Vim Normal */, BetweenChar /* Emacs point, Vim Ins
 
 This is minimal blast radius (one struct field, one clamp condition, profile-init), keeps Vim byte-identical
 (`OnChar` is the default), and a between-char caret is exactly what Vim's Insert mode already does — so the
-core already supports the position; we are only choosing when to keep it. The implementing slice mints the
-Decision (a new D-0xx) and must audit the *other* Normal-mode on-char behaviours (e.g. horizontal-motion
-clamps) for the same gate, not only the edit clamp. **Ratchets:** `kill_line`, `copy_region_then_yank`,
+core already supports the position; we are only choosing when to keep it. **The decision is now recorded as
+D-050 / [RFC-0015](../rfc/proposed/RFC-0015-emacs-caret-gravity.md);** the implementing slice must audit the
+*other* Normal-mode on-char behaviours (horizontal-motion end clamp, the `curswant` end column) for the same
+gate, not only the edit clamp. **Ratchets:** `kill_line`, `copy_region_then_yank`,
 `kill_region_then_yank_at_end`, and the point half of the yank fixtures. (`previous_line` also needs the
 curswant column model to count the between-char end — a sub-item of the same slice.)
 
@@ -129,8 +131,9 @@ Small, mostly independent fidelity choices tied to existing decisions:
 
 ## Sequencing
 
-1. **Caret decision + slice** (Family 1) — the root cause; unblocks the most fixtures and Family 2's
-   verification. Mint the Decision, add `CaretGravity`, gate the on-char behaviours, extend curswant.
+1. **Caret slice** (Family 1) — the root cause; unblocks the most fixtures and Family 2's verification. The
+   decision is recorded (D-050 / RFC-0015); the slice adds `CaretGravity`, gates the on-char behaviours, and
+   extends curswant.
 2. **Word-motion slice** (Family 2) — registry remap + Emacs-word motion; verifies once Family 1 lands.
 3. **Register/mark slice** (Family 3) — no-yank delete (D-026) + mark-ring activation (D-027/D-049); can
    proceed in parallel with 1–2 since it is mark/register-local.
