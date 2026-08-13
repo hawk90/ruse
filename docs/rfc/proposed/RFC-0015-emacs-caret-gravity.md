@@ -22,6 +22,10 @@ related:
   - ../../../spec/parity/upstreams.yaml
 ---
 
+<!-- code-blocks: illustrative — the Rust shown is NOT normative; the canonical home is code (internal
+     types) or spec/contracts/ (cross-boundary), per D-038. These blocks fix the SEMANTIC decision (which
+     caret gravity a profile presents), not any literal type or line number. -->
+
 # RFC-0015: Caret gravity — the Emacs profile's caret is between-character
 
 - **Status:** proposed
