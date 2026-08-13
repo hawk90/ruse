@@ -655,3 +655,24 @@ related:
   opaque Emacs value (a third interpretation the channel cannot carry); or a position-history surface needs
   a container beyond {NamedMap, Ring, CursoredList}.
 - Refs: [../docs/rfc/proposed/RFC-0014-emacs-input-profile.md](../docs/rfc/proposed/RFC-0014-emacs-input-profile.md), D-045, D-026, D-027, D-047, RFC-0004, [parity/concepts/irreconcilable.yaml](parity/concepts/irreconcilable.yaml), INV-CMD-SEMANTIC, INV-PROFILE-ISOLATION, F-012, C-COMMAND, C-POSHIST.
+
+## D-050 — Caret gravity: the Emacs profile's caret is between-character, not Vim's on-character · decided
+- **Decision:** A caret's rest-relative-to-text is a View-local **`CaretGravity{OnChar, BetweenChar}`**
+  policy selected by the input profile, orthogonal to `Mode`. **Vim/Neovim = `OnChar`** (Normal-mode caret
+  rests ON a char; line/buffer end = last char). **The Emacs profile = `BetweenChar`** (Emacs point; end =
+  the slot after the last char, as Vim Insert already does). The Normal-mode on-character clamps in
+  `commit()`/`plan`/motion — chiefly the edit clamp that pulls point off the after-last slot, plus the
+  horizontal-motion end clamp and the `curswant` end column — are gated on `CaretGravity::OnChar`, so the
+  Vim path stays byte-identical and the Emacs profile stops landing one column short on edits.
+- **Reason:** The Emacs parity comparator (`apps/tui/tests/emacs_parity_compare.rs`) against pinned
+  emacs-30.2 shows ~half its divergences trace to this single cause: the Emacs profile drives the core in
+  `Mode::Normal`, so Vim's on-char edit clamp fires on Emacs edits it should not govern. Modelling the
+  difference as a *property the profile selects* (gravity), not `Mode::Insert` reuse (which drags in
+  blockwise-insert / replace-stack / dot-repeat / undo-grouping) and not an `is_emacs_profile` boolean in
+  the core (which encodes identity where the property belongs), is the only shape that stays correct as more
+  profiles and frontends consume the caret. Acceptance = the caret-family fixtures flip divergent→verified
+  with the Vim/Neovim comparator + full suite unchanged.
+- **Re-evaluate if:** a profile needs a THIRD caret model (e.g. a full `virtualedit=all` free caret past
+  line end); or gravity must vary WITHIN a profile by mode in a way `Mode` + `CaretGravity` cannot jointly
+  express.
+- Refs: [../docs/rfc/proposed/RFC-0015-emacs-caret-gravity.md](../docs/rfc/proposed/RFC-0015-emacs-caret-gravity.md), [../docs/design/emacs-cursor-and-mark-fidelity.md](../docs/design/emacs-cursor-and-mark-fidelity.md), D-049, D-003, RFC-0004, RFC-0014, INV-DOC-VIEW, INV-PROFILE-ISOLATION, F-012.
