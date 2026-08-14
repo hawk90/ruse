@@ -810,7 +810,7 @@ impl EmacsProfile {
         )
         .bind(
             EmacsKey::alt('f'),
-            EmacsBinding::Counted(CountedCmd::Move(Motion::WordFwd)),
+            EmacsBinding::Counted(CountedCmd::Move(Motion::EmacsWordFwd)),
         )
         .bind(
             EmacsKey::alt('b'),
@@ -818,7 +818,7 @@ impl EmacsProfile {
         )
         .bind(
             EmacsKey::alt('d'),
-            EmacsBinding::Counted(CountedCmd::Delete(Motion::WordFwd)),
+            EmacsBinding::Counted(CountedCmd::Delete(Motion::EmacsWordFwd)),
         )
         // M-x opens the minibuffer to read a command name (execute-extended-command).
         .bind(EmacsKey::alt('x'), EmacsBinding::Minibuffer)
@@ -890,11 +890,11 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "move-end-of-line" => Command::MoveLineEnd,
         "beginning-of-buffer" => Command::Move(1, Motion::GotoLine),
         "end-of-buffer" => Command::Move(1, Motion::LastLine),
-        "forward-word" => Command::Move(1, Motion::WordFwd),
+        "forward-word" => Command::Move(1, Motion::EmacsWordFwd),
         "backward-word" => Command::Move(1, Motion::WordBack),
         "delete-char" => Command::DeleteForward(1),
         "kill-line" => Command::Delete(1, Motion::LineEnd),
-        "kill-word" => Command::Delete(1, Motion::WordFwd),
+        "kill-word" => Command::Delete(1, Motion::EmacsWordFwd),
         "yank" => Command::Paste {
             after: false,
             count: 1,

@@ -37,8 +37,10 @@ The Emacs command-semantics oracle (`tools/parity/emacs_oracle.py`, #152), its s
 (`emacs_command_by_name`) + core and compares `{text, point, mark, kill}` to what the pinned emacs-30.2
 produced. Its contract — identical to the Neovim comparator — is that **a divergence is a finding, not a
 failure**: the harness only asserts it ran. On the seed corpus the tally opened at **10/23 verified, 13
-divergent**; **Family 1 (caret gravity) moved it to 12/23** (`kill_line`, `previous_line`) and the first
-**Family 3** slice to **14/23** (`delete_char`, `kill_region`).
+divergent**; **Family 1 (caret gravity) moved it to 12/23** (`kill_line`, `previous_line`), the first
+**Family 3** slice to **14/23** (`delete_char`, `kill_region`), and **Family 2 (word-motion) to 18/23**
+(`forward_word`, `kill_word`, `kill_word_from_mid`, `kill_region_word`). The remaining 5 divergences are all
+one thing: `yank` sets the mark and the buffer jumps push it (Family 3 part 2).
 
 Those divergences are an oracle-backed specification of where ruse's Emacs profile is not yet
 Emacs-faithful. This doc classifies them and decides, per family, whether and how ruse closes them — so the
@@ -105,11 +107,18 @@ gate, not only the edit clamp. **Ratchets:** `kill_line`, `copy_region_then_yank
 `kill_region_then_yank_at_end`, and the point half of the yank fixtures. (`previous_line` also needs the
 curswant column model to count the between-char end — a sub-item of the same slice.)
 
-## Family 2: word-motion semantics (`forward-word` ≠ Vim `w`)
+## Family 2: word-motion semantics (`forward-word` ≠ Vim `w`) — LANDED
+
+> **Status — Family 2 LANDED.** A new `Motion::EmacsWordFwd` lands point at `word_end_excl` (AFTER the last
+> word char — Emacs point), where Vim `e`/`WordEnd` rests ON it; its operator span is the same
+> `[cursor, word_end_excl)` as `WordEnd`, so `Delete(EmacsWordFwd)` IS `kill-word`. Both the `M-f`/`M-d`
+> keys and the `forward-word`/`kill-word` M-x names now map to it (Vim `w`/`e` unchanged). Tally 14→18:
+> `forward_word`, `kill_word`, `kill_word_from_mid` verified, and `kill_region_word` too (its word-text/kill
+> plus the Family-3 kill-region mark now both align). nvim 143/143, full suite green.
 
 Emacs `forward-word` stops at the **end of the current word**; Vim `w` (ruse `Motion::WordFwd`) jumps to the
-**start of the next word**. The registry currently maps `forward-word → Move(1, WordFwd)`, which is
-semantically the wrong motion:
+**start of the next word**. The registry previously mapped `forward-word → Move(1, WordFwd)`, the wrong
+motion:
 
 | fixture | ruse | emacs |
 |---|---|---|
