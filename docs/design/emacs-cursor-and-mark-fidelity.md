@@ -37,7 +37,8 @@ The Emacs command-semantics oracle (`tools/parity/emacs_oracle.py`, #152), its s
 (`emacs_command_by_name`) + core and compares `{text, point, mark, kill}` to what the pinned emacs-30.2
 produced. Its contract — identical to the Neovim comparator — is that **a divergence is a finding, not a
 failure**: the harness only asserts it ran. On the seed corpus the tally opened at **10/23 verified, 13
-divergent**; **Family 1 (caret gravity) has since landed and moved it to 12/23** (`kill_line`, `previous_line`).
+divergent**; **Family 1 (caret gravity) moved it to 12/23** (`kill_line`, `previous_line`) and the first
+**Family 3** slice to **14/23** (`delete_char`, `kill_region`).
 
 Those divergences are an oracle-backed specification of where ruse's Emacs profile is not yet
 Emacs-faithful. This doc classifies them and decides, per family, whether and how ruse closes them — so the
@@ -127,15 +128,23 @@ point, so this family also depends on the caret decision to fully verify. **Ratc
 
 Small, mostly independent fidelity choices tied to existing decisions:
 
-- **`delete-char` must not kill** (D-026). Emacs `delete-char` discards the character; ruse maps it to
-  `DeleteUnder(1)`, which — being Vim `x` — writes the char to the unnamed register. The Emacs profile needs
-  a delete that does not touch the kill ring (a no-yank delete Command, threaded through the planner + the
-  F-022 trace codec). **Ratchets:** `delete_char`.
+- **`delete-char` must not kill** (D-026) — **LANDED.** A new `Command::DeleteForward(count)` deletes
+  forward via the no-register `edit` path (not `edit_yank`), clamped at BUFFER end so it crosses newlines
+  (Emacs has no EOL boundary), and is threaded through the F-022 trace codec (`delete_forward`). The Emacs
+  registry maps both `delete-char` and `C-d` onto it; Vim `x` (`DeleteUnder`, which yanks) is unchanged.
+  **Ratcheted:** `delete_char` verified.
 - **`kill-region` / `kill-ring-save` keep the mark; `yank` sets it; `beginning-of-buffer` / `end-of-buffer`
-  push it** (D-027 / D-049, the mark ring). ruse clears the mark on `kill-region` and never sets it on yank
-  or buffer-jumps. These are the mark-ring's activation semantics; they belong with the mark-ring slice
-  (C-POSHIST pop-rotate), not the caret work. **Ratchets:** the mark half of `kill_region`,
-  `kill_region_word`, `copy_region_then_yank`, `kill_word_then_yank`, `beginning_of_buffer`, `end_of_buffer`.
+  push it** (D-027 / D-049, the mark ring). **`kill-region` keeping the mark HAS LANDED** — it is an
+  Emacs-only command (`Command::KillRegion`), so its planner now sets the mark at the region start `s`
+  instead of clearing it (`kill_region` verified). **Still open** — `yank` sets the mark and
+  `beginning-of-buffer`/`end-of-buffer` push it. These route through **Vim-SHARED commands** (`yank` →
+  `Command::Paste`; the buffer jumps → `Move(GotoLine/LastLine)`), so doing them faithfully needs the core
+  to know the active profile — there is no profile signal on `View` yet (only `CaretGravity`, which must NOT
+  be overloaded for this). Introducing that signal is the next decision for this sub-family; `end_of_buffer`
+  additionally needs its motion remapped to true buffer-end (currently `LastLine` lands on the last line's
+  START, point 11≠16). **Ratchets when done:** the mark half of `copy_region_then_yank`,
+  `kill_region_then_yank_at_end` (their point half is already fixed by Family 1), `beginning_of_buffer`,
+  `end_of_buffer`, `kill_word_then_yank`.
 
 ## Sequencing
 

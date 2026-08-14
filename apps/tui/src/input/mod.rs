@@ -110,6 +110,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         // Self-contained buffer edits — dot-repeatable as a single command.
         C::Delete(..)
         | C::DeleteUnder(_)
+        | C::DeleteForward(_)
         | C::DeleteBack
         | C::ReplaceChar(..)
         | C::ToggleCase(_)
@@ -144,6 +145,7 @@ fn with_count(cmd: &Command, n: u32) -> Command {
             wise: *wise,
         },
         C::DeleteUnder(_) => C::DeleteUnder(n),
+        C::DeleteForward(_) => C::DeleteForward(n),
         C::ReplaceChar(_, c) => C::ReplaceChar(n, *c),
         C::ToggleCase(_) => C::ToggleCase(n),
         C::ShiftRight(_) => C::ShiftRight(n),
@@ -655,9 +657,9 @@ enum EmacsBinding {
 /// A command whose count lives in a native field, named so the binding table stays declarative.
 #[derive(Clone, Copy)]
 enum CountedCmd {
-    DeleteUnder,    // C-d — DeleteUnder(count)
-    PasteBefore,    // C-y — Paste { after: false, count }
-    Move(Motion),   // M-f / M-b — Move(count, motion)
+    DeleteForward, // C-d — Emacs delete-char: DeleteForward(count), no kill-ring write (D-026)
+    PasteBefore,   // C-y — Paste { after: false, count }
+    Move(Motion),  // M-f / M-b — Move(count, motion)
     Delete(Motion), // M-d — Delete(count, motion)
 }
 
@@ -671,7 +673,7 @@ fn fold_emacs_count(binding: &EmacsBinding, count: u32) -> Feed {
             Command::Move(count, *motion)
         }),
         EmacsBinding::Counted(c) => Feed::Cmd(match c {
-            CountedCmd::DeleteUnder => Command::DeleteUnder(count),
+            CountedCmd::DeleteForward => Command::DeleteForward(count),
             CountedCmd::PasteBefore => Command::Paste {
                 after: false,
                 count,
@@ -800,7 +802,7 @@ impl EmacsProfile {
         // Counted edits: delete-char, yank, word motions, kill-word.
         .bind(
             EmacsKey::ctrl('d'),
-            EmacsBinding::Counted(CountedCmd::DeleteUnder),
+            EmacsBinding::Counted(CountedCmd::DeleteForward),
         )
         .bind(
             EmacsKey::ctrl('y'),
@@ -890,7 +892,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "end-of-buffer" => Command::Move(1, Motion::LastLine),
         "forward-word" => Command::Move(1, Motion::WordFwd),
         "backward-word" => Command::Move(1, Motion::WordBack),
-        "delete-char" => Command::DeleteUnder(1),
+        "delete-char" => Command::DeleteForward(1),
         "kill-line" => Command::Delete(1, Motion::LineEnd),
         "kill-word" => Command::Delete(1, Motion::WordFwd),
         "yank" => Command::Paste {

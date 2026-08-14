@@ -2515,7 +2515,28 @@ mod mark_tests {
         String::from_utf8(st.bytes().to_vec()).expect("utf8")
     }
 
-    // C-SPC then move then C-w: the region [mark, point) is killed into the register and mark clears.
+    // Emacs `delete-char` (D-026): deletes forward WITHOUT filling the kill ring (unlike Vim `x`), and it
+    // crosses the newline (Emacs has no end-of-line boundary).
+    #[test]
+    fn delete_forward_does_not_yank_and_crosses_newline() {
+        let st = run("hello", &[Command::DeleteForward(1)]);
+        assert_eq!(text(&st), "ello");
+        assert_eq!(st.view.cursor, 0);
+        assert!(
+            st.register().is_empty(),
+            "delete-char must not write the kill ring"
+        );
+
+        // On the newline it deletes forward across it, joining the lines (buffer-end clamp, not EOL).
+        let mut joined = EditorState::new(b"ab\ncd".to_vec());
+        joined.set_cursor(2); // on the '\n'
+        apply_command(&mut joined, &Command::DeleteForward(1));
+        assert_eq!(text(&joined), "abcd");
+        assert!(joined.register().is_empty());
+    }
+
+    // C-SPC then move then C-w: the region [mark, point) is killed into the register; Emacs leaves point AND
+    // mark together at the region's lower bound (D-050 Family 3 — kill-region keeps the mark, not clears it).
     #[test]
     fn set_mark_then_kill_region_deletes_and_fills_register() {
         let st = run(
@@ -2532,7 +2553,11 @@ mod mark_tests {
         );
         assert_eq!(text(&st), " world\n");
         assert_eq!(st.view.cursor, 0);
-        assert_eq!(st.view.mark, None);
+        assert_eq!(
+            st.view.mark,
+            Some(0),
+            "kill-region leaves the mark at the region start"
+        );
     }
 
     // The killed text is in the register: a following paste-before restores it.
