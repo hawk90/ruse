@@ -356,10 +356,10 @@ enum RegWrite {
 /// How a committed command updates the Emacs mark (D-027 depth-1). `None` on a plan leaves the mark
 /// untouched — the common case, since the mark survives ordinary motions and edits.
 enum MarkWrite {
-    /// Install the mark at this byte offset (`C-SPC`, or the old point on `C-x C-x`).
+    /// Install the mark at this byte offset (`C-SPC`; the old point on `C-x C-x`; the region start on
+    /// `C-w`). Mark DEACTIVATION (`C-g`, and the active/inactive distinction) belongs to the deferred
+    /// mark-ring slice (D-027) — nothing drops the mark yet, so there is no `Clear` today.
     Set(usize),
-    /// Drop the mark (after a kill consumes the region).
-    Clear,
 }
 
 /// The pure result of [`plan`]: what a command would do, before any mutation.
@@ -1293,7 +1293,6 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // anchor so an edit that resized the buffer under it can never make `KillRegion` slice out of bounds.
     match plan.set_mark {
         Some(MarkWrite::Set(m)) => st.view.mark = Some(m),
-        Some(MarkWrite::Clear) => st.view.mark = None,
         None => {}
     }
     if let Some(m) = st.view.mark {

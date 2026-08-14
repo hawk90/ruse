@@ -109,6 +109,10 @@ pub enum Command {
     DeleteBack,
     /// `{count}x` — delete `count` chars from the cursor, clamped at end-of-line (Vim).
     DeleteUnder(u32),
+    /// Emacs `delete-char` / `C-d` — delete `count` chars forward from point, WITHOUT writing to the kill
+    /// ring (D-026: Emacs discards a `delete-char`, unlike Vim `x`). Clamped at buffer end and crosses
+    /// newlines (Emacs is non-modal, so end-of-line is not a boundary), never touching the register.
+    DeleteForward(u32),
     /// `{count}r{char}` — replace `count` chars with `char`; a no-op if fewer than `count` remain (Vim).
     ReplaceChar(u32, char),
     /// `{count}~` — toggle the case of `count` chars, clamped at EOL, then move past the last (Vim).
@@ -435,6 +439,7 @@ impl Command {
             Command::InsertNewline => "insert_newline".into(),
             Command::DeleteBack => "delete_back".into(),
             Command::DeleteUnder(n) => format!("delete_under {n}"),
+            Command::DeleteForward(n) => format!("delete_forward {n}"),
             Command::ReplaceChar(n, c) => format!("replace_char {n} {}", *c as u32),
             Command::ToggleCase(n) => format!("toggle_case {n}"),
             Command::JoinLines => "join_lines".into(),
@@ -571,6 +576,12 @@ impl Command {
                     .and_then(|a| a.parse().ok())
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::DeleteUnder(n)
+            }
+            "delete_forward" => {
+                let n: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::DeleteForward(n)
             }
             "replace_char" => {
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
@@ -776,6 +787,8 @@ mod tests {
             Command::DeleteBack,
             Command::DeleteUnder(1),
             Command::DeleteUnder(3),
+            Command::DeleteForward(1),
+            Command::DeleteForward(2),
             Command::Move(2, Motion::WordFwd),
             Command::Move(1, Motion::BigWordFwd),
             Command::Delete(1, Motion::BigWordBack),

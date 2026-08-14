@@ -439,14 +439,15 @@ mod tests {
             e.feed(ctrl('j'), Mode::Insert),
             Feed::Cmd(Command::InsertNewline)
         );
-        // DEL deletes the char before point; C-d deletes the char under point (with a count).
+        // DEL deletes the char before point; C-d is Emacs `delete-char` — deletes forward without filling
+        // the kill ring (D-026: DeleteForward, not the yanking Vim `x`/DeleteUnder), with a count.
         assert_eq!(
             e.feed(backspace, Mode::Insert),
             Feed::Cmd(Command::DeleteBack)
         );
         assert_eq!(
             e.feed(ctrl('d'), Mode::Insert),
-            Feed::Cmd(Command::DeleteUnder(1))
+            Feed::Cmd(Command::DeleteForward(1))
         );
         // C-/ and C-_ are undo.
         assert_eq!(e.feed(ctrl('/'), Mode::Insert), Feed::Cmd(Command::Undo));
@@ -463,7 +464,7 @@ mod tests {
         assert_eq!(e.feed(k('3'), Mode::Insert), Feed::Pending);
         assert_eq!(
             e.feed(ctrl('d'), Mode::Insert),
-            Feed::Cmd(Command::DeleteUnder(3))
+            Feed::Cmd(Command::DeleteForward(3))
         );
     }
 

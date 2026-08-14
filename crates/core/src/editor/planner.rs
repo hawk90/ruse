@@ -494,6 +494,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 )
             }
         }
+        Command::DeleteForward(count) => {
+            // Emacs `delete-char`: delete `count` chars forward from point, clamped at BUFFER end (crosses
+            // newlines — Emacs has no end-of-line boundary), and WITHOUT writing to the kill ring (D-026).
+            // Uses the no-register `edit` path, unlike Vim `x` (`DeleteUnder`, which yanks via `edit_yank`).
+            let end = advance_n(b, cur, *count, b.len());
+            if end <= cur {
+                nop(cur, st.view.mode)
+            } else {
+                edit(one(Edit::delete(cur, end - cur)), cur, st.view.mode, hint)
+            }
+        }
         Command::ReplaceChar(count, c) => {
             // `{count}r{ch}`: replace `count` chars with `ch`. Per Vim it is a NO-OP if fewer than
             // `count` chars remain on the line (never a partial replace). Cursor lands on the last one.
@@ -975,7 +986,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             _ => nop(cur, st.view.mode),
         },
         // `C-w` kills the region into the register (the kill ring) and leaves point and mark together at its
-        // start. An empty region or no mark is inert.
+        // start — Emacs keeps the mark at the region's lower bound `s` (where point also lands after the
+        // deletion collapses the span), it does NOT clear it. An empty region or no mark is inert.
         Command::KillRegion => match st.view.mark {
             Some(m) if m != cur => {
                 let (s, e) = (cur.min(m), cur.max(m));
@@ -991,7 +1003,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     effects: Vec::new(),
                     set_register: Some(RegWrite::Edit(reg)),
                     set_anchor: None,
-                    set_mark: Some(MarkWrite::Clear),
+                    set_mark: Some(MarkWrite::Set(s)),
                 }
             }
             _ => nop(cur, st.view.mode),
