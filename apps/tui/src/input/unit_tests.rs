@@ -383,9 +383,11 @@ mod tests {
         let meta = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT);
         let mut e = InputEngine::emacs();
 
+        // `M-f` (Emacs forward-word) rests point AFTER the word (between-char), so it uses EmacsWordFwd,
+        // not Vim `w`/WordFwd (which jumps to the next word start).
         assert_eq!(
             e.feed(meta('f'), Mode::Insert),
-            Feed::Cmd(Command::Move(1, Motion::WordFwd))
+            Feed::Cmd(Command::Move(1, Motion::EmacsWordFwd))
         );
         assert_eq!(
             e.feed(meta('b'), Mode::Insert),
@@ -394,7 +396,7 @@ mod tests {
         // `M-d` kills a word forward — a delete that captures into the register (kill ring).
         assert_eq!(
             e.feed(meta('d'), Mode::Insert),
-            Feed::Cmd(Command::Delete(1, Motion::WordFwd))
+            Feed::Cmd(Command::Delete(1, Motion::EmacsWordFwd))
         );
         // Buffer ends: `M-<` to the top (line 1), `M->` to the last line — count-agnostic.
         assert_eq!(
@@ -410,7 +412,7 @@ mod tests {
         assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
         assert_eq!(
             e.feed(meta('f'), Mode::Insert),
-            Feed::Cmd(Command::Move(4, Motion::WordFwd))
+            Feed::Cmd(Command::Move(4, Motion::EmacsWordFwd))
         );
 
         // A plain printable key (no Alt) still self-inserts — the Meta tier does not shadow text entry.

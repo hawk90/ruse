@@ -22,6 +22,11 @@ pub enum Motion {
     WordFwd,
     WordBack,
     WordEnd,
+    /// Emacs `forward-word` / `M-f` (and the span for `kill-word` / `M-d`). Like `WordEnd` it stops at the
+    /// end of the word, but as a CURSOR move it rests point AFTER the last word char (Emacs point is
+    /// between-character, D-050), where Vim `e` (`WordEnd`) rests ON it. Its operator span is the same
+    /// `[cursor, word_end_excl)` as `WordEnd`, so `Delete(EmacsWordFwd)` is Emacs `kill-word`.
+    EmacsWordFwd,
     /// WORD motions (Vim `W`/`B`/`E`): whitespace-delimited only, so `foo.bar` is one WORD.
     BigWordFwd,
     BigWordBack,
@@ -815,6 +820,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::WordFwd => next_word_start(b, c, false),
             Motion::WordBack => prev_word_start(b, c, false),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c, false)), // land ON the last char
+            Motion::EmacsWordFwd => word_end_excl(b, c, false), // land AFTER the last char (Emacs point)
             Motion::BigWordFwd => next_word_start(b, c, true),
             Motion::BigWordBack => prev_word_start(b, c, true),
             Motion::BigWordEnd => prev_boundary(b, word_end_excl(b, c, true)),
@@ -855,8 +861,9 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // backward → [target, cursor). The operator's exclusive-linewise reshaping lives in `editor::op_span`.
         Motion::ParagraphFwd => (cur, target(b, cur, m, n)),
         Motion::ParagraphBack => (target(b, cur, m, n), cur),
-        // inclusive end-of-word (Vim `de` / `dE`)
-        Motion::WordEnd | Motion::BigWordEnd => {
+        // inclusive end-of-word (Vim `de` / `dE`); `EmacsWordFwd` shares the same `[cursor, word_end_excl)`
+        // span, which is exactly Emacs `kill-word` (`M-d`).
+        Motion::WordEnd | Motion::BigWordEnd | Motion::EmacsWordFwd => {
             let big = m == Motion::BigWordEnd;
             let mut e = cur;
             for _ in 0..n {
@@ -919,5 +926,36 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         Motion::Up | Motion::Down | Motion::Line | Motion::GotoLine | Motion::LastLine => {
             (cur, cur)
         }
+    }
+}
+
+#[cfg(test)]
+mod emacs_word_tests {
+    //! Emacs `forward-word` / `kill-word` (`M-f` / `M-d`) — the between-character word-forward motion.
+    use super::{char_span, target, Motion};
+
+    #[test]
+    fn emacs_word_fwd_lands_after_the_word() {
+        let b = b"foo bar baz";
+        // forward-word from the start rests point AFTER "foo" (index 3), where Vim `e` rests ON `o` (index 2).
+        assert_eq!(target(b, 0, Motion::EmacsWordFwd, 1), 3);
+        assert_eq!(target(b, 0, Motion::WordEnd, 1), 2);
+        // From a space it skips to the end of the next word.
+        assert_eq!(target(b, 3, Motion::EmacsWordFwd, 1), 7);
+        // Mid-word it stops at the end of the current word.
+        assert_eq!(target(b, 1, Motion::EmacsWordFwd, 1), 3);
+        // Counted: two words forward.
+        assert_eq!(target(b, 0, Motion::EmacsWordFwd, 2), 7);
+    }
+
+    #[test]
+    fn emacs_kill_word_span_is_the_word_only() {
+        // `kill-word` deletes `[cursor, word_end_excl)` — "foo", not Vim `dw`'s "foo " (which eats the space).
+        assert_eq!(
+            char_span(b"foo bar baz", 0, Motion::EmacsWordFwd, 1),
+            (0, 3)
+        );
+        // From mid-buffer it takes the rest of the current word: "foobar baz" at index 3 kills "bar".
+        assert_eq!(char_span(b"foobar baz", 3, Motion::EmacsWordFwd, 1), (3, 6));
     }
 }
