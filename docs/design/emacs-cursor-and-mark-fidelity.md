@@ -37,7 +37,8 @@ The Emacs command-semantics oracle (`tools/parity/emacs_oracle.py`, #152), its s
 (`emacs_command_by_name`) + core and compares `{text, point, mark, kill}` to what the pinned emacs-30.2
 produced. Its contract — identical to the Neovim comparator — is that **a divergence is a finding, not a
 failure**: the harness only asserts it ran. On the seed corpus the tally opened at **10/23 verified, 13
-divergent** and is now **23/23 — the whole seed corpus is Emacs-faithful.** Path: Family 1 (caret gravity)
+divergent** and reached **23/23 — the whole seed corpus is Emacs-faithful** — before the corpus was expanded
+to 36 fixtures (now **32/36**, see "Corpus expansion round 1" below). Path: Family 1 (caret gravity)
 10→12 (`kill_line`, `previous_line`); Family 3 part 1 →14 (`delete_char`, `kill_region`); Family 2
 (word-motion) →18 (`forward_word`, `kill_word`, `kill_word_from_mid`, `kill_region_word`); Family 3 part 2
 →23 (`beginning_of_buffer`, `end_of_buffer`, `copy_region_then_yank`, `kill_region_then_yank_at_end`,
@@ -166,3 +167,32 @@ Small, mostly independent fidelity choices tied to existing decisions:
 Each slice cites the comparator tally as its acceptance evidence: the named fixtures move divergent →
 verified, with the neovim comparator and the full test suite unchanged. `undo` stays vim↔nvim only
 (buffer-undo-list is not normalizable — upstreams.yaml oracles.emacs hazard #4).
+
+## Corpus expansion round 1 — deeper `kill-line` / kill semantics (13 new fixtures, tally 23→36)
+
+With the seed corpus exhausted (all 23 verified), the corpus was expanded to probe deeper semantics of the
+already-shipped commands rather than only their happy path. 13 oracle-captured fixtures were added; the tally
+is now **32/36 verified, 4 divergent**. Nine of the new fixtures verified immediately — welcome confidence
+that the shipped commands hold on multi-line buffers, repeated application, and backward regions
+(`delete_char_at_eol`, `delete_char_twice`, `forward_word_twice`, `backward_word_from_mid`,
+`end_of_line_multiline`, `next_line_then_end`, `kill_region_backward`, `kill_line_then_yank_at_bol`,
+`kill_line_from_bol`). The four divergences are the next oracle-backed targets:
+
+| fixture | ruse | emacs | finding |
+|---|---|---|---|
+| `kill_line_at_eol` | deletes nothing (`Delete(1, LineEnd)` at EOL is a no-op), kill unchanged | joins the next line, kill `"\n"` | Emacs `kill-line` at end-of-line kills the **newline** (no EOL boundary); ruse's `LineEnd` motion stops at the newline. Needs an Emacs kill-line that kills the `\n` when point is at EOL — the D-051 distinct-command pattern (`Command::EmacsKillLine`). |
+| `kill_line_whole_then_join` | `["", "bar"]`, kill `"foo"` | `["bar"]`, kill `"foo\n"` | Same EOL bug **plus** KILL ACCUMULATION: consecutive kills append to one kill-ring entry (`foo` then `\n` → `"foo\n"`). ruse overwrites the register on each kill. Needs `last-command`-style kill-append tracking in the core (a real feature, larger than one command). |
+| `transpose_chars` | unresolved (`C-t`) | `"bac"`, point 2 | Registry gap — `transpose-chars` is not in `emacs_command_by_name`; ruse has no transpose command yet. |
+| `capitalize_word` | unresolved | `"Foo bar"`, point 3 | Registry gap — `capitalize-word` (and the `upcase`/`downcase` family) unimplemented. |
+
+Oracle fidelity note: capturing `kill_line_whole_then_join` faithfully required a correctness fix to the
+oracle itself — `call-interactively` sets `this-command` but not `last-command`, so a raw op sequence never
+triggers kill-accumulation. The probe now threads `last-command` (promoting the prior `this-command` before
+each call) exactly as Emacs's command loop does, and a `--selftest` case guards it. Existing fixtures are
+byte-identical (none contained consecutive kills), so the fix only made the new multi-kill fixture truthful.
+
+Sequencing of the new work: (1) `EmacsKillLine` (the EOL-newline kill, ratchets `kill_line_at_eol` and the
+text/point half of `kill_line_whole_then_join`); (2) kill-accumulation (ratchets the kill half of
+`kill_line_whole_then_join` and enables faithful multi-kill fixtures broadly); (3) the transpose / case
+command family (closes the two registry gaps and opens a new coverage area). Each remains its own governed
+slice with the comparator tally as acceptance.

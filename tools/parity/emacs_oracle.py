@@ -26,6 +26,12 @@ THE NON-CORRUPTION TECHNIQUE (this harness's answer to the oracle hazard):
        GLOBAL variables that persist across `with-temp-buffer` calls in one image — the exact analogue of
        Neovim's shada leak. A fresh process per fixture is the only leak-proof isolation, so every fixture
        pays for its own `emacs -Q --batch`.
+    3. The command loop's `last-command` is threaded by hand. `call-interactively` sets `this-command`
+       but never `last-command` (in real Emacs the command loop promotes it *between* commands), so a raw
+       `call-interactively` sequence would silently drop every `last-command`-sensitive behaviour — most
+       importantly KILL ACCUMULATION, where consecutive kills append to one kill-ring entry rather than
+       pushing separate entries. The probe sets `last-command` to the prior `this-command` before each
+       call, so a fixture's `ops` behave exactly as the equivalent interactive keypress sequence would.
     3. The pin is VERIFIED, not assumed. `emacs --version` is parsed and asserted to carry the pinned
        version number (spec/parity/upstreams.yaml emacs.version_label), and that version string is
        recorded in every emitted document. A wrong binary refuses rather than silently recording a lie.
@@ -72,7 +78,14 @@ _ELISP = r"""
     (transient-mark-mode 1)
     (insert text)
     (goto-char (+ (point-min) (or start 0)))
+    ;; Model the command loop's `last-command` promotion. `call-interactively` sets `this-command`
+    ;; but NOT `last-command` (the real command loop does that between commands), so without this a
+    ;; sequence of kills would never accumulate onto one kill-ring entry — consecutive kills would
+    ;; each push a separate entry, a batch artifact rather than faithful interactive Emacs. Promoting
+    ;; the prior `this-command` before each call makes kill-accumulation (and any other
+    ;; `last-command`-sensitive command) behave exactly as an interactive keypress sequence would.
     (dolist (op ops)
+      (setq last-command this-command)
       (call-interactively (intern op)))
     (princ (json-serialize
             (list :text (vconcat (split-string (buffer-string) "\n"))
@@ -251,6 +264,38 @@ FIXTURES: list[dict] = [
         "text": "abcdef",
         "ops": ["set-mark-command", "forward-char", "forward-char", "forward-char", "kill-region", "move-end-of-line", "yank"],
     },
+    # === EXPANSION 1: deeper semantics of already-shipped commands ==================================
+    # --- multi-line kill-line: the classic Emacs subtlety. `kill-line` at end-of-line kills the
+    #     NEWLINE (joining the next line), not nothing; from beginning-of-line it kills to EOL. -------
+    {"name": "kill_line_from_bol", "text": "hello world", "ops": ["kill-line"]},
+    {"name": "kill_line_at_eol", "text": "foo\nbar", "ops": ["kill-line"], "point": 3},
+    {"name": "kill_line_whole_then_join", "text": "foo\nbar", "ops": ["kill-line", "kill-line"]},
+    # --- delete-char has no EOL boundary: at end-of-line it deletes the newline (crosses lines). -----
+    {"name": "delete_char_at_eol", "text": "foo\nbar", "ops": ["delete-char"], "point": 3},
+    {"name": "delete_char_twice", "text": "hello", "ops": ["delete-char", "delete-char"]},
+    # --- word motion depth: repeated forward-word, backward-word from mid-word. ----------------------
+    {"name": "forward_word_twice", "text": "one two three", "ops": ["forward-word", "forward-word"]},
+    {"name": "backward_word_from_mid", "text": "foo bar baz", "ops": ["backward-word"], "point": 6},
+    # --- move-end-of-line / next-line on a multi-line buffer (between-char end, curswant). -----------
+    {"name": "end_of_line_multiline", "text": "foo\nbar", "ops": ["move-end-of-line"]},
+    {"name": "next_line_then_end", "text": "alpha\nbeta\ngamma", "ops": ["next-line", "move-end-of-line"]},
+    # --- kill-region with mark AFTER point (backward region): order-independent [min,max). -----------
+    {
+        "name": "kill_region_backward",
+        "text": "hello world",
+        "ops": ["set-mark-command", "backward-char", "backward-char", "kill-region"],
+        "point": 4,
+    },
+    # --- yank after a kill-line, reinserted at beginning-of-line. ------------------------------------
+    {
+        "name": "kill_line_then_yank_at_bol",
+        "text": "hello world",
+        "ops": ["kill-line", "move-beginning-of-line", "yank"],
+    },
+    # === EXPANSION 2: forward charts — commands the M-x registry does not resolve yet. These surface
+    #     as registry gaps (findings, not failures) that pin the next slices' targets. ---------------
+    {"name": "transpose_chars", "text": "abc", "ops": ["transpose-chars"], "point": 1},
+    {"name": "capitalize_word", "text": "foo bar", "ops": ["capitalize-word"]},
 ]
 
 
@@ -288,7 +333,9 @@ def generate(path: Path) -> int:
             "call-interactively, never hand-written. Regenerate with "
             "`python3 tools/parity/emacs_oracle.py --generate`. point/mark are 0-based CHARACTER "
             "offsets; the seed corpus is ASCII so char == byte and the ruse comparator (byte offsets) "
-            "compares them directly. JSON is a subset of YAML 1.2, so this .yaml parses on both ends."
+            "compares them directly. Consecutive kills accumulate onto one kill-ring entry (the oracle "
+            "threads `last-command` like the real command loop), so multi-kill fixtures are faithful. "
+            "JSON is a subset of YAML 1.2, so this .yaml parses on both ends."
         ),
         "oracle": {
             "editor": "emacs",
@@ -363,6 +410,15 @@ def selftest() -> int:
     clean = run_emacs("hello", ["forward-char"])  # no kill here
     if clean["kill"] is not None:
         _fail(f"isolation: kill-ring leaked across processes -> {clean['kill']!r}")
+        failures += 1
+
+    # 3b. KILL ACCUMULATION — the `last-command` threading (see run_emacs) must make consecutive kills
+    #     APPEND onto one kill-ring entry, exactly as an interactive keypress sequence does. Two
+    #     `kill-word`s on "foo bar" leave "" and a single accumulated kill "foo bar"; without threading
+    #     the second kill would push a separate " bar" entry and the head would be " bar", not "foo bar".
+    accum = run_emacs("foo bar", ["kill-word", "kill-word"])
+    if accum["kill"] != "foo bar":
+        _fail(f"accumulation: consecutive kills did not append -> kill={accum['kill']!r} (want 'foo bar')")
         failures += 1
 
     # 4. KNOWN OPS — hand-verified expectations. If the oracle disagrees, it is LYING and no fixture
