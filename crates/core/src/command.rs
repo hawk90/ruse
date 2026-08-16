@@ -216,6 +216,18 @@ pub enum Command {
     CopyRegion,
     /// `C-x C-x` (exchange-point-and-mark) — swap point and mark. A no-op when no mark is set.
     ExchangePointMark,
+    /// `C-y` (yank) — paste the register before point AND set the mark at the insertion start, leaving point
+    /// after the pasted text (D-051). Emacs yank differs from Vim `p`/`P` (which never touch the mark); the
+    /// paste geometry itself is shared with [`Command::Paste`] `{after:false}` (gravity-aware cursor, D-050).
+    EmacsYank {
+        count: u32,
+    },
+    /// `M-<` / `M->` (beginning-of-buffer / end-of-buffer) — move point to the ABSOLUTE buffer start (`0`)
+    /// or end (buffer length), and PUSH the mark at the old point (D-051). Distinct from Vim `gg`/`G`
+    /// (`Move(GotoLine/LastLine)`), which land on a line's first non-blank and never set this mark.
+    EmacsBufferEdge {
+        start: bool,
+    },
 }
 
 fn motion_token(m: Motion) -> String {
@@ -514,6 +526,10 @@ impl Command {
             Command::SetMark => "set_mark".into(),
             Command::KillRegion => "kill_region".into(),
             Command::CopyRegion => "copy_region".into(),
+            Command::EmacsYank { count } => format!("emacs_yank {count}"),
+            Command::EmacsBufferEdge { start } => {
+                format!("emacs_buffer_edge {}", if *start { "start" } else { "end" })
+            }
             Command::ExchangePointMark => "exchange_point_mark".into(),
         }
     }
@@ -739,6 +755,17 @@ impl Command {
             "kill_region" => Command::KillRegion,
             "copy_region" => Command::CopyRegion,
             "exchange_point_mark" => Command::ExchangePointMark,
+            "emacs_yank" => {
+                let count: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::EmacsYank { count }
+            }
+            "emacs_buffer_edge" => match arg {
+                Some("start") => Command::EmacsBufferEdge { start: true },
+                Some("end") => Command::EmacsBufferEdge { start: false },
+                _ => return Err(CommandParseError::BadArgument(line.to_string())),
+            },
             other => return Err(CommandParseError::UnknownVerb(other.to_string())),
         })
     }
@@ -978,6 +1005,10 @@ mod tests {
             Command::Redo,
             Command::Save,
             Command::Quit,
+            Command::EmacsYank { count: 1 },
+            Command::EmacsYank { count: 4 },
+            Command::EmacsBufferEdge { start: true },
+            Command::EmacsBufferEdge { start: false },
         ];
         for c in cases {
             assert_eq!(Command::from_line(&c.to_line()), Ok(c.clone()), "{c:?}");

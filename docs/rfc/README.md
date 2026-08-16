@@ -38,6 +38,7 @@ compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 | [RFC-0011](proposed/RFC-0011-layer-axis-terminology.md) | Layer-axis terminology (build_stage / architecture_tier) | D-036 | [glossary](../../spec/glossary.yaml), [spec-validate](../operations/spec-validate.md) |
 | [RFC-0014](proposed/RFC-0014-emacs-input-profile.md) | The Emacs input profile (F-012) | D-049 | [register-model](../design/register-model.md), [positions-history](../design/positions-history.md) |
 | [RFC-0015](proposed/RFC-0015-emacs-caret-gravity.md) | Caret gravity (Emacs point is between-character) | D-050 | [emacs-cursor-and-mark-fidelity](../design/emacs-cursor-and-mark-fidelity.md) |
+| [RFC-0016](proposed/RFC-0016-emacs-command-divergence.md) | Emacs-vs-Vim command divergence = distinct Commands | D-051 | [emacs-cursor-and-mark-fidelity](../design/emacs-cursor-and-mark-fidelity.md) |
 
 ## Rejected (do-not-relitigate)
 

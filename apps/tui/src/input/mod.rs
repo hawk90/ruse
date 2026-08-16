@@ -118,6 +118,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::ShiftRight(_)
         | C::ShiftLeft(_)
         | C::Paste { .. }
+        | C::EmacsYank { .. }
         | C::DeleteSelection
         | C::OpForced {
             op: OpKind::Delete, ..
@@ -658,7 +659,7 @@ enum EmacsBinding {
 #[derive(Clone, Copy)]
 enum CountedCmd {
     DeleteForward, // C-d — Emacs delete-char: DeleteForward(count), no kill-ring write (D-026)
-    PasteBefore,   // C-y — Paste { after: false, count }
+    Yank,          // C-y — Emacs yank: EmacsYank { count } (paste + set mark, D-051)
     Move(Motion),  // M-f / M-b — Move(count, motion)
     Delete(Motion), // M-d — Delete(count, motion)
 }
@@ -674,10 +675,7 @@ fn fold_emacs_count(binding: &EmacsBinding, count: u32) -> Feed {
         }),
         EmacsBinding::Counted(c) => Feed::Cmd(match c {
             CountedCmd::DeleteForward => Command::DeleteForward(count),
-            CountedCmd::PasteBefore => Command::Paste {
-                after: false,
-                count,
-            },
+            CountedCmd::Yank => Command::EmacsYank { count },
             CountedCmd::Move(m) => Command::Move(count, *m),
             CountedCmd::Delete(m) => Command::Delete(count, *m),
         }),
@@ -778,11 +776,11 @@ impl EmacsProfile {
         .bind(EmacsKey::ctrl('_'), EmacsBinding::Fixed(Command::Undo))
         .bind(
             EmacsKey::alt('<'),
-            EmacsBinding::Fixed(Command::Move(1, Motion::GotoLine)),
+            EmacsBinding::Fixed(Command::EmacsBufferEdge { start: true }),
         )
         .bind(
             EmacsKey::alt('>'),
-            EmacsBinding::Fixed(Command::Move(1, Motion::LastLine)),
+            EmacsBinding::Fixed(Command::EmacsBufferEdge { start: false }),
         )
         // Kill-line: a delete to end-of-line that captures into the unnamed register (kill ring). The
         // at-EOL join and the line-count argument are follow-ups, so it stays Fixed (count ignored).
@@ -804,10 +802,7 @@ impl EmacsProfile {
             EmacsKey::ctrl('d'),
             EmacsBinding::Counted(CountedCmd::DeleteForward),
         )
-        .bind(
-            EmacsKey::ctrl('y'),
-            EmacsBinding::Counted(CountedCmd::PasteBefore),
-        )
+        .bind(EmacsKey::ctrl('y'), EmacsBinding::Counted(CountedCmd::Yank))
         .bind(
             EmacsKey::alt('f'),
             EmacsBinding::Counted(CountedCmd::Move(Motion::EmacsWordFwd)),
@@ -888,17 +883,14 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "previous-line" => Command::MoveUp,
         "move-beginning-of-line" => Command::MoveLineStart,
         "move-end-of-line" => Command::MoveLineEnd,
-        "beginning-of-buffer" => Command::Move(1, Motion::GotoLine),
-        "end-of-buffer" => Command::Move(1, Motion::LastLine),
+        "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
+        "end-of-buffer" => Command::EmacsBufferEdge { start: false },
         "forward-word" => Command::Move(1, Motion::EmacsWordFwd),
         "backward-word" => Command::Move(1, Motion::WordBack),
         "delete-char" => Command::DeleteForward(1),
         "kill-line" => Command::Delete(1, Motion::LineEnd),
         "kill-word" => Command::Delete(1, Motion::EmacsWordFwd),
-        "yank" => Command::Paste {
-            after: false,
-            count: 1,
-        },
+        "yank" => Command::EmacsYank { count: 1 },
         "newline" => Command::InsertNewline,
         "undo" => Command::Undo,
         "save-buffer" => Command::Save,

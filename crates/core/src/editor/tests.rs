@@ -2560,6 +2560,52 @@ mod mark_tests {
         );
     }
 
+    // Emacs yank (D-051): pastes the register at point AND sets the mark at the insertion start, leaving
+    // point after the pasted text (between-char). Distinct from Vim `P`, which never touches the mark.
+    #[test]
+    fn emacs_yank_sets_mark_at_insertion_start() {
+        let mut st = EditorState::new(b"abc".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        apply_command(&mut st, &Command::Yank(1, Motion::LineEnd)); // register := "abc", point stays 0
+        apply_command(&mut st, &Command::MoveLineEnd); // Emacs move-end-of-line → point 3 (after "abc")
+        apply_command(&mut st, &Command::EmacsYank { count: 1 });
+        assert_eq!(text(&st), "abcabc");
+        assert_eq!(st.view.cursor, 6, "point rests after the pasted text");
+        assert_eq!(
+            st.view.mark,
+            Some(3),
+            "yank sets the mark at the insertion start"
+        );
+    }
+
+    // Emacs beginning/end-of-buffer (D-051): jump to the ABSOLUTE buffer edge and push the mark at the old
+    // point — not Vim `gg`/`G` (first-non-blank of a line).
+    #[test]
+    fn emacs_buffer_edges_jump_absolute_and_push_mark() {
+        let end = run(
+            "  alpha\nbeta",
+            &[Command::EmacsBufferEdge { start: false }],
+        );
+        assert_eq!(
+            end.view.cursor, 12,
+            "end-of-buffer lands at the absolute end (buffer length)"
+        );
+        assert_eq!(
+            end.view.mark,
+            Some(0),
+            "it pushes the mark at the old point"
+        );
+
+        let mut back = EditorState::new(b"  alpha\nbeta".to_vec());
+        back.set_cursor(10); // somewhere in "beta"
+        apply_command(&mut back, &Command::EmacsBufferEdge { start: true });
+        assert_eq!(
+            back.view.cursor, 0,
+            "beginning-of-buffer lands at absolute 0, not first-non-blank"
+        );
+        assert_eq!(back.view.mark, Some(10));
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {

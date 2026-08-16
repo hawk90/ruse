@@ -676,3 +676,26 @@ related:
   line end); or gravity must vary WITHIN a profile by mode in a way `Mode` + `CaretGravity` cannot jointly
   express.
 - Refs: [../docs/rfc/proposed/RFC-0015-emacs-caret-gravity.md](../docs/rfc/proposed/RFC-0015-emacs-caret-gravity.md), [../docs/design/emacs-cursor-and-mark-fidelity.md](../docs/design/emacs-cursor-and-mark-fidelity.md), D-049, D-003, RFC-0004, RFC-0014, INV-DOC-VIEW, INV-PROFILE-ISOLATION, F-012.
+
+## D-051 — An Emacs operation that diverges from its Vim counterpart is a distinct Command, not a profile-gated shared one · decided
+- **Decision:** When an Emacs-profile command differs from the Vim command it superficially resembles in
+  **more than caret gravity** — a different edit-vs-yank policy, a different motion target, or a mark
+  side-effect — model it as its own `Command` variant that the Emacs registry (`emacs_command_by_name` /
+  the key bindings) maps onto, rather than adding a profile/`is_emacs` signal to `View` and branching shared
+  planners on it. The core stays profile-agnostic: a `Command` carries its full semantics (D-047), and the
+  PROFILE is expressed by WHICH commands its keymap resolves to (D-049 "Emacs is a configuration"). Caret
+  gravity (D-050) remains the one exception — it is a genuine cross-cutting caret PROPERTY, not per-command.
+  Established by `DeleteForward` (Emacs `delete-char`/`C-d`, no kill-ring write) and extended to `EmacsYank`
+  (paste + set the mark at the insertion start) and `EmacsBufferEdge` (absolute buffer start/end + push the
+  mark) — all three differ from Vim `x`/`p`/`gg`/`G` in target, cursor, or mark.
+- **Reason:** Family 3 of the parity comparator needed `yank` and the buffer jumps to set/push the Emacs
+  mark. They route through Vim-SHARED commands (`Paste`, `Move(GotoLine/LastLine)`), so a profile signal on
+  `View` was one option — but these ops also diverge in TARGET (Emacs buffer jumps go to absolute 0/len, not
+  Vim's first-non-blank line) and CURSOR, so they are genuinely different commands, not the same command
+  under a flag. Distinct commands keep the divergence in the command layer (where D-047 already puts
+  semantics), keep every shared planner branch-free, and avoid encoding profile identity in the core. The
+  `View` mark field is already Emacs-only, so no Vim command reads or writes it.
+- **Re-evaluate if:** the count of Emacs-only command variants grows large enough that a profile signal +
+  shared-planner gating would materially cut duplication (a scaling threshold, not a correctness one); then
+  introduce the signal and collapse the variants, superseding this.
+- Refs: [../docs/rfc/proposed/RFC-0016-emacs-command-divergence.md](../docs/rfc/proposed/RFC-0016-emacs-command-divergence.md), [../docs/design/emacs-cursor-and-mark-fidelity.md](../docs/design/emacs-cursor-and-mark-fidelity.md), D-047, D-049, D-050, D-026, D-027, INV-CMD-SEMANTIC, F-012.
