@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator": "tools/parity/emacs_oracle.py",
-  "note": "GENERATED — every `expect` was captured from the pinned Emacs oracle via call-interactively, never hand-written. Regenerate with `python3 tools/parity/emacs_oracle.py --generate`. point/mark are 0-based CHARACTER offsets; the seed corpus is ASCII so char == byte and the ruse comparator (byte offsets) compares them directly. JSON is a subset of YAML 1.2, so this .yaml parses on both ends.",
+  "note": "GENERATED — every `expect` was captured from the pinned Emacs oracle via call-interactively, never hand-written. Regenerate with `python3 tools/parity/emacs_oracle.py --generate`. point/mark are 0-based CHARACTER offsets; the seed corpus is ASCII so char == byte and the ruse comparator (byte offsets) compares them directly. Consecutive kills accumulate onto one kill-ring entry (the oracle threads `last-command` like the real command loop), so multi-kill fixtures are faithful. JSON is a subset of YAML 1.2, so this .yaml parses on both ends.",
   "oracle": {
     "editor": "emacs",
     "invoke": "emacs -Q --batch -l <script>",
@@ -408,6 +408,218 @@
         "point": 6,
         "mark": 3,
         "kill": "abc"
+      }
+    },
+    {
+      "name": "kill_line_from_bol",
+      "text": "hello world",
+      "ops": [
+        "kill-line"
+      ],
+      "expect": {
+        "text": [
+          ""
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "hello world"
+      }
+    },
+    {
+      "name": "kill_line_at_eol",
+      "text": "foo\nbar",
+      "ops": [
+        "kill-line"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foobar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": "\n"
+      }
+    },
+    {
+      "name": "kill_line_whole_then_join",
+      "text": "foo\nbar",
+      "ops": [
+        "kill-line",
+        "kill-line"
+      ],
+      "expect": {
+        "text": [
+          "bar"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "foo\n"
+      }
+    },
+    {
+      "name": "delete_char_at_eol",
+      "text": "foo\nbar",
+      "ops": [
+        "delete-char"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foobar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "delete_char_twice",
+      "text": "hello",
+      "ops": [
+        "delete-char",
+        "delete-char"
+      ],
+      "expect": {
+        "text": [
+          "llo"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "forward_word_twice",
+      "text": "one two three",
+      "ops": [
+        "forward-word",
+        "forward-word"
+      ],
+      "expect": {
+        "text": [
+          "one two three"
+        ],
+        "point": 7,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_word_from_mid",
+      "text": "foo bar baz",
+      "ops": [
+        "backward-word"
+      ],
+      "point": 6,
+      "expect": {
+        "text": [
+          "foo bar baz"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "end_of_line_multiline",
+      "text": "foo\nbar",
+      "ops": [
+        "move-end-of-line"
+      ],
+      "expect": {
+        "text": [
+          "foo",
+          "bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "next_line_then_end",
+      "text": "alpha\nbeta\ngamma",
+      "ops": [
+        "next-line",
+        "move-end-of-line"
+      ],
+      "expect": {
+        "text": [
+          "alpha",
+          "beta",
+          "gamma"
+        ],
+        "point": 10,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "kill_region_backward",
+      "text": "hello world",
+      "ops": [
+        "set-mark-command",
+        "backward-char",
+        "backward-char",
+        "kill-region"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "heo world"
+        ],
+        "point": 2,
+        "mark": 2,
+        "kill": "ll"
+      }
+    },
+    {
+      "name": "kill_line_then_yank_at_bol",
+      "text": "hello world",
+      "ops": [
+        "kill-line",
+        "move-beginning-of-line",
+        "yank"
+      ],
+      "expect": {
+        "text": [
+          "hello world"
+        ],
+        "point": 11,
+        "mark": 0,
+        "kill": "hello world"
+      }
+    },
+    {
+      "name": "transpose_chars",
+      "text": "abc",
+      "ops": [
+        "transpose-chars"
+      ],
+      "point": 1,
+      "expect": {
+        "text": [
+          "bac"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "capitalize_word",
+      "text": "foo bar",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "Foo bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
       }
     }
   ]
