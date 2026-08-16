@@ -1008,6 +1008,36 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             _ => nop(cur, st.view.mode),
         },
+        // `C-y` (Emacs yank, D-051): the same gravity-aware charwise paste as `Paste{after:false}`, plus it
+        // SETS the mark at the insertion start (point before the paste). An empty register is inert (no mark
+        // write either — `paste` returns a Nop).
+        Command::EmacsYank { count } => {
+            let mut p = paste(
+                b,
+                cur,
+                st.view.mode,
+                st.view.registers.get(st.view.pending_register),
+                false,
+                *count,
+                st.view.caret,
+            );
+            if !matches!(p.action, Action::Nop) {
+                p.set_mark = Some(MarkWrite::Set(cur));
+            }
+            p
+        }
+        // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
+        // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
+        Command::EmacsBufferEdge { start } => Plan {
+            action: Action::Nop,
+            cursor: if *start { 0 } else { b.len() },
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: Some(MarkWrite::Set(cur)),
+        },
     }
 }
 

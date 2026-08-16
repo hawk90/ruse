@@ -37,10 +37,11 @@ The Emacs command-semantics oracle (`tools/parity/emacs_oracle.py`, #152), its s
 (`emacs_command_by_name`) + core and compares `{text, point, mark, kill}` to what the pinned emacs-30.2
 produced. Its contract — identical to the Neovim comparator — is that **a divergence is a finding, not a
 failure**: the harness only asserts it ran. On the seed corpus the tally opened at **10/23 verified, 13
-divergent**; **Family 1 (caret gravity) moved it to 12/23** (`kill_line`, `previous_line`), the first
-**Family 3** slice to **14/23** (`delete_char`, `kill_region`), and **Family 2 (word-motion) to 18/23**
-(`forward_word`, `kill_word`, `kill_word_from_mid`, `kill_region_word`). The remaining 5 divergences are all
-one thing: `yank` sets the mark and the buffer jumps push it (Family 3 part 2).
+divergent** and is now **23/23 — the whole seed corpus is Emacs-faithful.** Path: Family 1 (caret gravity)
+10→12 (`kill_line`, `previous_line`); Family 3 part 1 →14 (`delete_char`, `kill_region`); Family 2
+(word-motion) →18 (`forward_word`, `kill_word`, `kill_word_from_mid`, `kill_region_word`); Family 3 part 2
+→23 (`beginning_of_buffer`, `end_of_buffer`, `copy_region_then_yank`, `kill_region_then_yank_at_end`,
+`kill_word_then_yank`). Neovim comparator stayed 143/143 throughout.
 
 Those divergences are an oracle-backed specification of where ruse's Emacs profile is not yet
 Emacs-faithful. This doc classifies them and decides, per family, whether and how ruse closes them — so the
@@ -143,17 +144,15 @@ Small, mostly independent fidelity choices tied to existing decisions:
   registry maps both `delete-char` and `C-d` onto it; Vim `x` (`DeleteUnder`, which yanks) is unchanged.
   **Ratcheted:** `delete_char` verified.
 - **`kill-region` / `kill-ring-save` keep the mark; `yank` sets it; `beginning-of-buffer` / `end-of-buffer`
-  push it** (D-027 / D-049, the mark ring). **`kill-region` keeping the mark HAS LANDED** — it is an
-  Emacs-only command (`Command::KillRegion`), so its planner now sets the mark at the region start `s`
-  instead of clearing it (`kill_region` verified). **Still open** — `yank` sets the mark and
-  `beginning-of-buffer`/`end-of-buffer` push it. These route through **Vim-SHARED commands** (`yank` →
-  `Command::Paste`; the buffer jumps → `Move(GotoLine/LastLine)`), so doing them faithfully needs the core
-  to know the active profile — there is no profile signal on `View` yet (only `CaretGravity`, which must NOT
-  be overloaded for this). Introducing that signal is the next decision for this sub-family; `end_of_buffer`
-  additionally needs its motion remapped to true buffer-end (currently `LastLine` lands on the last line's
-  START, point 11≠16). **Ratchets when done:** the mark half of `copy_region_then_yank`,
-  `kill_region_then_yank_at_end` (their point half is already fixed by Family 1), `beginning_of_buffer`,
-  `end_of_buffer`, `kill_word_then_yank`.
+  push it** (D-027 / D-049, the mark ring) — **ALL LANDED.** `kill-region` keeping the mark (part 1) was a
+  one-line fix to the Emacs-only `Command::KillRegion`. For `yank` and the buffer jumps (part 2), the
+  originally-mooted "`View` profile signal" turned out to be the **wrong** mechanism: these ops diverge from
+  their Vim lookalikes in *target and cursor too*, not just the mark, so **D-051** models them as distinct
+  commands (the `DeleteForward` pattern), keeping the core profile-agnostic. `Command::EmacsYank` = the
+  gravity-aware charwise paste **plus** set the mark at the insertion start; `Command::EmacsBufferEdge{start}`
+  = jump to the ABSOLUTE buffer edge (fixing `end_of_buffer`'s point 11→16 vs Vim `G`'s first-non-blank)
+  **plus** push the mark at the old point. **Ratcheted:** `beginning_of_buffer`, `end_of_buffer`,
+  `copy_region_then_yank`, `kill_region_then_yank_at_end`, `kill_word_then_yank` — corpus complete at 23/23.
 
 ## Sequencing
 

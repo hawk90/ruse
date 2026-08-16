@@ -350,7 +350,8 @@ mod tests {
     #[test]
     fn emacs_kill_and_yank_over_the_unnamed_register() {
         // F-012 / D-026: `C-k` kills to end of line — a delete that captures into the unnamed register
-        // (the depth-1 kill ring). `C-y` yanks it back before point (Vim `P`), honouring a prefix count.
+        // (the depth-1 kill ring). `C-y` is Emacs yank (D-051, `EmacsYank`) — paste + set the mark, distinct
+        // from Vim `P`/`Paste`; it honours a prefix count.
         let mut e = InputEngine::emacs();
 
         assert_eq!(
@@ -359,20 +360,14 @@ mod tests {
         );
         assert_eq!(
             e.feed(ctrl('y'), Mode::Insert),
-            Feed::Cmd(Command::Paste {
-                after: false,
-                count: 1,
-            })
+            Feed::Cmd(Command::EmacsYank { count: 1 })
         );
         // `C-u 3 C-y` yanks three copies — the prefix argument is the yank's repeat count.
         assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
         assert_eq!(e.feed(k('3'), Mode::Insert), Feed::Pending);
         assert_eq!(
             e.feed(ctrl('y'), Mode::Insert),
-            Feed::Cmd(Command::Paste {
-                after: false,
-                count: 3,
-            })
+            Feed::Cmd(Command::EmacsYank { count: 3 })
         );
     }
 
@@ -398,14 +393,15 @@ mod tests {
             e.feed(meta('d'), Mode::Insert),
             Feed::Cmd(Command::Delete(1, Motion::EmacsWordFwd))
         );
-        // Buffer ends: `M-<` to the top (line 1), `M->` to the last line — count-agnostic.
+        // Buffer ends: `M-<` to the absolute buffer start, `M->` to the absolute end — count-agnostic, and
+        // each pushes the mark (D-051, `EmacsBufferEdge`), distinct from Vim `gg`/`G`.
         assert_eq!(
             e.feed(meta('<'), Mode::Insert),
-            Feed::Cmd(Command::Move(1, Motion::GotoLine))
+            Feed::Cmd(Command::EmacsBufferEdge { start: true })
         );
         assert_eq!(
             e.feed(meta('>'), Mode::Insert),
-            Feed::Cmd(Command::Move(1, Motion::LastLine))
+            Feed::Cmd(Command::EmacsBufferEdge { start: false })
         );
 
         // The prefix argument multiplies a word motion: `C-u M-f` = forward four words.
