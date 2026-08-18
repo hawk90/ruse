@@ -1161,6 +1161,30 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 _ => nop(cur, st.view.mode),
             }
         }
+        // `M-t` (Emacs transpose-words, D-051): swap the word before/around point with the following word,
+        // preserving the separator, and leave point past the moved second word. Mirrors Emacs `transpose-subr`
+        // for `forward-word`: `start1` = backward-word, `end1` = forward-word from there, `end2` =
+        // forward-word again, `start2` = backward-word from there. Inert without a real pair. No kill write.
+        Command::EmacsTransposeWords => {
+            let start1 = motion::target(b, cur, Motion::WordBack, 1);
+            let end1 = motion::target(b, start1, Motion::EmacsWordFwd, 1);
+            let end2 = motion::target(b, end1, Motion::EmacsWordFwd, 1);
+            let start2 = motion::target(b, end2, Motion::WordBack, 1);
+            if start1 < end1 && end1 <= start2 && start2 < end2 {
+                let mut new = Vec::with_capacity(end2 - start1);
+                new.extend_from_slice(&b[start2..end2]); // second word moves to the front
+                new.extend_from_slice(&b[end1..start2]); // the original separator
+                new.extend_from_slice(&b[start1..end1]); // first word moves to the back
+                edit(
+                    one(Edit::replace(start1, end2 - start1, new)),
+                    end2,
+                    st.view.mode,
+                    hint,
+                )
+            } else {
+                nop(cur, st.view.mode)
+            }
+        }
         // `M-u`/`M-l`/`M-c` (Emacs upcase-/downcase-/capitalize-word, D-051): recase the `forward-word` span
         // (point to the end of the next word) and leave point at that end. Inert with no word ahead; no
         // kill-ring write. The span sits on grapheme boundaries (EmacsWordFwd lands on one), so it is valid

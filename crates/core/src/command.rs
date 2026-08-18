@@ -239,6 +239,10 @@ pub enum Command {
     /// back one first). Inert when there is no pair to transpose (buffer/line start with fewer than two
     /// chars on the line). Emacs-only, no Vim lookalike (D-051); it does not touch the kill ring.
     EmacsTransposeChars,
+    /// `M-t` (transpose-words) — swap the word before/around point with the following word, preserving the
+    /// separator between them, and leave point past the second (now-moved) word. Emacs-only (D-051); no
+    /// kill-ring write. Inert when there is not a pair of words to transpose.
+    EmacsTransposeWords,
     /// `M-d` / `kill-word` (Emacs kill-word) — kill the `EmacsWordFwd` span (the word only, not Vim `dw`'s
     /// trailing space) into the register, `count` words. Distinct from Vim `Delete(count, EmacsWordFwd)`
     /// ONLY in that it ACCUMULATES onto the current kill-ring entry when it follows another kill — but that
@@ -588,6 +592,7 @@ impl Command {
             Command::ExchangePointMark => "exchange_point_mark".into(),
             Command::EmacsKillLine => "emacs_kill_line".into(),
             Command::EmacsTransposeChars => "emacs_transpose_chars".into(),
+            Command::EmacsTransposeWords => "emacs_transpose_words".into(),
             Command::EmacsKillWord { count } => format!("emacs_kill_word {count}"),
             Command::EmacsBackwardKillWord { count } => format!("emacs_backward_kill_word {count}"),
             Command::EmacsHorizontalSpace { keep_one } => {
@@ -831,6 +836,7 @@ impl Command {
             "exchange_point_mark" => Command::ExchangePointMark,
             "emacs_kill_line" => Command::EmacsKillLine,
             "emacs_transpose_chars" => Command::EmacsTransposeChars,
+            "emacs_transpose_words" => Command::EmacsTransposeWords,
             "emacs_kill_word" => {
                 let count: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -1117,6 +1123,7 @@ mod tests {
             Command::EmacsBufferEdge { start: false },
             Command::EmacsKillLine,
             Command::EmacsTransposeChars,
+            Command::EmacsTransposeWords,
             Command::EmacsKillWord { count: 1 },
             Command::EmacsKillWord { count: 3 },
             Command::EmacsBackwardKillWord { count: 1 },

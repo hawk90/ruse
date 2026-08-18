@@ -2868,6 +2868,28 @@ mod mark_tests {
         assert_eq!(acc.register().text(), b"bar baz", "backward kills prepend");
     }
 
+    // Emacs transpose-words (M-t) (D-051): swap the word around point with the following word, keeping the
+    // separator; point lands past the moved second word. Verified against the oracle at several positions.
+    #[test]
+    fn emacs_transpose_words_swaps_adjacent_words() {
+        // At the separator between the two words.
+        let mut a = EditorState::new(b"foo bar".to_vec());
+        a.set_caret_gravity(CaretGravity::BetweenChar);
+        a.set_cursor(3);
+        apply_command(&mut a, &Command::EmacsTransposeWords);
+        assert_eq!(text(&a), "bar foo");
+        assert_eq!(a.view.cursor, 7);
+        assert!(a.register().is_empty());
+
+        // Point inside the middle word of three swaps that word with the NEXT one (matches Emacs).
+        let mut b = EditorState::new(b"foo bar baz".to_vec());
+        b.set_caret_gravity(CaretGravity::BetweenChar);
+        b.set_cursor(5); // inside "bar"
+        apply_command(&mut b, &Command::EmacsTransposeWords);
+        assert_eq!(text(&b), "foo baz bar");
+        assert_eq!(b.view.cursor, 11);
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {

@@ -123,6 +123,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsKillWord { .. }
         | C::EmacsBackwardKillWord { .. }
         | C::EmacsTransposeChars
+        | C::EmacsTransposeWords
         | C::EmacsCaseWord { .. }
         | C::EmacsHorizontalSpace { .. }
         | C::EmacsOpenLine
@@ -818,6 +819,11 @@ impl EmacsProfile {
             EmacsKey::ctrl('o'),
             EmacsBinding::Fixed(Command::EmacsOpenLine),
         )
+        // M-t (transpose-words): swap the word around point with the following word. Prefix-agnostic, Fixed.
+        .bind(
+            EmacsKey::alt('t'),
+            EmacsBinding::Fixed(Command::EmacsTransposeWords),
+        )
         // Case-word family: recase the word ahead and advance (D-051, `EmacsCaseWord`). Count-less for now
         // (the prefix-argument word count is a follow-up), so Fixed.
         .bind(
@@ -963,6 +969,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "delete-char" => Command::DeleteForward(1),
         "kill-line" => Command::EmacsKillLine,
         "transpose-chars" => Command::EmacsTransposeChars,
+        "transpose-words" => Command::EmacsTransposeWords,
         "upcase-word" => Command::EmacsCaseWord {
             case: WordCase::Upcase,
         },
