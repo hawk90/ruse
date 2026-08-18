@@ -252,6 +252,13 @@ pub enum Command {
     EmacsCaseWord {
         case: WordCase,
     },
+    /// `M-SPC` (just-one-space, `keep_one`) / `M-\` (delete-horizontal-space) — delete all spaces and tabs
+    /// around point (never crossing a newline). `just-one-space` leaves exactly ONE space and rests point
+    /// after it (inserting a space when there was none); `delete-horizontal-space` leaves none. Emacs-only
+    /// (D-051); no kill-ring write.
+    EmacsHorizontalSpace {
+        keep_one: bool,
+    },
 }
 
 /// Which case operation [`Command::EmacsCaseWord`] applies over the word span.
@@ -571,6 +578,12 @@ impl Command {
             Command::EmacsKillLine => "emacs_kill_line".into(),
             Command::EmacsTransposeChars => "emacs_transpose_chars".into(),
             Command::EmacsKillWord { count } => format!("emacs_kill_word {count}"),
+            Command::EmacsHorizontalSpace { keep_one } => {
+                format!(
+                    "emacs_horizontal_space {}",
+                    if *keep_one { "one" } else { "none" }
+                )
+            }
             Command::EmacsCaseWord { case } => format!(
                 "emacs_case_word {}",
                 match case {
@@ -811,6 +824,11 @@ impl Command {
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::EmacsKillWord { count }
             }
+            "emacs_horizontal_space" => match arg {
+                Some("one") => Command::EmacsHorizontalSpace { keep_one: true },
+                Some("none") => Command::EmacsHorizontalSpace { keep_one: false },
+                _ => return Err(CommandParseError::BadArgument(line.to_string())),
+            },
             "emacs_case_word" => match arg {
                 Some("upcase") => Command::EmacsCaseWord {
                     case: WordCase::Upcase,
@@ -1081,6 +1099,8 @@ mod tests {
             Command::EmacsTransposeChars,
             Command::EmacsKillWord { count: 1 },
             Command::EmacsKillWord { count: 3 },
+            Command::EmacsHorizontalSpace { keep_one: true },
+            Command::EmacsHorizontalSpace { keep_one: false },
             Command::EmacsCaseWord {
                 case: WordCase::Upcase,
             },

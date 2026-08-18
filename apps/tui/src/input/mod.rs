@@ -123,6 +123,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsKillWord { .. }
         | C::EmacsTransposeChars
         | C::EmacsCaseWord { .. }
+        | C::EmacsHorizontalSpace { .. }
         | C::DeleteSelection
         | C::OpForced {
             op: OpKind::Delete, ..
@@ -851,6 +852,15 @@ impl EmacsProfile {
             EmacsKey::alt('m'),
             EmacsBinding::Fixed(Command::Move(1, Motion::LineFirstNonBlank)),
         )
+        // M-SPC just-one-space / M-\ delete-horizontal-space: collapse surrounding spaces/tabs.
+        .bind(
+            EmacsKey::alt(' '),
+            EmacsBinding::Fixed(Command::EmacsHorizontalSpace { keep_one: true }),
+        )
+        .bind(
+            EmacsKey::alt('\\'),
+            EmacsBinding::Fixed(Command::EmacsHorizontalSpace { keep_one: false }),
+        )
         // M-x opens the minibuffer to read a command name (execute-extended-command).
         .bind(EmacsKey::alt('x'), EmacsBinding::Minibuffer)
         // Newline / backspace — repeatable via Replay under a count.
@@ -919,6 +929,8 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "previous-line" => Command::MoveUp,
         "move-beginning-of-line" => Command::MoveLineStart,
         "back-to-indentation" => Command::Move(1, Motion::LineFirstNonBlank),
+        "just-one-space" => Command::EmacsHorizontalSpace { keep_one: true },
+        "delete-horizontal-space" => Command::EmacsHorizontalSpace { keep_one: false },
         "move-end-of-line" => Command::MoveLineEnd,
         "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
         "end-of-buffer" => Command::EmacsBufferEdge { start: false },
