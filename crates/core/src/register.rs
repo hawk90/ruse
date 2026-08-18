@@ -192,6 +192,14 @@ impl RegisterStore {
         }
         self.write(name, reg);
     }
+
+    /// Append a killed span onto the unnamed slot — Emacs kill-accumulation, where a kill immediately
+    /// following another kill grows the current kill-ring entry rather than starting a new one. Uses the
+    /// same `"A`-style [`append`] geometry as a named append. The kill-ring is the unnamed register (D-026);
+    /// the caller decides WHEN to accumulate (the `last-command`-was-a-kill test lives in `commit`).
+    pub fn kill_append(&mut self, reg: Register) {
+        self.unnamed = append(&self.unnamed, &reg);
+    }
 }
 
 /// Append `add` onto `existing`, matching Vim's `"A`-style accumulation. Appending into an empty slot just

@@ -302,6 +302,21 @@ fn one(e: Edit) -> EditList {
     EditList::new(vec![e]).expect("single edit is always valid")
 }
 
+/// Like [`edit_yank`] but routes the captured span through [`RegWrite::KillAppend`] — an Emacs kill that
+/// accumulates onto the current unnamed entry when it follows another kill (kill-ring behaviour).
+fn edit_kill(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: Register) -> Plan {
+    Plan {
+        action: Action::Txn { edits, hint },
+        cursor,
+        mode,
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: Some(RegWrite::KillAppend(reg)),
+        set_anchor: None,
+        set_mark: None,
+    }
+}
+
 /// Recase a word span for [`Command::EmacsCaseWord`]. `Capitalize` upper-cases the first alphanumeric of
 /// each word (a run of alphanumerics) and lower-cases the rest, mirroring Emacs `capitalize-region`;
 /// `Upcase`/`Downcase` map every character. Unicode-aware (`char::to_uppercase` can widen, e.g. `ß`→`SS`).
@@ -1029,7 +1044,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     mode: st.view.mode,
                     is_edit: true,
                     effects: Vec::new(),
-                    set_register: Some(RegWrite::Edit(reg)),
+                    // A kill: accumulates onto the current unnamed entry when it follows another kill.
+                    set_register: Some(RegWrite::KillAppend(reg)),
                     set_anchor: None,
                     set_mark: Some(MarkWrite::Set(s)),
                 }
@@ -1062,7 +1078,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let le = line_end(b, cur);
             if cur < le {
                 let reg = captured(b, cur, le, false);
-                edit_yank(
+                edit_kill(
                     one(Edit::delete(cur, le - cur)),
                     cur,
                     st.view.mode,
@@ -1072,9 +1088,22 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             } else if le < b.len() {
                 // Point at EOL: kill the single newline byte, joining the following line.
                 let reg = captured(b, le, le + 1, false);
-                edit_yank(one(Edit::delete(le, 1)), le, st.view.mode, hint, reg)
+                edit_kill(one(Edit::delete(le, 1)), le, st.view.mode, hint, reg)
             } else {
                 nop(cur, st.view.mode)
+            }
+        }
+        // `M-d` / `kill-word` (Emacs kill-word, D-051): kill the `EmacsWordFwd` span (the word only, not Vim
+        // `dw`'s trailing space) into the register, accumulating like every Emacs kill. Distinct from Vim
+        // `Delete(count, EmacsWordFwd)` ONLY in that accumulation — but that difference is enough to warrant
+        // its own command (D-051), so Vim deletes never accumulate.
+        Command::EmacsKillWord { count } => {
+            let (s, e, _) = op_span(b, cur, Motion::EmacsWordFwd, *count);
+            if s >= e {
+                nop(cur, st.view.mode)
+            } else {
+                let reg = captured(b, s, e, false);
+                edit_kill(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
             }
         }
         // `C-t` (Emacs transpose-chars, D-051): swap the char before point with the char at point, then

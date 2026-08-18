@@ -239,6 +239,13 @@ pub enum Command {
     /// back one first). Inert when there is no pair to transpose (buffer/line start with fewer than two
     /// chars on the line). Emacs-only, no Vim lookalike (D-051); it does not touch the kill ring.
     EmacsTransposeChars,
+    /// `M-d` / `kill-word` (Emacs kill-word) — kill the `EmacsWordFwd` span (the word only, not Vim `dw`'s
+    /// trailing space) into the register, `count` words. Distinct from Vim `Delete(count, EmacsWordFwd)`
+    /// ONLY in that it ACCUMULATES onto the current kill-ring entry when it follows another kill — but that
+    /// alone earns its own command (D-051), so Vim deletes never accumulate.
+    EmacsKillWord {
+        count: u32,
+    },
     /// `M-u` / `M-l` / `M-c` (upcase-word / downcase-word / capitalize-word) — recase the word from point to
     /// the end of the next word (the `forward-word` span) and leave point at that end. Emacs-only (D-051);
     /// the three keys differ only in the case operation, so they share one command carrying [`WordCase`].
@@ -561,6 +568,7 @@ impl Command {
             Command::ExchangePointMark => "exchange_point_mark".into(),
             Command::EmacsKillLine => "emacs_kill_line".into(),
             Command::EmacsTransposeChars => "emacs_transpose_chars".into(),
+            Command::EmacsKillWord { count } => format!("emacs_kill_word {count}"),
             Command::EmacsCaseWord { case } => format!(
                 "emacs_case_word {}",
                 match case {
@@ -795,6 +803,12 @@ impl Command {
             "exchange_point_mark" => Command::ExchangePointMark,
             "emacs_kill_line" => Command::EmacsKillLine,
             "emacs_transpose_chars" => Command::EmacsTransposeChars,
+            "emacs_kill_word" => {
+                let count: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::EmacsKillWord { count }
+            }
             "emacs_case_word" => match arg {
                 Some("upcase") => Command::EmacsCaseWord {
                     case: WordCase::Upcase,
@@ -1063,6 +1077,8 @@ mod tests {
             Command::EmacsBufferEdge { start: false },
             Command::EmacsKillLine,
             Command::EmacsTransposeChars,
+            Command::EmacsKillWord { count: 1 },
+            Command::EmacsKillWord { count: 3 },
             Command::EmacsCaseWord {
                 case: WordCase::Upcase,
             },
