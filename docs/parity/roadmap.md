@@ -33,7 +33,7 @@ related:
 | --- | --- | --- | --- | --- |
 | 1 | `core-editing` | mvp | F-001, F-002, F-005 | The Document → Transaction → Undo → Snapshot core, anchor-tracked, exercised by a headless golden test. No input profile or TUI yet — this is the "prove the design in code" slice. |
 | 2 | `usable-vim-tui` | mvp | F-003, F-004, F-006, F-007, F-008, F-009, F-010, F-022, F-023, F-024, F-025, F-026, F-027, F-028, F-029 | A real editor: key → command → transaction → document → render, on the proven core. Vim profile, command palette, buffers/windows, file open/save + recovery, search/substitute, terminal detection. |
-| 3 | `ide-grade` | post-mvp | F-011, F-014, F-015 | Built-in LSP, tree-sitter highlighting, PTY terminal buffer. The editor becomes genuinely useful for daily development. |
+| 3 | `ide-grade` | post-mvp | F-011, F-014, F-015, F-030 | Built-in LSP, tree-sitter highlighting, PTY terminal buffer. The editor becomes genuinely useful for daily development. |
 | 4 | `ecosystem` | post-mvp | F-012, F-013, F-016, F-017 | Public plugin protocol + isolated host, Emacs and Native input profiles, SSH remote runtime. Third parties can extend; work happens across machines. |
 | 5 | `breadth` | future | F-018, F-019, F-020, F-021 | Debugger (DAP), GUI frontend on the same command system + Render IR, extension marketplace, and reviewed AI proposals. The long-horizon parity target. |
 <!-- END GENERATED phases -->

@@ -803,6 +803,26 @@ features:
       - Execute capability is distinct from propose capability and permission-gated (deny-by-default).
       - Chat / Proposal / Review surfaces are workspace buffers over the shared view model.
 
+  F-030:
+    title: Runtime health check (:checkhealth)
+    stage: post-mvp
+    priority: should
+    status: planned
+    summary: A `:checkhealth` command reporting the running editor's health — active input profile +
+      caret gravity, detected terminal capabilities, syntax-grammar availability for the current buffer,
+      open-buffer count, and trace/replay status — the Neovim `:checkhealth` analogue, so a user can
+      diagnose "why isn't X working" without reading the ntic log.
+    trace:
+      parity: []
+      design: [../docs/design/health-check.md]
+      verify: [../tests/unit/health-report]
+    acceptance:
+      - '`:checkhealth` renders a report covering input profile, terminal capabilities, syntax-grammar
+        availability, buffer count, and trace/replay status.'
+      - The report is produced by a PURE, unit-tested builder (frontend snapshot in -> report out); the
+        command is a thin wiring over it, so the core stays IO-free and the logic is covered off main.rs.
+      - Each row reports OK / WARN / absent with a one-line reason (the Neovim checkhealth ok/warn shape).
+
   F-022:
     title: Command traces & deterministic replay
     stage: mvp
