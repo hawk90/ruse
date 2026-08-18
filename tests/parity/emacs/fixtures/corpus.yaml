@@ -833,6 +833,95 @@
         "mark": 0,
         "kill": null
       }
+    },
+    {
+      "name": "forward_paragraph",
+      "text": "aa\nbb\n\ncc\ndd",
+      "ops": [
+        "forward-paragraph"
+      ],
+      "expect": {
+        "text": [
+          "aa",
+          "bb",
+          "",
+          "cc",
+          "dd"
+        ],
+        "point": 6,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_paragraph",
+      "text": "aa\nbb\n\ncc\ndd",
+      "ops": [
+        "backward-paragraph"
+      ],
+      "point": 11,
+      "expect": {
+        "text": [
+          "aa",
+          "bb",
+          "",
+          "cc",
+          "dd"
+        ],
+        "point": 6,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "delete_indentation",
+      "text": "foo\n   bar",
+      "ops": [
+        "delete-indentation"
+      ],
+      "point": 7,
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "capitalize_region",
+      "text": "foo bar",
+      "ops": [
+        "set-mark-command",
+        "forward-word",
+        "capitalize-region"
+      ],
+      "expect": {
+        "text": [
+          "Foo bar"
+        ],
+        "point": 3,
+        "mark": 0,
+        "kill": null
+      }
+    },
+    {
+      "name": "newline_ret",
+      "text": "foobar",
+      "ops": [
+        "newline"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo",
+          "bar"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
     }
   ]
 }

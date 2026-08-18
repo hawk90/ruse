@@ -852,6 +852,15 @@ impl EmacsProfile {
             EmacsKey::alt('@'),
             EmacsBinding::Fixed(Command::EmacsMarkWord),
         )
+        // M-} / M-{ (forward/backward-paragraph): reuse the shared paragraph motions (= Vim `}`/`{`).
+        .bind(
+            EmacsKey::alt('}'),
+            EmacsBinding::Fixed(Command::Move(1, Motion::ParagraphFwd)),
+        )
+        .bind(
+            EmacsKey::alt('{'),
+            EmacsBinding::Fixed(Command::Move(1, Motion::ParagraphBack)),
+        )
         // Case-word family: recase the word ahead and advance (D-051, `EmacsCaseWord`). Count-less for now
         // (the prefix-argument word count is a follow-up), so Fixed.
         .bind(
@@ -991,6 +1000,8 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "previous-line" => Command::MoveUp,
         "move-beginning-of-line" => Command::MoveLineStart,
         "back-to-indentation" => Command::Move(1, Motion::LineFirstNonBlank),
+        "forward-paragraph" => Command::Move(1, Motion::ParagraphFwd),
+        "backward-paragraph" => Command::Move(1, Motion::ParagraphBack),
         "just-one-space" => Command::EmacsHorizontalSpace { keep_one: true },
         "delete-horizontal-space" => Command::EmacsHorizontalSpace { keep_one: false },
         "open-line" => Command::EmacsOpenLine,
