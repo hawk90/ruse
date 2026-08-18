@@ -344,6 +344,18 @@ FIXTURES: list[dict] = [
         "text": "FOO BAR",
         "ops": ["set-mark-command", "forward-word", "downcase-region"],
     },
+    # === EXPANSION 4: paragraph motion, delete-indentation, and coverage of already-shipped region/newline. ===
+    {"name": "forward_paragraph", "text": "aa\nbb\n\ncc\ndd", "ops": ["forward-paragraph"]},
+    {"name": "backward_paragraph", "text": "aa\nbb\n\ncc\ndd", "ops": ["backward-paragraph"], "point": 11},
+    # delete-indentation (M-^): join the current line to the previous, collapsing to one space.
+    {"name": "delete_indentation", "text": "foo\n   bar", "ops": ["delete-indentation"], "point": 7},
+    # coverage: capitalize-region + newline are already implemented — pin them so a regression is caught.
+    {
+        "name": "capitalize_region",
+        "text": "foo bar",
+        "ops": ["set-mark-command", "forward-word", "capitalize-region"],
+    },
+    {"name": "newline_ret", "text": "foobar", "ops": ["newline"], "point": 3},
 ]
 
 
