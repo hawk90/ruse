@@ -2200,7 +2200,7 @@ impl Default for InputEngine {
 }
 
 mod ex;
-pub use ex::{parse_ex, Ex};
+pub use ex::{parse_ex, BufTarget, Ex};
 #[cfg(test)]
 pub(crate) use ex::{parse_substitute, GlobalSpec, SubSpec};
 

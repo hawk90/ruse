@@ -34,7 +34,7 @@ use crossterm::style::Print;
 use crossterm::terminal::ClearType;
 use crossterm::{cursor, queue, terminal};
 
-use input::{parse_ex, Ex, Feed, InputEngine};
+use input::{parse_ex, BufTarget, Ex, Feed, InputEngine};
 use ruse_core::{CaretGravity, Command, Effect, Mode, SelectKind, SplitDir, Trace, Workspace};
 
 // Headless CLI: stderr is the correct channel here (no TUI, no tracing sink yet). D-041 scoped allow.
@@ -287,6 +287,12 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // EditorState. With one Window this is byte-identical to the pre-Workspace path; `:split`/
     // `:vsplit` open more Windows onto the same buffer with independent cursors and scroll.
     let mut ws = Workspace::new(initial.clone());
+    // The initial buffer owns the session file (`path`/`fmt`): name it, and remember its id so `:w` on any
+    // OTHER buffer (`:enew` scratch) declines rather than clobbering the file (F-007 multi-buffer).
+    let file_buf = ws.focused_buffer();
+    if let Some(p) = path.as_ref() {
+        ws.set_focused_buffer_name(p.display().to_string());
+    }
     let mut recorded: Vec<Command> = Vec::new();
     let mut journal_ticks: u32 = 0; // throttle: append the recovery journal every Nth modified frame
 
@@ -334,14 +340,19 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
         line_idx.refresh(revision, &snapshot);
-        // Keep the in-memory snapshot current so a core panic can rescue unsaved work (§6/§8).
-        recover::update(path.as_ref(), &snapshot, modified);
-        // And throttle an append-only journal frame so a hard kill (not just a panic) loses at most
-        // a few edits. Cleared on a durable save. Full journal design is post-MVP (C-PERSIST).
-        if modified {
-            journal_ticks += 1;
-            if journal_ticks.is_multiple_of(JOURNAL_THROTTLE) {
-                let _ = persist::journal::append(path.as_deref(), &snapshot);
+        // Panic-rescue mirror + recovery journal are the FILE buffer's, keyed to `path` (F-008). Skip them
+        // while a scratch/other buffer is focused so its bytes never land in the file's recovery (F-007).
+        let on_file = ws.focused_buffer() == file_buf;
+        if on_file {
+            // Keep the in-memory snapshot current so a core panic can rescue unsaved work (§6/§8).
+            recover::update(path.as_ref(), &snapshot, modified);
+            // And throttle an append-only journal frame so a hard kill (not just a panic) loses at most
+            // a few edits. Cleared on a durable save. Full journal design is post-MVP (C-PERSIST).
+            if modified {
+                journal_ticks += 1;
+                if journal_ticks.is_multiple_of(JOURNAL_THROTTLE) {
+                    let _ = persist::journal::append(path.as_deref(), &snapshot);
+                }
             }
         }
         // During a `:s///c` confirm, follow the current match so the viewport scrolls it into view.
@@ -382,8 +393,11 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         } else {
             0..snapshot.len()
         };
+        // Syntax highlighting is the FILE buffer's grammar (chosen from its extension); don't paint it over
+        // a scratch/other buffer's bytes (F-007). Its language dispatch per buffer is a follow-up slice.
         let spans: &[highlight::Span] = highlighter
             .as_mut()
+            .filter(|_| on_file)
             .map(|h| h.spans(revision, &snapshot, visible.clone()))
             .unwrap_or(&[]);
         // The focused pane's extra reverse-video highlights: a `:s///c` confirm match, else the
@@ -444,7 +458,6 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         render(
             &mut out,
             &ws,
-            path.as_ref(),
             cmd_line,
             &status,
             spans,
@@ -480,6 +493,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 &mut ws,
                 &path,
                 fmt,
+                file_buf,
                 &mut recorded,
                 &mut status,
                 &mut quit,
@@ -550,6 +564,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         &mut ws,
                         &path,
                         fmt,
+                        file_buf,
                         &initial,
                         &recorded,
                         &mut status,
@@ -569,6 +584,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     &mut ws,
                     &path,
                     fmt,
+                    file_buf,
                     &mut recorded,
                     &mut status,
                     &mut quit,
@@ -583,6 +599,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         &mut ws,
                         &path,
                         fmt,
+                        file_buf,
                         &mut recorded,
                         &mut status,
                         &mut quit,
@@ -623,18 +640,20 @@ fn dispatch_window(key: crossterm::event::KeyEvent, ws: &mut Workspace, quit: &m
 }
 
 /// Record a command and apply it to the focused window, performing any effects.
+#[allow(clippy::too_many_arguments)] // the command path needs the full editor context (buffer/file/sinks)
 fn run_cmd(
     cmd: Command,
     ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
+    file_buf: ruse_core::DocumentId,
     recorded: &mut Vec<Command>,
     status: &mut String,
     quit: &mut bool,
 ) {
     recorded.push(cmd.clone());
     for eff in ws.apply(&cmd) {
-        apply_effect(eff, ws, path, fmt, status, quit);
+        apply_effect(eff, ws, path, fmt, file_buf, status, quit);
     }
 }
 
@@ -647,6 +666,7 @@ fn run_ex(
     ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
+    file_buf: ruse_core::DocumentId,
     initial: &[u8],
     recorded: &[Command],
     status: &mut String,
@@ -654,11 +674,14 @@ fn run_ex(
     confirm: &mut Option<Confirm>,
 ) {
     match ex {
-        Ex::Save => save(ws, path, fmt, status),
+        Ex::Save => save(ws, path, fmt, file_buf, status),
         Ex::Quit => *quit = true,
         Ex::SaveQuit => {
-            save(ws, path, fmt, status);
-            *quit = true;
+            // `:wq`/`:x` on a scratch buffer errors (save declines) and does NOT quit — matching Vim.
+            save(ws, path, fmt, file_buf, status);
+            if ws.focused_buffer() == file_buf {
+                *quit = true;
+            }
         }
         // F-007 window commands: split the focused window onto the same buffer, or close it.
         Ex::Split => {
@@ -723,8 +746,62 @@ fn run_ex(
         // `:checkhealth` is handled in the run loop (it reads the terminal-cap ledger + profile this fn
         // does not borrow); never reaches here.
         Ex::CheckHealth => {}
+        // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
+        // buffers; `:bn`/`:bp` cycle; `:b {n}`/`:b#` switch by number / to the alternate.
+        Ex::Enew => {
+            let id = ws.add_buffer(Vec::new(), None);
+            ws.focus_buffer(id);
+            *status = format!("[No Name] (buffer {})", id.0);
+        }
+        Ex::Buffers => *status = buffer_list_line(ws),
+        Ex::BufferNext => {
+            ws.cycle_buffer(true);
+            *status = focused_buffer_label(ws);
+        }
+        Ex::BufferPrev => {
+            ws.cycle_buffer(false);
+            *status = focused_buffer_label(ws);
+        }
+        Ex::Buffer(target) => {
+            let id = match target {
+                BufTarget::Number(n) => Some(ruse_core::DocumentId(*n)),
+                BufTarget::Alternate => ws.alternate(),
+            };
+            match id {
+                Some(id) if ws.focus_buffer(id) => *status = focused_buffer_label(ws),
+                Some(id) => *status = format!("E86: buffer {} does not exist", id.0),
+                None => *status = "E23: no alternate buffer".into(),
+            }
+        }
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
+}
+
+/// A short label for the focused buffer (name + `[+]` when modified) — the status after `:b`/`:bn`/`:bp`.
+fn focused_buffer_label(ws: &Workspace) -> String {
+    let id = ws.focused_buffer();
+    let name = ws.buffer_name(id).unwrap_or("[No Name]");
+    let dirty = if ws.focused().doc.is_modified() {
+        " [+]"
+    } else {
+        ""
+    };
+    format!("buffer {}: {name}{dirty}", id.0)
+}
+
+/// The one-line `:ls` buffer list: `1%a name  2  # other  3 + scratch …` (`%`=current, `#`=alternate,
+/// `+`=modified). Vim renders a multi-line list; the single status line shows a compact form for MVP.
+fn buffer_list_line(ws: &Workspace) -> String {
+    ws.buffers()
+        .iter()
+        .map(|b| {
+            let cur = if b.current { "%" } else { "" };
+            let alt = if b.alt { "#" } else { "" };
+            let modified = if b.modified { "+" } else { "" };
+            format!("{}{cur}{alt} {}{modified}", b.id.0, b.name)
+        })
+        .collect::<Vec<_>>()
+        .join("  ")
 }
 
 /// The state of an in-progress `:s///c` confirm loop (F-009 #2): the pending substitutions, the index
@@ -980,6 +1057,7 @@ fn palette_key(
     ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
+    file_buf: ruse_core::DocumentId,
     recorded: &mut Vec<Command>,
     status: &mut String,
     quit: &mut bool,
@@ -993,7 +1071,7 @@ fn palette_key(
             let cmd = p.selected_command();
             *palette = None;
             if let Some(cmd) = cmd {
-                run_cmd(cmd, ws, path, fmt, recorded, status, quit);
+                run_cmd(cmd, ws, path, fmt, file_buf, recorded, status, quit);
             }
         }
         KeyCode::Up => p.selected = p.selected.saturating_sub(1),
@@ -1023,11 +1101,12 @@ fn apply_effect(
     ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
+    file_buf: ruse_core::DocumentId,
     status: &mut String,
     quit: &mut bool,
 ) {
     match eff {
-        Effect::Save => save(ws, path, fmt, status),
+        Effect::Save => save(ws, path, fmt, file_buf, status),
         Effect::Quit => *quit = true,
         Effect::Status(s) => *status = s,
     }
@@ -1037,8 +1116,15 @@ fn save(
     ws: &mut Workspace,
     path: &Option<PathBuf>,
     fmt: persist::encoding::FileFormat,
+    file_buf: ruse_core::DocumentId,
     status: &mut String,
 ) {
+    // Multi-buffer honesty (F-007): `path`/`fmt` belong to the ONE file buffer. A scratch buffer (`:enew`)
+    // or any other buffer has no file, so `:w` must not write its bytes over the original file.
+    if ws.focused_buffer() != file_buf {
+        *status = "E32: No file name (scratch buffer)".into();
+        return;
+    }
     let Some(p) = path else {
         *status = "no file name (open with `ruse <file>`)".into();
         return;
@@ -1223,7 +1309,6 @@ fn search_pattern(cmd: &Command) -> Option<String> {
 fn render(
     out: &mut io::Stdout,
     ws: &Workspace,
-    path: Option<&PathBuf>,
     cmd_line: Option<(char, &str)>,
     status: &str,
     spans: &[highlight::Span],
@@ -1326,9 +1411,11 @@ fn render(
                     kind: SelectKind::Blockwise,
                 } => "S-BLOCK",
             };
-            let name = path
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "[No Name]".into());
+            // Show the FOCUSED buffer's name (multi-buffer, F-007), not the session path — so switching to
+            // a scratch buffer reads `[No Name]`, not the file that `path` still points at.
+            let name = ws
+                .buffer_name(ws.focused_buffer())
+                .map_or_else(|| "[No Name]".to_string(), str::to_string);
             let dirty = if focus.doc.is_modified() { " [+]" } else { "" };
             // Show the window position only once split, so the single-window status line is unchanged.
             let win = if ws.window_count() > 1 {

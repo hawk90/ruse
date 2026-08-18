@@ -68,6 +68,22 @@ pub struct Pane<'a> {
     pub doc: &'a Document,
 }
 
+/// One row of the buffer list (`:ls`) — a buffer's id, display name, and its status flags, for the
+/// status line and the buffer picker. `[No Name]` stands in for an unnamed/scratch buffer.
+#[derive(Clone, Debug)]
+pub struct BufferInfo {
+    /// The buffer's stable id.
+    pub id: DocumentId,
+    /// Display name (`[No Name]` when the buffer has none).
+    pub name: String,
+    /// Whether this buffer is the one the focused window currently shows (`%` in `:ls`).
+    pub current: bool,
+    /// Whether this is the alternate buffer (`#` in `:ls`, the `:b#` target).
+    pub alt: bool,
+    /// Whether the buffer has unsaved edits (`+` in `:ls`).
+    pub modified: bool,
+}
+
 /// The container the frontend drives (F-007). See the module docs for ownership / editing / layout.
 pub struct Workspace {
     /// Buffer arena; slot `i` holds `DocumentId(i as u64 + 1)`. `None` = a retired buffer.
@@ -80,6 +96,16 @@ pub struct Workspace {
     split: SplitDir,
     /// Index into [`Workspace::windows`] of the focused Window.
     focus: usize,
+    /// Per-buffer display name, parallel to `docs` (`None` = an unnamed/scratch buffer, shown as
+    /// `[No Name]`; `None` slot = a retired buffer). The name is a display label, not the on-disk path —
+    /// the frontend owns the path/format (this crate is IO-free).
+    names: Vec<Option<String>>,
+    /// The buffer list in `:ls`/`:bnext` order (the Listed buffers, view-window-workspace.md §8.1). A
+    /// buffer joins on creation and leaves when retired; the order is stable so `:bn`/`:bp` are predictable.
+    buffer_order: Vec<DocumentId>,
+    /// The alternate buffer (Vim `#`): the buffer focus last left, so `:b#` toggles back. `None` until
+    /// the first switch.
+    alt: Option<DocumentId>,
 }
 
 impl Workspace {
@@ -89,12 +115,16 @@ impl Workspace {
     #[must_use]
     pub fn new(initial: impl Into<Vec<u8>>) -> Workspace {
         let (doc, view) = EditorState::new(initial).into_parts();
+        let id = doc.id();
         Workspace {
             docs: vec![Some(doc)],
             views: vec![Some(view)],
             windows: vec![Window { view: ViewId(0) }],
             split: SplitDir::Horizontal,
             focus: 0,
+            names: vec![None],
+            buffer_order: vec![id],
+            alt: None,
         }
     }
 
@@ -351,6 +381,11 @@ impl Workspace {
         });
         if !still_held {
             self.docs[Self::doc_slot(did)] = None;
+            self.names[Self::doc_slot(did)] = None;
+            self.buffer_order.retain(|&id| id != did);
+            if self.alt == Some(did) {
+                self.alt = None;
+            }
         }
 
         if self.focus >= self.windows.len() {
@@ -365,6 +400,136 @@ impl Workspace {
         self.docs
             .get(Self::doc_slot(id))
             .is_some_and(Option::is_some)
+    }
+
+    /// The `DocumentId` of the buffer the FOCUSED window currently shows.
+    #[must_use]
+    pub fn focused_buffer(&self) -> DocumentId {
+        let vid = self.windows[self.focus].view;
+        self.views[vid.0].as_ref().expect("focused view live").doc()
+    }
+
+    /// The display name of buffer `id` (`None` for an unnamed/scratch buffer, or a retired slot).
+    #[must_use]
+    pub fn buffer_name(&self, id: DocumentId) -> Option<&str> {
+        self.names
+            .get(Self::doc_slot(id))
+            .and_then(|n| n.as_deref())
+    }
+
+    /// The alternate buffer (`#`), if one is set and still live.
+    #[must_use]
+    pub fn alternate(&self) -> Option<DocumentId> {
+        self.alt.filter(|&id| self.doc_is_live(id))
+    }
+
+    /// Name (or rename) the FOCUSED buffer — the frontend calls this to label the initial buffer with its
+    /// file path, and to name a buffer when it gains a file.
+    pub fn set_focused_buffer_name(&mut self, name: impl Into<String>) {
+        let slot = Self::doc_slot(self.focused_buffer());
+        self.names[slot] = Some(name.into());
+    }
+
+    /// Add a new buffer over `bytes` with optional display `name`, plus a fresh View onto it (not shown
+    /// in any window yet). Appends to the buffer list and returns the new buffer's id. `focus_buffer`
+    /// brings it into the focused window.
+    pub fn add_buffer(&mut self, bytes: impl Into<Vec<u8>>, name: Option<String>) -> DocumentId {
+        let id = DocumentId(self.docs.len() as u64 + 1);
+        let mut doc = Document::new(id, bytes);
+        doc.mark_saved();
+        self.docs.push(Some(doc));
+        self.names.push(name);
+        self.views.push(Some(View::fresh(id)));
+        self.buffer_order.push(id);
+        id
+    }
+
+    /// A [`ViewId`] naming buffer `id` that is safe to install in the focused window: a live view for the
+    /// buffer that no OTHER window shows (a resident/hidden view, whose cursor is preserved), or a fresh
+    /// one if every existing view for the buffer is already on screen (so two windows never share a View).
+    fn view_for_buffer(&mut self, id: DocumentId) -> ViewId {
+        let shown_elsewhere = |ws: &Self, vid: ViewId| {
+            ws.windows
+                .iter()
+                .enumerate()
+                .any(|(i, w)| i != ws.focus && w.view == vid)
+        };
+        let reusable = self.views.iter().enumerate().find_map(|(i, v)| {
+            let vid = ViewId(i);
+            match v {
+                Some(view) if view.doc() == id && !shown_elsewhere(self, vid) => Some(vid),
+                _ => None,
+            }
+        });
+        reusable.unwrap_or_else(|| {
+            let vid = ViewId(self.views.len());
+            self.views.push(Some(View::fresh(id)));
+            vid
+        })
+    }
+
+    /// Show buffer `id` in the FOCUSED window (Vim `:buffer`). Records the buffer being left as the
+    /// alternate (`#`). No-op (returns `true`) if it is already focused; `false` if `id` is not a live
+    /// buffer. The previously shown view stays in the arena, so returning to a buffer restores its cursor.
+    pub fn focus_buffer(&mut self, id: DocumentId) -> bool {
+        if !self.doc_is_live(id) {
+            return false;
+        }
+        let current = self.focused_buffer();
+        if current == id {
+            return true;
+        }
+        self.alt = Some(current);
+        let vid = self.view_for_buffer(id);
+        self.windows[self.focus].view = vid;
+        true
+    }
+
+    /// The buffer list in `:ls` order, each with its display name and status flags (current/alt/modified).
+    #[must_use]
+    pub fn buffers(&self) -> Vec<BufferInfo> {
+        let current = self.focused_buffer();
+        let alt = self.alternate();
+        self.buffer_order
+            .iter()
+            .filter(|&&id| self.doc_is_live(id))
+            .map(|&id| BufferInfo {
+                id,
+                name: self
+                    .buffer_name(id)
+                    .map_or_else(|| "[No Name]".to_string(), str::to_string),
+                current: id == current,
+                alt: Some(id) == alt,
+                modified: self.docs[Self::doc_slot(id)]
+                    .as_ref()
+                    .is_some_and(Document::is_modified),
+            })
+            .collect()
+    }
+
+    /// Switch the focused window to the next (`:bnext`) or previous (`:bprevious`) live buffer in `:ls`
+    /// order, wrapping. No-op with a single buffer. `forward` selects the direction.
+    pub fn cycle_buffer(&mut self, forward: bool) {
+        let live: Vec<DocumentId> = self
+            .buffer_order
+            .iter()
+            .copied()
+            .filter(|&id| self.doc_is_live(id))
+            .collect();
+        if live.len() <= 1 {
+            return;
+        }
+        let current = self.focused_buffer();
+        let Some(pos) = live.iter().position(|&id| id == current) else {
+            return;
+        };
+        let n = live.len();
+        let next = if forward {
+            (pos + 1) % n
+        } else {
+            (pos + n - 1) % n
+        };
+        self.focus_buffer(live[next]);
     }
 
     /// Set the focused View's indent config (`>>`/`<<`) — the seam a config loader/test uses; mirrors
@@ -517,5 +682,70 @@ mod tests {
         assert_eq!(w.focus(), 0, "wraps to the first window");
         w.focus_next();
         assert_eq!(w.focus(), 1);
+    }
+
+    /// F-007 multi-buffer: a fresh workspace lists exactly its one buffer; `add_buffer` appends without
+    /// changing focus, and `focus_buffer` switches the focused window while preserving each buffer's cursor.
+    #[test]
+    fn add_and_switch_buffers_preserves_per_buffer_cursor() {
+        let mut w = ws();
+        w.set_focused_buffer_name("a.txt");
+        let a = w.focused_buffer();
+        assert_eq!(w.buffers().len(), 1, "one buffer to start");
+
+        let b = w.add_buffer(b"second buffer\ntext\n".to_vec(), Some("b.txt".into()));
+        assert_eq!(w.buffers().len(), 2, "add_buffer appends to the list");
+        assert_eq!(w.focused_buffer(), a, "add_buffer does not change focus");
+
+        // Move the cursor in buffer A, then switch to B — B starts at its own cursor (0).
+        w.apply(&Command::Move(1, Motion::Down));
+        let a_cursor = w.focused().view.cursor();
+        assert!(a_cursor > 0);
+        assert!(w.focus_buffer(b), "switch to a live buffer succeeds");
+        assert_eq!(w.focused_buffer(), b);
+        assert_eq!(w.focused().view.cursor(), 0, "B has its own cursor");
+
+        // Back to A — its cursor is preserved (the hidden view survived).
+        assert!(w.focus_buffer(a));
+        assert_eq!(
+            w.focused().view.cursor(),
+            a_cursor,
+            "A's cursor is restored on return"
+        );
+    }
+
+    /// F-007 multi-buffer: `:ls` flags (current/alt/modified), the `#` alternate, and `:bn`/`:bp` cycling.
+    #[test]
+    fn buffer_list_flags_alternate_and_cycling() {
+        let mut w = ws();
+        w.set_focused_buffer_name("a.txt");
+        let a = w.focused_buffer();
+        let b = w.add_buffer(b"bbb".to_vec(), Some("b.txt".into()));
+        let c = w.add_buffer(b"ccc".to_vec(), Some("c.txt".into()));
+
+        w.focus_buffer(b); // leaving A → A is the alternate
+        assert_eq!(w.alternate(), Some(a));
+        let info = w.buffers();
+        assert!(info.iter().find(|i| i.id == b).unwrap().current);
+        assert!(info.iter().find(|i| i.id == a).unwrap().alt);
+
+        // Cycle forward from B: order is [a, b, c] → next after b is c; wraps c → a.
+        w.cycle_buffer(true);
+        assert_eq!(w.focused_buffer(), c);
+        w.cycle_buffer(true);
+        assert_eq!(w.focused_buffer(), a, "cycling wraps");
+        // Backward from A wraps to c.
+        w.cycle_buffer(false);
+        assert_eq!(w.focused_buffer(), c);
+
+        // A modified buffer shows the flag; switching to a dead id fails.
+        w.focus_buffer(a);
+        w.apply(&Command::EnterInsert);
+        w.apply(&Command::InsertChar('X'));
+        assert!(w.buffers().iter().find(|i| i.id == a).unwrap().modified);
+        assert!(
+            !w.focus_buffer(DocumentId(999)),
+            "unknown buffer id is a no-op"
+        );
     }
 }

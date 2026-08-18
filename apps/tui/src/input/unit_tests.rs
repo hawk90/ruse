@@ -1328,6 +1328,27 @@ mod tests {
         assert_eq!(parse_ex("checkhealth"), Ex::CheckHealth);
         assert_eq!(parse_ex("che"), Ex::CheckHealth);
     }
+
+    /// F-007 multi-buffer ex commands parse: `:enew`, `:ls`, `:bn`/`:bp`, `:b {n}` (with/without space),
+    /// `:b#`. A non-numeric `:b` argument and a bare verb that only prefixes a buffer word stay Unknown.
+    #[test]
+    fn buffer_ex_commands_parse() {
+        use crate::input::BufTarget;
+        assert_eq!(parse_ex("enew"), Ex::Enew);
+        assert_eq!(parse_ex("ene"), Ex::Enew);
+        assert_eq!(parse_ex("ls"), Ex::Buffers);
+        assert_eq!(parse_ex("buffers"), Ex::Buffers);
+        assert_eq!(parse_ex("bn"), Ex::BufferNext);
+        assert_eq!(parse_ex("bnext"), Ex::BufferNext);
+        assert_eq!(parse_ex("bp"), Ex::BufferPrev);
+        assert_eq!(parse_ex("bprevious"), Ex::BufferPrev);
+        assert_eq!(parse_ex("b 3"), Ex::Buffer(BufTarget::Number(3)));
+        assert_eq!(parse_ex("b2"), Ex::Buffer(BufTarget::Number(2)));
+        assert_eq!(parse_ex("buffer 5"), Ex::Buffer(BufTarget::Number(5)));
+        assert_eq!(parse_ex("b#"), Ex::Buffer(BufTarget::Alternate));
+        assert!(matches!(parse_ex("b foo"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("bx"), Ex::Unknown(_)));
+    }
 }
 
 /// Dot-repeat (`.`): the engine records the last change as a re-parameterizable [`ChangeIntent`] and
