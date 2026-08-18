@@ -16,8 +16,8 @@ bench = false
 
 [dependencies]
 ruse-core = { path = "../../crates/core" }
-crossterm = "0.28"
-tree-sitter = "0.26.11"
+crossterm = "0.29"
+tree-sitter = "0.26.12"
 tree-sitter-rust = "0.24.2"
 streaming-iterator = "0.1"
 tracing = "0.1.44"
@@ -37,7 +37,7 @@ libc = "0.2"
 
 [dev-dependencies]
 # Benchmarking harness (D-042). Lean features: keep cargo-bench integration, drop rayon + plotters/gnuplot.
-criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 # Property-based tests of the input-engine state machine (no pending leak, orthogonal-axis invariants).
 proptest = { version = "1", default-features = false, features = ["std"] }
 # Parity fixture corpus is JSON-in-YAML (a subset of YAML 1.2); serde_json reads it with no YAML dep.

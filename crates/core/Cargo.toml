@@ -25,7 +25,7 @@ regex = "1"
 
 [dev-dependencies]
 # Benchmarking harness (D-042). Lean features: keep cargo-bench integration, drop rayon + plotters/gnuplot.
-criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 # Property-based testing of the semantic invariants (testing §1.2; TEST-5/7). Dev-only; core stays dep-free.
 proptest = { version = "1", default-features = false, features = ["std"] }
 
