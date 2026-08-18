@@ -38,47 +38,6 @@ enum Op {
     Yank,
 }
 
-/// A recorded **change-intent** for Vim dot-repeat (D-025 / D-047): the buffer-modifying command that
-/// began the change, plus — for changes that enter Insert — the exact commands typed until `<Esc>`.
-///
-/// This is the design's key move: `.` records the INTENT (a re-parameterizable command + text), not a
-/// resolved byte range, so replaying it at a new cursor re-runs the motion there. `dw` recorded, then `.`
-/// at the next word deletes THAT word; `ciwFOO<Esc>` recorded, then `.` re-does the change AND re-inserts
-/// `FOO`. `.` never overwrites the record, so `..` repeats the same change.
-#[derive(Clone, PartialEq, Eq)]
-struct ChangeIntent {
-    /// The command that began the change: an operator (`dw`, `d2w`), a single-key edit (`x`, `~`, `>>`),
-    /// or an insert-entry (`i`/`A`/`o`/`ciw`). Its count is the one `N.` overrides.
-    lead: Command,
-    /// The insert-session commands captured after an insert-entering `lead`, terminated by the
-    /// `EnterNormal` that `<Esc>` produced. Empty for self-contained changes (`dw`, `x`, `>>`).
-    insert: Vec<Command>,
-    /// The register the change targeted (`"a` before it), replayed so `.` reuses the SAME register (Vim).
-    /// `None` for an unregistered change; replay then omits the leading `SetRegister`.
-    register: Option<char>,
-}
-
-impl ChangeIntent {
-    /// The ordered command list `.` replays. `count` — a leading `N` on the `.` — REPLACES the lead's
-    /// count (Vim `3.` repeats with count 3); `None` keeps the recorded count. Insert text is replayed
-    /// verbatim.
-    fn replay(&self, count: Option<u32>) -> Vec<Command> {
-        let lead = match count {
-            Some(n) => with_count(&self.lead, n),
-            None => self.lead.clone(),
-        };
-        let mut cmds =
-            Vec::with_capacity(1 + self.insert.len() + usize::from(self.register.is_some()));
-        // Re-select the register first, so the replayed change writes to the same slot (`"ax` then `.`).
-        if self.register.is_some() {
-            cmds.push(Command::SetRegister(self.register));
-        }
-        cmds.push(lead);
-        cmds.extend(self.insert.iter().cloned());
-        cmds
-    }
-}
-
 /// How a completed command relates to the dot-repeat record.
 enum ChangeKind {
     /// Enters Insert; the change is this command PLUS the text typed until `<Esc>`.
@@ -141,7 +100,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
 
 /// Rewrite a command's count for `N.` (Vim replaces the change's count with `N`). Commands without a count
 /// are returned unchanged.
-fn with_count(cmd: &Command, n: u32) -> Command {
+pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
     use Command as C;
     match cmd {
         C::Move(_, m) => C::Move(n, *m),
@@ -969,24 +928,6 @@ impl EmacsProfile {
             .expect("emacs tier ids and ranks are unique");
         EmacsProfile { map }
     }
-}
-
-/// The command-line namespace's owned state (F-026 acceptance #2): a prefix, a line buffer, and a
-/// cursor. `ex_mode` distinguishes the `gQ` Ex namespace (stays open, re-prompting after each `<CR>`)
-/// from a one-shot `:`/`/` line. History index / wildmenu / incsearch UX are deferred (acceptance #3).
-struct CmdLine {
-    /// `:` (ex) or `/` (search) — also the glyph the status line shows.
-    prefix: char,
-    /// The text typed so far. Owned HERE, never on the frontend.
-    buffer: String,
-    /// Insertion point as a char index. MVP edits append/backspace at the end (mid-line editing is the
-    /// deferred full line-editor); the field exists because the namespace owns the cursor (acceptance #2).
-    cursor: usize,
-    /// `gQ` Ex mode: `<CR>` executes AND re-opens the line; `:visual`/`:vi`/empty exits.
-    ex_mode: bool,
-    /// Emacs `M-x` minibuffer (F-012): the buffer holds a COMMAND NAME (not an ex line), resolved on `<CR>`
-    /// against the command registry into a [`Command`]. `false` for the Vim `:`/`/` line.
-    mx: bool,
 }
 
 /// Fold an Emacs prefix count into a command that has no native count field by repeating it: `count <= 1`
@@ -2198,6 +2139,12 @@ impl Default for InputEngine {
         InputEngine::new()
     }
 }
+
+mod cmdline;
+use cmdline::CmdLine;
+
+mod repeat;
+use repeat::ChangeIntent;
 
 mod ex;
 pub use ex::{parse_ex, BufTarget, Ex};
