@@ -30,7 +30,27 @@ pub enum Ex {
     },
     /// `:checkhealth` / `:che` — report the running editor's health (F-030 / CAP-HEALTHCHECK).
     CheckHealth,
+    /// `:enew` / `:ene` — open a new empty (scratch) buffer in the focused window (F-007 multi-buffer).
+    Enew,
+    /// `:ls` / `:buffers` — list the buffers on the status line (F-007 multi-buffer).
+    Buffers,
+    /// `:bnext` / `:bn` — switch the focused window to the next buffer in list order (F-007).
+    BufferNext,
+    /// `:bprevious` / `:bp` — switch the focused window to the previous buffer in list order (F-007).
+    BufferPrev,
+    /// `:b {n}` (by buffer number) or `:b#` (the alternate buffer) — switch the focused window (F-007).
+    Buffer(BufTarget),
     Unknown(String),
+}
+
+/// The target of a `:b` command: a buffer NUMBER (its `DocumentId`, as shown in `:ls`) or the `#`
+/// alternate.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum BufTarget {
+    /// `:b {n}` — the buffer whose id is `n`.
+    Number(u64),
+    /// `:b#` — the alternate buffer.
+    Alternate,
 }
 
 /// A parsed `:g/pat/cmd` command (F-009 #4).
@@ -253,10 +273,17 @@ pub fn parse_ex(line: &str) -> Ex {
         "close" | "clo" => Ex::Close,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
-        // `:lmap`/`:lunmap` (F-027), then `:trace save`, `:[range]s///`, `:[range]g//` — each returns
-        // `None`/falls through to the next so an unrecognised line lands on `Ex::Unknown`.
+        "enew" | "ene" => Ex::Enew,
+        "ls" | "buffers" | "files" => Ex::Buffers,
+        "bnext" | "bn" => Ex::BufferNext,
+        "bprevious" | "bprev" | "bp" => Ex::BufferPrev,
+        "b#" | "buffer#" => Ex::Buffer(BufTarget::Alternate),
+        // `:lmap`/`:lunmap` (F-027), then `:b {n}`, `:trace save`, `:[range]s///`, `:[range]g//` — each
+        // returns `None`/falls through to the next so an unrecognised line lands on `Ex::Unknown`.
         _ => {
             if let Some(ex) = parse_lmap(line) {
+                ex
+            } else if let Some(ex) = parse_buffer(line) {
                 ex
             } else if let Some(rest) = line.strip_prefix("trace save") {
                 Ex::SaveTrace(rest.trim().to_string())
@@ -271,6 +298,19 @@ pub fn parse_ex(line: &str) -> Ex {
             }
         }
     }
+}
+
+/// Parse `:b {n}` / `:buffer {n}` (switch to buffer number `n`). `:b#` is handled as a literal in
+/// [`parse_ex`]. Returns `None` for any other line so `parse_ex` falls through. A verb must be followed
+/// by whitespace, so `:box` stays `Unknown`, not `:b ox`.
+fn parse_buffer(line: &str) -> Option<Ex> {
+    let rest = line
+        .strip_prefix("buffer")
+        .or_else(|| line.strip_prefix('b'))?;
+    // Accept `:b 2`, `:b2`, `:buffer 2`. The remainder must be a bare buffer number (verbs like `bnext`
+    // are matched literally before this, so they never reach here).
+    let n: u64 = rest.trim().parse().ok()?;
+    Some(Ex::Buffer(BufTarget::Number(n)))
 }
 
 /// Parse `:lmap {lhs} {rhs}` / `:lunmap {lhs}` (F-027 Lang-Arg mappings). Returns `None` for any other
