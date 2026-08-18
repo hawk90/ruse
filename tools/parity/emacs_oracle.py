@@ -26,12 +26,15 @@ THE NON-CORRUPTION TECHNIQUE (this harness's answer to the oracle hazard):
        GLOBAL variables that persist across `with-temp-buffer` calls in one image — the exact analogue of
        Neovim's shada leak. A fresh process per fixture is the only leak-proof isolation, so every fixture
        pays for its own `emacs -Q --batch`.
-    3. The command loop's `last-command` is threaded by hand. `call-interactively` sets `this-command`
-       but never `last-command` (in real Emacs the command loop promotes it *between* commands), so a raw
-       `call-interactively` sequence would silently drop every `last-command`-sensitive behaviour — most
-       importantly KILL ACCUMULATION, where consecutive kills append to one kill-ring entry rather than
-       pushing separate entries. The probe sets `last-command` to the prior `this-command` before each
-       call, so a fixture's `ops` behave exactly as the equivalent interactive keypress sequence would.
+    3. The command loop's `this-command`/`last-command` are threaded by hand. In batch,
+       `call-interactively` does NOT set `this-command` (in real Emacs the command loop sets it before
+       dispatch); only commands that assign it internally do — e.g. every kill routes through
+       `kill-region`, which sets `this-command` to `kill-region`. So the probe, before each call, promotes
+       the prior `this-command` to `last-command` AND sets `this-command` to the command about to run.
+       This makes KILL ACCUMULATION faithful in BOTH directions: consecutive kills append to one kill-ring
+       entry, and a non-kill command between kills (leaving the stale `kill-region` behind otherwise)
+       correctly BREAKS the run so the next kill starts a fresh entry — exactly as the equivalent
+       interactive keypress sequence would.
     3. The pin is VERIFIED, not assumed. `emacs --version` is parsed and asserted to carry the pinned
        version number (spec/parity/upstreams.yaml emacs.version_label), and that version string is
        recorded in every emitted document. A wrong binary refuses rather than silently recording a lie.
@@ -78,14 +81,18 @@ _ELISP = r"""
     (transient-mark-mode 1)
     (insert text)
     (goto-char (+ (point-min) (or start 0)))
-    ;; Model the command loop's `last-command` promotion. `call-interactively` sets `this-command`
-    ;; but NOT `last-command` (the real command loop does that between commands), so without this a
-    ;; sequence of kills would never accumulate onto one kill-ring entry — consecutive kills would
-    ;; each push a separate entry, a batch artifact rather than faithful interactive Emacs. Promoting
-    ;; the prior `this-command` before each call makes kill-accumulation (and any other
-    ;; `last-command`-sensitive command) behave exactly as an interactive keypress sequence would.
+    ;; Model the command loop's `this-command`/`last-command` handling around each command. In batch,
+    ;; `call-interactively` does NOT set `this-command` (the real command loop sets it before dispatch);
+    ;; only a command that assigns it internally does (e.g. every kill goes through `kill-region`, which
+    ;; sets `this-command` to `kill-region`). So we must, before each call: (1) promote the prior
+    ;; `this-command` to `last-command`, then (2) set `this-command` to the command about to run. Without
+    ;; (2), a non-kill command between two kills (e.g. `forward-char`) leaves the stale `kill-region` in
+    ;; `this-command`, so the next kill wrongly ACCUMULATES across it instead of starting a fresh entry;
+    ;; without (1), consecutive kills never accumulate at all. Together they make kill-accumulation — and
+    ;; any other `last-command`-sensitive behaviour — match an interactive keypress sequence exactly.
     (dolist (op ops)
       (setq last-command this-command)
+      (setq this-command (intern op))
       (call-interactively (intern op)))
     (princ (json-serialize
             (list :text (vconcat (split-string (buffer-string) "\n"))
@@ -270,6 +277,14 @@ FIXTURES: list[dict] = [
     {"name": "kill_line_from_bol", "text": "hello world", "ops": ["kill-line"]},
     {"name": "kill_line_at_eol", "text": "foo\nbar", "ops": ["kill-line"], "point": 3},
     {"name": "kill_line_whole_then_join", "text": "foo\nbar", "ops": ["kill-line", "kill-line"]},
+    # --- kill ACCUMULATION: consecutive kills append onto one kill-ring entry; a non-kill command in
+    #     between BREAKS the run so the next kill starts a fresh entry (Emacs `last-command` semantics). --
+    {"name": "kill_word_accumulate", "text": "foo bar", "ops": ["kill-word", "kill-word"]},
+    {
+        "name": "kill_accumulate_breaks_on_move",
+        "text": "foo bar baz",
+        "ops": ["kill-word", "forward-char", "kill-word"],
+    },
     # --- delete-char has no EOL boundary: at end-of-line it deletes the newline (crosses lines). -----
     {"name": "delete_char_at_eol", "text": "foo\nbar", "ops": ["delete-char"], "point": 3},
     {"name": "delete_char_twice", "text": "hello", "ops": ["delete-char", "delete-char"]},
@@ -419,6 +434,16 @@ def selftest() -> int:
     accum = run_emacs("foo bar", ["kill-word", "kill-word"])
     if accum["kill"] != "foo bar":
         _fail(f"accumulation: consecutive kills did not append -> kill={accum['kill']!r} (want 'foo bar')")
+        failures += 1
+
+    # 3c. KILL ACCUMULATION BREAKS on an intervening non-kill command. `kill-word`, then `forward-char`
+    #     (not a kill), then `kill-word` must leave the kill-ring head as JUST the second kill ("bar"), not
+    #     the accumulated "foobar". This only holds because the probe sets `this-command` per command; if
+    #     it relied on `call-interactively` alone, the stale `kill-region` would leak across forward-char
+    #     and the run would wrongly keep accumulating (the exact batch artifact this guards against).
+    broke = run_emacs("foo bar baz", ["kill-word", "forward-char", "kill-word"])
+    if broke["kill"] != "bar":
+        _fail(f"accumulation: a non-kill did not break the run -> kill={broke['kill']!r} (want 'bar')")
         failures += 1
 
     # 4. KNOWN OPS — hand-verified expectations. If the oracle disagrees, it is LYING and no fixture

@@ -191,6 +191,16 @@ triggers kill-accumulation. The probe now threads `last-command` (promoting the 
 each call) exactly as Emacs's command loop does, and a `--selftest` case guards it. Existing fixtures are
 byte-identical (none contained consecutive kills), so the fix only made the new multi-kill fixture truthful.
 
+Oracle fidelity note 2 (round 2): the round-1 threading was INCOMPLETE. In batch, `call-interactively` does
+not set `this-command` at all — only commands that assign it internally do (every kill routes through
+`kill-region`, which sets it to `kill-region`). So a non-kill command between two kills (e.g. `forward-char`)
+left the stale `kill-region` behind, and the next kill wrongly kept accumulating across it. The probe now
+ALSO sets `this-command` to each command before dispatch, so accumulation both ACCUMULATES on consecutive
+kills and BREAKS on an intervening non-kill — a second `--selftest` case (`kill-word, forward-char,
+kill-word` → kill `"bar"`, not `"foobar"`) guards the break. Existing fixtures stayed byte-identical (none
+had a non-kill between kills). Two new fixtures probe the behaviour: `kill_word_accumulate` (consecutive
+kills append) and `kill_accumulate_breaks_on_move` (the break); corpus 36 → 38.
+
 Sequencing of the new work: (1) `EmacsKillLine` (the EOL-newline kill, ratchets `kill_line_at_eol` and the
 text/point half of `kill_line_whole_then_join`); (2) kill-accumulation (ratchets the kill half of
 `kill_line_whole_then_join` and enables faithful multi-kill fixtures broadly); (3) the transpose / case
