@@ -3,6 +3,7 @@
 //! and routes it (confirm loop / overlays / window prefix / the input engine). Plus the two small
 //! frontend intercepts it calls: `is_ctrl` and the `C-w` window-command dispatch.
 
+use std::collections::HashMap;
 use std::io;
 use std::path::PathBuf;
 
@@ -11,7 +12,7 @@ use crossterm::terminal as ct_terminal;
 
 use ruse_core::{CaretGravity, Command, DocumentId, Mode, SplitDir, Workspace};
 
-use crate::app::dispatch::{run_cmd, run_ex};
+use crate::app::dispatch::{run_cmd, run_ex, BufferFile, Files};
 use crate::input::{parse_ex, Ex, Feed, InputEngine};
 use crate::terminal::guard::TermGuard;
 use crate::ui::palette::focused_context;
@@ -36,12 +37,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let recovered = persist::journal::replay(path.as_deref());
     let recovery = persist::assess_recovery(&disk, recovered.as_deref());
 
-    // Syntax highlighting (Rust only for v0) lives in the frontend; core stays dep-free.
-    let mut highlighter = path
-        .as_ref()
-        .and_then(|p| p.extension())
-        .and_then(|e| e.to_str())
-        .and_then(highlight::CachedHighlight::for_ext);
+    // Syntax highlighting lives in the frontend (core stays dep-free); one highlighter PER file buffer is
+    // built below in the `files` seed / on `:e`, keyed by DocumentId (F-007 multi-buffer).
     // hlsearch/incsearch match spans, cached on (revision, viewport, pattern) like the syntax highlighter
     // — no full-buffer regex per frame (F-009 #1).
     let mut cached_search = highlight::CachedSearch::default();
@@ -75,8 +72,27 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // The initial buffer owns the session file (`path`/`fmt`): name it, and remember its id so `:w` on any
     // OTHER buffer (`:enew` scratch) declines rather than clobbering the file (F-007 multi-buffer).
     let file_buf = ws.focused_buffer();
+    // The per-buffer file registry (F-007): the primary buffer joins it when opened with a path; `:e`
+    // adds more, `:enew` scratch buffers stay out (so `:w` on them declines). `:w` writes files[focused].
+    let mut files: Files = HashMap::new();
+    let mut highlighters: HashMap<ruse_core::DocumentId, highlight::CachedHighlight> =
+        HashMap::new();
     if let Some(p) = path.as_ref() {
         ws.set_focused_buffer_name(p.display().to_string());
+        files.insert(
+            file_buf,
+            BufferFile {
+                path: p.clone(),
+                fmt,
+            },
+        );
+        if let Some(h) = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .and_then(highlight::CachedHighlight::for_ext)
+        {
+            highlighters.insert(file_buf, h);
+        }
     }
     let mut recorded: Vec<Command> = Vec::new();
     let mut journal_ticks: u32 = 0; // throttle: append the recovery journal every Nth modified frame
@@ -181,13 +197,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         } else {
             0..snapshot.len()
         };
-        // Syntax highlighting is the FILE buffer's grammar (chosen from its extension); don't paint it over
-        // a scratch/other buffer's bytes (F-007). Its language dispatch per buffer is a follow-up slice.
-        let spans: &[highlight::Span] = highlighter
-            .as_mut()
-            .filter(|_| on_file)
-            .map(|h| h.spans(revision, &snapshot, visible.clone()))
-            .unwrap_or(&[]);
+        // Syntax highlighting is the FOCUSED buffer's own grammar (F-007): each file buffer has its own
+        // highlighter in the registry; a scratch/no-file buffer has none, so it paints unhighlighted.
+        let focused_id = ws.focused_buffer();
+        let spans: &[highlight::Span] = match highlighters.get_mut(&focused_id) {
+            Some(h) => h.spans(revision, &snapshot, visible.clone()),
+            None => &[],
+        };
         // The focused pane's extra reverse-video highlights: a `:s///c` confirm match, else the
         // incsearch pattern being typed in `/`…`?`, else the last search (hlsearch) — F-009 #1. The
         // search matches are viewport-cached (CachedSearch), not a per-frame full-buffer regex.
@@ -289,16 +305,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             if let PickOutcome::Accept = outcome {
                 let cmd = palette.as_ref().and_then(|p| p.selected().cloned());
                 if let Some(cmd) = cmd {
-                    run_cmd(
-                        cmd,
-                        &mut ws,
-                        &path,
-                        fmt,
-                        file_buf,
-                        &mut recorded,
-                        &mut status,
-                        &mut quit,
-                    );
+                    run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
                 }
             }
             if !matches!(outcome, PickOutcome::Continue) {
@@ -361,22 +368,43 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             sgr_mouse: guard.sgr_mouse(),
                             sync_output: guard.sync_output(),
                             bracketed_paste: guard.bracketed_paste(),
-                            file_ext: path
-                                .as_ref()
-                                .and_then(|p| p.extension())
+                            file_ext: files
+                                .get(&ws.focused_buffer())
+                                .and_then(|bf| bf.path.extension())
                                 .map(|e| e.to_string_lossy().into_owned()),
-                            grammar_ok: highlighter.is_some(),
+                            grammar_ok: highlighters.contains_key(&ws.focused_buffer()),
                             buffers: ws.window_count(),
                             trace_commands: recorded.len(),
                         };
                         status = health::summary_line(&health::report(&inputs));
                     }
+                    // `:e {file}` opens a file into a new buffer (F-007): read it, detect encoding, add the
+                    // buffer + focus it, and register its file identity + a highlighter for its extension.
+                    Ex::Edit(file) => {
+                        let p = PathBuf::from(&file);
+                        match std::fs::read(&p) {
+                            Ok(raw) => {
+                                let f = persist::encoding::FileFormat::detect(&raw);
+                                let clean = f.to_buffer(&raw);
+                                let id = ws.add_buffer(clean, Some(file.clone()));
+                                ws.focus_buffer(id);
+                                if let Some(h) = p
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .and_then(highlight::CachedHighlight::for_ext)
+                                {
+                                    highlighters.insert(id, h);
+                                }
+                                files.insert(id, BufferFile { path: p, fmt: f });
+                                status = format!("\"{file}\" {} bytes", raw.len());
+                            }
+                            Err(e) => status = format!("E484: can't open {file}: {e}"),
+                        }
+                    }
                     ex => run_ex(
                         &ex,
                         &mut ws,
-                        &path,
-                        fmt,
-                        file_buf,
+                        &files,
                         &initial,
                         &recorded,
                         &mut status,
@@ -391,31 +419,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 if let Some(p) = search_pattern(&cmd) {
                     search_hl = Some(p);
                 }
-                run_cmd(
-                    cmd,
-                    &mut ws,
-                    &path,
-                    fmt,
-                    file_buf,
-                    &mut recorded,
-                    &mut status,
-                    &mut quit,
-                );
+                run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
             }
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
                 for cmd in cmds {
-                    run_cmd(
-                        cmd,
-                        &mut ws,
-                        &path,
-                        fmt,
-                        file_buf,
-                        &mut recorded,
-                        &mut status,
-                        &mut quit,
-                    );
+                    run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
                 }
             }
         }
