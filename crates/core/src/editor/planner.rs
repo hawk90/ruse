@@ -1164,6 +1164,37 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 _ => nop(cur, st.view.mode),
             }
         }
+        // `M-SPC` (just-one-space) / `M-\` (delete-horizontal-space, D-051): collapse the run of spaces/tabs
+        // around point (never crossing a newline). `keep_one` leaves exactly one space with point after it
+        // (inserting one when there was none); otherwise it deletes them all. No kill-ring write.
+        Command::EmacsHorizontalSpace { keep_one } => {
+            let is_hws = |i: usize| b[i] == b' ' || b[i] == b'\t';
+            let mut s = cur;
+            while s > 0 && is_hws(s - 1) {
+                s -= 1;
+            }
+            let mut e = cur;
+            while e < b.len() && is_hws(e) {
+                e += 1;
+            }
+            if *keep_one {
+                // Already exactly a single space? Leave the buffer, rest point after it (a pure move).
+                if e - s == 1 && b[s] == b' ' {
+                    nop(s + 1, st.view.mode)
+                } else {
+                    edit(
+                        one(Edit::replace(s, e - s, b" ".to_vec())),
+                        s + 1,
+                        st.view.mode,
+                        hint,
+                    )
+                }
+            } else if e > s {
+                edit(one(Edit::delete(s, e - s)), s, st.view.mode, hint)
+            } else {
+                nop(cur, st.view.mode)
+            }
+        }
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
         Command::EmacsBufferEdge { start } => Plan {

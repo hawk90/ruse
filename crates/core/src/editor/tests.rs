@@ -2805,6 +2805,35 @@ mod mark_tests {
         assert_eq!(blank.view.cursor, 3, "all-blank line: land at its end");
     }
 
+    // Emacs just-one-space (M-SPC) / delete-horizontal-space (M-\) (D-051): collapse surrounding spaces/tabs.
+    #[test]
+    fn emacs_horizontal_space_collapses_surrounding_whitespace() {
+        let mut one = EditorState::new(b"foo   bar".to_vec());
+        one.set_caret_gravity(CaretGravity::BetweenChar);
+        one.set_cursor(4); // inside the three spaces
+        apply_command(&mut one, &Command::EmacsHorizontalSpace { keep_one: true });
+        assert_eq!(text(&one), "foo bar");
+        assert_eq!(one.view.cursor, 4, "point rests after the single space");
+
+        let mut none = EditorState::new(b"foo   bar".to_vec());
+        none.set_caret_gravity(CaretGravity::BetweenChar);
+        none.set_cursor(4);
+        apply_command(
+            &mut none,
+            &Command::EmacsHorizontalSpace { keep_one: false },
+        );
+        assert_eq!(text(&none), "foobar");
+        assert_eq!(none.view.cursor, 3);
+
+        // just-one-space with no surrounding whitespace inserts one.
+        let mut ins = EditorState::new(b"ab".to_vec());
+        ins.set_caret_gravity(CaretGravity::BetweenChar);
+        ins.set_cursor(1);
+        apply_command(&mut ins, &Command::EmacsHorizontalSpace { keep_one: true });
+        assert_eq!(text(&ins), "a b");
+        assert_eq!(ins.view.cursor, 2);
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {
