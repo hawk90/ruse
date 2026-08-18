@@ -2636,6 +2636,39 @@ mod mark_tests {
         assert!(eob.register().is_empty());
     }
 
+    // Emacs transpose-chars (D-051): swap the two chars around point and advance; at EOL transpose the two
+    // chars ending the line; inert with no pair. It never writes the kill ring.
+    #[test]
+    fn emacs_transpose_chars_swaps_around_point() {
+        // Mid-line: "abc" point 1 -> "bac" point 2 (swap 'a' and 'b').
+        let mut mid = EditorState::new(b"abc".to_vec());
+        mid.set_caret_gravity(CaretGravity::BetweenChar);
+        mid.set_cursor(1);
+        apply_command(&mut mid, &Command::EmacsTransposeChars);
+        assert_eq!(text(&mid), "bac");
+        assert_eq!(mid.view.cursor, 2);
+        assert!(
+            mid.register().is_empty(),
+            "transpose does not touch the kill ring"
+        );
+
+        // At end of line: "abc" point 3 -> transpose the last two chars -> "acb", point stays at 3.
+        let mut eol = EditorState::new(b"abc".to_vec());
+        eol.set_caret_gravity(CaretGravity::BetweenChar);
+        eol.set_cursor(3);
+        apply_command(&mut eol, &Command::EmacsTransposeChars);
+        assert_eq!(text(&eol), "acb");
+        assert_eq!(eol.view.cursor, 3);
+
+        // No pair (point at buffer start): inert.
+        let mut bob = EditorState::new(b"abc".to_vec());
+        bob.set_caret_gravity(CaretGravity::BetweenChar);
+        bob.set_cursor(0);
+        apply_command(&mut bob, &Command::EmacsTransposeChars);
+        assert_eq!(text(&bob), "abc");
+        assert_eq!(bob.view.cursor, 0);
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {

@@ -120,6 +120,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::Paste { .. }
         | C::EmacsYank { .. }
         | C::EmacsKillLine
+        | C::EmacsTransposeChars
         | C::DeleteSelection
         | C::OpForced {
             op: OpKind::Delete, ..
@@ -790,6 +791,12 @@ impl EmacsProfile {
             EmacsKey::ctrl('k'),
             EmacsBinding::Fixed(Command::EmacsKillLine),
         )
+        // Transpose-chars: swap the two characters around point and advance (D-051, `EmacsTransposeChars`).
+        // Count-less for now (the prefix-argument drag is a follow-up), so Fixed.
+        .bind(
+            EmacsKey::ctrl('t'),
+            EmacsBinding::Fixed(Command::EmacsTransposeChars),
+        )
         // Emacs region (D-027): set-mark, kill-region, kill-ring-save. `C-x C-x` (exchange) lives in the
         // C-x prefix map. `C-SPC` is bound as Ctrl+Space; some terminals deliver it as NUL — a delivery
         // detail for the frontend, not this map.
@@ -891,6 +898,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "backward-word" => Command::Move(1, Motion::WordBack),
         "delete-char" => Command::DeleteForward(1),
         "kill-line" => Command::EmacsKillLine,
+        "transpose-chars" => Command::EmacsTransposeChars,
         "kill-word" => Command::Delete(1, Motion::EmacsWordFwd),
         "yank" => Command::EmacsYank { count: 1 },
         "newline" => Command::InsertNewline,
