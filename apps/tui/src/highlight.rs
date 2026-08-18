@@ -19,10 +19,12 @@ pub struct Span {
     pub color: Color,
 }
 
-/// A configured highlighter for one language: an owned parser plus the compiled highlights query.
+/// A configured highlighter for one language: an owned parser plus the compiled highlights query, and
+/// the compiled injections query when the grammar ships one (`None` otherwise).
 pub struct Highlight {
     parser: Parser,
     query: Query,
+    injections: Option<Query>,
 }
 
 /// The grammar + highlights query for a file extension, or `None` for an unsupported type. Adding a
@@ -45,6 +47,27 @@ fn grammar_for(ext: &str) -> Option<(tree_sitter::Language, &'static str)> {
     })
 }
 
+/// The tree-sitter injections query for `ext`, or `None` if the grammar ships none. Only Rust bundles
+/// one today (it re-highlights macro `token_tree` bodies as Rust — see [`Highlight::injected_spans`]).
+fn injections_for(ext: &str) -> Option<&'static str> {
+    match ext {
+        "rs" => Some(tree_sitter_rust::INJECTIONS_QUERY),
+        _ => None,
+    }
+}
+
+/// Map an `injection.language` name (as set by an `#set!` directive in an injections query) to the file
+/// extension that [`grammar_for`] dispatches on. `None` for a language we don't bundle — the injected
+/// region is then left with only its outer-grammar highlighting.
+fn ext_for_injection_language(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "rust" => "rs",
+        "python" => "py",
+        "json" => "json",
+        _ => return None,
+    })
+}
+
 impl Highlight {
     /// A highlighter for the file extension `ext`, or `None` if the type is unsupported or its
     /// grammar/query fails to load.
@@ -53,7 +76,14 @@ impl Highlight {
         let mut parser = Parser::new();
         parser.set_language(&language).ok()?;
         let query = Query::new(&language, query_src).ok()?;
-        Some(Highlight { parser, query })
+        // An injections query is optional: a grammar without one (or with a query that fails to compile)
+        // simply never injects — the outer highlighting still applies.
+        let injections = injections_for(ext).and_then(|src| Query::new(&language, src).ok());
+        Some(Highlight {
+            parser,
+            query,
+            injections,
+        })
     }
 
     /// Walk the highlights query over `tree`, but only over the byte range `visible`, and collect a
@@ -78,6 +108,91 @@ impl Highlight {
             });
         }
         spans.sort_by_key(|s| std::cmp::Reverse(s.end - s.start));
+        spans
+    }
+
+    /// Base highlights plus any injected-language highlights, merged and ordered longest-first so the
+    /// render's per-byte last-wins flatten lets the most specific (shortest) capture win — including a
+    /// short injected span sitting inside the broad outer region it was injected from.
+    fn spans_with_injections(
+        &self,
+        tree: &Tree,
+        src: &[u8],
+        visible: std::ops::Range<usize>,
+    ) -> Vec<Span> {
+        let mut spans = self.spans_from(tree, src, visible.clone());
+        spans.extend(self.injected_spans(tree, src, visible));
+        spans.sort_by_key(|s| std::cmp::Reverse(s.end - s.start));
+        spans
+    }
+
+    /// Highlights contributed by language injections. For each `@injection.content` region the
+    /// injections query matches within `visible`, parse that region with the injected language's own
+    /// grammar and map its highlight spans back into the parent's byte coordinates. Rust's injections
+    /// re-highlight macro `token_tree` bodies — which the outer grammar leaves as opaque tokens — as
+    /// Rust, so identifiers/keywords inside `println!(...)`, `vec![...]` and `macro_rules!` bodies get
+    /// colored.
+    ///
+    /// The injected region is parsed fresh each call (no incremental reuse): regions are small and the
+    /// whole computation is viewport-bounded and cached per `(revision, viewport)` by [`CachedHighlight`],
+    /// so the cost is paid only on an edit or a scroll. Injection is depth-1 — a macro nested inside an
+    /// already-injected body is not recursively re-injected (the sub-parse uses the base highlights only).
+    fn injected_spans(
+        &self,
+        tree: &Tree,
+        src: &[u8],
+        visible: std::ops::Range<usize>,
+    ) -> Vec<Span> {
+        let Some(inj) = &self.injections else {
+            return Vec::new();
+        };
+        let content_idx = inj.capture_index_for_name("injection.content");
+        let mut cursor = QueryCursor::new();
+        cursor.set_byte_range(visible.clone());
+        let mut matches = cursor.matches(inj, tree.root_node(), src);
+        // Compile each injected language's grammar at most once per call — a viewport may hold many macro
+        // invocations, and recompiling the highlights query per match would dominate the cost.
+        let mut sub_cache: std::collections::HashMap<&'static str, Highlight> =
+            std::collections::HashMap::new();
+        let mut spans = Vec::new();
+        while let Some(m) = matches.next() {
+            // The injected language is carried by an `#set! injection.language "<name>"` on the pattern.
+            let sub_ext = inj
+                .property_settings(m.pattern_index)
+                .iter()
+                .find(|p| &*p.key == "injection.language")
+                .and_then(|p| p.value.as_deref())
+                .and_then(ext_for_injection_language);
+            let Some(sub_ext) = sub_ext else { continue };
+            let sub = match sub_cache.entry(sub_ext) {
+                std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+                std::collections::hash_map::Entry::Vacant(e) => match Highlight::for_ext(sub_ext) {
+                    Some(h) => e.insert(h),
+                    None => continue,
+                },
+            };
+            for cap in m.captures {
+                if Some(cap.index) != content_idx {
+                    continue;
+                }
+                let region = cap.node.byte_range();
+                let Some(slice) = src.get(region.clone()) else {
+                    continue;
+                };
+                let Some(subtree) = sub.parser.parse(slice, None) else {
+                    continue;
+                };
+                // The sub-parse's byte offsets are relative to `slice`; shift them into the parent's
+                // coordinates and keep only what actually falls inside the viewport.
+                for mut s in sub.spans_from(&subtree, slice, 0..slice.len()) {
+                    s.start += region.start;
+                    s.end += region.start;
+                    if s.end > visible.start && s.start < visible.end {
+                        spans.push(s);
+                    }
+                }
+            }
+        }
         spans
     }
 }
@@ -149,7 +264,7 @@ impl CachedHighlight {
             self.rev = Some(rev);
         }
         self.spans = match &self.tree {
-            Some(tree) => self.hl.spans_from(tree, src, visible.clone()),
+            Some(tree) => self.hl.spans_with_injections(tree, src, visible.clone()),
             None => Vec::new(),
         };
         self.key = Some((rev, visible));
@@ -353,6 +468,70 @@ mod tests {
         assert!(
             CachedHighlight::for_ext("xyz").is_none(),
             "an unsupported extension has no highlighter"
+        );
+    }
+
+    #[test]
+    fn injections_highlight_rust_macro_bodies() {
+        // A macro body is a flat `token_tree` to the outer grammar: individual keyword TOKENS still
+        // highlight, but STRUCTURE does not — a call `work()` is just an identifier token, never a
+        // `call_expression`, so the outer query cannot color `work` as a function. The rust->rust
+        // injection re-parses the body as Rust, recovering that structure. `work` at the same offset is
+        // Reset without injection and @function (Blue) with it.
+        let mut h = Highlight::for_ext("rs").expect("rust grammar");
+        let src = b"macro_rules! m { () => { work() }; }";
+        let tree = h.parser.parse(src, None).expect("parse");
+        let at = src
+            .windows(4)
+            .position(|w| w == b"work")
+            .expect("source has `work`");
+        let fn_color_at = |spans: &[Span]| {
+            spans
+                .iter()
+                .find(|s| s.start == at && s.end == at + 4)
+                .map(|s| s.color)
+        };
+        let base = h.spans_from(&tree, src, 0..src.len());
+        let full = h.spans_with_injections(&tree, src, 0..src.len());
+        assert_ne!(
+            fn_color_at(&base),
+            Some(Color::Blue),
+            "outer grammar sees the call target as a flat token, not a function: {base:?}"
+        );
+        assert_eq!(
+            fn_color_at(&full),
+            Some(Color::Blue),
+            "injection re-parses the macro body, coloring the call target as a function: {full:?}"
+        );
+    }
+
+    #[test]
+    fn injected_spans_are_bounded_to_the_viewport() {
+        // Injected highlights obey the same viewport bound as base highlights: a macro body entirely
+        // above the visible range contributes nothing.
+        let mut h = Highlight::for_ext("rs").expect("rust grammar");
+        let src = b"macro_rules! m { () => { let x = 1; }; }\nfn tail() {}\n";
+        let tree = h.parser.parse(src, None).expect("parse");
+        let tail = src
+            .windows(2)
+            .position(|w| w == b"fn")
+            .expect("has a tail fn");
+        let full = h.spans_with_injections(&tree, src, tail..src.len());
+        assert!(
+            full.iter().all(|s| s.end > tail),
+            "no injected span leaks from the hidden macro line: {full:?}"
+        );
+    }
+
+    #[test]
+    fn non_injecting_grammars_are_unaffected() {
+        // JSON ships no injections query, so its spans are exactly the base highlights (no panic, no
+        // change). This pins that the injection path is a no-op when `injections` is None.
+        let mut j = CachedHighlight::for_ext("json").expect("json grammar loads");
+        assert!(
+            !j.spans(Revision(0), br#"{"k": [1, 2, 3]}"#, 0..16)
+                .is_empty(),
+            "json still highlights with the injection path in place"
         );
     }
 
