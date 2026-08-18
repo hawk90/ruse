@@ -30,6 +30,8 @@ pub struct Highlight {
 /// The grammar + highlights query for a file extension, or `None` for an unsupported type. Adding a
 /// language is one arm here plus its `tree-sitter-<lang>` dep — the rest of the pipeline is generic.
 fn grammar_for(ext: &str) -> Option<(tree_sitter::Language, &'static str)> {
+    // Grammar crates disagree on the query const's name — some export HIGHLIGHTS_QUERY, some the
+    // singular HIGHLIGHT_QUERY — so each arm names its own.
     Some(match ext {
         "rs" => (
             tree_sitter_rust::LANGUAGE.into(),
@@ -43,15 +45,37 @@ fn grammar_for(ext: &str) -> Option<(tree_sitter::Language, &'static str)> {
             tree_sitter_python::LANGUAGE.into(),
             tree_sitter_python::HIGHLIGHTS_QUERY,
         ),
+        "sh" | "bash" => (
+            tree_sitter_bash::LANGUAGE.into(),
+            tree_sitter_bash::HIGHLIGHT_QUERY,
+        ),
+        "c" | "h" => (
+            tree_sitter_c::LANGUAGE.into(),
+            tree_sitter_c::HIGHLIGHT_QUERY,
+        ),
+        "go" => (
+            tree_sitter_go::LANGUAGE.into(),
+            tree_sitter_go::HIGHLIGHTS_QUERY,
+        ),
+        "js" | "mjs" | "cjs" | "jsx" => (
+            tree_sitter_javascript::LANGUAGE.into(),
+            tree_sitter_javascript::HIGHLIGHT_QUERY,
+        ),
+        "css" => (
+            tree_sitter_css::LANGUAGE.into(),
+            tree_sitter_css::HIGHLIGHTS_QUERY,
+        ),
         _ => return None,
     })
 }
 
-/// The tree-sitter injections query for `ext`, or `None` if the grammar ships none. Only Rust bundles
-/// one today (it re-highlights macro `token_tree` bodies as Rust — see [`Highlight::injected_spans`]).
+/// The tree-sitter injections query for `ext`, or `None` if the grammar ships none. Rust injects Rust
+/// into macro `token_tree` bodies; JavaScript injects into template literals / embedded regions. Both
+/// re-highlight content the outer grammar leaves opaque — see [`Highlight::injected_spans`].
 fn injections_for(ext: &str) -> Option<&'static str> {
     match ext {
         "rs" => Some(tree_sitter_rust::INJECTIONS_QUERY),
+        "js" | "mjs" | "cjs" | "jsx" => Some(tree_sitter_javascript::INJECTIONS_QUERY),
         _ => None,
     }
 }
@@ -64,6 +88,11 @@ fn ext_for_injection_language(name: &str) -> Option<&'static str> {
         "rust" => "rs",
         "python" => "py",
         "json" => "json",
+        "bash" => "sh",
+        "c" => "c",
+        "go" => "go",
+        "javascript" => "js",
+        "css" => "css",
         _ => return None,
     })
 }
@@ -469,6 +498,34 @@ mod tests {
             CachedHighlight::for_ext("xyz").is_none(),
             "an unsupported extension has no highlighter"
         );
+    }
+
+    #[test]
+    fn each_supported_language_loads_and_highlights() {
+        // Every dispatched extension must build a highlighter and produce at least one span for a small
+        // real snippet — this pins that the per-crate query-const name (HIGHLIGHT_QUERY vs
+        // HIGHLIGHTS_QUERY) and the grammar are wired correctly. Alias extensions map to the same grammar.
+        let cases: &[(&str, &[u8])] = &[
+            ("rs", b"fn main() { let x = 1; }"),
+            ("json", br#"{"k": 1}"#),
+            ("py", b"def f():\n    return 1\n"),
+            ("sh", b"echo \"$HOME\"\n"),
+            ("bash", b"for i in 1 2; do echo $i; done\n"),
+            ("c", b"int main(void) { return 0; }"),
+            ("h", b"#define N 1\n"),
+            ("go", b"package main\nfunc main() {}\n"),
+            ("js", b"const x = () => 42;"),
+            ("jsx", b"const el = <div/>;"),
+            ("css", b"a { color: red; }"),
+        ];
+        for (ext, src) in cases {
+            let mut h =
+                CachedHighlight::for_ext(ext).unwrap_or_else(|| panic!("{ext} grammar loads"));
+            assert!(
+                !h.spans(Revision(0), src, 0..src.len()).is_empty(),
+                "{ext} produces highlight spans",
+            );
+        }
     }
 
     #[test]
