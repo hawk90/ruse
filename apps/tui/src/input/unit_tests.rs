@@ -349,14 +349,15 @@ mod tests {
 
     #[test]
     fn emacs_kill_and_yank_over_the_unnamed_register() {
-        // F-012 / D-026: `C-k` kills to end of line — a delete that captures into the unnamed register
-        // (the depth-1 kill ring). `C-y` is Emacs yank (D-051, `EmacsYank`) — paste + set the mark, distinct
-        // from Vim `P`/`Paste`; it honours a prefix count.
+        // F-012 / D-026: `C-k` kills into the unnamed register (the depth-1 kill ring) via `EmacsKillLine`
+        // (D-051) — its own command, not Vim's `Delete(1, LineEnd)`, because at EOL it kills the newline.
+        // `C-y` is Emacs yank (D-051, `EmacsYank`) — paste + set the mark, distinct from Vim `P`/`Paste`;
+        // it honours a prefix count.
         let mut e = InputEngine::emacs();
 
         assert_eq!(
             e.feed(ctrl('k'), Mode::Insert),
-            Feed::Cmd(Command::Delete(1, Motion::LineEnd))
+            Feed::Cmd(Command::EmacsKillLine)
         );
         assert_eq!(
             e.feed(ctrl('y'), Mode::Insert),

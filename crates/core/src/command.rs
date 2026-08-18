@@ -228,6 +228,12 @@ pub enum Command {
     EmacsBufferEdge {
         start: bool,
     },
+    /// `C-k` (kill-line) — kill from point to end of line into the register (the kill ring). Distinct from
+    /// Vim `D` / `Delete(1, LineEnd)`: when point is already AT end of line, Emacs kills the terminating
+    /// newline instead (joining the next line up), and at end-of-buffer it is inert. The count-less default
+    /// (`kill-whole-line` nil, no prefix arg) — the binding ignores the prefix count (D-051 / RFC-0016:
+    /// an Emacs op diverging from its Vim lookalike in more than caret gravity is its own command).
+    EmacsKillLine,
 }
 
 fn motion_token(m: Motion) -> String {
@@ -531,6 +537,7 @@ impl Command {
                 format!("emacs_buffer_edge {}", if *start { "start" } else { "end" })
             }
             Command::ExchangePointMark => "exchange_point_mark".into(),
+            Command::EmacsKillLine => "emacs_kill_line".into(),
         }
     }
 
@@ -755,6 +762,7 @@ impl Command {
             "kill_region" => Command::KillRegion,
             "copy_region" => Command::CopyRegion,
             "exchange_point_mark" => Command::ExchangePointMark,
+            "emacs_kill_line" => Command::EmacsKillLine,
             "emacs_yank" => {
                 let count: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -1009,6 +1017,7 @@ mod tests {
             Command::EmacsYank { count: 4 },
             Command::EmacsBufferEdge { start: true },
             Command::EmacsBufferEdge { start: false },
+            Command::EmacsKillLine,
         ];
         for c in cases {
             assert_eq!(Command::from_line(&c.to_line()), Ok(c.clone()), "{c:?}");
