@@ -984,6 +984,34 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             set_anchor: None,
             set_mark: None,
         },
+        // Emacs-profile commands: the depth-1 region ops (D-027) and the distinct Emacs commands
+        // (D-051), grouped into `plan_emacs` to keep this match readable.
+        Command::SetMark
+        | Command::ExchangePointMark
+        | Command::CopyRegion
+        | Command::KillRegion
+        | Command::EmacsYank { .. }
+        | Command::EmacsKillLine
+        | Command::EmacsKillWord { .. }
+        | Command::EmacsBackwardKillWord { .. }
+        | Command::EmacsTransposeChars
+        | Command::EmacsTransposeWords
+        | Command::EmacsCaseWord { .. }
+        | Command::EmacsHorizontalSpace { .. }
+        | Command::EmacsOpenLine
+        | Command::EmacsMarkWord
+        | Command::EmacsKillWholeLine
+        | Command::EmacsCaseRegion { .. }
+        | Command::EmacsDeleteIndentation
+        | Command::EmacsBufferEdge { .. } => plan_emacs(st, b, cur, hint, cmd),
+    }
+}
+
+/// Plan the Emacs-profile commands split out of [`plan`]: the depth-1 region ops (D-027 —
+/// SetMark / KillRegion / CopyRegion / ExchangePointMark) and the distinct Emacs commands (D-051).
+/// The core stays profile-agnostic; the profile decides which of these its keymap resolves to.
+fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
+    match cmd {
         // Emacs region (D-027 depth-1). `C-SPC` drops the mark at point.
         Command::SetMark => Plan {
             action: Action::Nop,
@@ -1347,6 +1375,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             set_anchor: None,
             set_mark: Some(MarkWrite::Set(cur)),
         },
+        _ => unreachable!("plan_emacs handles only Emacs-profile commands"),
     }
 }
 
