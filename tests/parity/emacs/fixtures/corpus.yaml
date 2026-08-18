@@ -458,6 +458,39 @@
       }
     },
     {
+      "name": "kill_word_accumulate",
+      "text": "foo bar",
+      "ops": [
+        "kill-word",
+        "kill-word"
+      ],
+      "expect": {
+        "text": [
+          ""
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "foo bar"
+      }
+    },
+    {
+      "name": "kill_accumulate_breaks_on_move",
+      "text": "foo bar baz",
+      "ops": [
+        "kill-word",
+        "forward-char",
+        "kill-word"
+      ],
+      "expect": {
+        "text": [
+          "  baz"
+        ],
+        "point": 1,
+        "mark": null,
+        "kill": "bar"
+      }
+    },
+    {
       "name": "delete_char_at_eol",
       "text": "foo\nbar",
       "ops": [
