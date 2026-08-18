@@ -211,6 +211,8 @@ FIXTURES: list[dict] = [
     #     operator x motion --------------------------------------------------------------------------
     {"name": "d_to_eol", "lines": ["hello world"], "keys": "d$"},
     {"name": "d_to_bol", "lines": ["hello world"], "keys": "$d0"},
+    {"name": "caret_first_non_blank", "lines": ["  foo bar"], "keys": "$^"},
+    {"name": "d_caret_from_eol", "lines": ["  foobar"], "keys": "$d^"},
     {"name": "dG_to_last_line", "lines": ["alpha", "beta", "gamma"], "keys": "dG"},
     {"name": "dj_linewise", "lines": ["alpha", "beta", "gamma"], "keys": "dj"},
     {"name": "c_to_eol", "lines": ["hello world"], "keys": "c$END<Esc>"},
