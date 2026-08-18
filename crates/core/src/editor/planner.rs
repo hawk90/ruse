@@ -355,6 +355,51 @@ fn captured(b: &[u8], s: usize, e: usize, linewise: bool) -> Register {
     }
 }
 
+/// Whether `byte` is horizontal whitespace (a space or tab) — never a newline. The shared predicate for
+/// the whitespace-fixup commands (`J`, `just-one-space`, `delete-horizontal-space`, `delete-indentation`).
+fn is_hspace(byte: u8) -> bool {
+    byte == b' ' || byte == b'\t'
+}
+
+/// The first index `<= from` such that `b[i..from]` is all horizontal whitespace (scan left).
+fn hspace_start(b: &[u8], from: usize) -> usize {
+    let mut s = from;
+    while s > 0 && is_hspace(b[s - 1]) {
+        s -= 1;
+    }
+    s
+}
+
+/// The first index `>= from` that is not horizontal whitespace (scan right).
+fn hspace_end(b: &[u8], from: usize) -> usize {
+    let mut e = from;
+    while e < b.len() && is_hspace(b[e]) {
+        e += 1;
+    }
+    e
+}
+
+/// The active Emacs region as an ordered `[s, e)` byte span, or `None` when no mark is set or the mark
+/// coincides with point (a degenerate region — the region commands are inert then). Shared by
+/// `KillRegion` / `CopyRegion` / `EmacsCaseRegion`.
+fn active_region(st: &EditorState, cur: usize) -> Option<(usize, usize)> {
+    match st.view.mark {
+        Some(m) if m != cur => Some((cur.min(m), cur.max(m))),
+        _ => None,
+    }
+}
+
+/// Recase `b[s..e]` with `case`, or `None` when the span is empty or not valid UTF-8 (a grapheme-boundary
+/// span always is). Shared by `EmacsCaseWord` (forward-word span) and `EmacsCaseRegion` (the region).
+fn recase_span(b: &[u8], s: usize, e: usize, case: WordCase) -> Option<Vec<u8>> {
+    if e <= s {
+        return None;
+    }
+    std::str::from_utf8(&b[s..e])
+        .ok()
+        .map(|span| recase(span, case).into_bytes())
+}
+
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     let b = st.bytes();
     let cur = st.view.cursor;
@@ -623,10 +668,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 nop(cur, st.view.mode)
             } else {
                 // Delete the newline plus the next line's leading blanks, insert one space.
-                let mut ws_end = le + 1;
-                while ws_end < b.len() && (b[ws_end] == b' ' || b[ws_end] == b'\t') {
-                    ws_end += 1;
-                }
+                let ws_end = hspace_end(b, le + 1);
                 edit(
                     one(Edit::replace(le, ws_end - le, b" ".to_vec())),
                     le,
@@ -1039,9 +1081,8 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         },
         // `M-w` copies the region `[min,max)` charwise into the register; point and mark are untouched. An
         // empty region or no mark is inert.
-        Command::CopyRegion => match st.view.mark {
-            Some(m) if m != cur => {
-                let (s, e) = (cur.min(m), cur.max(m));
+        Command::CopyRegion => match active_region(st, cur) {
+            Some((s, e)) => {
                 let reg = captured(b, s, e, false);
                 Plan {
                     action: Action::Nop,
@@ -1054,14 +1095,13 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                     set_mark: None,
                 }
             }
-            _ => nop(cur, st.view.mode),
+            None => nop(cur, st.view.mode),
         },
         // `C-w` kills the region into the register (the kill ring) and leaves point and mark together at its
         // start — Emacs keeps the mark at the region's lower bound `s` (where point also lands after the
         // deletion collapses the span), it does NOT clear it. An empty region or no mark is inert.
-        Command::KillRegion => match st.view.mark {
-            Some(m) if m != cur => {
-                let (s, e) = (cur.min(m), cur.max(m));
+        Command::KillRegion => match active_region(st, cur) {
+            Some((s, e)) => {
                 let reg = captured(b, s, e, false);
                 Plan {
                     action: Action::Txn {
@@ -1078,7 +1118,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                     set_mark: Some(MarkWrite::Set(s)),
                 }
             }
-            _ => nop(cur, st.view.mode),
+            None => nop(cur, st.view.mode),
         },
         // `C-y` (Emacs yank, D-051): the same gravity-aware charwise paste as `Paste{after:false}`, plus it
         // SETS the mark at the insertion start (point before the paste). An empty register is inert (no mark
@@ -1219,9 +1259,8 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         // UTF-8 to recase; point lands at `cur + new_len` in case the recased bytes changed length.
         Command::EmacsCaseWord { case } => {
             let end = motion::target(b, cur, Motion::EmacsWordFwd, 1);
-            match (end > cur).then(|| std::str::from_utf8(&b[cur..end])) {
-                Some(Ok(span)) => {
-                    let recased = recase(span, *case).into_bytes();
+            match recase_span(b, cur, end, *case) {
+                Some(recased) => {
                     let cursor = cur + recased.len();
                     Plan {
                         action: Action::Txn {
@@ -1237,22 +1276,14 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                         set_mark: None,
                     }
                 }
-                _ => nop(cur, st.view.mode),
+                None => nop(cur, st.view.mode),
             }
         }
         // `M-SPC` (just-one-space) / `M-\` (delete-horizontal-space, D-051): collapse the run of spaces/tabs
         // around point (never crossing a newline). `keep_one` leaves exactly one space with point after it
         // (inserting one when there was none); otherwise it deletes them all. No kill-ring write.
         Command::EmacsHorizontalSpace { keep_one } => {
-            let is_hws = |i: usize| b[i] == b' ' || b[i] == b'\t';
-            let mut s = cur;
-            while s > 0 && is_hws(s - 1) {
-                s -= 1;
-            }
-            let mut e = cur;
-            while e < b.len() && is_hws(e) {
-                e += 1;
-            }
+            let (s, e) = (hspace_start(b, cur), hspace_end(b, cur));
             if *keep_one {
                 // Already exactly a single space? Leave the buffer, rest point after it (a pure move).
                 if e - s == 1 && b[s] == b' ' {
@@ -1311,30 +1342,24 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         }
         // `C-x C-u` / `C-x C-l` (Emacs upcase-/downcase-/capitalize-region, D-051): recase the active region
         // `[min(point,mark), max)` and leave point and mark where they are. Inert without a mark. No kill write.
-        Command::EmacsCaseRegion { case } => match st.view.mark {
-            Some(m) if m != cur => {
-                let (s, e) = (cur.min(m), cur.max(m));
-                match std::str::from_utf8(&b[s..e]) {
-                    Ok(span) => {
-                        let recased = recase(span, *case).into_bytes();
-                        Plan {
-                            action: Action::Txn {
-                                edits: one(Edit::replace(s, e - s, recased)),
-                                hint,
-                            },
-                            cursor: cur,
-                            mode: st.view.mode,
-                            is_edit: true,
-                            effects: Vec::new(),
-                            set_register: None,
-                            set_anchor: None,
-                            set_mark: None,
-                        }
-                    }
-                    Err(_) => nop(cur, st.view.mode),
-                }
-            }
-            _ => nop(cur, st.view.mode),
+        Command::EmacsCaseRegion { case } => match active_region(st, cur) {
+            Some((s, e)) => match recase_span(b, s, e, *case) {
+                Some(recased) => Plan {
+                    action: Action::Txn {
+                        edits: one(Edit::replace(s, e - s, recased)),
+                        hint,
+                    },
+                    cursor: cur,
+                    mode: st.view.mode,
+                    is_edit: true,
+                    effects: Vec::new(),
+                    set_register: None,
+                    set_anchor: None,
+                    set_mark: None,
+                },
+                None => nop(cur, st.view.mode),
+            },
+            None => nop(cur, st.view.mode),
         },
         // `M-^` (Emacs delete-indentation / join-line, D-051): join this line to the previous one — delete
         // the preceding newline plus the previous line's trailing whitespace and this line's leading
@@ -1345,15 +1370,10 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
             if ls == 0 {
                 nop(cur, st.view.mode) // no previous line to join to
             } else {
-                let is_hws = |i: usize| b[i] == b' ' || b[i] == b'\t';
-                let mut s = ls - 1; // the newline joining to the previous line
-                while s > 0 && is_hws(s - 1) {
-                    s -= 1; // eat the previous line's trailing whitespace
-                }
-                let mut e = ls;
-                while e < b.len() && is_hws(e) {
-                    e += 1; // eat this line's leading indentation
-                }
+                // Eat the previous line's trailing whitespace (back from the newline) and this line's
+                // leading indentation (forward from its start).
+                let s = hspace_start(b, ls - 1);
+                let e = hspace_end(b, ls);
                 // fixup-whitespace: one space, unless the join sits at the start of its line (empty prev).
                 let repl: Vec<u8> = if s == line_start(b, s) {
                     Vec::new()
