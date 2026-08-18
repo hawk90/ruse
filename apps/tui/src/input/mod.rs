@@ -930,24 +930,6 @@ impl EmacsProfile {
     }
 }
 
-/// The command-line namespace's owned state (F-026 acceptance #2): a prefix, a line buffer, and a
-/// cursor. `ex_mode` distinguishes the `gQ` Ex namespace (stays open, re-prompting after each `<CR>`)
-/// from a one-shot `:`/`/` line. History index / wildmenu / incsearch UX are deferred (acceptance #3).
-struct CmdLine {
-    /// `:` (ex) or `/` (search) — also the glyph the status line shows.
-    prefix: char,
-    /// The text typed so far. Owned HERE, never on the frontend.
-    buffer: String,
-    /// Insertion point as a char index. MVP edits append/backspace at the end (mid-line editing is the
-    /// deferred full line-editor); the field exists because the namespace owns the cursor (acceptance #2).
-    cursor: usize,
-    /// `gQ` Ex mode: `<CR>` executes AND re-opens the line; `:visual`/`:vi`/empty exits.
-    ex_mode: bool,
-    /// Emacs `M-x` minibuffer (F-012): the buffer holds a COMMAND NAME (not an ex line), resolved on `<CR>`
-    /// against the command registry into a [`Command`]. `false` for the Vim `:`/`/` line.
-    mx: bool,
-}
-
 /// Fold an Emacs prefix count into a command that has no native count field by repeating it: `count <= 1`
 /// is the bare command, more is an ordered `Replay` (`C-u 3 RET` → three newlines). The Emacs path never
 /// records, so `Replay` here is a pure "apply each in turn", not dot-repeat.
@@ -2157,6 +2139,9 @@ impl Default for InputEngine {
         InputEngine::new()
     }
 }
+
+mod cmdline;
+use cmdline::CmdLine;
 
 mod repeat;
 use repeat::ChangeIntent;
