@@ -654,6 +654,185 @@
         "mark": null,
         "kill": null
       }
+    },
+    {
+      "name": "back_to_indentation",
+      "text": "  foo",
+      "ops": [
+        "back-to-indentation"
+      ],
+      "point": 5,
+      "expect": {
+        "text": [
+          "  foo"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "just_one_space",
+      "text": "foo   bar",
+      "ops": [
+        "just-one-space"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "delete_horizontal_space",
+      "text": "foo   bar",
+      "ops": [
+        "delete-horizontal-space"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "foobar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "open_line",
+      "text": "foobar",
+      "ops": [
+        "open-line"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo",
+          "bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_kill_word",
+      "text": "foo bar",
+      "ops": [
+        "backward-kill-word"
+      ],
+      "point": 7,
+      "expect": {
+        "text": [
+          "foo "
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": "bar"
+      }
+    },
+    {
+      "name": "backward_kill_word_accumulate",
+      "text": "foo bar baz",
+      "ops": [
+        "backward-kill-word",
+        "backward-kill-word"
+      ],
+      "point": 11,
+      "expect": {
+        "text": [
+          "foo "
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": "bar baz"
+      }
+    },
+    {
+      "name": "transpose_words",
+      "text": "foo bar",
+      "ops": [
+        "transpose-words"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "bar foo"
+        ],
+        "point": 7,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "mark_word",
+      "text": "foo bar",
+      "ops": [
+        "mark-word"
+      ],
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "point": 0,
+        "mark": 3,
+        "kill": null
+      }
+    },
+    {
+      "name": "kill_whole_line",
+      "text": "foo\nbar",
+      "ops": [
+        "kill-whole-line"
+      ],
+      "point": 1,
+      "expect": {
+        "text": [
+          "bar"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "foo\n"
+      }
+    },
+    {
+      "name": "upcase_region",
+      "text": "foo bar",
+      "ops": [
+        "set-mark-command",
+        "forward-word",
+        "upcase-region"
+      ],
+      "expect": {
+        "text": [
+          "FOO bar"
+        ],
+        "point": 3,
+        "mark": 0,
+        "kill": null
+      }
+    },
+    {
+      "name": "downcase_region",
+      "text": "FOO BAR",
+      "ops": [
+        "set-mark-command",
+        "forward-word",
+        "downcase-region"
+      ],
+      "expect": {
+        "text": [
+          "foo BAR"
+        ],
+        "point": 3,
+        "mark": 0,
+        "kill": null
+      }
     }
   ]
 }
