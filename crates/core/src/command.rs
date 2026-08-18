@@ -500,6 +500,32 @@ pub enum CommandParseError {
     BadArgument(String),
 }
 
+/// Parse a `u32` argument (a count or a char codepoint) from a command line's token, or a `BadArgument`
+/// error naming the line. The single source for the trace codec's count/codepoint parsing.
+fn arg_u32(arg: Option<&str>, line: &str) -> Result<u32, CommandParseError> {
+    arg.and_then(|a| a.parse().ok())
+        .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))
+}
+
+/// The trace-codec token for a [`WordCase`].
+fn word_case_token(case: WordCase) -> &'static str {
+    match case {
+        WordCase::Upcase => "upcase",
+        WordCase::Downcase => "downcase",
+        WordCase::Capitalize => "capitalize",
+    }
+}
+
+/// Parse a [`WordCase`] argument (`upcase` / `downcase` / `capitalize`), or a `BadArgument` error.
+fn arg_word_case(arg: Option<&str>, line: &str) -> Result<WordCase, CommandParseError> {
+    match arg {
+        Some("upcase") => Ok(WordCase::Upcase),
+        Some("downcase") => Ok(WordCase::Downcase),
+        Some("capitalize") => Ok(WordCase::Capitalize),
+        _ => Err(CommandParseError::BadArgument(line.to_string())),
+    }
+}
+
 impl Command {
     /// The stable single-line serialization of this command (used by the trace format). A `char` argument
     /// is encoded as its decimal Unicode scalar value so whitespace/newlines never need escaping.
@@ -624,23 +650,13 @@ impl Command {
             Command::EmacsOpenLine => "emacs_open_line".into(),
             Command::EmacsMarkWord => "emacs_mark_word".into(),
             Command::EmacsKillWholeLine => "emacs_kill_whole_line".into(),
-            Command::EmacsCaseRegion { case } => format!(
-                "emacs_case_region {}",
-                match case {
-                    WordCase::Upcase => "upcase",
-                    WordCase::Downcase => "downcase",
-                    WordCase::Capitalize => "capitalize",
-                }
-            ),
+            Command::EmacsCaseRegion { case } => {
+                format!("emacs_case_region {}", word_case_token(*case))
+            }
             Command::EmacsDeleteIndentation => "emacs_delete_indentation".into(),
-            Command::EmacsCaseWord { case } => format!(
-                "emacs_case_word {}",
-                match case {
-                    WordCase::Upcase => "upcase",
-                    WordCase::Downcase => "downcase",
-                    WordCase::Capitalize => "capitalize",
-                }
-            ),
+            Command::EmacsCaseWord { case } => {
+                format!("emacs_case_word {}", word_case_token(*case))
+            }
         }
     }
 
@@ -672,9 +688,7 @@ impl Command {
             "open_above" => Command::OpenAbove,
             "enter_replace" => Command::EnterReplace,
             "replace_type" => {
-                let cp: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let cp = arg_u32(arg, line)?;
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::ReplaceType(c)
@@ -682,17 +696,13 @@ impl Command {
             "replace_backspace" => Command::ReplaceBackspace,
             "enter_virtual_replace" => Command::EnterVirtualReplace,
             "virtual_replace_type" => {
-                let cp: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let cp = arg_u32(arg, line)?;
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::VirtualReplaceType(c)
             }
             "insert_char" => {
-                let cp: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let cp = arg_u32(arg, line)?;
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::InsertChar(c)
@@ -700,15 +710,11 @@ impl Command {
             "insert_newline" => Command::InsertNewline,
             "delete_back" => Command::DeleteBack,
             "delete_under" => {
-                let n: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let n = arg_u32(arg, line)?;
                 Command::DeleteUnder(n)
             }
             "delete_forward" => {
-                let n: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let n = arg_u32(arg, line)?;
                 Command::DeleteForward(n)
             }
             "replace_char" => {
@@ -727,23 +733,17 @@ impl Command {
                 Command::ReplaceChar(n, c)
             }
             "toggle_case" => {
-                let n: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let n = arg_u32(arg, line)?;
                 Command::ToggleCase(n)
             }
             "join_lines" => Command::JoinLines,
             "break_undo" => Command::BreakUndo,
             "shift_right" => {
-                let n: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let n = arg_u32(arg, line)?;
                 Command::ShiftRight(n)
             }
             "shift_left" => {
-                let n: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let n = arg_u32(arg, line)?;
                 Command::ShiftLeft(n)
             }
             "move" => return op_cmd(arg, Command::Move),
@@ -779,15 +779,11 @@ impl Command {
             }
             "paste_after" => Command::Paste {
                 after: true,
-                count: arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?,
+                count: arg_u32(arg, line)?,
             },
             "paste_before" => Command::Paste {
                 after: false,
-                count: arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?,
+                count: arg_u32(arg, line)?,
             },
             "select_register" => {
                 // No arg → the unnamed register; otherwise a decimal Unicode scalar for the register name.
@@ -829,9 +825,7 @@ impl Command {
             "reselect_visual" => Command::ReselectVisual,
             "swap_selection_ends" => Command::SwapSelectionEnds,
             "replace_selection" => {
-                let cp: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let cp = arg_u32(arg, line)?;
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::ReplaceSelection(c)
@@ -869,54 +863,30 @@ impl Command {
             "emacs_transpose_chars" => Command::EmacsTransposeChars,
             "emacs_transpose_words" => Command::EmacsTransposeWords,
             "emacs_kill_word" => {
-                let count: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let count = arg_u32(arg, line)?;
                 Command::EmacsKillWord { count }
             }
             "emacs_backward_kill_word" => {
-                let count: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let count = arg_u32(arg, line)?;
                 Command::EmacsBackwardKillWord { count }
             }
             "emacs_open_line" => Command::EmacsOpenLine,
             "emacs_mark_word" => Command::EmacsMarkWord,
             "emacs_kill_whole_line" => Command::EmacsKillWholeLine,
-            "emacs_case_region" => match arg {
-                Some("upcase") => Command::EmacsCaseRegion {
-                    case: WordCase::Upcase,
-                },
-                Some("downcase") => Command::EmacsCaseRegion {
-                    case: WordCase::Downcase,
-                },
-                Some("capitalize") => Command::EmacsCaseRegion {
-                    case: WordCase::Capitalize,
-                },
-                _ => return Err(CommandParseError::BadArgument(line.to_string())),
+            "emacs_case_region" => Command::EmacsCaseRegion {
+                case: arg_word_case(arg, line)?,
             },
             "emacs_horizontal_space" => match arg {
                 Some("one") => Command::EmacsHorizontalSpace { keep_one: true },
                 Some("none") => Command::EmacsHorizontalSpace { keep_one: false },
                 _ => return Err(CommandParseError::BadArgument(line.to_string())),
             },
-            "emacs_case_word" => match arg {
-                Some("upcase") => Command::EmacsCaseWord {
-                    case: WordCase::Upcase,
-                },
-                Some("downcase") => Command::EmacsCaseWord {
-                    case: WordCase::Downcase,
-                },
-                Some("capitalize") => Command::EmacsCaseWord {
-                    case: WordCase::Capitalize,
-                },
-                _ => return Err(CommandParseError::BadArgument(line.to_string())),
+            "emacs_case_word" => Command::EmacsCaseWord {
+                case: arg_word_case(arg, line)?,
             },
             "emacs_delete_indentation" => Command::EmacsDeleteIndentation,
             "emacs_yank" => {
-                let count: u32 = arg
-                    .and_then(|a| a.parse().ok())
-                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let count = arg_u32(arg, line)?;
                 Command::EmacsYank { count }
             }
             "emacs_buffer_edge" => match arg {
