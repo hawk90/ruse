@@ -689,12 +689,13 @@ features:
     # progress: #1 (capture-group colours) + #2 (snapshot parse) done; #3 (incremental parse) DONE — the
     # highlighter keeps the Tree + reparses incrementally (InputEdit from a byte-diff) and bounds the query
     # to the visible range (~6-7× per-keystroke win, testing-and-benchmarks.md). MULTI-LANGUAGE
-    # landed (#135): grammar_for(ext) dispatches Rust/JSON/Python by file extension (adding a language =
-    # one arm + its tree-sitter-<lang> dep). #4 INJECTIONS landed (#194): the highlighter runs each
+    # landed (#135, broadened #196): grammar_for(ext) dispatches Rust/JSON/Python/Bash/C/Go/JavaScript/CSS
+    # by file extension (adding a language = one arm + its tree-sitter-<lang> dep; per-crate the query
+    # const is HIGHLIGHT_QUERY or HIGHLIGHTS_QUERY). #4 INJECTIONS landed (#194): the highlighter runs each
     # grammar's injections query and re-parses @injection.content regions with the injected language,
-    # mapping spans back into parent coordinates (viewport-bounded, cached, depth-1). Only tree-sitter-rust
-    # bundles an injections query today (macro token_tree bodies -> Rust), so injection is Rust-only until
-    # more grammars ship one. Stays `planned`: FOLDS/INDENT (the rest of #4) are unbuilt — NO bundled
+    # mapping spans back into parent coordinates (viewport-bounded, cached, depth-1). Rust (macro
+    # token_tree -> Rust) and JavaScript (template literals / embedded) ship injections queries today; a
+    # grammar without one is a no-op. Stays `planned`: FOLDS/INDENT (the rest of #4) are unbuilt — NO bundled
     # grammar ships a folds/indents query, and both need downstream editor features (folding UI,
     # auto-indent) that do not exist yet; the parity chain (legacy NVIM-TS-*) is also not yet repointed.
     status: planned
