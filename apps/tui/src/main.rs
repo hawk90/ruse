@@ -318,6 +318,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
     let mut palette: Option<Palette> = None; // the command palette overlay, when open (F-004)
+    let mut line_picker: Option<LinePicker> = None; // the buffer-line fuzzy picker overlay (F-013 NAT-3)
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -410,31 +411,35 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         };
         // The palette (F-004 #2), when open, owns the command line (its query, prefixed `>`) and paints
         // its context-filtered matches with each command's static binding above the status line.
-        let palette_rows: Vec<(String, bool)> = palette
-            .as_ref()
-            .map(|p| {
-                p.matches
-                    .iter()
-                    .enumerate()
-                    .map(|(i, s)| {
-                        let binding = engine
-                            .binding_label(&s.command)
-                            .unwrap_or_else(|| "—".into());
-                        (
-                            format!("{:<28} {:>5}   {:?}", s.title, binding, s.category),
-                            i == p.selected,
-                        )
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        // Overlay match rows painted above the status line — at most one overlay is open at a time, so the
+        // command palette (F-004) and the line picker (F-013 NAT-3) share the same paint slot.
+        let overlay_rows: Vec<(String, bool)> = if let Some(p) = palette.as_ref() {
+            p.matches
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    let binding = engine
+                        .binding_label(&s.command)
+                        .unwrap_or_else(|| "—".into());
+                    (
+                        format!("{:<28} {:>5}   {:?}", s.title, binding, s.category),
+                        i == p.selected,
+                    )
+                })
+                .collect()
+        } else if let Some(p) = line_picker.as_ref() {
+            p.rows()
+        } else {
+            Vec::new()
+        };
         // The Native leader (which-key) hint owns the command line while armed (F-013 NAT-2), shown with a
-        // Space prefix — below the palette, above the ordinary `:`/`/` line (neither can co-occur with it).
+        // Space prefix — below the overlay, above the ordinary `:`/`/` line (none can co-occur).
         let leader_hint = engine.leader_hint();
-        let cmd_line: Option<(char, &str)> = match (&palette, &leader_hint) {
-            (Some(p), _) => Some(('>', p.query.as_str())),
-            (None, Some(h)) => Some((' ', h.as_str())),
-            (None, None) => engine.cmdline().map(|(pfx, t, _)| (pfx, t)),
+        let cmd_line: Option<(char, &str)> = match (&palette, &line_picker, &leader_hint) {
+            (Some(p), _, _) => Some(('>', p.query.as_str())), // command palette prompt
+            (None, Some(p), _) => Some(('#', p.query.as_str())), // line-picker prompt (# = line jump)
+            (None, None, Some(h)) => Some((' ', h.as_str())),
+            (None, None, None) => engine.cmdline().map(|(pfx, t, _)| (pfx, t)),
         };
         render(
             &mut out,
@@ -447,7 +452,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &mut prev_frame,
             sync_output,
             &focus_hl,
-            &palette_rows,
+            &overlay_rows,
         )?;
         let Event::Key(key) = event::read()? else {
             continue;
@@ -458,6 +463,12 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
         if confirm.is_some() {
             confirm_key(&mut confirm, key, &mut ws, &mut status);
+            continue;
+        }
+        // The line picker owns the keystream while open (F-013 NAT-3): type to filter, Up/Down to select,
+        // Enter to jump the cursor to the line, Esc to close. Checked before the palette; only one is open.
+        if line_picker.is_some() {
+            line_picker_key(&mut line_picker, key, &mut ws);
             continue;
         }
         // The command palette owns the keystream while open (F-004 #2): type to filter, Up/Down to
@@ -491,6 +502,12 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // `C-p` opens the command palette (F-004 #2), context-filtered to the focused view.
         if normal && is_ctrl(key, 'p') {
             palette = Some(Palette::open(&focused_context(&ws)));
+            continue;
+        }
+        // `C-l` opens the buffer-line fuzzy picker (F-013 NAT-3). Normal-only, so the Emacs profile's
+        // non-modal C-l (recenter) is unaffected; C-l is unbound in the Vim/Native Normal grammar.
+        if normal && is_ctrl(key, 'l') {
+            line_picker = Some(LinePicker::open(ws.focused().doc.bytes()));
             continue;
         }
         // Every other key — command-line included — goes through the engine (F-026): the command-line
@@ -825,6 +842,120 @@ impl Palette {
 
     fn selected_command(&self) -> Option<ruse_core::Command> {
         self.matches.get(self.selected).map(|s| s.command.clone())
+    }
+}
+
+/// A buffer-line fuzzy picker — the first picker "special view" overlay (view-window-workspace.md §7
+/// VW-OVERLAY / F-013 NAT-3). It lists the focused buffer's lines, filters them by a typed query, and on
+/// Enter jumps the focused cursor to the selected line. Structurally it is the same modal overlay as the
+/// command [`Palette`] — a query, a filtered match list, a selection, and a transient keymap that owns the
+/// keystream while open — but over a different item source (lines) and a different action (jump, not a
+/// [`Command`]). The eventual home is one generic picker over VW-OVERLAY's `OverlayStack`; folding the
+/// command palette into it is a follow-up. Buffer/file pickers wait on the multi-buffer arena.
+struct LinePicker {
+    /// The typed filter.
+    query: String,
+    /// Every line as `(display/search text, byte offset of the line start)`, in file order.
+    lines: Vec<(String, usize)>,
+    /// Indices into `lines` that match the current query (a subset).
+    matches: Vec<usize>,
+    /// Selected row into `matches`.
+    selected: usize,
+}
+
+impl LinePicker {
+    /// Open over `bytes`: one entry per line (a trailing final newline does not yield an empty last
+    /// entry — there is no line to jump to there), each carrying the byte offset of its start.
+    fn open(bytes: &[u8]) -> LinePicker {
+        let mut lines = Vec::new();
+        let mut start = 0usize;
+        for (i, b) in bytes.iter().enumerate() {
+            if *b == b'\n' {
+                lines.push((
+                    String::from_utf8_lossy(&bytes[start..i]).into_owned(),
+                    start,
+                ));
+                start = i + 1;
+            }
+        }
+        if start < bytes.len() {
+            lines.push((String::from_utf8_lossy(&bytes[start..]).into_owned(), start));
+        }
+        let mut p = LinePicker {
+            query: String::new(),
+            lines,
+            matches: Vec::new(),
+            selected: 0,
+        };
+        p.refilter();
+        p
+    }
+
+    /// Recompute `matches` from the query (case-insensitive substring on the line text — the same match
+    /// rule as the command palette; a fuzzy subsequence score is a later refinement).
+    fn refilter(&mut self) {
+        let q = self.query.to_lowercase();
+        self.matches = self
+            .lines
+            .iter()
+            .enumerate()
+            .filter(|(_, (text, _))| q.is_empty() || text.to_lowercase().contains(&q))
+            .map(|(i, _)| i)
+            .collect();
+        self.selected = self.selected.min(self.matches.len().saturating_sub(1));
+    }
+
+    /// The byte offset of the selected line's start, or `None` when nothing matches.
+    fn selected_offset(&self) -> Option<usize> {
+        self.matches.get(self.selected).map(|&i| self.lines[i].1)
+    }
+
+    /// The overlay's match rows (`"<1-based file line>: <text>"`, selected flag), reusing the same
+    /// above-the-status-line paint path as the command palette.
+    fn rows(&self) -> Vec<(String, bool)> {
+        self.matches
+            .iter()
+            .enumerate()
+            .map(|(row, &i)| {
+                (
+                    format!("{:>5}: {}", i + 1, self.lines[i].0),
+                    row == self.selected,
+                )
+            })
+            .collect()
+    }
+}
+
+/// Handle one key of the line picker (F-013 NAT-3). Enter jumps the focused cursor to the selected line
+/// (the frontend's per-frame viewport pass then scrolls it into view); Esc closes; typing filters.
+fn line_picker_key(
+    picker: &mut Option<LinePicker>,
+    key: crossterm::event::KeyEvent,
+    ws: &mut Workspace,
+) {
+    let Some(p) = picker.as_mut() else {
+        return;
+    };
+    match key.code {
+        KeyCode::Esc => *picker = None,
+        KeyCode::Enter => {
+            let offset = p.selected_offset();
+            *picker = None;
+            if let Some(offset) = offset {
+                ws.place_focused_cursor(offset);
+            }
+        }
+        KeyCode::Up => p.selected = p.selected.saturating_sub(1),
+        KeyCode::Down if p.selected + 1 < p.matches.len() => p.selected += 1,
+        KeyCode::Backspace => {
+            p.query.pop();
+            p.refilter();
+        }
+        KeyCode::Char(c) => {
+            p.query.push(c);
+            p.refilter();
+        }
+        _ => {}
     }
 }
 
@@ -1499,5 +1630,43 @@ mod palette_tests {
         let p = Palette::open(&normal_ctx());
         assert_eq!(p.matches.len(), p.available.len());
         assert!(!p.matches.is_empty());
+    }
+
+    /// F-013 NAT-3: the line picker lists every line with its byte offset; a trailing newline yields no
+    /// empty final entry; the query narrows by substring and the selection resolves to the line's offset.
+    #[test]
+    fn line_picker_filters_and_resolves_offsets() {
+        let src = b"alpha\nbeta line\ngamma\nbeta again\n";
+        let p = LinePicker::open(src);
+        assert_eq!(p.lines.len(), 4, "four lines, no empty trailing entry");
+        assert_eq!(p.lines[0], ("alpha".to_string(), 0));
+        assert_eq!(p.lines[2].1, 16, "gamma starts after the first two lines");
+
+        let mut q = LinePicker::open(src);
+        for c in "beta".chars() {
+            q.query.push(c);
+            q.refilter();
+        }
+        assert_eq!(q.matches.len(), 2, "two lines contain `beta`");
+        // Selection defaults to the first match — the line starting at offset 6 (`beta line`).
+        assert_eq!(q.selected_offset(), Some(6));
+    }
+
+    /// F-013 NAT-3: an empty query lists all lines; selection moves clamp; a no-match query resolves to
+    /// None (nothing to jump to).
+    #[test]
+    fn line_picker_empty_and_nomatch() {
+        let src = b"one\ntwo\nthree";
+        let p = LinePicker::open(src);
+        assert_eq!(p.matches.len(), 3, "empty query keeps every line");
+        assert_eq!(p.selected_offset(), Some(0));
+
+        let mut none = LinePicker::open(src);
+        for c in "zzz".chars() {
+            none.query.push(c);
+            none.refilter();
+        }
+        assert!(none.matches.is_empty());
+        assert_eq!(none.selected_offset(), None, "no match resolves to no jump");
     }
 }
