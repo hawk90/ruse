@@ -121,3 +121,11 @@ backlog:
   - { id: EMACS-TRANSIENT-1, feature: F-012, reason: "transient state (yank-pop, etc.) — the D-026/D-027 transient-state pattern; architecture" }
   - { id: EMACS-VAR-1, feature: F-012, reason: "buffer-local variables — Elisp runtime, a standing NON-GOAL (D-020, D-007 L3)" }
   - { id: EMACS-VAR-2, feature: F-012, reason: "customization (defcustom) — the config system (config-schema), not the Emacs Elisp runtime; post-MVP" }
+  # F-013 Native profile. NAT-1 (modal text, L1) is REPOINTED to the neovim map-mode census (the SPINE) in the
+  # PRD; its legacy row is retired here. NAT-3/NAT-4 (L1 Equivalent) are targeted-but-deferred. NAT-2
+  # (Intentionally-different) and NAT-5 (L2 post-mvp) are NON-targeted, so they need neither PRD nor backlog.
+  - { id: NAT-1, feature: F-013, reason: "modal text (operator/motion/text-object) — repointed to the neovim map-mode census (nvim.mapmode.{norm,ins,cmd,vis,sel}, FAM-KEYMAP-MODEL) which F-013 reuses; the legacy row is retired in favour of that census spine" }
+  - { id: NAT-3, feature: F-013, reason: "transient action maps in special views (git/debug/picker) — backs on the emacs transient (magit) census, which is unscreened; screened/targeted when the special-view action-map lands" }
+  - { id: NAT-4, feature: F-013, reason: "readline-style input/search line — reuses the F-026 command-line namespace; the emacs minibuffer/readline census is unscreened, screened when NAT-4 wires onto CmdLine" }
+  - { id: EMACS-TRANSIENT-2, feature: F-013, reason: "transient popup menus with toggleable args + submenus — folds into NAT-3's transient census; deferred with it" }
+  - { id: EMACS-TRANSIENT-3, feature: F-013, reason: "which-key live discovery — folds into NAT-2's (intentionally-different) command-discovery surface; deferred with it" }

@@ -650,7 +650,11 @@ features:
     depends_on: [C-INPUT, C-COMMAND]
     summary: The third input language (modal text, command discovery, transient special views).
     trace:
-      parity: [NAT-1, NAT-2, NAT-3, NAT-4, NAT-5, EMACS-TRANSIENT-2, EMACS-TRANSIENT-3]
+      # NAT-1 (modal text) is the census SPINE: F-013 reuses the Vim modal grammar, so its parity IS the
+      # neovim map-mode namespaces (already `targeted`, FAM-KEYMAP-MODEL). The leader-discovery / transient /
+      # readline / multi-selection items (NAT-2..5, EMACS-TRANSIENT-2/3) are backlogged (parity-backlog.yaml):
+      # intentionally-different, L2, or awaiting their own census surface — see each entry's reason.
+      parity: [nvim.mapmode.norm, nvim.mapmode.ins, nvim.mapmode.cmd, nvim.mapmode.vis, nvim.mapmode.sel]
       design: [../docs/design/editing-language.md, ../docs/architecture/architecture.md#1]
       verify: [../tests/parity/native/modal-text.yaml, ../tests/parity/native/leader-discovery.yaml]
     acceptance:
