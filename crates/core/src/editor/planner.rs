@@ -1195,6 +1195,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 nop(cur, st.view.mode)
             }
         }
+        // `C-o` (Emacs open-line, D-051): insert a newline at point but leave point BEFORE it (opens a blank
+        // line below without moving onto it). Unlike Vim `o`, no mode change and no register write.
+        Command::EmacsOpenLine => edit(
+            one(Edit::insert(cur, b"\n".to_vec())),
+            cur,
+            st.view.mode,
+            hint,
+        ),
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
         Command::EmacsBufferEdge { start } => Plan {
