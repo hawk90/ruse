@@ -373,6 +373,33 @@ mod tests {
     }
 
     #[test]
+    fn emacs_shift_tracked_only_for_non_char_keys() {
+        let mut e = InputEngine::emacs();
+        // Shift IS meaningful on a non-char key: C-S-<backspace> is kill-whole-line.
+        let cs_bs = KeyEvent::new(
+            KeyCode::Backspace,
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        assert_eq!(
+            e.feed(cs_bs, Mode::Insert),
+            Feed::Cmd(Command::EmacsKillWholeLine)
+        );
+        // A printable key that arrives WITH a Shift modifier still matches its unshifted binding — Shift is
+        // folded into the char, so M-@ (incidental Shift) is still mark-word, not a lookup miss.
+        let m_at_shift = KeyEvent::new(KeyCode::Char('@'), KeyModifiers::ALT | KeyModifiers::SHIFT);
+        assert_eq!(
+            e.feed(m_at_shift, Mode::Insert),
+            Feed::Cmd(Command::EmacsMarkWord)
+        );
+        // Plain M-DEL (no shift) stays backward-kill-word — the new C-S-<backspace> does not shadow it.
+        let m_del = KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT);
+        assert_eq!(
+            e.feed(m_del, Mode::Insert),
+            Feed::Cmd(Command::EmacsBackwardKillWord { count: 1 })
+        );
+    }
+
+    #[test]
     fn emacs_meta_tier_word_motions_and_buffer_ends() {
         // F-012: the Meta (`M-`, Alt) tier — word motions and buffer ends. Word motions honour the prefix
         // count; `M-<`/`M->` (buffer ends) ignore it. A plain `f` still self-inserts (no Alt, no C-).

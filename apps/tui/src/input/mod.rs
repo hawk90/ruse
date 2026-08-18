@@ -600,14 +600,17 @@ impl EmacsArg {
     }
 }
 
-/// A resolved Emacs key: the code plus whether Control / Meta (Alt) were held. Emacs bindings are
+/// A resolved Emacs key: the code plus whether Control / Meta (Alt) / Shift were held. Emacs bindings are
 /// fundamentally `modifier+key` (`C-f` ≠ `f`), so the keymap is keyed on this rather than a bare
-/// [`KeyCode`] as the Vim namespaces are. Shift is folded into the char already, so it is not tracked.
+/// [`KeyCode`] as the Vim namespaces are. Shift is tracked ONLY for non-character keys (`C-S-<backspace>`):
+/// for a printable key Shift is already folded into the char (`Shift-2` = `@`), so tracking it there would
+/// make a shifted printable miss its unshifted binding.
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct EmacsKey {
     code: KeyCode,
     ctrl: bool,
     alt: bool,
+    shift: bool,
 }
 
 impl EmacsKey {
@@ -616,6 +619,9 @@ impl EmacsKey {
             code: key.code,
             ctrl: key.modifiers.contains(KeyModifiers::CONTROL),
             alt: key.modifiers.contains(KeyModifiers::ALT),
+            // Only meaningful for non-char keys; a printable already encodes Shift in its char.
+            shift: key.modifiers.contains(KeyModifiers::SHIFT)
+                && !matches!(key.code, KeyCode::Char(_)),
         }
     }
 
@@ -624,6 +630,7 @@ impl EmacsKey {
             code: KeyCode::Char(c),
             ctrl: true,
             alt: false,
+            shift: false,
         }
     }
 
@@ -632,6 +639,7 @@ impl EmacsKey {
             code: KeyCode::Char(c),
             ctrl: false,
             alt: true,
+            shift: false,
         }
     }
 
@@ -640,6 +648,7 @@ impl EmacsKey {
             code,
             ctrl: false,
             alt: false,
+            shift: false,
         }
     }
 
@@ -649,6 +658,17 @@ impl EmacsKey {
             code,
             ctrl: false,
             alt: true,
+            shift: false,
+        }
+    }
+
+    /// A Control-Shift-modified non-character key, e.g. `C-S-<backspace>` (kill-whole-line).
+    fn ctrl_shift_code(code: KeyCode) -> EmacsKey {
+        EmacsKey {
+            code,
+            ctrl: true,
+            alt: false,
+            shift: true,
         }
     }
 }
@@ -883,6 +903,11 @@ impl EmacsProfile {
             EmacsKey::alt_code(KeyCode::Backspace),
             EmacsBinding::Counted(CountedCmd::BackwardKillWord),
         )
+        // C-S-<backspace> (kill-whole-line): kill the whole line incl. its newline. Prefix-agnostic, Fixed.
+        .bind(
+            EmacsKey::ctrl_shift_code(KeyCode::Backspace),
+            EmacsBinding::Fixed(Command::EmacsKillWholeLine),
+        )
         // M-m (back-to-indentation): move to the first non-blank of the line. Prefix-agnostic, so Fixed.
         .bind(
             EmacsKey::alt('m'),
@@ -969,8 +994,6 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "delete-horizontal-space" => Command::EmacsHorizontalSpace { keep_one: false },
         "open-line" => Command::EmacsOpenLine,
         "mark-word" => Command::EmacsMarkWord,
-        // Reachable via M-x; its default C-S-<backspace> key needs a shift modifier the EmacsKey model
-        // does not carry yet, so no physical binding is installed here (a follow-up).
         "kill-whole-line" => Command::EmacsKillWholeLine,
         "upcase-region" => Command::EmacsCaseRegion {
             case: WordCase::Upcase,
