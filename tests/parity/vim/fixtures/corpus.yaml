@@ -363,6 +363,54 @@
       }
     },
     {
+      "name": "caret_first_non_blank",
+      "lines": [
+        "  foo bar"
+      ],
+      "keys": "$^",
+      "expect": {
+        "text": [
+          "  foo bar"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_caret_from_eol",
+      "lines": [
+        "  foobar"
+      ],
+      "keys": "$d^",
+      "expect": {
+        "text": [
+          "  r"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "fooba",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "dG_to_last_line",
       "lines": [
         "alpha",

@@ -184,6 +184,7 @@ fn motion_key(code: KeyCode) -> Option<Motion> {
         KeyCode::Char('B') => Motion::BigWordBack,
         KeyCode::Char('E') => Motion::BigWordEnd,
         KeyCode::Char('$') => Motion::LineEnd,
+        KeyCode::Char('^') => Motion::LineFirstNonBlank,
         KeyCode::Char('}') => Motion::ParagraphFwd,
         KeyCode::Char('{') => Motion::ParagraphBack,
         _ => return None,
