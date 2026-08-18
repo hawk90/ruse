@@ -8,7 +8,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
 use ruse_core::{
     BlockInsertKind, Command, ForcedWise, GlobalCmd, Mode, Motion, OpKind, SearchOp, SelectKind,
-    SubFlags, SubRange,
+    SubFlags, SubRange, WordCase,
 };
 
 /// The outcome of feeding one key to the engine.
@@ -121,6 +121,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsYank { .. }
         | C::EmacsKillLine
         | C::EmacsTransposeChars
+        | C::EmacsCaseWord { .. }
         | C::DeleteSelection
         | C::OpForced {
             op: OpKind::Delete, ..
@@ -797,6 +798,26 @@ impl EmacsProfile {
             EmacsKey::ctrl('t'),
             EmacsBinding::Fixed(Command::EmacsTransposeChars),
         )
+        // Case-word family: recase the word ahead and advance (D-051, `EmacsCaseWord`). Count-less for now
+        // (the prefix-argument word count is a follow-up), so Fixed.
+        .bind(
+            EmacsKey::alt('u'),
+            EmacsBinding::Fixed(Command::EmacsCaseWord {
+                case: WordCase::Upcase,
+            }),
+        )
+        .bind(
+            EmacsKey::alt('l'),
+            EmacsBinding::Fixed(Command::EmacsCaseWord {
+                case: WordCase::Downcase,
+            }),
+        )
+        .bind(
+            EmacsKey::alt('c'),
+            EmacsBinding::Fixed(Command::EmacsCaseWord {
+                case: WordCase::Capitalize,
+            }),
+        )
         // Emacs region (D-027): set-mark, kill-region, kill-ring-save. `C-x C-x` (exchange) lives in the
         // C-x prefix map. `C-SPC` is bound as Ctrl+Space; some terminals deliver it as NUL — a delivery
         // detail for the frontend, not this map.
@@ -899,6 +920,15 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "delete-char" => Command::DeleteForward(1),
         "kill-line" => Command::EmacsKillLine,
         "transpose-chars" => Command::EmacsTransposeChars,
+        "upcase-word" => Command::EmacsCaseWord {
+            case: WordCase::Upcase,
+        },
+        "downcase-word" => Command::EmacsCaseWord {
+            case: WordCase::Downcase,
+        },
+        "capitalize-word" => Command::EmacsCaseWord {
+            case: WordCase::Capitalize,
+        },
         "kill-word" => Command::Delete(1, Motion::EmacsWordFwd),
         "yank" => Command::EmacsYank { count: 1 },
         "newline" => Command::InsertNewline,

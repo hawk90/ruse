@@ -2669,6 +2669,67 @@ mod mark_tests {
         assert_eq!(bob.view.cursor, 0);
     }
 
+    // Emacs case-word family (D-051): recase the forward-word span and leave point at the word end. Never
+    // touches the kill ring.
+    #[test]
+    fn emacs_case_word_recases_the_word_ahead() {
+        // capitalize-word: "foo bar" point 0 -> "Foo bar", point at end of "foo" (3).
+        let mut cap = EditorState::new(b"foo bar".to_vec());
+        cap.set_caret_gravity(CaretGravity::BetweenChar);
+        cap.set_cursor(0);
+        apply_command(
+            &mut cap,
+            &Command::EmacsCaseWord {
+                case: WordCase::Capitalize,
+            },
+        );
+        assert_eq!(text(&cap), "Foo bar");
+        assert_eq!(cap.view.cursor, 3);
+        assert!(
+            cap.register().is_empty(),
+            "case-word does not touch the kill ring"
+        );
+
+        // upcase-word: mixed case -> all upper.
+        let mut up = EditorState::new(b"fooBar baz".to_vec());
+        up.set_caret_gravity(CaretGravity::BetweenChar);
+        up.set_cursor(0);
+        apply_command(
+            &mut up,
+            &Command::EmacsCaseWord {
+                case: WordCase::Upcase,
+            },
+        );
+        assert_eq!(text(&up), "FOOBAR baz");
+        assert_eq!(up.view.cursor, 6);
+
+        // downcase-word skips leading non-word chars (the forward-word span): point before "  FOO".
+        let mut down = EditorState::new(b"  FOO".to_vec());
+        down.set_caret_gravity(CaretGravity::BetweenChar);
+        down.set_cursor(0);
+        apply_command(
+            &mut down,
+            &Command::EmacsCaseWord {
+                case: WordCase::Downcase,
+            },
+        );
+        assert_eq!(text(&down), "  foo");
+        assert_eq!(down.view.cursor, 5);
+
+        // No word ahead: inert.
+        let mut none = EditorState::new(b"foo".to_vec());
+        none.set_caret_gravity(CaretGravity::BetweenChar);
+        none.set_cursor(3);
+        apply_command(
+            &mut none,
+            &Command::EmacsCaseWord {
+                case: WordCase::Upcase,
+            },
+        );
+        assert_eq!(text(&none), "foo");
+        assert_eq!(none.view.cursor, 3);
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {
