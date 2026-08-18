@@ -1227,6 +1227,9 @@ mod tests {
             parse_ex("trace save t.trace"),
             Ex::SaveTrace("t.trace".into())
         );
+        // `:checkhealth` and its `:che` prefix both parse (F-030).
+        assert_eq!(parse_ex("checkhealth"), Ex::CheckHealth);
+        assert_eq!(parse_ex("che"), Ex::CheckHealth);
     }
 }
 
