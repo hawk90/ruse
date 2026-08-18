@@ -259,6 +259,10 @@ pub enum Command {
     EmacsHorizontalSpace {
         keep_one: bool,
     },
+    /// `C-o` (open-line) — insert a newline at point but leave point BEFORE it (opening a blank line below
+    /// the cursor without moving onto it). Distinct from Vim `o` (which opens below AND enters Insert on the
+    /// new line) — D-051. No kill-ring write.
+    EmacsOpenLine,
 }
 
 /// Which case operation [`Command::EmacsCaseWord`] applies over the word span.
@@ -584,6 +588,7 @@ impl Command {
                     if *keep_one { "one" } else { "none" }
                 )
             }
+            Command::EmacsOpenLine => "emacs_open_line".into(),
             Command::EmacsCaseWord { case } => format!(
                 "emacs_case_word {}",
                 match case {
@@ -824,6 +829,7 @@ impl Command {
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::EmacsKillWord { count }
             }
+            "emacs_open_line" => Command::EmacsOpenLine,
             "emacs_horizontal_space" => match arg {
                 Some("one") => Command::EmacsHorizontalSpace { keep_one: true },
                 Some("none") => Command::EmacsHorizontalSpace { keep_one: false },
@@ -1101,6 +1107,7 @@ mod tests {
             Command::EmacsKillWord { count: 3 },
             Command::EmacsHorizontalSpace { keep_one: true },
             Command::EmacsHorizontalSpace { keep_one: false },
+            Command::EmacsOpenLine,
             Command::EmacsCaseWord {
                 case: WordCase::Upcase,
             },

@@ -2834,6 +2834,18 @@ mod mark_tests {
         assert_eq!(ins.view.cursor, 2);
     }
 
+    // Emacs open-line (C-o) (D-051): insert a newline at point, leaving point before it. No mode change.
+    #[test]
+    fn emacs_open_line_inserts_newline_and_keeps_point() {
+        let mut st = EditorState::new(b"foobar".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_cursor(3);
+        apply_command(&mut st, &Command::EmacsOpenLine);
+        assert_eq!(text(&st), "foo\nbar");
+        assert_eq!(st.view.cursor, 3, "point stays before the inserted newline");
+        assert!(st.register().is_empty());
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {

@@ -124,6 +124,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsTransposeChars
         | C::EmacsCaseWord { .. }
         | C::EmacsHorizontalSpace { .. }
+        | C::EmacsOpenLine
         | C::DeleteSelection
         | C::OpForced {
             op: OpKind::Delete, ..
@@ -800,6 +801,11 @@ impl EmacsProfile {
             EmacsKey::ctrl('t'),
             EmacsBinding::Fixed(Command::EmacsTransposeChars),
         )
+        // C-o (open-line): insert a newline after point, leaving point before it. Prefix-agnostic, so Fixed.
+        .bind(
+            EmacsKey::ctrl('o'),
+            EmacsBinding::Fixed(Command::EmacsOpenLine),
+        )
         // Case-word family: recase the word ahead and advance (D-051, `EmacsCaseWord`). Count-less for now
         // (the prefix-argument word count is a follow-up), so Fixed.
         .bind(
@@ -931,6 +937,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "back-to-indentation" => Command::Move(1, Motion::LineFirstNonBlank),
         "just-one-space" => Command::EmacsHorizontalSpace { keep_one: true },
         "delete-horizontal-space" => Command::EmacsHorizontalSpace { keep_one: false },
+        "open-line" => Command::EmacsOpenLine,
         "move-end-of-line" => Command::MoveLineEnd,
         "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
         "end-of-buffer" => Command::EmacsBufferEdge { start: false },
