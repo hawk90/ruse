@@ -15,10 +15,12 @@ recorded: "2026-08-11"
 
 benches:
   # crates/core
-  edit_apply:                       # #1 per-edit buffer cost — O(n) flat Arc<[u8]>, fine at daily sizes
-    edit_apply/100: "581 ns"
-    edit_apply/1000: "10.1 us"
-    edit_apply/10000: "25.7 us"
+  edit_apply:                       # #1 per-edit buffer cost — O(n) flat Arc<Vec<u8>>; single copy (apply_to)
+                                    # after dropping the second element-wise Arc<[u8]>::from copy (2026-08-18)
+    edit_apply/100: "657 ns"
+    edit_apply/1000: "8.8 us"       # was 14.4us (Arc<[u8]> double-copy); Arc<Vec<u8>> move -> -42%
+    edit_apply/10000: "15.2 us"     # was 26us -> -37%
+    edit_apply/100000: "92 us"      # was 1.18ms -> -92% (element-wise Arc<[u8]>::from was the cost)
   line_math:                        # the O(buffer) pos:: scan the LineIndex replaces on the hot path
     line_of_end/1000: "6.6 us"
     line_of_end/10000: "61 us"

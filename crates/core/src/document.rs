@@ -32,7 +32,10 @@ pub enum TxnError {
 /// An in-memory editable document: bytes + revision + anchors + undo history.
 pub struct Document {
     id: DocumentId,
-    text: Arc<[u8]>,
+    // `Arc<Vec<u8>>` (not `Arc<[u8]>`) so a committed edit MOVES the freshly-built buffer into the Arc
+    // (`Arc::new`) instead of copying it a second time (`Arc::from(vec)` reallocates + memcpy). Reads still
+    // yield `&[u8]` via deref; clones for snapshots stay a refcount bump. Saves one O(n) copy per edit.
+    text: Arc<Vec<u8>>,
     revision: Revision,
     anchors: AnchorStore,
     undo: UndoHistory,
@@ -45,7 +48,7 @@ impl Document {
     /// ([`Document::is_modified`] is true until [`Document::mark_saved`]); a document loaded from disk
     /// marks itself saved at open.
     pub fn new(id: DocumentId, initial: impl Into<Vec<u8>>) -> Document {
-        let text: Arc<[u8]> = Arc::from(initial.into());
+        let text: Arc<Vec<u8>> = Arc::new(initial.into());
         let mut d = Document {
             id,
             text,
@@ -145,7 +148,7 @@ impl Document {
         // Committed path — nothing above mutated state, so failure above is atomic-no-op.
         let inverse = txn.edits.inverse(&self.text);
         let new_text = txn.edits.apply_to(&self.text);
-        self.text = Arc::from(new_text);
+        self.text = Arc::new(new_text);
         let prev = self.revision;
         self.revision = self.revision.next();
         // Internal invariant (INV-TXN §1): a successful apply strictly advances the revision. A debug_assert,

@@ -40,14 +40,14 @@ impl AnchorIndex {
 #[derive(Clone)]
 pub struct DocumentSnapshot {
     revision: Revision,
-    text: Arc<[u8]>,
+    text: Arc<Vec<u8>>,
     anchors: Arc<AnchorIndex>,
 }
 
 impl DocumentSnapshot {
     pub(crate) fn new(
         revision: Revision,
-        text: Arc<[u8]>,
+        text: Arc<Vec<u8>>,
         anchors: Arc<AnchorIndex>,
     ) -> DocumentSnapshot {
         DocumentSnapshot {
