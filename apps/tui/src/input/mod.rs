@@ -824,6 +824,11 @@ impl EmacsProfile {
             EmacsKey::alt('t'),
             EmacsBinding::Fixed(Command::EmacsTransposeWords),
         )
+        // M-@ (mark-word): set the mark at the end of the next word without moving point. Fixed.
+        .bind(
+            EmacsKey::alt('@'),
+            EmacsBinding::Fixed(Command::EmacsMarkWord),
+        )
         // Case-word family: recase the word ahead and advance (D-051, `EmacsCaseWord`). Count-less for now
         // (the prefix-argument word count is a follow-up), so Fixed.
         .bind(
@@ -961,6 +966,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "just-one-space" => Command::EmacsHorizontalSpace { keep_one: true },
         "delete-horizontal-space" => Command::EmacsHorizontalSpace { keep_one: false },
         "open-line" => Command::EmacsOpenLine,
+        "mark-word" => Command::EmacsMarkWord,
         "move-end-of-line" => Command::MoveLineEnd,
         "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
         "end-of-buffer" => Command::EmacsBufferEdge { start: false },
