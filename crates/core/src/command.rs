@@ -277,6 +277,11 @@ pub enum Command {
     /// `M-@` (mark-word) — set the mark at the end of the next word (the `forward-word` target) without
     /// moving point, activating the region point→word-end. Emacs-only (D-051); no kill-ring write.
     EmacsMarkWord,
+    /// `C-S-DEL` (kill-whole-line) — kill the ENTIRE current line including its trailing newline, regardless
+    /// of point column, leaving point at the start of the following line. An accumulating kill (D-051 /
+    /// D-026). Distinct from Vim `dd` (linewise register, cursor to first-non-blank) — this is charwise into
+    /// the kill ring.
+    EmacsKillWholeLine,
 }
 
 /// Which case operation [`Command::EmacsCaseWord`] applies over the word span.
@@ -606,6 +611,7 @@ impl Command {
             }
             Command::EmacsOpenLine => "emacs_open_line".into(),
             Command::EmacsMarkWord => "emacs_mark_word".into(),
+            Command::EmacsKillWholeLine => "emacs_kill_whole_line".into(),
             Command::EmacsCaseWord { case } => format!(
                 "emacs_case_word {}",
                 match case {
@@ -855,6 +861,7 @@ impl Command {
             }
             "emacs_open_line" => Command::EmacsOpenLine,
             "emacs_mark_word" => Command::EmacsMarkWord,
+            "emacs_kill_whole_line" => Command::EmacsKillWholeLine,
             "emacs_horizontal_space" => match arg {
                 Some("one") => Command::EmacsHorizontalSpace { keep_one: true },
                 Some("none") => Command::EmacsHorizontalSpace { keep_one: false },
@@ -1137,6 +1144,7 @@ mod tests {
             Command::EmacsHorizontalSpace { keep_one: false },
             Command::EmacsOpenLine,
             Command::EmacsMarkWord,
+            Command::EmacsKillWholeLine,
             Command::EmacsCaseWord {
                 case: WordCase::Upcase,
             },

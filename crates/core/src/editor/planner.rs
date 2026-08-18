@@ -1268,6 +1268,19 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 1,
             ))),
         },
+        // `C-S-DEL` (Emacs kill-whole-line, D-051): kill the whole line INCLUDING its trailing newline,
+        // regardless of point column, into the register (accumulating), leaving point at the line start.
+        Command::EmacsKillWholeLine => {
+            let ls = line_start(b, cur);
+            let le = line_end(b, cur);
+            let e = if le < b.len() { le + 1 } else { le }; // include the terminating newline when present
+            if e > ls {
+                let reg = captured(b, ls, e, false);
+                edit_kill(one(Edit::delete(ls, e - ls)), ls, st.view.mode, hint, reg)
+            } else {
+                nop(cur, st.view.mode)
+            }
+        }
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
         Command::EmacsBufferEdge { start } => Plan {

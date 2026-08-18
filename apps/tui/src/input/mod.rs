@@ -122,6 +122,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsKillLine
         | C::EmacsKillWord { .. }
         | C::EmacsBackwardKillWord { .. }
+        | C::EmacsKillWholeLine
         | C::EmacsTransposeChars
         | C::EmacsTransposeWords
         | C::EmacsCaseWord { .. }
@@ -967,6 +968,9 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "delete-horizontal-space" => Command::EmacsHorizontalSpace { keep_one: false },
         "open-line" => Command::EmacsOpenLine,
         "mark-word" => Command::EmacsMarkWord,
+        // Reachable via M-x; its default C-S-<backspace> key needs a shift modifier the EmacsKey model
+        // does not carry yet, so no physical binding is installed here (a follow-up).
+        "kill-whole-line" => Command::EmacsKillWholeLine,
         "move-end-of-line" => Command::MoveLineEnd,
         "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
         "end-of-buffer" => Command::EmacsBufferEdge { start: false },
