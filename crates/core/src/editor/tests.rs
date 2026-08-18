@@ -2902,6 +2902,24 @@ mod mark_tests {
         assert!(st.register().is_empty());
     }
 
+    // Emacs kill-whole-line (C-S-DEL) (D-051): kill the whole line incl. its newline regardless of column,
+    // into the register (accumulating), point at the line start.
+    #[test]
+    fn emacs_kill_whole_line_kills_the_line_and_newline() {
+        let mut st = EditorState::new(b"foo\nbar".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_cursor(1); // mid-line — column is irrelevant
+        apply_command(&mut st, &Command::EmacsKillWholeLine);
+        assert_eq!(text(&st), "bar");
+        assert_eq!(st.view.cursor, 0);
+        assert_eq!(st.register().text(), b"foo\n");
+
+        // A second kill-whole-line accumulates (it is a kill): "foo\n" then "bar".
+        apply_command(&mut st, &Command::EmacsKillWholeLine);
+        assert_eq!(text(&st), "");
+        assert_eq!(st.register().text(), b"foo\nbar");
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {
