@@ -1,56 +1,31 @@
 //! The command palette overlay (F-004 #2): a context-filtered, query-narrowed list of commands that
-//! Enter dispatches by stable id through the normal command path.
+//! Enter dispatches by stable id through the normal command path. A [`Picker`]`<Command>` — the accept
+//! action (run the command) lives at the call site in `app::session`.
 
-use std::path::PathBuf;
+use ruse_core::Workspace;
 
-use crossterm::event::KeyCode;
+use crate::input::InputEngine;
+use crate::ui::picker::{PickItem, Picker};
 
-use ruse_core::{Command, Workspace};
-
-use crate::app::dispatch::run_cmd;
-use crate::persist;
-
-/// The command-palette overlay state (F-004 #2): the commands AVAILABLE in the current context, the
-/// query filtering them, and the selected row. Opened with a dedicated key; Enter dispatches the
-/// selected command by its stable id (never a key), Esc closes.
-pub(crate) struct Palette {
-    /// The typed filter.
-    pub(crate) query: String,
-    /// Commands available in the opening context (before the query filter).
-    available: Vec<ruse_core::CommandSpec>,
-    /// The current query's matches (a subset of `available`).
-    pub(crate) matches: Vec<ruse_core::CommandSpec>,
-    /// Selected row into `matches`.
-    pub(crate) selected: usize,
-}
-
-impl Palette {
-    pub(crate) fn open(ctx: &ruse_core::Context) -> Palette {
-        let mut p = Palette {
-            query: String::new(),
-            available: ruse_core::available(ctx),
-            matches: Vec::new(),
-            selected: 0,
-        };
-        p.refilter();
-        p
-    }
-
-    /// Recompute `matches` from `available` and the query (case-insensitive substring on title or id).
-    fn refilter(&mut self) {
-        let q = self.query.to_lowercase();
-        self.matches = self
-            .available
-            .iter()
-            .filter(|s| q.is_empty() || s.title.to_lowercase().contains(&q) || s.id.contains(&q))
-            .cloned()
-            .collect();
-        self.selected = self.selected.min(self.matches.len().saturating_sub(1));
-    }
-
-    fn selected_command(&self) -> Option<ruse_core::Command> {
-        self.matches.get(self.selected).map(|s| s.command.clone())
-    }
+/// Open the command palette for `ctx`: a [`Picker`] over the commands available in that context, each row
+/// searchable by title+id and displayed with its static keymap binding (resolved once here via `engine`,
+/// since bindings don't change while the overlay is open) and category. Enter's payload is the [`Command`]
+/// the caller dispatches.
+pub(crate) fn open(ctx: &ruse_core::Context, engine: &InputEngine) -> Picker<ruse_core::Command> {
+    let items = ruse_core::available(ctx)
+        .into_iter()
+        .map(|s| {
+            let binding = engine
+                .binding_label(&s.command)
+                .unwrap_or_else(|| "—".into());
+            PickItem {
+                search: format!("{} {}", s.title, s.id),
+                display: format!("{:<28} {:>5}   {:?}", s.title, binding, s.category),
+                payload: s.command,
+            }
+        })
+        .collect();
+    Picker::new(items)
 }
 
 /// The command-availability context of the focused view (F-004 #2 C-CONTEXT).
@@ -65,50 +40,10 @@ pub(crate) fn focused_context(ws: &Workspace) -> ruse_core::Context {
     }
 }
 
-/// Handle one key of the command palette (F-004 #2). Enter dispatches the selected command by its id
-/// (through the normal command path, so it undoes/records like any other); Esc closes.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn palette_key(
-    palette: &mut Option<Palette>,
-    key: crossterm::event::KeyEvent,
-    ws: &mut Workspace,
-    path: &Option<PathBuf>,
-    fmt: persist::encoding::FileFormat,
-    file_buf: ruse_core::DocumentId,
-    recorded: &mut Vec<Command>,
-    status: &mut String,
-    quit: &mut bool,
-) {
-    let Some(p) = palette.as_mut() else {
-        return;
-    };
-    match key.code {
-        KeyCode::Esc => *palette = None,
-        KeyCode::Enter => {
-            let cmd = p.selected_command();
-            *palette = None;
-            if let Some(cmd) = cmd {
-                run_cmd(cmd, ws, path, fmt, file_buf, recorded, status, quit);
-            }
-        }
-        KeyCode::Up => p.selected = p.selected.saturating_sub(1),
-        KeyCode::Down if p.selected + 1 < p.matches.len() => p.selected += 1,
-        KeyCode::Backspace => {
-            p.query.pop();
-            p.refilter();
-        }
-        KeyCode::Char(c) => {
-            p.query.push(c);
-            p.refilter();
-        }
-        _ => {}
-    }
-}
-
 #[cfg(test)]
 mod palette_tests {
     use super::*;
-    use ruse_core::{Context, Mode};
+    use ruse_core::{Command, Context, Mode};
 
     fn normal_ctx() -> Context {
         Context {
@@ -117,38 +52,49 @@ mod palette_tests {
         }
     }
 
-    /// F-004 #2: the palette opens context-filtered and the query narrows it further; Enter yields the
-    /// selected command (by id, decoupled from any key).
+    /// F-004 #2 (C-CONTEXT): the palette's source is context-filtered — a Normal-family command is
+    /// offered, an Insert-only command is hidden. (Context filtering lives in `ruse_core::available`.)
     #[test]
-    fn palette_filters_by_context_then_query() {
-        let mut p = Palette::open(&normal_ctx());
-        let opened: Vec<_> = p.matches.iter().map(|s| s.id).collect();
+    fn palette_source_is_context_filtered() {
+        let ids: Vec<_> = ruse_core::available(&normal_ctx())
+            .iter()
+            .map(|s| s.id)
+            .collect();
         assert!(
-            opened.contains(&"editor.undo"),
-            "Normal-family command is offered"
+            ids.contains(&"editor.undo"),
+            "Normal-family command offered"
         );
         assert!(
-            !opened.contains(&"editor.delete_back"),
-            "Insert-only command is hidden in Normal"
+            !ids.contains(&"editor.delete_back"),
+            "Insert-only command hidden in Normal"
         );
+    }
 
+    /// F-004 #2: the query narrows the picker; Enter's payload is the selected command (by id, decoupled
+    /// from any key). An empty query keeps the full available set.
+    #[test]
+    fn palette_query_narrows_to_command() {
+        let engine = InputEngine::new();
+        let full = open(&normal_ctx(), &engine);
+        assert_eq!(
+            full.rows().len(),
+            ruse_core::available(&normal_ctx()).len(),
+            "empty query keeps all available"
+        );
+        assert!(!full.rows().is_empty());
+
+        let mut q = open(&normal_ctx(), &engine);
         for c in "save".chars() {
-            p.query.push(c);
-            p.refilter();
+            q.on_key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char(c),
+                crossterm::event::KeyModifiers::NONE,
+            ));
         }
         assert_eq!(
-            p.matches.len(),
+            q.rows().len(),
             1,
             "query narrows to the single 'Save File' match"
         );
-        assert_eq!(p.selected_command(), Some(ruse_core::Command::Save));
-    }
-
-    /// F-004: an empty query keeps the full available set; selection clamps to the match count.
-    #[test]
-    fn palette_empty_query_keeps_all_available() {
-        let p = Palette::open(&normal_ctx());
-        assert_eq!(p.matches.len(), p.available.len());
-        assert!(!p.matches.is_empty());
+        assert_eq!(q.selected(), Some(&Command::Save));
     }
 }

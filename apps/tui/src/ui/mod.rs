@@ -5,5 +5,6 @@ pub(crate) mod buffer_picker;
 pub(crate) mod layout;
 pub(crate) mod line_picker;
 pub(crate) mod palette;
+pub(crate) mod picker;
 pub(crate) mod prompts;
 pub(crate) mod render;

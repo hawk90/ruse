@@ -9,17 +9,16 @@ use std::path::PathBuf;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal as ct_terminal;
 
-use ruse_core::{CaretGravity, Command, Mode, SplitDir, Workspace};
+use ruse_core::{CaretGravity, Command, DocumentId, Mode, SplitDir, Workspace};
 
 use crate::app::dispatch::{run_cmd, run_ex};
 use crate::input::{parse_ex, Ex, Feed, InputEngine};
 use crate::terminal::guard::TermGuard;
-use crate::ui::buffer_picker::{buffer_picker_key, BufferPicker};
-use crate::ui::layout::window_rects;
-use crate::ui::line_picker::{line_picker_key, LinePicker};
-use crate::ui::palette::{focused_context, palette_key, Palette};
+use crate::ui::palette::focused_context;
+use crate::ui::picker::{PickOutcome, Picker};
 use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
+use crate::ui::{buffer_picker, layout::window_rects, line_picker, palette};
 use crate::{health, highlight, line_index, persist, recover, screen, viewport};
 
 /// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
@@ -109,9 +108,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
-    let mut palette: Option<Palette> = None; // the command palette overlay, when open (F-004)
-    let mut line_picker: Option<LinePicker> = None; // the buffer-line fuzzy picker overlay (F-013 NAT-3)
-    let mut buffer_picker: Option<BufferPicker> = None; // the buffer picker overlay (F-013 NAT-3)
+                                              // The three modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads:
+                                              // command palette (`C-p`), buffer-line jump (`C-l`), buffer switch (`C-b`). At most one is open.
+    let mut palette: Option<Picker<Command>> = None;
+    let mut line_picker: Option<Picker<usize>> = None;
+    let mut buffer_picker: Option<Picker<DocumentId>> = None;
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -210,24 +211,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 })
                 .unwrap_or_default()
         };
-        // The palette (F-004 #2), when open, owns the command line (its query, prefixed `>`) and paints
-        // its context-filtered matches with each command's static binding above the status line.
-        // Overlay match rows painted above the status line — at most one overlay is open at a time, so the
-        // command palette (F-004) and the line picker (F-013 NAT-3) share the same paint slot.
+        // Overlay match rows painted above the status line — at most one picker is open at a time, so all
+        // three share the same uniform `rows()` paint slot (F-004 / F-013 NAT-3).
         let overlay_rows: Vec<(String, bool)> = if let Some(p) = palette.as_ref() {
-            p.matches
-                .iter()
-                .enumerate()
-                .map(|(i, s)| {
-                    let binding = engine
-                        .binding_label(&s.command)
-                        .unwrap_or_else(|| "—".into());
-                    (
-                        format!("{:<28} {:>5}   {:?}", s.title, binding, s.category),
-                        i == p.selected,
-                    )
-                })
-                .collect()
+            p.rows()
         } else if let Some(p) = line_picker.as_ref() {
             p.rows()
         } else if let Some(p) = buffer_picker.as_ref() {
@@ -269,32 +256,54 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             confirm_key(&mut confirm, key, &mut ws, &mut status);
             continue;
         }
-        // The line picker owns the keystream while open (F-013 NAT-3): type to filter, Up/Down to select,
-        // Enter to jump the cursor to the line, Esc to close. Checked before the palette; only one is open.
-        if line_picker.is_some() {
-            line_picker_key(&mut line_picker, key, &mut ws);
+        // A picker owns the keystream while open (F-004 / F-013 NAT-3): its transient keymap filters/moves,
+        // Enter accepts (the caller runs the payload-specific action), Esc closes. At most one is open.
+        // The line picker jumps the cursor to the selected line's byte offset.
+        if let Some(outcome) = line_picker.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                let offset = line_picker.as_ref().and_then(|p| p.selected().copied());
+                if let Some(offset) = offset {
+                    ws.place_focused_cursor(offset);
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                line_picker = None;
+            }
             continue;
         }
-        // The buffer picker owns the keystream while open (F-013 NAT-3): type to filter by name, Up/Down
-        // to select, Enter to switch the focused window to the buffer, Esc to close.
-        if buffer_picker.is_some() {
-            buffer_picker_key(&mut buffer_picker, key, &mut ws);
+        // The buffer picker switches the focused window to the selected buffer.
+        if let Some(outcome) = buffer_picker.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                if let Some(id) = buffer_picker.as_ref().and_then(|p| p.selected().copied()) {
+                    ws.focus_buffer(id);
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                buffer_picker = None;
+            }
             continue;
         }
-        // The command palette owns the keystream while open (F-004 #2): type to filter, Up/Down to
-        // select, Enter to dispatch the selected command by its stable id, Esc to close.
-        if palette.is_some() {
-            palette_key(
-                &mut palette,
-                key,
-                &mut ws,
-                &path,
-                fmt,
-                file_buf,
-                &mut recorded,
-                &mut status,
-                &mut quit,
-            );
+        // The command palette dispatches the selected command by its stable id, through the normal command
+        // path (so it undoes/records like any other).
+        if let Some(outcome) = palette.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                let cmd = palette.as_ref().and_then(|p| p.selected().cloned());
+                if let Some(cmd) = cmd {
+                    run_cmd(
+                        cmd,
+                        &mut ws,
+                        &path,
+                        fmt,
+                        file_buf,
+                        &mut recorded,
+                        &mut status,
+                        &mut quit,
+                    );
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                palette = None;
+            }
             continue;
         }
         // F-007 window layer: a `C-w` prefix (Normal mode, no command-line, not Insert where `C-w`
@@ -312,19 +321,19 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
         // `C-p` opens the command palette (F-004 #2), context-filtered to the focused view.
         if normal && is_ctrl(key, 'p') {
-            palette = Some(Palette::open(&focused_context(&ws)));
+            palette = Some(palette::open(&focused_context(&ws), &engine));
             continue;
         }
         // `C-l` opens the buffer-line fuzzy picker (F-013 NAT-3). Normal-only, so the Emacs profile's
         // non-modal C-l (recenter) is unaffected; C-l is unbound in the Vim/Native Normal grammar.
         if normal && is_ctrl(key, 'l') {
-            line_picker = Some(LinePicker::open(ws.focused().doc.bytes()));
+            line_picker = Some(line_picker::open(ws.focused().doc.bytes()));
             continue;
         }
         // `C-b` opens the buffer picker (F-013 NAT-3). Normal-only, so the Emacs profile's non-modal C-b
         // (backward-char) is unaffected; C-b is unbound in the Vim/Native Normal grammar (no page-scroll).
         if normal && is_ctrl(key, 'b') {
-            buffer_picker = Some(BufferPicker::open(&ws));
+            buffer_picker = Some(buffer_picker::open(&ws));
             continue;
         }
         // Every other key — command-line included — goes through the engine (F-026): the command-line
