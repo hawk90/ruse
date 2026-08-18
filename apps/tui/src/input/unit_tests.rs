@@ -281,6 +281,49 @@ mod tests {
         assert_eq!(e.feed(ctrl('z'), Mode::Insert), Feed::Ignored);
     }
 
+    /// Feed `seq` through a NATIVE-profile engine (F-013), mirroring the Vim `feed` helper.
+    fn feed_native(seq: &str) -> Feed {
+        let mut e = InputEngine::native();
+        let mut last = Feed::Ignored;
+        for c in seq.chars() {
+            last = e.feed(k(c), Mode::Normal);
+        }
+        last
+    }
+
+    #[test]
+    fn native_profile_text_layer_is_the_vim_modal_grammar() {
+        // F-013 NAT-1: the Native profile's TEXT layer REUSES the Vim operator/motion/text-object grammar.
+        // In this slice that is the whole observable behaviour — Native drives text identically to Vim, so
+        // every modal construct resolves to the same Command. (The additive leader/which-key and transient
+        // layers land in later slices; they do not alter the text grammar asserted here.)
+        for seq in [
+            "w", "3w", "dw", "d2w", "2dw", "2d3w", "dd", "2dd", "dG", "dgg", "i", "x",
+        ] {
+            assert_eq!(
+                feed_native(seq),
+                feed(seq),
+                "Native must resolve {seq:?} identically to Vim (NAT-1)"
+            );
+        }
+    }
+
+    #[test]
+    fn native_profile_is_modal_not_non_modal() {
+        // The Native profile takes the MODAL path, NOT the Emacs non-modal one: an operator+motion composes
+        // (`dw` = a delete over a word), and `C-f` is inert in Normal (a Vim construct start / unbound), NOT
+        // the Emacs `MoveRight` self-resolving command. This pins Native to the Vim branch of `feed`.
+        assert_eq!(
+            feed_native("dw"),
+            Feed::Cmd(Command::Delete(1, Motion::WordFwd))
+        );
+        let mut e = InputEngine::native();
+        assert_ne!(
+            e.feed(ctrl('f'), Mode::Normal),
+            Feed::Cmd(Command::MoveRight)
+        );
+    }
+
     #[test]
     fn emacs_prefix_argument_multiplies_motions_and_repeats_text() {
         // F-012 / D-049: `C-u` seeds a prefix argument (default 4); digits make it explicit; a further
