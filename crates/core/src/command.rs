@@ -246,6 +246,13 @@ pub enum Command {
     EmacsKillWord {
         count: u32,
     },
+    /// `M-DEL` (backward-kill-word) — kill `count` words BACKWARD (the `WordBack` span) into the register.
+    /// Like the other Emacs kills it accumulates, but as a BACKWARD kill it PREPENDS onto the current
+    /// kill-ring entry (Emacs `kill-append` with `before=t`). Distinct from Vim `db` (which never
+    /// accumulates) — D-051.
+    EmacsBackwardKillWord {
+        count: u32,
+    },
     /// `M-u` / `M-l` / `M-c` (upcase-word / downcase-word / capitalize-word) — recase the word from point to
     /// the end of the next word (the `forward-word` span) and leave point at that end. Emacs-only (D-051);
     /// the three keys differ only in the case operation, so they share one command carrying [`WordCase`].
@@ -582,6 +589,7 @@ impl Command {
             Command::EmacsKillLine => "emacs_kill_line".into(),
             Command::EmacsTransposeChars => "emacs_transpose_chars".into(),
             Command::EmacsKillWord { count } => format!("emacs_kill_word {count}"),
+            Command::EmacsBackwardKillWord { count } => format!("emacs_backward_kill_word {count}"),
             Command::EmacsHorizontalSpace { keep_one } => {
                 format!(
                     "emacs_horizontal_space {}",
@@ -828,6 +836,12 @@ impl Command {
                     .and_then(|a| a.parse().ok())
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::EmacsKillWord { count }
+            }
+            "emacs_backward_kill_word" => {
+                let count: u32 = arg
+                    .and_then(|a| a.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::EmacsBackwardKillWord { count }
             }
             "emacs_open_line" => Command::EmacsOpenLine,
             "emacs_horizontal_space" => match arg {
@@ -1105,6 +1119,8 @@ mod tests {
             Command::EmacsTransposeChars,
             Command::EmacsKillWord { count: 1 },
             Command::EmacsKillWord { count: 3 },
+            Command::EmacsBackwardKillWord { count: 1 },
+            Command::EmacsBackwardKillWord { count: 2 },
             Command::EmacsHorizontalSpace { keep_one: true },
             Command::EmacsHorizontalSpace { keep_one: false },
             Command::EmacsOpenLine,

@@ -121,6 +121,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsYank { .. }
         | C::EmacsKillLine
         | C::EmacsKillWord { .. }
+        | C::EmacsBackwardKillWord { .. }
         | C::EmacsTransposeChars
         | C::EmacsCaseWord { .. }
         | C::EmacsHorizontalSpace { .. }
@@ -638,6 +639,15 @@ impl EmacsKey {
             alt: false,
         }
     }
+
+    /// A Meta-modified non-character key, e.g. `M-DEL` (Meta+Backspace).
+    fn alt_code(code: KeyCode) -> EmacsKey {
+        EmacsKey {
+            code,
+            ctrl: false,
+            alt: true,
+        }
+    }
 }
 
 /// How a bound Emacs key folds the pending prefix argument (D-049) into a concrete command. The count
@@ -668,6 +678,7 @@ enum CountedCmd {
     Yank,          // C-y — Emacs yank: EmacsYank { count } (paste + set mark, D-051)
     Move(Motion),  // M-f / M-b — Move(count, motion)
     KillWord,      // M-d — Emacs kill-word: EmacsKillWord { count } (accumulating kill, D-051)
+    BackwardKillWord, // M-DEL — Emacs backward-kill-word: EmacsBackwardKillWord { count } (prepend kill)
 }
 
 /// Fold the pending prefix count into a bound key's command. `Prefix` is handled by the caller (it mutates
@@ -684,6 +695,7 @@ fn fold_emacs_count(binding: &EmacsBinding, count: u32) -> Feed {
             CountedCmd::Yank => Command::EmacsYank { count },
             CountedCmd::Move(m) => Command::Move(count, *m),
             CountedCmd::KillWord => Command::EmacsKillWord { count },
+            CountedCmd::BackwardKillWord => Command::EmacsBackwardKillWord { count },
         }),
         EmacsBinding::Repeat(cmd) => emacs_repeat(cmd.clone(), count),
         EmacsBinding::Fixed(cmd) => Feed::Cmd(cmd.clone()),
@@ -853,6 +865,11 @@ impl EmacsProfile {
             EmacsKey::alt('d'),
             EmacsBinding::Counted(CountedCmd::KillWord),
         )
+        // M-DEL (backward-kill-word): kill the previous word; on a kill run it prepends onto the entry.
+        .bind(
+            EmacsKey::alt_code(KeyCode::Backspace),
+            EmacsBinding::Counted(CountedCmd::BackwardKillWord),
+        )
         // M-m (back-to-indentation): move to the first non-blank of the line. Prefix-agnostic, so Fixed.
         .bind(
             EmacsKey::alt('m'),
@@ -956,6 +973,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
             case: WordCase::Capitalize,
         },
         "kill-word" => Command::EmacsKillWord { count: 1 },
+        "backward-kill-word" => Command::EmacsBackwardKillWord { count: 1 },
         "yank" => Command::EmacsYank { count: 1 },
         "newline" => Command::InsertNewline,
         "undo" => Command::Undo,

@@ -200,6 +200,13 @@ impl RegisterStore {
     pub fn kill_append(&mut self, reg: Register) {
         self.unnamed = append(&self.unnamed, &reg);
     }
+
+    /// Prepend a killed span onto the unnamed slot — the BACKWARD-kill form of [`RegisterStore::kill_append`]
+    /// (Emacs `kill-append` with `before=t`): a `backward-kill-word` right after another kill grows the
+    /// current entry from the FRONT, since it takes text preceding the prior kill.
+    pub fn kill_prepend(&mut self, reg: Register) {
+        self.unnamed = append(&reg, &self.unnamed);
+    }
 }
 
 /// Append `add` onto `existing`, matching Vim's `"A`-style accumulation. Appending into an empty slot just
