@@ -9,7 +9,7 @@ use ruse_core::{Command, Effect, SplitDir, Trace, Workspace};
 
 use crate::input::{BufTarget, Ex};
 use crate::persist;
-use crate::Confirm;
+use crate::ui::prompts::Confirm;
 
 /// Record a command and apply it to the focused window, performing any effects.
 #[allow(clippy::too_many_arguments)] // the command path needs the full editor context (buffer/file/sinks)
