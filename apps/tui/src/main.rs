@@ -14,6 +14,7 @@
 )]
 
 mod caps;
+mod health;
 mod highlight;
 mod input;
 mod line_index;
@@ -174,6 +175,16 @@ impl TermGuard {
     fn sync_output(&self) -> bool {
         self.ledger
             .enabled(caps::ledger::Capability::SynchronizedOutput)
+    }
+
+    /// Health-check readouts of the pinned ledger (F-030): whether these capabilities were detected.
+    fn bracketed_paste(&self) -> bool {
+        self.ledger
+            .enabled(caps::ledger::Capability::BracketedPaste)
+    }
+
+    fn sgr_mouse(&self) -> bool {
+        self.ledger.enabled(caps::ledger::Capability::SgrMouse)
     }
 
     fn enter() -> io::Result<TermGuard> {
@@ -484,6 +495,29 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // where `engine` is in scope, not in `run_ex` (which owns only workspace/file state).
                     Ex::Lmap { lhs, rhs } => engine.set_lang_mapping(lhs, rhs),
                     Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),
+                    // `:checkhealth` (F-030): gather the frontend snapshot HERE (guard/profile/highlighter
+                    // are in scope, not in `run_ex`) and render the report's one-line summary into status.
+                    Ex::CheckHealth => {
+                        let inputs = health::HealthInputs {
+                            profile: if emacs_profile { "emacs" } else { "vim" },
+                            caret: if emacs_profile {
+                                "between-char"
+                            } else {
+                                "on-char"
+                            },
+                            sgr_mouse: guard.sgr_mouse(),
+                            sync_output: guard.sync_output(),
+                            bracketed_paste: guard.bracketed_paste(),
+                            file_ext: path
+                                .as_ref()
+                                .and_then(|p| p.extension())
+                                .map(|e| e.to_string_lossy().into_owned()),
+                            grammar_ok: highlighter.is_some(),
+                            buffers: ws.window_count(),
+                            trace_commands: recorded.len(),
+                        };
+                        status = health::summary_line(&health::report(&inputs));
+                    }
                     ex => run_ex(
                         &ex,
                         &mut ws,
@@ -659,6 +693,9 @@ fn run_ex(
         // `:lmap`/`:lunmap` are handled in the run loop (they mutate engine-owned Lang-Arg state — the
         // `engine` this fn does not borrow); never reach here.
         Ex::Lmap { .. } | Ex::Lunmap { .. } => {}
+        // `:checkhealth` is handled in the run loop (it reads the terminal-cap ledger + profile this fn
+        // does not borrow); never reaches here.
+        Ex::CheckHealth => {}
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }

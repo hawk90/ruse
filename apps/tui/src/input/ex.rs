@@ -28,6 +28,8 @@ pub enum Ex {
     Lunmap {
         lhs: char,
     },
+    /// `:checkhealth` / `:che` — report the running editor's health (F-030 / CAP-HEALTHCHECK).
+    CheckHealth,
     Unknown(String),
 }
 
@@ -250,6 +252,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "vsplit" | "vsp" | "vs" => Ex::VSplit,
         "close" | "clo" => Ex::Close,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
+        "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         // `:lmap`/`:lunmap` (F-027), then `:trace save`, `:[range]s///`, `:[range]g//` — each returns
         // `None`/falls through to the next so an unrecognised line lands on `Ex::Unknown`.
         _ => {
