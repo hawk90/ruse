@@ -5,6 +5,10 @@ mod tests {
     pub(super) fn k(c: char) -> KeyEvent {
         KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
     }
+    /// A Meta (Alt) key event — the shared helper for the Emacs-tier tests (`M-f`, `M-d`, …).
+    pub(super) fn meta(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT)
+    }
     pub(super) fn feed(seq: &str) -> Feed {
         let mut e = InputEngine::new();
         let mut last = Feed::Ignored;
@@ -403,7 +407,6 @@ mod tests {
     fn emacs_meta_tier_word_motions_and_buffer_ends() {
         // F-012: the Meta (`M-`, Alt) tier — word motions and buffer ends. Word motions honour the prefix
         // count; `M-<`/`M->` (buffer ends) ignore it. A plain `f` still self-inserts (no Alt, no C-).
-        let meta = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT);
         let mut e = InputEngine::emacs();
 
         // `M-f` (Emacs forward-word) rests point AFTER the word (between-char), so it uses EmacsWordFwd,
@@ -498,7 +501,6 @@ mod tests {
     #[test]
     fn emacs_mark_and_region_bindings() {
         // F-012 / D-027: C-SPC set-mark, C-w kill-region, M-w kill-ring-save, C-x C-x exchange-point-mark.
-        let meta = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT);
         let ctrl_space = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL);
         let mut e = InputEngine::emacs();
 
@@ -526,7 +528,6 @@ mod tests {
     fn emacs_mx_reads_a_command_name_and_runs_it() {
         // F-012: M-x opens the minibuffer; typing a command name is Pending; <CR> resolves it via the
         // registry into a Command. An unknown name is inert.
-        let meta = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT);
         let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
 
         let mut e = InputEngine::emacs();

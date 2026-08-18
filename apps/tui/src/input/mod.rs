@@ -627,51 +627,36 @@ impl EmacsKey {
         }
     }
 
-    fn ctrl(c: char) -> EmacsKey {
+    /// The one struct-building constructor the named ones below delegate to.
+    fn with_mods(code: KeyCode, ctrl: bool, alt: bool, shift: bool) -> EmacsKey {
         EmacsKey {
-            code: KeyCode::Char(c),
-            ctrl: true,
-            alt: false,
-            shift: false,
+            code,
+            ctrl,
+            alt,
+            shift,
         }
+    }
+
+    fn ctrl(c: char) -> EmacsKey {
+        EmacsKey::with_mods(KeyCode::Char(c), true, false, false)
     }
 
     fn alt(c: char) -> EmacsKey {
-        EmacsKey {
-            code: KeyCode::Char(c),
-            ctrl: false,
-            alt: true,
-            shift: false,
-        }
+        EmacsKey::with_mods(KeyCode::Char(c), false, true, false)
     }
 
     fn plain(code: KeyCode) -> EmacsKey {
-        EmacsKey {
-            code,
-            ctrl: false,
-            alt: false,
-            shift: false,
-        }
+        EmacsKey::with_mods(code, false, false, false)
     }
 
     /// A Meta-modified non-character key, e.g. `M-DEL` (Meta+Backspace).
     fn alt_code(code: KeyCode) -> EmacsKey {
-        EmacsKey {
-            code,
-            ctrl: false,
-            alt: true,
-            shift: false,
-        }
+        EmacsKey::with_mods(code, false, true, false)
     }
 
     /// A Control-Shift-modified non-character key, e.g. `C-S-<backspace>` (kill-whole-line).
     fn ctrl_shift_code(code: KeyCode) -> EmacsKey {
-        EmacsKey {
-            code,
-            ctrl: true,
-            alt: false,
-            shift: true,
-        }
+        EmacsKey::with_mods(code, true, false, true)
     }
 }
 
