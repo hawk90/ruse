@@ -1348,6 +1348,15 @@ mod tests {
         assert_eq!(parse_ex("b#"), Ex::Buffer(BufTarget::Alternate));
         assert!(matches!(parse_ex("b foo"), Ex::Unknown(_)));
         assert!(matches!(parse_ex("bx"), Ex::Unknown(_)));
+        // `:e {file}` / `:edit {file}` open a file; `:enew`/`:ene` and a bare `:e` are NOT edits.
+        assert_eq!(parse_ex("e src/main.rs"), Ex::Edit("src/main.rs".into()));
+        assert_eq!(parse_ex("edit a.txt"), Ex::Edit("a.txt".into()));
+        assert_eq!(parse_ex("enew"), Ex::Enew);
+        assert_eq!(parse_ex("ene"), Ex::Enew);
+        assert!(
+            matches!(parse_ex("e"), Ex::Unknown(_)),
+            "bare :e is not an edit"
+        );
     }
 }
 

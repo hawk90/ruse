@@ -2,30 +2,39 @@
 //! parsed `:` line, and the save/label helpers they call. These are thin callers over `Workspace`,
 //! `persist::`, and the status/quit sinks — no event-loop or terminal state.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use ruse_core::{Command, Effect, SplitDir, Trace, Workspace};
+use ruse_core::{Command, DocumentId, Effect, SplitDir, Trace, Workspace};
 
 use crate::input::{BufTarget, Ex};
 use crate::persist;
 use crate::ui::prompts::Confirm;
 
+/// One file buffer's on-disk identity: its path and the detected encoding/line-ending to restore on save
+/// (F-008). Held frontend-side (core is IO-free), keyed by [`DocumentId`] in a [`Files`] registry.
+pub(crate) struct BufferFile {
+    pub(crate) path: PathBuf,
+    pub(crate) fmt: persist::encoding::FileFormat,
+}
+
+/// The per-buffer file registry: which buffers have a file on disk (a scratch `:enew` buffer has none, so
+/// `:w` on it declines). Replaces the old single `path`/`fmt`/`file_buf` triple (F-007 multi-buffer).
+pub(crate) type Files = HashMap<DocumentId, BufferFile>;
+
 /// Record a command and apply it to the focused window, performing any effects.
-#[allow(clippy::too_many_arguments)] // the command path needs the full editor context (buffer/file/sinks)
 pub(crate) fn run_cmd(
     cmd: Command,
     ws: &mut Workspace,
-    path: &Option<PathBuf>,
-    fmt: persist::encoding::FileFormat,
-    file_buf: ruse_core::DocumentId,
+    files: &Files,
     recorded: &mut Vec<Command>,
     status: &mut String,
     quit: &mut bool,
 ) {
     recorded.push(cmd.clone());
     for eff in ws.apply(&cmd) {
-        apply_effect(eff, ws, path, fmt, file_buf, status, quit);
+        apply_effect(eff, ws, files, status, quit);
     }
 }
 
@@ -36,9 +45,7 @@ pub(crate) fn run_cmd(
 pub(crate) fn run_ex(
     ex: &Ex,
     ws: &mut Workspace,
-    path: &Option<PathBuf>,
-    fmt: persist::encoding::FileFormat,
-    file_buf: ruse_core::DocumentId,
+    files: &Files,
     initial: &[u8],
     recorded: &[Command],
     status: &mut String,
@@ -46,12 +53,13 @@ pub(crate) fn run_ex(
     confirm: &mut Option<Confirm>,
 ) {
     match ex {
-        Ex::Save => save(ws, path, fmt, file_buf, status),
+        Ex::Save => save(ws, files, status),
         Ex::Quit => *quit = true,
         Ex::SaveQuit => {
-            // `:wq`/`:x` on a scratch buffer errors (save declines) and does NOT quit — matching Vim.
-            save(ws, path, fmt, file_buf, status);
-            if ws.focused_buffer() == file_buf {
+            // `:wq`/`:x` on a buffer with no file errors (save declines) and does NOT quit — matching Vim.
+            let had_file = files.contains_key(&ws.focused_buffer());
+            save(ws, files, status);
+            if had_file {
                 *quit = true;
             }
         }
@@ -118,6 +126,9 @@ pub(crate) fn run_ex(
         // `:checkhealth` is handled in the run loop (it reads the terminal-cap ledger + profile this fn
         // does not borrow); never reaches here.
         Ex::CheckHealth => {}
+        // `:e {file}` is handled in the run loop (it reads the file + mutates the `files`/highlighter
+        // registries this fn only borrows immutably); never reaches here.
+        Ex::Edit(_) => {}
         // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
         // buffers; `:bn`/`:bp` cycle; `:b {n}`/`:b#` switch by number / to the alternate.
         Ex::Enew => {
@@ -187,48 +198,36 @@ pub(crate) fn regex_error_msg(e: &ruse_core::RegexError) -> String {
 pub(crate) fn apply_effect(
     eff: Effect,
     ws: &mut Workspace,
-    path: &Option<PathBuf>,
-    fmt: persist::encoding::FileFormat,
-    file_buf: ruse_core::DocumentId,
+    files: &Files,
     status: &mut String,
     quit: &mut bool,
 ) {
     match eff {
-        Effect::Save => save(ws, path, fmt, file_buf, status),
+        Effect::Save => save(ws, files, status),
         Effect::Quit => *quit = true,
         Effect::Status(s) => *status = s,
     }
 }
 
-pub(crate) fn save(
-    ws: &mut Workspace,
-    path: &Option<PathBuf>,
-    fmt: persist::encoding::FileFormat,
-    file_buf: ruse_core::DocumentId,
-    status: &mut String,
-) {
-    // Multi-buffer honesty (F-007): `path`/`fmt` belong to the ONE file buffer. A scratch buffer (`:enew`)
-    // or any other buffer has no file, so `:w` must not write its bytes over the original file.
-    if ws.focused_buffer() != file_buf {
-        *status = "E32: No file name (scratch buffer)".into();
-        return;
-    }
-    let Some(p) = path else {
-        *status = "no file name (open with `ruse <file>`)".into();
+pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String) {
+    // Multi-buffer honesty (F-007): only a buffer WITH a file writes. A scratch buffer (`:enew`) has no
+    // registry entry, so `:w` declines rather than clobbering another buffer's file.
+    let Some(bf) = files.get(&ws.focused_buffer()) else {
+        *status = "E32: No file name".into();
         return;
     };
     // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).
-    let bytes = fmt.to_disk(ws.focused().doc.bytes());
-    match persist::atomic::save(p, &bytes) {
+    let bytes = bf.fmt.to_disk(ws.focused().doc.bytes());
+    match persist::atomic::save(&bf.path, &bytes) {
         Ok(()) => {
             ws.focused_doc_mut().mark_saved();
-            persist::journal::clear(path.as_deref()); // saved bytes are durable — no work to recover
-            tracing::info!(event = "save", path = %p.display(), bytes = bytes.len());
-            *status = format!("\"{}\" written", p.display());
+            persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
+            tracing::info!(event = "save", path = %bf.path.display(), bytes = bytes.len());
+            *status = format!("\"{}\" written", bf.path.display());
         }
         Err(e) => {
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
-            tracing::warn!(event = "save.failed", path = %p.display(), error = %e);
+            tracing::warn!(event = "save.failed", path = %bf.path.display(), error = %e);
             *status = format!("write failed: {e}");
         }
     }

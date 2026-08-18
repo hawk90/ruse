@@ -32,6 +32,8 @@ pub enum Ex {
     CheckHealth,
     /// `:enew` / `:ene` — open a new empty (scratch) buffer in the focused window (F-007 multi-buffer).
     Enew,
+    /// `:e {file}` / `:edit {file}` — open a file into a new buffer and focus it (F-007 multi-buffer).
+    Edit(String),
     /// `:ls` / `:buffers` — list the buffers on the status line (F-007 multi-buffer).
     Buffers,
     /// `:bnext` / `:bn` — switch the focused window to the next buffer in list order (F-007).
@@ -285,6 +287,8 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(ex) = parse_buffer(line) {
                 ex
+            } else if let Some(ex) = parse_edit(line) {
+                ex
             } else if let Some(rest) = line.strip_prefix("trace save") {
                 Ex::SaveTrace(rest.trim().to_string())
             } else if let Some(spec) = parse_substitute(line, false) {
@@ -298,6 +302,22 @@ pub fn parse_ex(line: &str) -> Ex {
             }
         }
     }
+}
+
+/// Parse `:e {file}` / `:edit {file}` (open a file into a new buffer). Requires a whitespace-separated,
+/// non-empty path, so `:enew` (matched literally earlier) and a bare `:e` do not reach here as an edit.
+fn parse_edit(line: &str) -> Option<Ex> {
+    let rest = line
+        .strip_prefix("edit")
+        .or_else(|| line.strip_prefix('e'))?;
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let file = rest.trim();
+    if file.is_empty() {
+        return None;
+    }
+    Some(Ex::Edit(file.to_string()))
 }
 
 /// Parse `:b {n}` / `:buffer {n}` (switch to buffer number `n`). `:b#` is handled as a literal in
