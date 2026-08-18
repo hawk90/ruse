@@ -274,6 +274,9 @@ pub enum Command {
     /// the cursor without moving onto it). Distinct from Vim `o` (which opens below AND enters Insert on the
     /// new line) — D-051. No kill-ring write.
     EmacsOpenLine,
+    /// `M-@` (mark-word) — set the mark at the end of the next word (the `forward-word` target) without
+    /// moving point, activating the region point→word-end. Emacs-only (D-051); no kill-ring write.
+    EmacsMarkWord,
 }
 
 /// Which case operation [`Command::EmacsCaseWord`] applies over the word span.
@@ -602,6 +605,7 @@ impl Command {
                 )
             }
             Command::EmacsOpenLine => "emacs_open_line".into(),
+            Command::EmacsMarkWord => "emacs_mark_word".into(),
             Command::EmacsCaseWord { case } => format!(
                 "emacs_case_word {}",
                 match case {
@@ -850,6 +854,7 @@ impl Command {
                 Command::EmacsBackwardKillWord { count }
             }
             "emacs_open_line" => Command::EmacsOpenLine,
+            "emacs_mark_word" => Command::EmacsMarkWord,
             "emacs_horizontal_space" => match arg {
                 Some("one") => Command::EmacsHorizontalSpace { keep_one: true },
                 Some("none") => Command::EmacsHorizontalSpace { keep_one: false },
@@ -1131,6 +1136,7 @@ mod tests {
             Command::EmacsHorizontalSpace { keep_one: true },
             Command::EmacsHorizontalSpace { keep_one: false },
             Command::EmacsOpenLine,
+            Command::EmacsMarkWord,
             Command::EmacsCaseWord {
                 case: WordCase::Upcase,
             },

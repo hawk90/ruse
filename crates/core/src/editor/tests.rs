@@ -2890,6 +2890,18 @@ mod mark_tests {
         assert_eq!(b.view.cursor, 11);
     }
 
+    // Emacs mark-word (M-@) (D-051): set the mark at the end of the next word, point unchanged.
+    #[test]
+    fn emacs_mark_word_sets_mark_at_word_end() {
+        let mut st = EditorState::new(b"foo bar".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_cursor(0);
+        apply_command(&mut st, &Command::EmacsMarkWord);
+        assert_eq!(st.view.cursor, 0, "point does not move");
+        assert_eq!(st.mark(), Some(3), "mark lands at the end of 'foo'");
+        assert!(st.register().is_empty());
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {

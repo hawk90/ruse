@@ -1251,6 +1251,23 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             st.view.mode,
             hint,
         ),
+        // `M-@` (Emacs mark-word, D-051): set the mark at the end of the next word (`forward-word`) without
+        // moving point, activating the region point→word-end. No edit, no kill-ring write.
+        Command::EmacsMarkWord => Plan {
+            action: Action::Nop,
+            cursor: cur,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: Some(MarkWrite::Set(motion::target(
+                b,
+                cur,
+                Motion::EmacsWordFwd,
+                1,
+            ))),
+        },
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
         Command::EmacsBufferEdge { start } => Plan {
