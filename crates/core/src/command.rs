@@ -282,6 +282,12 @@ pub enum Command {
     /// D-026). Distinct from Vim `dd` (linewise register, cursor to first-non-blank) — this is charwise into
     /// the kill ring.
     EmacsKillWholeLine,
+    /// `C-x C-u` / `C-x C-l` (upcase-region / downcase-region; `capitalize-region` too) — recase the active
+    /// region `[min(point,mark), max)` with the given [`WordCase`], leaving point and mark unchanged.
+    /// Emacs-only (D-051); no kill-ring write. Inert when no mark is set.
+    EmacsCaseRegion {
+        case: WordCase,
+    },
 }
 
 /// Which case operation [`Command::EmacsCaseWord`] applies over the word span.
@@ -612,6 +618,14 @@ impl Command {
             Command::EmacsOpenLine => "emacs_open_line".into(),
             Command::EmacsMarkWord => "emacs_mark_word".into(),
             Command::EmacsKillWholeLine => "emacs_kill_whole_line".into(),
+            Command::EmacsCaseRegion { case } => format!(
+                "emacs_case_region {}",
+                match case {
+                    WordCase::Upcase => "upcase",
+                    WordCase::Downcase => "downcase",
+                    WordCase::Capitalize => "capitalize",
+                }
+            ),
             Command::EmacsCaseWord { case } => format!(
                 "emacs_case_word {}",
                 match case {
@@ -862,6 +876,18 @@ impl Command {
             "emacs_open_line" => Command::EmacsOpenLine,
             "emacs_mark_word" => Command::EmacsMarkWord,
             "emacs_kill_whole_line" => Command::EmacsKillWholeLine,
+            "emacs_case_region" => match arg {
+                Some("upcase") => Command::EmacsCaseRegion {
+                    case: WordCase::Upcase,
+                },
+                Some("downcase") => Command::EmacsCaseRegion {
+                    case: WordCase::Downcase,
+                },
+                Some("capitalize") => Command::EmacsCaseRegion {
+                    case: WordCase::Capitalize,
+                },
+                _ => return Err(CommandParseError::BadArgument(line.to_string())),
+            },
             "emacs_horizontal_space" => match arg {
                 Some("one") => Command::EmacsHorizontalSpace { keep_one: true },
                 Some("none") => Command::EmacsHorizontalSpace { keep_one: false },
@@ -1145,6 +1171,15 @@ mod tests {
             Command::EmacsOpenLine,
             Command::EmacsMarkWord,
             Command::EmacsKillWholeLine,
+            Command::EmacsCaseRegion {
+                case: WordCase::Upcase,
+            },
+            Command::EmacsCaseRegion {
+                case: WordCase::Downcase,
+            },
+            Command::EmacsCaseRegion {
+                case: WordCase::Capitalize,
+            },
             Command::EmacsCaseWord {
                 case: WordCase::Upcase,
             },

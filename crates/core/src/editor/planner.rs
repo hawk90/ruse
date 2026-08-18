@@ -1281,6 +1281,33 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 nop(cur, st.view.mode)
             }
         }
+        // `C-x C-u` / `C-x C-l` (Emacs upcase-/downcase-/capitalize-region, D-051): recase the active region
+        // `[min(point,mark), max)` and leave point and mark where they are. Inert without a mark. No kill write.
+        Command::EmacsCaseRegion { case } => match st.view.mark {
+            Some(m) if m != cur => {
+                let (s, e) = (cur.min(m), cur.max(m));
+                match std::str::from_utf8(&b[s..e]) {
+                    Ok(span) => {
+                        let recased = recase(span, *case).into_bytes();
+                        Plan {
+                            action: Action::Txn {
+                                edits: one(Edit::replace(s, e - s, recased)),
+                                hint,
+                            },
+                            cursor: cur,
+                            mode: st.view.mode,
+                            is_edit: true,
+                            effects: Vec::new(),
+                            set_register: None,
+                            set_anchor: None,
+                            set_mark: None,
+                        }
+                    }
+                    Err(_) => nop(cur, st.view.mode),
+                }
+            }
+            _ => nop(cur, st.view.mode),
+        },
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
         Command::EmacsBufferEdge { start } => Plan {
