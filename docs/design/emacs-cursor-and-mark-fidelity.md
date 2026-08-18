@@ -242,4 +242,22 @@ The single remaining finding is `kill_line_whole_then_join`, which awaits step (
 kill-ring entry requires the core to track command-sequence state (Emacs's `last-command`: was the previous
 command also a kill?) and to append/prepend to the register rather than overwrite. That is a new behavioral
 contract on the register model, not a single-command addition — it should get its own design pass (a small
-Decision) rather than ride along as a quick slice.
+Decision) rather than ride along as a quick slice. *(Landed in PR #166 — see "Step (2) DONE" above.)*
+
+## Corpus expansion round 3 — more discrete editing commands (11 new fixtures, corpus 38→49)
+
+With the round-1/round-2 findings all closed (38/38), round 3 probes a fresh batch of discrete, pure-editing
+Emacs commands the registry does not resolve yet — each captured cleanly in batch (no minibuffer/char read).
+They surface as registry-gap findings (38/49, 11 divergent), the next slices' targets, each following the
+D-051 distinct-command pattern with the comparator flip as acceptance:
+
+| fixture(s) | command(s) | note |
+|---|---|---|
+| `back_to_indentation` | `back-to-indentation` (M-m) | move point to the first non-blank of the line |
+| `just_one_space`, `delete_horizontal_space` | `just-one-space` (M-SPC), `delete-horizontal-space` (M-\\) | collapse surrounding whitespace to one / to none |
+| `open_line` | `open-line` (C-o) | insert a newline after point, leaving point before it |
+| `backward_kill_word`, `backward_kill_word_accumulate` | `backward-kill-word` (M-DEL) | kill the previous word; consecutive backward kills PREPEND (exercises the one deferred `KillAppend` direction) |
+| `transpose_words` | `transpose-words` (M-t) | swap the two words around point |
+| `mark_word` | `mark-word` (M-@) | set the mark at the end of the next word |
+| `kill_whole_line` | `kill-whole-line` (C-S-DEL) | kill the whole line incl. its newline (accumulating) |
+| `upcase_region`, `downcase_region` | `upcase-region`, `downcase-region` (C-x C-u / C-x C-l) | recase the active region (reuses `recase`) |

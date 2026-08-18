@@ -311,6 +311,39 @@ FIXTURES: list[dict] = [
     #     as registry gaps (findings, not failures) that pin the next slices' targets. ---------------
     {"name": "transpose_chars", "text": "abc", "ops": ["transpose-chars"], "point": 1},
     {"name": "capitalize_word", "text": "foo bar", "ops": ["capitalize-word"]},
+    # === EXPANSION 3: more discrete editing commands (registry gaps → the next slices' targets). Each is a
+    #     pure-editing command that captures cleanly in batch (no minibuffer/char read). ----------------
+    # whitespace: back-to-indentation (M-m), just-one-space (M-SPC), delete-horizontal-space (M-\).
+    {"name": "back_to_indentation", "text": "  foo", "ops": ["back-to-indentation"], "point": 5},
+    {"name": "just_one_space", "text": "foo   bar", "ops": ["just-one-space"], "point": 4},
+    {"name": "delete_horizontal_space", "text": "foo   bar", "ops": ["delete-horizontal-space"], "point": 4},
+    # open-line (C-o): insert a newline after point, leaving point before it.
+    {"name": "open_line", "text": "foobar", "ops": ["open-line"], "point": 3},
+    # backward-kill-word (M-DEL): kill the previous word into the ring; consecutive backward kills PREPEND.
+    {"name": "backward_kill_word", "text": "foo bar", "ops": ["backward-kill-word"], "point": 7},
+    {
+        "name": "backward_kill_word_accumulate",
+        "text": "foo bar baz",
+        "ops": ["backward-kill-word", "backward-kill-word"],
+        "point": 11,
+    },
+    # transpose-words (M-t): swap the two words around point, moving past them.
+    {"name": "transpose_words", "text": "foo bar", "ops": ["transpose-words"], "point": 3},
+    # mark-word (M-@): set the mark at the end of the next word without moving point.
+    {"name": "mark_word", "text": "foo bar", "ops": ["mark-word"]},
+    # kill-whole-line (C-S-DEL): kill the entire line including its newline, regardless of point column.
+    {"name": "kill_whole_line", "text": "foo\nbar", "ops": ["kill-whole-line"], "point": 1},
+    # upcase-region / downcase-region (C-x C-u / C-x C-l): recase the active region [point,mark).
+    {
+        "name": "upcase_region",
+        "text": "foo bar",
+        "ops": ["set-mark-command", "forward-word", "upcase-region"],
+    },
+    {
+        "name": "downcase_region",
+        "text": "FOO BAR",
+        "ops": ["set-mark-command", "forward-word", "downcase-region"],
+    },
 ]
 
 
