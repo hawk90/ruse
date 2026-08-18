@@ -127,6 +127,11 @@ pub struct View {
     /// Whether the previous command edited text — drives undo grouping: an edit right after a non-edit
     /// (a motion or a mode change) starts a new undo group (persistence §6); consecutive edits coalesce.
     last_was_edit: bool,
+    /// Whether the previous command was an Emacs KILL (`kill-line`/`kill-word`/`kill-region`) — the analogue
+    /// of Emacs's `last-command == kill-region` test. When set, the next kill APPENDS onto the current
+    /// unnamed-register entry instead of overwriting it (kill-accumulation); any non-kill command clears it,
+    /// breaking the run. Set from [`RegWrite::KillAppend`] in [`commit`]; Vim edits never touch it.
+    last_was_kill: bool,
     /// The register store: the unnamed slot plus named `a`–`z` (`A`–`Z` append). Text yanked (`y`) or
     /// deleted (`d`/`c`/`x`) lands here for a later paste (`p`/`P`); an edit into `"x` mirrors the unnamed
     /// slot too. The numbered delete-ring / `"0` yank register stay deferred (D-026; see `register.rs`).
@@ -191,6 +196,7 @@ impl View {
             cursor: 0,
             mode: Mode::Normal,
             last_was_edit: false,
+            last_was_kill: false,
             registers: RegisterStore::new(),
             pending_register: None,
             anchor: None,
@@ -353,6 +359,11 @@ struct BlockInsert {
 enum RegWrite {
     Edit(Register),
     Yank(Register),
+    /// An Emacs KILL (`kill-line`/`kill-word`/`kill-region`). Like `Edit` it captures on a delete, but it
+    /// ACCUMULATES: when the previous command was also a kill ([`View::last_was_kill`]) the captured text is
+    /// appended onto the current unnamed entry rather than overwriting it (Emacs kill-ring behaviour). A
+    /// kill always leaves `last_was_kill` set so the following kill accumulates onto it.
+    KillAppend(Register),
 }
 
 /// How a committed command updates the Emacs mark (D-027 depth-1). `None` on a plan leaves the mark
@@ -1258,10 +1269,22 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         }
     }
     // A yank/delete/change writes its captured span into the pending register (or unnamed when none),
-    // mirroring the unnamed slot on a named write; append (`"A`) is handled inside the store.
+    // mirroring the unnamed slot on a named write; append (`"A`) is handled inside the store. An Emacs kill
+    // additionally ACCUMULATES onto the unnamed entry when the previous command was also a kill, and always
+    // marks the run so the next kill accumulates onto it; any other command breaks the run.
+    let was_kill = st.view.last_was_kill;
+    st.view.last_was_kill = false;
     match plan.set_register {
         Some(RegWrite::Edit(reg)) => st.view.registers.write(st.view.pending_register, reg),
         Some(RegWrite::Yank(reg)) => st.view.registers.yank(st.view.pending_register, reg),
+        Some(RegWrite::KillAppend(reg)) => {
+            if was_kill {
+                st.view.registers.kill_append(reg);
+            } else {
+                st.view.registers.write(st.view.pending_register, reg);
+            }
+            st.view.last_was_kill = true;
+        }
         None => {}
     }
     // Maintain the selection anchor: set it when entering a selection mode (Visual/Select; the fixed end

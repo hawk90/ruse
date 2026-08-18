@@ -389,10 +389,11 @@ mod tests {
             e.feed(meta('b'), Mode::Insert),
             Feed::Cmd(Command::Move(1, Motion::WordBack))
         );
-        // `M-d` kills a word forward — a delete that captures into the register (kill ring).
+        // `M-d` kills a word forward into the register (kill ring) — its own `EmacsKillWord` command (D-051),
+        // distinct from Vim `Delete` so consecutive Emacs kills accumulate and Vim deletes never do.
         assert_eq!(
             e.feed(meta('d'), Mode::Insert),
-            Feed::Cmd(Command::Delete(1, Motion::EmacsWordFwd))
+            Feed::Cmd(Command::EmacsKillWord { count: 1 })
         );
         // Buffer ends: `M-<` to the absolute buffer start, `M->` to the absolute end — count-agnostic, and
         // each pushes the mark (D-051, `EmacsBufferEdge`), distinct from Vim `gg`/`G`.

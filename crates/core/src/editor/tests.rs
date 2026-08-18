@@ -2623,8 +2623,8 @@ mod mark_tests {
         apply_command(&mut mid, &Command::EmacsKillLine);
         assert_eq!(text(&mid), "bar");
         assert_eq!(mid.view.cursor, 0);
-        // The register OVERWRITES (kill-accumulation is a separate slice) — it now holds just the newline.
-        assert_eq!(mid.register().text(), b"\n");
+        // The two consecutive kills ACCUMULATE onto one entry (Emacs kill-ring): "foo" then "\n" -> "foo\n".
+        assert_eq!(mid.register().text(), b"foo\n");
 
         // At end-of-buffer there is nothing to kill: inert, register untouched.
         let mut eob = EditorState::new(b"foo".to_vec());
@@ -2728,6 +2728,60 @@ mod mark_tests {
         );
         assert_eq!(text(&none), "foo");
         assert_eq!(none.view.cursor, 3);
+    }
+
+    // Emacs kill-accumulation (D-051): consecutive kills append onto one unnamed entry; a non-kill command
+    // between them breaks the run so the next kill starts fresh. Mirrors Emacs `last-command == kill-region`.
+    #[test]
+    fn emacs_kills_accumulate_and_break_on_non_kill() {
+        // Two kill-lines: "foo" then the joining "\n" append -> "foo\n".
+        let mut kl = EditorState::new(b"foo\nbar".to_vec());
+        kl.set_caret_gravity(CaretGravity::BetweenChar);
+        kl.set_cursor(0);
+        apply_command(&mut kl, &Command::EmacsKillLine);
+        apply_command(&mut kl, &Command::EmacsKillLine);
+        assert_eq!(text(&kl), "bar");
+        assert_eq!(
+            kl.register().text(),
+            b"foo\n",
+            "consecutive kill-lines accumulate"
+        );
+
+        // Two kill-words accumulate: "foo" then " bar" -> "foo bar".
+        let mut kw = EditorState::new(b"foo bar".to_vec());
+        kw.set_caret_gravity(CaretGravity::BetweenChar);
+        kw.set_cursor(0);
+        apply_command(&mut kw, &Command::EmacsKillWord { count: 1 });
+        apply_command(&mut kw, &Command::EmacsKillWord { count: 1 });
+        assert_eq!(text(&kw), "");
+        assert_eq!(
+            kw.register().text(),
+            b"foo bar",
+            "consecutive kill-words accumulate"
+        );
+
+        // A non-kill (a plain move) between kills BREAKS the run: the second kill overwrites, not appends.
+        let mut brk = EditorState::new(b"foo bar baz".to_vec());
+        brk.set_caret_gravity(CaretGravity::BetweenChar);
+        brk.set_cursor(0);
+        apply_command(&mut brk, &Command::EmacsKillWord { count: 1 });
+        apply_command(&mut brk, &Command::MoveRight); // not a kill -> resets last_was_kill
+        apply_command(&mut brk, &Command::EmacsKillWord { count: 1 });
+        assert_eq!(
+            brk.register().text(),
+            b"bar",
+            "a non-kill breaks accumulation"
+        );
+
+        // A Vim delete must NEVER accumulate, even back-to-back (accumulation is Emacs-kill-only).
+        let mut vim = EditorState::new(b"foo bar".to_vec());
+        apply_command(&mut vim, &Command::Delete(1, Motion::WordFwd));
+        apply_command(&mut vim, &Command::Delete(1, Motion::WordFwd));
+        assert_eq!(
+            vim.register().text(),
+            b"bar",
+            "Vim dw overwrites the register; it never accumulates"
+        );
     }
 
     // The killed text is in the register: a following paste-before restores it.

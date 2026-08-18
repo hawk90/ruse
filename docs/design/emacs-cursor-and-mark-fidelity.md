@@ -38,7 +38,7 @@ The Emacs command-semantics oracle (`tools/parity/emacs_oracle.py`, #152), its s
 produced. Its contract — identical to the Neovim comparator — is that **a divergence is a finding, not a
 failure**: the harness only asserts it ran. On the seed corpus the tally opened at **10/23 verified, 13
 divergent** and reached **23/23 — the whole seed corpus is Emacs-faithful** — before the corpus was expanded
-to 36 fixtures (**32/36**, then **33/36** after `EmacsKillLine`, **34/36** after `EmacsTransposeChars`, **35/36** after `EmacsCaseWord`; the last, `kill_line_whole_then_join`, awaits kill-accumulation; see "Corpus expansion round 1" below). Path: Family 1 (caret gravity)
+to 36 fixtures (**32/36**, then **33/36** after `EmacsKillLine`, **34/36** after `EmacsTransposeChars`, **35/36** after `EmacsCaseWord`), then to 38 with round 2's kill-accumulation fixtures, reaching **38/38 — the whole expanded corpus is Emacs-faithful** once kill-accumulation landed (see "Corpus expansion round 1" below). Path: Family 1 (caret gravity)
 10→12 (`kill_line`, `previous_line`); Family 3 part 1 →14 (`delete_char`, `kill_region`); Family 2
 (word-motion) →18 (`forward_word`, `kill_word`, `kill_word_from_mid`, `kill_region_word`); Family 3 part 2
 →23 (`beginning_of_buffer`, `end_of_buffer`, `copy_region_then_yank`, `kill_region_then_yank_at_end`,
@@ -214,6 +214,19 @@ inert. This closed `kill_line_at_eol` (tally 32/36 → **33/36**) and fixed the 
 `kill_line_whole_then_join` (which stays divergent on the kill field, awaiting step (2) kill-accumulation).
 The Vim `D` path and the Neovim parity axis (143/143) are untouched — the two profiles diverge by carrying
 distinct `Command`s over one shared core, not by profile-gating a shared command.
+
+**Step (2) DONE — kill-accumulation (`last_was_kill` + `RegWrite::KillAppend` + `Command::EmacsKillWord`).**
+Consecutive Emacs kills now append onto one unnamed-register entry, and a non-kill command breaks the run —
+Emacs's `last-command == kill-region` behaviour. The mechanism reuses existing decisions, no new architecture
+Decision: a `last_was_kill` flag on `View` (the same command-sequence-state pattern as the existing
+`last_was_edit`), a new `RegWrite::KillAppend` that appends via the register store's `"A`-style `append`
+when `last_was_kill` was set (else overwrites) and always re-arms the flag, and a distinct
+`Command::EmacsKillWord{count}` (D-051) so `kill-word` accumulates without Vim `dw` ever doing so
+(`EmacsKillLine`/`KillRegion` switched to `KillAppend` too). This closed `kill_line_whole_then_join` and
+`kill_word_accumulate`, kept `kill_accumulate_breaks_on_move` verified (a non-kill resets the flag), and
+brought the **expanded corpus to 38/38 — fully Emacs-faithful across every captured command**. Vim deletes
+and the Neovim parity axis (143/143) are untouched. Backward-kill PREPEND (e.g. a future `backward-kill-word`)
+is a follow-up: no backward-kill command exists yet, and the corpus has none, so `KillAppend` appends only.
 
 **Step (3) DONE — `Command::EmacsTransposeChars` (`C-t`) + `Command::EmacsCaseWord{case}` (`M-u`/`M-l`/`M-c`).**
 transpose-chars is a discrete Emacs command (D-051, no Vim lookalike): it swaps the char before point with the

@@ -120,6 +120,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::Paste { .. }
         | C::EmacsYank { .. }
         | C::EmacsKillLine
+        | C::EmacsKillWord { .. }
         | C::EmacsTransposeChars
         | C::EmacsCaseWord { .. }
         | C::DeleteSelection
@@ -664,7 +665,7 @@ enum CountedCmd {
     DeleteForward, // C-d — Emacs delete-char: DeleteForward(count), no kill-ring write (D-026)
     Yank,          // C-y — Emacs yank: EmacsYank { count } (paste + set mark, D-051)
     Move(Motion),  // M-f / M-b — Move(count, motion)
-    Delete(Motion), // M-d — Delete(count, motion)
+    KillWord,      // M-d — Emacs kill-word: EmacsKillWord { count } (accumulating kill, D-051)
 }
 
 /// Fold the pending prefix count into a bound key's command. `Prefix` is handled by the caller (it mutates
@@ -680,7 +681,7 @@ fn fold_emacs_count(binding: &EmacsBinding, count: u32) -> Feed {
             CountedCmd::DeleteForward => Command::DeleteForward(count),
             CountedCmd::Yank => Command::EmacsYank { count },
             CountedCmd::Move(m) => Command::Move(count, *m),
-            CountedCmd::Delete(m) => Command::Delete(count, *m),
+            CountedCmd::KillWord => Command::EmacsKillWord { count },
         }),
         EmacsBinding::Repeat(cmd) => emacs_repeat(cmd.clone(), count),
         EmacsBinding::Fixed(cmd) => Feed::Cmd(cmd.clone()),
@@ -843,7 +844,7 @@ impl EmacsProfile {
         )
         .bind(
             EmacsKey::alt('d'),
-            EmacsBinding::Counted(CountedCmd::Delete(Motion::EmacsWordFwd)),
+            EmacsBinding::Counted(CountedCmd::KillWord),
         )
         // M-x opens the minibuffer to read a command name (execute-extended-command).
         .bind(EmacsKey::alt('x'), EmacsBinding::Minibuffer)
@@ -929,7 +930,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "capitalize-word" => Command::EmacsCaseWord {
             case: WordCase::Capitalize,
         },
-        "kill-word" => Command::Delete(1, Motion::EmacsWordFwd),
+        "kill-word" => Command::EmacsKillWord { count: 1 },
         "yank" => Command::EmacsYank { count: 1 },
         "newline" => Command::InsertNewline,
         "undo" => Command::Undo,
