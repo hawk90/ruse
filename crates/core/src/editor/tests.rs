@@ -2606,6 +2606,36 @@ mod mark_tests {
         assert_eq!(back.view.mark, Some(10));
     }
 
+    // Emacs kill-line (D-051): kill to EOL into the register, but AT the EOL kill the newline instead
+    // (joining the next line), and at end-of-buffer do nothing. Distinct from Vim `D` (which no-ops at EOL).
+    #[test]
+    fn emacs_kill_line_kills_to_eol_then_joins_at_eol() {
+        // Point before the line end: kill the line's rest (not the newline).
+        let mut mid = EditorState::new(b"foo\nbar".to_vec());
+        mid.set_caret_gravity(CaretGravity::BetweenChar);
+        mid.set_cursor(0);
+        apply_command(&mut mid, &Command::EmacsKillLine);
+        assert_eq!(text(&mid), "\nbar");
+        assert_eq!(mid.view.cursor, 0);
+        assert_eq!(mid.register().text(), b"foo");
+
+        // A second kill-line, now resting AT the (empty first) line's end: kill the newline, joining "bar".
+        apply_command(&mut mid, &Command::EmacsKillLine);
+        assert_eq!(text(&mid), "bar");
+        assert_eq!(mid.view.cursor, 0);
+        // The register OVERWRITES (kill-accumulation is a separate slice) — it now holds just the newline.
+        assert_eq!(mid.register().text(), b"\n");
+
+        // At end-of-buffer there is nothing to kill: inert, register untouched.
+        let mut eob = EditorState::new(b"foo".to_vec());
+        eob.set_caret_gravity(CaretGravity::BetweenChar);
+        eob.set_cursor(3);
+        apply_command(&mut eob, &Command::EmacsKillLine);
+        assert_eq!(text(&eob), "foo");
+        assert_eq!(eob.view.cursor, 3);
+        assert!(eob.register().is_empty());
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {

@@ -119,6 +119,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::ShiftLeft(_)
         | C::Paste { .. }
         | C::EmacsYank { .. }
+        | C::EmacsKillLine
         | C::DeleteSelection
         | C::OpForced {
             op: OpKind::Delete, ..
@@ -782,11 +783,12 @@ impl EmacsProfile {
             EmacsKey::alt('>'),
             EmacsBinding::Fixed(Command::EmacsBufferEdge { start: false }),
         )
-        // Kill-line: a delete to end-of-line that captures into the unnamed register (kill ring). The
-        // at-EOL join and the line-count argument are follow-ups, so it stays Fixed (count ignored).
+        // Kill-line: kill to end-of-line into the register, OR the terminating newline when already at EOL
+        // (joining the next line) — its own `EmacsKillLine` command (D-051), not Vim `D`. The line-count
+        // prefix argument is a follow-up, so it stays Fixed (count ignored).
         .bind(
             EmacsKey::ctrl('k'),
-            EmacsBinding::Fixed(Command::Delete(1, Motion::LineEnd)),
+            EmacsBinding::Fixed(Command::EmacsKillLine),
         )
         // Emacs region (D-027): set-mark, kill-region, kill-ring-save. `C-x C-x` (exchange) lives in the
         // C-x prefix map. `C-SPC` is bound as Ctrl+Space; some terminals deliver it as NUL — a delivery
@@ -888,7 +890,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "forward-word" => Command::Move(1, Motion::EmacsWordFwd),
         "backward-word" => Command::Move(1, Motion::WordBack),
         "delete-char" => Command::DeleteForward(1),
-        "kill-line" => Command::Delete(1, Motion::LineEnd),
+        "kill-line" => Command::EmacsKillLine,
         "kill-word" => Command::Delete(1, Motion::EmacsWordFwd),
         "yank" => Command::EmacsYank { count: 1 },
         "newline" => Command::InsertNewline,

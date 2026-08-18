@@ -38,7 +38,7 @@ The Emacs command-semantics oracle (`tools/parity/emacs_oracle.py`, #152), its s
 produced. Its contract — identical to the Neovim comparator — is that **a divergence is a finding, not a
 failure**: the harness only asserts it ran. On the seed corpus the tally opened at **10/23 verified, 13
 divergent** and reached **23/23 — the whole seed corpus is Emacs-faithful** — before the corpus was expanded
-to 36 fixtures (now **32/36**, see "Corpus expansion round 1" below). Path: Family 1 (caret gravity)
+to 36 fixtures (**32/36**, then **33/36** after `EmacsKillLine`; see "Corpus expansion round 1" below). Path: Family 1 (caret gravity)
 10→12 (`kill_line`, `previous_line`); Family 3 part 1 →14 (`delete_char`, `kill_region`); Family 2
 (word-motion) →18 (`forward_word`, `kill_word`, `kill_word_from_mid`, `kill_region_word`); Family 3 part 2
 →23 (`beginning_of_buffer`, `end_of_buffer`, `copy_region_then_yank`, `kill_region_then_yank_at_end`,
@@ -180,8 +180,8 @@ that the shipped commands hold on multi-line buffers, repeated application, and 
 
 | fixture | ruse | emacs | finding |
 |---|---|---|---|
-| `kill_line_at_eol` | deletes nothing (`Delete(1, LineEnd)` at EOL is a no-op), kill unchanged | joins the next line, kill `"\n"` | Emacs `kill-line` at end-of-line kills the **newline** (no EOL boundary); ruse's `LineEnd` motion stops at the newline. Needs an Emacs kill-line that kills the `\n` when point is at EOL — the D-051 distinct-command pattern (`Command::EmacsKillLine`). |
-| `kill_line_whole_then_join` | `["", "bar"]`, kill `"foo"` | `["bar"]`, kill `"foo\n"` | Same EOL bug **plus** KILL ACCUMULATION: consecutive kills append to one kill-ring entry (`foo` then `\n` → `"foo\n"`). ruse overwrites the register on each kill. Needs `last-command`-style kill-append tracking in the core (a real feature, larger than one command). |
+| `kill_line_at_eol` | ✅ **CLOSED** — now joins the next line, kill `"\n"` (was: `Delete(1, LineEnd)` no-op at EOL) | joins the next line, kill `"\n"` | Closed by `Command::EmacsKillLine` (D-051 distinct-command). Emacs `kill-line` at end-of-line kills the **newline**; `EmacsKillLine` kills to EOL, or the terminating `\n` when point is already at EOL, and is inert at end-of-buffer. Vim `D` (`Delete(1, LineEnd)`) is untouched. |
+| `kill_line_whole_then_join` | ↗ text/point now `["bar"]`, point 0 (via `EmacsKillLine`); kill still `"\n"` | `["bar"]`, kill `"foo\n"` | **Half-closed**: `EmacsKillLine` fixed the text/point (the EOL join). Still divergent on the KILL field — KILL ACCUMULATION: consecutive kills append to one kill-ring entry (`foo` then `\n` → `"foo\n"`); ruse overwrites the register on each kill. Needs `last-command`-style kill-append tracking in the core (a real feature, larger than one command). |
 | `transpose_chars` | unresolved (`C-t`) | `"bac"`, point 2 | Registry gap — `transpose-chars` is not in `emacs_command_by_name`; ruse has no transpose command yet. |
 | `capitalize_word` | unresolved | `"Foo bar"`, point 3 | Registry gap — `capitalize-word` (and the `upcase`/`downcase` family) unimplemented. |
 
@@ -196,3 +196,11 @@ text/point half of `kill_line_whole_then_join`); (2) kill-accumulation (ratchets
 `kill_line_whole_then_join` and enables faithful multi-kill fixtures broadly); (3) the transpose / case
 command family (closes the two registry gaps and opens a new coverage area). Each remains its own governed
 slice with the comparator tally as acceptance.
+
+**Step (1) landed — `Command::EmacsKillLine`.** `kill-line` (`C-k`) is now its own command rather than
+Vim's `Delete(1, LineEnd)` (D-051): with text before the line end it kills that text into the register; with
+point already at the line end it kills the terminating `\n` (joining the next line); at end-of-buffer it is
+inert. This closed `kill_line_at_eol` (tally 32/36 → **33/36**) and fixed the text/point half of
+`kill_line_whole_then_join` (which stays divergent on the kill field, awaiting step (2) kill-accumulation).
+The Vim `D` path and the Neovim parity axis (143/143) are untouched — the two profiles diverge by carrying
+distinct `Command`s over one shared core, not by profile-gating a shared command.

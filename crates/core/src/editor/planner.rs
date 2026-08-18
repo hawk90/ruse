@@ -1026,6 +1026,29 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             p
         }
+        // `C-k` (Emacs kill-line, D-051): kill from point into the register. With text before the line end,
+        // kill that text (NOT the newline). With point already at the line end, kill the terminating newline
+        // instead — joining the next line up. At end-of-buffer (no newline to take) it is inert. This is the
+        // no-prefix `kill-whole-line`-nil default; unlike Vim `D` (`Delete(1, LineEnd)`) it never no-ops at EOL.
+        Command::EmacsKillLine => {
+            let le = line_end(b, cur);
+            if cur < le {
+                let reg = captured(b, cur, le, false);
+                edit_yank(
+                    one(Edit::delete(cur, le - cur)),
+                    cur,
+                    st.view.mode,
+                    hint,
+                    reg,
+                )
+            } else if le < b.len() {
+                // Point at EOL: kill the single newline byte, joining the following line.
+                let reg = captured(b, le, le + 1, false);
+                edit_yank(one(Edit::delete(le, 1)), le, st.view.mode, hint, reg)
+            } else {
+                nop(cur, st.view.mode)
+            }
+        }
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
         Command::EmacsBufferEdge { start } => Plan {
