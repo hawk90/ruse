@@ -271,6 +271,15 @@ fn nop(cursor: usize, mode: Mode) -> Plan {
     }
 }
 
+/// A non-editing move (like [`nop`]) that also SETS the Emacs mark at `mark`. Shared by the mark commands
+/// (`SetMark` / `ExchangePointMark` / `EmacsMarkWord` / `EmacsBufferEdge`).
+fn nop_mark(cursor: usize, mode: Mode, mark: usize) -> Plan {
+    Plan {
+        set_mark: Some(MarkWrite::Set(mark)),
+        ..nop(cursor, mode)
+    }
+}
+
 fn edit(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint) -> Plan {
     Plan {
         action: Action::Txn { edits, hint },
@@ -1055,28 +1064,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
 fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Command) -> Plan {
     match cmd {
         // Emacs region (D-027 depth-1). `C-SPC` drops the mark at point.
-        Command::SetMark => Plan {
-            action: Action::Nop,
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: Some(MarkWrite::Set(cur)),
-        },
+        Command::SetMark => nop_mark(cur, st.view.mode, cur),
         // `C-x C-x` swaps point and mark; the mark takes the old point. No mark set → inert.
         Command::ExchangePointMark => match st.view.mark {
-            Some(m) => Plan {
-                action: Action::Nop,
-                cursor: m,
-                mode: st.view.mode,
-                is_edit: false,
-                effects: Vec::new(),
-                set_register: None,
-                set_anchor: None,
-                set_mark: Some(MarkWrite::Set(cur)),
-            },
+            Some(m) => nop_mark(m, st.view.mode, cur),
             None => nop(cur, st.view.mode),
         },
         // `M-w` copies the region `[min,max)` charwise into the register; point and mark are untouched. An
@@ -1312,21 +1303,11 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         ),
         // `M-@` (Emacs mark-word, D-051): set the mark at the end of the next word (`forward-word`) without
         // moving point, activating the region point→word-end. No edit, no kill-ring write.
-        Command::EmacsMarkWord => Plan {
-            action: Action::Nop,
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: Some(MarkWrite::Set(motion::target(
-                b,
-                cur,
-                Motion::EmacsWordFwd,
-                1,
-            ))),
-        },
+        Command::EmacsMarkWord => nop_mark(
+            cur,
+            st.view.mode,
+            motion::target(b, cur, Motion::EmacsWordFwd, 1),
+        ),
         // `C-S-DEL` (Emacs kill-whole-line, D-051): kill the whole line INCLUDING its trailing newline,
         // regardless of point column, into the register (accumulating), leaving point at the line start.
         Command::EmacsKillWholeLine => {
@@ -1385,16 +1366,9 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         }
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
-        Command::EmacsBufferEdge { start } => Plan {
-            action: Action::Nop,
-            cursor: if *start { 0 } else { b.len() },
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: Some(MarkWrite::Set(cur)),
-        },
+        Command::EmacsBufferEdge { start } => {
+            nop_mark(if *start { 0 } else { b.len() }, st.view.mode, cur)
+        }
         _ => unreachable!("plan_emacs handles only Emacs-profile commands"),
     }
 }
