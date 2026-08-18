@@ -471,15 +471,23 @@ struct InsertState {
     ctrl_g: bool,
 }
 
-/// The active input profile (F-012 / RFC-0014). Vim is a MODAL grammar (Normal/Insert/Visual, operator-
-/// pending); Emacs is NON-MODAL (always editable, `C-` bindings are commands). The two dispatch
-/// differently, so `feed` branches on this before any modal handling — they are not two keymaps over one
-/// state machine. `input.profile` (config-schema) selects it; no config loader exists yet, so it is set at
-/// construction (`InputEngine::new` = Vim, `::emacs` = Emacs).
+/// The active input profile (F-012 / RFC-0014, F-013 / RFC-0016). Vim is a MODAL grammar (Normal/Insert/
+/// Visual, operator-pending); Emacs is NON-MODAL (always editable, `C-` bindings are commands); Native is
+/// the third language, whose TEXT layer REUSES the Vim modal grammar (NAT-1) and layers command-discovery
+/// (leader/which-key, NAT-2), transient special-view maps (NAT-3) and a readline line (NAT-4) on top. The
+/// profiles dispatch differently, so `feed` branches on this before any modal handling — they are not two
+/// keymaps over one state machine. Only Emacs takes the non-modal path; Vim and Native share the modal path
+/// (Native's distinctive layers are additive, they do not replace the text grammar). `input.profile`
+/// (config-schema) selects it; no config loader exists yet, so it is set at construction (`InputEngine::new`
+/// = Vim, `::emacs` = Emacs, `::native` = Native).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InputProfile {
     Vim,
     Emacs,
+    /// The Native profile (F-013). Modal text = the Vim grammar (NAT-1); command discovery, transient
+    /// action maps and a readline line layer on additively. In this slice it is behaviourally Vim plus the
+    /// distinct identity — the leader/which-key tier (NAT-2) et al. land in following slices.
+    Native,
 }
 
 /// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
@@ -1065,6 +1073,14 @@ impl InputEngine {
         Self::with_profile(InputProfile::Emacs)
     }
 
+    /// A Native-profile engine (F-013). Same state; `feed` takes the MODAL path — Native's text layer is the
+    /// Vim grammar (NAT-1). Its distinctive command-discovery/transient/readline layers are additive follow-
+    /// ups, so in this slice a Native engine drives text exactly as Vim does, under its own profile identity.
+    #[must_use]
+    pub fn native() -> InputEngine {
+        Self::with_profile(InputProfile::Native)
+    }
+
     #[must_use]
     fn with_profile(input_profile: InputProfile) -> InputEngine {
         InputEngine {
@@ -1424,7 +1440,9 @@ impl InputEngine {
         let key = self.translate_lang(key, mode);
         // Emacs is NON-MODAL: no Normal/Insert grammar, no operator-pending, no dot-repeat recorder — a
         // key is either a `C-`/`M-` command or literal text. So it takes its own dispatch, never the Vim
-        // modal path below (F-012 / RFC-0014).
+        // modal path below (F-012 / RFC-0014). Native is NOT here on purpose: its text layer IS the Vim
+        // modal grammar (F-013 NAT-1), so it falls through to the modal path and only its additive layers
+        // (leader/which-key, transient maps) — landing in later slices — will branch above it.
         if self.input_profile == InputProfile::Emacs {
             return self.feed_emacs(key);
         }

@@ -290,16 +290,22 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut recorded: Vec<Command> = Vec::new();
     let mut journal_ticks: u32 = 0; // throttle: append the recovery journal every Nth modified frame
 
-    // Profile selection (F-012): no config loader exists yet, so `RUSE_PROFILE=emacs` picks the Emacs
-    // profile (the same env-override seam as the terminal caps). Defaults to Vim.
-    let emacs_profile = matches!(std::env::var("RUSE_PROFILE").as_deref(), Ok("emacs"));
-    let mut engine = if emacs_profile {
-        InputEngine::emacs()
-    } else {
-        InputEngine::new()
+    // Profile selection (F-012 / F-013): no config loader exists yet, so `RUSE_PROFILE` picks the profile
+    // (the same env-override seam as the terminal caps). `emacs` = Emacs, `native` = Native, else Vim.
+    let profile_name = match std::env::var("RUSE_PROFILE").as_deref() {
+        Ok("emacs") => "emacs",
+        Ok("native") => "native",
+        _ => "vim",
+    };
+    let emacs_profile = profile_name == "emacs";
+    let mut engine = match profile_name {
+        "emacs" => InputEngine::emacs(),
+        "native" => InputEngine::native(),
+        _ => InputEngine::new(),
     };
     // Caret gravity follows the profile (D-050 / RFC-0015): the Emacs profile rests point BETWEEN chars
-    // (line/buffer end = after the last char), so its edits are not Vim-clamped. Vim keeps `OnChar`.
+    // (line/buffer end = after the last char), so its edits are not Vim-clamped. Vim keeps `OnChar`, and
+    // Native reuses the Vim text grammar (NAT-1) so it keeps `OnChar` too.
     if emacs_profile {
         ws.set_caret_gravity(CaretGravity::BetweenChar);
     }
@@ -499,7 +505,7 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // are in scope, not in `run_ex`) and render the report's one-line summary into status.
                     Ex::CheckHealth => {
                         let inputs = health::HealthInputs {
-                            profile: if emacs_profile { "emacs" } else { "vim" },
+                            profile: profile_name,
                             caret: if emacs_profile {
                                 "between-char"
                             } else {
