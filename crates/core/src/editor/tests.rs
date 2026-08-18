@@ -2846,6 +2846,28 @@ mod mark_tests {
         assert!(st.register().is_empty());
     }
 
+    // Emacs backward-kill-word (M-DEL) (D-051): kill the previous word; consecutive backward kills PREPEND
+    // onto the current entry (the backward-kill accumulation direction).
+    #[test]
+    fn emacs_backward_kill_word_kills_backward_and_prepends() {
+        let mut one = EditorState::new(b"foo bar".to_vec());
+        one.set_caret_gravity(CaretGravity::BetweenChar);
+        one.set_cursor(7);
+        apply_command(&mut one, &Command::EmacsBackwardKillWord { count: 1 });
+        assert_eq!(text(&one), "foo ");
+        assert_eq!(one.view.cursor, 4);
+        assert_eq!(one.register().text(), b"bar");
+
+        // Two backward kills: the second PREPENDS ("bar " before "baz" -> "bar baz").
+        let mut acc = EditorState::new(b"foo bar baz".to_vec());
+        acc.set_caret_gravity(CaretGravity::BetweenChar);
+        acc.set_cursor(11);
+        apply_command(&mut acc, &Command::EmacsBackwardKillWord { count: 1 });
+        apply_command(&mut acc, &Command::EmacsBackwardKillWord { count: 1 });
+        assert_eq!(text(&acc), "foo ");
+        assert_eq!(acc.register().text(), b"bar baz", "backward kills prepend");
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {

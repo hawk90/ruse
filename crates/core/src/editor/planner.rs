@@ -1106,6 +1106,30 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 edit_kill(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
             }
         }
+        // `M-DEL` (Emacs backward-kill-word, D-051): kill `count` words backward (the `WordBack` span) into
+        // the register. A BACKWARD kill, so on a kill run it PREPENDS onto the current entry (via
+        // `RegWrite::KillPrepend`). Distinct from Vim `db` (no accumulation).
+        Command::EmacsBackwardKillWord { count } => {
+            let target = motion::target(b, cur, Motion::WordBack, *count);
+            if target >= cur {
+                nop(cur, st.view.mode)
+            } else {
+                let reg = captured(b, target, cur, false);
+                Plan {
+                    action: Action::Txn {
+                        edits: one(Edit::delete(target, cur - target)),
+                        hint,
+                    },
+                    cursor: target,
+                    mode: st.view.mode,
+                    is_edit: true,
+                    effects: Vec::new(),
+                    set_register: Some(RegWrite::KillPrepend(reg)),
+                    set_anchor: None,
+                    set_mark: None,
+                }
+            }
+        }
         // `C-t` (Emacs transpose-chars, D-051): swap the char before point with the char at point, then
         // advance point past the pair. `j` is the right char (it slides left), `i = j - 1` the left char;
         // at end of line Emacs steps back one so the two chars ENDING the line are transposed. Inert when the
