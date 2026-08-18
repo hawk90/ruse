@@ -325,6 +325,60 @@ mod tests {
     }
 
     #[test]
+    fn native_leader_opens_whichkey_and_resolves_to_semantic_commands() {
+        // F-013 NAT-2: `<leader>` (Space) from a clean Normal base ARMS the which-key tier (Pending, no
+        // command yet); the next key resolves in the leader map to a SEMANTIC command (INV-CMD-SEMANTIC).
+        let mut e = InputEngine::native();
+        assert_eq!(e.feed(k(' '), Mode::Normal), Feed::Pending);
+        assert!(e.leader_hint().is_some(), "Space must arm the leader tier");
+        assert_eq!(e.feed(k('w'), Mode::Normal), Feed::Cmd(Command::Save));
+        assert!(e.leader_hint().is_none(), "the selection disarms the tier");
+
+        // Each seed binding resolves to its semantic command.
+        for (key_char, cmd) in [
+            ('w', Command::Save),
+            ('q', Command::Quit),
+            ('u', Command::Undo),
+            ('r', Command::Redo),
+        ] {
+            let mut e = InputEngine::native();
+            assert_eq!(e.feed(k(' '), Mode::Normal), Feed::Pending);
+            assert_eq!(e.feed(k(key_char), Mode::Normal), Feed::Cmd(cmd));
+        }
+
+        // While armed, the discovery hint spells out the whole menu (the which-key render feeds on this).
+        let e = {
+            let mut e = InputEngine::native();
+            e.feed(k(' '), Mode::Normal);
+            e
+        };
+        assert_eq!(
+            e.leader_hint().as_deref(),
+            Some("w:write  q:quit  u:undo  r:redo")
+        );
+    }
+
+    #[test]
+    fn native_leader_abort_and_gating() {
+        // An unbound selection key is a which-key ABORT: the tier disarms and nothing fires.
+        let mut e = InputEngine::native();
+        assert_eq!(e.feed(k(' '), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('z'), Mode::Normal), Feed::Ignored);
+        assert!(e.leader_hint().is_none());
+
+        // The leader arms ONLY from a clean base: `d<Space>` is the Vim delete-right motion (NAT-1 intact),
+        // NOT a leader — and it must equal what Vim does for the same keys.
+        assert_eq!(feed_native("d "), feed("d "));
+        assert!(InputEngine::native().leader_hint().is_none());
+
+        // The leader is Native-ONLY: under Vim, Space keeps its Vim meaning (unbound here) and never arms a
+        // which-key tier — the profile gate, not a shared keymap, is what makes the leader Native's alone.
+        let mut v = InputEngine::new();
+        assert_eq!(v.feed(k(' '), Mode::Normal), feed(" "));
+        assert!(v.leader_hint().is_none());
+    }
+
+    #[test]
     fn emacs_prefix_argument_multiplies_motions_and_repeats_text() {
         // F-012 / D-049: `C-u` seeds a prefix argument (default 4); digits make it explicit; a further
         // `C-u` multiplies by four. The next command consumes it OPAQUELY — a motion multiplies, a

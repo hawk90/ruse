@@ -449,6 +449,18 @@ struct NormalState {
     forced_wise: Option<ForcedWise>,
 }
 
+impl NormalState {
+    /// A PRISTINE Normal base: no count, no armed operator, no key-expectation, no forced wise. The Native
+    /// leader tier (F-013 NAT-2) only arms from here, so a Space mid-construct (`d<Space>`, `2<Space>`)
+    /// stays the Vim right-motion — the text grammar is untouched (NAT-1).
+    fn is_clean(&self) -> bool {
+        self.count == 0
+            && self.op.is_none()
+            && self.awaiting == Awaiting::Nothing
+            && self.forced_wise.is_none()
+    }
+}
+
 /// A SUSPENDED layer awaiting return (KL-OBL-5): while a one-shot command is borrowed to run in
 /// another namespace, this records the ADDRESS to resume — *whence* control came. `i_CTRL-O` suspends
 /// Insert to run one Normal command (`resume: Insert`); `t_CTRL-\ CTRL-O` (deferred, no terminal
@@ -551,6 +563,11 @@ pub struct InputEngine {
     /// The Emacs profile's nine-tier keymap (F-012 / D-045). Built once; consulted only on the Emacs path.
     /// Present regardless of profile, mirroring `profile: VimProfile` — both are cheap to build.
     emacs: EmacsProfile,
+    /// The Native profile's leader (which-key) tier is ARMED (F-013 NAT-2): `<leader>` (Space) was pressed
+    /// from a clean Normal base, so the NEXT key resolves in the leader map rather than the Vim grammar.
+    /// `false` in steady state and ALWAYS `false` under the Vim/Emacs profiles (only the Native+Normal path
+    /// ever sets it). The depth-1 case of the discovery tier; nested groups (`<leader>g …`) layer on by tag.
+    leader: bool,
 }
 
 /// An Emacs prefix argument mid-read (F-012 / D-049). `C-u` seeds it (default 4); a further `C-u`
@@ -1061,6 +1078,33 @@ fn key_label(code: KeyCode) -> String {
     }
 }
 
+/// The Native profile's leader (which-key) map (F-013 NAT-2) — the SEED of `native-profile@1`'s recommended
+/// keymap. `<leader>` (Space) from a clean Normal base opens it; the next key resolves HERE to a semantic
+/// command (INV-CMD-SEMANTIC) or aborts. It binds only commands that ALREADY exist — the Files/Git/Debug
+/// discovery groups from the design (`docs/parity/native-style.md`) land as those features do, not before.
+/// Intentionally-different from Vim/Emacs: a new discovery grammar, not a blend (NAT-2, D-051 spirit).
+const NATIVE_LEADER_MENU: &[(char, &str, Command)] = &[
+    ('w', "write", Command::Save),
+    ('q', "quit", Command::Quit),
+    ('u', "undo", Command::Undo),
+    ('r', "redo", Command::Redo),
+];
+
+/// Resolve a leader selection key to its bound command, or `None` if the key is unbound — a which-key abort
+/// (Emacs `C-g` / any key not on the menu closes it). Only an unmodified (or Shift-only) char key can bind.
+fn native_leader_command(key: KeyEvent) -> Option<Command> {
+    let KeyCode::Char(c) = key.code else {
+        return None;
+    };
+    if !(key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT) {
+        return None;
+    }
+    NATIVE_LEADER_MENU
+        .iter()
+        .find(|(k, _, _)| *k == c)
+        .map(|(_, _, cmd)| cmd.clone())
+}
+
 impl InputEngine {
     #[must_use]
     pub fn new() -> InputEngine {
@@ -1101,6 +1145,7 @@ impl InputEngine {
             emacs_arg: None,
             emacs_prefix: None,
             emacs: EmacsProfile::new(),
+            leader: false,
         }
     }
 
@@ -1134,6 +1179,24 @@ impl InputEngine {
         self.cmdline
             .as_ref()
             .map(|c| (c.prefix, c.buffer.as_str(), c.cursor))
+    }
+
+    /// The Native leader (which-key) discovery hint (F-013 NAT-2) as a one-line `"w:write  q:quit  …"`
+    /// string for the status/command line, or `None` unless the leader tier is armed. `Some` iff
+    /// `<leader>` is pending, so it doubles as the pending-state query; formatting lives here so the
+    /// frontend stays a thin renderer. A structured multi-column which-key popup is a later render slice.
+    #[must_use]
+    pub fn leader_hint(&self) -> Option<String> {
+        if !self.leader {
+            return None;
+        }
+        Some(
+            NATIVE_LEADER_MENU
+                .iter()
+                .map(|(k, label, _)| format!("{k}:{label}"))
+                .collect::<Vec<_>>()
+                .join("  "),
+        )
     }
 
     /// Open the command-line namespace with `prefix` (`:`/`/`), optionally as `gQ` Ex mode.
@@ -2017,6 +2080,24 @@ impl InputEngine {
         }
         if mode == Mode::Replace || mode == Mode::VirtualReplace {
             return self.feed_replace(key, mode);
+        }
+        // --- Native leader tier (F-013 NAT-2), ABOVE the Vim grammar and gated to the Native profile. ---
+        // An ARMED leader consumes this key as its which-key selection (a bound command, or a which-key
+        // abort). `self.leader` is only ever set on the Native+Normal path, so this is inert elsewhere.
+        if self.leader {
+            self.leader = false;
+            return native_leader_command(key).map_or(Feed::Ignored, Feed::Cmd);
+        }
+        // ARM the leader from a CLEAN Normal base: `<leader>` (Space) opens the menu. Gated to Native +
+        // Normal + clean so Vim's Space=MoveRight and a mid-construct Space-as-motion stay intact (NAT-1).
+        if self.input_profile == InputProfile::Native
+            && mode == Mode::Normal
+            && self.normal.is_clean()
+            && key.code == KeyCode::Char(' ')
+            && key.modifiers.is_empty()
+        {
+            self.leader = true;
+            return Feed::Pending;
         }
         // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
         match self.normal.awaiting {
