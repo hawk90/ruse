@@ -127,6 +127,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsTransposeWords
         | C::EmacsCaseWord { .. }
         | C::EmacsCaseRegion { .. }
+        | C::EmacsDeleteIndentation
         | C::EmacsHorizontalSpace { .. }
         | C::EmacsOpenLine
         | C::DeleteSelection
@@ -847,6 +848,11 @@ impl EmacsProfile {
             EmacsKey::alt('t'),
             EmacsBinding::Fixed(Command::EmacsTransposeWords),
         )
+        // M-^ (delete-indentation): join this line to the previous, fixing up whitespace. Fixed.
+        .bind(
+            EmacsKey::alt('^'),
+            EmacsBinding::Fixed(Command::EmacsDeleteIndentation),
+        )
         // M-@ (mark-word): set the mark at the end of the next word without moving point. Fixed.
         .bind(
             EmacsKey::alt('@'),
@@ -1016,6 +1022,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "capitalize-region" => Command::EmacsCaseRegion {
             case: WordCase::Capitalize,
         },
+        "delete-indentation" => Command::EmacsDeleteIndentation,
         "move-end-of-line" => Command::MoveLineEnd,
         "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
         "end-of-buffer" => Command::EmacsBufferEdge { start: false },

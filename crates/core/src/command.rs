@@ -288,6 +288,12 @@ pub enum Command {
     EmacsCaseRegion {
         case: WordCase,
     },
+    /// `M-^` (delete-indentation / join-line) — join the current line to the PREVIOUS one: delete the
+    /// preceding newline plus the previous line's trailing whitespace and this line's leading indentation,
+    /// then fix up whitespace to a single space (or none when the join lands at beginning-of-line). Point
+    /// rests at the join. Distinct from Vim `J` (which joins the NEXT line onto the current one) — D-051.
+    /// No kill-ring write.
+    EmacsDeleteIndentation,
 }
 
 /// Which case operation [`Command::EmacsCaseWord`] applies over the word span.
@@ -626,6 +632,7 @@ impl Command {
                     WordCase::Capitalize => "capitalize",
                 }
             ),
+            Command::EmacsDeleteIndentation => "emacs_delete_indentation".into(),
             Command::EmacsCaseWord { case } => format!(
                 "emacs_case_word {}",
                 match case {
@@ -905,6 +912,7 @@ impl Command {
                 },
                 _ => return Err(CommandParseError::BadArgument(line.to_string())),
             },
+            "emacs_delete_indentation" => Command::EmacsDeleteIndentation,
             "emacs_yank" => {
                 let count: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -1189,6 +1197,7 @@ mod tests {
             Command::EmacsCaseWord {
                 case: WordCase::Capitalize,
             },
+            Command::EmacsDeleteIndentation,
         ];
         for c in cases {
             assert_eq!(Command::from_line(&c.to_line()), Ok(c.clone()), "{c:?}");

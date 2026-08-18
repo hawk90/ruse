@@ -1308,6 +1308,33 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             _ => nop(cur, st.view.mode),
         },
+        // `M-^` (Emacs delete-indentation / join-line, D-051): join this line to the previous one — delete
+        // the preceding newline plus the previous line's trailing whitespace and this line's leading
+        // indentation, then fix up whitespace to ONE space, or NONE when the join lands at beginning-of-line
+        // (an empty previous line). Point rests at the join. No kill-ring write. Distinct from Vim `J`.
+        Command::EmacsDeleteIndentation => {
+            let ls = line_start(b, cur);
+            if ls == 0 {
+                nop(cur, st.view.mode) // no previous line to join to
+            } else {
+                let is_hws = |i: usize| b[i] == b' ' || b[i] == b'\t';
+                let mut s = ls - 1; // the newline joining to the previous line
+                while s > 0 && is_hws(s - 1) {
+                    s -= 1; // eat the previous line's trailing whitespace
+                }
+                let mut e = ls;
+                while e < b.len() && is_hws(e) {
+                    e += 1; // eat this line's leading indentation
+                }
+                // fixup-whitespace: one space, unless the join sits at the start of its line (empty prev).
+                let repl: Vec<u8> = if s == line_start(b, s) {
+                    Vec::new()
+                } else {
+                    vec![b' ']
+                };
+                edit(one(Edit::replace(s, e - s, repl)), s, st.view.mode, hint)
+            }
+        }
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
         Command::EmacsBufferEdge { start } => Plan {

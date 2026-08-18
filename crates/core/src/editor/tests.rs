@@ -2955,6 +2955,25 @@ mod mark_tests {
         assert_eq!(text(&none), "foo");
     }
 
+    // Emacs delete-indentation (M-^) (D-051): join this line to the previous, fixing whitespace to one
+    // space — or none when the join lands at beginning-of-line (empty previous line). Point at the join.
+    #[test]
+    fn emacs_delete_indentation_joins_to_previous_line() {
+        let join = |buf: &[u8], cur: usize| {
+            let mut st = EditorState::new(buf.to_vec());
+            st.set_caret_gravity(CaretGravity::BetweenChar);
+            st.set_cursor(cur);
+            apply_command(&mut st, &Command::EmacsDeleteIndentation);
+            (text(&st), st.view.cursor)
+        };
+        assert_eq!(join(b"foo\n   bar", 7), ("foo bar".into(), 3)); // eats indent -> one space
+        assert_eq!(join(b"foo\nbar", 4), ("foo bar".into(), 3)); // no indent -> still one space
+        assert_eq!(join(b"foo  \nbar", 6), ("foo bar".into(), 3)); // eats prev trailing ws
+        assert_eq!(join(b"\nbar", 1), ("bar".into(), 0)); // empty prev -> no space, join at bol
+                                                          // First line: nothing to join to -> inert.
+        assert_eq!(join(b"foo", 1), ("foo".into(), 1));
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {
