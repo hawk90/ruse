@@ -1049,6 +1049,37 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 nop(cur, st.view.mode)
             }
         }
+        // `C-t` (Emacs transpose-chars, D-051): swap the char before point with the char at point, then
+        // advance point past the pair. `j` is the right char (it slides left), `i = j - 1` the left char;
+        // at end of line Emacs steps back one so the two chars ENDING the line are transposed. Inert when the
+        // line has no pair to transpose (point at buffer/line start, or a one-char line). No kill-ring write.
+        Command::EmacsTransposeChars => {
+            let ls = line_start(b, cur);
+            let le = line_end(b, cur);
+            let j = if cur >= le {
+                le.checked_sub(1).filter(|_| le >= ls + 2)
+            } else if cur > ls {
+                Some(cur)
+            } else {
+                None
+            };
+            match j {
+                Some(j) if j > ls && j < le => Plan {
+                    action: Action::Txn {
+                        edits: one(Edit::replace(j - 1, 2, vec![b[j], b[j - 1]])),
+                        hint,
+                    },
+                    cursor: j + 1,
+                    mode: st.view.mode,
+                    is_edit: true,
+                    effects: Vec::new(),
+                    set_register: None,
+                    set_anchor: None,
+                    set_mark: None,
+                },
+                _ => nop(cur, st.view.mode),
+            }
+        }
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
         // (not Vim `gg`/`G`'s first-non-blank line) and PUSH the mark at the old point.
         Command::EmacsBufferEdge { start } => Plan {

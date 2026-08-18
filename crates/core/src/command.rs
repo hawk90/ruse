@@ -234,6 +234,11 @@ pub enum Command {
     /// (`kill-whole-line` nil, no prefix arg) — the binding ignores the prefix count (D-051 / RFC-0016:
     /// an Emacs op diverging from its Vim lookalike in more than caret gravity is its own command).
     EmacsKillLine,
+    /// `C-t` (transpose-chars) — swap the character before point with the character at point, then advance
+    /// point past the pair. At end of line it transposes the two characters that end the line (Emacs steps
+    /// back one first). Inert when there is no pair to transpose (buffer/line start with fewer than two
+    /// chars on the line). Emacs-only, no Vim lookalike (D-051); it does not touch the kill ring.
+    EmacsTransposeChars,
 }
 
 fn motion_token(m: Motion) -> String {
@@ -538,6 +543,7 @@ impl Command {
             }
             Command::ExchangePointMark => "exchange_point_mark".into(),
             Command::EmacsKillLine => "emacs_kill_line".into(),
+            Command::EmacsTransposeChars => "emacs_transpose_chars".into(),
         }
     }
 
@@ -763,6 +769,7 @@ impl Command {
             "copy_region" => Command::CopyRegion,
             "exchange_point_mark" => Command::ExchangePointMark,
             "emacs_kill_line" => Command::EmacsKillLine,
+            "emacs_transpose_chars" => Command::EmacsTransposeChars,
             "emacs_yank" => {
                 let count: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -1018,6 +1025,7 @@ mod tests {
             Command::EmacsBufferEdge { start: true },
             Command::EmacsBufferEdge { start: false },
             Command::EmacsKillLine,
+            Command::EmacsTransposeChars,
         ];
         for c in cases {
             assert_eq!(Command::from_line(&c.to_line()), Ok(c.clone()), "{c:?}");
