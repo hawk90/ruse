@@ -2784,6 +2784,27 @@ mod mark_tests {
         );
     }
 
+    // Emacs back-to-indentation (M-m) / Vim `^` share Motion::LineFirstNonBlank: land on the first
+    // non-blank of the line, or the line end when it is all blank.
+    #[test]
+    fn line_first_non_blank_lands_on_first_non_blank() {
+        let mut st = EditorState::new(b"  foo".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_cursor(5); // end of line
+        apply_command(&mut st, &Command::Move(1, Motion::LineFirstNonBlank));
+        assert_eq!(
+            st.view.cursor, 2,
+            "lands on 'f' past the two leading spaces"
+        );
+
+        // An all-blank line: land at the line end (no non-blank to find).
+        let mut blank = EditorState::new(b"   \nx".to_vec());
+        blank.set_caret_gravity(CaretGravity::BetweenChar);
+        blank.set_cursor(0);
+        apply_command(&mut blank, &Command::Move(1, Motion::LineFirstNonBlank));
+        assert_eq!(blank.view.cursor, 3, "all-blank line: land at its end");
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {

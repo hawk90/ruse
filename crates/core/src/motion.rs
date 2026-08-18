@@ -17,6 +17,9 @@ pub enum Motion {
     Down,
     LineStart,
     LineEnd,
+    /// Vim `^` / Emacs `back-to-indentation` (M-m): the first non-blank char of the current line (the line
+    /// end when the line is all blank). Shared by both profiles — same target, so not a distinct command.
+    LineFirstNonBlank,
     /// Small-word motions (Vim `w`/`b`/`e`): three classes — whitespace, word (alnum + `_` + non-ASCII),
     /// punctuation — so `foo.bar` is three words.
     WordFwd,
@@ -804,6 +807,9 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::Up => up(b, c),
             Motion::Down => down(b, c),
             Motion::LineStart => line_start(b, c),
+            // Vim `^` / Emacs `back-to-indentation` (M-m): the first non-blank of the line (or the line end
+            // when the line is all blank). Count-agnostic — repeating stays on the same line.
+            Motion::LineFirstNonBlank => first_non_blank(b, line_start(b, c)),
             // A bare `$` lands ON the last char of the line (Vim never rests the cursor past it in Normal),
             // unlike the `d$` operator span which reaches the line end — see `char_span`.
             Motion::LineEnd => {
@@ -874,6 +880,11 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // backward / leftward → [target, cursor)
         Motion::Left | Motion::WordBack | Motion::BigWordBack | Motion::LineStart => {
             (target(b, cur, m, n), cur)
+        }
+        // `^` is exclusive and can point either way (cursor in the indent → forward): span the ordered pair.
+        Motion::LineFirstNonBlank => {
+            let t = target(b, cur, m, n);
+            (cur.min(t), cur.max(t))
         }
         // char-search: forward includes through the landing char (`dfx` incl. x, `dtx` up to x); backward
         // spans from the landing to the cursor. A missing match is a no-op range.

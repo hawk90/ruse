@@ -846,6 +846,11 @@ impl EmacsProfile {
             EmacsKey::alt('d'),
             EmacsBinding::Counted(CountedCmd::KillWord),
         )
+        // M-m (back-to-indentation): move to the first non-blank of the line. Prefix-agnostic, so Fixed.
+        .bind(
+            EmacsKey::alt('m'),
+            EmacsBinding::Fixed(Command::Move(1, Motion::LineFirstNonBlank)),
+        )
         // M-x opens the minibuffer to read a command name (execute-extended-command).
         .bind(EmacsKey::alt('x'), EmacsBinding::Minibuffer)
         // Newline / backspace — repeatable via Replay under a count.
@@ -913,6 +918,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "next-line" => Command::MoveDown,
         "previous-line" => Command::MoveUp,
         "move-beginning-of-line" => Command::MoveLineStart,
+        "back-to-indentation" => Command::Move(1, Motion::LineFirstNonBlank),
         "move-end-of-line" => Command::MoveLineEnd,
         "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
         "end-of-buffer" => Command::EmacsBufferEdge { start: false },
