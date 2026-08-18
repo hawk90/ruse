@@ -428,9 +428,13 @@ fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     .collect()
             })
             .unwrap_or_default();
-        let cmd_line: Option<(char, &str)> = match &palette {
-            Some(p) => Some(('>', p.query.as_str())),
-            None => engine.cmdline().map(|(pfx, t, _)| (pfx, t)),
+        // The Native leader (which-key) hint owns the command line while armed (F-013 NAT-2), shown with a
+        // Space prefix — below the palette, above the ordinary `:`/`/` line (neither can co-occur with it).
+        let leader_hint = engine.leader_hint();
+        let cmd_line: Option<(char, &str)> = match (&palette, &leader_hint) {
+            (Some(p), _) => Some(('>', p.query.as_str())),
+            (None, Some(h)) => Some((' ', h.as_str())),
+            (None, None) => engine.cmdline().map(|(pfx, t, _)| (pfx, t)),
         };
         render(
             &mut out,
