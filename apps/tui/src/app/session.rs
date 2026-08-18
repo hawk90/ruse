@@ -19,7 +19,7 @@ use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
 use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
-use crate::ui::{buffer_picker, layout::window_rects, line_picker, palette};
+use crate::ui::{buffer_picker, file_picker, layout::window_rects, line_picker, palette};
 use crate::{health, highlight, line_index, persist, recover, screen, viewport};
 
 /// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
@@ -129,6 +129,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut palette: Option<Picker<Command>> = None;
     let mut line_picker: Option<Picker<usize>> = None;
     let mut buffer_picker: Option<Picker<DocumentId>> = None;
+    let mut file_picker: Option<Picker<PathBuf>> = None; // fuzzy file finder (`C-f`), opens like `:e`
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -235,20 +236,27 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = buffer_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = file_picker.as_ref() {
+            p.rows()
         } else {
             Vec::new()
         };
         // The Native leader (which-key) hint owns the command line while armed (F-013 NAT-2), shown with a
         // Space prefix — below the overlay, above the ordinary `:`/`/` line (none can co-occur).
         let leader_hint = engine.leader_hint();
-        let cmd_line: Option<(char, &str)> =
-            match (&palette, &line_picker, &buffer_picker, &leader_hint) {
-                (Some(p), ..) => Some(('>', p.query.as_str())), // command palette prompt
-                (None, Some(p), ..) => Some(('#', p.query.as_str())), // line-picker prompt (# = line jump)
-                (None, None, Some(p), _) => Some(('@', p.query.as_str())), // buffer-picker prompt
-                (None, None, None, Some(h)) => Some((' ', h.as_str())),
-                (None, None, None, None) => engine.cmdline().map(|(pfx, t, _)| (pfx, t)),
-            };
+        let cmd_line: Option<(char, &str)> = if let Some(p) = palette.as_ref() {
+            Some(('>', p.query.as_str())) // command palette prompt
+        } else if let Some(p) = line_picker.as_ref() {
+            Some(('#', p.query.as_str())) // line-picker prompt (# = line jump)
+        } else if let Some(p) = buffer_picker.as_ref() {
+            Some(('@', p.query.as_str())) // buffer-picker prompt
+        } else if let Some(p) = file_picker.as_ref() {
+            Some(('~', p.query.as_str())) // file-picker prompt (~ = find file)
+        } else if let Some(h) = leader_hint.as_ref() {
+            Some((' ', h.as_str()))
+        } else {
+            engine.cmdline().map(|(pfx, t, _)| (pfx, t))
+        };
         render(
             &mut out,
             &ws,
@@ -299,6 +307,23 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // The file picker opens the selected path into a new buffer (the interactive form of `:e`).
+        if let Some(outcome) = file_picker.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                if let Some(p) = file_picker.as_ref().and_then(|p| p.selected().cloned()) {
+                    status = open_file_into_buffer(
+                        &p.display().to_string(),
+                        &mut ws,
+                        &mut files,
+                        &mut highlighters,
+                    );
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                file_picker = None;
+            }
+            continue;
+        }
         // The command palette dispatches the selected command by its stable id, through the normal command
         // path (so it undoes/records like any other).
         if let Some(outcome) = palette.as_mut().map(|p| p.on_key(key)) {
@@ -343,6 +368,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             buffer_picker = Some(buffer_picker::open(&ws));
             continue;
         }
+        // `C-f` opens the fuzzy file finder (F-013 NAT-3). Normal-only, so the Emacs non-modal C-f
+        // (forward-char) is unaffected; in the Vim/Native Normal grammar the plain `f` find-char has no
+        // ctrl, so intercepting ctrl-f shadows nothing reachable.
+        if normal && is_ctrl(key, 'f') {
+            file_picker = Some(file_picker::open());
+            continue;
+        }
         // Every other key — command-line included — goes through the engine (F-026): the command-line
         // namespace owns its buffer, so the frontend no longer special-cases `:`/`/` typing.
         match engine.feed(key, ws.focused().view.mode()) {
@@ -378,28 +410,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         };
                         status = health::summary_line(&health::report(&inputs));
                     }
-                    // `:e {file}` opens a file into a new buffer (F-007): read it, detect encoding, add the
-                    // buffer + focus it, and register its file identity + a highlighter for its extension.
+                    // `:e {file}` opens a file into a new buffer (F-007) — shared with the file picker.
                     Ex::Edit(file) => {
-                        let p = PathBuf::from(&file);
-                        match std::fs::read(&p) {
-                            Ok(raw) => {
-                                let f = persist::encoding::FileFormat::detect(&raw);
-                                let clean = f.to_buffer(&raw);
-                                let id = ws.add_buffer(clean, Some(file.clone()));
-                                ws.focus_buffer(id);
-                                if let Some(h) = p
-                                    .extension()
-                                    .and_then(|e| e.to_str())
-                                    .and_then(highlight::CachedHighlight::for_ext)
-                                {
-                                    highlighters.insert(id, h);
-                                }
-                                files.insert(id, BufferFile { path: p, fmt: f });
-                                status = format!("\"{file}\" {} bytes", raw.len());
-                            }
-                            Err(e) => status = format!("E484: can't open {file}: {e}"),
-                        }
+                        status =
+                            open_file_into_buffer(&file, &mut ws, &mut files, &mut highlighters);
                     }
                     ex => run_ex(
                         &ex,
@@ -431,6 +445,35 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Open `file` into a new focused buffer, registering its on-disk identity + a highlighter for its
+/// extension — the shared body of `:e` (F-007) and the file picker (F-013 NAT-3). Returns the status line.
+fn open_file_into_buffer(
+    file: &str,
+    ws: &mut Workspace,
+    files: &mut Files,
+    highlighters: &mut HashMap<DocumentId, highlight::CachedHighlight>,
+) -> String {
+    let p = PathBuf::from(file);
+    match std::fs::read(&p) {
+        Ok(raw) => {
+            let f = persist::encoding::FileFormat::detect(&raw);
+            let clean = f.to_buffer(&raw);
+            let id = ws.add_buffer(clean, Some(file.to_string()));
+            ws.focus_buffer(id);
+            if let Some(h) = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .and_then(highlight::CachedHighlight::for_ext)
+            {
+                highlighters.insert(id, h);
+            }
+            files.insert(id, BufferFile { path: p, fmt: f });
+            format!("\"{file}\" {} bytes", raw.len())
+        }
+        Err(e) => format!("E484: can't open {file}: {e}"),
+    }
 }
 
 /// Whether `key` is `CTRL-<c>`.
