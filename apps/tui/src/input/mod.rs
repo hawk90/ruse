@@ -126,6 +126,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsTransposeChars
         | C::EmacsTransposeWords
         | C::EmacsCaseWord { .. }
+        | C::EmacsCaseRegion { .. }
         | C::EmacsHorizontalSpace { .. }
         | C::EmacsOpenLine
         | C::DeleteSelection
@@ -971,6 +972,15 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         // Reachable via M-x; its default C-S-<backspace> key needs a shift modifier the EmacsKey model
         // does not carry yet, so no physical binding is installed here (a follow-up).
         "kill-whole-line" => Command::EmacsKillWholeLine,
+        "upcase-region" => Command::EmacsCaseRegion {
+            case: WordCase::Upcase,
+        },
+        "downcase-region" => Command::EmacsCaseRegion {
+            case: WordCase::Downcase,
+        },
+        "capitalize-region" => Command::EmacsCaseRegion {
+            case: WordCase::Capitalize,
+        },
         "move-end-of-line" => Command::MoveLineEnd,
         "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
         "end-of-buffer" => Command::EmacsBufferEdge { start: false },
@@ -1485,6 +1495,12 @@ impl InputEngine {
                 KeyCode::Char('c') if ctrl => Command::Quit, // C-x C-c — save-buffers-kill-terminal
                 KeyCode::Char('u') if !ctrl => Command::Undo, // C-x u — undo
                 KeyCode::Char('x') if ctrl => Command::ExchangePointMark, // C-x C-x — exchange point/mark
+                KeyCode::Char('u') if ctrl => Command::EmacsCaseRegion {
+                    case: WordCase::Upcase, // C-x C-u — upcase-region
+                },
+                KeyCode::Char('l') if ctrl => Command::EmacsCaseRegion {
+                    case: WordCase::Downcase, // C-x C-l — downcase-region
+                },
                 _ => return Feed::Ignored,
             };
             return Feed::Cmd(cmd);

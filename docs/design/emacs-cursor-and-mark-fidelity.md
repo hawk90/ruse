@@ -261,3 +261,12 @@ D-051 distinct-command pattern with the comparator flip as acceptance:
 | `mark_word` | `mark-word` (M-@) | set the mark at the end of the next word |
 | `kill_whole_line` | `kill-whole-line` (C-S-DEL) | kill the whole line incl. its newline (accumulating) |
 | `upcase_region`, `downcase_region` | `upcase-region`, `downcase-region` (C-x C-u / C-x C-l) | recase the active region (reuses `recase`) |
+
+**Round 3 DONE — all 11 fixtures closed, corpus 38/49 → 49/49 (fully Emacs-faithful).** Each shipped as its
+own D-051 slice (PRs #168–#175): `back-to-indentation` reuses a new shared `Motion::LineFirstNonBlank`
+(= Vim `^`); `EmacsHorizontalSpace{keep_one}` covers M-SPC/M-\\; `EmacsOpenLine`; `EmacsBackwardKillWord`
+with a new `RegWrite::KillPrepend` (closing the one deferred kill-accumulation direction);
+`EmacsTransposeWords` (mirrors `transpose-subr`); `EmacsMarkWord`; `EmacsKillWholeLine` (accumulating, M-x
+reachable — the `C-S-<backspace>` key awaits a shift field on `EmacsKey`); and `EmacsCaseRegion{case}`
+(reuses `recase`, bound to `C-x C-u`/`C-x C-l`). Vim commands and the Neovim parity axis (143/143) untouched
+throughout.

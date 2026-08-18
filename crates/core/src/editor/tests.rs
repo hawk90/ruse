@@ -2920,6 +2920,41 @@ mod mark_tests {
         assert_eq!(st.register().text(), b"foo\nbar");
     }
 
+    // Emacs upcase-/downcase-region (C-x C-u / C-x C-l) (D-051): recase the active region, keeping point+mark.
+    #[test]
+    fn emacs_case_region_recases_the_active_region() {
+        let mut up = EditorState::new(b"foo bar".to_vec());
+        up.set_caret_gravity(CaretGravity::BetweenChar);
+        up.set_cursor(0);
+        apply_command(&mut up, &Command::SetMark); // mark at 0
+        up.set_cursor(3); // region [0,3) = "foo"
+        apply_command(
+            &mut up,
+            &Command::EmacsCaseRegion {
+                case: WordCase::Upcase,
+            },
+        );
+        assert_eq!(text(&up), "FOO bar");
+        assert_eq!(
+            (up.view.cursor, up.mark()),
+            (3, Some(0)),
+            "point and mark unchanged"
+        );
+        assert!(up.register().is_empty());
+
+        // No mark set: inert.
+        let mut none = EditorState::new(b"foo".to_vec());
+        none.set_caret_gravity(CaretGravity::BetweenChar);
+        none.set_cursor(3);
+        apply_command(
+            &mut none,
+            &Command::EmacsCaseRegion {
+                case: WordCase::Downcase,
+            },
+        );
+        assert_eq!(text(&none), "foo");
+    }
+
     // The killed text is in the register: a following paste-before restores it.
     #[test]
     fn kill_region_text_round_trips_through_paste() {
