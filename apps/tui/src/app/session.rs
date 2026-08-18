@@ -14,6 +14,7 @@ use ruse_core::{CaretGravity, Command, Mode, SplitDir, Workspace};
 use crate::app::dispatch::{run_cmd, run_ex};
 use crate::input::{parse_ex, Ex, Feed, InputEngine};
 use crate::terminal::guard::TermGuard;
+use crate::ui::buffer_picker::{buffer_picker_key, BufferPicker};
 use crate::ui::layout::window_rects;
 use crate::ui::line_picker::{line_picker_key, LinePicker};
 use crate::ui::palette::{focused_context, palette_key, Palette};
@@ -110,6 +111,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
     let mut palette: Option<Palette> = None; // the command palette overlay, when open (F-004)
     let mut line_picker: Option<LinePicker> = None; // the buffer-line fuzzy picker overlay (F-013 NAT-3)
+    let mut buffer_picker: Option<BufferPicker> = None; // the buffer picker overlay (F-013 NAT-3)
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -228,18 +230,22 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 .collect()
         } else if let Some(p) = line_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = buffer_picker.as_ref() {
+            p.rows()
         } else {
             Vec::new()
         };
         // The Native leader (which-key) hint owns the command line while armed (F-013 NAT-2), shown with a
         // Space prefix — below the overlay, above the ordinary `:`/`/` line (none can co-occur).
         let leader_hint = engine.leader_hint();
-        let cmd_line: Option<(char, &str)> = match (&palette, &line_picker, &leader_hint) {
-            (Some(p), _, _) => Some(('>', p.query.as_str())), // command palette prompt
-            (None, Some(p), _) => Some(('#', p.query.as_str())), // line-picker prompt (# = line jump)
-            (None, None, Some(h)) => Some((' ', h.as_str())),
-            (None, None, None) => engine.cmdline().map(|(pfx, t, _)| (pfx, t)),
-        };
+        let cmd_line: Option<(char, &str)> =
+            match (&palette, &line_picker, &buffer_picker, &leader_hint) {
+                (Some(p), ..) => Some(('>', p.query.as_str())), // command palette prompt
+                (None, Some(p), ..) => Some(('#', p.query.as_str())), // line-picker prompt (# = line jump)
+                (None, None, Some(p), _) => Some(('@', p.query.as_str())), // buffer-picker prompt
+                (None, None, None, Some(h)) => Some((' ', h.as_str())),
+                (None, None, None, None) => engine.cmdline().map(|(pfx, t, _)| (pfx, t)),
+            };
         render(
             &mut out,
             &ws,
@@ -267,6 +273,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // Enter to jump the cursor to the line, Esc to close. Checked before the palette; only one is open.
         if line_picker.is_some() {
             line_picker_key(&mut line_picker, key, &mut ws);
+            continue;
+        }
+        // The buffer picker owns the keystream while open (F-013 NAT-3): type to filter by name, Up/Down
+        // to select, Enter to switch the focused window to the buffer, Esc to close.
+        if buffer_picker.is_some() {
+            buffer_picker_key(&mut buffer_picker, key, &mut ws);
             continue;
         }
         // The command palette owns the keystream while open (F-004 #2): type to filter, Up/Down to
@@ -307,6 +319,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // non-modal C-l (recenter) is unaffected; C-l is unbound in the Vim/Native Normal grammar.
         if normal && is_ctrl(key, 'l') {
             line_picker = Some(LinePicker::open(ws.focused().doc.bytes()));
+            continue;
+        }
+        // `C-b` opens the buffer picker (F-013 NAT-3). Normal-only, so the Emacs profile's non-modal C-b
+        // (backward-char) is unaffected; C-b is unbound in the Vim/Native Normal grammar (no page-scroll).
+        if normal && is_ctrl(key, 'b') {
+            buffer_picker = Some(BufferPicker::open(&ws));
             continue;
         }
         // Every other key — command-line included — goes through the engine (F-026): the command-line
