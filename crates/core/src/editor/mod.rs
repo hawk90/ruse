@@ -5,7 +5,9 @@
 //! the same commands on the same initial document is deterministic (see [`crate::trace`]). This is the split
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
-use crate::command::{BlockInsertKind, Command, ForcedWise, OpKind, SearchOp, SelectKind};
+use crate::command::{
+    BlockInsertKind, Command, ForcedWise, OpKind, SearchOp, SelectKind, WordCase,
+};
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
 use crate::effect::Effect;

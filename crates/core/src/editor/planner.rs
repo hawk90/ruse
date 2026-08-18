@@ -302,6 +302,34 @@ fn one(e: Edit) -> EditList {
     EditList::new(vec![e]).expect("single edit is always valid")
 }
 
+/// Recase a word span for [`Command::EmacsCaseWord`]. `Capitalize` upper-cases the first alphanumeric of
+/// each word (a run of alphanumerics) and lower-cases the rest, mirroring Emacs `capitalize-region`;
+/// `Upcase`/`Downcase` map every character. Unicode-aware (`char::to_uppercase` can widen, e.g. `ß`→`SS`).
+fn recase(text: &str, case: WordCase) -> String {
+    match case {
+        WordCase::Upcase => text.to_uppercase(),
+        WordCase::Downcase => text.to_lowercase(),
+        WordCase::Capitalize => {
+            let mut out = String::with_capacity(text.len());
+            let mut at_word_start = true;
+            for ch in text.chars() {
+                if ch.is_alphanumeric() {
+                    if at_word_start {
+                        out.extend(ch.to_uppercase());
+                    } else {
+                        out.extend(ch.to_lowercase());
+                    }
+                    at_word_start = false;
+                } else {
+                    out.push(ch);
+                    at_word_start = true;
+                }
+            }
+            out
+        }
+    }
+}
+
 /// Capture `b[s..e]` as a register value with the given paste geometry.
 fn captured(b: &[u8], s: usize, e: usize, linewise: bool) -> Register {
     let bytes = b[s..e].to_vec();
@@ -1077,6 +1105,33 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     set_anchor: None,
                     set_mark: None,
                 },
+                _ => nop(cur, st.view.mode),
+            }
+        }
+        // `M-u`/`M-l`/`M-c` (Emacs upcase-/downcase-/capitalize-word, D-051): recase the `forward-word` span
+        // (point to the end of the next word) and leave point at that end. Inert with no word ahead; no
+        // kill-ring write. The span sits on grapheme boundaries (EmacsWordFwd lands on one), so it is valid
+        // UTF-8 to recase; point lands at `cur + new_len` in case the recased bytes changed length.
+        Command::EmacsCaseWord { case } => {
+            let end = motion::target(b, cur, Motion::EmacsWordFwd, 1);
+            match (end > cur).then(|| std::str::from_utf8(&b[cur..end])) {
+                Some(Ok(span)) => {
+                    let recased = recase(span, *case).into_bytes();
+                    let cursor = cur + recased.len();
+                    Plan {
+                        action: Action::Txn {
+                            edits: one(Edit::replace(cur, end - cur, recased)),
+                            hint,
+                        },
+                        cursor,
+                        mode: st.view.mode,
+                        is_edit: true,
+                        effects: Vec::new(),
+                        set_register: None,
+                        set_anchor: None,
+                        set_mark: None,
+                    }
+                }
                 _ => nop(cur, st.view.mode),
             }
         }

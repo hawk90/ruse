@@ -239,6 +239,23 @@ pub enum Command {
     /// back one first). Inert when there is no pair to transpose (buffer/line start with fewer than two
     /// chars on the line). Emacs-only, no Vim lookalike (D-051); it does not touch the kill ring.
     EmacsTransposeChars,
+    /// `M-u` / `M-l` / `M-c` (upcase-word / downcase-word / capitalize-word) — recase the word from point to
+    /// the end of the next word (the `forward-word` span) and leave point at that end. Emacs-only (D-051);
+    /// the three keys differ only in the case operation, so they share one command carrying [`WordCase`].
+    EmacsCaseWord {
+        case: WordCase,
+    },
+}
+
+/// Which case operation [`Command::EmacsCaseWord`] applies over the word span.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WordCase {
+    /// `M-u` upcase-word — every letter to upper case.
+    Upcase,
+    /// `M-l` downcase-word — every letter to lower case.
+    Downcase,
+    /// `M-c` capitalize-word — first letter of each word upper, the rest lower.
+    Capitalize,
 }
 
 fn motion_token(m: Motion) -> String {
@@ -544,6 +561,14 @@ impl Command {
             Command::ExchangePointMark => "exchange_point_mark".into(),
             Command::EmacsKillLine => "emacs_kill_line".into(),
             Command::EmacsTransposeChars => "emacs_transpose_chars".into(),
+            Command::EmacsCaseWord { case } => format!(
+                "emacs_case_word {}",
+                match case {
+                    WordCase::Upcase => "upcase",
+                    WordCase::Downcase => "downcase",
+                    WordCase::Capitalize => "capitalize",
+                }
+            ),
         }
     }
 
@@ -770,6 +795,18 @@ impl Command {
             "exchange_point_mark" => Command::ExchangePointMark,
             "emacs_kill_line" => Command::EmacsKillLine,
             "emacs_transpose_chars" => Command::EmacsTransposeChars,
+            "emacs_case_word" => match arg {
+                Some("upcase") => Command::EmacsCaseWord {
+                    case: WordCase::Upcase,
+                },
+                Some("downcase") => Command::EmacsCaseWord {
+                    case: WordCase::Downcase,
+                },
+                Some("capitalize") => Command::EmacsCaseWord {
+                    case: WordCase::Capitalize,
+                },
+                _ => return Err(CommandParseError::BadArgument(line.to_string())),
+            },
             "emacs_yank" => {
                 let count: u32 = arg
                     .and_then(|a| a.parse().ok())
@@ -1026,6 +1063,15 @@ mod tests {
             Command::EmacsBufferEdge { start: false },
             Command::EmacsKillLine,
             Command::EmacsTransposeChars,
+            Command::EmacsCaseWord {
+                case: WordCase::Upcase,
+            },
+            Command::EmacsCaseWord {
+                case: WordCase::Downcase,
+            },
+            Command::EmacsCaseWord {
+                case: WordCase::Capitalize,
+            },
         ];
         for c in cases {
             assert_eq!(Command::from_line(&c.to_line()), Ok(c.clone()), "{c:?}");
