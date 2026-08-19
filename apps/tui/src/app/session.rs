@@ -490,6 +490,36 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => {
+                // `*`/`#` (word under cursor): the engine has no buffer, so resolve the keyword here, then
+                // rewrite to a concrete search — records the deterministic pattern and drives hlsearch/`n`.
+                let cmd = if let Command::SearchWordUnder {
+                    forward,
+                    whole_word,
+                } = cmd
+                {
+                    match ws.word_under_cursor() {
+                        Some(word) => {
+                            // Keyword chars (alnum/`_`/non-ASCII) are regex-safe; `\<…\>` = whole word.
+                            let pat = if whole_word {
+                                format!("\\<{word}\\>")
+                            } else {
+                                word
+                            };
+                            engine.set_last_search(pat.clone());
+                            if forward {
+                                Command::SearchNext(pat)
+                            } else {
+                                Command::SearchPrev(pat)
+                            }
+                        }
+                        None => {
+                            status = "E348: No string under cursor".into();
+                            continue;
+                        }
+                    }
+                } else {
+                    cmd
+                };
                 // A completed search turns on hlsearch for that pattern (F-009 #1).
                 if let Some(p) = search_pattern(&cmd) {
                     search_hl = Some(p);

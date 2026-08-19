@@ -1024,6 +1024,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Search { op, count, pattern } => {
             plan_search(st, b, cur, op, *count, pattern, hint)
         }
+        // `*`/`#` are resolved by the frontend (it reads the word under the cursor from the buffer and
+        // rewrites this to a concrete `SearchNext`/`SearchPrev`), so the pure core never acts on it.
+        Command::SearchWordUnder { .. } => nop(cur, st.view.mode),
         Command::Undo => Plan {
             action: Action::Undo,
             cursor: cur,

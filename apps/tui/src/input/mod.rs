@@ -846,6 +846,12 @@ impl InputEngine {
         Feed::Cmd(Command::Search { op, count, pattern })
     }
 
+    /// Record `pattern` as the last search so `n`/`N` repeat it. Used by the frontend after it resolves a
+    /// `*`/`#` (word-under-cursor) search, whose pattern is only known once the buffer is read.
+    pub fn set_last_search(&mut self, pattern: String) {
+        self.last_search = Some(pattern);
+    }
+
     /// End the current Normal-grammar sequence: the Normal-family layer drops its OWN transient state
     /// (count / operator / awaiting / forced-wise) at a command boundary. This is the layer resetting
     /// itself, not the engine reaching into a foreign layer (KL-OBL-4) — sticky repeat state survives.
@@ -1591,6 +1597,16 @@ impl InputEngine {
                 Some(p) => self.action(Command::SearchPrev(p)),
                 None => self.unmatched(Ns::Normal, key),
             },
+            // `*`/`#` — search the whole keyword under the cursor forward / backward. The frontend reads
+            // the word from the buffer and rewrites this to a concrete search (the engine has no buffer).
+            KeyCode::Char('*') => self.action(Command::SearchWordUnder {
+                forward: true,
+                whole_word: true,
+            }),
+            KeyCode::Char('#') => self.action(Command::SearchWordUnder {
+                forward: false,
+                whole_word: true,
+            }),
             // Dot-repeat: replay the last recorded change at the current cursor (D-047). A leading `N`
             // overrides the change's count (Vim `3.`). `.` itself never rewrites the record, so `..`
             // repeats the same change; with no prior change it is a clean no-op (the Normal namespace's
@@ -1734,6 +1750,15 @@ impl InputEngine {
                     // `motion`, so `dge` deletes back through the previous word-end).
                     KeyCode::Char('e') => self.motion(Motion::WordEndBack),
                     KeyCode::Char('E') => self.motion(Motion::BigWordEndBack),
+                    // `g*` / `g#` — like `*`/`#` but match the word ANYWHERE (no `\<…\>` boundaries).
+                    KeyCode::Char('*') => self.action(Command::SearchWordUnder {
+                        forward: true,
+                        whole_word: false,
+                    }),
+                    KeyCode::Char('#') => self.action(Command::SearchWordUnder {
+                        forward: false,
+                        whole_word: false,
+                    }),
                     // `gu` / `gU` / `g~` — arm a case operator (lower / upper / toggle) over the next
                     // motion. Only from Normal (no operator already pending): `dgu` is not a Vim command.
                     KeyCode::Char('u') if self.normal.op.is_none() => {

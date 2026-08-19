@@ -200,6 +200,14 @@ pub enum Command {
     // search (literal substring for v0; the pattern is carried so traces replay deterministically)
     SearchNext(String),
     SearchPrev(String),
+    /// `*`/`#` (and `g*`/`g#`) — search for the keyword under the cursor, forward (`*`) or backward (`#`).
+    /// `whole_word` (`*`/`#`) wraps the pattern in `\<…\>`; `g*`/`g#` match anywhere. The frontend resolves
+    /// the word from the buffer (the input engine has no buffer) and rewrites this to a [`Command::SearchNext`]
+    /// / [`Command::SearchPrev`] with the concrete pattern, so traces record the deterministic search.
+    SearchWordUnder {
+        forward: bool,
+        whole_word: bool,
+    },
     /// `{count}/{pattern}<CR>` as a MOTION: bare it moves to the `count`-th forward match; under an
     /// operator (`op`) it folds into a charwise-exclusive edit over `[cursor, match)` (`d/pat`, `c/pat`,
     /// `y/pat`). The pattern is literal (v0; C-REGEX later) and carried so traces replay deterministically.
@@ -662,6 +670,14 @@ impl Command {
             },
             Command::SearchNext(p) => format!("search_next {p}"),
             Command::SearchPrev(p) => format!("search_prev {p}"),
+            Command::SearchWordUnder {
+                forward,
+                whole_word,
+            } => format!(
+                "search_word_under {} {}",
+                if *forward { "fwd" } else { "bwd" },
+                if *whole_word { "whole" } else { "any" }
+            ),
             // Pattern LAST so it may contain spaces (parsed as the untrimmed remainder, like search_next).
             Command::Search { op, count, pattern } => {
                 format!("search {} {count} {pattern}", search_op_token(*op))
@@ -921,6 +937,15 @@ impl Command {
             "block_change" => Command::BlockInsert(BlockInsertKind::Change),
             "search_next" => Command::SearchNext(raw.to_string()),
             "search_prev" => Command::SearchPrev(raw.to_string()),
+            "search_word_under" => {
+                let mut it = raw.split_whitespace();
+                let forward = !matches!(it.next(), Some("bwd"));
+                let whole_word = !matches!(it.next(), Some("any"));
+                Command::SearchWordUnder {
+                    forward,
+                    whole_word,
+                }
+            }
             "search" => {
                 // `search {op} {count} {pattern...}` — pattern is the untrimmed remainder (may hold spaces).
                 let mut parts = raw.splitn(3, ' ');

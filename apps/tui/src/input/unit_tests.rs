@@ -34,6 +34,39 @@ mod tests {
     }
 
     #[test]
+    fn star_hash_search_word_under_cursor() {
+        assert_eq!(
+            feed("*"),
+            Feed::Cmd(Command::SearchWordUnder {
+                forward: true,
+                whole_word: true
+            })
+        );
+        assert_eq!(
+            feed("#"),
+            Feed::Cmd(Command::SearchWordUnder {
+                forward: false,
+                whole_word: true
+            })
+        );
+        // `g*` / `g#` — match anywhere (no word boundaries).
+        assert_eq!(
+            feed("g*"),
+            Feed::Cmd(Command::SearchWordUnder {
+                forward: true,
+                whole_word: false
+            })
+        );
+        assert_eq!(
+            feed("g#"),
+            Feed::Cmd(Command::SearchWordUnder {
+                forward: false,
+                whole_word: false
+            })
+        );
+    }
+
+    #[test]
     fn case_operators_g_prefix() {
         use ruse_core::WordCase;
         // gu/gU/g~ over a motion.
