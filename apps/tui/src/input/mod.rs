@@ -196,10 +196,8 @@ fn motion_key(code: KeyCode) -> Option<Motion> {
 /// The text object a char names after `i`/`a`, or `None` if the char is not a text-object selector. `inner`
 /// picks `i…` (interior) vs `a…` (around). Aliases collapse per Vim: `b`≡`(`≡`)`, `B`≡`{`≡`}`, `]`≡`[`, etc.
 ///
-/// DEFERRED — `it`/`at` (tag objects): matching an HTML/XML tag needs a syntax/tree-sitter facility, which
-/// is a FRONTEND concern (see `highlight.rs`) and is NOT wired into the dependency-free editor core. There is
-/// no honest way to compute a tag range here, so `t`/`T` return `None` and route to the operator-pending
-/// abort policy (a clean no-op) rather than a faked match. Re-enable once the core exposes a syntax tree.
+/// `it`/`at` (tag objects) match an HTML/XML tag block by a nesting-aware BYTE scan in the core
+/// (`motion::tag_span`) — no syntax tree is required, exactly as `i(`/`i"` scan for their delimiters.
 fn text_object(ch: char, inner: bool) -> Option<Motion> {
     let around = !inner;
     let pair = |open, close| Motion::Pair {
@@ -223,6 +221,7 @@ fn text_object(ch: char, inner: bool) -> Option<Motion> {
         '"' => Motion::Quote { ch: '"', around },
         '\'' => Motion::Quote { ch: '\'', around },
         '`' => Motion::Quote { ch: '`', around },
+        't' => Motion::Tag { around },
         _ => return None,
     })
 }
