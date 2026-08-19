@@ -40,6 +40,9 @@ enum Op {
     CaseLower,
     CaseUpper,
     CaseToggle,
+    /// `>` / `<` — indent the operator span's lines right / left (linewise).
+    ShiftRight,
+    ShiftLeft,
 }
 
 impl Op {
@@ -49,7 +52,16 @@ impl Op {
             Op::CaseLower => Some(WordCase::Downcase),
             Op::CaseUpper => Some(WordCase::Upcase),
             Op::CaseToggle => Some(WordCase::Toggle),
-            Op::Delete | Op::Change | Op::Yank => None,
+            _ => None,
+        }
+    }
+
+    /// Whether this is a shift operator, and its direction (`Some(true)` = left, `Some(false)` = right).
+    fn shift(self) -> Option<bool> {
+        match self {
+            Op::ShiftLeft => Some(true),
+            Op::ShiftRight => Some(false),
+            _ => None,
         }
     }
 }
@@ -93,6 +105,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::JoinLines
         | C::ShiftRight(_)
         | C::ShiftLeft(_)
+        | C::ShiftMotion { .. }
         | C::Paste { .. }
         | C::EmacsYank { .. }
         | C::EmacsKillLine
@@ -143,6 +156,11 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         },
         C::ShiftRight(_) => C::ShiftRight(n),
         C::ShiftLeft(_) => C::ShiftLeft(n),
+        C::ShiftMotion { left, motion, .. } => C::ShiftMotion {
+            left: *left,
+            count: n,
+            motion: *motion,
+        },
         C::Paste { after, .. } => C::Paste {
             after: *after,
             count: n,
@@ -405,11 +423,6 @@ enum Awaiting {
     /// pending register that the FOLLOWING yank/delete/change/paste targets — emitted as a
     /// [`Command::SetRegister`] the core applies before that command. `"` itself does not reset the count.
     RegisterSelect,
-    /// After `>` / `<`: a matching second key completes the doubled shift operator (`>>` / `<<`); the
-    /// `{count}` accumulated before it becomes the LINE count. Modelled like `gg`/`r` (a one-shot second
-    /// key) rather than a full `Op` on the operator axis because only the doubled linewise form is wired —
-    /// operator×motion (`>j`) is a deliberate carve-out, so a non-matching key aborts (operator-pending).
-    ShiftSecond { right: bool },
 }
 
 /// The Normal-grammar layer's OWNED state (KL-OBL-4): the three orthogonal transient axes of the
@@ -861,13 +874,26 @@ impl InputEngine {
                         motion: m,
                         case,
                     }
+                } else if let Some(left) = op.shift() {
+                    // `>`/`<` over a motion — the planner shifts the motion's LINES (always linewise).
+                    Command::ShiftMotion {
+                        left,
+                        count: total,
+                        motion: m,
+                    }
                 } else if let Some(wise) = self.normal.forced_wise {
                     let opk = match op {
                         Op::Delete => OpKind::Delete,
                         Op::Change => OpKind::Change,
                         Op::Yank => OpKind::Yank,
                         // Case ops are handled by the `op.case()` branch above.
-                        Op::CaseLower | Op::CaseUpper | Op::CaseToggle => unreachable!(),
+                        Op::CaseLower
+                        | Op::CaseUpper
+                        | Op::CaseToggle
+                        | Op::ShiftRight
+                        | Op::ShiftLeft => {
+                            unreachable!()
+                        }
                     };
                     Command::OpForced {
                         op: opk,
@@ -889,7 +915,13 @@ impl InputEngine {
                         ),
                         Op::Yank => Command::Yank(total, m),
                         // Case ops are handled by the `op.case()` branch above.
-                        Op::CaseLower | Op::CaseUpper | Op::CaseToggle => unreachable!(),
+                        Op::CaseLower
+                        | Op::CaseUpper
+                        | Op::CaseToggle
+                        | Op::ShiftRight
+                        | Op::ShiftLeft => {
+                            unreachable!()
+                        }
                     }
                 }
             }
@@ -1467,15 +1499,10 @@ impl InputEngine {
             KeyCode::Char('d') => self.operator(Op::Delete, Command::Delete),
             KeyCode::Char('c') => self.operator(Op::Change, Command::Change),
             KeyCode::Char('y') => self.operator(Op::Yank, Command::Yank),
-            // `>`/`<` arm the doubled linewise shift; the second matching key emits it (see `ShiftSecond`).
-            KeyCode::Char('>') => {
-                self.normal.awaiting = Awaiting::ShiftSecond { right: true };
-                Feed::Pending
-            }
-            KeyCode::Char('<') => {
-                self.normal.awaiting = Awaiting::ShiftSecond { right: false };
-                Feed::Pending
-            }
+            // `>`/`<` are operators: doubled (`>>`) shifts the current `count` lines, and over a motion
+            // (`>j`, `>ap`) shifts the motion's lines (always linewise).
+            KeyCode::Char('>') => self.operator(Op::ShiftRight, |n, _| Command::ShiftRight(n)),
+            KeyCode::Char('<') => self.operator(Op::ShiftLeft, |n, _| Command::ShiftLeft(n)),
             KeyCode::Char('p') => self.action(Command::Paste {
                 after: true,
                 count: self.mcount(),
@@ -1587,8 +1614,13 @@ impl InputEngine {
                         Op::Delete => SearchOp::Delete,
                         Op::Change => SearchOp::Change,
                         Op::Yank => SearchOp::Yank,
-                        // Recase-to-search (`gu/pat`) is not modeled; degrade to a plain search motion.
-                        Op::CaseLower | Op::CaseUpper | Op::CaseToggle => SearchOp::Move,
+                        // Recase-/shift-to-search (`gu/pat`, `>/pat`) are not modeled; degrade to a plain
+                        // search motion.
+                        Op::CaseLower
+                        | Op::CaseUpper
+                        | Op::CaseToggle
+                        | Op::ShiftRight
+                        | Op::ShiftLeft => SearchOp::Move,
                     },
                     None => SearchOp::Move,
                 };
@@ -1754,16 +1786,6 @@ impl InputEngine {
                     // The numbered delete-ring (`"1`–`"9`) and other registers are not modelled yet; a
                     // pending construct is in flight, so an unusable name is `closed/abort` (operator-
                     // pending), leaking no state.
-                    _ => self.unmatched(Ns::OperatorPending, key),
-                };
-            }
-            Awaiting::ShiftSecond { right } => {
-                self.normal.awaiting = Awaiting::Nothing;
-                // The count accumulated before the first `>`/`<` is still live and becomes the line count.
-                return match key.code {
-                    KeyCode::Char('>') if right => self.action(Command::ShiftRight(self.mcount())),
-                    KeyCode::Char('<') if !right => self.action(Command::ShiftLeft(self.mcount())),
-                    // Anything else (including the mismatched bracket, e.g. `><`): operator-pending abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
