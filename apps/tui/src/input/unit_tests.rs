@@ -286,6 +286,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_set_options() {
+        use ruse_core::EditorOption;
+        assert_eq!(parse_ex("set ic"), Ex::Set(EditorOption::IgnoreCase(true)));
+        assert_eq!(
+            parse_ex("set noignorecase"),
+            Ex::Set(EditorOption::IgnoreCase(false))
+        );
+        assert_eq!(parse_ex("set scs"), Ex::Set(EditorOption::SmartCase(true)));
+        assert_eq!(
+            parse_ex("set expandtab"),
+            Ex::Set(EditorOption::ExpandTab(true))
+        );
+        assert_eq!(
+            parse_ex("set noet"),
+            Ex::Set(EditorOption::ExpandTab(false))
+        );
+        assert_eq!(parse_ex("set sw=2"), Ex::Set(EditorOption::ShiftWidth(2)));
+        assert_eq!(
+            parse_ex("set shiftwidth=8"),
+            Ex::Set(EditorOption::ShiftWidth(8))
+        );
+        // Unknown option → not a Set (falls through to Unknown).
+        assert!(matches!(parse_ex("set bogus"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("set"), Ex::Unknown(_)));
+    }
+
+    #[test]
     fn parse_buffer_delete() {
         assert_eq!(parse_ex("bd"), Ex::BufferDelete { force: false });
         assert_eq!(parse_ex("bdelete"), Ex::BufferDelete { force: false });

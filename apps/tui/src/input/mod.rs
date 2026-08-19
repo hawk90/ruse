@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Layer, LayerStack, Resolved, UnmatchedKey};
 use ruse_core::{
-    BlockInsertKind, Command, ForcedWise, GlobalCmd, LineAddr, Mode, Motion, OpKind, SearchOp,
-    SelectKind, SubFlags, SubRange, WordCase,
+    BlockInsertKind, Command, EditorOption, ForcedWise, GlobalCmd, LineAddr, Mode, Motion, OpKind,
+    SearchOp, SelectKind, SubFlags, SubRange, WordCase,
 };
 
 /// The outcome of feeding one key to the engine.

@@ -713,6 +713,19 @@ impl Workspace {
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
     }
+
+    /// Set one `:set` option on the focused view (swap-trick, like [`Workspace::set_indent`]).
+    pub fn set_option(&mut self, opt: crate::editor::EditorOption) {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+        let mut st = EditorState::from_parts(doc, view);
+        st.set_option(opt);
+        let (doc, view) = st.into_parts();
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+    }
 }
 
 #[cfg(test)]
@@ -912,6 +925,25 @@ mod tests {
             Some(2)
         );
         assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
+    }
+
+    /// `:set ignorecase` flips the focused view's search case, observable through `:s` matching.
+    #[test]
+    fn set_option_ignorecase_changes_matching() {
+        use crate::editor::EditorOption;
+        let mut w = Workspace::new(b"Foo\n".to_vec());
+        // Default is case-sensitive: `:s/foo/X/` matches nothing.
+        let out = w
+            .substitute(SubRange::CurrentLine, "foo", "X", SubFlags::default())
+            .expect("valid regex");
+        assert_eq!(out.replacements, 0);
+        // `:set ignorecase` → now it matches.
+        w.set_option(EditorOption::IgnoreCase(true));
+        let out = w
+            .substitute(SubRange::CurrentLine, "foo", "X", SubFlags::default())
+            .expect("valid regex");
+        assert_eq!(out.replacements, 1);
+        assert_eq!(w.focused().doc.bytes(), b"X\n");
     }
 
     /// `:bd` retires a buffer and repoints the window to the alternate; deleting the last buffer opens a

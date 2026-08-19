@@ -28,6 +28,8 @@ pub enum Ex {
     Copy(SubRange, LineAddr),
     /// `:[range]sort[!] [n][u]` — sort the range's lines (whole file with no range).
     Sort(SubRange, SortSpec),
+    /// `:set {option}` — set one editor option on the focused view (F-009 / indent config).
+    Set(EditorOption),
     /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
     Substitute(SubSpec),
     /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
@@ -102,6 +104,33 @@ pub struct SubSpec {
     pub ignore_case: Option<bool>,
     /// `c`: confirm each substitution interactively (handled by the frontend; PR-c2).
     pub confirm: bool,
+}
+
+/// Parse `:set {option}` for the options this MVP honors: `ignorecase`/`ic`, `smartcase`/`scs`,
+/// `expandtab`/`et` (each with a `no` prefix to turn off), and `shiftwidth`/`sw`/`tabstop`/`ts` `=N`.
+/// An unknown option returns `None` (→ `Unknown`); a bare `:set` (no option) is not handled here.
+fn parse_set(line: &str) -> Option<Ex> {
+    let opt = line
+        .strip_prefix("set ")
+        .or_else(|| line.strip_prefix("se "))?
+        .trim();
+    let ex = match opt {
+        "ignorecase" | "ic" => EditorOption::IgnoreCase(true),
+        "noignorecase" | "noic" => EditorOption::IgnoreCase(false),
+        "smartcase" | "scs" => EditorOption::SmartCase(true),
+        "nosmartcase" | "noscs" => EditorOption::SmartCase(false),
+        "expandtab" | "et" => EditorOption::ExpandTab(true),
+        "noexpandtab" | "noet" => EditorOption::ExpandTab(false),
+        _ => {
+            let (k, v) = opt.split_once('=')?;
+            let n: usize = v.trim().parse().ok()?;
+            match k.trim() {
+                "shiftwidth" | "sw" | "tabstop" | "ts" => EditorOption::ShiftWidth(n),
+                _ => return None,
+            }
+        }
+    };
+    Some(Ex::Set(ex))
 }
 
 /// A parsed `:sort` command: the flags this MVP honors (`!` reverse, `n` numeric, `u` unique).
@@ -371,6 +400,8 @@ pub fn parse_ex(line: &str) -> Ex {
             } else if let Some((range, dest)) = parse_range_verb_dest(line, &["copy", "co", "t"]) {
                 Ex::Copy(range, dest)
             } else if let Some(ex) = parse_sort(line) {
+                ex
+            } else if let Some(ex) = parse_set(line) {
                 ex
             } else if let Some(spec) = parse_substitute(line, false) {
                 // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).

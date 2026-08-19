@@ -169,6 +169,11 @@ pub(crate) fn run_ex(
                 "sorted".into()
             };
         }
+        // `:set {option}` — set one editor option on the focused view.
+        Ex::Set(opt) => {
+            ws.set_option(*opt);
+            *status = format!("{opt:?}");
+        }
         // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window.
         Ex::Global(spec) => {
             *status = match ws.global(spec.range, &spec.pattern, spec.negate, &spec.cmd) {

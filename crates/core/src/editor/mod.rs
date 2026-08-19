@@ -62,6 +62,20 @@ pub enum IndentStyle {
     Tab,
 }
 
+/// One `:set` option this MVP honors, mapped onto the existing indent/search-case config. `bool` options
+/// carry their on/off value (`:set ic` = `IgnoreCase(true)`, `:set noic` = `IgnoreCase(false)`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EditorOption {
+    /// `'ignorecase'` (`ic`).
+    IgnoreCase(bool),
+    /// `'smartcase'` (`scs`).
+    SmartCase(bool),
+    /// `'shiftwidth'` (`sw`) — one indent level's width (also drives `editor.tab_width` here).
+    ShiftWidth(usize),
+    /// `'expandtab'` (`et`) — indent with spaces (`true`) vs a tab (`false`).
+    ExpandTab(bool),
+}
+
 /// The indent config a shift/indent operator (`>>`/`<<`) reads: `editor.tab_width` +
 /// `editor.indent_style`. Grouped so the "config" concern is one field on [`View`], not four loose ones.
 #[derive(Clone, Copy)]
@@ -432,6 +446,23 @@ impl EditorState {
     pub fn set_search_case(&mut self, ignore_case: bool, smart_case: bool) {
         self.view.search_case.ignore = ignore_case;
         self.view.search_case.smart = smart_case;
+    }
+
+    /// Set one editor option (`:set`) on the focused view, leaving the others untouched. Maps the
+    /// runtime `:set` surface onto the existing indent/search-case config (no new schema keys).
+    pub fn set_option(&mut self, opt: EditorOption) {
+        match opt {
+            EditorOption::IgnoreCase(v) => self.view.search_case.ignore = v,
+            EditorOption::SmartCase(v) => self.view.search_case.smart = v,
+            EditorOption::ShiftWidth(n) => self.view.indent.tab_width = n.max(1),
+            EditorOption::ExpandTab(v) => {
+                self.view.indent.style = if v {
+                    IndentStyle::Space
+                } else {
+                    IndentStyle::Tab
+                }
+            }
+        }
     }
 
     /// Execute `:[range]s/pattern/replacement/flags` (F-009 #2). Every substitution across the range is
