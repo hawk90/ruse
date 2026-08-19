@@ -41,6 +41,13 @@ const TERM_TICK_MS: u64 = 33;
 /// so a ~10fps tick keeps them prompt without spinning.
 const LSP_TICK_MS: u64 = 100;
 
+/// What a pending LSP request was for, so its response (correlated by id) is dispatched correctly (F-014 #2).
+#[derive(Clone, Copy)]
+enum LspKind {
+    Hover,
+    Goto,
+}
+
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
     let fmt = persist::encoding::FileFormat::detect(&raw);
@@ -155,6 +162,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut lsp_docs: HashMap<DocumentId, (String, i64, Revision)> = HashMap::new(); // id → (uri, version, rev)
     let mut lsp_tried: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut diagnostics: HashMap<DocumentId, Vec<Diag>> = HashMap::new();
+    // Pending hover/goto requests keyed by (server command, request id); the transient hover panel (F-014 #2).
+    let mut lsp_pending: HashMap<(String, i64), LspKind> = HashMap::new();
+    let mut hover_panel: Option<Vec<String>> = None;
     let root_uri = std::env::current_dir()
         .map(|p| lsp::path_to_uri(&p))
         .unwrap_or_default();
@@ -268,6 +278,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = file_picker.as_ref() {
             p.rows()
+        } else if let Some(lines) = hover_panel.as_ref() {
+            // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
+            lines.iter().map(|l| (l.clone(), false)).collect()
         } else {
             Vec::new()
         };
@@ -287,6 +300,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         } else {
             engine.cmdline().map(|(pfx, t, _)| (pfx, t))
         };
+        // A goto-definition target resolved this frame; applied after render (opening a buffer would clash
+        // with the live `spans` borrow here).
+        let mut goto_jump: Option<(String, u32, u32)> = None;
         // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
         // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
         // `term_views` lends each grid to the renderer. On non-unix this is always empty.
@@ -349,11 +365,22 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             } else {
                 None
             };
-            // Poll every client; apply diagnostics for the focused buffer (matched by uri) to the model.
-            for client in lsp.values_mut() {
-                for params in client.poll() {
+            // Poll every client: apply diagnostics for the focused buffer (matched by uri), and dispatch any
+            // request responses (hover → panel, goto → jump) by their pending (serverKey, id).
+            for (key, client) in lsp.iter_mut() {
+                let polled = client.poll();
+                for params in polled.diagnostics {
                     if Some(&params.uri) == focused_uri.as_ref() {
                         diagnostics.insert(id, lsp::protocol::to_diags(&snapshot, &params));
+                    }
+                }
+                for (rid, result) in polled.responses {
+                    match lsp_pending.remove(&(key.clone(), rid)) {
+                        Some(LspKind::Hover) => hover_panel = lsp::protocol::parse_hover(&result),
+                        // Defer the jump until AFTER render — it may open a buffer (mutating `highlighters`),
+                        // which the frame's live `spans` borrow forbids here.
+                        Some(LspKind::Goto) => goto_jump = lsp::protocol::parse_definition(&result),
+                        None => {}
                     }
                 }
             }
@@ -375,6 +402,27 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &term_views,
             focus_diags,
         )?;
+        // F-014: apply a deferred goto-definition jump (render is done, so opening a buffer is now free of the
+        // `spans` borrow). Same file → move the cursor; another file → open it, then move.
+        if let Some((uri, l, c)) = goto_jump.take() {
+            let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
+            let target = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+            let cur_path = files
+                .get(&ws.focused_buffer())
+                .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
+            if cur_path.as_deref() == Some(target.as_path()) {
+                ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&snapshot, l, c));
+            } else {
+                open_file_into_buffer(
+                    &target.display().to_string(),
+                    &mut ws,
+                    &mut files,
+                    &mut highlighters,
+                );
+                let bytes = ws.focused().doc.bytes().to_vec();
+                ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
+            }
+        }
         // Async output (PTY, F-011; LSP diagnostics, F-014) must render without a keypress, so the loop polls
         // with a timeout while either is live. With neither it keeps the pure blocking read (no spin,
         // unchanged) — a terminal ticks fast, an LSP-only session more slowly.
@@ -404,6 +452,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if key.kind == KeyEventKind::Release {
             continue;
         }
+        // F-014: any key dismisses a shown hover panel (a fresh `K` re-populates it after its response).
+        hover_panel = None;
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
         if confirm.is_some() {
             confirm_key(&mut confirm, key, &mut ws, &mut status);
@@ -554,6 +604,35 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if normal && is_ctrl(key, 'w') {
             pending_window = true;
             continue;
+        }
+        // F-014: `K` = hover, `<C-]>` = goto-definition. When the focused buffer has a live server, send the
+        // request for the cursor position; its response is dispatched in the poll loop next frame. Otherwise
+        // both keys fall through (they are unbound in the grammar).
+        if normal && (matches!(key.code, KeyCode::Char('K')) || is_ctrl(key, ']')) {
+            let bid = ws.focused_buffer();
+            let server_key = files
+                .get(&bid)
+                .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
+                .and_then(lsp::server_for_ext)
+                .map(|(k, _, _)| k);
+            if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
+                if let Some(client) = lsp.get_mut(key_s) {
+                    let (line, ch) =
+                        lsp::model::byte_to_lsp_pos(&snapshot, ws.focused().view.cursor());
+                    let hover = matches!(key.code, KeyCode::Char('K'));
+                    let method = if hover {
+                        "textDocument/hover"
+                    } else {
+                        "textDocument/definition"
+                    };
+                    let rid = client.request(method, lsp::protocol::position_params(uri, line, ch));
+                    lsp_pending.insert(
+                        (key_s.to_string(), rid),
+                        if hover { LspKind::Hover } else { LspKind::Goto },
+                    );
+                    continue;
+                }
+            }
         }
         // `C-p` opens the command palette (F-004 #2), context-filtered to the focused view.
         if normal && is_ctrl(key, 'p') {
