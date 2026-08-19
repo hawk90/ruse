@@ -70,6 +70,33 @@ fn crash_with_unsaved_work_is_recoverable_then_cleared_on_save() {
 }
 
 #[test]
+fn per_buffer_journals_are_independent_by_path() {
+    // F-007: the session journals the FOCUSED buffer keyed to ITS path, so two open files (e.g. one via
+    // `:e`) each keep their own recovery — one buffer's unsaved work never leaks into the other's.
+    let a = scratch("a.txt");
+    let b = scratch("b.txt");
+    journal::append(Some(&a), b"A unsaved").unwrap();
+    journal::append(Some(&b), b"B unsaved").unwrap();
+
+    assert_eq!(
+        journal::replay(Some(&a)).as_deref(),
+        Some(&b"A unsaved"[..])
+    );
+    assert_eq!(
+        journal::replay(Some(&b)).as_deref(),
+        Some(&b"B unsaved"[..])
+    );
+
+    // Saving/clearing one buffer leaves the other's journal intact.
+    journal::clear(Some(&a));
+    assert_eq!(journal::replay(Some(&a)), None);
+    assert_eq!(
+        journal::replay(Some(&b)).as_deref(),
+        Some(&b"B unsaved"[..])
+    );
+}
+
+#[test]
 fn a_torn_journal_tail_never_blocks_reopening() {
     let f = scratch("torn.txt");
     // Two good records, then a truncated third (a crash mid-append). Recovery must still work off

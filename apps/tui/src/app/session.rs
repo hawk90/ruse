@@ -145,18 +145,20 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
         line_idx.refresh(revision, &snapshot);
-        // Panic-rescue mirror + recovery journal are the FILE buffer's, keyed to `path` (F-008). Skip them
-        // while a scratch/other buffer is focused so its bytes never land in the file's recovery (F-007).
-        let on_file = ws.focused_buffer() == file_buf;
-        if on_file {
+        // Panic-rescue mirror + recovery journal are keyed to the FOCUSED buffer's own file path (F-007):
+        // a hard kill while editing ANY file-backed buffer (incl. a `:e`-opened one) persists it — the
+        // journal is recovered by reopening that file. A scratch buffer (no `files` entry) is skipped so
+        // its bytes never land in some file's recovery. `save()` already clears the focused buffer's
+        // journal by path, so this stays consistent. (Full incremental journal design is post-MVP.)
+        if let Some(bf) = files.get(&ws.focused_buffer()) {
             // Keep the in-memory snapshot current so a core panic can rescue unsaved work (§6/§8).
-            recover::update(path.as_ref(), &snapshot, modified);
-            // And throttle an append-only journal frame so a hard kill (not just a panic) loses at most
-            // a few edits. Cleared on a durable save. Full journal design is post-MVP (C-PERSIST).
+            recover::update(Some(&bf.path), &snapshot, modified);
+            // Throttle an append-only journal frame so a hard kill (not just a panic) loses at most a few
+            // edits. Cleared on a durable save.
             if modified {
                 journal_ticks += 1;
                 if journal_ticks.is_multiple_of(JOURNAL_THROTTLE) {
-                    let _ = persist::journal::append(path.as_deref(), &snapshot);
+                    let _ = persist::journal::append(Some(bf.path.as_path()), &snapshot);
                 }
             }
         }
