@@ -124,6 +124,14 @@ pub enum Command {
         kind: OpenKind,
         level: usize,
     },
+    /// `}`/`)`/`]` typed as the SOLE non-blank on a line (F-015 Phase 3a, smartindent-like): realign the
+    /// line's leading whitespace to the matching opener's line indent, then insert the closer. Deterministic
+    /// bytes bracket-match (no string/comment awareness, like the bracket-depth `=` fallback); if the line
+    /// already has non-blank content before the cursor, or no matching opener is found, it is a plain insert.
+    /// The frontend rewrites `InsertChar(closer)` into this for tree-backed (code) buffers only.
+    InsertCloser {
+        ch: char,
+    },
     DeleteBack,
     /// `{count}x` — delete `count` chars from the cursor, clamped at end-of-line (Vim).
     DeleteUnder(u32),
@@ -642,6 +650,7 @@ impl Command {
                 };
                 format!("open_line_indent {k} {level}")
             }
+            Command::InsertCloser { ch } => format!("insert_closer {}", *ch as u32),
             Command::DeleteBack => "delete_back".into(),
             Command::DeleteUnder(n) => format!("delete_under {n}"),
             Command::DeleteForward(n) => format!("delete_forward {n}"),
@@ -849,6 +858,12 @@ impl Command {
                     .and_then(|s| s.parse().ok())
                     .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
                 Command::OpenLineIndent { kind, level }
+            }
+            "insert_closer" => {
+                let cp = arg_u32(arg, line)?;
+                let ch = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::InsertCloser { ch }
             }
             "delete_back" => Command::DeleteBack,
             "delete_under" => {
@@ -1182,6 +1197,8 @@ mod tests {
                 kind: OpenKind::Split,
                 level: 3,
             },
+            Command::InsertCloser { ch: '}' },
+            Command::InsertCloser { ch: ']' },
             Command::DeleteBack,
             Command::DeleteUnder(1),
             Command::DeleteUnder(3),

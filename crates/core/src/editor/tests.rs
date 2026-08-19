@@ -896,6 +896,53 @@ mod insert_entry_tests {
         assert_eq!(text(&st), "ab\nX");
     }
 
+    // Like `run`, but seeds the cursor at the end of `initial` (where a closer would be typed).
+    fn run_at_end(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        st.set_cursor(initial.len());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    #[test]
+    fn insert_closer_realigns_to_matching_opener() {
+        // Cursor sits on an over-indented blank line inside the block; typing `}` realigns it under `fn`.
+        let st = run_at_end("fn f() {\n        ", &[Command::InsertCloser { ch: '}' }]);
+        assert_eq!(text(&st), "fn f() {\n}");
+        assert_eq!(st.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn insert_closer_aligns_to_the_openers_own_indent() {
+        // `)` has no matching `(` → plain insert (leading whitespace untouched).
+        let st = run_at_end(
+            "    if x {\n            ",
+            &[Command::InsertCloser { ch: ')' }],
+        );
+        assert_eq!(text(&st), "    if x {\n            )");
+        // `}` matches the `{` on the 4-indented line → realign to that line's 4 spaces.
+        let st = run_at_end(
+            "    if x {\n            ",
+            &[Command::InsertCloser { ch: '}' }],
+        );
+        assert_eq!(text(&st), "    if x {\n    }");
+    }
+
+    #[test]
+    fn insert_closer_with_content_before_cursor_is_a_plain_insert() {
+        // The `}` is not the sole leading content (there's `x` before it), so no realignment.
+        let st = run_at_end("a {}\n    x", &[Command::InsertCloser { ch: '}' }]);
+        assert_eq!(text(&st), "a {}\n    x}");
+    }
+
+    #[test]
+    fn insert_closer_without_a_matching_opener_is_a_plain_insert() {
+        let st = run_at_end("    ", &[Command::InsertCloser { ch: '}' }]);
+        assert_eq!(text(&st), "    }");
+    }
+
     #[test]
     fn append_goes_to_line_end() {
         // On 'a' of "ab"; A appends at the end.

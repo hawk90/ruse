@@ -610,6 +610,43 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             edit(one(Edit::insert(at, ins)), cursor, Mode::Insert, hint)
         }
+        // A closer (`}`/`)`/`]`) typed as the line's sole leading content realigns the line to its matching
+        // opener's indent, then inserts the closer — smartindent-like (F-015 Phase 3a). Deterministic bytes
+        // bracket-match; with content already before the cursor, or no matching opener, it is a plain insert.
+        Command::InsertCloser { ch } => {
+            let mut buf = [0u8; 4];
+            let typed = ch.encode_utf8(&mut buf).as_bytes().to_vec();
+            let n = typed.len();
+            let ls = line_start(b, cur);
+            let all_ws = b[ls..cur].iter().all(|&x| x == b' ' || x == b'\t');
+            let pair = match ch {
+                '}' => Some((b'{', b'}')),
+                ')' => Some((b'(', b')')),
+                ']' => Some((b'[', b']')),
+                _ => None,
+            };
+            let pad = if all_ws {
+                pair.and_then(|(open, close)| matching_opener_pad(b, cur, open, close))
+            } else {
+                None
+            };
+            match pad {
+                Some(pad) => {
+                    // One edit: replace the leading whitespace [ls, cur) with `pad ++ closer`, so any content
+                    // after the cursor is untouched and the whole thing is a single insert-coalesced group.
+                    let cursor = ls + pad.len() + n;
+                    let mut repl = pad;
+                    repl.extend_from_slice(&typed);
+                    edit(
+                        one(Edit::replace(ls, cur - ls, repl)),
+                        cursor,
+                        Mode::Insert,
+                        hint,
+                    )
+                }
+                None => edit(one(Edit::insert(cur, typed)), cur + n, Mode::Insert, hint),
+            }
+        }
         Command::DeleteBack => {
             if cur == 0 {
                 nop(cur, st.view.mode)
@@ -1497,6 +1534,30 @@ fn shift_left_remove(b: &[u8], ls: usize, le: usize, tab_width: usize) -> usize 
 /// non-blank is a closer dedents one level, and blank lines are left empty. Structural / language-agnostic:
 /// brackets inside strings or comments are NOT excluded (documented). One transaction (edits are disjoint,
 /// ascending line starts). Cursor → the first reindented line's new first-non-blank.
+/// The leading whitespace of the line holding the opener that matches the closer at `cur` (F-015 Phase 3a).
+/// Scans backwards from `cur` counting the `(open, close)` pair; when the nesting depth returns to zero the
+/// matching opener is found and its line's leading whitespace is returned as the closer's target indent.
+/// `None` when no matching opener exists. Deterministic; not string/comment-aware (as with the `=` fallback).
+fn matching_opener_pad(b: &[u8], cur: usize, open: u8, close: u8) -> Option<Vec<u8>> {
+    let mut depth = 1i32;
+    let mut i = cur;
+    while i > 0 {
+        i -= 1;
+        let x = b[i];
+        if x == close {
+            depth += 1;
+        } else if x == open {
+            depth -= 1;
+            if depth == 0 {
+                let ls = line_start(b, i);
+                let fnb = motion::first_non_blank(b, ls);
+                return Some(b[ls..fnb].to_vec());
+            }
+        }
+    }
+    None
+}
+
 /// Apply explicit indent `levels` (one per line from `first_line`) to `[first_line, last_line]`: each
 /// non-blank line's leading whitespace becomes `levels[i] × indent_unit`; blank lines are emptied. One
 /// transaction. The frontend supplies tree-derived levels (tree-aware `=`); the core stays view-free.
