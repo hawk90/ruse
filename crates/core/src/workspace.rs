@@ -994,6 +994,23 @@ mod tests {
         assert_eq!(w.focused().doc.bytes(), b"mixedcase line\n");
     }
 
+    /// A pathological `{count}p` (a digit-spam count that saturates to `u32::MAX`) must not request a
+    /// multi-gigabyte allocation: the paste is clamped to a bounded number of bytes and completes.
+    #[test]
+    fn huge_paste_count_is_bounded() {
+        let mut w = Workspace::new(b"ab\n".to_vec());
+        w.yank_lines(SubRange::CurrentLine); // register := "ab\n" (linewise)
+        w.apply(&Command::Paste {
+            after: true,
+            count: u32::MAX,
+        });
+        // Bounded to ~64 MiB, NOT 3 × 4.29e9 ≈ 12 GiB.
+        assert!(
+            w.focused().doc.bytes().len() <= (1 << 26) + 16,
+            "paste bytes are clamped, not unbounded"
+        );
+    }
+
     /// `:e!` (reload) replaces the focused buffer with fresh bytes and marks it saved, discarding the
     /// unsaved edit.
     #[test]
