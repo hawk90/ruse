@@ -595,6 +595,13 @@ features:
     title: PTY-backed terminal buffer
     stage: post-mvp
     priority: should
+    # progress (slice 1, #291): the ASYNC SEAM is in — `:terminal` spawns `$SHELL` on a unix PTY
+    # (`apps/tui/src/pty.rs`, forkpty via libc, reader thread → mpsc), the event loop multiplexes PTY output
+    # against key input via `event::poll` (gated so no-terminal stays a blocking read), and output renders as
+    # sanitized line-mode text (`AnsiStrip`) in a first-class buffer with per-view Terminal/Terminal-Normal
+    # modes. Determinism boundary honored (terminal I/O is outside trace/replay). REMAINING: full VT grid +
+    # colors + resize + scrollback paging (slice 2), Windows ConPTY (slice 3), C-SCHEDULER integration
+    # (slice 4). Stays `planned` — this is the seam + line mode, not the full emulator. See docs/design/terminal.md.
     status: planned
     depends_on: [C-TERMINAL, C-WORKSPACE, C-SCHEDULER]
     summary: A terminal emulator as a first-class buffer (Unix PTY + Windows ConPTY).

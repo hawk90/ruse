@@ -48,6 +48,13 @@ pub enum Mode {
     Select {
         kind: SelectKind,
     },
+    /// Terminal mode (F-011): keys are forwarded to the PTY child, not the editing grammar. The frontend
+    /// owns the PTY + scrollback; the core only carries the mode so it is per-view (VS-OBL-1) and drives the
+    /// status line / input routing. No editing command touches a terminal buffer's (placeholder) document.
+    Terminal,
+    /// Terminal-Normal mode (F-011, `t_CTRL-\ CTRL-N`): read-only navigation of the terminal scrollback with
+    /// the normal motion grammar; `i`/`a` return to [`Mode::Terminal`]. Edits are suppressed by the frontend.
+    TerminalNormal,
 }
 
 /// The indentation unit a shift operator (`>>`/`<<`) applies, derived from the two editor config keys
@@ -101,7 +108,12 @@ impl Mode {
     fn selection(self) -> Option<SelectKind> {
         match self {
             Mode::Visual { kind } | Mode::Select { kind } => Some(kind),
-            Mode::Normal | Mode::Insert | Mode::Replace | Mode::VirtualReplace => None,
+            Mode::Normal
+            | Mode::Insert
+            | Mode::Replace
+            | Mode::VirtualReplace
+            | Mode::Terminal
+            | Mode::TerminalNormal => None,
         }
     }
 }

@@ -30,7 +30,12 @@ pub(crate) mod app;
 pub(crate) mod health;
 pub(crate) mod indent;
 pub(crate) mod log;
+// F-011 PTY-backed terminal buffer (slice 1) — unix-only (forkpty via `libc`); other targets stub `:terminal`.
+#[cfg(unix)]
+pub(crate) mod pty;
 pub(crate) mod recover;
+#[cfg(unix)]
+pub(crate) mod term_buffer;
 pub(crate) mod terminal;
 pub(crate) mod ui;
 pub(crate) mod viewport;

@@ -129,6 +129,7 @@ pub(crate) fn render(
     sync: bool,
     focus_hl: &[(usize, usize)],
     palette_rows: &[(String, bool)],
+    terminals: &std::collections::HashMap<ruse_core::DocumentId, &[u8]>,
 ) -> io::Result<()> {
     use crossterm::style::Color;
 
@@ -156,6 +157,14 @@ pub(crate) fn render(
     // Paint every window into its sub-rectangle; the focused view owns the terminal cursor below.
     for (i, &rect) in rects.iter().enumerate().take(ws.window_count()) {
         let p = ws.pane(i);
+        // F-011: a terminal window paints its sanitized scrollback TAIL (last `rect.h` lines) through the
+        // ordinary byte path, not the empty placeholder document. No highlight, no selection (slice 1).
+        if let Some(&scrollback) = terminals.get(&p.view.doc()) {
+            let lines = scrollback.iter().filter(|&&b| b == b'\n').count();
+            let top = lines.saturating_sub(rect.h as usize);
+            paint_pane(&mut cur, rect, scrollback, &[], top, None, None, &[]);
+            continue;
+        }
         let pbytes = p.doc.bytes();
         let color: &[Color] = if p.view.doc() == focus_doc {
             &byte_color
@@ -222,6 +231,8 @@ pub(crate) fn render(
                 Mode::Select {
                     kind: SelectKind::Blockwise,
                 } => "S-BLOCK",
+                Mode::Terminal => "TERMINAL",
+                Mode::TerminalNormal => "T-NORMAL",
             };
             // Show the FOCUSED buffer's name (multi-buffer, F-007), not the session path — so switching to
             // a scratch buffer reads `[No Name]`, not the file that `path` still points at.

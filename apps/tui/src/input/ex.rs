@@ -18,6 +18,8 @@ pub enum Ex {
     Close,
     /// `:only`/`:on` — close every window except the focused one (the buffers stay loaded).
     Only,
+    /// `:terminal`/`:term` — open a shell in a new PTY-backed buffer (F-011). Unix-only in slice 1.
+    Terminal,
     /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
@@ -393,6 +395,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "vsplit" | "vsp" | "vs" => Ex::VSplit,
         "close" | "clo" => Ex::Close,
         "only" | "on" => Ex::Only,
+        "terminal" | "term" => Ex::Terminal,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         "e!" | "edit!" => Ex::EditReload,

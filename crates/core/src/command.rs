@@ -91,6 +91,11 @@ pub enum Command {
     EnterInsert,
     EnterInsertAfter,
     EnterNormal,
+    /// Enter Terminal mode (F-011): subsequent keys forward to the focused terminal buffer's PTY child. The
+    /// frontend arms this when `:terminal` opens and on `i`/`a` from Terminal-Normal.
+    EnterTerminal,
+    /// Enter Terminal-Normal mode (F-011, `t_CTRL-\ CTRL-N`): read-only scrollback navigation.
+    EnterTerminalNormal,
     /// `I` — insert before the first non-blank char of the line.
     InsertLineStart,
     /// `A` — append at the end of the line.
@@ -627,6 +632,8 @@ impl Command {
             Command::EnterInsert => "enter_insert".into(),
             Command::EnterInsertAfter => "enter_insert_after".into(),
             Command::EnterNormal => "enter_normal".into(),
+            Command::EnterTerminal => "enter_terminal".into(),
+            Command::EnterTerminalNormal => "enter_terminal_normal".into(),
             Command::InsertLineStart => "insert_line_start".into(),
             Command::AppendLineEnd => "append_line_end".into(),
             Command::OpenBelow => "open_below".into(),
@@ -818,6 +825,8 @@ impl Command {
             "enter_insert" => Command::EnterInsert,
             "enter_insert_after" => Command::EnterInsertAfter,
             "enter_normal" => Command::EnterNormal,
+            "enter_terminal" => Command::EnterTerminal,
+            "enter_terminal_normal" => Command::EnterTerminalNormal,
             "insert_line_start" => Command::InsertLineStart,
             "append_line_end" => Command::AppendLineEnd,
             "open_below" => Command::OpenBelow,
@@ -1145,6 +1154,8 @@ mod tests {
             Command::EnterInsert,
             Command::EnterInsertAfter,
             Command::EnterNormal,
+            Command::EnterTerminal,
+            Command::EnterTerminalNormal,
             Command::InsertLineStart,
             Command::AppendLineEnd,
             Command::OpenBelow,
