@@ -272,6 +272,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_sort_flags() {
+        use ruse_core::SubRange;
+        // No range → whole file; flags parse; `!` = reverse.
+        match parse_ex("sort! n") {
+            Ex::Sort(r, s) => {
+                assert_eq!(r, SubRange::WholeFile);
+                assert!(s.reverse && s.numeric && !s.unique);
+            }
+            other => panic!("expected Sort, got {other:?}"),
+        }
+        match parse_ex("1,3sort u") {
+            Ex::Sort(r, s) => {
+                assert_eq!(r, SubRange::Lines(1, 3));
+                assert!(!s.reverse && !s.numeric && s.unique);
+            }
+            other => panic!("expected Sort, got {other:?}"),
+        }
+        // A `/pattern/` sort form is not understood → Unknown, not a bogus Sort.
+        assert!(matches!(parse_ex("sort /x/"), Ex::Unknown(_)));
+    }
+
+    #[test]
     fn doubled_operator_is_linewise() {
         assert_eq!(feed("dd"), Feed::Cmd(Command::Delete(1, Motion::Line)));
         assert_eq!(feed("2dd"), Feed::Cmd(Command::Delete(2, Motion::Line)));
@@ -2433,7 +2455,9 @@ mod substitute_parse_tests {
 
     #[test]
     fn sort_is_not_a_substitute() {
-        assert!(matches!(parse_ex("sort"), Ex::Unknown(_)));
+        // `:sort` is its own command (the `o` is not an `:s` delimiter), never a substitute.
+        assert!(matches!(parse_ex("sort"), Ex::Sort(_, _)));
+        assert!(!matches!(parse_ex("sort"), Ex::Substitute(_)));
     }
 }
 
