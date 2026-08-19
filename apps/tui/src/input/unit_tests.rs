@@ -176,6 +176,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_quit_and_quit_bang() {
+        assert_eq!(parse_ex("q"), Ex::Quit);
+        assert_eq!(parse_ex("quit"), Ex::Quit);
+        assert_eq!(parse_ex("q!"), Ex::QuitForce);
+        assert_eq!(parse_ex("quit!"), Ex::QuitForce);
+    }
+
+    #[test]
     fn doubled_operator_is_linewise() {
         assert_eq!(feed("dd"), Feed::Cmd(Command::Delete(1, Motion::Line)));
         assert_eq!(feed("2dd"), Feed::Cmd(Command::Delete(2, Motion::Line)));
