@@ -122,6 +122,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut prev_frame = screen::Screen::new(0, 0);
     let sync_output = guard.sync_output(); // pinned once from the F-010 ledger (INV-RENDER-PROFILE)
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
+    let mut pending_z = false; // a `z` scroll prefix awaits its second key (`zz`/`zt`/`zb`)
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
                                               // The three modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads:
@@ -340,6 +341,27 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // The focused pane's visible height (for the scroll / recenter commands below).
+        let focused_h = rects
+            .get(ws.focus())
+            .map_or(text_rows as usize, |r| r.h as usize);
+        // `z` scroll prefix: the second key recenters the view on the cursor line (`zz`/`z.` center,
+        // `zt`/`z<CR>` top, `zb`/`z-` bottom). Only `top` moves; the per-frame scroll pass then applies
+        // `scrolloff`, so `zt`/`zb` land the line `scrolloff` rows inside the edge, as in Vim.
+        if pending_z {
+            pending_z = false;
+            let to = match key.code {
+                KeyCode::Char('z' | '.') => Some(viewport::RecenterTo::Center),
+                KeyCode::Char('t') | KeyCode::Enter => Some(viewport::RecenterTo::Top),
+                KeyCode::Char('b' | '-') => Some(viewport::RecenterTo::Bottom),
+                _ => None,
+            };
+            if let Some(to) = to {
+                let row = line_idx.line_of(ws.focused().view.cursor());
+                ws.set_top(ws.focus(), viewport::recenter(row, focused_h, to));
+            }
+            continue;
+        }
         // F-007 window layer: a `C-w` prefix (Normal mode, no command-line, not Insert where `C-w`
         // deletes a word) arms the next key as a window command. A thin frontend intercept for MVP;
         // F-003's keymap router will absorb it into a proper layer.
@@ -375,6 +397,30 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // ctrl, so intercepting ctrl-f shadows nothing reachable.
         if normal && is_ctrl(key, 'f') {
             file_picker = Some(file_picker::open());
+            continue;
+        }
+        // `z` arms the scroll-prefix (handled above on the next key). Normal-only, plain `z` (no ctrl).
+        if normal && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
+            pending_z = true;
+            continue;
+        }
+        // `C-d` / `C-u` scroll a half page: move the cursor half the pane down / up (column preserved via
+        // the core Move), and the per-frame scroll pass follows it. `C-f`/`C-b` are taken by the pickers.
+        if normal && (is_ctrl(key, 'd') || is_ctrl(key, 'u')) {
+            let half = (focused_h / 2).max(1) as u32;
+            let m = if is_ctrl(key, 'd') {
+                ruse_core::Motion::Down
+            } else {
+                ruse_core::Motion::Up
+            };
+            run_cmd(
+                Command::Move(half, m),
+                &mut ws,
+                &files,
+                &mut recorded,
+                &mut status,
+                &mut quit,
+            );
             continue;
         }
         // Every other key — command-line included — goes through the engine (F-026): the command-line
