@@ -857,6 +857,22 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
         Command::ShiftLeft(count) => plan_shift(st, cur, *count, false, hint),
+        Command::ShiftMotion {
+            left,
+            count,
+            motion,
+        } => {
+            // Resolve the motion's byte span, then shift every LINE it touches (Vim `>` is always linewise).
+            let (s, e, _) = op_span(b, cur, *motion, *count);
+            if s >= e {
+                nop(cur, st.view.mode)
+            } else {
+                let first_line = crate::pos::line_of(b, s);
+                let last_line = crate::pos::line_of(b, e - 1);
+                let lines = (last_line - first_line + 1) as u32;
+                plan_shift(st, line_start(b, s), lines, !*left, hint)
+            }
+        }
         // Paste reads the pending register (`"xp`) or the unnamed slot; `commit` clears the pending slot.
         Command::Paste { after, count } => paste(
             b,

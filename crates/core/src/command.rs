@@ -137,6 +137,13 @@ pub enum Command {
     /// `{count}<<` — shift `count` lines one indent level to the left (Vim `<<`). Symmetric inverse of
     /// [`Command::ShiftRight`]: removes up to one indent level of leading whitespace, never past column 0.
     ShiftLeft(u32),
+    /// `>`/`<` {motion} — shift the motion's LINES one indent level (always linewise; `left` picks the
+    /// direction). The planner resolves the motion span to a line range, then indents those lines.
+    ShiftMotion {
+        left: bool,
+        count: u32,
+        motion: Motion,
+    },
     // editing grammar: count + motion / operator (Phase D)
     Move(u32, Motion),
     Delete(u32, Motion),
@@ -584,6 +591,15 @@ impl Command {
             Command::BreakUndo => "break_undo".into(),
             Command::ShiftRight(n) => format!("shift_right {n}"),
             Command::ShiftLeft(n) => format!("shift_left {n}"),
+            Command::ShiftMotion {
+                left,
+                count,
+                motion,
+            } => format!(
+                "shift_motion {} {count} {}",
+                if *left { "left" } else { "right" },
+                motion_token(*motion)
+            ),
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
@@ -778,6 +794,29 @@ impl Command {
             "delete" => return op_cmd(arg, Command::Delete),
             "change" => return op_cmd(arg, Command::Change),
             "yank" => return op_cmd(arg, Command::Yank),
+            "shift_motion" => {
+                // `shift_motion {left|right} {count} {motion}`
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let left = match it.next() {
+                    Some("left") => true,
+                    Some("right") => false,
+                    _ => return Err(CommandParseError::BadArgument(a.to_string())),
+                };
+                let count = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let motion = it
+                    .next()
+                    .and_then(motion_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                return Ok(Command::ShiftMotion {
+                    left,
+                    count,
+                    motion,
+                });
+            }
             "case_motion" => {
                 // `case_motion {count} {motion} {case}`
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;

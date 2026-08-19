@@ -939,6 +939,28 @@ mod tests {
         assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
     }
 
+    /// `>`/`<` {motion} shift the motion's LINES one indent level (linewise), regardless of the motion's
+    /// own wise-ness.
+    #[test]
+    fn shift_motion_indents_the_lines() {
+        // `>j` from line 0 indents lines 0 and 1 by one level (default 4 spaces); line 2 is untouched.
+        let mut w = Workspace::new(b"a\nb\nc\n".to_vec());
+        w.apply(&Command::ShiftMotion {
+            left: false,
+            count: 1,
+            motion: Motion::Down,
+        });
+        assert_eq!(w.focused().doc.bytes(), b"    a\n    b\nc\n");
+
+        // `<j` removes one level from those two lines.
+        w.apply(&Command::ShiftMotion {
+            left: true,
+            count: 1,
+            motion: Motion::Down,
+        });
+        assert_eq!(w.focused().doc.bytes(), b"a\nb\nc\n");
+    }
+
     /// `gu`/`gU`/`g~` {motion} recase the operator span (lower / upper / toggle) as one edit, leaving
     /// the cursor at the span start.
     #[test]

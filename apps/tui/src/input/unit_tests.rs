@@ -1212,13 +1212,52 @@ mod tests {
     }
 
     #[test]
-    fn lone_shift_is_pending_then_aborts_on_mismatch() {
+    fn shift_over_motion_and_re_arm() {
+        // `>`/`<` are real operators now: over a motion they shift the motion's lines (always linewise).
+        assert_eq!(
+            feed(">j"),
+            Feed::Cmd(Command::ShiftMotion {
+                left: false,
+                count: 1,
+                motion: Motion::Down
+            })
+        );
+        assert_eq!(
+            feed("<k"),
+            Feed::Cmd(Command::ShiftMotion {
+                left: true,
+                count: 1,
+                motion: Motion::Up
+            })
+        );
+        assert_eq!(
+            feed(">ip"),
+            Feed::Cmd(Command::ShiftMotion {
+                left: false,
+                count: 1,
+                motion: Motion::InnerParagraph
+            })
+        );
+        assert_eq!(
+            feed("2>j"),
+            Feed::Cmd(Command::ShiftMotion {
+                left: false,
+                count: 2,
+                motion: Motion::Down
+            })
+        );
+
+        // Like `dc`, a second (different) operator key re-arms rather than aborting; a motion then completes it.
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('>'), Mode::Normal), Feed::Pending);
-        // A mismatched second bracket aborts cleanly (operator-pending), leaking no state.
-        assert_eq!(e.feed(k('<'), Mode::Normal), Feed::Ignored);
-        assert!(
-            e.normal.op.is_none() && e.normal.awaiting == Awaiting::Nothing && e.normal.count == 0
+        assert_eq!(e.feed(k('<'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('j'), Mode::Normal),
+            Feed::Cmd(Command::ShiftMotion {
+                left: true,
+                count: 1,
+                motion: Motion::Down
+            })
         );
     }
 
