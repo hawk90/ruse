@@ -175,6 +175,55 @@ pub fn parse_workspace_edit(result: &Value) -> Vec<(String, Vec<LspTextEdit>)> {
     Vec::new()
 }
 
+/// `textDocument/completion` params (the `{ textDocument, position }` shape; context is optional and omitted).
+pub fn completion_params(uri: &str, line: u32, character: u32) -> Value {
+    position_params(uri, line, character)
+}
+
+/// One completion candidate the pum shows/inserts: `label` (displayed), `insert` (text put into the buffer),
+/// and an optional `detail` (a type/signature shown dimmed on the right).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompletionItem {
+    pub label: String,
+    pub insert: String,
+    pub detail: Option<String>,
+}
+
+/// Parse a completion response into [`CompletionItem`]s. Accepts both a `CompletionList` (`{ items: [...] }`)
+/// and a bare `CompletionItem[]`. Per item, the inserted text is `textEdit.newText` → `insertText` → `label`,
+/// EXCEPT snippet items (`insertTextFormat == 2`) fall back to `label` so raw `${1:…}` never lands in the
+/// buffer (snippet expansion is a later slice). Null / empty → no items.
+pub fn parse_completion(result: &Value) -> Vec<CompletionItem> {
+    let arr = if let Some(items) = result.get("items").and_then(Value::as_array) {
+        items
+    } else if let Some(arr) = result.as_array() {
+        arr
+    } else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|it| {
+            let label = it.get("label")?.as_str()?.to_string();
+            let is_snippet = it.get("insertTextFormat").and_then(Value::as_u64) == Some(2);
+            let insert = if is_snippet {
+                label.clone()
+            } else {
+                it.get("textEdit")
+                    .and_then(|te| te.get("newText"))
+                    .and_then(Value::as_str)
+                    .or_else(|| it.get("insertText").and_then(Value::as_str))
+                    .map_or_else(|| label.clone(), str::to_string)
+            };
+            let detail = it.get("detail").and_then(Value::as_str).map(str::to_string);
+            Some(CompletionItem {
+                label,
+                insert,
+                detail,
+            })
+        })
+        .collect()
+}
+
 /// The display lines of a hover response, or `None` when the server has nothing. Handles `contents` as a
 /// plain string, a `MarkedString`/`MarkupContent` object (`{value}`), or an array of either.
 pub fn parse_hover(result: &Value) -> Option<Vec<String>> {
@@ -299,6 +348,31 @@ mod tests {
         let rename_op = json!({"documentChanges": [{"kind": "rename", "oldUri": "file:///a.rs", "newUri": "file:///c.rs"}]});
         assert!(parse_workspace_edit(&rename_op).is_empty());
         assert!(parse_workspace_edit(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn parse_completion_handles_list_array_snippet_and_null() {
+        // CompletionList form; insertText overrides label.
+        let list = json!({"isIncomplete": false, "items": [
+            {"label": "width", "insertText": "width", "detail": "fn width(&self) -> u16"},
+            {"label": "with_capacity", "kind": 3}
+        ]});
+        let items = parse_completion(&list);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].label, "width");
+        assert_eq!(items[0].detail.as_deref(), Some("fn width(&self) -> u16"));
+        assert_eq!(items[1].insert, "with_capacity"); // no insertText → label
+                                                      // Bare array form + a textEdit-driven insert.
+        let arr = json!([
+            {"label": "foo", "textEdit": {"range": {}, "newText": "foo()"}}
+        ]);
+        assert_eq!(parse_completion(&arr)[0].insert, "foo()");
+        // Snippet item (insertTextFormat 2) inserts the clean label, not the snippet body.
+        let snip = json!([
+            {"label": "println!", "insertText": "println!(\"$1\")$0", "insertTextFormat": 2}
+        ]);
+        assert_eq!(parse_completion(&snip)[0].insert, "println!");
+        assert!(parse_completion(&Value::Null).is_empty());
     }
 
     #[test]

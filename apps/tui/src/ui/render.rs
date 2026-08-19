@@ -165,6 +165,7 @@ pub(crate) fn render(
     palette_rows: &[(String, bool)],
     terminals: &TermViews,
     diagnostics: &[crate::lsp::Diag],
+    completion: Option<(&[crate::lsp::protocol::CompletionItem], usize)>,
 ) -> io::Result<()> {
     use crossterm::style::Color;
 
@@ -243,6 +244,68 @@ pub(crate) fn render(
                 cur.put(row, x, " ", Color::Reset, *selected);
             }
             cur.put_str(row, 1, label, Color::Reset, *selected);
+        }
+    }
+
+    // F-014 #5: the completion popup menu (pum) — a bordered box anchored at the cursor, drawn over the
+    // buffer into the cell grid (the diff emits it; clearing it next frame repaints the covered cells).
+    if let Some((items, selected)) = completion {
+        if !items.is_empty() {
+            // One display string per item: "label  detail" (detail is the dimmed type/signature).
+            let rows: Vec<String> = items
+                .iter()
+                .map(|it| match &it.detail {
+                    Some(d) => format!("{}  {}", it.label, d),
+                    None => it.label.clone(),
+                })
+                .collect();
+            let iw = rows
+                .iter()
+                .map(|r| r.chars().count())
+                .max()
+                .unwrap_or(10)
+                .clamp(10, 40);
+            let height = rows.len().min(10) as u16;
+            // Anchor at the focused cursor's screen cell (same math the terminal cursor uses below).
+            let (crow, ccol) =
+                cursor_cell(focus.doc.bytes(), focus.view.cursor(), focus.view.top());
+            let frect = rects.get(ws.focus()).copied().unwrap_or(Rect {
+                x: 0,
+                y: 0,
+                w: cols,
+                h: text_rows,
+            });
+            let arow = frect.y + crow;
+            let acol = frect.x + ccol;
+            let box_w = iw as u16 + 2; // + side borders
+            let left = acol.min(cols.saturating_sub(box_w));
+            // Prefer below the cursor; flip above if the box (content + 2 borders) would overflow the text.
+            let below_top = arow + 1;
+            let (top, first) = if below_top + height + 2 <= text_rows {
+                (below_top, below_top + 1)
+            } else {
+                let t = arow.saturating_sub(height + 2);
+                (t, t + 1)
+            };
+            let border = |n: usize| "─".repeat(n);
+            cur.put_str(top, left, &format!("┌{}┐", border(iw)), Color::Reset, false);
+            for (i, text) in rows.iter().take(height as usize).enumerate() {
+                let r = first + i as u16;
+                let mut content: String = text.chars().take(iw).collect();
+                let pad = iw.saturating_sub(content.chars().count());
+                content.push_str(&" ".repeat(pad));
+                cur.put(r, left, "│", Color::Reset, false);
+                cur.put_str(r, left + 1, &content, Color::Reset, i == selected);
+                cur.put(r, left + 1 + iw as u16, "│", Color::Reset, false);
+            }
+            let bottom = first + height;
+            cur.put_str(
+                bottom,
+                left,
+                &format!("└{}┘", border(iw)),
+                Color::Reset,
+                false,
+            );
         }
     }
 

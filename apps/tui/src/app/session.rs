@@ -48,6 +48,17 @@ enum LspKind {
     Goto,
     Format,
     Rename,
+    /// A completion request; carries the length (bytes) of the identifier prefix already typed before the
+    /// cursor, so the accepted item replaces exactly that prefix (F-014 #5).
+    Completion(usize),
+}
+
+/// The open completion popup menu (pum): the parsed candidates, the highlighted index, and the typed
+/// identifier prefix length the accepted item replaces (F-014 #5).
+struct CompletionMenu {
+    items: Vec<lsp::protocol::CompletionItem>,
+    selected: usize,
+    prefix_len: usize,
 }
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
@@ -167,6 +178,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // Pending hover/goto requests keyed by (server command, request id); the transient hover panel (F-014 #2).
     let mut lsp_pending: HashMap<(String, i64), LspKind> = HashMap::new();
     let mut hover_panel: Option<Vec<String>> = None;
+    // F-014 #5: the open completion pum (persists across frames until dismissed) + the `<C-x>` awaiting `<C-o>`
+    // omni-trigger prefix (Vim/Native insert only). At most one pum is open.
+    let mut completion: Option<CompletionMenu> = None;
+    let mut pending_omni = false;
     let root_uri = std::env::current_dir()
         .map(|p| lsp::path_to_uri(&p))
         .unwrap_or_default();
@@ -403,6 +418,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         Some(LspKind::Rename) => {
                             pending_rename = lsp::protocol::parse_workspace_edit(&result);
                         }
+                        // Completion: open the pum from the parsed items, tightened to the typed prefix (RA
+                        // already filters; this drops any stragglers). Empty → a status note, no menu.
+                        Some(LspKind::Completion(prefix_len)) => {
+                            let cur = ws.focused().view.cursor().min(snapshot.len());
+                            let prefix = String::from_utf8_lossy(
+                                &snapshot[cur.saturating_sub(prefix_len)..cur],
+                            )
+                            .to_lowercase();
+                            let items: Vec<_> = lsp::protocol::parse_completion(&result)
+                                .into_iter()
+                                .filter(|it| it.label.to_lowercase().starts_with(&prefix))
+                                .collect();
+                            if items.is_empty() {
+                                status = "no completions".to_string();
+                            } else {
+                                completion = Some(CompletionMenu {
+                                    items,
+                                    selected: 0,
+                                    prefix_len,
+                                });
+                            }
+                        }
                         None => {}
                     }
                 }
@@ -424,6 +461,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &overlay_rows,
             &term_views,
             focus_diags,
+            completion
+                .as_ref()
+                .map(|m| (m.items.as_slice(), m.selected)),
         )?;
         // F-014: apply a deferred goto-definition jump (render is done, so opening a buffer is now free of the
         // `spans` borrow). Same file → move the cursor; another file → open it, then move.
@@ -527,6 +567,77 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
         // F-014: any key dismisses a shown hover panel (a fresh `K` re-populates it after its response).
         hover_panel = None;
+        // F-014 #5: the completion pum owns the keystream while open. `<C-n>`/`↓` and `<C-p>`/`↑` move the
+        // selection (wrapping); `<CR>`/`<Tab>` accept — replacing the typed identifier prefix with the item's
+        // text, staying in Insert; `<Esc>` closes; ANY OTHER key closes the menu and FALLS THROUGH so the
+        // keypress still types (keep-typing dismisses, like a real pum).
+        if let Some(menu) = completion.as_mut() {
+            let n = menu.items.len().max(1);
+            if is_ctrl(key, 'n') || key.code == KeyCode::Down {
+                menu.selected = (menu.selected + 1) % n;
+                continue;
+            }
+            if is_ctrl(key, 'p') || key.code == KeyCode::Up {
+                menu.selected = (menu.selected + n - 1) % n;
+                continue;
+            }
+            if key.code == KeyCode::Esc {
+                completion = None;
+                continue;
+            }
+            if matches!(key.code, KeyCode::Enter | KeyCode::Tab) {
+                let item = menu.items[menu.selected].clone();
+                let prefix_len = menu.prefix_len;
+                completion = None;
+                let cursor = ws.focused().view.cursor();
+                let start = cursor.saturating_sub(prefix_len);
+                ws.apply_edits(&[(start, cursor, item.insert.clone())]);
+                ws.place_focused_cursor(start + item.insert.len());
+                status = format!("completed: {}", item.label);
+                continue;
+            }
+            completion = None; // any other key: dismiss, then fall through to type it
+        }
+        // F-014 #5: `<C-x><C-o>` in Vim/Native Insert opens the omni-completion pum. A frontend two-key prefix
+        // (like the terminal `CTRL-\` escape): `<C-x>` arms `pending_omni`, `<C-o>` fires; any other key disarms
+        // and types. Gated to non-Emacs insert (in the Emacs profile `<C-x>` is a real prefix, `<C-o>` inserts).
+        if matches!(ws.focused().view.mode(), Mode::Insert) && !emacs_profile {
+            if pending_omni {
+                pending_omni = false;
+                if is_ctrl(key, 'o') {
+                    let bid = ws.focused_buffer();
+                    let server_key = files
+                        .get(&bid)
+                        .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
+                        .and_then(lsp::server_for_ext)
+                        .map(|(k, _, _)| k);
+                    if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
+                        if let Some(client) = lsp.get_mut(key_s) {
+                            let cursor = ws.focused().view.cursor().min(snapshot.len());
+                            // The identifier prefix already typed before the cursor (bytes to replace).
+                            let prefix_len = snapshot[..cursor]
+                                .iter()
+                                .rev()
+                                .take_while(|&&b| b.is_ascii_alphanumeric() || b == b'_')
+                                .count();
+                            let (line, ch) = lsp::model::byte_to_lsp_pos(&snapshot, cursor);
+                            let rid = client.request(
+                                "textDocument/completion",
+                                lsp::protocol::completion_params(uri, line, ch),
+                            );
+                            lsp_pending
+                                .insert((key_s.to_string(), rid), LspKind::Completion(prefix_len));
+                            status = "completing…".to_string();
+                        }
+                    }
+                    continue;
+                }
+                // Not `<C-o>`: the swallowed `<C-x>` is dropped; fall through to type this key.
+            } else if is_ctrl(key, 'x') {
+                pending_omni = true;
+                continue;
+            }
+        }
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
         if confirm.is_some() {
             confirm_key(&mut confirm, key, &mut ws, &mut status);
