@@ -34,6 +34,26 @@ mod tests {
     }
 
     #[test]
+    fn tag_text_objects() {
+        assert_eq!(
+            feed("dit"),
+            Feed::Cmd(Command::Delete(1, Motion::Tag { around: false }))
+        );
+        assert_eq!(
+            feed("dat"),
+            Feed::Cmd(Command::Delete(1, Motion::Tag { around: true }))
+        );
+        assert_eq!(
+            feed("cit"),
+            Feed::Cmd(Command::Change(1, Motion::Tag { around: false }))
+        );
+        assert_eq!(
+            feed("yat"),
+            Feed::Cmd(Command::Yank(1, Motion::Tag { around: true }))
+        );
+    }
+
+    #[test]
     fn star_hash_search_word_under_cursor() {
         assert_eq!(
             feed("*"),
@@ -2011,34 +2031,23 @@ mod textobj_tests {
     }
 
     #[test]
-    fn tag_objects_are_deferred_and_abort_cleanly() {
-        // `it`/`at` are carved out (no core syntax tree). The pending object aborts to a no-op, never panics.
-        assert_eq!(feed("dit"), Feed::Ignored);
-        assert_eq!(feed("dat"), Feed::Ignored);
+    fn tag_objects_resolve_in_visual() {
+        // `it`/`at` now resolve via a core byte scan (see `tag_text_objects` for the operator forms). In
+        // Visual they extend the selection like any other text object — `vit` → `Move(1, Tag{inner})`.
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
         let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('i'), vis), Feed::Pending);
         assert_eq!(
-            e.feed(k('v'), Mode::Normal),
-            Feed::Cmd(Command::EnterVisual {
-                kind: SelectKind::Charwise
-            })
+            e.feed(k('t'), vis),
+            Feed::Cmd(Command::Move(1, Motion::Tag { around: false }))
         );
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('a'), vis), Feed::Pending);
         assert_eq!(
-            e.feed(
-                k('i'),
-                Mode::Visual {
-                    kind: SelectKind::Charwise
-                }
-            ),
-            Feed::Pending
-        );
-        assert_eq!(
-            e.feed(
-                k('t'),
-                Mode::Visual {
-                    kind: SelectKind::Charwise
-                }
-            ),
-            Feed::Ignored
+            e.feed(k('t'), vis),
+            Feed::Cmd(Command::Move(1, Motion::Tag { around: true }))
         );
     }
 

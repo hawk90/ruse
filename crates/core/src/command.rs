@@ -378,6 +378,7 @@ fn motion_token(m: Motion) -> String {
             around,
         } => return format!("pair:{}:{}:{}", open as u32, close as u32, around as u8),
         Motion::Quote { ch, around } => return format!("quote:{}:{}", ch as u32, around as u8),
+        Motion::Tag { around } => return format!("tag:{}", around as u8),
     };
     s.to_string()
 }
@@ -415,6 +416,11 @@ fn motion_from_token(s: &str) -> Option<Motion> {
             return None; // trailing garbage
         }
         return Some(Motion::Quote { ch, around });
+    }
+    if let Some(rest) = s.strip_prefix("tag:") {
+        return Some(Motion::Tag {
+            around: rest == "1",
+        });
     }
     Some(match s {
         "left" => Motion::Left,
