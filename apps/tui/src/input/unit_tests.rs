@@ -228,6 +228,15 @@ mod tests {
     }
 
     #[test]
+    fn parse_yank_ranges() {
+        use ruse_core::SubRange;
+        assert_eq!(parse_ex("y"), Ex::Yank(SubRange::CurrentLine));
+        assert_eq!(parse_ex("yank"), Ex::Yank(SubRange::CurrentLine));
+        assert_eq!(parse_ex("1,3y"), Ex::Yank(SubRange::Lines(1, 3)));
+        assert_eq!(parse_ex("%yank"), Ex::Yank(SubRange::WholeFile));
+    }
+
+    #[test]
     fn doubled_operator_is_linewise() {
         assert_eq!(feed("dd"), Feed::Cmd(Command::Delete(1, Motion::Line)));
         assert_eq!(feed("2dd"), Feed::Cmd(Command::Delete(2, Motion::Line)));

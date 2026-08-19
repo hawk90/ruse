@@ -688,6 +688,26 @@ impl EditorState {
         last - first + 1
     }
 
+    /// `:[range]y` — yank the range's lines LINEWISE into the unnamed register (and `"0`), like `yy` over
+    /// the span (no range = the cursor's line). Returns the number of lines yanked. Non-destructive: the
+    /// buffer and cursor are unchanged (Vim moves the cursor to the range's last line; deferred).
+    pub fn yank_lines(&mut self, range: SubRange) -> usize {
+        let bytes = self.doc.bytes();
+        let Ok(hay) = std::str::from_utf8(bytes) else {
+            return 0;
+        };
+        let lines = line_spans(hay);
+        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+        let (fs, _) = lines[first];
+        let (_, le) = lines[last];
+        let end = if le < hay.len() { le + 1 } else { le };
+        // `Register::linewise` normalizes to end with `\n`, so an unterminated last line still yanks clean.
+        let text = bytes[fs..end].to_vec();
+        self.view.registers.yank(None, Register::linewise(text));
+        last - first + 1
+    }
+
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
     fn indent_unit(&self) -> Vec<u8> {
         match self.view.indent.style {

@@ -135,6 +135,15 @@ pub(crate) fn run_ex(
                 format!("{n} lines deleted")
             };
         }
+        // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
+        Ex::Yank(range) => {
+            let n = ws.yank_lines(*range);
+            *status = if n == 1 {
+                "1 line yanked".into()
+            } else {
+                format!("{n} lines yanked")
+            };
+        }
         // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window.
         Ex::Global(spec) => {
             *status = match ws.global(spec.range, &spec.pattern, spec.negate, &spec.cmd) {
