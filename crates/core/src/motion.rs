@@ -343,6 +343,27 @@ fn inner_word_span(b: &[u8], cur: usize, big: bool) -> (usize, usize) {
     (s, e)
 }
 
+/// The keyword span under (or, failing that, forward on the current line from) the cursor — Vim `*`/`#`.
+/// A keyword is a Word-class run (alnum + `_` + non-ASCII). Returns `None` when the current line has no
+/// keyword at or after the cursor. Char-boundary safe (spans are built from equal-class runs).
+pub(crate) fn word_under_cursor(b: &[u8], cur: usize) -> Option<(usize, usize)> {
+    if b.is_empty() {
+        return None;
+    }
+    let mut i = cur.min(b.len() - 1);
+    if class(b[i]) != Class::Word {
+        // Not on a keyword — scan forward on the current line for the next one (Vim `*`).
+        let le = line_end(b, i);
+        while i < le && class(b[i]) != Class::Word {
+            i += 1;
+        }
+        if i >= le || class(b[i]) != Class::Word {
+            return None;
+        }
+    }
+    Some(inner_word_span(b, i, false))
+}
+
 /// The word plus its trailing whitespace (or leading, if there is no trailing) — Vim `aw` / `aW`.
 fn a_word_span(b: &[u8], cur: usize, big: bool) -> (usize, usize) {
     let (s, e) = inner_word_span(b, cur, big);

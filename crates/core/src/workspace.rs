@@ -726,6 +726,16 @@ impl Workspace {
         self.views[vid.0] = Some(view);
     }
 
+    /// The keyword under (or forward-on-line from) the focused cursor — the pattern source for Vim `*`/`#`.
+    /// `None` when the current line has no keyword at/after the cursor.
+    #[must_use]
+    pub fn word_under_cursor(&self) -> Option<String> {
+        let pane = self.focused();
+        let b = pane.doc.bytes();
+        let (s, e) = crate::motion::word_under_cursor(b, pane.view.cursor())?;
+        std::str::from_utf8(&b[s..e]).ok().map(str::to_string)
+    }
+
     /// Set one `:set` option on the focused view (swap-trick, like [`Workspace::set_indent`]).
     pub fn set_option(&mut self, opt: crate::editor::EditorOption) {
         let vid = self.windows[self.focus].view;
@@ -992,6 +1002,35 @@ mod tests {
             case: WordCase::Downcase,
         });
         assert_eq!(w.focused().doc.bytes(), b"mixedcase line\n");
+    }
+
+    /// `*`/`#` word extraction: the keyword under the cursor, or the next one forward on the line; and a
+    /// whole-word `\<…\>` search (as `*` builds) skips substring hits.
+    #[test]
+    fn word_under_cursor_and_whole_word_search() {
+        // On a keyword → that word.
+        let w = Workspace::new(b"foo bar\n".to_vec());
+        assert_eq!(w.word_under_cursor().as_deref(), Some("foo"));
+
+        // On whitespace → the next keyword forward on the line.
+        let mut w = Workspace::new(b"foo bar\n".to_vec());
+        w.place_focused_cursor(3); // the space
+        assert_eq!(w.word_under_cursor().as_deref(), Some("bar"));
+
+        // No keyword on the line → None.
+        let w = Workspace::new(b"!!! ???\n".to_vec());
+        assert_eq!(w.word_under_cursor(), None);
+        assert_eq!(Workspace::new(b"".to_vec()).word_under_cursor(), None);
+
+        // The whole-word pattern `*` builds skips the substring hit ("foobar") and lands on the next
+        // standalone "foo".
+        let mut w = Workspace::new(b"foo foobar foo\n".to_vec());
+        w.apply(&Command::SearchNext("\\<foo\\>".to_string()));
+        assert_eq!(
+            w.focused().view.cursor(),
+            11,
+            "whole-word search skips foobar"
+        );
     }
 
     /// A pathological `{count}p` (a digit-spam count that saturates to `u32::MAX`) must not request a
