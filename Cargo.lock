@@ -591,6 +591,7 @@ dependencies = [
  "libc",
  "proptest",
  "ruse-core",
+ "serde",
  "serde_json",
  "streaming-iterator",
  "tracing",

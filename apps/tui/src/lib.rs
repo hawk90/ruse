@@ -30,6 +30,8 @@ pub(crate) mod app;
 pub(crate) mod health;
 pub(crate) mod indent;
 pub(crate) mod log;
+// F-014 built-in LSP client + normalized diagnostics model (slice 1) — cross-platform (stdio pipes).
+pub(crate) mod lsp;
 // F-011 PTY-backed terminal buffer (slice 1) — unix-only (forkpty via `libc`); other targets stub `:terminal`.
 #[cfg(unix)]
 pub(crate) mod pty;

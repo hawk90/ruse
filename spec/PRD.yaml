@@ -676,6 +676,14 @@ features:
     title: Built-in LSP (local + remote)
     stage: post-mvp
     priority: should
+    # progress (slice 1, #294): local DIAGNOSTICS are in. `apps/tui/src/lsp/` = a cross-platform LSP client
+    # (stdio pipes + reader thread + mpsc, reusing the terminal async seam), a serde JSON-RPC codec
+    # (DEP-SERDE), the initialize/initialized/didOpen handshake + full-document didChange, and a NORMALIZED
+    # model (byte-range Diag; UTF-16 position mapping) the UI reads — raw protocol never leaves lsp/
+    # (acceptance). Diagnostics underline the range + an [E:n W:n] status count; the poll-gate extends to keep
+    # the loop responsive while a server is live. Rust only (rust-analyzer), one process per server. REMAINING:
+    # hover/goto/rename/format/completion, diagnostics MERGE by namespace + list UI, more languages, remote
+    # (C-AGENT), C-SCHEDULER integration. Stays `planned` — diagnostics-only, local, single language.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >

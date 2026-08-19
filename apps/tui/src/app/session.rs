@@ -10,10 +10,11 @@ use std::path::PathBuf;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal as ct_terminal;
 
-use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Workspace};
+use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, Revision, SplitDir, Workspace};
 
 use crate::app::dispatch::{run_cmd, run_ex, BufferFile, Files};
 use crate::input::{parse_ex, Ex, Feed, InputEngine};
+use crate::lsp::{self, Diag, LspClient};
 use crate::terminal::guard::TermGuard;
 use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
@@ -35,6 +36,10 @@ const JOURNAL_THROTTLE: u32 = 8;
 /// blocking, so asynchronous PTY output renders within one tick. Only the terminal-active path polls.
 #[cfg(unix)]
 const TERM_TICK_MS: u64 = 33;
+
+/// F-014: with only a language server live (no terminal), poll more slowly — diagnostics arrive infrequently,
+/// so a ~10fps tick keeps them prompt without spinning.
+const LSP_TICK_MS: u64 = 100;
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
@@ -144,6 +149,15 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut terminals: HashMap<DocumentId, term_buffer::Terminal> = HashMap::new();
     #[cfg(unix)]
     let mut pending_term_escape = false;
+    // F-014: one LSP client per server (keyed by server command), the buffers opened into them, the servers we
+    // already tried to spawn (so a missing binary is not retried each frame), and the normalized diagnostics.
+    let mut lsp: HashMap<String, LspClient> = HashMap::new();
+    let mut lsp_docs: HashMap<DocumentId, (String, i64, Revision)> = HashMap::new(); // id → (uri, version, rev)
+    let mut lsp_tried: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut diagnostics: HashMap<DocumentId, Vec<Diag>> = HashMap::new();
+    let root_uri = std::env::current_dir()
+        .map(|p| lsp::path_to_uri(&p))
+        .unwrap_or_default();
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -294,6 +308,59 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         };
         #[cfg(not(unix))]
         let term_views = crate::ui::render::TermViews::new();
+        // F-014: keep the language server in sync with the FOCUSED file buffer (spawn once per server, didOpen
+        // once per buffer, didChange on a revision change) and pull any diagnostics into the model. Missing
+        // servers / non-code buffers are silent no-ops.
+        {
+            let id = ws.focused_buffer();
+            let focused_uri = if let Some(bf) = files.get(&id) {
+                bf.path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .and_then(lsp::server_for_ext)
+                    .and_then(|(key, cmd, lang)| {
+                        // Spawn the server once (track attempts so a missing binary is not retried each frame).
+                        if !lsp.contains_key(key) && lsp_tried.insert(key.to_string()) {
+                            if let Some(c) = LspClient::spawn(cmd, &root_uri) {
+                                lsp.insert(key.to_string(), c);
+                            }
+                        }
+                        let client = lsp.get_mut(key)?;
+                        let text = String::from_utf8_lossy(&snapshot);
+                        match lsp_docs.get_mut(&id) {
+                            None => {
+                                let uri = std::fs::canonicalize(&bf.path)
+                                    .map(|p| lsp::path_to_uri(&p))
+                                    .unwrap_or_else(|_| lsp::path_to_uri(&bf.path));
+                                client.did_open(&uri, lang, 1, &text);
+                                lsp_docs.insert(id, (uri.clone(), 1, revision));
+                                Some(uri)
+                            }
+                            Some((uri, version, last_rev)) => {
+                                if *last_rev != revision {
+                                    *version += 1;
+                                    *last_rev = revision;
+                                    client.did_change(uri, *version, &text);
+                                }
+                                Some(uri.clone())
+                            }
+                        }
+                    })
+            } else {
+                None
+            };
+            // Poll every client; apply diagnostics for the focused buffer (matched by uri) to the model.
+            for client in lsp.values_mut() {
+                for params in client.poll() {
+                    if Some(&params.uri) == focused_uri.as_ref() {
+                        diagnostics.insert(id, lsp::protocol::to_diags(&snapshot, &params));
+                    }
+                }
+            }
+        }
+        let focus_diags: &[Diag] = diagnostics
+            .get(&ws.focused_buffer())
+            .map_or(&[][..], Vec::as_slice);
         render(
             &mut out,
             &ws,
@@ -306,21 +373,27 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &focus_hl,
             &overlay_rows,
             &term_views,
+            focus_diags,
         )?;
-        // With a live terminal the loop must not block on a key — it polls so freshly-arrived PTY output
-        // renders on the next tick. With no terminal it keeps the pure blocking read (no spin, unchanged).
+        // Async output (PTY, F-011; LSP diagnostics, F-014) must render without a keypress, so the loop polls
+        // with a timeout while either is live. With neither it keeps the pure blocking read (no spin,
+        // unchanged) — a terminal ticks fast, an LSP-only session more slowly.
+        let mut poll_ms: Option<u64> = None;
         #[cfg(unix)]
-        let any_terminal = !terminals.is_empty();
-        #[cfg(not(unix))]
-        let any_terminal = false;
-        let key = if any_terminal {
-            if event::poll(std::time::Duration::from_millis(TERM_TICK_MS))? {
+        if !terminals.is_empty() {
+            poll_ms = Some(TERM_TICK_MS);
+        }
+        if poll_ms.is_none() && !lsp.is_empty() {
+            poll_ms = Some(LSP_TICK_MS);
+        }
+        let key = if let Some(ms) = poll_ms {
+            if event::poll(std::time::Duration::from_millis(ms))? {
                 match event::read()? {
                     Event::Key(k) => k,
                     _ => continue,
                 }
             } else {
-                continue; // timed out: re-render the drained terminal output
+                continue; // timed out: re-render freshly-drained async output
             }
         } else {
             match event::read()? {
