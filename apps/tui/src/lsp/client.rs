@@ -59,8 +59,8 @@ impl LspClient {
         let _ = write_message(&mut self.stdin, msg);
     }
 
-    /// Send a request, returning its id.
-    fn request(&mut self, method: &str, params: Value) -> i64 {
+    /// Send a request, returning its id (correlate the reply via [`Polled::responses`]).
+    pub fn request(&mut self, method: &str, params: Value) -> i64 {
         let id = self.next_id;
         self.next_id += 1;
         self.send(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}));
@@ -92,9 +92,9 @@ impl LspClient {
     }
 
     /// Drain incoming messages: drive the handshake, answer server-to-client requests (so the server never
-    /// blocks), and return any `publishDiagnostics` payloads that arrived. Call once per frame.
-    pub fn poll(&mut self) -> Vec<PublishDiagnosticsParams> {
-        let mut out = Vec::new();
+    /// blocks), and return diagnostics + any request responses that arrived. Call once per frame.
+    pub fn poll(&mut self) -> Polled {
+        let mut out = Polled::default();
         while let Ok(msg) = self.rx.try_recv() {
             match classify(&msg, self.init_id) {
                 // A server→client REQUEST: reply with a null result so the server proceeds (we advertise no
@@ -102,7 +102,8 @@ impl LspClient {
                 Incoming::ServerRequest(id) => {
                     self.send(&json!({"jsonrpc":"2.0","id":id,"result":Value::Null}));
                 }
-                Incoming::Diagnostics(p) => out.push(p),
+                Incoming::Diagnostics(p) => out.diagnostics.push(p),
+                Incoming::Response(id, result) => out.responses.push((id, result)),
                 Incoming::InitResponse => self.become_ready(),
                 Incoming::Other => {}
             }
@@ -122,11 +123,21 @@ impl LspClient {
     }
 }
 
+/// What [`LspClient::poll`] collected this tick.
+#[derive(Default)]
+pub struct Polled {
+    pub diagnostics: Vec<PublishDiagnosticsParams>,
+    /// `(request id, result)` for each reply to one of our requests (hover, definition, …).
+    pub responses: Vec<(i64, Value)>,
+}
+
 /// A classified incoming message — the pure core of [`LspClient::poll`], testable without a process.
 enum Incoming {
     /// A server→client request; carries the id to reply to.
     ServerRequest(Value),
     Diagnostics(PublishDiagnosticsParams),
+    /// A reply to one of our (non-initialize) requests: `(id, result)`.
+    Response(i64, Value),
     /// The response to our `initialize` request (handshake complete).
     InitResponse,
     Other,
@@ -143,15 +154,18 @@ fn classify(msg: &Value, init_id: i64) -> Incoming {
             .and_then(|p| serde_json::from_value::<PublishDiagnosticsParams>(p).ok())
             .map_or(Incoming::Other, Incoming::Diagnostics),
         Some(_) => Incoming::Other, // window/logMessage, $/progress, …
-        None => {
-            let is_init = msg.get("id").and_then(Value::as_i64) == Some(init_id)
-                && msg.get("result").is_some();
-            if is_init {
-                Incoming::InitResponse
-            } else {
-                Incoming::Other
+        None => match msg.get("id").and_then(Value::as_i64) {
+            // A response to one of our requests. The initialize reply is special (handshake); others carry a
+            // result we correlate by id.
+            Some(id) if msg.get("result").is_some() => {
+                if id == init_id {
+                    Incoming::InitResponse
+                } else {
+                    Incoming::Response(id, msg.get("result").cloned().unwrap_or(Value::Null))
+                }
             }
-        }
+            _ => Incoming::Other,
+        },
     }
 }
 
@@ -183,9 +197,10 @@ mod tests {
         assert!(matches!(classify(&init, 7), Incoming::InitResponse));
         // A different id / no result is not the init response.
         assert!(matches!(classify(&json!({"id":7}), 7), Incoming::Other));
+        // A non-init response is correlated by id.
         assert!(matches!(
-            classify(&json!({"jsonrpc":"2.0","id":9,"result":null}), 7),
-            Incoming::Other
+            classify(&json!({"jsonrpc":"2.0","id":9,"result":{"x":1}}), 7),
+            Incoming::Response(9, _)
         ));
         // A server→client request (method + id) → reply.
         let req =

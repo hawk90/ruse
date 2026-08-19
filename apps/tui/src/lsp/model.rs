@@ -73,9 +73,37 @@ pub fn lsp_pos_to_byte(bytes: &[u8], line: u32, character: u32) -> usize {
     idx + rest.len()
 }
 
+/// Convert a byte offset to an LSP `(line, character)` position — the inverse of [`lsp_pos_to_byte`]. `line`
+/// is 0-based; `character` counts UTF-16 code units from the line start. Used to send the cursor position on
+/// hover / goto requests.
+pub fn byte_to_lsp_pos(bytes: &[u8], byte: usize) -> (u32, u32) {
+    let byte = byte.min(bytes.len());
+    let line = bytes[..byte].iter().filter(|&&b| b == b'\n').count() as u32;
+    let line_start = bytes[..byte]
+        .iter()
+        .rposition(|&b| b == b'\n')
+        .map_or(0, |i| i + 1);
+    let seg = std::str::from_utf8(&bytes[line_start..byte]).unwrap_or("");
+    let character = seg.chars().map(|c| c.len_utf16() as u32).sum();
+    (line, character)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn byte_pos_round_trips_with_lsp_pos() {
+        // Round-trip byte → (line,char) → byte at char boundaries across ASCII / multibyte / astral.
+        let b = "let x = é;\n한 z\n😀!".as_bytes();
+        for &byte in &[0usize, 3, 8, 10, 11, 15] {
+            // Only check byte offsets that sit on a char boundary.
+            if b.get(byte).is_none_or(|&c| c & 0xC0 != 0x80) {
+                let (l, c) = byte_to_lsp_pos(b, byte);
+                assert_eq!(lsp_pos_to_byte(b, l, c), byte, "round-trip at byte {byte}");
+            }
+        }
+    }
 
     #[test]
     fn pos_maps_ascii_and_multibyte_and_astral() {

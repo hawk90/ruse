@@ -1,7 +1,8 @@
 # Built-in LSP (F-014) — design
 
-Status: **slice 1 landed** (local diagnostics, cross-platform). Owner capabilities: `CAP-LSP-COORD` (client +
-normalized model), `CAP-LSP-CODEC` (`DEP-SERDE`); `DEP-LSP-SERVER`. Spec: `spec/PRD.yaml` F-014.
+Status: **slices 1–2 landed** (local diagnostics + hover/goto, cross-platform). Owner capabilities:
+`CAP-LSP-COORD` (client + normalized model), `CAP-LSP-CODEC` (`DEP-SERDE`); `DEP-LSP-SERVER`. Spec:
+`spec/PRD.yaml` F-014.
 
 ## Why
 
@@ -54,12 +55,23 @@ without a keypress. Render **underlines** the diagnostic ranges (via `paint_pane
 LSP I/O is external and non-deterministic: it never mutates a `Document`, is not recorded as `Command`s, and
 `--replay` ignores it. Diagnostics are presentation state, layered over the buffer, not edits.
 
+## Request-response (slice 2)
+
+`K` (hover) and `<C-]>` (goto-definition) established the request-response infra every later feature reuses:
+`LspClient::request(method, params) -> id`; `poll()` returns a `Polled { diagnostics, responses: [(id,
+Value)] }`; the session keys a pending map by `(serverKey, id)` to dispatch each reply. `byte_to_lsp_pos`
+sends the cursor position; `parse_hover`/`parse_definition` normalize the cross-shape results. Hover renders in
+the bottom **overlay-rows panel** (dismissed on the next key); goto jumps the cursor (same file → move; other
+file → `open_file_into_buffer` then move), **deferred until after render** because opening a buffer mutates
+`highlighters` which the frame's live `spans` borrow forbids.
+
 ## Slicing
 
-- **Slice 1 (this):** local diagnostics for Rust; underline + status count; full-document `didChange`.
-- **Later:** hover / definition / rename / format / completion (request-response); merge LSP with
-  tree-sitter/compiler diagnostics by namespace; a diagnostics list / quickfix UI; more languages
-  (config-driven); incremental `didChange`; remote servers (C-AGENT); `C-SCHEDULER` integration.
+- **Slice 1 (landed):** local diagnostics for Rust; underline + status count; full-document `didChange`.
+- **Slice 2 (landed):** hover (`K`) + goto-definition (`<C-]>`) + the request-response infra.
+- **Later:** rename / format / references / code-actions / completion; a floating popup; a jumplist for
+  `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list /
+  quickfix UI; more languages (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
 
 ## Verification
 
