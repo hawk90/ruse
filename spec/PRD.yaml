@@ -600,9 +600,10 @@ features:
     # `event::poll` (gated so no-terminal stays a blocking read), per-view Terminal/Terminal-Normal modes,
     # determinism boundary honored. Slice 2: a real VT screen — `term_grid::Grid` driven by the `vte` parser
     # (colors incl. truecolor, cursor addressing, erase, alt-screen, resize via TIOCSWINSZ), so full-screen
-    # TUIs (vim/htop) render. REMAINING: scrollback paging + scroll regions + insert/delete + mouse (slice 2b),
-    # Windows ConPTY (slice 3), C-SCHEDULER integration (slice 4). Stays `planned` — unix VT emulator, not yet
-    # cross-platform + scheduler-integrated. See docs/design/terminal.md.
+    # TUIs (vim/htop) render. Slice 2b (partial): scroll regions (DECSTBM) + IL/DL/ICH/DCH/ECH, so region-
+    # scrolling apps (less/vim/git-log/tmux) render correctly. REMAINING: scrollback paging UI + mouse +
+    # bracketed paste (slice 2b), Windows ConPTY (slice 3), C-SCHEDULER integration (slice 4). Stays `planned`
+    # — unix VT emulator, not yet cross-platform + scheduler-integrated. See docs/design/terminal.md.
     status: planned
     depends_on: [C-TERMINAL, C-WORKSPACE, C-SCHEDULER]
     summary: A terminal emulator as a first-class buffer (Unix PTY + Windows ConPTY).
