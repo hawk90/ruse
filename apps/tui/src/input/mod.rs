@@ -871,6 +871,15 @@ impl InputEngine {
         self.activations.pop();
     }
 
+    /// Take the pending Normal count (0 if none) and clear the transient state. For a frontend intercept
+    /// (`H`/`M`/`L`, `C-d`, …) that consumes a key the engine would otherwise never see: it reads the
+    /// count the digits accumulated and resets, so the count can't leak onto the next command.
+    pub fn take_count(&mut self) -> u32 {
+        let n = self.normal.count;
+        self.reset();
+        n
+    }
+
     fn mcount(&self) -> u32 {
         self.normal.count.max(1)
     }

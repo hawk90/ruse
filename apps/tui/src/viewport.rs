@@ -51,9 +51,100 @@ pub fn recenter(cursor_row: usize, height: usize, to: RecenterTo) -> usize {
     }
 }
 
+/// Which visible line `H`/`M`/`L` target.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ScreenTo {
+    /// `H` — top of the window (`{count}H` = count lines below the top), scrolloff-aware.
+    High,
+    /// `M` — the middle visible line.
+    Middle,
+    /// `L` — bottom of the window (`{count}L` = count lines above the bottom), scrolloff-aware.
+    Low,
+}
+
+/// The buffer row `H`/`M`/`L` move the cursor to, given the window's `top` / `height` and `scrolloff`,
+/// a `count` (0 = none), and the buffer's `last_line`. Pure; the row is clamped into the visible range.
+/// `H`/`L` keep a `scrolloff` margin from the edge unless the edge is the buffer start/end (as in Vim).
+pub fn screen_line(
+    top: usize,
+    height: usize,
+    scrolloff: usize,
+    to: ScreenTo,
+    count: u32,
+    last_line: usize,
+) -> usize {
+    let bottom = (top + height.saturating_sub(1)).min(last_line);
+    let n = (count.max(1) - 1) as usize; // extra lines from a count
+    let row = match to {
+        ScreenTo::High => {
+            let floor = if top > 0 { scrolloff } else { 0 };
+            top + floor.max(n)
+        }
+        ScreenTo::Middle => top + (bottom - top) / 2,
+        ScreenTo::Low => {
+            let floor = if bottom < last_line { scrolloff } else { 0 };
+            bottom.saturating_sub(floor.max(n))
+        }
+    };
+    row.clamp(top, bottom)
+}
+
+/// `C-e` (down) / `C-y` (up) scroll the view `count` lines while keeping the cursor inside the `scrolloff`
+/// band. Returns `(new_top, new_cursor_row)`; the caller sets the top and, if the cursor row changed,
+/// moves the cursor to keep it on screen. Pure and saturating.
+pub fn scroll_lines(
+    top: usize,
+    cursor_row: usize,
+    height: usize,
+    scrolloff: usize,
+    count: usize,
+    down: bool,
+    last_line: usize,
+) -> (usize, usize) {
+    let margin = scrolloff.min(height.saturating_sub(1) / 2);
+    let new_top = if down {
+        (top + count).min(last_line)
+    } else {
+        top.saturating_sub(count)
+    };
+    let lo = new_top + margin;
+    let hi = (new_top + height.saturating_sub(1))
+        .saturating_sub(margin)
+        .min(last_line);
+    let new_cursor = cursor_row.clamp(lo, hi.max(lo)).min(last_line);
+    (new_top, new_cursor)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn screen_line_targets_are_scrolloff_aware() {
+        // Window rows 10..=29 (top=10, height=20), scrolloff 3, big buffer.
+        assert_eq!(screen_line(10, 20, 3, ScreenTo::High, 1, 999), 13); // top + scrolloff
+        assert_eq!(screen_line(10, 20, 3, ScreenTo::Low, 1, 999), 26); // bottom(29) - scrolloff
+        assert_eq!(screen_line(10, 20, 3, ScreenTo::Middle, 1, 999), 19); // top + 19/2
+        assert_eq!(screen_line(10, 20, 3, ScreenTo::High, 5, 999), 14); // 5H = 4 below top (> scrolloff)
+                                                                        // At the buffer top, H has no scrolloff floor.
+        assert_eq!(screen_line(0, 20, 3, ScreenTo::High, 1, 999), 0);
+        // A short buffer clamps the bottom to the last line.
+        assert_eq!(screen_line(0, 20, 3, ScreenTo::Low, 1, 5), 5);
+    }
+
+    #[test]
+    fn scroll_lines_moves_view_and_keeps_cursor_in_band() {
+        // C-e by 1 from top=0, cursor at row 0 (top edge): view moves to 1, cursor pulled to margin.
+        let (nt, nr) = scroll_lines(0, 0, 20, 3, 1, true, 999);
+        assert_eq!(nt, 1);
+        assert_eq!(nr, 1 + 3); // new_top + scrolloff
+                               // Cursor comfortably mid-screen doesn't move.
+        let (nt, nr) = scroll_lines(10, 20, 20, 3, 1, true, 999);
+        assert_eq!((nt, nr), (11, 20));
+        // C-y up saturates at 0.
+        let (nt, _) = scroll_lines(2, 10, 20, 3, 5, false, 999);
+        assert_eq!(nt, 0);
+    }
 
     #[test]
     fn recenter_positions_the_cursor_line() {

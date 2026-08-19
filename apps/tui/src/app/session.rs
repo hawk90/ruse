@@ -407,6 +407,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // `C-d` / `C-u` scroll a half page: move the cursor half the pane down / up (column preserved via
         // the core Move), and the per-frame scroll pass follows it. `C-f`/`C-b` are taken by the pickers.
         if normal && (is_ctrl(key, 'd') || is_ctrl(key, 'u')) {
+            engine.take_count(); // consume any pending count so it can't leak onto the next command
             let half = (focused_h / 2).max(1) as u32;
             let m = if is_ctrl(key, 'd') {
                 ruse_core::Motion::Down
@@ -415,6 +416,67 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             };
             run_cmd(
                 Command::Move(half, m),
+                &mut ws,
+                &files,
+                &mut recorded,
+                &mut status,
+                &mut quit,
+            );
+            continue;
+        }
+        // `C-e` / `C-y` scroll the view one line down / up, nudging the cursor only if it would leave the
+        // scrolloff band. Frontend-only (viewport concern); `{count}` scrolls that many lines.
+        if normal && (is_ctrl(key, 'e') || is_ctrl(key, 'y')) {
+            let n = engine.take_count().max(1) as usize;
+            let last_line = line_idx.line_of(snapshot.len());
+            let cursor_row = line_idx.line_of(ws.focused().view.cursor());
+            let (nt, nr) = viewport::scroll_lines(
+                ws.focused().view.top(),
+                cursor_row,
+                focused_h,
+                SCROLLOFF,
+                n,
+                is_ctrl(key, 'e'),
+                last_line,
+            );
+            ws.set_top(ws.focus(), nt);
+            if nr != cursor_row {
+                run_cmd(
+                    Command::Move(nr as u32 + 1, ruse_core::Motion::GotoLine),
+                    &mut ws,
+                    &files,
+                    &mut recorded,
+                    &mut status,
+                    &mut quit,
+                );
+            }
+            continue;
+        }
+        // `H` / `M` / `L` — move the cursor to the top / middle / bottom visible line (first non-blank via
+        // GotoLine). Non-operator (frontend intercept); operator-compatible `dH` needs viewport in the core.
+        if normal
+            && !key
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('H' | 'M' | 'L'))
+        {
+            let to = match key.code {
+                KeyCode::Char('H') => viewport::ScreenTo::High,
+                KeyCode::Char('M') => viewport::ScreenTo::Middle,
+                _ => viewport::ScreenTo::Low,
+            };
+            let count = engine.take_count();
+            let last_line = line_idx.line_of(snapshot.len());
+            let row = viewport::screen_line(
+                ws.focused().view.top(),
+                focused_h,
+                SCROLLOFF,
+                to,
+                count,
+                last_line,
+            );
+            run_cmd(
+                Command::Move(row as u32 + 1, ruse_core::Motion::GotoLine),
                 &mut ws,
                 &files,
                 &mut recorded,
