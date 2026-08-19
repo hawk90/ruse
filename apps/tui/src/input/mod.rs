@@ -68,114 +68,6 @@ impl Op {
     }
 }
 
-/// How a completed command relates to the dot-repeat record.
-enum ChangeKind {
-    /// Enters Insert; the change is this command PLUS the text typed until `<Esc>`.
-    InsertEntering,
-    /// A complete buffer edit with no insert session (`dw`, `x`, `dd`, `>>`, `~`, `r`, `p`).
-    Immediate,
-    /// Not a change (pure motion, mode switch, yank, undo/redo, search) — `.` leaves the record intact.
-    NotAChange,
-}
-
-/// Classify a completed command for dot-repeat. Per Vim, yank is NOT dot-repeatable; delete/change/put/
-/// replace/shift/`~`/join and the insert-entries ARE.
-fn change_kind(cmd: &Command) -> ChangeKind {
-    use Command as C;
-    match cmd {
-        // Insert-entering: the change includes the text typed until `<Esc>`.
-        C::EnterInsert
-        | C::EnterInsertAfter
-        | C::InsertLineStart
-        | C::AppendLineEnd
-        | C::OpenBelow
-        | C::OpenAbove
-        | C::Change(..)
-        | C::ChangeSelection
-        | C::ReplaceSelection(_)
-        | C::OpForced {
-            op: OpKind::Change, ..
-        } => ChangeKind::InsertEntering,
-        // Self-contained buffer edits — dot-repeatable as a single command.
-        C::Delete(..)
-        | C::DeleteUnder(_)
-        | C::DeleteForward(_)
-        | C::DeleteBack
-        | C::ReplaceChar(..)
-        | C::ToggleCase(_)
-        | C::CaseMotion { .. }
-        | C::JoinLines
-        | C::ShiftRight(_)
-        | C::ShiftLeft(_)
-        | C::ShiftMotion { .. }
-        | C::Reindent { .. }
-        | C::Paste { .. }
-        | C::EmacsYank { .. }
-        | C::EmacsKillLine
-        | C::EmacsKillWord { .. }
-        | C::EmacsBackwardKillWord { .. }
-        | C::EmacsKillWholeLine
-        | C::EmacsTransposeChars
-        | C::EmacsTransposeWords
-        | C::EmacsCaseWord { .. }
-        | C::EmacsCaseRegion { .. }
-        | C::EmacsDeleteIndentation
-        | C::EmacsHorizontalSpace { .. }
-        | C::EmacsOpenLine
-        | C::DeleteSelection
-        | C::OpForced {
-            op: OpKind::Delete, ..
-        } => ChangeKind::Immediate,
-        // Everything else (motions, mode switches, yank incl. forced yank, search, undo/redo) is not a change.
-        _ => ChangeKind::NotAChange,
-    }
-}
-
-/// Rewrite a command's count for `N.` (Vim replaces the change's count with `N`). Commands without a count
-/// are returned unchanged.
-pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
-    use Command as C;
-    match cmd {
-        C::Move(_, m) => C::Move(n, *m),
-        C::Delete(_, m) => C::Delete(n, *m),
-        C::Change(_, m) => C::Change(n, *m),
-        C::Yank(_, m) => C::Yank(n, *m),
-        C::OpForced {
-            op, motion, wise, ..
-        } => C::OpForced {
-            op: *op,
-            count: n,
-            motion: *motion,
-            wise: *wise,
-        },
-        C::DeleteUnder(_) => C::DeleteUnder(n),
-        C::DeleteForward(_) => C::DeleteForward(n),
-        C::ReplaceChar(_, c) => C::ReplaceChar(n, *c),
-        C::ToggleCase(_) => C::ToggleCase(n),
-        C::CaseMotion { motion, case, .. } => C::CaseMotion {
-            count: n,
-            motion: *motion,
-            case: *case,
-        },
-        C::ShiftRight(_) => C::ShiftRight(n),
-        C::ShiftLeft(_) => C::ShiftLeft(n),
-        C::ShiftMotion { left, motion, .. } => C::ShiftMotion {
-            left: *left,
-            count: n,
-            motion: *motion,
-        },
-        C::Reindent { motion, .. } => C::Reindent {
-            count: n,
-            motion: *motion,
-        },
-        C::Paste { after, .. } => C::Paste {
-            after: *after,
-            count: n,
-        },
-        other => other.clone(),
-    }
-}
-
 /// The operator-pending axis: an armed operator (`d`/`c`/`y`) plus the count that preceded it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct OpPending {
@@ -1623,7 +1515,7 @@ mod cmdline;
 use cmdline::CmdLine;
 
 mod repeat;
-use repeat::ChangeIntent;
+use repeat::{change_kind, ChangeIntent, ChangeKind};
 
 mod ex;
 pub use ex::{parse_ex, BufTarget, Ex};
