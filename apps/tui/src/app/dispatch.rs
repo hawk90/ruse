@@ -54,7 +54,15 @@ pub(crate) fn run_ex(
 ) {
     match ex {
         Ex::Save => save(ws, files, status),
-        Ex::Quit => *quit = true,
+        // `:q` refuses when the focused buffer has unsaved changes (Vim E37); `:q!` discards them.
+        Ex::Quit => {
+            if ws.focused().doc.is_modified() {
+                *status = "E37: No write since last change (add ! to override)".into();
+            } else {
+                *quit = true;
+            }
+        }
+        Ex::QuitForce => *quit = true,
         Ex::SaveQuit => {
             // `:wq`/`:x` on a buffer with no file errors (save declines) and does NOT quit — matching Vim.
             let had_file = files.contains_key(&ws.focused_buffer());
@@ -251,7 +259,46 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String) {
 
 #[cfg(test)]
 mod dispatch_tests {
-    use super::line_count;
+    use super::*;
+    use ruse_core::Command;
+
+    /// `:q` refuses (E37) once the focused buffer is modified; `:q!` quits regardless; a clean `:q` quits.
+    #[test]
+    fn quit_guards_unsaved_changes_and_bang_overrides() {
+        let files = Files::new();
+        let run = |ex: &Ex, ws: &mut Workspace| {
+            let mut status = String::new();
+            let mut quit = false;
+            let mut confirm = None;
+            run_ex(
+                ex,
+                ws,
+                &files,
+                b"",
+                &[],
+                &mut status,
+                &mut quit,
+                &mut confirm,
+            );
+            (status, quit)
+        };
+
+        // Clean buffer → `:q` quits.
+        let mut ws = Workspace::new(b"hello\n".to_vec());
+        let (_, quit) = run(&Ex::Quit, &mut ws);
+        assert!(quit, "clean buffer quits on :q");
+
+        // Modify the buffer → `:q` refuses with E37, `:q!` quits.
+        let mut ws = Workspace::new(b"hello\n".to_vec());
+        ws.apply(&Command::EnterInsert);
+        ws.apply(&Command::InsertChar('x'));
+        assert!(ws.focused().doc.is_modified(), "edit dirtied the buffer");
+        let (status, quit) = run(&Ex::Quit, &mut ws);
+        assert!(!quit, ":q does not quit a dirty buffer");
+        assert!(status.starts_with("E37"), "E37 surfaced: {status}");
+        let (_, quit) = run(&Ex::QuitForce, &mut ws);
+        assert!(quit, ":q! discards changes and quits");
+    }
 
     /// The `:w` line count matches Vim across the edge cases: empty buffer = 1 line, a trailing newline
     /// does NOT add a phantom empty line, and a missing final newline still counts its line.

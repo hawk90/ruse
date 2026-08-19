@@ -4,7 +4,10 @@ use super::*;
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Ex {
     Save,
+    /// `:q`/`:quit` — quit, refusing with E37 when the focused buffer has unsaved changes.
     Quit,
+    /// `:q!`/`:quit!` — quit, discarding unsaved changes.
+    QuitForce,
     SaveQuit,
     SaveTrace(String),
     /// `:split`/`:sp` — split the focused window horizontally onto the same buffer (F-007).
@@ -268,7 +271,8 @@ pub fn parse_ex(line: &str) -> Ex {
     let line = line.trim();
     match line {
         "w" => Ex::Save,
-        "q" | "q!" => Ex::Quit,
+        "q" | "quit" => Ex::Quit,
+        "q!" | "quit!" => Ex::QuitForce,
         "wq" | "x" => Ex::SaveQuit,
         "split" | "sp" => Ex::Split,
         "vsplit" | "vsp" | "vs" => Ex::VSplit,
