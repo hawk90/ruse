@@ -8,20 +8,20 @@ use serde_json::{json, Value};
 use super::model::{lsp_pos_to_byte, Diag, Severity};
 
 #[derive(Deserialize)]
-pub struct Position {
+pub struct LspPosition {
     pub line: u32,
     pub character: u32,
 }
 
 #[derive(Deserialize)]
-pub struct Range {
-    pub start: Position,
-    pub end: Position,
+pub struct LspRange {
+    pub start: LspPosition,
+    pub end: LspPosition,
 }
 
 #[derive(Deserialize)]
 pub struct LspDiagnostic {
-    pub range: Range,
+    pub range: LspRange,
     #[serde(default)]
     pub severity: Option<u8>,
     #[serde(default)]
