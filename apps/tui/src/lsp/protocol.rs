@@ -110,9 +110,14 @@ pub type LspTextEdit = ((u32, u32), (u32, u32), String);
 /// Parse a formatting response (a `TextEdit[]`) into [`LspTextEdit`]s the session maps to byte ranges. Empty /
 /// non-array → no edits.
 pub fn parse_text_edits(result: &Value) -> Vec<LspTextEdit> {
-    let Some(arr) = result.as_array() else {
-        return Vec::new();
-    };
+    result
+        .as_array()
+        .map(|a| parse_edit_array(a))
+        .unwrap_or_default() // `map(parse_edit_array)` won't coerce &Vec<Value> → &[Value] here
+}
+
+/// Parse a `TextEdit[]` JSON array into [`LspTextEdit`]s (shared by formatting and rename).
+fn parse_edit_array(arr: &[Value]) -> Vec<LspTextEdit> {
     arr.iter()
         .filter_map(|e| {
             let range = e.get("range")?;
@@ -132,6 +137,42 @@ pub fn parse_text_edits(result: &Value) -> Vec<LspTextEdit> {
             ))
         })
         .collect()
+}
+
+/// `textDocument/rename` params: the symbol position + the new name.
+pub fn rename_params(uri: &str, line: u32, character: u32, new_name: &str) -> Value {
+    json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character },
+        "newName": new_name
+    })
+}
+
+/// Parse a `WorkspaceEdit` (a rename response) into per-file edits: `[(uri, TextEdit[])]`. Handles both the
+/// `changes: { uri: TextEdit[] }` map and the `documentChanges: [{ textDocument: { uri }, edits: [...] }]`
+/// array forms. Resource operations (rename/create/delete files, which lack an `edits` array) are skipped —
+/// this slice only rewrites text. Empty / null → no edits.
+pub fn parse_workspace_edit(result: &Value) -> Vec<(String, Vec<LspTextEdit>)> {
+    if let Some(dcs) = result.get("documentChanges").and_then(Value::as_array) {
+        return dcs
+            .iter()
+            .filter_map(|dc| {
+                let uri = dc.get("textDocument")?.get("uri")?.as_str()?.to_string();
+                let edits = parse_edit_array(dc.get("edits")?.as_array()?);
+                (!edits.is_empty()).then_some((uri, edits))
+            })
+            .collect();
+    }
+    if let Some(map) = result.get("changes").and_then(Value::as_object) {
+        return map
+            .iter()
+            .filter_map(|(uri, edits)| {
+                let edits = parse_edit_array(edits.as_array()?);
+                (!edits.is_empty()).then_some((uri.clone(), edits))
+            })
+            .collect();
+    }
+    Vec::new()
 }
 
 /// The display lines of a hover response, or `None` when the server has nothing. Handles `contents` as a
@@ -233,6 +274,31 @@ mod tests {
         assert_eq!(parsed[0], ((0, 0), (0, 4), "fn ".to_string()));
         assert_eq!(parsed[1], ((1, 2), (1, 2), "    ".to_string()));
         assert!(parse_text_edits(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn parse_workspace_edit_reads_changes_and_document_changes() {
+        let te = |c1, c2, t: &str| json!({"range":{"start":{"line":0,"character":c1},"end":{"line":0,"character":c2}},"newText":t});
+        // `changes` map form.
+        let changes = json!({"changes": {"file:///a.rs": [te(4, 7, "bar")], "file:///b.rs": [te(0, 3, "bar")]}});
+        let mut parsed = parse_workspace_edit(&changes);
+        parsed.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].0, "file:///a.rs");
+        assert_eq!(parsed[0].1, vec![((0, 4), (0, 7), "bar".to_string())]);
+        assert_eq!(parsed[1].0, "file:///b.rs");
+        // `documentChanges` array form.
+        let docs = json!({"documentChanges": [
+            {"textDocument": {"uri": "file:///a.rs", "version": 1}, "edits": [te(4, 7, "baz")]}
+        ]});
+        let parsed = parse_workspace_edit(&docs);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].0, "file:///a.rs");
+        assert_eq!(parsed[0].1, vec![((0, 4), (0, 7), "baz".to_string())]);
+        // A resource operation (no `edits`) is skipped; null → empty.
+        let rename_op = json!({"documentChanges": [{"kind": "rename", "oldUri": "file:///a.rs", "newUri": "file:///c.rs"}]});
+        assert!(parse_workspace_edit(&rename_op).is_empty());
+        assert!(parse_workspace_edit(&Value::Null).is_empty());
     }
 
     #[test]

@@ -22,6 +22,8 @@ pub enum Ex {
     Terminal,
     /// `:fmt`/`:format` — format the focused buffer via its language server (F-014).
     Format,
+    /// `:rename {new}`/`:rn {new}` — rename the symbol under the cursor via the language server (F-014).
+    Rename(String),
     /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
@@ -418,6 +420,8 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(ex) = parse_edit(line) {
                 ex
+            } else if let Some(name) = parse_rename(line) {
+                Ex::Rename(name)
             } else if let Some(rest) = line.strip_prefix("trace save") {
                 Ex::SaveTrace(rest.trim().to_string())
             } else if let Some(range) = parse_range_verb(line, &["d", "delete"]) {
@@ -445,6 +449,16 @@ pub fn parse_ex(line: &str) -> Ex {
             }
         }
     }
+}
+
+/// Parse `:rename {new}` / `:rn {new}` (F-014) — the trimmed new name, or `None` when the verb is absent or
+/// the name is empty. The name is a single token; internal whitespace makes it invalid (the server validates).
+fn parse_rename(line: &str) -> Option<String> {
+    let rest = line
+        .strip_prefix("rename ")
+        .or_else(|| line.strip_prefix("rn "))?
+        .trim();
+    (!rest.is_empty() && !rest.contains(char::is_whitespace)).then(|| rest.to_string())
 }
 
 /// Parse a `:[range]<verb> {addr}` line (`:m`/`:move`, `:t`/`:copy`/`:co`) into `(range, dest)`. The verb

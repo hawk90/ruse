@@ -1713,6 +1713,16 @@ mod tests {
         // `:checkhealth` and its `:che` prefix both parse (F-030).
         assert_eq!(parse_ex("checkhealth"), Ex::CheckHealth);
         assert_eq!(parse_ex("che"), Ex::CheckHealth);
+        // `:rename {new}` / `:rn {new}` (F-014 LSP rename); a bare verb or a whitespaced name stays Unknown.
+        assert_eq!(parse_ex("rename widget"), Ex::Rename("widget".into()));
+        assert_eq!(parse_ex("rn widget"), Ex::Rename("widget".into()));
+        assert_eq!(
+            parse_ex("rename  spaced_out  "),
+            Ex::Rename("spaced_out".into())
+        );
+        assert!(matches!(parse_ex("rename"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("rename a b"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("rn"), Ex::Unknown(_)));
     }
 
     /// F-007 multi-buffer ex commands parse: `:enew`, `:ls`, `:bn`/`:bp`, `:b {n}` (with/without space),

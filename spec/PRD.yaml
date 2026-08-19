@@ -684,10 +684,13 @@ features:
     # the loop responsive while a server is live. Rust only (rust-analyzer), one process per server. Slice 2
     # (#295): the REQUEST-RESPONSE infra + hover (K) and goto-definition (Ctrl-]) — poll() returns responses
     # keyed by request id, hover renders in the bottom overlay panel, goto jumps (same/cross file). Slice 3
-    # (#296): format (:fmt) — textDocument/formatting → core apply_edits (one Lsp-origin undo group, F-005);
-    # the diag+hover+format pipeline is verified end-to-end vs real rust-analyzer in an ignored smoke test.
-    # REMAINING: rename/references/completion, diagnostics MERGE by namespace + list UI, more languages, remote
-    # (C-AGENT), C-SCHEDULER integration. Stays `planned` — local, single language, no cross-file rename yet.
+    # (#296): format (:fmt) — textDocument/formatting → core apply_edits (one Lsp-origin undo group, F-005).
+    # Slice 4 (#297): rename (:rename/:rn {new}) — textDocument/rename → a WorkspaceEdit whose per-file edits
+    # apply ACROSS every affected buffer (reuse-or-open each file, map UTF-16 → its own bytes, one Lsp-origin
+    # undo group per file), then restore focus. The diag+hover+format+rename pipeline is verified end-to-end
+    # vs real rust-analyzer in an ignored smoke test. REMAINING: references/completion, diagnostics MERGE by
+    # namespace + list UI, more languages, remote (C-AGENT), C-SCHEDULER integration. Stays `planned` — local,
+    # single language, ex-line name entry (no floating prompt), no resource-op (file create/rename) yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >
