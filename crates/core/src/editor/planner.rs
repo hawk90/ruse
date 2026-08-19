@@ -499,6 +499,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 nop(cur, Mode::Normal)
             }
         }
+        // F-011: mode-only transitions; the frontend owns the PTY + scrollback (the core never edits a
+        // terminal buffer). Cursor is unchanged — a terminal buffer's document is an empty placeholder.
+        Command::EnterTerminal => nop(cur, Mode::Terminal),
+        Command::EnterTerminalNormal => nop(cur, Mode::TerminalNormal),
         Command::EnterReplace => nop(cur, Mode::Replace),
         Command::ReplaceType(c) => {
             let mut buf = [0u8; 4];

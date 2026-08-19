@@ -21,6 +21,8 @@ use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{buffer_picker, file_picker, layout::window_rects, line_picker, palette};
 use crate::{health, highlight, indent, line_index, persist, recover, screen, viewport};
+#[cfg(unix)]
+use crate::{pty, term_buffer};
 
 /// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
 const SCROLLOFF: usize = 3;
@@ -28,6 +30,11 @@ const SCROLLOFF: usize = 3;
 /// Append a recovery-journal frame every Nth modified command — a coarse hard-kill safety net (a
 /// panic captures the exact latest state separately). Full incremental journaling is post-MVP.
 const JOURNAL_THROTTLE: u32 = 8;
+
+/// F-011: when a terminal is live the event loop polls for a key with this timeout (≈30fps) instead of
+/// blocking, so asynchronous PTY output renders within one tick. Only the terminal-active path polls.
+#[cfg(unix)]
+const TERM_TICK_MS: u64 = 33;
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
@@ -131,6 +138,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut line_picker: Option<Picker<usize>> = None;
     let mut buffer_picker: Option<Picker<DocumentId>> = None;
     let mut file_picker: Option<Picker<PathBuf>> = None; // fuzzy file finder (`C-f`), opens like `:e`
+                                                         // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `pending_term_escape`
+                                                         // tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
+    #[cfg(unix)]
+    let mut terminals: HashMap<DocumentId, term_buffer::Terminal> = HashMap::new();
+    #[cfg(unix)]
+    let mut pending_term_escape = false;
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -260,6 +273,24 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         } else {
             engine.cmdline().map(|(pfx, t, _)| (pfx, t))
         };
+        // F-011: reap terminals whose buffer was closed (Drop hangs up the child), then pull any pending
+        // PTY output into their scrollback so it paints this frame. `term_views` lends the scrollback bytes
+        // to the renderer. On non-unix this is always empty.
+        #[cfg(unix)]
+        let term_views: HashMap<DocumentId, &[u8]> = {
+            let live: std::collections::HashSet<DocumentId> =
+                ws.buffers().iter().map(|b| b.id).collect();
+            terminals.retain(|id, _| live.contains(id));
+            for t in terminals.values_mut() {
+                t.drain();
+            }
+            terminals
+                .iter()
+                .map(|(id, t)| (*id, t.scrollback()))
+                .collect()
+        };
+        #[cfg(not(unix))]
+        let term_views: HashMap<DocumentId, &[u8]> = HashMap::new();
         render(
             &mut out,
             &ws,
@@ -271,9 +302,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             sync_output,
             &focus_hl,
             &overlay_rows,
+            &term_views,
         )?;
-        let Event::Key(key) = event::read()? else {
-            continue;
+        // With a live terminal the loop must not block on a key — it polls so freshly-arrived PTY output
+        // renders on the next tick. With no terminal it keeps the pure blocking read (no spin, unchanged).
+        #[cfg(unix)]
+        let any_terminal = !terminals.is_empty();
+        #[cfg(not(unix))]
+        let any_terminal = false;
+        let key = if any_terminal {
+            if event::poll(std::time::Duration::from_millis(TERM_TICK_MS))? {
+                match event::read()? {
+                    Event::Key(k) => k,
+                    _ => continue,
+                }
+            } else {
+                continue; // timed out: re-render the drained terminal output
+            }
+        } else {
+            match event::read()? {
+                Event::Key(k) => k,
+                _ => continue,
+            }
         };
         if key.kind == KeyEventKind::Release {
             continue;
@@ -340,6 +390,60 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 palette = None;
             }
             continue;
+        }
+        // F-011 terminal routing: a terminal buffer owns the keystream. In Terminal mode keys forward to the
+        // PTY child, except `CTRL-\ CTRL-N` which drops to Terminal-Normal. In Terminal-Normal, `i`/`a`/`A`
+        // resume Terminal; every other key falls through to the normal grammar (so `:q`, `C-w`, etc. work) —
+        // the placeholder document is empty, so slice 1 has no scrollback paging (that arrives with the grid).
+        #[cfg(unix)]
+        {
+            let tid = ws.focused_buffer();
+            if terminals.contains_key(&tid) {
+                match ws.focused().view.mode() {
+                    Mode::Terminal => {
+                        if pending_term_escape {
+                            pending_term_escape = false;
+                            if is_ctrl(key, 'n') {
+                                run_cmd(
+                                    Command::EnterTerminalNormal,
+                                    &mut ws,
+                                    &files,
+                                    &mut recorded,
+                                    &mut status,
+                                    &mut quit,
+                                );
+                                continue;
+                            }
+                            // Not the escape: the swallowed `CTRL-\` is dropped; fall through to send `key`.
+                        }
+                        if is_ctrl(key, '\\') {
+                            pending_term_escape = true;
+                            continue;
+                        }
+                        if let Some(bytes) = pty::encode_key(key) {
+                            if let Some(t) = terminals.get_mut(&tid) {
+                                t.send(&bytes);
+                            }
+                        }
+                        continue;
+                    }
+                    Mode::TerminalNormal => {
+                        if matches!(key.code, KeyCode::Char('i' | 'a' | 'A')) {
+                            run_cmd(
+                                Command::EnterTerminal,
+                                &mut ws,
+                                &files,
+                                &mut recorded,
+                                &mut status,
+                                &mut quit,
+                            );
+                            continue;
+                        }
+                        // else: fall through to the normal editor grammar (read-only over an empty doc).
+                    }
+                    _ => {}
+                }
+            }
         }
         // The focused pane's visible height (for the scroll / recenter commands below).
         let focused_h = rects
@@ -493,6 +597,39 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Feed::ExecuteEx(text) => {
                 match parse_ex(&text) {
                     Ex::NoHighlight => search_hl = None, // `:noh` clears the search highlight (F-009 #1)
+                    // `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused
+                    // window, and enter Terminal mode. Unix-only in slice 1.
+                    Ex::Terminal => {
+                        #[cfg(unix)]
+                        {
+                            let rect = rects.get(ws.focus());
+                            let cols = rect.map_or(cols, |r| r.w).max(1);
+                            let rows = rect.map_or(text_rows, |r| r.h).max(1);
+                            match term_buffer::Terminal::spawn(rows, cols) {
+                                Ok(term) => {
+                                    let id =
+                                        ws.add_buffer(Vec::new(), Some("[terminal]".to_string()));
+                                    ws.focus_buffer(id);
+                                    terminals.insert(id, term);
+                                    run_cmd(
+                                        Command::EnterTerminal,
+                                        &mut ws,
+                                        &files,
+                                        &mut recorded,
+                                        &mut status,
+                                        &mut quit,
+                                    );
+                                    status =
+                                        "terminal started (CTRL-\\ CTRL-N to leave)".to_string();
+                                }
+                                Err(e) => status = format!("E: cannot start terminal: {e}"),
+                            }
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            status = "terminal is not supported on this platform".to_string();
+                        }
+                    }
                     // Lang-Arg map maintenance (F-027): the map is engine state, so it is applied here
                     // where `engine` is in scope, not in `run_ex` (which owns only workspace/file state).
                     Ex::Lmap { lhs, rhs } => engine.set_lang_mapping(lhs, rhs),
