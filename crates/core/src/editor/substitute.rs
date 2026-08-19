@@ -17,6 +17,19 @@ pub enum SubRange {
     Lines(usize, usize),
 }
 
+/// A destination line address for `:m`/`:t` — where to place the moved/copied block. Resolved against the
+/// buffer to a 0-based INSERT INDEX in `0..=line_count` (`Line(0)` = top; `Last` = end; `Current` = after
+/// the cursor's line). Vim's `:m N` means "after line N", so `Line(n)` inserts before 0-based line `n`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LineAddr {
+    /// `:m N` / `:m 0` — after 1-based line N (0 = the very top). Stored as the insert index N.
+    Line(usize),
+    /// `:m $` — after the last line (the buffer end).
+    Last,
+    /// `:m .` — after the current (cursor) line.
+    Current,
+}
+
 /// The `:s///` flags this MVP honors (F-009 #2). `c` (confirm) is an interactive frontend loop, not a
 /// field here; `'gdefault'` is applied by the caller (it inverts `g`) before constructing this.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]

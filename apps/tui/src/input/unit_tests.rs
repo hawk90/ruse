@@ -237,6 +237,41 @@ mod tests {
     }
 
     #[test]
+    fn parse_move_and_copy() {
+        use ruse_core::{LineAddr, SubRange};
+        assert_eq!(
+            parse_ex("3,5m10"),
+            Ex::Move(SubRange::Lines(3, 5), LineAddr::Line(10))
+        );
+        assert_eq!(
+            parse_ex("m0"),
+            Ex::Move(SubRange::CurrentLine, LineAddr::Line(0))
+        );
+        assert_eq!(
+            parse_ex("move$"),
+            Ex::Move(SubRange::CurrentLine, LineAddr::Last)
+        );
+        assert_eq!(
+            parse_ex(".m$"),
+            Ex::Move(SubRange::CurrentLine, LineAddr::Last)
+        );
+        assert_eq!(
+            parse_ex("1,2t0"),
+            Ex::Copy(SubRange::Lines(1, 2), LineAddr::Line(0))
+        );
+        assert_eq!(
+            parse_ex("copy."),
+            Ex::Copy(SubRange::CurrentLine, LineAddr::Current)
+        );
+        assert_eq!(
+            parse_ex("t5"),
+            Ex::Copy(SubRange::CurrentLine, LineAddr::Line(5))
+        );
+        // A move/copy with no destination is not a valid command → Unknown.
+        assert!(matches!(parse_ex("m"), Ex::Unknown(_)));
+    }
+
+    #[test]
     fn doubled_operator_is_linewise() {
         assert_eq!(feed("dd"), Feed::Cmd(Command::Delete(1, Motion::Line)));
         assert_eq!(feed("2dd"), Feed::Cmd(Command::Delete(2, Motion::Line)));

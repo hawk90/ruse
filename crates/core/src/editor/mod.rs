@@ -708,6 +708,90 @@ impl EditorState {
         last - first + 1
     }
 
+    /// `:[range]m {addr}` — move the range's lines to after the destination line, as one undo group.
+    /// Returns the number of lines moved, or `None` if the destination lies inside the source (Vim's
+    /// "move lines into themselves") or the buffer is not UTF-8. No range = the cursor's line.
+    pub fn move_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
+        self.relocate_lines(range, dest, false)
+    }
+
+    /// `:[range]t {addr}` / `:copy` — COPY the range's lines to after the destination line (the source
+    /// stays), as one undo group. Returns the number of lines copied, or `None` if the buffer is not UTF-8.
+    pub fn copy_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
+        self.relocate_lines(range, dest, true)
+    }
+
+    /// Shared engine for `:m` (move) and `:t`/`:copy` (`copy = true` keeps the source). Rebuilds the line
+    /// list and replaces the whole buffer in one transaction — simple and always correct for these
+    /// non-hot ex commands (a surgical minimal-region edit is a possible later optimisation).
+    fn relocate_lines(&mut self, range: SubRange, dest: LineAddr, copy: bool) -> Option<usize> {
+        let bytes = self.doc.bytes();
+        let hay = std::str::from_utf8(bytes).ok()?;
+        let had_trailing_nl = hay.ends_with('\n');
+        let mut lines: Vec<String> = if hay.is_empty() {
+            Vec::new()
+        } else {
+            let mut v: Vec<String> = hay.split('\n').map(str::to_string).collect();
+            if had_trailing_nl {
+                v.pop(); // drop the empty element after the final '\n'
+            }
+            v
+        };
+        let nlines = lines.len();
+        if nlines == 0 {
+            return Some(0);
+        }
+        let spans = line_spans(hay);
+        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let (first, last) = resolve_line_range(range, &spans, cursor_line);
+        // Destination as a 0-based insert index in `0..=nlines`.
+        let ins = match dest {
+            LineAddr::Line(n) => n.min(nlines),
+            LineAddr::Last => nlines,
+            LineAddr::Current => (cursor_line + 1).min(nlines),
+        };
+        // A move whose destination is inside/adjacent to the source is a no-op (Vim errors; we decline).
+        if !copy && ins >= first && ins <= last + 1 {
+            return None;
+        }
+        let block: Vec<String> = lines[first..=last].to_vec();
+        let count = block.len();
+        if !copy {
+            lines.drain(first..=last);
+        }
+        // After a move removes the block, an insert index past the block shifts left by `count`.
+        let adj = if copy || ins <= first {
+            ins
+        } else {
+            ins - count
+        }
+        .min(lines.len());
+        for (k, line) in block.into_iter().enumerate() {
+            lines.insert(adj + k, line);
+        }
+        let mut text = lines.join("\n");
+        if had_trailing_nl && !text.is_empty() {
+            text.push('\n');
+        }
+        let new_bytes = text.into_bytes();
+        // Cursor: onto the first relocated line at its new position.
+        let cursor = new_bytes
+            .split_inclusive(|&b| b == b'\n')
+            .take(adj)
+            .map(<[u8]>::len)
+            .sum::<usize>()
+            .min(new_bytes.len());
+
+        let list = EditList::new(vec![Edit::replace(0, bytes.len(), new_bytes)])
+            .expect("a single whole-buffer replace is well-formed");
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc.apply(txn).expect("line relocate applies cleanly");
+        self.view.last_was_edit = true;
+        self.view.cursor = cursor.min(self.doc.bytes().len());
+        Some(count)
+    }
+
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
     fn indent_unit(&self) -> Vec<u8> {
         match self.view.indent.style {
@@ -852,7 +936,7 @@ pub(crate) use range::*;
 
 mod substitute;
 pub(crate) use substitute::{expand_replacement, line_spans, resolve_line_range};
-pub use substitute::{GlobalCmd, SubFlags, SubOutcome, SubRange, Substitution};
+pub use substitute::{GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange, Substitution};
 
 mod planner;
 pub use planner::plan;

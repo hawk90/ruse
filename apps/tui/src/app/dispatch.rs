@@ -144,6 +144,22 @@ pub(crate) fn run_ex(
                 format!("{n} lines yanked")
             };
         }
+        // `:[range]m {addr}` — move the range's lines to after the destination line.
+        Ex::Move(range, dest) => {
+            *status = match ws.move_lines(*range, *dest) {
+                Some(1) => "1 line moved".into(),
+                Some(n) => format!("{n} lines moved"),
+                None => "E134: Cannot move a range of lines into itself".into(),
+            };
+        }
+        // `:[range]t {addr}` / `:copy` — copy the range's lines to after the destination line.
+        Ex::Copy(range, dest) => {
+            *status = match ws.copy_lines(*range, *dest) {
+                Some(1) => "1 line copied".into(),
+                Some(n) => format!("{n} lines copied"),
+                None => "E486: invalid copy".into(),
+            };
+        }
         // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window.
         Ex::Global(spec) => {
             *status = match ws.global(spec.range, &spec.pattern, spec.negate, &spec.cmd) {
