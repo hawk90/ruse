@@ -34,6 +34,70 @@ mod tests {
     }
 
     #[test]
+    fn case_operators_g_prefix() {
+        use ruse_core::WordCase;
+        // gu/gU/g~ over a motion.
+        assert_eq!(
+            feed("guw"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::WordFwd,
+                case: WordCase::Downcase
+            })
+        );
+        assert_eq!(
+            feed("gU$"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::LineEnd,
+                case: WordCase::Upcase
+            })
+        );
+        assert_eq!(
+            feed("g~w"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::WordFwd,
+                case: WordCase::Toggle
+            })
+        );
+        // Doubled → linewise.
+        assert_eq!(
+            feed("guu"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::Line,
+                case: WordCase::Downcase
+            })
+        );
+        assert_eq!(
+            feed("gUU"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::Line,
+                case: WordCase::Upcase
+            })
+        );
+        assert_eq!(
+            feed("g~~"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::Line,
+                case: WordCase::Toggle
+            })
+        );
+        // Count folds through: 2gUw.
+        assert_eq!(
+            feed("2gUw"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 2,
+                motion: Motion::WordFwd,
+                case: WordCase::Upcase
+            })
+        );
+    }
+
+    #[test]
     fn sentence_motions_parens() {
         assert_eq!(feed(")"), Feed::Cmd(Command::Move(1, Motion::SentenceFwd)));
         assert_eq!(feed("("), Feed::Cmd(Command::Move(1, Motion::SentenceBack)));

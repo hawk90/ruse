@@ -939,6 +939,39 @@ mod tests {
         assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
     }
 
+    /// `gu`/`gU`/`g~` {motion} recase the operator span (lower / upper / toggle) as one edit, leaving
+    /// the cursor at the span start.
+    #[test]
+    fn case_motion_recases_the_span() {
+        use crate::command::WordCase;
+        // gUw → uppercase the word span "hello " (the space is unaffected).
+        let mut w = Workspace::new(b"hello world\n".to_vec());
+        w.apply(&Command::CaseMotion {
+            count: 1,
+            motion: Motion::WordFwd,
+            case: WordCase::Upcase,
+        });
+        assert_eq!(w.focused().doc.bytes(), b"HELLO world\n");
+
+        // g~$ → toggle to end of line.
+        let mut w = Workspace::new(b"Hello\n".to_vec());
+        w.apply(&Command::CaseMotion {
+            count: 1,
+            motion: Motion::LineEnd,
+            case: WordCase::Toggle,
+        });
+        assert_eq!(w.focused().doc.bytes(), b"hELLO\n");
+
+        // guu (linewise) → lowercase the whole line.
+        let mut w = Workspace::new(b"MixedCase Line\n".to_vec());
+        w.apply(&Command::CaseMotion {
+            count: 1,
+            motion: Motion::Line,
+            case: WordCase::Downcase,
+        });
+        assert_eq!(w.focused().doc.bytes(), b"mixedcase line\n");
+    }
+
     /// `:e!` (reload) replaces the focused buffer with fresh bytes and marks it saved, discarding the
     /// unsaved edit.
     #[test]

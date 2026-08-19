@@ -333,6 +333,19 @@ fn recase(text: &str, case: WordCase) -> String {
     match case {
         WordCase::Upcase => text.to_uppercase(),
         WordCase::Downcase => text.to_lowercase(),
+        WordCase::Toggle => {
+            let mut out = String::with_capacity(text.len());
+            for ch in text.chars() {
+                if ch.is_uppercase() {
+                    out.extend(ch.to_lowercase());
+                } else if ch.is_lowercase() {
+                    out.extend(ch.to_uppercase());
+                } else {
+                    out.push(ch);
+                }
+            }
+            out
+        }
         WordCase::Capitalize => {
             let mut out = String::with_capacity(text.len());
             let mut at_word_start = true;
@@ -777,6 +790,26 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     set_register: Some(RegWrite::Yank(reg)),
                     set_anchor: None,
                     set_mark: None,
+                }
+            }
+        }
+        Command::CaseMotion {
+            count,
+            motion,
+            case,
+        } => {
+            let (s, e, _linewise) = op_span(b, cur, *motion, *count);
+            if s >= e {
+                nop(cur, st.view.mode)
+            } else {
+                // `op_span` walks char boundaries, so `[s, e)` is valid UTF-8.
+                let src =
+                    std::str::from_utf8(&b[s..e]).expect("operator span is on char boundaries");
+                let recased = recase(src, *case).into_bytes();
+                if recased == b[s..e] {
+                    nop(s, st.view.mode) // no letters in range: `gu`/`gU`/`g~` just move to the start
+                } else {
+                    edit(one(Edit::replace(s, e - s, recased)), s, st.view.mode, hint)
                 }
             }
         }

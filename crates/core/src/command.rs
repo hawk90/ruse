@@ -117,6 +117,13 @@ pub enum Command {
     ReplaceChar(u32, char),
     /// `{count}~` — toggle the case of `count` chars, clamped at EOL, then move past the last (Vim).
     ToggleCase(u32),
+    /// `gu`/`gU`/`g~` {motion} — recase the operator span with `case` (lower / upper / toggle), leaving
+    /// the cursor at the start of the range. Operator-over-motion, like `d`/`c`/`y`.
+    CaseMotion {
+        count: u32,
+        motion: Motion,
+        case: WordCase,
+    },
     /// `J` — join the current line with the next on a single space.
     JoinLines,
     /// `CTRL-G u` in Insert — break the undo sequence: the NEXT edit starts a fresh undo group, so a
@@ -305,6 +312,8 @@ pub enum WordCase {
     Downcase,
     /// `M-c` capitalize-word — first letter of each word upper, the rest lower.
     Capitalize,
+    /// Vim `g~` — flip each letter's case (upper↔lower). Not produced by the Emacs case commands.
+    Toggle,
 }
 
 fn motion_token(m: Motion) -> String {
@@ -521,6 +530,7 @@ fn word_case_token(case: WordCase) -> &'static str {
         WordCase::Upcase => "upcase",
         WordCase::Downcase => "downcase",
         WordCase::Capitalize => "capitalize",
+        WordCase::Toggle => "toggle",
     }
 }
 
@@ -530,6 +540,7 @@ fn arg_word_case(arg: Option<&str>, line: &str) -> Result<WordCase, CommandParse
         Some("upcase") => Ok(WordCase::Upcase),
         Some("downcase") => Ok(WordCase::Downcase),
         Some("capitalize") => Ok(WordCase::Capitalize),
+        Some("toggle") => Ok(WordCase::Toggle),
         _ => Err(CommandParseError::BadArgument(line.to_string())),
     }
 }
@@ -576,6 +587,15 @@ impl Command {
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
+            Command::CaseMotion {
+                count,
+                motion,
+                case,
+            } => format!(
+                "case_motion {count} {} {}",
+                motion_token(*motion),
+                word_case_token(*case)
+            ),
             Command::OpForced {
                 op,
                 count,
@@ -758,6 +778,25 @@ impl Command {
             "delete" => return op_cmd(arg, Command::Delete),
             "change" => return op_cmd(arg, Command::Change),
             "yank" => return op_cmd(arg, Command::Yank),
+            "case_motion" => {
+                // `case_motion {count} {motion} {case}`
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let count = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let motion = it
+                    .next()
+                    .and_then(motion_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let case = arg_word_case(it.next(), line)?;
+                return Ok(Command::CaseMotion {
+                    count,
+                    motion,
+                    case,
+                });
+            }
             "op_forced" => {
                 // `op_forced {op} {wise} {count} {motion}`
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
