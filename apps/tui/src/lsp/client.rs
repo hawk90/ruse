@@ -218,14 +218,15 @@ mod tests {
     }
 
     // End-to-end against a REAL rust-analyzer (not run in CI). Verifies the whole pipeline: spawn → handshake
-    // → didOpen → publishDiagnostics (parsed), a hover request-response, AND a formatting request-response.
-    // Run: `cargo test -p ruse-tui --lib -- --ignored live_diagnostics_hover_and_format`. Requires
+    // → didOpen → publishDiagnostics (parsed), a hover, a formatting, AND a rename request-response.
+    // Run: `cargo test -p ruse-tui --lib -- --ignored live_diagnostics_hover_format_and_rename`. Requires
     // `rustup component add rust-analyzer`.
     #[test]
     #[ignore = "spawns a real rust-analyzer; run with --ignored"]
-    fn live_diagnostics_hover_and_format() {
+    fn live_diagnostics_hover_format_and_rename() {
         use crate::lsp::protocol::{
-            formatting_params, parse_hover, parse_text_edits, position_params,
+            formatting_params, parse_hover, parse_text_edits, parse_workspace_edit,
+            position_params, rename_params,
         };
         use std::process::Command as PCommand;
         use std::time::{Duration, Instant};
@@ -249,9 +250,12 @@ mod tests {
             LspClient::spawn(PCommand::new("rust-analyzer"), &root_uri).expect("spawn RA");
         client.did_open(&file_uri, "rust", 1, src);
 
-        let (mut got_diag, mut got_hover, mut got_fmt) = (false, false, false);
-        let (mut hover_id, mut fmt_id): (Option<i64>, Option<i64>) = (None, None);
-        let (mut last_hover, mut last_fmt) = (Instant::now(), Instant::now());
+        let (mut got_diag, mut got_hover, mut got_fmt, mut got_rename) =
+            (false, false, false, false);
+        let (mut hover_id, mut fmt_id, mut rename_id): (Option<i64>, Option<i64>, Option<i64>) =
+            (None, None, None);
+        let (mut last_hover, mut last_fmt, mut last_rename) =
+            (Instant::now(), Instant::now(), Instant::now());
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(120) {
             let polled = client.poll();
@@ -267,8 +271,16 @@ mod tests {
                 if Some(*id) == fmt_id && !parse_text_edits(result).is_empty() {
                     got_fmt = true;
                 }
+                // Renaming `x` → `y` rewrites its binding (line 1) and its use (line 2): ≥2 edits, one file.
+                if Some(*id) == rename_id {
+                    let we = parse_workspace_edit(result);
+                    if we.iter().map(|(_, e)| e.len()).sum::<usize>() >= 2 {
+                        got_rename = true;
+                    }
+                }
             }
-            // Once diagnostics flow the server is ready; (re)send hover on `x` (line 1 col 4) and a format.
+            // Once diagnostics flow the server is ready; (re)send hover on `x` (line 1 col 4), a format, and a
+            // rename of `x` at the same position.
             if got_diag && !got_hover && last_hover.elapsed() > Duration::from_secs(2) {
                 hover_id =
                     Some(client.request("textDocument/hover", position_params(&file_uri, 1, 4)));
@@ -281,7 +293,13 @@ mod tests {
                 ));
                 last_fmt = Instant::now();
             }
-            if got_diag && got_hover && got_fmt {
+            if got_diag && !got_rename && last_rename.elapsed() > Duration::from_secs(2) {
+                rename_id = Some(
+                    client.request("textDocument/rename", rename_params(&file_uri, 1, 4, "y")),
+                );
+                last_rename = Instant::now();
+            }
+            if got_diag && got_hover && got_fmt && got_rename {
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -290,5 +308,9 @@ mod tests {
         assert!(got_diag, "no diagnostics arrived from rust-analyzer");
         assert!(got_hover, "no hover response arrived from rust-analyzer");
         assert!(got_fmt, "no formatting edits arrived from rust-analyzer");
+        assert!(
+            got_rename,
+            "no rename WorkspaceEdit arrived from rust-analyzer"
+        );
     }
 }

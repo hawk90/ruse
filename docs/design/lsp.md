@@ -1,6 +1,6 @@
 # Built-in LSP (F-014) — design
 
-Status: **slices 1–2 landed** (local diagnostics + hover/goto, cross-platform). Owner capabilities:
+Status: **slices 1–4 landed** (local diagnostics + hover/goto + format + rename, cross-platform). Owner capabilities:
 `CAP-LSP-COORD` (client + normalized model), `CAP-LSP-CODEC` (`DEP-SERDE`); `DEP-LSP-SERVER`. Spec:
 `spec/PRD.yaml` F-014.
 
@@ -72,7 +72,16 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
 - **Slice 3 (landed):** format (`:fmt`) — `textDocument/formatting` → `TextEdit[]` → byte ranges →
   `Workspace::apply_edits` (core `EditorState::apply_edits`, one `TransactionOrigin::Lsp` undo group per F-005).
   Verified end-to-end against real rust-analyzer (diagnostics + hover + formatting) in the `#[ignore]` smoke.
-- **Later:** rename / references / code-actions / completion; a floating popup; a jumplist for
+- **Slice 4 (landed):** rename (`:rename {new}` / `:rn {new}`) — `textDocument/rename` at the cursor →
+  a `WorkspaceEdit` (`parse_workspace_edit` reads both the `changes` map and the `documentChanges` array;
+  resource ops are skipped — this slice only rewrites text) whose per-file edits are applied across **every**
+  affected buffer. Each file is focused in turn (an already-open buffer is reused, else opened — deferred
+  after render, like goto, since opening mutates `highlighters`), its UTF-16 edits are mapped to byte offsets
+  against **its own** bytes, and applied as one `TransactionOrigin::Lsp` undo group (per-file undo). Focus is
+  restored afterwards; opened files become modified buffers the user saves (`:wa`). The smoke test extends to
+  assert a real rust-analyzer rename returns a ≥2-edit `WorkspaceEdit`.
+- **Later:** references / code-actions / completion; a floating name-input prompt (this slice carries the new
+  name on the ex-line) + resource-op renames (create/rename/delete files); a floating popup; a jumplist for
   `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list /
   quickfix UI; more languages (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
 

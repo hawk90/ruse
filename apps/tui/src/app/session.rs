@@ -47,6 +47,7 @@ enum LspKind {
     Hover,
     Goto,
     Format,
+    Rename,
 }
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
@@ -305,6 +306,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // with the live `spans` borrow here). Likewise LSP format edits, applied after render.
         let mut goto_jump: Option<(String, u32, u32)> = None;
         let mut pending_edits: Vec<(usize, usize, String)> = Vec::new();
+        // F-014: a resolved rename — per-file UTF-16 TextEdits, applied across buffers after render.
+        let mut pending_rename: Vec<(String, Vec<lsp::protocol::LspTextEdit>)> = Vec::new();
         // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
         // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
         // `term_views` lends each grid to the renderer. On non-unix this is always empty.
@@ -395,6 +398,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                                 })
                                 .collect();
                         }
+                        // A WorkspaceEdit spans files; keep the raw per-file UTF-16 edits and convert each
+                        // against its own bytes when applied after render (offsets are per-document).
+                        Some(LspKind::Rename) => {
+                            pending_rename = lsp::protocol::parse_workspace_edit(&result);
+                        }
                         None => {}
                     }
                 }
@@ -442,6 +450,51 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if !pending_edits.is_empty() {
             ws.apply_edits(&pending_edits);
             status = "formatted".to_string();
+        }
+        // F-014: apply a resolved rename across every affected file. Each file is focused in turn (an already
+        // open buffer is reused, else it is opened — deferred here since opening mutates `highlighters`), its
+        // UTF-16 edits are mapped to byte offsets against ITS OWN bytes, and applied as one Lsp-origin undo
+        // group; then the original buffer is refocused. Opened files are modified buffers the user saves.
+        if !pending_rename.is_empty() {
+            let orig = ws.focused_buffer();
+            let (mut files_n, mut edits_n) = (0usize, 0usize);
+            for (uri, ledits) in pending_rename.drain(..) {
+                let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
+                let target = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+                let existing = files.iter().find_map(|(id, bf)| {
+                    (std::fs::canonicalize(&bf.path).ok().as_deref() == Some(target.as_path()))
+                        .then_some(*id)
+                });
+                match existing {
+                    Some(id) => {
+                        ws.focus_buffer(id);
+                    }
+                    None => {
+                        open_file_into_buffer(
+                            &target.display().to_string(),
+                            &mut ws,
+                            &mut files,
+                            &mut highlighters,
+                        );
+                    }
+                }
+                let bytes = ws.focused().doc.bytes().to_vec();
+                let byte_edits: Vec<(usize, usize, String)> = ledits
+                    .into_iter()
+                    .map(|((sl, sc), (el, ec), text)| {
+                        (
+                            lsp::model::lsp_pos_to_byte(&bytes, sl, sc),
+                            lsp::model::lsp_pos_to_byte(&bytes, el, ec),
+                            text,
+                        )
+                    })
+                    .collect();
+                edits_n += byte_edits.len();
+                ws.apply_edits(&byte_edits);
+                files_n += 1;
+            }
+            ws.focus_buffer(orig);
+            status = format!("renamed: {edits_n} edit(s) across {files_n} file(s)");
         }
         // Async output (PTY, F-011; LSP diagnostics, F-014) must render without a keypress, so the loop polls
         // with a timeout while either is live. With neither it keeps the pure blocking read (no spin,
@@ -789,6 +842,34 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                                 );
                                 lsp_pending.insert((key_s.to_string(), rid), LspKind::Format);
                                 status = "formatting…".to_string();
+                            } else {
+                                status = "no language server for this buffer".to_string();
+                            }
+                        } else {
+                            status = "no language server for this buffer".to_string();
+                        }
+                    }
+                    // `:rename {new}` (F-014): ask the language server to rename the symbol under the cursor;
+                    // the WorkspaceEdit comes back on a later frame and is applied across files after render.
+                    Ex::Rename(new_name) => {
+                        let bid = ws.focused_buffer();
+                        let server_key = files
+                            .get(&bid)
+                            .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
+                            .and_then(lsp::server_for_ext)
+                            .map(|(k, _, _)| k);
+                        if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
+                            if let Some(client) = lsp.get_mut(key_s) {
+                                let (line, ch) = lsp::model::byte_to_lsp_pos(
+                                    &snapshot,
+                                    ws.focused().view.cursor(),
+                                );
+                                let rid = client.request(
+                                    "textDocument/rename",
+                                    lsp::protocol::rename_params(uri, line, ch, &new_name),
+                                );
+                                lsp_pending.insert((key_s.to_string(), rid), LspKind::Rename);
+                                status = format!("renaming → {new_name}…");
                             } else {
                                 status = "no language server for this buffer".to_string();
                             }
