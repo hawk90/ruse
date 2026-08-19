@@ -830,6 +830,73 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn open_line_indent_seeds_leading_whitespace() {
+        // `o` with level 2 opens a new line below of 2×tab_width (=8) spaces, cursor after them.
+        let st = run(
+            "ab\ncd",
+            &[
+                Command::OpenLineIndent {
+                    kind: OpenKind::Below,
+                    level: 2,
+                },
+                Command::InsertChar('X'),
+            ],
+        );
+        assert_eq!(text(&st), "ab\n        X\ncd");
+        assert_eq!(st.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn open_line_indent_above_seeds_before_the_line() {
+        // `O` (Above) on line 2 opens an indented blank line before it.
+        let st = run(
+            "ab\ncd",
+            &[
+                Command::MoveDown,
+                Command::OpenLineIndent {
+                    kind: OpenKind::Above,
+                    level: 1,
+                },
+                Command::InsertChar('X'),
+            ],
+        );
+        assert_eq!(text(&st), "ab\n    X\ncd");
+    }
+
+    #[test]
+    fn open_line_indent_split_carries_the_tail_down() {
+        // `<CR>` (Split) at the cursor: the tail moves onto a new indented line.
+        let st = run(
+            "abcd",
+            &[
+                Command::OpenLineIndent {
+                    kind: OpenKind::Split,
+                    level: 1,
+                },
+                Command::InsertChar('X'),
+            ],
+        );
+        // Cursor starts at byte 0; split there → "\n    " then X → tail "abcd" follows.
+        assert_eq!(text(&st), "\n    Xabcd");
+    }
+
+    #[test]
+    fn open_line_indent_level_zero_is_a_plain_open() {
+        // The non-tree fallback: level 0 seeds no whitespace, identical to `OpenBelow`.
+        let st = run(
+            "ab",
+            &[
+                Command::OpenLineIndent {
+                    kind: OpenKind::Below,
+                    level: 0,
+                },
+                Command::InsertChar('X'),
+            ],
+        );
+        assert_eq!(text(&st), "ab\nX");
+    }
+
+    #[test]
     fn append_goes_to_line_end() {
         // On 'a' of "ab"; A appends at the end.
         let st = run(
