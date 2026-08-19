@@ -69,7 +69,10 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
 
 - **Slice 1 (landed):** local diagnostics for Rust; underline + status count; full-document `didChange`.
 - **Slice 2 (landed):** hover (`K`) + goto-definition (`<C-]>`) + the request-response infra.
-- **Later:** rename / format / references / code-actions / completion; a floating popup; a jumplist for
+- **Slice 3 (landed):** format (`:fmt`) — `textDocument/formatting` → `TextEdit[]` → byte ranges →
+  `Workspace::apply_edits` (core `EditorState::apply_edits`, one `TransactionOrigin::Lsp` undo group per F-005).
+  Verified end-to-end against real rust-analyzer (diagnostics + hover + formatting) in the `#[ignore]` smoke.
+- **Later:** rename / references / code-actions / completion; a floating popup; a jumplist for
   `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list /
   quickfix UI; more languages (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
 

@@ -683,9 +683,11 @@ features:
     # (acceptance). Diagnostics underline the range + an [E:n W:n] status count; the poll-gate extends to keep
     # the loop responsive while a server is live. Rust only (rust-analyzer), one process per server. Slice 2
     # (#295): the REQUEST-RESPONSE infra + hover (K) and goto-definition (Ctrl-]) — poll() returns responses
-    # keyed by request id, hover renders in the bottom overlay panel, goto jumps (same/cross file). REMAINING:
-    # rename/format/references/completion, diagnostics MERGE by namespace + list UI, more languages, remote
-    # (C-AGENT), C-SCHEDULER integration. Stays `planned` — local, single language, core requests only.
+    # keyed by request id, hover renders in the bottom overlay panel, goto jumps (same/cross file). Slice 3
+    # (#296): format (:fmt) — textDocument/formatting → core apply_edits (one Lsp-origin undo group, F-005);
+    # the diag+hover+format pipeline is verified end-to-end vs real rust-analyzer in an ignored smoke test.
+    # REMAINING: rename/references/completion, diagnostics MERGE by namespace + list UI, more languages, remote
+    # (C-AGENT), C-SCHEDULER integration. Stays `planned` — local, single language, no cross-file rename yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >

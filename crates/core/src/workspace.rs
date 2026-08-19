@@ -344,6 +344,22 @@ impl Workspace {
         n
     }
 
+    /// Apply LSP formatting / code-action edits to the FOCUSED window (the swap-trick, like
+    /// [`Workspace::apply`]) as one `Lsp`-origin undo group (F-014). `edits` are disjoint `(start, end, text)`.
+    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)]) {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        st.apply_edits(edits);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+    }
+
     /// Run `:[range]y` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): yank the
     /// range's lines linewise into the unnamed register (and `"0`). Returns the number of lines yanked.
     pub fn yank_lines(&mut self, range: SubRange) -> usize {

@@ -96,6 +96,44 @@ pub fn position_params(uri: &str, line: u32, character: u32) -> Value {
     })
 }
 
+/// `textDocument/formatting` params: the document + the editor's indent options.
+pub fn formatting_params(uri: &str, tab_size: u32, insert_spaces: bool) -> Value {
+    json!({
+        "textDocument": { "uri": uri },
+        "options": { "tabSize": tab_size, "insertSpaces": insert_spaces }
+    })
+}
+
+/// One parsed `TextEdit`: `((start_line, start_char), (end_line, end_char), newText)` in LSP UTF-16 positions.
+pub type LspTextEdit = ((u32, u32), (u32, u32), String);
+
+/// Parse a formatting response (a `TextEdit[]`) into [`LspTextEdit`]s the session maps to byte ranges. Empty /
+/// non-array → no edits.
+pub fn parse_text_edits(result: &Value) -> Vec<LspTextEdit> {
+    let Some(arr) = result.as_array() else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|e| {
+            let range = e.get("range")?;
+            let s = range.get("start")?;
+            let end = range.get("end")?;
+            let text = e.get("newText")?.as_str()?.to_string();
+            Some((
+                (
+                    s.get("line")?.as_u64()? as u32,
+                    s.get("character")?.as_u64()? as u32,
+                ),
+                (
+                    end.get("line")?.as_u64()? as u32,
+                    end.get("character")?.as_u64()? as u32,
+                ),
+                text,
+            ))
+        })
+        .collect()
+}
+
 /// The display lines of a hover response, or `None` when the server has nothing. Handles `contents` as a
 /// plain string, a `MarkedString`/`MarkupContent` object (`{value}`), or an array of either.
 pub fn parse_hover(result: &Value) -> Option<Vec<String>> {
@@ -182,6 +220,19 @@ mod tests {
         );
         assert_eq!(parse_hover(&json!({})), None);
         assert_eq!(parse_hover(&Value::Null), None);
+    }
+
+    #[test]
+    fn parse_text_edits_reads_ranges_and_text() {
+        let edits = json!([
+            {"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":4}},"newText":"fn "},
+            {"range":{"start":{"line":1,"character":2},"end":{"line":1,"character":2}},"newText":"    "}
+        ]);
+        let parsed = parse_text_edits(&edits);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0], ((0, 0), (0, 4), "fn ".to_string()));
+        assert_eq!(parsed[1], ((1, 2), (1, 2), "    ".to_string()));
+        assert!(parse_text_edits(&Value::Null).is_empty());
     }
 
     #[test]

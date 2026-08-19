@@ -226,9 +226,9 @@ pub(crate) fn run_ex(
                 None => *status = "E23: no alternate buffer".into(),
             }
         }
-        // `:terminal` (F-011) is handled in `session::run` (it needs the terminals map + window geometry);
-        // it never reaches here, but the match stays exhaustive.
-        Ex::Terminal => {}
+        // `:terminal` (F-011) / `:fmt` (F-014) are handled in `session::run` (they need the terminals / lsp
+        // maps); they never reach here, but the match stays exhaustive.
+        Ex::Terminal | Ex::Format => {}
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }

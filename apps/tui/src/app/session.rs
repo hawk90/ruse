@@ -46,6 +46,7 @@ const LSP_TICK_MS: u64 = 100;
 enum LspKind {
     Hover,
     Goto,
+    Format,
 }
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
@@ -301,8 +302,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             engine.cmdline().map(|(pfx, t, _)| (pfx, t))
         };
         // A goto-definition target resolved this frame; applied after render (opening a buffer would clash
-        // with the live `spans` borrow here).
+        // with the live `spans` borrow here). Likewise LSP format edits, applied after render.
         let mut goto_jump: Option<(String, u32, u32)> = None;
+        let mut pending_edits: Vec<(usize, usize, String)> = Vec::new();
         // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
         // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
         // `term_views` lends each grid to the renderer. On non-unix this is always empty.
@@ -380,6 +382,19 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         // Defer the jump until AFTER render — it may open a buffer (mutating `highlighters`),
                         // which the frame's live `spans` borrow forbids here.
                         Some(LspKind::Goto) => goto_jump = lsp::protocol::parse_definition(&result),
+                        // Convert TextEdits (UTF-16 ranges) to byte ranges; applied after render.
+                        Some(LspKind::Format) => {
+                            pending_edits = lsp::protocol::parse_text_edits(&result)
+                                .into_iter()
+                                .map(|((sl, sc), (el, ec), text)| {
+                                    (
+                                        lsp::model::lsp_pos_to_byte(&snapshot, sl, sc),
+                                        lsp::model::lsp_pos_to_byte(&snapshot, el, ec),
+                                        text,
+                                    )
+                                })
+                                .collect();
+                        }
                         None => {}
                     }
                 }
@@ -422,6 +437,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 let bytes = ws.focused().doc.bytes().to_vec();
                 ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
             }
+        }
+        // F-014: apply LSP format edits (deferred past the `spans` borrow) as one Lsp-origin undo group.
+        if !pending_edits.is_empty() {
+            ws.apply_edits(&pending_edits);
+            status = "formatted".to_string();
         }
         // Async output (PTY, F-011; LSP diagnostics, F-014) must render without a keypress, so the loop polls
         // with a timeout while either is live. With neither it keeps the pure blocking read (no spin,
@@ -752,6 +772,30 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Feed::ExecuteEx(text) => {
                 match parse_ex(&text) {
                     Ex::NoHighlight => search_hl = None, // `:noh` clears the search highlight (F-009 #1)
+                    // `:fmt`/`:format` (F-014): ask the focused buffer's language server to format it; the
+                    // TextEdits come back on a later frame and are applied after render.
+                    Ex::Format => {
+                        let bid = ws.focused_buffer();
+                        let server_key = files
+                            .get(&bid)
+                            .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
+                            .and_then(lsp::server_for_ext)
+                            .map(|(k, _, _)| k);
+                        if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
+                            if let Some(client) = lsp.get_mut(key_s) {
+                                let rid = client.request(
+                                    "textDocument/formatting",
+                                    lsp::protocol::formatting_params(uri, 4, true),
+                                );
+                                lsp_pending.insert((key_s.to_string(), rid), LspKind::Format);
+                                status = "formatting…".to_string();
+                            } else {
+                                status = "no language server for this buffer".to_string();
+                            }
+                        } else {
+                            status = "no language server for this buffer".to_string();
+                        }
+                    }
                     // `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused
                     // window, and enter Terminal mode. Unix-only in slice 1.
                     Ex::Terminal => {

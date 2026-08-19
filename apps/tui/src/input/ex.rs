@@ -20,6 +20,8 @@ pub enum Ex {
     Only,
     /// `:terminal`/`:term` — open a shell in a new PTY-backed buffer (F-011). Unix-only in slice 1.
     Terminal,
+    /// `:fmt`/`:format` — format the focused buffer via its language server (F-014).
+    Format,
     /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
@@ -396,6 +398,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "close" | "clo" => Ex::Close,
         "only" | "on" => Ex::Only,
         "terminal" | "term" => Ex::Terminal,
+        "fmt" | "format" => Ex::Format,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         "e!" | "edit!" => Ex::EditReload,
