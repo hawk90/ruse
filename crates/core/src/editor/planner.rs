@@ -1768,12 +1768,17 @@ fn paste(
     if reg.is_empty() {
         return nop;
     }
+    // Bound the repetition so a pathological `{count}p` (e.g. a digit-spam count that saturates to
+    // `u32::MAX`) cannot request a multi-gigabyte allocation. 64 MiB of pasted bytes is far beyond any
+    // interactive intent; clamping the count keeps the editor from OOM-ing on absurd input.
+    const MAX_PASTE_BYTES: usize = 1 << 26;
+    let unit_len = reg.text().len().max(1);
+    let count = (count.max(1) as usize).min((MAX_PASTE_BYTES / unit_len).max(1));
     if reg.is_blockwise() {
-        return paste_block(b, cur, reg, after, count.max(1) as usize);
+        return paste_block(b, cur, reg, after, count);
     }
     // `{count}p` pastes the register `count` times (Vim); the register itself is unchanged. The repeated
     // bytes are one contiguous insert, so the cursor math below (last pasted byte) still holds.
-    let count = count.max(1) as usize;
     let repeat = |unit: &[u8]| unit.repeat(count);
     let one = |e: Edit| EditList::new(vec![e]).expect("single edit is always valid");
     let mk = |at: usize, bytes: Vec<u8>, cursor: usize| Plan {
