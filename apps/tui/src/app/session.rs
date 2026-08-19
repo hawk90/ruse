@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal as ct_terminal;
 
-use ruse_core::{CaretGravity, Command, DocumentId, Mode, SplitDir, Workspace};
+use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Workspace};
 
 use crate::app::dispatch::{run_cmd, run_ex, BufferFile, Files};
 use crate::input::{parse_ex, Ex, Feed, InputEngine};
@@ -647,6 +647,48 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             levels: indent::indent_levels(tree, &snapshot, first_line, last_line),
                         },
                         _ => Command::Reindent { count, motion },
+                    }
+                } else {
+                    cmd
+                };
+                // Auto-indent on newline (F-015 Phase 2): when the focused buffer has a live syntax tree,
+                // seed the line opened by `o`/`O`/`<CR>` with the tree-suggested indent, rewriting to
+                // `OpenLineIndent`. The core recomputes the insertion point from the cursor — here we only
+                // supply the level (the tree query offset mirrors where the newline lands). No tree ⇒ the
+                // plain open (column-0), unchanged. Dot-repeat (`.`) replays the plain open via `Feed::Replay`
+                // (below), so it degrades to column-0 — mirroring Phase 1's `=`, and avoiding replaying a
+                // stale recorded level at a new location.
+                let cmd = if matches!(
+                    cmd,
+                    Command::OpenBelow | Command::OpenAbove | Command::InsertNewline
+                ) {
+                    let id = ws.focused_buffer();
+                    match highlighters
+                        .get(&id)
+                        .and_then(highlight::CachedHighlight::tree)
+                    {
+                        Some(tree) => {
+                            let cur = ws.focused().view.cursor();
+                            let row = line_idx.line_of(cur);
+                            let (kind, at, new_row) = match cmd {
+                                Command::OpenBelow => {
+                                    let next = line_idx.nth_line_start(row + 1);
+                                    let le = if next > 0 && snapshot.get(next - 1) == Some(&b'\n') {
+                                        next - 1
+                                    } else {
+                                        snapshot.len()
+                                    };
+                                    (OpenKind::Below, le, row + 1)
+                                }
+                                Command::OpenAbove => {
+                                    (OpenKind::Above, line_idx.nth_line_start(row), row)
+                                }
+                                _ => (OpenKind::Split, cur, row + 1),
+                            };
+                            let level = indent::suggest_indent(tree, at, new_row);
+                            Command::OpenLineIndent { kind, level }
+                        }
+                        None => cmd,
                     }
                 } else {
                     cmd

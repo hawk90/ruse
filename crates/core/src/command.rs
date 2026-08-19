@@ -66,6 +66,16 @@ pub enum BlockInsertKind {
     Change,
 }
 
+/// Where an auto-indented open-line lands (F-015 Phase 2). `Below`/`Above` are `o`/`O` (open at end/start of
+/// the current line); `Split` is `<CR>` in Insert (split at the cursor). The frontend rewrites the plain
+/// `OpenBelow`/`OpenAbove`/`InsertNewline` into [`Command::OpenLineIndent`] with a tree-suggested level.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OpenKind {
+    Below,
+    Above,
+    Split,
+}
+
 /// A semantic command — the granularity a trace records. Beyond single motions/edits it carries the editing
 /// grammar: a counted move, and the `delete`/`change` operators over a motion range (`dw`, `d2w`, `cc`).
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -106,6 +116,14 @@ pub enum Command {
     // edit
     InsertChar(char),
     InsertNewline,
+    /// `o`/`O`/`<CR>` seeded with a tree-suggested indent (F-015 Phase 2): open a line (per `kind`) whose
+    /// leading whitespace is `level × shiftwidth`, leaving the cursor after it in Insert. The frontend owns
+    /// the syntax tree, so it computes `level` and rewrites the plain open commands into this (the core is
+    /// tree-sitter-free); the trace replays the concrete indent exactly. `level: 0` is a plain open.
+    OpenLineIndent {
+        kind: OpenKind,
+        level: usize,
+    },
     DeleteBack,
     /// `{count}x` — delete `count` chars from the cursor, clamped at end-of-line (Vim).
     DeleteUnder(u32),
@@ -616,6 +634,14 @@ impl Command {
                 s
             }
             Command::InsertNewline => "insert_newline".into(),
+            Command::OpenLineIndent { kind, level } => {
+                let k = match kind {
+                    OpenKind::Below => "below",
+                    OpenKind::Above => "above",
+                    OpenKind::Split => "split",
+                };
+                format!("open_line_indent {k} {level}")
+            }
             Command::DeleteBack => "delete_back".into(),
             Command::DeleteUnder(n) => format!("delete_under {n}"),
             Command::DeleteForward(n) => format!("delete_forward {n}"),
@@ -809,6 +835,21 @@ impl Command {
                 Command::InsertChar(c)
             }
             "insert_newline" => Command::InsertNewline,
+            "open_line_indent" => {
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let kind = match it.next() {
+                    Some("below") => OpenKind::Below,
+                    Some("above") => OpenKind::Above,
+                    Some("split") => OpenKind::Split,
+                    _ => return Err(CommandParseError::BadArgument(a.to_string())),
+                };
+                let level = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                Command::OpenLineIndent { kind, level }
+            }
             "delete_back" => Command::DeleteBack,
             "delete_under" => {
                 let n = arg_u32(arg, line)?;
@@ -1129,6 +1170,18 @@ mod tests {
             Command::InsertChar('🎉'),
             Command::InsertChar(' '),
             Command::InsertNewline,
+            Command::OpenLineIndent {
+                kind: OpenKind::Below,
+                level: 0,
+            },
+            Command::OpenLineIndent {
+                kind: OpenKind::Above,
+                level: 2,
+            },
+            Command::OpenLineIndent {
+                kind: OpenKind::Split,
+                level: 3,
+            },
             Command::DeleteBack,
             Command::DeleteUnder(1),
             Command::DeleteUnder(3),

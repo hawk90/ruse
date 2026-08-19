@@ -578,6 +578,38 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             Mode::Insert,
             hint,
         ),
+        // `o`/`O`/`<CR>` with a tree-suggested indent (F-015 Phase 2): open a line whose leading whitespace
+        // is `level × unit`, cursor after it. `Above` inserts `<indent>\n` before the line (cursor on the new
+        // line above); `Below`/`Split` insert `\n<indent>` (cursor on the new line below / after the split).
+        // `level: 0` degrades to a plain open, so this also serves as the non-tree fallback.
+        Command::OpenLineIndent { kind, level } => {
+            let unit = st.indent_unit();
+            let pad: Vec<u8> = unit
+                .iter()
+                .cycle()
+                .take(unit.len() * level)
+                .copied()
+                .collect();
+            let (at, mut ins, cursor) = match kind {
+                OpenKind::Above => {
+                    let ls = line_start(b, cur);
+                    (ls, Vec::with_capacity(pad.len() + 1), ls + pad.len())
+                }
+                OpenKind::Below => {
+                    let le = line_end(b, cur);
+                    (le, Vec::with_capacity(pad.len() + 1), le + 1 + pad.len())
+                }
+                OpenKind::Split => (cur, Vec::with_capacity(pad.len() + 1), cur + 1 + pad.len()),
+            };
+            if matches!(kind, OpenKind::Above) {
+                ins.extend_from_slice(&pad);
+                ins.push(b'\n');
+            } else {
+                ins.push(b'\n');
+                ins.extend_from_slice(&pad);
+            }
+            edit(one(Edit::insert(at, ins)), cursor, Mode::Insert, hint)
+        }
         Command::DeleteBack => {
             if cur == 0 {
                 nop(cur, st.view.mode)

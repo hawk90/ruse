@@ -1,5 +1,6 @@
-//! Tree-aware indentation (F-015): compute each line's indent LEVEL from the tree-sitter parse tree,
-//! for the `=` reindent operator. The frontend owns the tree (the core is dependency-free), so it derives
+//! Tree-aware indentation (F-015): compute each line's indent LEVEL from the tree-sitter parse tree, for
+//! the `=` reindent operator ([`indent_levels`], Phase 1) and for auto-indent on `o`/`O`/`<CR>`
+//! ([`suggest_indent`], Phase 2). The frontend owns the tree (the core is dependency-free), so it derives
 //! the levels here and hands them to the core, which applies `level × shiftwidth` (the `*`/`#` split).
 //!
 //! **Model — node-depth (language-agnostic, no `indents.scm` needed).** A line's level is the number of
@@ -72,6 +73,30 @@ pub fn indent_levels(tree: &Tree, bytes: &[u8], first_line: usize, last_line: us
     out
 }
 
+/// The indent LEVEL to seed a NEW line at, from the parse tree (F-015 Phase 2 — auto-indent on `o`/`O`/
+/// `<CR>`). `at` is the byte offset the newline is inserted at (end of the current line for `o`, its start
+/// for `O`, the cursor for `<CR>`); `new_row` is the 0-based row the new line will occupy. Counts the
+/// DISTINCT start-rows among the multi-line ancestor nodes that enclose `at` and start on an earlier row —
+/// the same node-depth model as [`indent_levels`], but for an insertion point rather than an existing line
+/// (no closer-dedent: the new line is blank). Querying at `at` (past a just-typed `{`) makes an opener on
+/// the current line deepen the new line, so `o` after `fn f() {` indents one further.
+pub fn suggest_indent(tree: &Tree, at: usize, new_row: usize) -> usize {
+    let root = tree.root_node();
+    let mut level = 0usize;
+    let mut last_row: Option<usize> = None;
+    let mut node = root.descendant_for_byte_range(at, at);
+    while let Some(nd) = node {
+        let sr = nd.start_position().row;
+        let er = nd.end_position().row;
+        if er > sr && sr < new_row && Some(sr) != last_row {
+            level += 1;
+            last_row = Some(sr);
+        }
+        node = nd.parent();
+    }
+    level
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +118,22 @@ mod tests {
             vec![0, 1, 1, 2, 1, 0],
             "fn body = 1, if body = 2, closers dedent, string-brace ignored"
         );
+    }
+
+    #[test]
+    fn suggest_indent_uses_node_depth_at_insertion_point() {
+        let src = b"fn f() {\nlet s = \"x { y\";\nif a {\nb;\n}\n}\n";
+        let tree = parse_rust(src);
+        let starts = line_starts(src);
+        let eol = |row: usize| starts[row + 1] - 1; // the byte before the row's '\n'
+                                                    // `o` after `fn f() {` → the new row 1 is one level deep (the opener on row 0 counts).
+        assert_eq!(suggest_indent(&tree, eol(0), 1), 1);
+        // `o` after `if a {` → the new row 3 is two levels deep.
+        assert_eq!(suggest_indent(&tree, eol(2), 3), 2);
+        // `O` above `b;` (row 3) → the inserted row-3 line sits inside the if-block = level 2.
+        assert_eq!(suggest_indent(&tree, starts[3], 3), 2);
+        // The `{` inside the string on row 1 must NOT deepen: `o` there opens row 2 at level 1, not 2.
+        assert_eq!(suggest_indent(&tree, eol(1), 2), 1);
     }
 
     #[test]
