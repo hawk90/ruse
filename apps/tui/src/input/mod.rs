@@ -1593,6 +1593,10 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
+                    // `ge` / `gE` — backward to the end of the previous word / WORD (operator-aware via
+                    // `motion`, so `dge` deletes back through the previous word-end).
+                    KeyCode::Char('e') => self.motion(Motion::WordEndBack),
+                    KeyCode::Char('E') => self.motion(Motion::BigWordEndBack),
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // `gR` — enter Virtual Replace mode (tab-aware overwrite).
