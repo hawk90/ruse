@@ -36,6 +36,22 @@ enum Op {
     Delete,
     Change,
     Yank,
+    /// `gu` — lowercase the operator span. `gU` = upper, `g~` = toggle.
+    CaseLower,
+    CaseUpper,
+    CaseToggle,
+}
+
+impl Op {
+    /// The `WordCase` a case operator applies (`None` for the non-case operators).
+    fn case(self) -> Option<WordCase> {
+        match self {
+            Op::CaseLower => Some(WordCase::Downcase),
+            Op::CaseUpper => Some(WordCase::Upcase),
+            Op::CaseToggle => Some(WordCase::Toggle),
+            Op::Delete | Op::Change | Op::Yank => None,
+        }
+    }
 }
 
 /// How a completed command relates to the dot-repeat record.
@@ -73,6 +89,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::DeleteBack
         | C::ReplaceChar(..)
         | C::ToggleCase(_)
+        | C::CaseMotion { .. }
         | C::JoinLines
         | C::ShiftRight(_)
         | C::ShiftLeft(_)
@@ -119,6 +136,11 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         C::DeleteForward(_) => C::DeleteForward(n),
         C::ReplaceChar(_, c) => C::ReplaceChar(n, *c),
         C::ToggleCase(_) => C::ToggleCase(n),
+        C::CaseMotion { motion, case, .. } => C::CaseMotion {
+            count: n,
+            motion: *motion,
+            case: *case,
+        },
         C::ShiftRight(_) => C::ShiftRight(n),
         C::ShiftLeft(_) => C::ShiftLeft(n),
         C::Paste { after, .. } => C::Paste {
@@ -832,13 +854,20 @@ impl InputEngine {
         let cmd = match self.normal.op {
             Some(OpPending { op, count }) => {
                 let total = count.max(1) * self.mcount();
-                // A forced wise (`dvj`/`dVe`) resolves into `OpForced`; the `cw`->`ce` rewrite is a plain-
-                // change nicety that does not apply to the (rare) forced-change form.
-                if let Some(wise) = self.normal.forced_wise {
+                // `gu`/`gU`/`g~` recase the operator span (no forced-wise / `cw`->`ce` rewrites apply).
+                if let Some(case) = op.case() {
+                    Command::CaseMotion {
+                        count: total,
+                        motion: m,
+                        case,
+                    }
+                } else if let Some(wise) = self.normal.forced_wise {
                     let opk = match op {
                         Op::Delete => OpKind::Delete,
                         Op::Change => OpKind::Change,
                         Op::Yank => OpKind::Yank,
+                        // Case ops are handled by the `op.case()` branch above.
+                        Op::CaseLower | Op::CaseUpper | Op::CaseToggle => unreachable!(),
                     };
                     Command::OpForced {
                         op: opk,
@@ -859,6 +888,8 @@ impl InputEngine {
                             },
                         ),
                         Op::Yank => Command::Yank(total, m),
+                        // Case ops are handled by the `op.case()` branch above.
+                        Op::CaseLower | Op::CaseUpper | Op::CaseToggle => unreachable!(),
                     }
                 }
             }
@@ -869,6 +900,35 @@ impl InputEngine {
     }
 
     fn action(&mut self, cmd: Command) -> Feed {
+        self.reset();
+        Feed::Cmd(cmd)
+    }
+
+    /// Arm a case operator (`gu`/`gU`/`g~`) so the next motion recases its span. No doubling detection
+    /// here — the linewise `guu`/`gUU`/`g~~` form is handled where the second key is dispatched.
+    fn arm_case_op(&mut self, op: Op) -> Feed {
+        self.normal.op = Some(OpPending {
+            op,
+            count: self.mcount(),
+        });
+        self.normal.count = 0;
+        Feed::Pending
+    }
+
+    /// Emit the LINEWISE case command for a doubled case operator (`guu`/`gUU`/`g~~`) — recase the current
+    /// `count` lines. Called only with a case operator armed.
+    fn case_linewise(&mut self) -> Feed {
+        let cmd = match self.normal.op {
+            Some(OpPending { op, count }) => {
+                let case = op.case().expect("a case operator is armed");
+                Command::CaseMotion {
+                    count: count.max(1) * self.mcount(),
+                    motion: Motion::Line,
+                    case,
+                }
+            }
+            None => unreachable!("case_linewise called without an armed case operator"),
+        };
         self.reset();
         Feed::Cmd(cmd)
     }
@@ -1452,6 +1512,41 @@ impl InputEngine {
             KeyCode::Char('o') => self.action(Command::OpenBelow),
             KeyCode::Char('O') => self.action(Command::OpenAbove),
             KeyCode::Char('x') => self.action(Command::DeleteUnder(self.mcount())),
+            // Doubled case operators (`guu` / `gUU` / `g~~`): the second key repeats the operator to make
+            // it linewise. These guards must precede the plain `u`/`~` handlers.
+            KeyCode::Char('u')
+                if matches!(
+                    self.normal.op,
+                    Some(OpPending {
+                        op: Op::CaseLower,
+                        ..
+                    })
+                ) =>
+            {
+                self.case_linewise()
+            }
+            KeyCode::Char('U')
+                if matches!(
+                    self.normal.op,
+                    Some(OpPending {
+                        op: Op::CaseUpper,
+                        ..
+                    })
+                ) =>
+            {
+                self.case_linewise()
+            }
+            KeyCode::Char('~')
+                if matches!(
+                    self.normal.op,
+                    Some(OpPending {
+                        op: Op::CaseToggle,
+                        ..
+                    })
+                ) =>
+            {
+                self.case_linewise()
+            }
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Char('r') if ctrl => self.action(Command::Redo),
             KeyCode::Char('r') => {
@@ -1492,6 +1587,8 @@ impl InputEngine {
                         Op::Delete => SearchOp::Delete,
                         Op::Change => SearchOp::Change,
                         Op::Yank => SearchOp::Yank,
+                        // Recase-to-search (`gu/pat`) is not modeled; degrade to a plain search motion.
+                        Op::CaseLower | Op::CaseUpper | Op::CaseToggle => SearchOp::Move,
                     },
                     None => SearchOp::Move,
                 };
@@ -1605,6 +1702,17 @@ impl InputEngine {
                     // `motion`, so `dge` deletes back through the previous word-end).
                     KeyCode::Char('e') => self.motion(Motion::WordEndBack),
                     KeyCode::Char('E') => self.motion(Motion::BigWordEndBack),
+                    // `gu` / `gU` / `g~` — arm a case operator (lower / upper / toggle) over the next
+                    // motion. Only from Normal (no operator already pending): `dgu` is not a Vim command.
+                    KeyCode::Char('u') if self.normal.op.is_none() => {
+                        self.arm_case_op(Op::CaseLower)
+                    }
+                    KeyCode::Char('U') if self.normal.op.is_none() => {
+                        self.arm_case_op(Op::CaseUpper)
+                    }
+                    KeyCode::Char('~') if self.normal.op.is_none() => {
+                        self.arm_case_op(Op::CaseToggle)
+                    }
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // `gR` — enter Virtual Replace mode (tab-aware overwrite).
