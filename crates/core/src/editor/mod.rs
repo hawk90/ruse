@@ -1047,45 +1047,11 @@ impl EditorState {
     }
 }
 
-/// The byte offset of the next Vim-regex match at/after `from`, wrapping to the document start (F-009).
-/// Invalid UTF-8, an unrepresentable/malformed pattern, or no match yields `None` — the caller keeps the
-/// cursor (Vim rings the bell). Replaces the v0 literal `search::find_next`.
-fn search_fwd(
-    b: &[u8],
-    pattern: &str,
-    from: usize,
-    opts: crate::pattern::Options,
-) -> Option<usize> {
-    let hay = std::str::from_utf8(b).ok()?;
-    let mut from = from.min(hay.len());
-    while from < hay.len() && !hay.is_char_boundary(from) {
-        from += 1; // a regex search must start on a char boundary
-    }
-    let re = crate::pattern::Regex::compile(pattern, opts).ok()?;
-    re.find_at(hay, from)
-        .or_else(|| re.find_at(hay, 0))
-        .map(|m| m.start)
-}
-
-/// The byte offset of the previous match starting strictly before `before`, wrapping to the last match.
-fn search_bwd(
-    b: &[u8],
-    pattern: &str,
-    before: usize,
-    opts: crate::pattern::Options,
-) -> Option<usize> {
-    let hay = std::str::from_utf8(b).ok()?;
-    let re = crate::pattern::Regex::compile(pattern, opts).ok()?;
-    let all = re.find_all(hay);
-    all.iter()
-        .rev()
-        .find(|m| m.start < before)
-        .or_else(|| all.last())
-        .map(|m| m.start)
-}
-
 mod range;
 pub(crate) use range::*;
+
+mod search;
+use search::{search_bwd, search_fwd};
 
 mod substitute;
 /// The first decimal number in `s` (with an optional leading `-`), for `:sort n`. Lines without a number
