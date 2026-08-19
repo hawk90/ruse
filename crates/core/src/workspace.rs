@@ -344,6 +344,23 @@ impl Workspace {
         n
     }
 
+    /// Run `:[range]y` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): yank the
+    /// range's lines linewise into the unnamed register (and `"0`). Returns the number of lines yanked.
+    pub fn yank_lines(&mut self, range: SubRange) -> usize {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.yank_lines(range);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
     /// Move focus to the next Window in tile order, wrapping (Vim `C-w w`). No-op with one Window.
     pub fn focus_next(&mut self) {
         if !self.windows.is_empty() {
@@ -701,6 +718,34 @@ mod tests {
         let mut w = Workspace::new(b"x\ny\n".to_vec());
         w.delete_lines(SubRange::WholeFile);
         assert_eq!(w.focused().doc.bytes(), b"");
+    }
+
+    /// `:[range]y` yanks whole lines LINEWISE (non-destructive), so a following `p` opens them below.
+    #[test]
+    fn yank_lines_is_linewise_and_non_destructive() {
+        let mut w = Workspace::new(b"one\ntwo\nthree\n".to_vec());
+        assert_eq!(
+            w.yank_lines(SubRange::Lines(1, 2)),
+            2,
+            ":1,2y yanks two lines"
+        );
+        // The buffer is untouched by a yank.
+        assert_eq!(w.focused().doc.bytes(), b"one\ntwo\nthree\n");
+        // `p` (paste after) opens the yanked block below the cursor line (linewise).
+        w.apply(&Command::Paste {
+            after: true,
+            count: 1,
+        });
+        assert_eq!(w.focused().doc.bytes(), b"one\none\ntwo\ntwo\nthree\n");
+
+        // An unterminated last line still yanks a clean linewise block.
+        let mut w = Workspace::new(b"a\nb".to_vec());
+        assert_eq!(w.yank_lines(SubRange::Lines(2, 2)), 1);
+        w.apply(&Command::Paste {
+            after: true,
+            count: 1,
+        });
+        assert_eq!(w.focused().doc.bytes(), b"a\nb\nb");
     }
 
     /// F-007 #2: view-local state (cursor/selection/mode) lives in the View; an edit through one View
