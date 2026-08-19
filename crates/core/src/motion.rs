@@ -90,6 +90,10 @@ pub enum Motion {
     ParagraphFwd,
     /// Paragraph motion backward (`{`): to the start of the previous blank line (or start of buffer).
     ParagraphBack,
+    /// Sentence motion forward (`)`): to the start of the next sentence (exclusive charwise).
+    SentenceFwd,
+    /// Sentence motion backward (`(`): to the start of the current/previous sentence (exclusive charwise).
+    SentenceBack,
 }
 
 // --- shared byte / char-boundary / line helpers (one home; editor.rs reuses these) ---
@@ -481,6 +485,53 @@ fn sentence_break_at(b: &[u8], i: usize) -> Option<usize> {
     }
 }
 
+/// Vim `)` — the start of the NEXT sentence after `pos` (the byte after a terminator group + whitespace),
+/// or the buffer end when none. Terminator-based like [`sentence_span`] (blank-line/paragraph sentence
+/// boundaries are not modeled, matching the `is`/`as` object). Lands on a char boundary (starts follow
+/// ASCII whitespace).
+fn next_sentence_start(b: &[u8], pos: usize) -> usize {
+    let n = b.len();
+    let mut i = 0usize;
+    while i < n {
+        if let Some(j) = sentence_break_at(b, i) {
+            let mut k = j;
+            while k < n && is_ws(b[k]) {
+                k += 1;
+            }
+            if k > pos {
+                return k.min(n);
+            }
+            i = k.max(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    n
+}
+
+/// Vim `(` — the start of the current sentence, or the PREVIOUS sentence's start when `pos` is already at
+/// a start (the greatest sentence start strictly less than `pos`, else `0`).
+fn prev_sentence_start(b: &[u8], pos: usize) -> usize {
+    let n = b.len();
+    let mut best = 0usize;
+    let mut i = 0usize;
+    while i < n {
+        if let Some(j) = sentence_break_at(b, i) {
+            let mut k = j;
+            while k < n && is_ws(b[k]) {
+                k += 1;
+            }
+            if k < pos && k < n {
+                best = k;
+            }
+            i = k.max(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    best
+}
+
 /// The sentence object (`is` / `as`). A sentence ends at `.`/`!`/`?` (plus any closing quotes/brackets)
 /// followed by whitespace; the next sentence starts after that whitespace. `around` includes the trailing
 /// spaces/tabs. v0 keeps this within the buffer's flat text (blank-line paragraph splitting is not modeled).
@@ -850,6 +901,8 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             }
             Motion::ParagraphFwd => next_para_boundary(b, c),
             Motion::ParagraphBack => prev_para_boundary(b, c),
+            Motion::SentenceFwd => next_sentence_start(b, c),
+            Motion::SentenceBack => prev_sentence_start(b, c),
             Motion::WordFwd => next_word_start(b, c, false),
             Motion::WordBack => prev_word_start(b, c, false),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c, false)), // land ON the last char
@@ -896,6 +949,9 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // backward → [target, cursor). The operator's exclusive-linewise reshaping lives in `editor::op_span`.
         Motion::ParagraphFwd => (cur, target(b, cur, m, n)),
         Motion::ParagraphBack => (target(b, cur, m, n), cur),
+        // Sentence motions are exclusive charwise: forward → [cursor, next), backward → [prev, cursor).
+        Motion::SentenceFwd => (cur, target(b, cur, m, n)),
+        Motion::SentenceBack => (target(b, cur, m, n), cur),
         // inclusive end-of-word (Vim `de` / `dE`); `EmacsWordFwd` shares the same `[cursor, word_end_excl)`
         // span, which is exactly Emacs `kill-word` (`M-d`).
         Motion::WordEnd | Motion::BigWordEnd | Motion::EmacsWordFwd => {
@@ -1045,5 +1101,37 @@ mod backward_word_end_tests {
     fn dge_is_inclusive_of_both_ends() {
         // `dge` on 'r' of "foo bar" deletes back through the previous word-end, inclusive: [2, 7) → "fo".
         assert_eq!(char_span(b"foo bar", 6, Motion::WordEndBack, 1), (2, 7));
+    }
+}
+
+#[cfg(test)]
+mod sentence_motion_tests {
+    //! Vim `)` / `(` — forward/backward to a sentence start.
+    use super::{char_span, target, Motion};
+
+    #[test]
+    fn sentence_forward_and_back_find_starts() {
+        let b = b"Hello. World! Foo?"; // starts at 0 (Hello), 7 (World), 14 (Foo)
+        assert_eq!(target(b, 0, Motion::SentenceFwd, 1), 7);
+        assert_eq!(target(b, 7, Motion::SentenceFwd, 1), 14);
+        assert_eq!(
+            target(b, 14, Motion::SentenceFwd, 1),
+            18,
+            "past the last → buffer end"
+        );
+        // `(` from mid-sentence → that sentence's start; from a start → the previous start.
+        assert_eq!(target(b, 10, Motion::SentenceBack, 1), 7);
+        assert_eq!(target(b, 7, Motion::SentenceBack, 1), 0);
+        // Counted: two sentences forward.
+        assert_eq!(target(b, 0, Motion::SentenceFwd, 2), 14);
+    }
+
+    #[test]
+    fn d_close_paren_spans_to_next_sentence() {
+        // `d)` from the start deletes up to (exclusive) the next sentence: "Hello. " → "World! Foo?".
+        assert_eq!(
+            char_span(b"Hello. World! Foo?", 0, Motion::SentenceFwd, 1),
+            (0, 7)
+        );
     }
 }
