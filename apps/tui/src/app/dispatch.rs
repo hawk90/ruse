@@ -209,6 +209,16 @@ pub(crate) fn apply_effect(
     }
 }
 
+/// Buffer line count for the `:w` write report, matching Vim: an empty buffer is 1 line; otherwise it is
+/// the newline count, plus one when the last line has no trailing newline (`"a\nb"` and `"a\nb\n"` are both
+/// 2 lines).
+fn line_count(buf: &[u8]) -> usize {
+    if buf.is_empty() {
+        return 1;
+    }
+    buf.iter().filter(|&&b| b == b'\n').count() + usize::from(buf.last() != Some(&b'\n'))
+}
+
 pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String) {
     // Multi-buffer honesty (F-007): only a buffer WITH a file writes. A scratch buffer (`:enew`) has no
     // registry entry, so `:w` declines rather than clobbering another buffer's file.
@@ -223,12 +233,36 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String) {
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
             tracing::info!(event = "save", path = %bf.path.display(), bytes = bytes.len());
-            *status = format!("\"{}\" written", bf.path.display());
+            // Vim-style write report: `"file" 42L, 1024B written` (L = buffer lines, B = bytes on disk).
+            *status = format!(
+                "\"{}\" {}L, {}B written",
+                bf.path.display(),
+                line_count(ws.focused().doc.bytes()),
+                bytes.len()
+            );
         }
         Err(e) => {
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
             tracing::warn!(event = "save.failed", path = %bf.path.display(), error = %e);
             *status = format!("write failed: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::line_count;
+
+    /// The `:w` line count matches Vim across the edge cases: empty buffer = 1 line, a trailing newline
+    /// does NOT add a phantom empty line, and a missing final newline still counts its line.
+    #[test]
+    fn line_count_matches_vim() {
+        assert_eq!(line_count(b""), 1, "empty buffer is one line");
+        assert_eq!(line_count(b"a"), 1, "single line, no newline");
+        assert_eq!(line_count(b"a\n"), 1, "trailing newline is not a new line");
+        assert_eq!(line_count(b"a\nb"), 2, "missing final newline still counts");
+        assert_eq!(line_count(b"a\nb\n"), 2, "two lines with trailing newline");
+        assert_eq!(line_count(b"\n"), 1, "a lone newline is one line");
+        assert_eq!(line_count(b"\n\n"), 2, "two blank lines");
     }
 }
