@@ -30,6 +30,10 @@ pub enum Ex {
     Sort(SubRange, SortSpec),
     /// `:set {option}` — set one editor option on the focused view (F-009 / indent config).
     Set(EditorOption),
+    /// `:earlier [N]` / `:ea` — go back N changes in chronological (branch-aware) undo time (F-005 #3).
+    Earlier(u32),
+    /// `:later [N]` / `:lat` — go forward N changes in chronological undo time (F-005 #3).
+    Later(u32),
     /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
     Substitute(SubSpec),
     /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
@@ -104,6 +108,22 @@ pub struct SubSpec {
     pub ignore_case: Option<bool>,
     /// `c`: confirm each substitution interactively (handled by the frontend; PR-c2).
     pub confirm: bool,
+}
+
+/// Parse `:earlier [N]` / `:later [N]` (or `:ea` / `:lat`) — chronological undo time travel. The optional
+/// count is a number of CHANGES (default 1); Vim's time (`5m`) and file (`3f`) suffixes are not modeled.
+fn parse_time_travel(line: &str) -> Option<Ex> {
+    let (verb, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
+    let n: u32 = if rest.trim().is_empty() {
+        1
+    } else {
+        rest.trim().parse().ok()?
+    };
+    match verb {
+        "earlier" | "ea" => Some(Ex::Earlier(n)),
+        "later" | "lat" => Some(Ex::Later(n)),
+        _ => None,
+    }
 }
 
 /// Parse `:set {option}` for the options this MVP honors: `ignorecase`/`ic`, `smartcase`/`scs`,
@@ -402,6 +422,8 @@ pub fn parse_ex(line: &str) -> Ex {
             } else if let Some(ex) = parse_sort(line) {
                 ex
             } else if let Some(ex) = parse_set(line) {
+                ex
+            } else if let Some(ex) = parse_time_travel(line) {
                 ex
             } else if let Some(spec) = parse_substitute(line, false) {
                 // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).

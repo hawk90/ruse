@@ -410,6 +410,29 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         };
                         status = health::summary_line(&health::report(&inputs));
                     }
+                    // `:earlier`/`:later` walk chronological undo time by recording + applying N of the
+                    // g-/g+ commands (done HERE so they land in `recorded` for trace fidelity).
+                    Ex::Earlier(n) | Ex::Later(n) => {
+                        // The pattern binds `n` but not the direction; recover it from the parsed command.
+                        let older = matches!(parse_ex(&text), Ex::Earlier(_));
+                        let cmd = if older {
+                            Command::UndoOlder
+                        } else {
+                            Command::UndoNewer
+                        };
+                        for _ in 0..n {
+                            run_cmd(
+                                cmd.clone(),
+                                &mut ws,
+                                &files,
+                                &mut recorded,
+                                &mut status,
+                                &mut quit,
+                            );
+                        }
+                        status =
+                            format!("{n} change(s) {}", if older { "earlier" } else { "later" });
+                    }
                     // `:e {file}` opens a file into a new buffer (F-007) — shared with the file picker.
                     Ex::Edit(file) => {
                         status =
