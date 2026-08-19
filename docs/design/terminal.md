@@ -53,8 +53,9 @@ it, enters `Mode::Terminal`. Modes are per-view (VS-OBL-1): `Mode::Terminal` for
 `CTRL-\ CTRL-N` drops to `Mode::TerminalNormal` (the normal grammar over the empty doc — `:q`, `C-w`, window
 switch); `i`/`a`/`A` resume Terminal.
 
-**Deferred to slice 2b:** scrollback paging UI, scroll regions (`DECSTBM`), insert/delete char/line, mouse
-reporting, bracketed paste into the child, sixel.
+**Slice 2b (partly landed):** scroll regions (`DECSTBM`) + insert/delete line (`IL`/`DL`) + insert/delete/erase
+char (`ICH`/`DCH`/`ECH`) are in, so region-scrolling apps (less, vim, git log, tmux) render correctly. Still
+deferred: the scrollback **paging UI**, mouse reporting, bracketed paste into the child, sixel.
 
 ## Determinism boundary (F-022)
 
@@ -68,7 +69,8 @@ editor edits only — a terminal buffer's placeholder document stays empty.
 - **Slice 2 (landed):** VT grid — `screen::Cell` gained bg + bold/underline/italic (+ `flush_diff` SGR); the
   `term_grid::Grid` model + the `vte` parser (`DEP-TERM-PARSER`) + `paint_grid`; resize via `TIOCSWINSZ`.
   Unlocks full-screen TUIs (vim/htop).
-- **Slice 2b:** scrollback paging UI, scroll regions, insert/delete char/line, mouse, bracketed paste.
+- **Slice 2b (partly landed):** scroll regions + IL/DL/ICH/DCH/ECH in `term_grid.rs`; remaining = scrollback
+  paging UI, mouse, bracketed paste.
 - **Slice 3:** Windows ConPTY behind the `Pty` trait; grid re-emission without byte round-trip assumptions.
 - **Slice 4:** fold the reader into the `C-SCHEDULER` deterministic executor (`docs/design/scheduler.md`),
   honoring INV-SCHED-1 / INV-ASYNC-ORDER.

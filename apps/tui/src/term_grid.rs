@@ -52,6 +52,10 @@ pub struct Grid {
     /// The stashed MAIN screen while the alternate screen is active (`?1049h`); `None` on the main screen.
     alt: Option<Box<AltState>>,
     scrollback: VecDeque<Vec<GridCell>>,
+    /// The vertical scroll region `[top, bottom]` (0-based inclusive), set by `DECSTBM` (CSI `r`). Scrolls
+    /// (LF at the bottom margin, RI at the top, IL/DL) stay within it; default = the whole screen (slice 2b).
+    scroll_top: u16,
+    scroll_bottom: u16,
     /// Deferred wrap: a printable at the last column leaves the cursor there and arms this; the NEXT printable
     /// wraps first (so writing exactly `cols` chars does not scroll until char `cols+1`).
     wrap_next: bool,
@@ -80,6 +84,8 @@ impl Grid {
             saved: None,
             alt: None,
             scrollback: VecDeque::new(),
+            scroll_top: 0,
+            scroll_bottom: rows - 1,
             wrap_next: false,
             cursor_visible: true,
         }
@@ -134,6 +140,8 @@ impl Grid {
         self.cols = cols;
         self.cx = self.cx.min(cols - 1);
         self.cy = self.cy.min(rows - 1);
+        self.scroll_top = 0;
+        self.scroll_bottom = rows - 1;
         self.wrap_next = false;
     }
 
@@ -165,39 +173,68 @@ impl Grid {
     }
 
     fn line_feed(&mut self) {
-        if self.cy + 1 >= self.rows {
-            self.scroll_up();
-        } else {
+        if self.cy == self.scroll_bottom {
+            self.scroll_region_up(1); // at the bottom margin: scroll the region
+        } else if self.cy + 1 < self.rows {
             self.cy += 1;
         }
     }
 
-    /// Scroll the visible screen up one row: the top row goes to scrollback (main screen only), the rest shift
-    /// up, and a fresh blank row appears at the bottom. The cursor row is unchanged (it was already at bottom).
-    fn scroll_up(&mut self) {
-        let blank = GridCell::blank(self.style);
-        let top: Vec<GridCell> = self.cells[..self.cols as usize].to_vec();
-        if self.alt.is_none() {
-            self.scrollback.push_back(top);
-            while self.scrollback.len() > SCROLLBACK_MAX {
-                self.scrollback.pop_front();
-            }
+    /// Set all cells of row `r` to a blank carrying the current style.
+    fn blank_row(&mut self, r: u16) {
+        for c in 0..self.cols {
+            let i = self.idx(r, c);
+            self.cells[i] = GridCell::blank(self.style);
         }
-        self.cells.drain(..self.cols as usize);
-        self.cells
-            .extend(std::iter::repeat_n(blank, self.cols as usize));
+    }
+
+    /// Copy row `src` onto row `dst` (used by the region-scroll / insert-line shifts).
+    fn copy_row(&mut self, src: u16, dst: u16) {
+        for c in 0..self.cols {
+            let (s, d) = (self.idx(src, c), self.idx(dst, c));
+            self.cells[d] = self.cells[s].clone();
+        }
+    }
+
+    /// Scroll the scroll region up by `n` rows: rows move toward the top margin, blank rows fill the bottom.
+    /// When the region is the full screen (main buffer), the departing top rows go to scrollback.
+    fn scroll_region_up(&mut self, n: u16) {
+        let (top, bottom) = (self.scroll_top, self.scroll_bottom);
+        let full = top == 0 && bottom == self.rows - 1 && self.alt.is_none();
+        for _ in 0..n {
+            if full {
+                let row: Vec<GridCell> = (0..self.cols)
+                    .map(|c| self.cells[self.idx(top, c)].clone())
+                    .collect();
+                self.scrollback.push_back(row);
+                while self.scrollback.len() > SCROLLBACK_MAX {
+                    self.scrollback.pop_front();
+                }
+            }
+            for r in top..bottom {
+                self.copy_row(r + 1, r);
+            }
+            self.blank_row(bottom);
+        }
+    }
+
+    /// Scroll the scroll region down by `n` rows: rows move toward the bottom margin, blank rows fill the top.
+    fn scroll_region_down(&mut self, n: u16) {
+        let (top, bottom) = (self.scroll_top, self.scroll_bottom);
+        for _ in 0..n {
+            let mut r = bottom;
+            while r > top {
+                self.copy_row(r - 1, r);
+                r -= 1;
+            }
+            self.blank_row(top);
+        }
     }
 
     fn reverse_index(&mut self) {
-        if self.cy == 0 {
-            // scroll DOWN: drop the bottom row, insert a blank at the top.
-            let blank = GridCell::blank(self.style);
-            self.cells
-                .truncate((self.rows - 1) as usize * self.cols as usize);
-            let mut top = vec![blank; self.cols as usize];
-            top.extend(std::mem::take(&mut self.cells));
-            self.cells = top;
-        } else {
+        if self.cy == self.scroll_top {
+            self.scroll_region_down(1); // at the top margin: scroll the region down
+        } else if self.cy > 0 {
             self.cy -= 1;
         }
     }
@@ -247,6 +284,66 @@ impl Grid {
         }
     }
 
+    /// `IL` — insert `n` blank lines at the cursor row, pushing the rows below down within the scroll region
+    /// (rows shoved past the bottom margin are lost). A no-op when the cursor is outside the region.
+    fn insert_lines(&mut self, n: u16) {
+        if self.cy < self.scroll_top || self.cy > self.scroll_bottom {
+            return;
+        }
+        let n = n.min(self.scroll_bottom - self.cy + 1);
+        for _ in 0..n {
+            let mut r = self.scroll_bottom;
+            while r > self.cy {
+                self.copy_row(r - 1, r);
+                r -= 1;
+            }
+            self.blank_row(self.cy);
+        }
+    }
+
+    /// `DL` — delete `n` lines at the cursor row, pulling the rows below up within the scroll region; blank
+    /// rows fill the bottom of the region.
+    fn delete_lines(&mut self, n: u16) {
+        if self.cy < self.scroll_top || self.cy > self.scroll_bottom {
+            return;
+        }
+        let n = n.min(self.scroll_bottom - self.cy + 1);
+        for _ in 0..n {
+            for r in self.cy..self.scroll_bottom {
+                self.copy_row(r + 1, r);
+            }
+            self.blank_row(self.scroll_bottom);
+        }
+    }
+
+    /// `ICH` — insert `n` blank cells at the cursor, shifting the rest of the line right (cells past the right
+    /// edge are lost).
+    fn insert_chars(&mut self, n: u16) {
+        let n = n.min(self.cols - self.cx);
+        let row = self.cy;
+        let mut c = self.cols - 1;
+        while c >= self.cx + n {
+            let (src, dst) = (self.idx(row, c - n), self.idx(row, c));
+            self.cells[dst] = self.cells[src].clone();
+            c -= 1;
+        }
+        for c in self.cx..self.cx + n {
+            let i = self.idx(row, c);
+            self.cells[i] = GridCell::blank(self.style);
+        }
+    }
+
+    /// `DCH` — delete `n` cells at the cursor, shifting the rest of the line left; blanks fill the right edge.
+    fn delete_chars(&mut self, n: u16) {
+        let n = n.min(self.cols - self.cx);
+        let row = self.cy;
+        for c in self.cx..self.cols - n {
+            let (src, dst) = (self.idx(row, c + n), self.idx(row, c));
+            self.cells[dst] = self.cells[src].clone();
+        }
+        self.erase_span(row, self.cols - n, self.cols);
+    }
+
     fn enter_alt_screen(&mut self) {
         if self.alt.is_some() {
             return;
@@ -284,6 +381,8 @@ impl Grid {
         self.saved = None;
         self.cx = 0;
         self.cy = 0;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows - 1;
         self.wrap_next = false;
         self.cursor_visible = true;
         for cell in &mut self.cells {
@@ -426,6 +525,22 @@ impl Perform for Grid {
             'd' => self.cy = (n - 1).min(self.rows - 1),
             'J' => self.erase_in_display(first),
             'K' => self.erase_in_line(first),
+            'L' => self.insert_lines(n),
+            'M' => self.delete_lines(n),
+            '@' => self.insert_chars(n),
+            'P' => self.delete_chars(n),
+            'X' => self.erase_span(self.cy, self.cx, self.cx + n), // ECH: erase n cells in place
+            'r' => {
+                // DECSTBM: set the scroll region `[top, bottom]` (1-based, inclusive) and home the cursor.
+                let top = ps.first().copied().unwrap_or(1).max(1) - 1;
+                let bottom = ps.get(1).copied().filter(|&b| b != 0).unwrap_or(self.rows) - 1;
+                if top < bottom && bottom < self.rows {
+                    self.scroll_top = top;
+                    self.scroll_bottom = bottom;
+                    self.cx = 0;
+                    self.cy = 0;
+                }
+            }
             'm' => self.apply_sgr(&ps),
             's' => self.saved = Some((self.cy, self.cx)),
             'u' => {
@@ -444,7 +559,7 @@ impl Perform for Grid {
                 25 => self.cursor_visible = false,
                 _ => {}
             },
-            _ => {} // DECSTBM scroll region, ICH/DCH/IL/DL, etc. — slice 2b
+            _ => {} // mouse modes, DA, etc. — later
         }
     }
 
@@ -551,6 +666,45 @@ mod tests {
         assert_eq!(g.scrollback.len(), 1);
         assert_eq!(row_text(&g, 0), "bbb");
         assert_eq!(row_text(&g, 1), "ccc");
+    }
+
+    #[test]
+    fn scroll_region_confines_the_scroll() {
+        let mut g = Grid::new(4, 4);
+        feed(&mut g, b"\x1b[2;3r"); // region = rows 2..3 (1-based) → 0-based [1,2]
+        feed(&mut g, b"\x1b[1;1Ha\x1b[2;1Hb\x1b[3;1Hc\x1b[4;1Hd");
+        feed(&mut g, b"\x1b[3;1H\n"); // cursor to the bottom margin, LF scrolls only the region
+        assert_eq!(row_text(&g, 0).trim_end(), "a"); // above the region: untouched
+        assert_eq!(row_text(&g, 1).trim_end(), "c"); // region scrolled up
+        assert_eq!(row_text(&g, 2).trim_end(), ""); // fresh blank at the region bottom
+        assert_eq!(row_text(&g, 3).trim_end(), "d"); // below the region: untouched
+    }
+
+    #[test]
+    fn insert_and_delete_lines() {
+        let mut g = Grid::new(4, 4);
+        feed(&mut g, b"\x1b[1;1Ha\x1b[2;1Hb\x1b[3;1Hc\x1b[4;1Hd");
+        feed(&mut g, b"\x1b[2;1H\x1b[L"); // cursor row 2, insert a blank line
+        assert_eq!(row_text(&g, 1).trim_end(), "");
+        assert_eq!(row_text(&g, 2).trim_end(), "b");
+        feed(&mut g, b"\x1b[2;1H\x1b[M"); // delete it → b pulls back up
+        assert_eq!(row_text(&g, 1).trim_end(), "b");
+    }
+
+    #[test]
+    fn insert_and_delete_chars() {
+        let mut g = Grid::new(1, 6);
+        feed(&mut g, b"abcdef\x1b[1;3H\x1b[@"); // cursor col 3, insert a blank
+        assert_eq!(row_text(&g, 0), "ab cde");
+        feed(&mut g, b"\x1b[1;3H\x1b[P"); // delete a char
+        assert_eq!(row_text(&g, 0), "abcde ");
+    }
+
+    #[test]
+    fn erase_chars_in_place() {
+        let mut g = Grid::new(1, 6);
+        feed(&mut g, b"abcdef\x1b[1;2H\x1b[3X"); // erase 3 cells from col 2
+        assert_eq!(row_text(&g, 0), "a   ef");
     }
 
     #[test]
