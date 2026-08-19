@@ -52,6 +52,7 @@ pub(crate) fn paint_pane(
     sel: Option<(usize, usize)>,
     block: Option<&[(usize, usize)]>,
     hl: &[(usize, usize)],
+    underline: &[(usize, usize)],
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
@@ -80,6 +81,8 @@ pub(crate) fn paint_pane(
             || block.is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e))
             || hl.iter().any(|&(s, e)| i >= s && i < e);
         let fg = byte_color.get(i).copied().unwrap_or(Color::Reset);
+        // F-014: a diagnostic range is underlined (keeping its syntax colour, per the chosen style).
+        let underlined = underline.iter().any(|&(s, e)| i >= s && i < e);
         if g == "\t" {
             let stop = TAB_WIDTH - ((scol - x0) % TAB_WIDTH); // stops measured from the pane's left
             for _ in 0..stop {
@@ -90,6 +93,14 @@ pub(crate) fn paint_pane(
             }
         } else if scol + screen::cluster_width(g) > x1 {
             scol = x1; // a wide glyph would cross the edge — drop it and skip the rest of the line
+        } else if underlined {
+            let style = screen::CellStyle {
+                fg,
+                reverse: selected,
+                underline: true,
+                ..screen::CellStyle::default()
+            };
+            scol = cur.put_styled(srow, scol, g, &style);
         } else {
             scol = cur.put(srow, scol, g, fg, selected);
         }
@@ -153,6 +164,7 @@ pub(crate) fn render(
     focus_hl: &[(usize, usize)],
     palette_rows: &[(String, bool)],
     terminals: &TermViews,
+    diagnostics: &[crate::lsp::Diag],
 ) -> io::Result<()> {
     use crossterm::style::Color;
 
@@ -198,6 +210,12 @@ pub(crate) fn render(
         // The focused pane also paints the `:s///c` confirm match / incsearch+hlsearch matches (F-009
         // #1) in reverse video, on top of any live Visual selection.
         let hl: &[(usize, usize)] = if i == ws.focus() { focus_hl } else { &[] };
+        // F-014: underline the focused buffer's diagnostic ranges.
+        let underline: Vec<(usize, usize)> = if i == ws.focus() {
+            diagnostics.iter().map(|d| (d.start, d.end)).collect()
+        } else {
+            Vec::new()
+        };
         paint_pane(
             &mut cur,
             rect,
@@ -207,6 +225,7 @@ pub(crate) fn render(
             sel,
             block.as_deref(),
             hl,
+            &underline,
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -268,7 +287,12 @@ pub(crate) fn render(
             } else {
                 String::new()
             };
-            format!("{mode}  {name}{dirty}{win}  {status}")
+            // F-014: a diagnostic summary for the focused buffer, when any (errors/warnings).
+            let diag = match crate::lsp::counts(diagnostics) {
+                (0, 0) => String::new(),
+                (e, w) => format!("  [E:{e} W:{w}]"),
+            };
+            format!("{mode}  {name}{dirty}{win}{diag}  {status}")
         }
     };
     // Paint the status / command line into the last row (put_str truncates at the right edge).
