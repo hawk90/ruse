@@ -15,6 +15,19 @@ mod register_tests {
     }
 
     #[test]
+    fn set_cursor_clamps_out_of_range_and_mid_codepoint() {
+        // Past the buffer end → clamped to the end (no panic in the following col_of/slice).
+        let mut st = EditorState::new(b"abc".to_vec());
+        st.set_cursor(999);
+        assert_eq!(st.cursor(), 3);
+
+        // Mid-codepoint → snapped back to the char boundary (`é` is 2 bytes).
+        let mut st = EditorState::new("é".as_bytes().to_vec());
+        st.set_cursor(1);
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
     fn yy_then_p_duplicates_the_line_below() {
         let st = run(
             "aaa\nbbb\n",

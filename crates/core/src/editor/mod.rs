@@ -970,8 +970,12 @@ impl EditorState {
     /// caret was placed on, not column 0. Without this a teleport (goto, mouse, a fixture's start point)
     /// would leave `curswant` stale at 0 and vertical moves would snap to the line start.
     pub fn set_cursor(&mut self, pos: usize) {
-        self.view.cursor = pos;
         let b = self.doc.bytes();
+        // Clamp to the buffer and snap to a char boundary: `set_cursor` is a public seam (tests, a
+        // future goto/mouse), so an out-of-range or mid-codepoint `pos` must not leave the cursor where
+        // a later `col_of`/slice would panic. Vim never overshoots, so this is a no-op on valid input.
+        let pos = snap(b, pos.min(b.len()));
+        self.view.cursor = pos;
         self.view.curswant = col_of(b, line_start(b, pos), pos);
     }
 
