@@ -830,6 +830,28 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn apply_edits_replaces_disjoint_ranges_as_one_undo_group() {
+        let mut st = EditorState::new(b"hello world".to_vec());
+        st.apply_edits(&[
+            (0, 5, "Hi".to_string()),     // "hello" → "Hi"
+            (6, 11, "there".to_string()), // "world" → "there"
+        ]);
+        assert_eq!(text(&st), "Hi there");
+        // The whole set is one undo group (LSP origin).
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(text(&st), "hello world");
+    }
+
+    #[test]
+    fn apply_edits_skips_overlapping_and_out_of_range() {
+        let mut st = EditorState::new(b"abcdef".to_vec());
+        st.apply_edits(&[(0, 3, "X".to_string()), (2, 5, "Y".to_string())]); // overlap → refused
+        assert_eq!(text(&st), "abcdef");
+        st.apply_edits(&[(0, 99, "Z".to_string())]); // out of range → skipped
+        assert_eq!(text(&st), "abcdef");
+    }
+
+    #[test]
     fn open_line_indent_seeds_leading_whitespace() {
         // `o` with level 2 opens a new line below of 2×tab_width (=8) spaces, cursor after them.
         let st = run(

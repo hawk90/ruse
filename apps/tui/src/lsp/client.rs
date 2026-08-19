@@ -218,12 +218,15 @@ mod tests {
     }
 
     // End-to-end against a REAL rust-analyzer (not run in CI). Verifies the whole pipeline: spawn → handshake
-    // → didOpen → publishDiagnostics (parsed) and a hover request-response. Run: `cargo test -p ruse-tui --lib
-    // -- --ignored live_diagnostics_and_hover`. Requires `rustup component add rust-analyzer`.
+    // → didOpen → publishDiagnostics (parsed), a hover request-response, AND a formatting request-response.
+    // Run: `cargo test -p ruse-tui --lib -- --ignored live_diagnostics_hover_and_format`. Requires
+    // `rustup component add rust-analyzer`.
     #[test]
     #[ignore = "spawns a real rust-analyzer; run with --ignored"]
-    fn live_diagnostics_and_hover() {
-        use crate::lsp::protocol::{parse_hover, position_params};
+    fn live_diagnostics_hover_and_format() {
+        use crate::lsp::protocol::{
+            formatting_params, parse_hover, parse_text_edits, position_params,
+        };
         use std::process::Command as PCommand;
         use std::time::{Duration, Instant};
 
@@ -236,7 +239,8 @@ mod tests {
         )
         .unwrap();
         let main_rs = dir.join("src/main.rs");
-        let src = "fn main() {\n    let x: i32 = \"nope\";\n    let _ = x;\n}\n"; // type mismatch on line 1
+        // Valid syntax but a TYPE error (diagnostic) AND mis-formatted (rustfmt will emit edits).
+        let src = "fn main() {\nlet x:i32=\"nope\";\nlet _=x;\n}\n";
         std::fs::write(&main_rs, src).unwrap();
 
         let root_uri = format!("file://{}", dir.display());
@@ -245,9 +249,9 @@ mod tests {
             LspClient::spawn(PCommand::new("rust-analyzer"), &root_uri).expect("spawn RA");
         client.did_open(&file_uri, "rust", 1, src);
 
-        let (mut got_diag, mut got_hover) = (false, false);
-        let mut hover_id: Option<i64> = None;
-        let mut last_hover = Instant::now();
+        let (mut got_diag, mut got_hover, mut got_fmt) = (false, false, false);
+        let (mut hover_id, mut fmt_id): (Option<i64>, Option<i64>) = (None, None);
+        let (mut last_hover, mut last_fmt) = (Instant::now(), Instant::now());
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(120) {
             let polled = client.poll();
@@ -260,14 +264,24 @@ mod tests {
                 if Some(*id) == hover_id && parse_hover(result).is_some() {
                     got_hover = true;
                 }
+                if Some(*id) == fmt_id && !parse_text_edits(result).is_empty() {
+                    got_fmt = true;
+                }
             }
-            // Once the server is producing diagnostics it is ready; (re)send a hover on the `x` at line 2 col 12.
+            // Once diagnostics flow the server is ready; (re)send hover on `x` (line 1 col 4) and a format.
             if got_diag && !got_hover && last_hover.elapsed() > Duration::from_secs(2) {
                 hover_id =
-                    Some(client.request("textDocument/hover", position_params(&file_uri, 2, 12)));
+                    Some(client.request("textDocument/hover", position_params(&file_uri, 1, 4)));
                 last_hover = Instant::now();
             }
-            if got_diag && got_hover {
+            if got_diag && !got_fmt && last_fmt.elapsed() > Duration::from_secs(2) {
+                fmt_id = Some(client.request(
+                    "textDocument/formatting",
+                    formatting_params(&file_uri, 4, true),
+                ));
+                last_fmt = Instant::now();
+            }
+            if got_diag && got_hover && got_fmt {
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -275,5 +289,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert!(got_diag, "no diagnostics arrived from rust-analyzer");
         assert!(got_hover, "no hover response arrived from rust-analyzer");
+        assert!(got_fmt, "no formatting edits arrived from rust-analyzer");
     }
 }

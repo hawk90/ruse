@@ -910,6 +910,37 @@ impl EditorState {
         removed
     }
 
+    /// Apply a set of DISJOINT byte-range replacements (LSP formatting / code-action edits, F-014) as ONE undo
+    /// group tagged [`TransactionOrigin::Lsp`] — a separate undo unit from user edits (F-005). Each edit is
+    /// `(start, end, replacement)`; out-of-range or overlapping sets are skipped (formatter output is disjoint).
+    /// The cursor is clamped into the new buffer. No-op on an empty/invalid set.
+    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)]) {
+        let len = self.doc.bytes().len();
+        let mut valid: Vec<(usize, usize, String)> = edits
+            .iter()
+            .filter(|(s, e, _)| s <= e && *e <= len)
+            .cloned()
+            .collect();
+        if valid.is_empty() {
+            return;
+        }
+        valid.sort_by_key(|(s, _, _)| *s); // EditList requires ascending, disjoint edits
+        let es: Vec<Edit> = valid
+            .into_iter()
+            .map(|(s, e, t)| Edit::replace(s, e - s, t.into_bytes()))
+            .collect();
+        let Ok(list) = EditList::new(es) else {
+            return; // overlapping edits — refuse rather than corrupt the buffer
+        };
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::Lsp)
+            .with_hint(GroupHint::BreakBefore);
+        if self.doc.apply(txn).is_ok() {
+            self.view.last_was_edit = true;
+            let clamped = self.view.cursor.min(self.doc.bytes().len());
+            self.set_cursor(clamped);
+        }
+    }
+
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
     fn indent_unit(&self) -> Vec<u8> {
         match self.view.indent.style {
