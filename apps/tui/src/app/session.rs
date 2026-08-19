@@ -273,24 +273,27 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         } else {
             engine.cmdline().map(|(pfx, t, _)| (pfx, t))
         };
-        // F-011: reap terminals whose buffer was closed (Drop hangs up the child), then pull any pending
-        // PTY output into their scrollback so it paints this frame. `term_views` lends the scrollback bytes
-        // to the renderer. On non-unix this is always empty.
+        // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
+        // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
+        // `term_views` lends each grid to the renderer. On non-unix this is always empty.
         #[cfg(unix)]
-        let term_views: HashMap<DocumentId, &[u8]> = {
+        let term_views: crate::ui::render::TermViews = {
             let live: std::collections::HashSet<DocumentId> =
                 ws.buffers().iter().map(|b| b.id).collect();
             terminals.retain(|id, _| live.contains(id));
+            for (i, rect) in rects.iter().enumerate().take(ws.window_count()) {
+                let doc = ws.pane(i).view.doc();
+                if let Some(t) = terminals.get_mut(&doc) {
+                    t.resize(rect.h.max(1), rect.w.max(1));
+                }
+            }
             for t in terminals.values_mut() {
                 t.drain();
             }
-            terminals
-                .iter()
-                .map(|(id, t)| (*id, t.scrollback()))
-                .collect()
+            terminals.iter().map(|(id, t)| (*id, t.grid())).collect()
         };
         #[cfg(not(unix))]
-        let term_views: HashMap<DocumentId, &[u8]> = HashMap::new();
+        let term_views = crate::ui::render::TermViews::new();
         render(
             &mut out,
             &ws,

@@ -30,20 +30,44 @@ pub enum Content {
     Cluster(Box<str>),
 }
 
-/// One display cell: its content plus the attributes to draw it with.
+/// The drawing attributes of a cell: colours + text styles. `reverse` swaps fg/bg at draw time. The
+/// terminal grid (F-011 slice 2) sets the full set; the editor text path only ever uses `fg`+`reverse`
+/// (via [`Screen::put`]), leaving the rest at their defaults.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellStyle {
+    pub fg: Color,
+    pub bg: Color,
+    pub bold: bool,
+    pub underline: bool,
+    pub italic: bool,
+    pub reverse: bool,
+}
+
+impl Default for CellStyle {
+    fn default() -> CellStyle {
+        CellStyle {
+            fg: Color::Reset,
+            bg: Color::Reset,
+            bold: false,
+            underline: false,
+            italic: false,
+            reverse: false,
+        }
+    }
+}
+
+/// One display cell: its content plus the style to draw it with.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Cell {
     pub content: Content,
-    pub fg: Color,
-    pub reverse: bool,
+    pub style: CellStyle,
 }
 
 impl Cell {
     fn blank() -> Cell {
         Cell {
             content: Content::Blank,
-            fg: Color::Reset,
-            reverse: false,
+            style: CellStyle::default(),
         }
     }
 }
@@ -81,10 +105,26 @@ impl Screen {
             .then(|| row as usize * self.cols as usize + col as usize)
     }
 
-    /// Place grapheme cluster `g` at `(row, col)` and return the column AFTER it. A width-2 cluster
-    /// also marks the next cell as a continuation; a width-1 cluster fills one cell. A wide cluster
-    /// with no room for its second half is drawn as a blank so nothing is clipped mid-glyph.
+    /// Place grapheme cluster `g` at `(row, col)` with foreground `fg` and `reverse` (the editor text
+    /// path; background + text attributes stay default). Returns the column AFTER it. See [`Self::put_styled`].
     pub fn put(&mut self, row: u16, col: u16, g: &str, fg: Color, reverse: bool) -> u16 {
+        self.put_styled(
+            row,
+            col,
+            g,
+            &CellStyle {
+                fg,
+                reverse,
+                ..CellStyle::default()
+            },
+        )
+    }
+
+    /// Place grapheme cluster `g` at `(row, col)` with the full `style` (F-011 terminal grid) and return the
+    /// column AFTER it. A width-2 cluster also marks the next cell as a continuation; a width-1 cluster fills
+    /// one cell. A wide cluster with no room for its second half is drawn as a blank so nothing is clipped
+    /// mid-glyph.
+    pub fn put_styled(&mut self, row: u16, col: u16, g: &str, style: &CellStyle) -> u16 {
         let w = cluster_width(g);
         if w == 0 {
             return col;
@@ -95,22 +135,19 @@ impl Screen {
         if w == 2 && col + 1 >= self.cols {
             self.cells[i] = Cell {
                 content: Content::Blank,
-                fg,
-                reverse,
+                style: *style,
             };
             return self.cols;
         }
         self.cells[i] = Cell {
             content: Content::Cluster(g.into()),
-            fg,
-            reverse,
+            style: *style,
         };
         if w == 2 {
             if let Some(j) = self.idx(row, col + 1) {
                 self.cells[j] = Cell {
                     content: Content::Continuation,
-                    fg,
-                    reverse,
+                    style: *style,
                 };
             }
         }
@@ -243,6 +280,40 @@ mod tests {
             "run starts at the glyph, not its continuation at col 2"
         );
         assert_eq!(cluster(&d[0].2[0]), Some("广"));
+    }
+
+    #[test]
+    fn put_styled_carries_bg_and_attributes_and_diff_flags_a_bg_change() {
+        let mut s = Screen::new(4, 1);
+        let style = CellStyle {
+            fg: Color::AnsiValue(1),
+            bg: Color::AnsiValue(4),
+            bold: true,
+            underline: true,
+            ..CellStyle::default()
+        };
+        s.put_styled(0, 0, "X", &style);
+        assert_eq!(
+            s.cell(0, 0).style,
+            style,
+            "the full style is stored on the cell"
+        );
+        // A background-only change must show up in the diff (so flush_diff re-emits it).
+        let mut prev = Screen::new(4, 1);
+        prev.put_styled(
+            0,
+            0,
+            "X",
+            &CellStyle {
+                bg: Color::Reset,
+                ..style
+            },
+        );
+        assert_eq!(
+            s.diff(&prev).len(),
+            1,
+            "a bg-only difference is a changed run"
+        );
     }
 
     #[test]

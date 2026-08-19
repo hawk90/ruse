@@ -595,13 +595,14 @@ features:
     title: PTY-backed terminal buffer
     stage: post-mvp
     priority: should
-    # progress (slice 1, #291): the ASYNC SEAM is in — `:terminal` spawns `$SHELL` on a unix PTY
-    # (`apps/tui/src/pty.rs`, forkpty via libc, reader thread → mpsc), the event loop multiplexes PTY output
-    # against key input via `event::poll` (gated so no-terminal stays a blocking read), and output renders as
-    # sanitized line-mode text (`AnsiStrip`) in a first-class buffer with per-view Terminal/Terminal-Normal
-    # modes. Determinism boundary honored (terminal I/O is outside trace/replay). REMAINING: full VT grid +
-    # colors + resize + scrollback paging (slice 2), Windows ConPTY (slice 3), C-SCHEDULER integration
-    # (slice 4). Stays `planned` — this is the seam + line mode, not the full emulator. See docs/design/terminal.md.
+    # progress (slices 1+2): async seam + real VT grid. Slice 1 (#290): `:terminal` spawns `$SHELL` on a unix
+    # PTY (`apps/tui/src/pty.rs`, forkpty via libc, reader thread → mpsc), the loop multiplexes PTY output via
+    # `event::poll` (gated so no-terminal stays a blocking read), per-view Terminal/Terminal-Normal modes,
+    # determinism boundary honored. Slice 2: a real VT screen — `term_grid::Grid` driven by the `vte` parser
+    # (colors incl. truecolor, cursor addressing, erase, alt-screen, resize via TIOCSWINSZ), so full-screen
+    # TUIs (vim/htop) render. REMAINING: scrollback paging + scroll regions + insert/delete + mouse (slice 2b),
+    # Windows ConPTY (slice 3), C-SCHEDULER integration (slice 4). Stays `planned` — unix VT emulator, not yet
+    # cross-platform + scheduler-integrated. See docs/design/terminal.md.
     status: planned
     depends_on: [C-TERMINAL, C-WORKSPACE, C-SCHEDULER]
     summary: A terminal emulator as a first-class buffer (Unix PTY + Windows ConPTY).
