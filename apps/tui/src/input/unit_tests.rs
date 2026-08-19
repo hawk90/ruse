@@ -26,6 +26,14 @@ mod tests {
     }
 
     #[test]
+    fn substitute_char_s_is_change_right() {
+        // `s` = `cl`: change one char rightward; `3s` changes three. `cl` produces the same command.
+        assert_eq!(feed("s"), Feed::Cmd(Command::Change(1, Motion::Right)));
+        assert_eq!(feed("3s"), Feed::Cmd(Command::Change(3, Motion::Right)));
+        assert_eq!(feed("cl"), Feed::Cmd(Command::Change(1, Motion::Right)));
+    }
+
+    #[test]
     fn backward_word_end_g_prefix() {
         // `ge`/`gE` move; the count before `g` carries through; `dge` is an operator over the motion.
         assert_eq!(feed("ge"), Feed::Cmd(Command::Move(1, Motion::WordEndBack)));
