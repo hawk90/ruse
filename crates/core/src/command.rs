@@ -339,6 +339,8 @@ fn motion_token(m: Motion) -> String {
         Motion::MatchBracket => "match_bracket",
         Motion::ParagraphFwd => "paragraph_fwd",
         Motion::ParagraphBack => "paragraph_back",
+        Motion::SentenceFwd => "sentence_fwd",
+        Motion::SentenceBack => "sentence_back",
         // A single whitespace-free token so the `<count> <motion>` split still works: the char is its decimal
         // scalar value; `f`/`t` and forward/back are flags. e.g. `find_char:120:1:0` = `fx`.
         Motion::FindChar { ch, forward, till } => {
@@ -421,6 +423,8 @@ fn motion_from_token(s: &str) -> Option<Motion> {
         "match_bracket" => Motion::MatchBracket,
         "paragraph_fwd" => Motion::ParagraphFwd,
         "paragraph_back" => Motion::ParagraphBack,
+        "sentence_fwd" => Motion::SentenceFwd,
+        "sentence_back" => Motion::SentenceBack,
         _ => return None,
     })
 }

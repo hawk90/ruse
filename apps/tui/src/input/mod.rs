@@ -147,6 +147,8 @@ fn motion_key(code: KeyCode) -> Option<Motion> {
         KeyCode::Char('^') => Motion::LineFirstNonBlank,
         KeyCode::Char('}') => Motion::ParagraphFwd,
         KeyCode::Char('{') => Motion::ParagraphBack,
+        KeyCode::Char(')') => Motion::SentenceFwd,
+        KeyCode::Char('(') => Motion::SentenceBack,
         _ => return None,
     })
 }

@@ -34,6 +34,20 @@ mod tests {
     }
 
     #[test]
+    fn sentence_motions_parens() {
+        assert_eq!(feed(")"), Feed::Cmd(Command::Move(1, Motion::SentenceFwd)));
+        assert_eq!(feed("("), Feed::Cmd(Command::Move(1, Motion::SentenceBack)));
+        assert_eq!(
+            feed("d)"),
+            Feed::Cmd(Command::Delete(1, Motion::SentenceFwd))
+        );
+        assert_eq!(
+            feed("2("),
+            Feed::Cmd(Command::Move(2, Motion::SentenceBack))
+        );
+    }
+
+    #[test]
     fn backward_word_end_g_prefix() {
         // `ge`/`gE` move; the count before `g` carries through; `dge` is an operator over the motion.
         assert_eq!(feed("ge"), Feed::Cmd(Command::Move(1, Motion::WordEndBack)));
