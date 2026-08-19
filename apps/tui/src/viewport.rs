@@ -29,9 +29,42 @@ pub fn scroll_top(cursor_row: usize, height: usize, scrolloff: usize, top: usize
     }
 }
 
+/// Where a recenter command (`z`) places the cursor's line in the window.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RecenterTo {
+    /// `zz` / `z.` — the cursor's line at the vertical center.
+    Center,
+    /// `zt` / `z<CR>` — the cursor's line at the top.
+    Top,
+    /// `zb` / `z-` — the cursor's line at the bottom.
+    Bottom,
+}
+
+/// The scroll offset (`top`) that places `cursor_row` at the requested position in a `height`-row window
+/// (Vim `z`). Pure and saturating. The per-frame [`scroll_top`] pass then applies `scrolloff`, so `Top`/
+/// `Bottom` end up `scrolloff` rows inside the edge exactly as Vim's `zt`/`zb` do; `Center` is unaffected.
+pub fn recenter(cursor_row: usize, height: usize, to: RecenterTo) -> usize {
+    match to {
+        RecenterTo::Top => cursor_row,
+        RecenterTo::Center => cursor_row.saturating_sub(height / 2),
+        RecenterTo::Bottom => cursor_row.saturating_sub(height.saturating_sub(1)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recenter_positions_the_cursor_line() {
+        // A 20-row window, cursor at row 50.
+        assert_eq!(recenter(50, 20, RecenterTo::Top), 50);
+        assert_eq!(recenter(50, 20, RecenterTo::Center), 40); // 50 - 20/2
+        assert_eq!(recenter(50, 20, RecenterTo::Bottom), 31); // 50 - (20-1)
+                                                              // Near the top of the buffer, everything saturates at 0 (no negative scroll).
+        assert_eq!(recenter(2, 20, RecenterTo::Center), 0);
+        assert_eq!(recenter(0, 20, RecenterTo::Bottom), 0);
+    }
 
     #[test]
     fn short_buffer_never_scrolls() {
