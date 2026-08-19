@@ -20,6 +20,12 @@ pub enum Motion {
     /// Vim `^` / Emacs `back-to-indentation` (M-m): the first non-blank char of the current line (the line
     /// end when the line is all blank). Shared by both profiles — same target, so not a distinct command.
     LineFirstNonBlank,
+    /// Vim `g_` — the LAST non-blank char of the line (`{count}g_` = `count-1` lines down). Inclusive
+    /// under an operator (`dg_` deletes through the last non-blank).
+    LineLastNonBlank,
+    /// Vim `|` — go to the `count`-th (1-based) display column of the current line (`5|` = column 5).
+    /// Exclusive charwise under an operator.
+    Column,
     /// Small-word motions (Vim `w`/`b`/`e`): three classes — whitespace, word (alnum + `_` + non-ASCII),
     /// punctuation — so `foo.bar` is three words.
     WordFwd,
@@ -876,6 +882,22 @@ pub(crate) fn first_non_blank(b: &[u8], line_start_pos: usize) -> usize {
     i
 }
 
+/// The last non-blank char of the line containing `pos` (Vim `g_`), or the line start when the line is
+/// blank/empty. Lands ON the char (like `$`), not past it.
+fn last_non_blank(b: &[u8], pos: usize) -> usize {
+    let ls = line_start(b, pos);
+    let le = line_end(b, ls);
+    let mut i = le;
+    while i > ls {
+        let p = prev_boundary(b, i);
+        if b[p] != b' ' && b[p] != b'\t' {
+            return p;
+        }
+        i = p;
+    }
+    ls
+}
+
 /// Byte start of the `n`-th line (1-based), clamped to the last line.
 pub(crate) fn nth_line_start(b: &[u8], n: u32) -> usize {
     let target = n.max(1) - 1; // 0-based
@@ -970,6 +992,22 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     if m == Motion::MatchBracket {
         return match_bracket(b, cur0).unwrap_or(cur0);
     }
+    // `{count}g_`: the count is `count-1` lines down, then the last non-blank char (not a repeat).
+    if m == Motion::LineLastNonBlank {
+        let mut ls = line_start(b, cur0);
+        for _ in 1..n {
+            let le = line_end(b, ls);
+            if le >= b.len() {
+                break;
+            }
+            ls = le + 1;
+        }
+        return last_non_blank(b, ls);
+    }
+    // `{count}|`: the count is the 1-based display column of the current line (not a repeat).
+    if m == Motion::Column {
+        return at_col(b, line_start(b, cur0), (n - 1) as usize);
+    }
     let mut c = cur0;
     for _ in 0..n {
         c = match m {
@@ -1011,6 +1049,8 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             | Motion::GotoLine
             | Motion::LastLine
             | Motion::MatchBracket
+            | Motion::LineLastNonBlank
+            | Motion::Column
             | Motion::InnerWord
             | Motion::AWord
             | Motion::InnerBigWord
@@ -1070,10 +1110,15 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             }
             (e, next_boundary(b, cur))
         }
-        // `^` is exclusive and can point either way (cursor in the indent → forward): span the ordered pair.
-        Motion::LineFirstNonBlank => {
+        // `^` / `|` are exclusive and can point either way (indent / column left or right): ordered pair.
+        Motion::LineFirstNonBlank | Motion::Column => {
             let t = target(b, cur, m, n);
             (cur.min(t), cur.max(t))
+        }
+        // `g_` is INCLUSIVE (Vim `dg_` deletes through the last non-blank char).
+        Motion::LineLastNonBlank => {
+            let t = target(b, cur, m, n);
+            (cur.min(t), next_boundary(b, cur.max(t)))
         }
         // char-search: forward includes through the landing char (`dfx` incl. x, `dtx` up to x); backward
         // spans from the landing to the cursor. A missing match is a no-op range.
@@ -1196,6 +1241,36 @@ mod backward_word_end_tests {
     fn dge_is_inclusive_of_both_ends() {
         // `dge` on 'r' of "foo bar" deletes back through the previous word-end, inclusive: [2, 7) → "fo".
         assert_eq!(char_span(b"foo bar", 6, Motion::WordEndBack, 1), (2, 7));
+    }
+}
+
+#[cfg(test)]
+mod gunderscore_column_tests {
+    //! Vim `g_` (last non-blank) and `|` (go to column).
+    use super::{char_span, target, Motion};
+
+    #[test]
+    fn g_underscore_lands_on_last_non_blank() {
+        let b = b"  foo bar  \nx\n"; // line 0: 'r' is the last non-blank at index 8
+        assert_eq!(target(b, 0, Motion::LineLastNonBlank, 1), 8);
+        assert_eq!(
+            target(b, 8, Motion::LineLastNonBlank, 1),
+            8,
+            "idempotent on the char"
+        );
+        // `dg_` is inclusive: from 'f' (index 2) through 'r' → "foo bar".
+        assert_eq!(char_span(b, 2, Motion::LineLastNonBlank, 1), (2, 9));
+    }
+
+    #[test]
+    fn pipe_goes_to_the_count_th_column() {
+        let b = b"abcdef\n";
+        assert_eq!(target(b, 0, Motion::Column, 1), 0, "1| = column 1");
+        assert_eq!(target(b, 0, Motion::Column, 5), 4, "5| = column 5");
+        // Past the line end clamps to the last column.
+        assert_eq!(target(b, 0, Motion::Column, 99), 6);
+        // `d5|` from column 1 spans the ordered pair [0, 4).
+        assert_eq!(char_span(b, 0, Motion::Column, 5), (0, 4));
     }
 }
 
