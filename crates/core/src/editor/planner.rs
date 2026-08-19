@@ -884,6 +884,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 plan_reindent(st, first, last, hint)
             }
         }
+        Command::SetIndents {
+            first_line,
+            last_line,
+            levels,
+        } => plan_set_indents(st, *first_line, *last_line, levels, hint),
         // Paste reads the pending register (`"xp`) or the unnamed slot; `commit` clears the pending slot.
         Command::Paste { after, count } => paste(
             b,
@@ -1460,6 +1465,63 @@ fn shift_left_remove(b: &[u8], ls: usize, le: usize, tab_width: usize) -> usize 
 /// non-blank is a closer dedents one level, and blank lines are left empty. Structural / language-agnostic:
 /// brackets inside strings or comments are NOT excluded (documented). One transaction (edits are disjoint,
 /// ascending line starts). Cursor → the first reindented line's new first-non-blank.
+/// Apply explicit indent `levels` (one per line from `first_line`) to `[first_line, last_line]`: each
+/// non-blank line's leading whitespace becomes `levels[i] × indent_unit`; blank lines are emptied. One
+/// transaction. The frontend supplies tree-derived levels (tree-aware `=`); the core stays view-free.
+fn plan_set_indents(
+    st: &EditorState,
+    first_line: usize,
+    last_line: usize,
+    levels: &[usize],
+    hint: GroupHint,
+) -> Plan {
+    let b = st.bytes();
+    let unit = st.indent_unit();
+    let mut line_starts: Vec<usize> = vec![0];
+    for (i, &c) in b.iter().enumerate() {
+        if c == b'\n' {
+            line_starts.push(i + 1);
+        }
+    }
+    let last = last_line.min(line_starts.len().saturating_sub(1));
+    let first = first_line.min(last);
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut first_cursor = line_starts[first];
+    #[allow(clippy::needless_range_loop)]
+    for li in first..=last {
+        let ls = line_starts[li];
+        let le = line_end(b, ls);
+        let fnb = motion::first_non_blank(b, ls);
+        let want: Vec<u8> = if fnb >= le {
+            Vec::new() // blank line → no indent
+        } else {
+            let n = unit.len() * levels.get(li - first).copied().unwrap_or(0);
+            unit.iter().cycle().take(n).copied().collect()
+        };
+        if li == first {
+            first_cursor = ls + want.len();
+        }
+        if b[ls..fnb] != want[..] {
+            edits.push(Edit::replace(ls, fnb - ls, want));
+        }
+    }
+    if edits.is_empty() {
+        return nop(first_cursor.min(b.len()), st.view.mode);
+    }
+    let edits =
+        EditList::new(edits).expect("indent edits sit at distinct line starts, so disjoint");
+    Plan {
+        action: Action::Txn { edits, hint },
+        cursor: first_cursor,
+        mode: st.mode(),
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+        set_mark: None,
+    }
+}
+
 fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: GroupHint) -> Plan {
     let b = st.bytes();
     let unit = st.indent_unit();
