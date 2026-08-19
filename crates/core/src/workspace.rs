@@ -25,7 +25,7 @@
 use crate::command::Command;
 use crate::document::{Document, DocumentId};
 use crate::editor::{
-    apply_command, CaretGravity, EditorState, GlobalCmd, SubFlags, SubOutcome, SubRange,
+    apply_command, CaretGravity, EditorState, GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange,
     Substitution, View,
 };
 use crate::effect::Effect;
@@ -354,6 +354,40 @@ impl Workspace {
 
         let mut st = EditorState::from_parts(doc, view);
         let n = st.yank_lines(range);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
+    /// Run `:[range]m {addr}` against the FOCUSED window (swap-trick): move the range's lines to after the
+    /// destination. Returns the lines moved, or `None` if the destination is inside the source.
+    pub fn move_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.move_lines(range, dest);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
+    /// Run `:[range]t {addr}` / `:copy` against the FOCUSED window (swap-trick): copy the range's lines to
+    /// after the destination. Returns the lines copied.
+    pub fn copy_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.copy_lines(range, dest);
         let (doc, view) = st.into_parts();
 
         self.docs[slot] = Some(doc);
@@ -746,6 +780,65 @@ mod tests {
             count: 1,
         });
         assert_eq!(w.focused().doc.bytes(), b"a\nb\nb");
+    }
+
+    /// `:[range]m {addr}` moves whole lines to after the destination as one undo group; a destination
+    /// inside the source is declined (E134).
+    #[test]
+    fn move_lines_relocates_the_span() {
+        let mut w = Workspace::new(b"one\ntwo\nthree\nfour\n".to_vec());
+        assert_eq!(
+            w.move_lines(SubRange::Lines(1, 2), LineAddr::Line(4)),
+            Some(2)
+        );
+        assert_eq!(w.focused().doc.bytes(), b"three\nfour\none\ntwo\n");
+        w.apply(&Command::Undo);
+        assert_eq!(
+            w.focused().doc.bytes(),
+            b"one\ntwo\nthree\nfour\n",
+            "one undo group"
+        );
+
+        // `:3,4m0` → to the top.
+        let mut w = Workspace::new(b"one\ntwo\nthree\nfour\n".to_vec());
+        assert_eq!(
+            w.move_lines(SubRange::Lines(3, 4), LineAddr::Line(0)),
+            Some(2)
+        );
+        assert_eq!(w.focused().doc.bytes(), b"three\nfour\none\ntwo\n");
+
+        // `:m$` on the cursor's line (line 1) → to the end.
+        let mut w = Workspace::new(b"a\nb\nc\n".to_vec());
+        assert_eq!(w.move_lines(SubRange::CurrentLine, LineAddr::Last), Some(1));
+        assert_eq!(w.focused().doc.bytes(), b"b\nc\na\n");
+
+        // Destination inside the source → declined (Vim E134).
+        let mut w = Workspace::new(b"a\nb\nc\nd\n".to_vec());
+        assert_eq!(w.move_lines(SubRange::Lines(2, 3), LineAddr::Line(2)), None);
+        assert_eq!(
+            w.focused().doc.bytes(),
+            b"a\nb\nc\nd\n",
+            "declined move leaves the buffer"
+        );
+    }
+
+    /// `:[range]t {addr}` copies whole lines to after the destination, leaving the source in place.
+    #[test]
+    fn copy_lines_duplicates_the_span() {
+        let mut w = Workspace::new(b"a\nb\nc\n".to_vec());
+        assert_eq!(
+            w.copy_lines(SubRange::Lines(1, 1), LineAddr::Line(2)),
+            Some(1)
+        );
+        assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nc\n");
+
+        // `:1,2t0` copies the block to the top.
+        let mut w = Workspace::new(b"a\nb\nc\n".to_vec());
+        assert_eq!(
+            w.copy_lines(SubRange::Lines(1, 2), LineAddr::Line(0)),
+            Some(2)
+        );
+        assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
     }
 
     /// F-007 #2: view-local state (cursor/selection/mode) lives in the View; an edit through one View

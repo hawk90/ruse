@@ -22,6 +22,10 @@ pub enum Ex {
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
     Yank(SubRange),
+    /// `:[range]m {addr}`/`:move` — move the range's lines to after the destination line.
+    Move(SubRange, LineAddr),
+    /// `:[range]t {addr}`/`:copy`/`:co` — copy the range's lines to after the destination line.
+    Copy(SubRange, LineAddr),
     /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
     Substitute(SubSpec),
     /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
@@ -306,6 +310,10 @@ pub fn parse_ex(line: &str) -> Ex {
                 Ex::Delete(range)
             } else if let Some(range) = parse_range_verb(line, &["y", "yank"]) {
                 Ex::Yank(range)
+            } else if let Some((range, dest)) = parse_range_verb_dest(line, &["move", "m"]) {
+                Ex::Move(range, dest)
+            } else if let Some((range, dest)) = parse_range_verb_dest(line, &["copy", "co", "t"]) {
+                Ex::Copy(range, dest)
             } else if let Some(spec) = parse_substitute(line, false) {
                 // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
                 Ex::Substitute(spec)
@@ -316,6 +324,30 @@ pub fn parse_ex(line: &str) -> Ex {
                 Ex::Unknown(line.to_string())
             }
         }
+    }
+}
+
+/// Parse a `:[range]<verb> {addr}` line (`:m`/`:move`, `:t`/`:copy`/`:co`) into `(range, dest)`. The verb
+/// (after the range prefix) must be one of `verbs` (longest-first), and a destination address is required.
+fn parse_range_verb_dest(line: &str, verbs: &[&str]) -> Option<(SubRange, LineAddr)> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+    // Strip the verb (longest match first so `move` beats `m`), leaving the destination address.
+    let addr_str = verbs.iter().find_map(|v| rest.strip_prefix(v))?;
+    let dest = parse_line_addr(addr_str.trim())?;
+    let range = parse_sub_range(range_str)?;
+    Some((range, dest))
+}
+
+/// Parse a `:m`/`:t` destination address: `0`/`N` (after line N, 0 = top), `$` (last line), `.` (current).
+fn parse_line_addr(s: &str) -> Option<LineAddr> {
+    match s {
+        "" => None, // `:m`/`:t` require a destination
+        "$" => Some(LineAddr::Last),
+        "." => Some(LineAddr::Current),
+        _ => s.parse::<usize>().ok().map(LineAddr::Line),
     }
 }
 
