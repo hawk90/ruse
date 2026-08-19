@@ -286,6 +286,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_time_travel() {
+        assert_eq!(parse_ex("earlier"), Ex::Earlier(1));
+        assert_eq!(parse_ex("ea 3"), Ex::Earlier(3));
+        assert_eq!(parse_ex("later"), Ex::Later(1));
+        assert_eq!(parse_ex("lat 5"), Ex::Later(5));
+        // A non-numeric count is not understood → Unknown.
+        assert!(matches!(parse_ex("earlier x"), Ex::Unknown(_)));
+    }
+
+    #[test]
     fn parse_set_options() {
         use ruse_core::EditorOption;
         assert_eq!(parse_ex("set ic"), Ex::Set(EditorOption::IgnoreCase(true)));
