@@ -693,6 +693,21 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 } else {
                     cmd
                 };
+                // Closer auto-dedent (F-015 Phase 3a): a `}`/`)`/`]` typed in a tree-backed (code) buffer
+                // realigns the line to its matching opener. Gated on a live tree so plain-text editing is
+                // untouched; the core's bytes bracket-match decides whether to realign. Dot-repeat replays
+                // the plain `InsertChar` (column unchanged), like Phase 2.
+                let cmd = match cmd {
+                    Command::InsertChar(c @ ('}' | ')' | ']'))
+                        if highlighters
+                            .get(&ws.focused_buffer())
+                            .and_then(highlight::CachedHighlight::tree)
+                            .is_some() =>
+                    {
+                        Command::InsertCloser { ch: c }
+                    }
+                    other => other,
+                };
                 // A completed search turns on hlsearch for that pattern (F-009 #1).
                 if let Some(p) = search_pattern(&cmd) {
                     search_hl = Some(p);
