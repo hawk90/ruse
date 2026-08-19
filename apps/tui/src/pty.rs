@@ -83,7 +83,6 @@ impl UnixPty {
         })?;
         let argv = [c_shell.as_ptr(), ptr::null()];
 
-        // `*mut` pointers: they match apple's `forkpty` signature and coerce to linux's `*const` params.
         let mut winsize = libc::winsize {
             ws_row: rows,
             ws_col: cols,
@@ -91,9 +90,11 @@ impl UnixPty {
             ws_ypixel: 0,
         };
         let mut master: RawFd = -1;
+        // Pass raw pointers (not `&mut`) so the call fits BOTH signatures: apple's `*mut winsize` and linux's
+        // `*const winsize` (a `*mut` coerces to `*const`), without clippy's `unnecessary_mut_passed` firing.
+        let winp: *mut libc::winsize = &mut winsize;
         // SAFETY: `master` is a valid out-pointer; name/termios are NULL (defaults); winsize is initialised.
-        let pid =
-            unsafe { libc::forkpty(&mut master, ptr::null_mut(), ptr::null_mut(), &mut winsize) };
+        let pid = unsafe { libc::forkpty(&mut master, ptr::null_mut(), ptr::null_mut(), winp) };
         if pid < 0 {
             return Err(io::Error::last_os_error());
         }
