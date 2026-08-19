@@ -2,16 +2,11 @@
 //! hot path. `line_math` measured the old scan at 0.6–2.1 ms on a 100k-line buffer; this shows the cached
 //! lookups are O(log n)/O(1), and the rebuild (once per EDIT, not per frame) is the only O(n) cost left.
 
-// The `#[path]` include drags the module's `#[cfg(test)]` items into this bench-only target; allow the
-// dead code / unused imports here as `highlight_parse` does (a frontend-lib split would drop this).
-#![allow(dead_code, unused_imports)]
-
-#[path = "../src/line_index.rs"]
-mod line_index;
-
+// The line index lives in the `ruse-tui` library, so this bench imports it rather than re-compiling the
+// module via `#[path]` — the frontend-lib split made `ruse_tui::line_index` reachable.
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use line_index::LineIndex;
 use ruse_core::Revision;
+use ruse_tui::line_index::LineIndex;
 
 fn source(lines: usize) -> Vec<u8> {
     "    let value = compute(x, y) + offset;\n"

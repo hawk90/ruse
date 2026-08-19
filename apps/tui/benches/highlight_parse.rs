@@ -3,20 +3,12 @@
 //! trigger). `highlight_incremental` is the cost AFTER F-015 #3: reuse the previous tree and reparse only
 //! the edited span. The gap between the two groups is the win.
 //!
-//! `apps/tui` is a binary (no lib target), so the module is included directly rather than imported; a later
-//! frontend-lib split would let benches/tests `use ruse_tui::highlight` instead.
-
-// This bench only exercises `spans()`; the `#[path]`-included module drags fields and a test mod that are
-// unused in this target (they are exercised by the real `render`/`cargo test`), tripping dead_code and
-// unused_imports here alone. Allow both for the bench shim, never for production code. A later frontend-lib
-// split would replace this include with `use ruse_tui::highlight` and drop the allow.
-#![allow(dead_code, unused_imports)]
-
-#[path = "../src/highlight.rs"]
-mod highlight;
+//! The highlighter lives in the `ruse-tui` library, so this bench imports it (`use ruse_tui::highlight`)
+//! rather than re-compiling the module — the frontend-lib split removed the old `#[path]` include.
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use ruse_core::Revision;
+use ruse_tui::highlight;
 
 fn source(lines: usize) -> Vec<u8> {
     "    let value = compute(x, y) + offset; // note\n"
