@@ -744,6 +744,10 @@ impl EditorState {
         let spans = line_spans(hay);
         let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
+        // `line_spans` counts a phantom empty line after a trailing '\n'; the split/pop `lines` vec does
+        // not, so clamp to the vec.
+        let last = last.min(nlines - 1);
+        let first = first.min(last);
         // Destination as a 0-based insert index in `0..=nlines`.
         let ins = match dest {
             LineAddr::Line(n) => n.min(nlines),
@@ -790,6 +794,77 @@ impl EditorState {
         self.view.last_was_edit = true;
         self.view.cursor = cursor.min(self.doc.bytes().len());
         Some(count)
+    }
+
+    /// `:[range]sort[!] [n] [u]` — sort the range's lines (whole file when the caller passes `WholeFile`)
+    /// as one undo group: lexicographic, or `numeric` on each line's first decimal number; `reverse` (`!`)
+    /// descending; `unique` (`u`) drops adjacent duplicates after sorting. Returns the lines removed by `u`.
+    pub fn sort_lines(
+        &mut self,
+        range: SubRange,
+        reverse: bool,
+        numeric: bool,
+        unique: bool,
+    ) -> usize {
+        let bytes = self.doc.bytes();
+        let Ok(hay) = std::str::from_utf8(bytes) else {
+            return 0;
+        };
+        let had_trailing_nl = hay.ends_with('\n');
+        let mut lines: Vec<String> = if hay.is_empty() {
+            Vec::new()
+        } else {
+            let mut v: Vec<String> = hay.split('\n').map(str::to_string).collect();
+            if had_trailing_nl {
+                v.pop();
+            }
+            v
+        };
+        if lines.is_empty() {
+            return 0;
+        }
+        let spans = line_spans(hay);
+        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let (first, last) = resolve_line_range(range, &spans, cursor_line);
+        // `line_spans` counts a phantom empty line after a trailing '\n'; the split/pop `lines` vec does
+        // not, so clamp the resolved indices to the vec.
+        let last = last.min(lines.len() - 1);
+        let first = first.min(last);
+
+        let mut seg: Vec<String> = lines[first..=last].to_vec();
+        if numeric {
+            seg.sort_by_key(|l| first_number(l));
+        } else {
+            seg.sort();
+        }
+        if unique {
+            seg.dedup();
+        }
+        if reverse {
+            seg.reverse();
+        }
+        let removed = (last - first + 1) - seg.len();
+        lines.splice(first..=last, seg);
+
+        let mut text = lines.join("\n");
+        if had_trailing_nl && !text.is_empty() {
+            text.push('\n');
+        }
+        let new_bytes = text.into_bytes();
+        let cursor = new_bytes
+            .split_inclusive(|&b| b == b'\n')
+            .take(first)
+            .map(<[u8]>::len)
+            .sum::<usize>()
+            .min(new_bytes.len());
+        let list = EditList::new(vec![Edit::replace(0, bytes.len(), new_bytes)])
+            .expect("a single whole-buffer replace is well-formed");
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc.apply(txn).expect("sort applies cleanly");
+        self.view.last_was_edit = true;
+        self.view.cursor = cursor.min(self.doc.bytes().len());
+        removed
     }
 
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
@@ -935,6 +1010,23 @@ mod range;
 pub(crate) use range::*;
 
 mod substitute;
+/// The first decimal number in `s` (with an optional leading `-`), for `:sort n`. Lines without a number
+/// sort as `0` (Vim keeps them before the numbered lines, which a stable sort preserves).
+fn first_number(s: &str) -> i64 {
+    let b = s.as_bytes();
+    for i in 0..b.len() {
+        if b[i].is_ascii_digit() {
+            let start = if i > 0 && b[i - 1] == b'-' { i - 1 } else { i };
+            let mut j = i;
+            while j < b.len() && b[j].is_ascii_digit() {
+                j += 1;
+            }
+            return s[start..j].parse::<i64>().unwrap_or(0);
+        }
+    }
+    0
+}
+
 pub(crate) use substitute::{expand_replacement, line_spans, resolve_line_range};
 pub use substitute::{GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange, Substitution};
 

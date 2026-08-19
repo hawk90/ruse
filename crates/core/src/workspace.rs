@@ -395,6 +395,29 @@ impl Workspace {
         n
     }
 
+    /// Run `:[range]sort` against the FOCUSED window (swap-trick): sort the range's lines as one undo
+    /// group. Returns the number of lines removed by the `unique` flag.
+    pub fn sort_lines(
+        &mut self,
+        range: SubRange,
+        reverse: bool,
+        numeric: bool,
+        unique: bool,
+    ) -> usize {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.sort_lines(range, reverse, numeric, unique);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
     /// Move focus to the next Window in tile order, wrapping (Vim `C-w w`). No-op with one Window.
     pub fn focus_next(&mut self) {
         if !self.windows.is_empty() {
@@ -839,6 +862,39 @@ mod tests {
             Some(2)
         );
         assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
+    }
+
+    /// `:[range]sort` sorts lines lexicographically or numerically, with `!` reverse and `u` unique, as
+    /// one undo group; a range limits it to those lines.
+    #[test]
+    fn sort_lines_variants() {
+        let mut w = Workspace::new(b"banana\napple\ncherry\n".to_vec());
+        w.sort_lines(SubRange::WholeFile, false, false, false);
+        assert_eq!(w.focused().doc.bytes(), b"apple\nbanana\ncherry\n");
+
+        // numeric: 10 sorts after 2, not lexicographically before it.
+        let mut w = Workspace::new(b"10\n2\n1\n".to_vec());
+        w.sort_lines(SubRange::WholeFile, false, true, false);
+        assert_eq!(w.focused().doc.bytes(), b"1\n2\n10\n");
+
+        // reverse (descending).
+        let mut w = Workspace::new(b"a\nb\nc\n".to_vec());
+        w.sort_lines(SubRange::WholeFile, true, false, false);
+        assert_eq!(w.focused().doc.bytes(), b"c\nb\na\n");
+
+        // unique drops duplicate lines after sorting.
+        let mut w = Workspace::new(b"b\na\nb\na\n".to_vec());
+        assert_eq!(
+            w.sort_lines(SubRange::WholeFile, false, false, true),
+            2,
+            "2 dupes removed"
+        );
+        assert_eq!(w.focused().doc.bytes(), b"a\nb\n");
+
+        // A range limits the sort to those lines; the rest stays put.
+        let mut w = Workspace::new(b"z\n3\n1\n2\n".to_vec());
+        w.sort_lines(SubRange::Lines(2, 4), false, true, false);
+        assert_eq!(w.focused().doc.bytes(), b"z\n1\n2\n3\n");
     }
 
     /// F-007 #2: view-local state (cursor/selection/mode) lives in the View; an edit through one View

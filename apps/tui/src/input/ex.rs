@@ -26,6 +26,8 @@ pub enum Ex {
     Move(SubRange, LineAddr),
     /// `:[range]t {addr}`/`:copy`/`:co` — copy the range's lines to after the destination line.
     Copy(SubRange, LineAddr),
+    /// `:[range]sort[!] [n][u]` — sort the range's lines (whole file with no range).
+    Sort(SubRange, SortSpec),
     /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
     Substitute(SubSpec),
     /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
@@ -96,6 +98,54 @@ pub struct SubSpec {
     pub ignore_case: Option<bool>,
     /// `c`: confirm each substitution interactively (handled by the frontend; PR-c2).
     pub confirm: bool,
+}
+
+/// A parsed `:sort` command: the flags this MVP honors (`!` reverse, `n` numeric, `u` unique).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SortSpec {
+    /// `!` — sort descending.
+    pub reverse: bool,
+    /// `n` — sort on each line's first decimal number.
+    pub numeric: bool,
+    /// `u` — drop duplicate lines after sorting.
+    pub unique: bool,
+}
+
+/// Parse `:[range]sort[!] [flags]` (`sort`/`sor`). No range = the WHOLE FILE (Vim). Honors `!`, `n`, `u`;
+/// other Vim sort flags (`i`/`r`/`b`/`x`) are accepted but ignored, and a `/pattern/` form is not a sort.
+fn parse_sort(line: &str) -> Option<Ex> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+    let rest = rest
+        .strip_prefix("sort")
+        .or_else(|| rest.strip_prefix("sor"))?;
+    let (reverse, rest) = match rest.strip_prefix('!') {
+        Some(r) => (true, r),
+        None => (false, rest),
+    };
+    let flags = rest.trim();
+    // Only a bare flag run is a sort we understand; anything else (e.g. `/pat/`) falls through to Unknown.
+    if !flags
+        .chars()
+        .all(|c| matches!(c, 'n' | 'u' | 'i' | 'r' | 'b' | 'x'))
+    {
+        return None;
+    }
+    let range = if range_str.is_empty() {
+        SubRange::WholeFile
+    } else {
+        parse_sub_range(range_str)?
+    };
+    Some(Ex::Sort(
+        range,
+        SortSpec {
+            reverse,
+            numeric: flags.contains('n'),
+            unique: flags.contains('u'),
+        },
+    ))
 }
 
 /// Parse a `:[range]s/pat/rep/flags` line into a [`SubSpec`], or `None` if it is not a substitute.
@@ -314,6 +364,8 @@ pub fn parse_ex(line: &str) -> Ex {
                 Ex::Move(range, dest)
             } else if let Some((range, dest)) = parse_range_verb_dest(line, &["copy", "co", "t"]) {
                 Ex::Copy(range, dest)
+            } else if let Some(ex) = parse_sort(line) {
+                ex
             } else if let Some(spec) = parse_substitute(line, false) {
                 // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
                 Ex::Substitute(spec)

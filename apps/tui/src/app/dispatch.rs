@@ -160,6 +160,15 @@ pub(crate) fn run_ex(
                 None => "E486: invalid copy".into(),
             };
         }
+        // `:[range]sort[!] [n][u]` — sort the range's lines (whole file with no range).
+        Ex::Sort(range, spec) => {
+            let removed = ws.sort_lines(*range, spec.reverse, spec.numeric, spec.unique);
+            *status = if removed > 0 {
+                format!("sorted, {removed} fewer lines")
+            } else {
+                "sorted".into()
+            };
+        }
         // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window.
         Ex::Global(spec) => {
             *status = match ws.global(spec.range, &spec.pattern, spec.negate, &spec.cmd) {
