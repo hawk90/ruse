@@ -12,7 +12,7 @@
 use std::ffi::CString;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
@@ -61,6 +61,9 @@ pub fn encode_key(key: KeyEvent) -> Option<Vec<u8>> {
 pub trait Pty {
     /// Forward raw bytes to the child's stdin (key forwarding).
     fn write(&mut self, bytes: &[u8]) -> io::Result<()>;
+
+    /// Tell the child its window is now `rows × cols` (so it reflows / re-renders). F-011 slice 2.
+    fn resize(&mut self, rows: u16, cols: u16) -> io::Result<()>;
 }
 
 /// A shell running on a Unix PTY. Owns the master fd (as a [`File`]) and the reader thread; `Drop` hangs up
@@ -128,6 +131,23 @@ impl UnixPty {
 impl Pty for UnixPty {
     fn write(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.master.write_all(bytes)
+    }
+
+    fn resize(&mut self, rows: u16, cols: u16) -> io::Result<()> {
+        let mut winsize = libc::winsize {
+            ws_row: rows,
+            ws_col: cols,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        // Raw pointer (not `&mut`) to dodge the cross-platform `unnecessary_mut_passed` clippy lint, per the
+        // slice-1 forkpty hazard. SAFETY: `master` is a live PTY master fd; `winp` points at an init winsize.
+        let winp: *mut libc::winsize = &mut winsize;
+        let r = unsafe { libc::ioctl(self.master.as_raw_fd(), libc::TIOCSWINSZ, winp) };
+        if r != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
     }
 }
 

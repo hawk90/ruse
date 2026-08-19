@@ -14,6 +14,29 @@ use crate::{highlight, screen};
 /// One indent level's width in display columns — matches the editor's `editor.tab_width` default.
 pub(crate) const TAB_WIDTH: u16 = 4;
 
+/// The terminal grids the renderer may paint (F-011), keyed by their placeholder buffer id. Unix-only; on
+/// other targets it is an empty map (there are no terminals) so `render`'s signature stays platform-neutral.
+#[cfg(unix)]
+pub(crate) type TermViews<'a> =
+    std::collections::HashMap<ruse_core::DocumentId, &'a crate::term_grid::Grid>;
+#[cfg(not(unix))]
+pub(crate) type TermViews<'a> = std::collections::HashMap<ruse_core::DocumentId, &'a ()>;
+
+/// Paint a terminal's VT grid into `rect` (F-011 slice 2): one grid cell per screen cell, with its full
+/// style. Continuation cells (right half of a wide glyph) are skipped — the wide glyph already covered them.
+#[cfg(unix)]
+fn paint_grid(cur: &mut screen::Screen, rect: Rect, grid: &crate::term_grid::Grid) {
+    let (grows, gcols) = grid.size();
+    for r in 0..grows.min(rect.h) {
+        for c in 0..gcols.min(rect.w) {
+            if let Some((text, style)) = grid.cell(r, c) {
+                let g = if text.is_empty() { " " } else { text };
+                cur.put_styled(rect.y + r, rect.x + c, g, style);
+            }
+        }
+    }
+}
+
 /// Paint one buffer view into its `rect`: `rect.h` lines from `top`, one GRAPHEME CLUSTER per cell at
 /// its true display width (F-006 #4), clipped to the rectangle. Tabs expand to the next stop measured
 /// from the pane's left edge; a wide glyph that would straddle the right edge is dropped and the rest
@@ -129,7 +152,7 @@ pub(crate) fn render(
     sync: bool,
     focus_hl: &[(usize, usize)],
     palette_rows: &[(String, bool)],
-    terminals: &std::collections::HashMap<ruse_core::DocumentId, &[u8]>,
+    terminals: &TermViews,
 ) -> io::Result<()> {
     use crossterm::style::Color;
 
@@ -157,12 +180,11 @@ pub(crate) fn render(
     // Paint every window into its sub-rectangle; the focused view owns the terminal cursor below.
     for (i, &rect) in rects.iter().enumerate().take(ws.window_count()) {
         let p = ws.pane(i);
-        // F-011: a terminal window paints its sanitized scrollback TAIL (last `rect.h` lines) through the
-        // ordinary byte path, not the empty placeholder document. No highlight, no selection (slice 1).
-        if let Some(&scrollback) = terminals.get(&p.view.doc()) {
-            let lines = scrollback.iter().filter(|&&b| b == b'\n').count();
-            let top = lines.saturating_sub(rect.h as usize);
-            paint_pane(&mut cur, rect, scrollback, &[], top, None, None, &[]);
+        // F-011 slice 2: a terminal window paints its VT grid (colors, cursor, styles), not the empty
+        // placeholder document.
+        #[cfg(unix)]
+        if let Some(&grid) = terminals.get(&p.view.doc()) {
+            paint_grid(&mut cur, rect, grid);
             continue;
         }
         let pbytes = p.doc.bytes();
@@ -273,6 +295,19 @@ pub(crate) fn render(
             w: cols,
             h: text_rows,
         });
+        // F-011: a focused terminal owns the cursor at its GRID position (and may hide it, e.g. in vim).
+        #[cfg(unix)]
+        if let Some(&grid) = terminals.get(&ws.focused_buffer()) {
+            if grid.cursor_visible() {
+                let (gr, gc) = grid.cursor();
+                let sr = (frect.y + gr).min(rows.saturating_sub(1));
+                let sc = (frect.x + gc).min(cols.saturating_sub(1));
+                queue!(out, cursor::MoveTo(sc, sr), cursor::Show)?;
+            } else {
+                queue!(out, cursor::Hide)?;
+            }
+            return out.flush();
+        }
         let (row, col) = cursor_cell(focus.doc.bytes(), focus.view.cursor(), focus.view.top());
         let screen_row = (frect.y + row).min(rows.saturating_sub(1));
         let screen_col = (frect.x + col).min(cols.saturating_sub(1));
@@ -291,7 +326,10 @@ pub(crate) fn flush_diff(
     prev: &screen::Screen,
     sync: bool,
 ) -> io::Result<()> {
-    use crossterm::style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor};
+    use crossterm::style::{
+        Attribute, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
+    };
+    use screen::CellStyle;
 
     let runs = cur.diff(prev);
     if runs.is_empty() {
@@ -301,9 +339,13 @@ pub(crate) fn flush_diff(
     if sync {
         out.write_all(b"\x1b[?2026h")?;
     }
-    let mut fg = Color::Reset;
-    let mut reversed = false;
-    queue!(out, ResetColor, SetAttribute(Attribute::NoReverse))?;
+    // Track the currently-emitted style; emit an SGR only when a field changes (lazy, like the original).
+    let mut style = CellStyle::default();
+    queue!(
+        out,
+        ResetColor,
+        SetAttribute(Attribute::Reset) // clears bold/underline/italic/reverse to a known baseline
+    )?;
     for (row, start, cells) in runs {
         queue!(out, cursor::MoveTo(start, row))?;
         for cell in &cells {
@@ -312,23 +354,40 @@ pub(crate) fn flush_diff(
                 screen::Content::Blank => " ",
                 screen::Content::Cluster(s) => s,
             };
-            if cell.reverse != reversed {
-                let a = if cell.reverse {
-                    Attribute::Reverse
-                } else {
-                    Attribute::NoReverse
-                };
-                queue!(out, SetAttribute(a))?;
-                reversed = cell.reverse;
+            let s = &cell.style;
+            // Attributes: if any boolean toggled OFF, `Attribute::Reset` is the only portable way back, so
+            // reset then re-assert the ones still on (also re-emit colours, which Reset clears).
+            let attrs_off = (style.bold && !s.bold)
+                || (style.underline && !s.underline)
+                || (style.italic && !s.italic)
+                || (style.reverse && !s.reverse);
+            if attrs_off {
+                queue!(out, SetAttribute(Attribute::Reset))?;
+                style = CellStyle::default();
             }
-            if cell.fg != fg {
-                queue!(out, SetForegroundColor(cell.fg))?;
-                fg = cell.fg;
+            if s.bold && !style.bold {
+                queue!(out, SetAttribute(Attribute::Bold))?;
             }
+            if s.underline && !style.underline {
+                queue!(out, SetAttribute(Attribute::Underlined))?;
+            }
+            if s.italic && !style.italic {
+                queue!(out, SetAttribute(Attribute::Italic))?;
+            }
+            if s.reverse && !style.reverse {
+                queue!(out, SetAttribute(Attribute::Reverse))?;
+            }
+            if s.fg != style.fg {
+                queue!(out, SetForegroundColor(s.fg))?;
+            }
+            if s.bg != style.bg {
+                queue!(out, SetBackgroundColor(s.bg))?;
+            }
+            style = *s;
             queue!(out, Print(text))?;
         }
     }
-    queue!(out, SetAttribute(Attribute::NoReverse), ResetColor)?;
+    queue!(out, SetAttribute(Attribute::Reset), ResetColor)?;
     if sync {
         out.write_all(b"\x1b[?2026l")?;
     }

@@ -1,7 +1,7 @@
 # Terminal buffer (F-011) — design
 
-Status: **slice 1 landed** (line-mode, unix). Slices 2–4 planned. Owner capability: `CAP-TERMINAL`,
-dependency `DEP-PTY`. Spec: `spec/PRD.yaml` F-011.
+Status: **slices 1–2 landed** (unix VT grid). Slices 2b/3/4 planned. Owner capability: `CAP-TERMINAL`,
+dependencies `DEP-PTY` (libc/forkpty) + `DEP-TERM-PARSER` (the `vte` crate). Spec: `spec/PRD.yaml` F-011.
 
 ## Why
 
@@ -33,20 +33,28 @@ source and the loop multiplexing that renders it. The feature is intentionally s
   frame and uses `event::poll(TERM_TICK_MS ≈ 33ms)` — a key is handled if ready, otherwise the loop re-renders
   the freshly drained output. Only the terminal-active path polls.
 
-## Line-mode model (slice 1) — `AnsiStrip`
+## VT grid model (slice 2)
 
-Slice 1 shows shell output as **sanitized plain text** through the existing text render path, so no
-`screen::Cell` rework is needed. `AnsiStrip` is a tiny state machine that drops CSI (`ESC [ … final`) and OSC
-(`ESC ] … BEL/ST`) sequences and C0 control bytes except `\n`/`\t`, and treats a bare `\r` (not `\r\n`) as
-"rewrite the current line" (progress-bar redraw). UTF-8 text passes through untouched. This is the honest
-stand-in for a full VT parser: **colors, cursor addressing, and full-screen TUIs (vim/htop) are slice 2.**
+Slice 1 shipped a line-mode stand-in (`AnsiStrip` → sanitized text). Slice 2 replaces it with a real **VT
+screen grid** (`apps/tui/src/term_grid.rs`): a `rows × cols` matrix of styled cells with a cursor, implementing
+`vte::Perform` so `Terminal::drain` feeds raw PTY bytes straight into the `vte` parser. Coverage: printable +
+wrap + CR/LF/BS/TAB; cursor `CUP`/`CUU`/`CUD`/`CUF`/`CUB`/`CHA`/`VPA` + save/restore; `SGR` (16 + bright
+colors, truecolor, bold/underline/italic/reverse); erase `ED`/`EL`; **alt-screen** (`?1049h/l` — stash/restore
+the main screen) so vim/htop don't corrupt it; `RI`/index scrolling; `?25` cursor visibility. Off-screen rows
+accumulate in a bounded scrollback (paging UI = slice 2b).
+
+`screen::Cell` gained a `CellStyle` (bg + bold/underline/italic on top of fg/reverse); `flush_diff` emits the
+extra SGR lazily. The renderer paints a terminal window from its grid (`paint_grid`) and places the terminal's
+cursor at the grid cursor (hidden when the app hides it, e.g. vim). Resize (`Terminal::resize`) reallocates the
+grid **and** `ioctl(TIOCSWINSZ)`s the PTY so the child reflows.
 
 The terminal is a first-class workspace buffer: `:terminal` creates an empty placeholder `Document`, focuses
-it, and enters `Mode::Terminal`. The renderer special-cases a terminal window to paint the scrollback **tail**
-(auto-follow). Modes are per-view (VS-OBL-1): `Mode::Terminal` forwards keys to the PTY; `CTRL-\ CTRL-N` drops
-to `Mode::TerminalNormal` (the normal grammar over the empty doc — `:q`, `C-w`, window switch); `i`/`a`/`A`
-resume Terminal. Scrollback paging is slice 2 (it needs the grid model, since the scrollback lives outside the
-`Document`).
+it, enters `Mode::Terminal`. Modes are per-view (VS-OBL-1): `Mode::Terminal` forwards keys to the PTY;
+`CTRL-\ CTRL-N` drops to `Mode::TerminalNormal` (the normal grammar over the empty doc — `:q`, `C-w`, window
+switch); `i`/`a`/`A` resume Terminal.
+
+**Deferred to slice 2b:** scrollback paging UI, scroll regions (`DECSTBM`), insert/delete char/line, mouse
+reporting, bracketed paste into the child, sixel.
 
 ## Determinism boundary (F-022)
 
@@ -56,10 +64,11 @@ editor edits only — a terminal buffer's placeholder document stays empty.
 
 ## Slicing
 
-- **Slice 1 (this):** line-mode, unix, no new deps. `:terminal` + async output + Terminal/Terminal-Normal.
-- **Slice 2:** full VT grid — extend `screen::Cell` with background + bold/underline/italic and the
-  `flush_diff` SGR emission; a terminal grid model + a real VT parser (`DEP-TERM-PARSER`, `vte`) + a grid
-  painter; resize via `TIOCSWINSZ` + `SIGWINCH`; scrollback paging. Unlocks full-screen TUIs.
+- **Slice 1 (landed, #290):** line-mode, unix, no new deps. `:terminal` + async output + Terminal/Terminal-Normal.
+- **Slice 2 (landed):** VT grid — `screen::Cell` gained bg + bold/underline/italic (+ `flush_diff` SGR); the
+  `term_grid::Grid` model + the `vte` parser (`DEP-TERM-PARSER`) + `paint_grid`; resize via `TIOCSWINSZ`.
+  Unlocks full-screen TUIs (vim/htop).
+- **Slice 2b:** scrollback paging UI, scroll regions, insert/delete char/line, mouse, bracketed paste.
 - **Slice 3:** Windows ConPTY behind the `Pty` trait; grid re-emission without byte round-trip assumptions.
 - **Slice 4:** fold the reader into the `C-SCHEDULER` deterministic executor (`docs/design/scheduler.md`),
   honoring INV-SCHED-1 / INV-ASYNC-ORDER.

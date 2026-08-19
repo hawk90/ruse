@@ -36,6 +36,8 @@ pub(crate) mod pty;
 pub(crate) mod recover;
 #[cfg(unix)]
 pub(crate) mod term_buffer;
+#[cfg(unix)]
+pub(crate) mod term_grid;
 pub(crate) mod terminal;
 pub(crate) mod ui;
 pub(crate) mod viewport;
