@@ -184,6 +184,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_only() {
+        assert_eq!(parse_ex("only"), Ex::Only);
+        assert_eq!(parse_ex("on"), Ex::Only);
+    }
+
+    #[test]
     fn doubled_operator_is_linewise() {
         assert_eq!(feed("dd"), Feed::Cmd(Command::Delete(1, Motion::Line)));
         assert_eq!(feed("2dd"), Feed::Cmd(Command::Delete(2, Motion::Line)));

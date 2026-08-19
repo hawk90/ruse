@@ -394,6 +394,31 @@ impl Workspace {
         true
     }
 
+    /// Close every window except the focused one (`:only`). Retires the other windows' Views but — unlike
+    /// [`Workspace::close_focused`] — keeps ALL Documents/buffers loaded: `:only` is about windows, not
+    /// buffers, so the others become hidden (still `:ls`-listed, reopenable via `:b`). Returns the number
+    /// of windows closed (0 when already sole).
+    pub fn only(&mut self) -> usize {
+        if self.windows.len() <= 1 {
+            return 0;
+        }
+        let kept = self.windows[self.focus];
+        let others: Vec<ViewId> = self
+            .windows
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != self.focus)
+            .map(|(_, w)| w.view)
+            .collect();
+        let closed = others.len();
+        for v in others {
+            self.views[v.0] = None; // retire the pane's View; its Document stays loaded
+        }
+        self.windows = vec![kept];
+        self.focus = 0;
+        closed
+    }
+
     /// Whether a `DocumentId` still has a live buffer slot (for tests / retirement assertions).
     #[must_use]
     pub fn doc_is_live(&self, id: DocumentId) -> bool {
@@ -599,6 +624,35 @@ mod tests {
             0,
             "the other view scrolls independently"
         );
+    }
+
+    /// `:only` keeps the focused window and closes the rest, but leaves every buffer loaded (windows,
+    /// not buffers) — the others become hidden and stay `:ls`-listed / reopenable via `:b`.
+    #[test]
+    fn only_keeps_focused_window_and_leaves_buffers_loaded() {
+        let mut w = ws();
+        let b = w.add_buffer(b"second\n".to_vec(), Some("second".to_string()));
+        w.split(SplitDir::Horizontal); // 2 windows on the original buffer
+        w.focus_buffer(b); // focused window now shows the second buffer
+        w.split(SplitDir::Vertical); // 3 windows
+        assert_eq!(w.window_count(), 3);
+        let focused_doc = w.focused().view.doc();
+
+        let closed = w.only();
+        assert_eq!(closed, 2, "the two non-focused windows are closed");
+        assert_eq!(w.window_count(), 1, "only the focused window remains");
+        assert_eq!(
+            w.focused().view.doc(),
+            focused_doc,
+            "focused buffer unchanged"
+        );
+        assert!(
+            w.doc_is_live(b),
+            "the second buffer is still loaded (hidden)"
+        );
+        assert_eq!(w.buffers().len(), 2, "buffer list intact after :only");
+
+        assert_eq!(w.only(), 0, ":only on a sole window is a no-op");
     }
 
     /// F-007 #2: view-local state (cursor/selection/mode) lives in the View; an edit through one View
