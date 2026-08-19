@@ -190,9 +190,9 @@ pub(crate) fn run_ex(
         // `:checkhealth` is handled in the run loop (it reads the terminal-cap ledger + profile this fn
         // does not borrow); never reaches here.
         Ex::CheckHealth => {}
-        // `:e {file}` is handled in the run loop (it reads the file + mutates the `files`/highlighter
-        // registries this fn only borrows immutably); never reaches here.
-        Ex::Edit(_) => {}
+        // `:e {file}` / `:e!` are handled in the run loop (they read the file + mutate the buffer and the
+        // `files`/highlighter registries this fn only borrows immutably); never reach here.
+        Ex::Edit(_) | Ex::EditReload => {}
         // `:bd` is handled in the run loop (it drops the deleted buffer's `files`/highlighter entries,
         // which this fn only borrows immutably); never reaches here.
         Ex::BufferDelete { .. } => {}

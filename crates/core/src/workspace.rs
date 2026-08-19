@@ -546,6 +546,18 @@ impl Workspace {
         self.names[slot] = Some(name.into());
     }
 
+    /// Replace the focused buffer's contents with `bytes` (Vim `:e!` reload from disk): a fresh, saved
+    /// Document under the SAME id, so unsaved changes and undo history are discarded. The focused cursor
+    /// resets to the top. Splits of this buffer see the new content (shared Document).
+    pub fn reload_focused(&mut self, bytes: impl Into<Vec<u8>>) {
+        let id = self.focused_buffer();
+        let slot = Self::doc_slot(id);
+        let mut doc = Document::new(id, bytes);
+        doc.mark_saved();
+        self.docs[slot] = Some(doc);
+        self.place_focused_cursor(0);
+    }
+
     /// Add a new buffer over `bytes` with optional display `name`, plus a fresh View onto it (not shown
     /// in any window yet). Appends to the buffer list and returns the new buffer's id. `focus_buffer`
     /// brings it into the focused window.
@@ -925,6 +937,22 @@ mod tests {
             Some(2)
         );
         assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
+    }
+
+    /// `:e!` (reload) replaces the focused buffer with fresh bytes and marks it saved, discarding the
+    /// unsaved edit.
+    #[test]
+    fn reload_focused_replaces_and_marks_saved() {
+        let mut w = Workspace::new(b"old\n".to_vec());
+        w.apply(&Command::EnterInsert);
+        w.apply(&Command::InsertChar('x'));
+        assert!(w.focused().doc.is_modified(), "the edit dirtied the buffer");
+        w.reload_focused(b"fresh\ndisk\n".to_vec());
+        assert_eq!(w.focused().doc.bytes(), b"fresh\ndisk\n");
+        assert!(
+            !w.focused().doc.is_modified(),
+            "the reloaded buffer is clean"
+        );
     }
 
     /// `:set ignorecase` flips the focused view's search case, observable through `:s` matching.

@@ -286,6 +286,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_edit_reload() {
+        assert_eq!(parse_ex("e!"), Ex::EditReload);
+        assert_eq!(parse_ex("edit!"), Ex::EditReload);
+    }
+
+    #[test]
     fn parse_time_travel() {
         assert_eq!(parse_ex("earlier"), Ex::Earlier(1));
         assert_eq!(parse_ex("ea 3"), Ex::Earlier(3));

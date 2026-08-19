@@ -438,6 +438,30 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         status =
                             open_file_into_buffer(&file, &mut ws, &mut files, &mut highlighters);
                     }
+                    // `:e!` reloads the focused buffer's file from disk, discarding unsaved changes.
+                    Ex::EditReload => {
+                        let id = ws.focused_buffer();
+                        match files.get(&id).map(|bf| bf.path.clone()) {
+                            Some(path) => match std::fs::read(&path) {
+                                Ok(raw) => {
+                                    let fmt = persist::encoding::FileFormat::detect(&raw);
+                                    ws.reload_focused(fmt.to_buffer(&raw));
+                                    files.insert(
+                                        id,
+                                        BufferFile {
+                                            path: path.clone(),
+                                            fmt,
+                                        },
+                                    );
+                                    status = format!("\"{}\" reloaded", path.display());
+                                }
+                                Err(e) => {
+                                    status = format!("E484: can't open {}: {e}", path.display());
+                                }
+                            },
+                            None => status = "E32: No file name".into(),
+                        }
+                    }
                     // `:bd` deletes the focused buffer — done HERE so the buffer's `files`/highlighter
                     // entries are dropped (both are `&mut` in scope, not in `run_ex`). Guards unsaved
                     // changes with E89 unless `!` forces it.
