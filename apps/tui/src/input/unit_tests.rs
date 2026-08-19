@@ -1280,6 +1280,38 @@ mod tests {
     }
 
     #[test]
+    fn reindent_operator() {
+        assert_eq!(
+            feed("=="),
+            Feed::Cmd(Command::Reindent {
+                count: 1,
+                motion: Motion::Line
+            })
+        );
+        assert_eq!(
+            feed("=G"),
+            Feed::Cmd(Command::Reindent {
+                count: 1,
+                motion: Motion::LastLine
+            })
+        );
+        assert_eq!(
+            feed("=ap"),
+            Feed::Cmd(Command::Reindent {
+                count: 1,
+                motion: Motion::AParagraph
+            })
+        );
+        assert_eq!(
+            feed("2=="),
+            Feed::Cmd(Command::Reindent {
+                count: 2,
+                motion: Motion::Line
+            })
+        );
+    }
+
+    #[test]
     fn shift_over_motion_and_re_arm() {
         // `>`/`<` are real operators now: over a motion they shift the motion's lines (always linewise).
         assert_eq!(

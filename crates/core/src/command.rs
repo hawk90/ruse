@@ -144,6 +144,13 @@ pub enum Command {
         count: u32,
         motion: Motion,
     },
+    /// `=` {motion} — reindent the motion's LINES to their bracket-depth level (net unclosed `([{` ×
+    /// shiftwidth; a closer-first line dedents one). Structural, language-agnostic (no string/comment
+    /// awareness); the doubled `==` uses `motion: Line`.
+    Reindent {
+        count: u32,
+        motion: Motion,
+    },
     // editing grammar: count + motion / operator (Phase D)
     Move(u32, Motion),
     Delete(u32, Motion),
@@ -618,6 +625,9 @@ impl Command {
                 if *left { "left" } else { "right" },
                 motion_token(*motion)
             ),
+            Command::Reindent { count, motion } => {
+                format!("reindent {count} {}", motion_token(*motion))
+            }
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
@@ -843,6 +853,7 @@ impl Command {
                     motion,
                 });
             }
+            "reindent" => return op_cmd(arg, |count, motion| Command::Reindent { count, motion }),
             "case_motion" => {
                 // `case_motion {count} {motion} {case}`
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;

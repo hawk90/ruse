@@ -873,6 +873,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 plan_shift(st, line_start(b, s), lines, !*left, hint)
             }
         }
+        Command::Reindent { count, motion } => {
+            // `=` over a motion — reindent every LINE it touches (always linewise, like `>`).
+            let (s, e, _) = op_span(b, cur, *motion, *count);
+            if s >= e {
+                nop(cur, st.view.mode)
+            } else {
+                let first = crate::pos::line_of(b, s);
+                let last = crate::pos::line_of(b, e - 1);
+                plan_reindent(st, first, last, hint)
+            }
+        }
         // Paste reads the pending register (`"xp`) or the unnamed slot; `commit` clears the pending slot.
         Command::Paste { after, count } => paste(
             b,
@@ -1444,6 +1455,82 @@ fn shift_left_remove(b: &[u8], ls: usize, le: usize, tab_width: usize) -> usize 
 /// indent level to each line; `!right` removes up to one. Empty lines are never indented (Vim); the cursor
 /// lands on the first non-blank of the cursor's (first) line, exactly as Vim leaves it. The register is
 /// untouched. Edits are one-per-line at distinct line starts, so the [`EditList`] is disjoint by construction.
+/// `=` reindent (bracket-depth model): set each line in `[first_line, last_line]` (0-based, inclusive) to
+/// `depth × indent_unit`, where `depth` is the net unclosed `([{` before the line; a line whose first
+/// non-blank is a closer dedents one level, and blank lines are left empty. Structural / language-agnostic:
+/// brackets inside strings or comments are NOT excluded (documented). One transaction (edits are disjoint,
+/// ascending line starts). Cursor → the first reindented line's new first-non-blank.
+fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: GroupHint) -> Plan {
+    let b = st.bytes();
+    let unit = st.indent_unit();
+    // Per-line start offset, and the net bracket depth AT each line's start.
+    let mut line_starts: Vec<usize> = Vec::new();
+    let mut depth_at: Vec<i32> = Vec::new();
+    let mut depth: i32 = 0;
+    let mut i = 0usize;
+    line_starts.push(0);
+    depth_at.push(0);
+    while i < b.len() {
+        match b[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.max(1) - 1,
+            b'\n' => {
+                line_starts.push(i + 1);
+                depth_at.push(depth);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    // Target indent (in bytes) for line `li`: `level × unit`, level from depth (closer-first dedents one).
+    let indent_len = |li: usize, fnb: usize, ls: usize| -> usize {
+        let closer = ls < b.len() && fnb < b.len() && matches!(b[fnb], b')' | b']' | b'}');
+        let level = (depth_at[li] - i32::from(closer)).max(0) as usize;
+        unit.len() * level
+    };
+
+    let mut edits: Vec<Edit> = Vec::new();
+    let last = last_line.min(line_starts.len().saturating_sub(1));
+    let mut first_cursor = line_starts[first_line];
+    // `li` indexes the two parallel vecs (`line_starts` + `depth_at`) and marks the first line, so a
+    // range loop is the clear form here.
+    #[allow(clippy::needless_range_loop)]
+    for li in first_line..=last {
+        let ls = line_starts[li];
+        let le = line_end(b, ls);
+        let fnb = motion::first_non_blank(b, ls);
+        let want: Vec<u8> = if fnb >= le {
+            Vec::new() // blank line → no indent
+        } else {
+            let n = indent_len(li, fnb, ls);
+            unit.iter().cycle().take(n).copied().collect()
+        };
+        if li == first_line {
+            first_cursor = ls + want.len();
+        }
+        if b[ls..fnb] != want[..] {
+            edits.push(Edit::replace(ls, fnb - ls, want));
+        }
+    }
+
+    if edits.is_empty() {
+        return nop(first_cursor.min(b.len()), st.view.mode);
+    }
+    let edits =
+        EditList::new(edits).expect("reindent edits sit at distinct line starts, so disjoint");
+    Plan {
+        action: Action::Txn { edits, hint },
+        cursor: first_cursor,
+        mode: st.mode(),
+        is_edit: true,
+        effects: Vec::new(),
+        set_register: None,
+        set_anchor: None,
+        set_mark: None,
+    }
+}
+
 fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: GroupHint) -> Plan {
     let b = st.bytes();
     let first_ls = line_start(b, cur);
