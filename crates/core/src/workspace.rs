@@ -648,6 +648,56 @@ impl Workspace {
         self.focus_buffer(live[next]);
     }
 
+    /// Delete buffer `id` from the buffer list (Vim `:bd`): retire its Document + Views and repoint every
+    /// window showing it to a replacement buffer (the alternate if live, else the next buffer in `:ls`
+    /// order, else a fresh scratch when it was the last buffer). Returns `false` if `id` is not live. The
+    /// caller enforces the unsaved-changes guard (E89) — this is the unconditional removal.
+    pub fn remove_buffer(&mut self, id: DocumentId) -> bool {
+        if !self.doc_is_live(id) {
+            return false;
+        }
+        // Pick the replacement: the alternate (`#`) if usable, else the next live buffer after `id` in
+        // `:ls` order (wrapping), else a brand-new scratch (deleting the last buffer never leaves zero).
+        let replacement = self
+            .alt
+            .filter(|&a| a != id && self.doc_is_live(a))
+            .or_else(|| {
+                let p = self.buffer_order.iter().position(|&b| b == id)?;
+                self.buffer_order
+                    .iter()
+                    .cycle()
+                    .skip(p + 1)
+                    .take(self.buffer_order.len())
+                    .copied()
+                    .find(|&b| b != id && self.doc_is_live(b))
+            })
+            .unwrap_or_else(|| self.add_buffer(Vec::new(), None));
+
+        // Repoint every window showing `id` to a fresh View of the replacement.
+        for i in 0..self.windows.len() {
+            let vid = self.windows[i].view;
+            if self.views[vid.0].as_ref().map(View::doc) == Some(id) {
+                let nv = ViewId(self.views.len());
+                self.views.push(Some(View::fresh(replacement)));
+                self.windows[i].view = nv;
+            }
+        }
+        // Retire every View that named `id`, then the buffer itself.
+        for v in self.views.iter_mut() {
+            if v.as_ref().map(View::doc) == Some(id) {
+                *v = None;
+            }
+        }
+        let slot = Self::doc_slot(id);
+        self.docs[slot] = None;
+        self.names[slot] = None;
+        self.buffer_order.retain(|&b| b != id);
+        if self.alt == Some(id) {
+            self.alt = None;
+        }
+        true
+    }
+
     /// Set the focused View's indent config (`>>`/`<<`) — the seam a config loader/test uses; mirrors
     /// [`EditorState::set_indent`]. No new schema key (editor.tab_width / editor.indent_style).
     pub fn set_indent(&mut self, tab_width: usize, indent_style: crate::editor::IndentStyle) {
@@ -862,6 +912,30 @@ mod tests {
             Some(2)
         );
         assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
+    }
+
+    /// `:bd` retires a buffer and repoints the window to the alternate; deleting the last buffer opens a
+    /// fresh scratch (never zero buffers); a non-live id is a no-op.
+    #[test]
+    fn remove_buffer_repoints_and_retires() {
+        let mut w = Workspace::new(b"first\n".to_vec()); // buffer 1
+        let b2 = w.add_buffer(b"second\n".to_vec(), Some("second".to_string()));
+        w.focus_buffer(b2); // focused = b2, alternate = buffer 1
+        assert_eq!(w.focused_buffer(), b2);
+
+        assert!(w.remove_buffer(b2), "delete the focused buffer");
+        assert!(!w.doc_is_live(b2), "b2 is retired");
+        assert_eq!(w.focused_buffer().0, 1, "window shows the alternate");
+        assert_eq!(w.buffers().len(), 1);
+
+        // Deleting the last buffer opens a fresh scratch — never zero buffers.
+        let last = w.focused_buffer();
+        assert!(w.remove_buffer(last));
+        assert_eq!(w.buffers().len(), 1, "a scratch replaces the last buffer");
+        assert_ne!(w.focused_buffer(), last, "focused a new buffer");
+
+        // A non-live id is a no-op.
+        assert!(!w.remove_buffer(last));
     }
 
     /// `:[range]sort` sorts lines lexicographically or numerically, with `!` reverse and `u` unique, as

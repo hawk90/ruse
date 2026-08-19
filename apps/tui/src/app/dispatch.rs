@@ -188,6 +188,9 @@ pub(crate) fn run_ex(
         // `:e {file}` is handled in the run loop (it reads the file + mutates the `files`/highlighter
         // registries this fn only borrows immutably); never reaches here.
         Ex::Edit(_) => {}
+        // `:bd` is handled in the run loop (it drops the deleted buffer's `files`/highlighter entries,
+        // which this fn only borrows immutably); never reaches here.
+        Ex::BufferDelete { .. } => {}
         // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
         // buffers; `:bn`/`:bp` cycle; `:b {n}`/`:b#` switch by number / to the alternate.
         Ex::Enew => {

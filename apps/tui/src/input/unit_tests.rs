@@ -272,6 +272,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_buffer_delete() {
+        assert_eq!(parse_ex("bd"), Ex::BufferDelete { force: false });
+        assert_eq!(parse_ex("bdelete"), Ex::BufferDelete { force: false });
+        assert_eq!(parse_ex("bd!"), Ex::BufferDelete { force: true });
+        assert_eq!(parse_ex("bdelete!"), Ex::BufferDelete { force: true });
+    }
+
+    #[test]
     fn parse_sort_flags() {
         use ruse_core::SubRange;
         // No range → whole file; flags parse; `!` = reverse.

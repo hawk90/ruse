@@ -415,6 +415,20 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         status =
                             open_file_into_buffer(&file, &mut ws, &mut files, &mut highlighters);
                     }
+                    // `:bd` deletes the focused buffer — done HERE so the buffer's `files`/highlighter
+                    // entries are dropped (both are `&mut` in scope, not in `run_ex`). Guards unsaved
+                    // changes with E89 unless `!` forces it.
+                    Ex::BufferDelete { force } => {
+                        let id = ws.focused_buffer();
+                        if !force && ws.focused().doc.is_modified() {
+                            status = "E89: No write since last change (add ! to override)".into();
+                        } else {
+                            ws.remove_buffer(id);
+                            files.remove(&id);
+                            highlighters.remove(&id);
+                            status = format!("buffer {} deleted", id.0);
+                        }
+                    }
                     ex => run_ex(
                         &ex,
                         &mut ws,

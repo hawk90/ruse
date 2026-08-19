@@ -57,6 +57,10 @@ pub enum Ex {
     BufferPrev,
     /// `:b {n}` (by buffer number) or `:b#` (the alternate buffer) — switch the focused window (F-007).
     Buffer(BufTarget),
+    /// `:bd`/`:bdelete` (`!` to force past unsaved changes) — delete the focused buffer from the list.
+    BufferDelete {
+        force: bool,
+    },
     Unknown(String),
 }
 
@@ -344,6 +348,8 @@ pub fn parse_ex(line: &str) -> Ex {
         "ls" | "buffers" | "files" => Ex::Buffers,
         "bnext" | "bn" => Ex::BufferNext,
         "bprevious" | "bprev" | "bp" => Ex::BufferPrev,
+        "bd" | "bdelete" => Ex::BufferDelete { force: false },
+        "bd!" | "bdelete!" => Ex::BufferDelete { force: true },
         "b#" | "buffer#" => Ex::Buffer(BufTarget::Alternate),
         // `:lmap`/`:lunmap` (F-027), then `:b {n}`, `:trace save`, `:[range]s///`, `:[range]g//` — each
         // returns `None`/falls through to the next so an unrecognised line lands on `Ex::Unknown`.
