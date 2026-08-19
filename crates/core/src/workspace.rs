@@ -327,6 +327,23 @@ impl Workspace {
         result
     }
 
+    /// Run `:[range]d` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): delete the
+    /// range's lines as one undo group. Returns the number of lines deleted.
+    pub fn delete_lines(&mut self, range: SubRange) -> usize {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.delete_lines(range);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
     /// Move focus to the next Window in tile order, wrapping (Vim `C-w w`). No-op with one Window.
     pub fn focus_next(&mut self) {
         if !self.windows.is_empty() {
@@ -653,6 +670,37 @@ mod tests {
         assert_eq!(w.buffers().len(), 2, "buffer list intact after :only");
 
         assert_eq!(w.only(), 0, ":only on a sole window is a no-op");
+    }
+
+    /// `:[range]d` deletes whole lines as one undo group; the no-trailing-newline last line and the
+    /// whole-buffer case leave no dangling blank line.
+    #[test]
+    fn delete_lines_over_a_range() {
+        let mut w = Workspace::new(b"one\ntwo\nthree\nfour\n".to_vec());
+        assert_eq!(
+            w.delete_lines(SubRange::Lines(2, 3)),
+            2,
+            ":2,3d deletes 2 lines"
+        );
+        assert_eq!(w.focused().doc.bytes(), b"one\nfour\n");
+        // One undo restores all of it (single group).
+        w.apply(&Command::Undo);
+        assert_eq!(w.focused().doc.bytes(), b"one\ntwo\nthree\nfour\n");
+
+        // No range → the cursor's line (like `dd`).
+        let mut w = Workspace::new(b"a\nb\nc\n".to_vec());
+        assert_eq!(w.delete_lines(SubRange::CurrentLine), 1);
+        assert_eq!(w.focused().doc.bytes(), b"b\nc\n");
+
+        // Deleting through an UNTERMINATED last line leaves no dangling blank line.
+        let mut w = Workspace::new(b"a\nb".to_vec());
+        assert_eq!(w.delete_lines(SubRange::Lines(2, 2)), 1);
+        assert_eq!(w.focused().doc.bytes(), b"a");
+
+        // Whole buffer.
+        let mut w = Workspace::new(b"x\ny\n".to_vec());
+        w.delete_lines(SubRange::WholeFile);
+        assert_eq!(w.focused().doc.bytes(), b"");
     }
 
     /// F-007 #2: view-local state (cursor/selection/mode) lives in the View; an edit through one View

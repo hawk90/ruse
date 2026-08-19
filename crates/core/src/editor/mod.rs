@@ -649,6 +649,45 @@ impl EditorState {
         }
     }
 
+    /// `:[range]d` — delete the lines in `range` (each with its trailing newline) as one undo group,
+    /// like a linewise `dd` over the span. No range = the cursor's line. Returns the number of lines
+    /// deleted (0 on an empty buffer). The cursor lands at the start of the line that took their place.
+    pub fn delete_lines(&mut self, range: SubRange) -> usize {
+        let bytes = self.doc.bytes();
+        let Ok(hay) = std::str::from_utf8(bytes) else {
+            return 0;
+        };
+        let lines = line_spans(hay);
+        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+        let (fs, _) = lines[first];
+        let (_, le) = lines[last];
+        // Terminated last line: delete `[fs, le+1)` (the lines plus their trailing newlines). Unterminated
+        // last line (deleting through EOF): delete `[fs-1, le)` to absorb the newline BEFORE the span so no
+        // dangling blank line remains — except when `first` is line 0 (whole buffer), then `[0, le)`.
+        let (start, end) = if le < hay.len() {
+            (fs, le + 1)
+        } else if fs > 0 {
+            (fs - 1, le)
+        } else {
+            (0, le)
+        };
+        if end == start {
+            return 0;
+        }
+        let list = EditList::new(vec![Edit::delete(start, end - start)])
+            .expect("a single line-range delete is well-formed");
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc
+            .apply(txn)
+            .expect("line-range delete applies cleanly");
+        self.view.last_was_edit = true;
+        let nb = self.doc.bytes();
+        self.view.cursor = start.min(nb.len());
+        last - first + 1
+    }
+
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
     fn indent_unit(&self) -> Vec<u8> {
         match self.view.indent.style {
@@ -792,7 +831,7 @@ mod range;
 pub(crate) use range::*;
 
 mod substitute;
-pub(crate) use substitute::{expand_replacement, line_spans};
+pub(crate) use substitute::{expand_replacement, line_spans, resolve_line_range};
 pub use substitute::{GlobalCmd, SubFlags, SubOutcome, SubRange, Substitution};
 
 mod planner;

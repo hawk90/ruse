@@ -70,6 +70,22 @@ pub enum GlobalCmd {
     },
 }
 
+/// Resolve a [`SubRange`] to an inclusive 0-based line index pair `(first, last)` over `lines`, using
+/// `cursor_line` for the no-range `CurrentLine` default (as Vim's `:d`/`:m`/`:t`/`:y` do). Both ends are
+/// clamped to the last line; the caller guards the empty-buffer case.
+pub(crate) fn resolve_line_range(
+    range: SubRange,
+    lines: &[(usize, usize)],
+    cursor_line: usize,
+) -> (usize, usize) {
+    let last = lines.len().saturating_sub(1);
+    match range {
+        SubRange::CurrentLine => (cursor_line.min(last), cursor_line.min(last)),
+        SubRange::WholeFile => (0, last),
+        SubRange::Lines(a, b) => (a.saturating_sub(1).min(last), b.saturating_sub(1).min(last)),
+    }
+}
+
 /// The byte span `(start, end)` of every line (`end` excludes the `\n`). Always at least one line.
 pub(crate) fn line_spans(hay: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
