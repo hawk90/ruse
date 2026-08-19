@@ -85,6 +85,14 @@ pub(crate) fn run_ex(
                 *status = "cannot close last window (:q to quit)".into();
             }
         }
+        Ex::Only => {
+            let closed = ws.only();
+            *status = match closed {
+                0 => "already one window".into(),
+                1 => "1 window closed".into(),
+                n => format!("{n} windows closed"),
+            };
+        }
         Ex::SaveTrace(p) => {
             let trace = Trace::record(initial, recorded.to_vec());
             match fs::write(p, trace.to_text()) {

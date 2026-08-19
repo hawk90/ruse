@@ -16,6 +16,8 @@ pub enum Ex {
     VSplit,
     /// `:close`/`:clo` — close the focused window (keeps the shared buffer while another holds it).
     Close,
+    /// `:only`/`:on` — close every window except the focused one (the buffers stay loaded).
+    Only,
     /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
     Substitute(SubSpec),
     /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
@@ -277,6 +279,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "split" | "sp" => Ex::Split,
         "vsplit" | "vsp" | "vs" => Ex::VSplit,
         "close" | "clo" => Ex::Close,
+        "only" | "on" => Ex::Only,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         "enew" | "ene" => Ex::Enew,
