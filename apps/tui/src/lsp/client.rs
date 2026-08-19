@@ -223,10 +223,10 @@ mod tests {
     // `rustup component add rust-analyzer`.
     #[test]
     #[ignore = "spawns a real rust-analyzer; run with --ignored"]
-    fn live_diagnostics_hover_format_and_rename() {
+    fn live_lsp_pipeline() {
         use crate::lsp::protocol::{
-            formatting_params, parse_hover, parse_text_edits, parse_workspace_edit,
-            position_params, rename_params,
+            completion_params, formatting_params, parse_completion, parse_hover, parse_text_edits,
+            parse_workspace_edit, position_params, rename_params,
         };
         use std::process::Command as PCommand;
         use std::time::{Duration, Instant};
@@ -250,12 +250,20 @@ mod tests {
             LspClient::spawn(PCommand::new("rust-analyzer"), &root_uri).expect("spawn RA");
         client.did_open(&file_uri, "rust", 1, src);
 
-        let (mut got_diag, mut got_hover, mut got_fmt, mut got_rename) =
-            (false, false, false, false);
-        let (mut hover_id, mut fmt_id, mut rename_id): (Option<i64>, Option<i64>, Option<i64>) =
-            (None, None, None);
-        let (mut last_hover, mut last_fmt, mut last_rename) =
-            (Instant::now(), Instant::now(), Instant::now());
+        let (mut got_diag, mut got_hover, mut got_fmt, mut got_rename, mut got_completion) =
+            (false, false, false, false, false);
+        let (mut hover_id, mut fmt_id, mut rename_id, mut completion_id): (
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+        ) = (None, None, None, None);
+        let (mut last_hover, mut last_fmt, mut last_rename, mut last_completion) = (
+            Instant::now(),
+            Instant::now(),
+            Instant::now(),
+            Instant::now(),
+        );
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(120) {
             let polled = client.poll();
@@ -278,6 +286,9 @@ mod tests {
                         got_rename = true;
                     }
                 }
+                if Some(*id) == completion_id && !parse_completion(result).is_empty() {
+                    got_completion = true;
+                }
             }
             // Once diagnostics flow the server is ready; (re)send hover on `x` (line 1 col 4), a format, and a
             // rename of `x` at the same position.
@@ -299,7 +310,15 @@ mod tests {
                 );
                 last_rename = Instant::now();
             }
-            if got_diag && got_hover && got_fmt && got_rename {
+            // Completion at the start of the `let _=x;` expression (line 2 col 6) → many candidates.
+            if got_diag && !got_completion && last_completion.elapsed() > Duration::from_secs(2) {
+                completion_id = Some(client.request(
+                    "textDocument/completion",
+                    completion_params(&file_uri, 2, 6),
+                ));
+                last_completion = Instant::now();
+            }
+            if got_diag && got_hover && got_fmt && got_rename && got_completion {
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -311,6 +330,10 @@ mod tests {
         assert!(
             got_rename,
             "no rename WorkspaceEdit arrived from rust-analyzer"
+        );
+        assert!(
+            got_completion,
+            "no completion items arrived from rust-analyzer"
         );
     }
 }

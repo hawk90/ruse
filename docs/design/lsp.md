@@ -1,6 +1,6 @@
 # Built-in LSP (F-014) — design
 
-Status: **slices 1–4 landed** (local diagnostics + hover/goto + format + rename, cross-platform). Owner capabilities:
+Status: **slices 1–5 landed** (local diagnostics + hover/goto + format + rename + completion, cross-platform). Owner capabilities:
 `CAP-LSP-COORD` (client + normalized model), `CAP-LSP-CODEC` (`DEP-SERDE`); `DEP-LSP-SERVER`. Spec:
 `spec/PRD.yaml` F-014.
 
@@ -80,10 +80,21 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   against **its own** bytes, and applied as one `TransactionOrigin::Lsp` undo group (per-file undo). Focus is
   restored afterwards; opened files become modified buffers the user saves (`:wa`). The smoke test extends to
   assert a real rust-analyzer rename returns a ≥2-edit `WorkspaceEdit`.
-- **Later:** references / code-actions / completion; a floating name-input prompt (this slice carries the new
-  name on the ex-line) + resource-op renames (create/rename/delete files); a floating popup; a jumplist for
-  `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list /
-  quickfix UI; more languages (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
+- **Slice 5 (landed):** completion — the first **floating** overlay (a cursor-anchored popup menu / pum, vs
+  the bottom-panel overlays). In Vim/Native **Insert** mode `<C-x><C-o>` (authentic Vim omni; a frontend
+  two-key prefix `pending_omni`, gated to non-Emacs) requests `textDocument/completion`; `parse_completion`
+  normalizes both `CompletionList`/`CompletionItem[]` (insert = `textEdit.newText` → `insertText` → `label`,
+  snippet items fall back to the clean `label`). The pum is drawn into the cell grid at the cursor
+  (`cursor_cell` anchor, flips above when it would overflow) — the existing diff emits it and repaints the
+  covered cells on dismiss. `<C-n>/<C-p>`/`↓↑` move, `<CR>/<Tab>` accept (a single edit replacing the typed
+  identifier prefix via `Workspace::apply_edits`, staying in Insert), `<Esc>`/typing dismisses. Verified
+  end-to-end (the `live_lsp_pipeline` smoke asserts ≥1 real item).
+- **Later:** live filter-as-you-type after the pum opens (slice 5 filters once at trigger time; further typing
+  dismisses); snippet placeholder expansion; `completionItem/resolve` lazy docs + a docs side-panel; signature
+  help; trigger-character auto-popup; references / code-actions; a floating name-input prompt + resource-op
+  renames; a jumplist for `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by
+  namespace; a diagnostics list / quickfix UI; more languages (config-driven); incremental `didChange`; remote
+  (C-AGENT); `C-SCHEDULER`.
 
 ## Verification
 

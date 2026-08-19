@@ -687,10 +687,13 @@ features:
     # (#296): format (:fmt) — textDocument/formatting → core apply_edits (one Lsp-origin undo group, F-005).
     # Slice 4 (#297): rename (:rename/:rn {new}) — textDocument/rename → a WorkspaceEdit whose per-file edits
     # apply ACROSS every affected buffer (reuse-or-open each file, map UTF-16 → its own bytes, one Lsp-origin
-    # undo group per file), then restore focus. The diag+hover+format+rename pipeline is verified end-to-end
-    # vs real rust-analyzer in an ignored smoke test. REMAINING: references/completion, diagnostics MERGE by
-    # namespace + list UI, more languages, remote (C-AGENT), C-SCHEDULER integration. Stays `planned` — local,
-    # single language, ex-line name entry (no floating prompt), no resource-op (file create/rename) yet.
+    # undo group per file), then restore focus. Slice 5 (#298): completion — the first FLOATING overlay; in
+    # Vim/Native insert <C-x><C-o> → textDocument/completion → a cursor-anchored pum (drawn into the cell grid
+    # via cursor_cell), <C-n>/<C-p> navigate, <CR>/<Tab> accept (replace the typed prefix via apply_edits). The
+    # diag+hover+format+rename+completion pipeline is verified end-to-end vs real rust-analyzer (live_lsp_pipeline
+    # ignored smoke). REMAINING: references/code-actions, live-filter/snippets/resolve for completion, diagnostics
+    # MERGE by namespace + list UI, more languages, remote (C-AGENT), C-SCHEDULER integration. Stays `planned` —
+    # local, single language, no remote/merge yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >
