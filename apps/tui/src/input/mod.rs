@@ -360,33 +360,6 @@ fn key_label(code: KeyCode) -> String {
     }
 }
 
-/// The Native profile's leader (which-key) map (F-013 NAT-2) — the SEED of `native-profile@1`'s recommended
-/// keymap. `<leader>` (Space) from a clean Normal base opens it; the next key resolves HERE to a semantic
-/// command (INV-CMD-SEMANTIC) or aborts. It binds only commands that ALREADY exist — the Files/Git/Debug
-/// discovery groups from the design (`docs/parity/native-style.md`) land as those features do, not before.
-/// Intentionally-different from Vim/Emacs: a new discovery grammar, not a blend (NAT-2, D-051 spirit).
-const NATIVE_LEADER_MENU: &[(char, &str, Command)] = &[
-    ('w', "write", Command::Save),
-    ('q', "quit", Command::Quit),
-    ('u', "undo", Command::Undo),
-    ('r', "redo", Command::Redo),
-];
-
-/// Resolve a leader selection key to its bound command, or `None` if the key is unbound — a which-key abort
-/// (Emacs `C-g` / any key not on the menu closes it). Only an unmodified (or Shift-only) char key can bind.
-fn native_leader_command(key: KeyEvent) -> Option<Command> {
-    let KeyCode::Char(c) = key.code else {
-        return None;
-    };
-    if !(key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT) {
-        return None;
-    }
-    NATIVE_LEADER_MENU
-        .iter()
-        .find(|(k, _, _)| *k == c)
-        .map(|(_, _, cmd)| cmd.clone())
-}
-
 impl InputEngine {
     #[must_use]
     pub fn new() -> InputEngine {
@@ -1638,6 +1611,9 @@ impl Default for InputEngine {
 
 mod vim;
 pub(crate) use vim::{motion_key, text_object, Ns, VimProfile};
+
+mod native;
+pub(crate) use native::{native_leader_command, NATIVE_LEADER_MENU};
 
 mod emacs;
 pub use emacs::emacs_command_by_name;
