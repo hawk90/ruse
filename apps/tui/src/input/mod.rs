@@ -185,6 +185,7 @@ fn motion_key(code: KeyCode) -> Option<Motion> {
         KeyCode::Char('E') => Motion::BigWordEnd,
         KeyCode::Char('$') => Motion::LineEnd,
         KeyCode::Char('^') => Motion::LineFirstNonBlank,
+        KeyCode::Char('|') => Motion::Column,
         KeyCode::Char('}') => Motion::ParagraphFwd,
         KeyCode::Char('{') => Motion::ParagraphBack,
         KeyCode::Char(')') => Motion::SentenceFwd,
@@ -1749,6 +1750,8 @@ impl InputEngine {
                     // `motion`, so `dge` deletes back through the previous word-end).
                     KeyCode::Char('e') => self.motion(Motion::WordEndBack),
                     KeyCode::Char('E') => self.motion(Motion::BigWordEndBack),
+                    // `g_` — to the last non-blank char of the line (`{count}g_` = count-1 lines down).
+                    KeyCode::Char('_') => self.motion(Motion::LineLastNonBlank),
                     // `g*` / `g#` — like `*`/`#` but match the word ANYWHERE (no `\<…\>` boundaries).
                     KeyCode::Char('*') => self.action(Command::SearchWordUnder {
                         forward: true,

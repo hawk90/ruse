@@ -34,6 +34,21 @@ mod tests {
     }
 
     #[test]
+    fn g_underscore_and_pipe_motions() {
+        assert_eq!(
+            feed("g_"),
+            Feed::Cmd(Command::Move(1, Motion::LineLastNonBlank))
+        );
+        assert_eq!(
+            feed("dg_"),
+            Feed::Cmd(Command::Delete(1, Motion::LineLastNonBlank))
+        );
+        assert_eq!(feed("|"), Feed::Cmd(Command::Move(1, Motion::Column)));
+        assert_eq!(feed("5|"), Feed::Cmd(Command::Move(5, Motion::Column)));
+        assert_eq!(feed("d5|"), Feed::Cmd(Command::Delete(5, Motion::Column)));
+    }
+
+    #[test]
     fn tag_text_objects() {
         assert_eq!(
             feed("dit"),
