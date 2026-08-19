@@ -949,6 +949,34 @@ mod tests {
         assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
     }
 
+    /// `=` reindents lines to their bracket depth (net unclosed `([{` × shiftwidth; closer-first lines
+    /// dedent; blank lines stay empty), as one undo group.
+    #[test]
+    fn reindent_by_bracket_depth() {
+        let src = "fn main() {\nlet x = foo(\n1,\n2,\n);\n}\n";
+        let mut w = Workspace::new(src.as_bytes().to_vec());
+        // Default config: shiftwidth 4, spaces. `=G` reindents the whole buffer.
+        w.apply(&Command::Reindent {
+            count: 1,
+            motion: Motion::LastLine,
+        });
+        let expected = "fn main() {\n    let x = foo(\n        1,\n        2,\n    );\n}\n";
+        assert_eq!(w.focused().doc.bytes(), expected.as_bytes());
+
+        // One undo restores the original in a single step.
+        w.apply(&Command::Undo);
+        assert_eq!(w.focused().doc.bytes(), src.as_bytes());
+
+        // Shiftwidth drives the unit; a blank line stays empty.
+        let mut w = Workspace::new("{\nx\n\n}\n".as_bytes().to_vec());
+        w.set_option(crate::editor::EditorOption::ShiftWidth(2));
+        w.apply(&Command::Reindent {
+            count: 1,
+            motion: Motion::LastLine,
+        });
+        assert_eq!(w.focused().doc.bytes(), "{\n  x\n\n}\n".as_bytes());
+    }
+
     /// `>`/`<` {motion} shift the motion's LINES one indent level (linewise), regardless of the motion's
     /// own wise-ness.
     #[test]

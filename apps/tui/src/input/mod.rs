@@ -43,6 +43,8 @@ enum Op {
     /// `>` / `<` — indent the operator span's lines right / left (linewise).
     ShiftRight,
     ShiftLeft,
+    /// `=` — reindent the operator span's lines to their bracket depth (linewise).
+    Reindent,
 }
 
 impl Op {
@@ -106,6 +108,7 @@ fn change_kind(cmd: &Command) -> ChangeKind {
         | C::ShiftRight(_)
         | C::ShiftLeft(_)
         | C::ShiftMotion { .. }
+        | C::Reindent { .. }
         | C::Paste { .. }
         | C::EmacsYank { .. }
         | C::EmacsKillLine
@@ -158,6 +161,10 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         C::ShiftLeft(_) => C::ShiftLeft(n),
         C::ShiftMotion { left, motion, .. } => C::ShiftMotion {
             left: *left,
+            count: n,
+            motion: *motion,
+        },
+        C::Reindent { motion, .. } => C::Reindent {
             count: n,
             motion: *motion,
         },
@@ -887,6 +894,12 @@ impl InputEngine {
                         count: total,
                         motion: m,
                     }
+                } else if op == Op::Reindent {
+                    // `=` over a motion — the planner reindents the motion's LINES (always linewise).
+                    Command::Reindent {
+                        count: total,
+                        motion: m,
+                    }
                 } else if let Some(wise) = self.normal.forced_wise {
                     let opk = match op {
                         Op::Delete => OpKind::Delete,
@@ -897,7 +910,8 @@ impl InputEngine {
                         | Op::CaseUpper
                         | Op::CaseToggle
                         | Op::ShiftRight
-                        | Op::ShiftLeft => {
+                        | Op::ShiftLeft
+                        | Op::Reindent => {
                             unreachable!()
                         }
                     };
@@ -925,7 +939,8 @@ impl InputEngine {
                         | Op::CaseUpper
                         | Op::CaseToggle
                         | Op::ShiftRight
-                        | Op::ShiftLeft => {
+                        | Op::ShiftLeft
+                        | Op::Reindent => {
                             unreachable!()
                         }
                     }
@@ -1509,6 +1524,11 @@ impl InputEngine {
             // (`>j`, `>ap`) shifts the motion's lines (always linewise).
             KeyCode::Char('>') => self.operator(Op::ShiftRight, |n, _| Command::ShiftRight(n)),
             KeyCode::Char('<') => self.operator(Op::ShiftLeft, |n, _| Command::ShiftLeft(n)),
+            // `=` reindents (bracket-depth): doubled `==` is linewise, `=motion`/`=ap` over a motion.
+            KeyCode::Char('=') => self.operator(Op::Reindent, |n, _| Command::Reindent {
+                count: n,
+                motion: Motion::Line,
+            }),
             KeyCode::Char('p') => self.action(Command::Paste {
                 after: true,
                 count: self.mcount(),
@@ -1636,7 +1656,8 @@ impl InputEngine {
                         | Op::CaseUpper
                         | Op::CaseToggle
                         | Op::ShiftRight
-                        | Op::ShiftLeft => SearchOp::Move,
+                        | Op::ShiftLeft
+                        | Op::Reindent => SearchOp::Move,
                     },
                     None => SearchOp::Move,
                 };
