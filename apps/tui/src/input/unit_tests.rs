@@ -26,6 +26,24 @@ mod tests {
     }
 
     #[test]
+    fn backward_word_end_g_prefix() {
+        // `ge`/`gE` move; the count before `g` carries through; `dge` is an operator over the motion.
+        assert_eq!(feed("ge"), Feed::Cmd(Command::Move(1, Motion::WordEndBack)));
+        assert_eq!(
+            feed("gE"),
+            Feed::Cmd(Command::Move(1, Motion::BigWordEndBack))
+        );
+        assert_eq!(
+            feed("2ge"),
+            Feed::Cmd(Command::Move(2, Motion::WordEndBack))
+        );
+        assert_eq!(
+            feed("dge"),
+            Feed::Cmd(Command::Delete(1, Motion::WordEndBack))
+        );
+    }
+
+    #[test]
     fn operators_with_counts() {
         assert_eq!(feed("dw"), Feed::Cmd(Command::Delete(1, Motion::WordFwd)));
         assert_eq!(feed("d2w"), Feed::Cmd(Command::Delete(2, Motion::WordFwd)));

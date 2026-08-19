@@ -25,6 +25,8 @@ pub enum Motion {
     WordFwd,
     WordBack,
     WordEnd,
+    /// Vim `ge` — backward to the end of the previous (small-)word. Inclusive under an operator (`dge`).
+    WordEndBack,
     /// Emacs `forward-word` / `M-f` (and the span for `kill-word` / `M-d`). Like `WordEnd` it stops at the
     /// end of the word, but as a CURSOR move it rests point AFTER the last word char (Emacs point is
     /// between-character, D-050), where Vim `e` (`WordEnd`) rests ON it. Its operator span is the same
@@ -34,6 +36,8 @@ pub enum Motion {
     BigWordFwd,
     BigWordBack,
     BigWordEnd,
+    /// Vim `gE` — backward to the end of the previous WORD (whitespace-delimited). Inclusive under `dgE`.
+    BigWordEndBack,
     /// Text object: the word under the cursor (`iw`) — small-word classes (word / punct / space).
     /// Only meaningful under an operator or in a selection.
     InnerWord,
@@ -275,6 +279,29 @@ fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
         i += 1;
     }
     i
+}
+
+/// One past the last byte of the PREVIOUS word / WORD before `pos` — the exclusive end for Vim `ge` / `gE`.
+/// Scans left for the first word-end byte (a non-space whose right neighbour is a different group or EOF),
+/// which naturally skips the rest of the word the cursor sits in. `0` when there is no earlier word. The
+/// caller snaps with [`prev_boundary`] so the cursor lands on the last CHAR (multibyte-safe), like `WordEnd`.
+fn prev_word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
+    let pos = pos.min(b.len());
+    if pos == 0 {
+        return 0;
+    }
+    let mut e = pos - 1;
+    loop {
+        let is_end = class(b[e]) != Class::Space
+            && (e + 1 >= b.len() || !same_group(class(b[e]), class(b[e + 1]), big));
+        if is_end {
+            return e + 1;
+        }
+        if e == 0 {
+            return 0;
+        }
+        e -= 1;
+    }
 }
 
 /// The word-object class of a byte: for `iW`/`aW` (`big`) only whitespace-vs-not matters, so punctuation
@@ -826,10 +853,12 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::WordFwd => next_word_start(b, c, false),
             Motion::WordBack => prev_word_start(b, c, false),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c, false)), // land ON the last char
+            Motion::WordEndBack => prev_boundary(b, prev_word_end_excl(b, c, false)), // Vim `ge`
             Motion::EmacsWordFwd => word_end_excl(b, c, false), // land AFTER the last char (Emacs point)
             Motion::BigWordFwd => next_word_start(b, c, true),
             Motion::BigWordBack => prev_word_start(b, c, true),
             Motion::BigWordEnd => prev_boundary(b, word_end_excl(b, c, true)),
+            Motion::BigWordEndBack => prev_boundary(b, prev_word_end_excl(b, c, true)), // Vim `gE`
             // FindChar / line-jumps are resolved by the early returns above; objects/linewise have no
             // bare-move target.
             Motion::FindChar { .. }
@@ -880,6 +909,16 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // backward / leftward → [target, cursor)
         Motion::Left | Motion::WordBack | Motion::BigWordBack | Motion::LineStart => {
             (target(b, cur, m, n), cur)
+        }
+        // `ge`/`gE` are INCLUSIVE backward: span from the previous word-end (landed-on char included) up to
+        // and including the cursor char (Vim `dge` on `r` of "foo bar" → "fo").
+        Motion::WordEndBack | Motion::BigWordEndBack => {
+            let big = m == Motion::BigWordEndBack;
+            let mut e = cur;
+            for _ in 0..n {
+                e = prev_boundary(b, prev_word_end_excl(b, e, big));
+            }
+            (e, next_boundary(b, cur))
         }
         // `^` is exclusive and can point either way (cursor in the indent → forward): span the ordered pair.
         Motion::LineFirstNonBlank => {
@@ -968,5 +1007,43 @@ mod emacs_word_tests {
         );
         // From mid-buffer it takes the rest of the current word: "foobar baz" at index 3 kills "bar".
         assert_eq!(char_span(b"foobar baz", 3, Motion::EmacsWordFwd, 1), (3, 6));
+    }
+}
+
+#[cfg(test)]
+mod backward_word_end_tests {
+    //! Vim `ge` / `gE` — backward to the end of the previous word / WORD.
+    use super::{char_span, target, Motion};
+
+    #[test]
+    fn ge_lands_on_previous_word_end() {
+        let b = b"foo bar"; // f0 o1 o2 sp3 b4 a5 r6
+                            // From the last char, `ge` lands ON the previous word's last char ('o' of foo, index 2).
+        assert_eq!(target(b, 6, Motion::WordEndBack, 1), 2);
+        // From a word start ('b', index 4) → still the previous word's end.
+        assert_eq!(target(b, 4, Motion::WordEndBack, 1), 2);
+        // From within/at the first word with no earlier word → clamps to 0.
+        assert_eq!(target(b, 2, Motion::WordEndBack, 1), 0);
+        // Counted: two word-ends back from a later buffer.
+        assert_eq!(target(b"aa bb cc", 7, Motion::WordEndBack, 2), 1); // cc→bb-end→aa-end(idx1)
+    }
+
+    #[test]
+    fn big_ge_treats_punctuation_as_part_of_the_word() {
+        let b = b"foo.bar baz"; // small `ge` stops at the punct boundary; big `gE` does not
+                                // `ge` from 'baz' start (index 8) → end of "bar" (index 6) since punct/word split into groups.
+        assert_eq!(target(b, 8, Motion::WordEndBack, 1), 6);
+        // `gE` from index 8 → end of the WORD "foo.bar" which is also index 6 (its last char 'r').
+        assert_eq!(target(b, 8, Motion::BigWordEndBack, 1), 6);
+        // But inside "foo.bar": `ge` from 'b'(index4) → end of "foo" segment... the '.' at 3 is its own
+        // small-word (punct), so `ge` lands on it (index 3); `gE` skips to "foo" end? No earlier WORD, → 0.
+        assert_eq!(target(b, 4, Motion::WordEndBack, 1), 3);
+        assert_eq!(target(b, 4, Motion::BigWordEndBack, 1), 0);
+    }
+
+    #[test]
+    fn dge_is_inclusive_of_both_ends() {
+        // `dge` on 'r' of "foo bar" deletes back through the previous word-end, inclusive: [2, 7) → "fo".
+        assert_eq!(char_span(b"foo bar", 6, Motion::WordEndBack, 1), (2, 7));
     }
 }
