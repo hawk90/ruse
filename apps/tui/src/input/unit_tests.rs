@@ -216,6 +216,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_delete_ranges() {
+        use ruse_core::SubRange;
+        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine));
+        assert_eq!(parse_ex("delete"), Ex::Delete(SubRange::CurrentLine));
+        assert_eq!(parse_ex("2,5d"), Ex::Delete(SubRange::Lines(2, 5)));
+        assert_eq!(parse_ex("%d"), Ex::Delete(SubRange::WholeFile));
+        assert_eq!(parse_ex("3delete"), Ex::Delete(SubRange::Lines(3, 3)));
+        // Not a delete verb → falls through (Unknown), not a spurious Delete.
+        assert!(matches!(parse_ex("diffthis"), Ex::Unknown(_)));
+    }
+
+    #[test]
     fn doubled_operator_is_linewise() {
         assert_eq!(feed("dd"), Feed::Cmd(Command::Delete(1, Motion::Line)));
         assert_eq!(feed("2dd"), Feed::Cmd(Command::Delete(2, Motion::Line)));

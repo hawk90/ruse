@@ -126,6 +126,15 @@ pub(crate) fn run_ex(
                 };
             }
         }
+        // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
+        Ex::Delete(range) => {
+            let n = ws.delete_lines(*range);
+            *status = if n == 1 {
+                "1 line deleted".into()
+            } else {
+                format!("{n} lines deleted")
+            };
+        }
         // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window.
         Ex::Global(spec) => {
             *status = match ws.global(spec.range, &spec.pattern, spec.negate, &spec.cmd) {

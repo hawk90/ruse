@@ -18,6 +18,8 @@ pub enum Ex {
     Close,
     /// `:only`/`:on` — close every window except the focused one (the buffers stay loaded).
     Only,
+    /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
+    Delete(SubRange),
     /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
     Substitute(SubSpec),
     /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
@@ -298,6 +300,8 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(rest) = line.strip_prefix("trace save") {
                 Ex::SaveTrace(rest.trim().to_string())
+            } else if let Some(ex) = parse_delete(line) {
+                ex
             } else if let Some(spec) = parse_substitute(line, false) {
                 // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
                 Ex::Substitute(spec)
@@ -308,6 +312,19 @@ pub fn parse_ex(line: &str) -> Ex {
                 Ex::Unknown(line.to_string())
             }
         }
+    }
+}
+
+/// Parse `:[range]d` / `:[range]delete` — a whole-line delete over the range (no range = the current line).
+/// The verb must be exactly `d`/`delete` after the range prefix, so `:diffthis` etc. fall through to Unknown.
+fn parse_delete(line: &str) -> Option<Ex> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, verb) = line.split_at(split);
+    match verb.trim() {
+        "d" | "delete" => Some(Ex::Delete(parse_sub_range(range_str)?)),
+        _ => None,
     }
 }
 
