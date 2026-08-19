@@ -55,6 +55,8 @@ pub enum Ex {
     Enew,
     /// `:e {file}` / `:edit {file}` — open a file into a new buffer and focus it (F-007 multi-buffer).
     Edit(String),
+    /// `:e!` / `:edit!` — reload the focused buffer's file from disk, discarding unsaved changes.
+    EditReload,
     /// `:ls` / `:buffers` — list the buffers on the status line (F-007 multi-buffer).
     Buffers,
     /// `:bnext` / `:bn` — switch the focused window to the next buffer in list order (F-007).
@@ -393,6 +395,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "only" | "on" => Ex::Only,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
+        "e!" | "edit!" => Ex::EditReload,
         "enew" | "ene" => Ex::Enew,
         "ls" | "buffers" | "files" => Ex::Buffers,
         "bnext" | "bn" => Ex::BufferNext,
