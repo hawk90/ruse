@@ -28,6 +28,7 @@ pub mod screen;
 
 pub(crate) mod app;
 pub(crate) mod health;
+pub(crate) mod indent;
 pub(crate) mod log;
 pub(crate) mod recover;
 pub(crate) mod terminal;

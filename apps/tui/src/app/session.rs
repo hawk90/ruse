@@ -20,7 +20,7 @@ use crate::ui::picker::{PickOutcome, Picker};
 use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{buffer_picker, file_picker, layout::window_rects, line_picker, palette};
-use crate::{health, highlight, line_index, persist, recover, screen, viewport};
+use crate::{health, highlight, indent, line_index, persist, recover, screen, viewport};
 
 /// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
 const SCROLLOFF: usize = 3;
@@ -626,6 +626,27 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             status = "E348: No string under cursor".into();
                             continue;
                         }
+                    }
+                } else {
+                    cmd
+                };
+                // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
+                // range and compute the levels from the tree, then rewrite to a concrete `SetIndents` (the
+                // trace replays it exactly). Without a tree it falls through to the core bracket-depth `=`.
+                let cmd = if let Command::Reindent { count, motion } = cmd {
+                    let id = ws.focused_buffer();
+                    match (
+                        ws.reindent_range(motion, count),
+                        highlighters
+                            .get(&id)
+                            .and_then(highlight::CachedHighlight::tree),
+                    ) {
+                        (Some((first_line, last_line)), Some(tree)) => Command::SetIndents {
+                            first_line,
+                            last_line,
+                            levels: indent::indent_levels(tree, &snapshot, first_line, last_line),
+                        },
+                        _ => Command::Reindent { count, motion },
                     }
                 } else {
                     cmd

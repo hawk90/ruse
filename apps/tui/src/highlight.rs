@@ -275,6 +275,12 @@ impl CachedHighlight {
     /// Spans for the `visible` byte range of the document at `rev`. Reuses the cache when neither the
     /// revision nor the viewport changed. The TREE is reparsed only on a revision change (incrementally,
     /// against the previous tree); a scroll re-runs only the viewport-bounded query.
+    /// The cached parse tree (current as of the last [`Self::spans`] call — refreshed every render), for
+    /// the tree-aware indent engine. `None` before the first parse.
+    pub fn tree(&self) -> Option<&Tree> {
+        self.tree.as_ref()
+    }
+
     pub fn spans(&mut self, rev: Revision, src: &[u8], visible: std::ops::Range<usize>) -> &[Span] {
         if self.key.as_ref() == Some(&(rev, visible.clone())) {
             return &self.spans;

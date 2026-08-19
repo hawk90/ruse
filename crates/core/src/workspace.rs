@@ -726,6 +726,20 @@ impl Workspace {
         self.views[vid.0] = Some(view);
     }
 
+    /// The 0-based inclusive line range a `=`/`Reindent` motion covers on the focused buffer (its op-span's
+    /// first/last line), or `None` if the span is empty. The frontend uses this to compute tree-aware indent
+    /// levels for the same lines the core's bracket-depth `=` would reindent.
+    #[must_use]
+    pub fn reindent_range(&self, motion: crate::Motion, count: u32) -> Option<(usize, usize)> {
+        let pane = self.focused();
+        let b = pane.doc.bytes();
+        let (s, e, _) = crate::editor::op_span(b, pane.view.cursor(), motion, count);
+        if s >= e {
+            return None;
+        }
+        Some((crate::pos::line_of(b, s), crate::pos::line_of(b, e - 1)))
+    }
+
     /// The keyword under (or forward-on-line from) the focused cursor — the pattern source for Vim `*`/`#`.
     /// `None` when the current line has no keyword at/after the cursor.
     #[must_use]
@@ -947,6 +961,34 @@ mod tests {
             Some(2)
         );
         assert_eq!(w.focused().doc.bytes(), b"a\nb\na\nb\nc\n");
+    }
+
+    /// `SetIndents` (the tree-aware `=` seam) sets each line's leading whitespace to `level × shiftwidth`,
+    /// leaves blank lines empty, and is one undo group.
+    #[test]
+    fn set_indents_applies_explicit_levels() {
+        let mut w = Workspace::new("a\nb\nc\n".as_bytes().to_vec());
+        w.apply(&Command::SetIndents {
+            first_line: 0,
+            last_line: 2,
+            levels: vec![0, 1, 2],
+        });
+        assert_eq!(w.focused().doc.bytes(), "a\n    b\n        c\n".as_bytes());
+        w.apply(&Command::Undo);
+        assert_eq!(
+            w.focused().doc.bytes(),
+            "a\nb\nc\n".as_bytes(),
+            "one undo group"
+        );
+
+        // A blank line stays empty regardless of its level.
+        let mut w = Workspace::new("{\n\nx\n".as_bytes().to_vec());
+        w.apply(&Command::SetIndents {
+            first_line: 0,
+            last_line: 2,
+            levels: vec![0, 5, 1],
+        });
+        assert_eq!(w.focused().doc.bytes(), "{\n\n    x\n".as_bytes());
     }
 
     /// `=` reindents lines to their bracket depth (net unclosed `([{` × shiftwidth; closer-first lines

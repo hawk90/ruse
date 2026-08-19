@@ -151,6 +151,15 @@ pub enum Command {
         count: u32,
         motion: Motion,
     },
+    /// Set the indent level of each line in `[first_line, last_line]` to `levels[i] × shiftwidth`
+    /// (blank lines stay empty), as one undo group. The frontend emits this for the tree-aware `=` — it
+    /// computes the levels from the syntax tree, so the levels are concrete and the trace replays exactly
+    /// (the core is tree-sitter-free). `Reindent` above is the non-tree bracket-depth fallback.
+    SetIndents {
+        first_line: usize,
+        last_line: usize,
+        levels: Vec<usize>,
+    },
     // editing grammar: count + motion / operator (Phase D)
     Move(u32, Motion),
     Delete(u32, Motion),
@@ -628,6 +637,18 @@ impl Command {
             Command::Reindent { count, motion } => {
                 format!("reindent {count} {}", motion_token(*motion))
             }
+            Command::SetIndents {
+                first_line,
+                last_line,
+                levels,
+            } => {
+                let mut s = format!("set_indents {first_line} {last_line}");
+                for l in levels {
+                    s.push(' ');
+                    s.push_str(&l.to_string());
+                }
+                s
+            }
             Command::Move(n, m) => format!("move {n} {}", motion_token(*m)),
             Command::Delete(n, m) => format!("delete {n} {}", motion_token(*m)),
             Command::Change(n, m) => format!("change {n} {}", motion_token(*m)),
@@ -854,6 +875,27 @@ impl Command {
                 });
             }
             "reindent" => return op_cmd(arg, |count, motion| Command::Reindent { count, motion }),
+            "set_indents" => {
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let first_line = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let last_line = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let levels = it
+                    .map(|s| s.parse::<usize>())
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|_| CommandParseError::BadArgument(a.to_string()))?;
+                return Ok(Command::SetIndents {
+                    first_line,
+                    last_line,
+                    levels,
+                });
+            }
             "case_motion" => {
                 // `case_motion {count} {motion} {case}`
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
@@ -1070,6 +1112,20 @@ mod tests {
             Command::ShiftRight(3),
             Command::ShiftLeft(1),
             Command::ShiftLeft(2),
+            Command::Reindent {
+                count: 1,
+                motion: Motion::Line,
+            },
+            Command::SetIndents {
+                first_line: 0,
+                last_line: 0,
+                levels: vec![],
+            },
+            Command::SetIndents {
+                first_line: 2,
+                last_line: 5,
+                levels: vec![0, 1, 2, 1],
+            },
             Command::InsertChar('🎉'),
             Command::InsertChar(' '),
             Command::InsertNewline,
