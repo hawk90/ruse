@@ -1429,6 +1429,12 @@ impl InputEngine {
             KeyCode::Char('C') => self.action(Command::Change(self.mcount(), Motion::LineEnd)),
             KeyCode::Char('Y') => self.action(Command::Yank(self.mcount(), Motion::LineEnd)),
             KeyCode::Char('S') => self.action(Command::Change(self.mcount(), Motion::Line)),
+            // `s` (substitute char) = `cl`: change `count` chars rightward and enter Insert. Same
+            // `Change(count, Right)` a `c l` produces, so register geometry and dot-repeat match. Guarded
+            // to Normal (no pending operator) so `ds` still aborts — `s` is not a motion.
+            KeyCode::Char('s') if self.normal.op.is_none() => {
+                self.action(Command::Change(self.mcount(), Motion::Right))
+            }
             KeyCode::Char('i') if self.normal.op.is_some() => {
                 self.normal.awaiting = Awaiting::TextObjectChar { inner: true };
                 Feed::Pending
