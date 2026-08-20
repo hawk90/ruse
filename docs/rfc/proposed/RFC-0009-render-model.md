@@ -307,3 +307,28 @@ The capability ledger and pinned profile are themselves inspectable (`:debug cap
   [D-012](../../../spec/DECISIONS.md)/F-017; this RFC only guarantees per-client-view pinning keeps it open.
 - **Decoration-provider budget** within the snapshot-bounded, off-critical-section contract — tied to the
   scheduler budgets that are open under [D-018](../../../spec/DECISIONS.md).
+
+## Addendum A (2026-08-20) — Partial single-frontend reactivation for rich in-buffer rendering (F-031)
+
+Sections 1–7 (and RFC-0012) **defer** the full multi-frontend Render Tree "until a second frontend exists."
+**F-031 (rich in-buffer rendering — Markdown/Org faces, conceal, virtual text, inline images)** does not add a
+second frontend; it adds a second render **tier within the one TUI**. That is a distinct RFC-0012 re-boundary
+trigger, and it reintroduces **only** the piece that tier actually needs: a **TUI-local layout pass** from
+*(buffer bytes + decorations)* to *display cells*, plus the **decoration model** (the in-line facet of this
+RFC's Semantic View Model). Scope is fixed by [D-054](../../../spec/DECISIONS.md):
+
+- **Reactivated (now):** the decoration model (`face | conceal | virt_text | virt_lines | image-handle`,
+  anchored, priority-resolved) and the layout pass that owns the buffer↔display coordinate mapping consumed by
+  both painting and the caret. This is an internal lowering step, **not** the versioned wire IR.
+- **Still deferred (until F-018 GUI):** the backend-neutral, serializable, `schemaVersion`-carrying
+  multi-frontend Render Tree; GUI/Web lowering; plugin-authored decorations (F-016). The decoration model is a
+  strict **subset** of the eventual IR, so nothing here forecloses the full model — it is the same node
+  vocabulary (`Text`/`Image`/`Overlay` → faces/images/virtual), realized single-frontend first.
+- **Capability continuity:** the `Image` node + degradation ladder (§3) and INV-CAP-DEGRADE / INV-RENDER-PROFILE
+  are honored as specified; inline-image detection extends the F-010 capability ledger with an `InlineGraphics`
+  rung ladder (Kitty > Sixel > iTerm2 > None) per [D-053](../../../spec/DECISIONS.md) and RFC-0005. Decoration
+  providers remain snapshot-bounded and off the paint critical section (INV-QUERY-SNAPSHOT).
+
+Depth lives in [docs/design/rich-rendering.md](../../design/rich-rendering.md). This addendum records the
+scoping only; it neither supersedes nor edits the deferral in §§1–7 — those reactivate in full when the GUI
+backend (F-018) lands, at which point the layout pass is re-expressed as the TUI lowering of the shared tree.
