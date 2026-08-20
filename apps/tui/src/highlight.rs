@@ -25,6 +25,11 @@ pub struct Span {
     /// Hide this range from the display (F-031 conceal). Always `false` for code-syntax spans; set by the
     /// Markdown/Org providers on markup that should not show (heading `#` prefixes, emphasis markers).
     pub conceal: bool,
+    /// Virtual text to paint IN PLACE of this (concealed) range — F-031 slice 2 virt_text. `Some("• ")`
+    /// turns a hidden list marker into a bullet, `Some("☐ ")`/`Some("☑ ")` a task marker into a checkbox.
+    /// Shown only where the range is concealed (i.e. off the caret's revealed line); `None` for a plain
+    /// hide or a face-only span. Kept `&'static` — the glyphs are fixed, so `Span` stays `Copy`.
+    pub virt: Option<&'static str>,
 }
 
 /// A configured highlighter for one language: an owned parser plus the compiled highlights query, and
@@ -147,6 +152,7 @@ impl Highlight {
                 end: cap.node.end_byte(),
                 style: face_for(name),
                 conceal: false,
+                virt: None,
             });
         }
         spans.sort_by_key(|s| std::cmp::Reverse(s.end - s.start));
@@ -529,6 +535,7 @@ fn markdown_decorations(
                             end: cstart,
                             style: CellStyle::default(),
                             conceal: true,
+                            virt: None,
                         });
                     }
                     spans.push(Span {
@@ -536,6 +543,7 @@ fn markdown_decorations(
                         end: cend,
                         style: face_for("markup.heading"),
                         conceal: false,
+                        virt: None,
                     });
                 }
             }
@@ -550,11 +558,66 @@ fn markdown_decorations(
             }
             continue;
         }
+        // A list item: conceal the `- ` / `- [ ] ` prefix and show a bullet / checkbox glyph in its place
+        // (virt_text). UNORDERED markers only (`-`/`*`/`+`); ordered markers (`1.` / `1)`) keep their
+        // number. Does NOT `continue` — we fall through to descend so the item's inline text is re-parsed.
+        if node.kind() == "list_item" {
+            let mut cursor = node.walk();
+            let marker = node.children(&mut cursor).find(|c| {
+                matches!(
+                    c.kind(),
+                    "list_marker_minus" | "list_marker_star" | "list_marker_plus"
+                )
+            });
+            if let Some(marker) = marker {
+                // The glyph: a checkbox if the item is a task, else a bullet.
+                let glyph: &'static str = match first_descendant(
+                    node,
+                    &["task_list_marker_checked", "task_list_marker_unchecked"],
+                ) {
+                    Some(t) if t.kind() == "task_list_marker_checked" => "☑ ",
+                    Some(_) => "☐ ",
+                    None => "• ",
+                };
+                // Conceal `[marker.start, content.start)` — the marker plus any task box and trailing space
+                // — replacing it with the glyph. Content start is the item's first inline text.
+                let mstart = marker.start_byte();
+                let cstart = first_descendant(node, &["inline"])
+                    .map(|n| n.start_byte())
+                    .unwrap_or(marker.end_byte());
+                if cstart > mstart && mstart < visible.end && cstart > visible.start {
+                    spans.push(Span {
+                        start: mstart,
+                        end: cstart,
+                        style: CellStyle::default(),
+                        conceal: true,
+                        virt: Some(glyph),
+                    });
+                }
+            }
+        }
         let mut cursor = node.walk();
         stack.extend(node.children(&mut cursor));
     }
     spans.sort_by_key(|s| std::cmp::Reverse(s.end - s.start));
     spans
+}
+
+/// The first descendant of `node` (pre-order, document order) whose kind is in `kinds`, or `None`.
+fn first_descendant<'a>(
+    node: tree_sitter::Node<'a>,
+    kinds: &[&str],
+) -> Option<tree_sitter::Node<'a>> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if kinds.contains(&child.kind()) {
+            return Some(child);
+        }
+        if let Some(found) = first_descendant(child, kinds) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 /// Re-parse one block-level `inline` node's bytes with the INLINE grammar and emit F-031 decorations for
@@ -588,6 +651,7 @@ fn inline_decorations(
                 end: e,
                 style,
                 conceal,
+                virt: None,
             });
         }
     };
@@ -834,6 +898,31 @@ mod tests {
                 .iter()
                 .any(|s| s.start == 2 && s.end == 3 && s.conceal),
             "heading content is not inline-reparsed; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_list_markers_become_bullets_and_checkboxes() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"- a\n\n- [ ] b\n\n- [x] c\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.conceal && s.virt == Some("\u{2022} ")),
+            "unordered `- ` -> bullet virt; got {spans:?}",
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.conceal && s.virt == Some("\u{2610} ")),
+            "task `[ ]` -> unchecked box virt; got {spans:?}",
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.conceal && s.virt == Some("\u{2611} ")),
+            "task `[x]` -> checked box virt; got {spans:?}",
         );
     }
 

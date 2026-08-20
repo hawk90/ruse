@@ -40,8 +40,8 @@ fn paint_grid(cur: &mut screen::Screen, rect: Rect, grid: &crate::term_grid::Gri
 /// Advance a display column past one grapheme cluster `g` — the ONE column rule shared by painting
 /// ([`paint_pane`]), the caret ([`cursor_cell`] via [`line_display_col`]), and the inverse
 /// ([`line_byte_at_col`]), so the three can never drift. `col` is relative to the line's left edge; a tab
-/// expands to the next `TAB_WIDTH` stop, every other cluster advances by its display width. This is the
-/// identity layout — F-031 slice 1 will teach it to skip concealed ranges and inject virtual cells.
+/// expands to the next `TAB_WIDTH` stop, every other cluster advances by its display width. Conceal and
+/// virt_text are handled in [`paint_pane`]'s walk (skip / inject), so this stays the pure column rule.
 #[inline]
 pub(crate) fn advance_col(col: u16, g: &str) -> u16 {
     if g == "\t" {
@@ -101,9 +101,10 @@ pub(crate) fn paint_pane(
     block: Option<&[(usize, usize)]>,
     hl: &[(usize, usize)],
     underline: &[(usize, usize)],
-    conceal: &[(usize, usize)],
+    conceal: &[(usize, usize, Option<&str>)],
     caret_line: usize,
 ) {
+    use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
     if rect.w == 0 || rect.h == 0 {
         return;
@@ -125,12 +126,25 @@ pub(crate) fn paint_pane(
         if line < top || scol >= x1 {
             continue; // above the pane, or past its right edge (truncate)
         }
-        // F-031 conceal: hide this cluster (no cell, no column advance) when its range is concealed AND
-        // its line is not the caret's — the caret line is revealed so its markup stays editable.
-        if line != caret_line && conceal.iter().any(|&(s, e)| i >= s && i < e) {
-            continue;
-        }
         let srow = rect.y + (line - top) as u16;
+        // F-031 conceal: on a non-caret line, a concealed cluster paints NO cell and does not advance the
+        // column (following glyphs shift left) — the caret line is revealed so its markup stays editable.
+        // At the range's START, any virt_text (a bullet/checkbox glyph) is painted in the marker's place.
+        if line != caret_line {
+            if let Some(&(s, _e, virt)) = conceal.iter().find(|&&(s, e, _)| i >= s && i < e) {
+                if i == s {
+                    if let Some(vt) = virt {
+                        for vg in vt.graphemes(true) {
+                            if scol >= x1 {
+                                break;
+                            }
+                            scol = cur.put(srow, scol, vg, Color::Reset, false);
+                        }
+                    }
+                }
+                continue;
+            }
+        }
         let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
             || block.is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e))
             || hl.iter().any(|&(s, e)| i >= s && i < e);
@@ -245,11 +259,11 @@ pub(crate) fn render(
     // Disabled by `RUSE_CONCEAL=off` (the config-file `render.conceal` key has no loader yet — same seam
     // as RUSE_PROFILE). The revealed line is the focused caret's buffer line (reveal-at-point).
     let conceal_on = std::env::var("RUSE_CONCEAL").as_deref() != Ok("off");
-    let conceal: Vec<(usize, usize)> = if conceal_on {
+    let conceal: Vec<(usize, usize, Option<&'static str>)> = if conceal_on {
         spans
             .iter()
             .filter(|s| s.conceal)
-            .map(|s| (s.start, s.end))
+            .map(|s| (s.start, s.end, s.virt))
             .collect()
     } else {
         Vec::new()
@@ -281,11 +295,12 @@ pub(crate) fn render(
         // #1) in reverse video, on top of any live Visual selection.
         let hl: &[(usize, usize)] = if i == ws.focus() { focus_hl } else { &[] };
         // Conceal applies to the focused pane's view of the focused doc (F-031); other panes render markup.
-        let pane_conceal: &[(usize, usize)] = if i == ws.focus() && p.view.doc() == focus_doc {
-            &conceal
-        } else {
-            &[]
-        };
+        let pane_conceal: &[(usize, usize, Option<&'static str>)] =
+            if i == ws.focus() && p.view.doc() == focus_doc {
+                &conceal
+            } else {
+                &[]
+            };
         // F-014: underline the focused buffer's diagnostic ranges.
         let underline: Vec<(usize, usize)> = if i == ws.focus() {
             diagnostics.iter().map(|d| (d.start, d.end)).collect()
@@ -700,7 +715,7 @@ mod render_tests {
             w: 8,
             h: 2,
         };
-        let conceal = [(0usize, 2usize), (5, 7)]; // hide "ab" on line 0 and on line 1
+        let conceal: [(usize, usize, Option<&str>); 2] = [(0, 2, None), (5, 7, None)]; // hide "ab" both lines
 
         // Caret on line 1: line 0's "ab" is concealed so 'c' shifts to col 0; line 1 is revealed so 'a'
         // stays at col 0.
@@ -748,6 +763,52 @@ mod render_tests {
             s2.cell(0, 0).content,
             screen::Content::Cluster("a".into()),
             "caret line revealed: 'a' stays at col 0",
+        );
+    }
+
+    /// F-031 virt_text (slice 2): a concealed range carrying virt_text paints the GLYPH in the marker's
+    /// place on a non-caret line (`- x` → `• x`), and shows the real marker on the revealed caret line.
+    #[test]
+    fn paint_pane_virt_text_replaces_concealed_marker_off_caret_line() {
+        let bytes = b"- x\n- y"; // two list items; conceal "- " [0,2)/[4,6), virt "• "
+        let no_style: &[screen::CellStyle] = &[];
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 8,
+            h: 2,
+        };
+        let conceal: [(usize, usize, Option<&str>); 2] = [(0, 2, Some("• ")), (4, 6, Some("• "))];
+
+        // Caret on line 1: line 0 shows the bullet glyph then the text; line 1 (revealed) shows "- y".
+        let mut s = screen::Screen::new(8, 2);
+        paint_pane(
+            &mut s,
+            rect,
+            bytes,
+            no_style,
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &conceal,
+            1,
+        );
+        assert_eq!(
+            s.cell(0, 0).content,
+            screen::Content::Cluster("•".into()),
+            "off-caret line: '- ' concealed, '•' painted in its place",
+        );
+        assert_eq!(
+            s.cell(0, 2).content,
+            screen::Content::Cluster("x".into()),
+            "text follows the 2-cell bullet glyph",
+        );
+        assert_eq!(
+            s.cell(1, 0).content,
+            screen::Content::Cluster("-".into()),
+            "caret line revealed: raw '-' marker shows",
         );
     }
 
