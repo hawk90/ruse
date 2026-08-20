@@ -707,8 +707,10 @@ features:
     # completion docs panel + cross-file additionalTextEdits, workspace-wide diagnostics list (needs per-buffer
     # bytes) + multi-SOURCE merge by namespace, more languages, remote (C-AGENT), C-SCHEDULER. #313: command
     # code actions — executeCommand + the server workspace/applyEdit is now surfaced+applied (Lsp origin,
-    # text-only, user-selected only; namespace allowlist deferred). Stays `planned` — local, single language,
-    # no remote/multi-source merge yet.
+    # text-only, user-selected only; namespace allowlist deferred). #314: MULTI-LANGUAGE — server_for_ext maps
+    # rust/python/ts/js/go/c/cpp/lua (ts+js share one server, c/cpp share clangd; missing binary = silent
+    # no-op); the hard-coded map is the seam a config-driven registry replaces. Stays `planned` — local,
+    # no remote/multi-source merge, hard-coded server map yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >
