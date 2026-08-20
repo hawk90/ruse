@@ -225,8 +225,9 @@ mod tests {
     #[ignore = "spawns a real rust-analyzer; run with --ignored"]
     fn live_lsp_pipeline() {
         use crate::lsp::protocol::{
-            completion_params, formatting_params, parse_completion, parse_hover, parse_text_edits,
-            parse_workspace_edit, position_params, rename_params,
+            completion_params, formatting_params, parse_completion, parse_hover, parse_locations,
+            parse_text_edits, parse_workspace_edit, position_params, references_params,
+            rename_params,
         };
         use std::process::Command as PCommand;
         use std::time::{Duration, Instant};
@@ -250,15 +251,21 @@ mod tests {
             LspClient::spawn(PCommand::new("rust-analyzer"), &root_uri).expect("spawn RA");
         client.did_open(&file_uri, "rust", 1, src);
 
-        let (mut got_diag, mut got_hover, mut got_fmt, mut got_rename, mut got_completion) =
-            (false, false, false, false, false);
-        let (mut hover_id, mut fmt_id, mut rename_id, mut completion_id): (
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-        ) = (None, None, None, None);
-        let (mut last_hover, mut last_fmt, mut last_rename, mut last_completion) = (
+        let (
+            mut got_diag,
+            mut got_hover,
+            mut got_fmt,
+            mut got_rename,
+            mut got_completion,
+            mut got_refs,
+        ) = (false, false, false, false, false, false);
+        let mut hover_id: Option<i64> = None;
+        let mut fmt_id: Option<i64> = None;
+        let mut rename_id: Option<i64> = None;
+        let mut completion_id: Option<i64> = None;
+        let mut refs_id: Option<i64> = None;
+        let (mut last_hover, mut last_fmt, mut last_rename, mut last_completion, mut last_refs) = (
+            Instant::now(),
             Instant::now(),
             Instant::now(),
             Instant::now(),
@@ -289,6 +296,9 @@ mod tests {
                 if Some(*id) == completion_id && !parse_completion(result).is_empty() {
                     got_completion = true;
                 }
+                if Some(*id) == refs_id && !parse_locations(result).is_empty() {
+                    got_refs = true;
+                }
             }
             // Once diagnostics flow the server is ready; (re)send hover on `x` (line 1 col 4), a format, and a
             // rename of `x` at the same position.
@@ -318,7 +328,15 @@ mod tests {
                 ));
                 last_completion = Instant::now();
             }
-            if got_diag && got_hover && got_fmt && got_rename && got_completion {
+            // References to `x` (line 1 col 4): its binding + use → ≥1 location.
+            if got_diag && !got_refs && last_refs.elapsed() > Duration::from_secs(2) {
+                refs_id = Some(client.request(
+                    "textDocument/references",
+                    references_params(&file_uri, 1, 4, true),
+                ));
+                last_refs = Instant::now();
+            }
+            if got_diag && got_hover && got_fmt && got_rename && got_completion && got_refs {
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -335,5 +353,6 @@ mod tests {
             got_completion,
             "no completion items arrived from rust-analyzer"
         );
+        assert!(got_refs, "no references arrived from rust-analyzer");
     }
 }

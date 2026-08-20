@@ -246,14 +246,9 @@ fn markup_text(v: &Value) -> Option<String> {
     None
 }
 
-/// The `(uri, line, character)` of a definition response — the first of a `Location`, a `Location[]`, or a
-/// `LocationLink[]` (reading `uri`/`targetUri` + `range`/`targetSelectionRange`/`targetRange`). `None` if empty.
-pub fn parse_definition(result: &Value) -> Option<(String, u32, u32)> {
-    let loc = if let Some(arr) = result.as_array() {
-        arr.first()?
-    } else {
-        result
-    };
+/// The `(uri, line, character)` of one `Location`/`LocationLink` — reading `uri`/`targetUri` +
+/// `range`/`targetSelectionRange`/`targetRange`, taking the range START. `None` if the shape is unexpected.
+fn parse_location(loc: &Value) -> Option<(String, u32, u32)> {
     let uri = loc
         .get("uri")
         .or_else(|| loc.get("targetUri"))
@@ -267,6 +262,31 @@ pub fn parse_definition(result: &Value) -> Option<(String, u32, u32)> {
     let line = start.get("line")?.as_u64()? as u32;
     let character = start.get("character")?.as_u64()? as u32;
     Some((uri, line, character))
+}
+
+/// The `(uri, line, character)` of a definition response — the first of a `Location`, a `Location[]`, or a
+/// `LocationLink[]`. `None` if empty.
+pub fn parse_definition(result: &Value) -> Option<(String, u32, u32)> {
+    parse_locations(result).into_iter().next()
+}
+
+/// EVERY `(uri, line, character)` of a references/definition response — each `Location`/`LocationLink` in
+/// the array, or a single bare `Location`. Empty/null → no locations. Used by `textDocument/references`.
+pub fn parse_locations(result: &Value) -> Vec<(String, u32, u32)> {
+    if let Some(arr) = result.as_array() {
+        arr.iter().filter_map(parse_location).collect()
+    } else {
+        parse_location(result).into_iter().collect()
+    }
+}
+
+/// `textDocument/references` params: the symbol position + whether to include its declaration.
+pub fn references_params(uri: &str, line: u32, character: u32, include_declaration: bool) -> Value {
+    json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character },
+        "context": { "includeDeclaration": include_declaration }
+    })
 }
 
 #[cfg(test)]
@@ -390,6 +410,21 @@ mod tests {
         assert_eq!(parse_definition(&link), Some(("file:///b.rs".into(), 7, 2)));
         assert_eq!(parse_definition(&json!([])), None);
         assert_eq!(parse_definition(&Value::Null), None);
+    }
+
+    #[test]
+    fn parse_locations_collects_every_reference() {
+        let locs = json!([
+            {"uri":"file:///a.rs","range":{"start":{"line":1,"character":4},"end":{"line":1,"character":7}}},
+            {"uri":"file:///b.rs","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":3}}}
+        ]);
+        let got = parse_locations(&locs);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0], ("file:///a.rs".into(), 1, 4));
+        assert_eq!(got[1], ("file:///b.rs".into(), 9, 0));
+        // A single bare Location → one entry; null → none.
+        assert_eq!(parse_locations(&locs[0]).len(), 1);
+        assert!(parse_locations(&Value::Null).is_empty());
     }
 
     #[test]

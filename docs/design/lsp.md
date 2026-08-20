@@ -1,6 +1,6 @@
 # Built-in LSP (F-014) — design
 
-Status: **slices 1–5 landed** (local diagnostics + hover/goto + format + rename + completion, cross-platform). Owner capabilities:
+Status: **slices 1–6 landed** (local diagnostics + hover/goto + format + rename + completion + references, cross-platform). Owner capabilities:
 `CAP-LSP-COORD` (client + normalized model), `CAP-LSP-CODEC` (`DEP-SERDE`); `DEP-LSP-SERVER`. Spec:
 `spec/PRD.yaml` F-014.
 
@@ -89,12 +89,19 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   covered cells on dismiss. `<C-n>/<C-p>`/`↓↑` move, `<CR>/<Tab>` accept (a single edit replacing the typed
   identifier prefix via `Workspace::apply_edits`, staying in Insert), `<Esc>`/typing dismisses. Verified
   end-to-end (the `live_lsp_pipeline` smoke asserts ≥1 real item).
+- **Slice 6 (landed):** references (`:references` / `:refs` / `:ref`) — `textDocument/references` at the cursor
+  → `parse_locations` (every `Location`/`LocationLink`; `parse_definition` is now `parse_locations(..).next()`)
+  → a **references picker** (`ui/ref_picker.rs`, a `Picker<(uri,line,char)>` reusing the F-004/F-013 overlay
+  infra) listing `relpath:line:col`. Enter jumps to the selected location (same file → move; other file →
+  `open_file_into_buffer` then move — the goto path, run INLINE in the picker's accept since the `spans` borrow
+  is already released post-render); Esc closes. The picker is OPENED after render (setting it mid-frame would
+  clash with `cmd_line`'s borrow — deferred via `pending_refs`, like `goto_jump`). Verified end-to-end.
 - **Later:** live filter-as-you-type after the pum opens (slice 5 filters once at trigger time; further typing
   dismisses); snippet placeholder expansion; `completionItem/resolve` lazy docs + a docs side-panel; signature
-  help; trigger-character auto-popup; references / code-actions; a floating name-input prompt + resource-op
-  renames; a jumplist for `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by
-  namespace; a diagnostics list / quickfix UI; more languages (config-driven); incremental `didChange`; remote
-  (C-AGENT); `C-SCHEDULER`.
+  help; trigger-character auto-popup; code-actions; a source-preview line in the references picker; a floating
+  name-input prompt + resource-op renames; a jumplist for `<C-o>` back-navigation; merge LSP with
+  tree-sitter/compiler diagnostics by namespace; a diagnostics list / quickfix UI; more languages
+  (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
 
 ## Verification
 

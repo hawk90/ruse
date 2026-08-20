@@ -226,9 +226,9 @@ pub(crate) fn run_ex(
                 None => *status = "E23: no alternate buffer".into(),
             }
         }
-        // `:terminal` (F-011) / `:fmt` / `:rename` (F-014) are handled in `session::run` (they need the
-        // terminals / lsp maps); they never reach here, but the match stays exhaustive.
-        Ex::Terminal | Ex::Format | Ex::Rename(_) => {}
+        // `:terminal` (F-011) / `:fmt` / `:rename` / `:references` (F-014) are handled in `session::run`
+        // (they need the terminals / lsp maps); they never reach here, but the match stays exhaustive.
+        Ex::Terminal | Ex::Format | Ex::Rename(_) | Ex::References => {}
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }
