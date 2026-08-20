@@ -234,10 +234,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // Syntax highlighting is the FOCUSED buffer's own grammar (F-007): each file buffer has its own
         // highlighter in the registry; a scratch/no-file buffer has none, so it paints unhighlighted.
         let focused_id = ws.focused_buffer();
-        let spans: &[highlight::Span] = match highlighters.get_mut(&focused_id) {
-            Some(h) => h.spans(revision, &snapshot, visible.clone()),
-            None => &[],
-        };
+        let (spans, virt_lines): (&[highlight::Span], &[highlight::VirtLine]) =
+            match highlighters.get_mut(&focused_id) {
+                Some(h) => h.spans_and_virt(revision, &snapshot, visible.clone()),
+                None => (&[], &[]),
+            };
         // The focused pane's extra reverse-video highlights: a `:s///c` confirm match, else the
         // incsearch pattern being typed in `/`…`?`, else the last search (hlsearch) — F-009 #1. The
         // search matches are viewport-cached (CachedSearch), not a per-frame full-buffer regex.
@@ -334,6 +335,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             cmd_line,
             &status,
             spans,
+            virt_lines,
             &rects,
             &mut prev_frame,
             sync_output,
