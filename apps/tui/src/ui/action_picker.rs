@@ -33,6 +33,7 @@ mod action_picker_tests {
                     "file:///a.rs".into(),
                     vec![((0, 0), (0, 0), "use x;\n".into())],
                 )],
+                command: None,
             },
             CodeAction {
                 title: "Add derive".into(),
@@ -40,6 +41,7 @@ mod action_picker_tests {
                     "file:///a.rs".into(),
                     vec![((1, 0), (1, 0), "#[derive(Debug)]\n".into())],
                 )],
+                command: None,
             },
         ];
         let p = open(actions);

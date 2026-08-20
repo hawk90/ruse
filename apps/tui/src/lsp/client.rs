@@ -102,6 +102,9 @@ impl LspClient {
                 Incoming::ServerRequest(id) => {
                     self.send(&json!({"jsonrpc":"2.0","id":id,"result":Value::Null}));
                 }
+                // A `workspace/applyEdit` server→client request: surfaced so the coordinator applies the
+                // edit and replies `{applied}` (we do NOT auto-reply — the reply must follow the apply).
+                Incoming::ApplyEdit(id, params) => out.apply_edits.push((id, params)),
                 Incoming::Diagnostics(p) => out.diagnostics.push(p),
                 Incoming::Response(id, result) => out.responses.push((id, result)),
                 Incoming::InitResponse => self.become_ready(),
@@ -109,6 +112,11 @@ impl LspClient {
             }
         }
         out
+    }
+
+    /// Reply to a server→client request `id` with `result` (used for `workspace/applyEdit` after applying).
+    pub fn respond(&mut self, id: Value, result: Value) {
+        self.send(&json!({"jsonrpc": "2.0", "id": id, "result": result}));
     }
 
     fn become_ready(&mut self) {
@@ -129,11 +137,16 @@ pub struct Polled {
     pub diagnostics: Vec<PublishDiagnosticsParams>,
     /// `(request id, result)` for each reply to one of our requests (hover, definition, …).
     pub responses: Vec<(i64, Value)>,
+    /// `(request id, applyEdit params)` for each `workspace/applyEdit` the server issued (F-014). The
+    /// coordinator applies the edit then `respond`s `{applied}`.
+    pub apply_edits: Vec<(Value, Value)>,
 }
 
 /// A classified incoming message — the pure core of [`LspClient::poll`], testable without a process.
 enum Incoming {
-    /// A server→client request; carries the id to reply to.
+    /// A server→client `workspace/applyEdit` request: `(id, params)`. Applied then replied by the caller.
+    ApplyEdit(Value, Value),
+    /// Any OTHER server→client request; carries the id to null-reply (we advertise no dynamic config).
     ServerRequest(Value),
     Diagnostics(PublishDiagnosticsParams),
     /// A reply to one of our (non-initialize) requests: `(id, result)`.
@@ -145,6 +158,11 @@ enum Incoming {
 
 fn classify(msg: &Value, init_id: i64) -> Incoming {
     match msg.get("method").and_then(Value::as_str) {
+        // A server→client `workspace/applyEdit` (has an id) — surfaced for the caller to apply + reply.
+        Some("workspace/applyEdit") if msg.get("id").is_some() => Incoming::ApplyEdit(
+            msg.get("id").cloned().unwrap_or(Value::Null),
+            msg.get("params").cloned().unwrap_or(Value::Null),
+        ),
         Some(_) if msg.get("id").is_some() => {
             Incoming::ServerRequest(msg.get("id").cloned().unwrap_or(Value::Null))
         }
@@ -206,6 +224,10 @@ mod tests {
         let req =
             json!({"jsonrpc":"2.0","id":"cfg","method":"workspace/configuration","params":{}});
         assert!(matches!(classify(&req, 7), Incoming::ServerRequest(_)));
+        // `workspace/applyEdit` (method + id) is surfaced distinctly (apply + reply, not null-reply).
+        let apply =
+            json!({"jsonrpc":"2.0","id":42,"method":"workspace/applyEdit","params":{"edit":{}}});
+        assert!(matches!(classify(&apply, 7), Incoming::ApplyEdit(_, _)));
         // publishDiagnostics → parsed model.
         let diag = json!({
             "jsonrpc":"2.0","method":"textDocument/publishDiagnostics",

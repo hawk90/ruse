@@ -33,7 +33,17 @@ enum LspKind {
     CodeAction,
     /// A `completionItem/resolve` for the pum item at this index, at the request-time revision (F-014).
     Resolve(Revision, usize),
+    /// A `workspace/executeCommand` (a command-only code action) — its result is ignored; the effect
+    /// returns as a server `workspace/applyEdit` (F-014).
+    ExecuteCommand,
 }
+
+/// A stashed server `workspace/applyEdit`: `(serverKey, reply-id, per-file edits)`.
+type ServerEdit = (
+    String,
+    Value,
+    Vec<(String, Vec<lsp::protocol::LspTextEdit>)>,
+);
 
 /// The open completion popup menu (pum): the parsed candidates, the highlighted index, and the typed
 /// identifier prefix length the accepted item replaces (F-014 #5).
@@ -79,6 +89,8 @@ pub(crate) struct LspCoordinator {
     pending_rename: Vec<(String, Vec<lsp::protocol::LspTextEdit>)>,
     pending_refs: Option<Vec<(String, u32, u32)>>,
     pending_actions: Option<Vec<lsp::protocol::CodeAction>>,
+    /// Server `workspace/applyEdit` requests to apply + reply after render.
+    pending_server_edits: Vec<ServerEdit>,
 }
 
 impl LspCoordinator {
@@ -103,6 +115,7 @@ impl LspCoordinator {
             pending_rename: Vec::new(),
             pending_refs: None,
             pending_actions: None,
+            pending_server_edits: Vec::new(),
         }
     }
 
@@ -296,6 +309,8 @@ impl LspCoordinator {
                     Some(LspKind::Resolve(req_rev, idx)) => {
                         resolve_responses.push((rid, req_rev, idx, result));
                     }
+                    // executeCommand result is ignored — the effect returns via `workspace/applyEdit`.
+                    Some(LspKind::ExecuteCommand) => {}
                     // References: stash the locations; the loop opens its picker after render.
                     Some(LspKind::References) => {
                         let locs = lsp::protocol::parse_locations(&result);
@@ -318,6 +333,15 @@ impl LspCoordinator {
                     }
                     None => {}
                 }
+            }
+            // Server `workspace/applyEdit` requests: stash (key, reply-id, parsed edit) to apply + reply
+            // after render (applying needs `&mut ws`). `self.pending_server_edits` is a disjoint field.
+            for (id, params) in polled.apply_edits {
+                let edit = params
+                    .get("edit")
+                    .map(lsp::protocol::parse_workspace_edit)
+                    .unwrap_or_default();
+                self.pending_server_edits.push((key.clone(), id, edit));
             }
         }
         // Apply completion responses now the `self.lsp` borrow is released (ingest_completion is `&mut self`).
@@ -416,6 +440,19 @@ impl LspCoordinator {
             let (files_n, edits_n) = apply_workspace_edit(edit, ws, files, highlighters);
             *status = format!("renamed: {edits_n} edit(s) across {files_n} file(s)");
         }
+        // Server-initiated `workspace/applyEdit` (from an executeCommand): apply the TEXT edits as one
+        // Lsp-origin transaction per file, then reply `{applied}` to the (blocked) server request. Trust:
+        // text edits only (resource ops are already dropped by parse_workspace_edit), no process execution.
+        for (key, id, edit) in std::mem::take(&mut self.pending_server_edits) {
+            let applied = !edit.is_empty();
+            if applied {
+                apply_workspace_edit(edit, ws, files, highlighters);
+                *status = "applied server edit".to_string();
+            }
+            if let Some(client) = self.lsp.get_mut(&key) {
+                client.respond(id, serde_json::json!({ "applied": applied }));
+            }
+        }
     }
 
     /// The references locations resolved this frame (the loop opens its generic picker from these).
@@ -428,18 +465,35 @@ impl LspCoordinator {
         self.pending_actions.take()
     }
 
-    /// Apply a selected code action's `WorkspaceEdit` across every affected file (the same multi-file apply
-    /// as rename). Called from the action picker's accept, where the `spans` borrow is already released.
+    /// Run a selected code action (from the action picker's accept, past the `spans` borrow): apply its
+    /// inline `WorkspaceEdit` (multi-file, like rename), THEN — if it carries a `command` — fire
+    /// `workspace/executeCommand` for it (its result is ignored; the effect returns as a server
+    /// `workspace/applyEdit`, applied in `apply_pending`). Executing only a user-SELECTED action's command
+    /// (never auto) is the trust boundary; a namespace allowlist is future hardening.
     pub(crate) fn apply_code_action(
-        &self,
-        edit: Vec<(String, Vec<lsp::protocol::LspTextEdit>)>,
+        &mut self,
+        action: &lsp::protocol::CodeAction,
         ws: &mut Workspace,
         files: &mut Files,
         highlighters: &mut Highlighters,
         status: &mut String,
     ) {
-        let (files_n, edits_n) = apply_workspace_edit(edit, ws, files, highlighters);
-        *status = format!("applied: {edits_n} edit(s) across {files_n} file(s)");
+        if !action.edit.is_empty() {
+            let (files_n, edits_n) =
+                apply_workspace_edit(action.edit.clone(), ws, files, highlighters);
+            *status = format!("applied: {edits_n} edit(s) across {files_n} file(s)");
+        }
+        if let Some((command, arguments)) = &action.command {
+            if let Some((key_s, _uri)) = self.focused_server(ws, files) {
+                self.send(
+                    key_s,
+                    "workspace/executeCommand",
+                    serde_json::json!({ "command": command, "arguments": arguments }),
+                    LspKind::ExecuteCommand,
+                );
+                *status = format!("running: {}", action.title);
+            }
+        }
     }
 
     /// The working directory, for relativizing picker paths.

@@ -132,7 +132,15 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   insert). On accept the item's same-file `additionalTextEdits` (auto-import) are applied WITH the insert as
   one `Lsp` transaction, the caret shift-corrected for imports landing above it. `apply_resolve` +
   `ingest_resolve` are mock-tested. Cross-file additionalTextEdits + a docs panel are deferred.
-- **Later:** command-only code actions (`workspace/executeCommand`); snippet slice 2 (tabstop navigation);
+- **Command code actions (landed):** an action with a `command` (not just an inline edit) is now kept by
+  `parse_code_actions`; accepting it applies any inline edit AND fires `workspace/executeCommand`. Its effect
+  returns as a server→client `workspace/applyEdit` request, which the client now SURFACES (`Incoming::ApplyEdit`)
+  instead of null-replying: the coordinator stashes it, applies the TEXT edits (`apply_workspace_edit`, one
+  `Lsp` transaction per file) in `apply_pending`, then `respond`s `{applied}`. **Trust posture:** apply text
+  edits only (resource ops already dropped by `parse_workspace_edit`), NO process execution, `executeCommand`
+  fired ONLY for a user-selected action (never auto). A command-namespace allowlist + workspace-root sandbox
+  are noted as future hardening.
+- **Later:** snippet slice 2 (tabstop navigation);
   `completionItem/resolve` lazy docs + a docs side-panel; signature help; trigger-character auto-popup; a
   source-preview line in the references picker; a floating name-input prompt + resource-op renames; a jumplist
   for `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list
