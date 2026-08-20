@@ -10,14 +10,11 @@ use std::path::PathBuf;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal as ct_terminal;
 
-use ruse_core::{
-    CaretGravity, Command, DocumentId, Mode, OpenKind, Revision, SplitDir, TransactionOrigin,
-    Workspace,
-};
+use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Workspace};
 
-use crate::app::dispatch::{run_cmd, run_ex, BufferFile, Files};
+use crate::app::dispatch::{is_ctrl, open_file_into_buffer, run_cmd, run_ex, BufferFile, Files};
+use crate::app::lsp_coordinator::LspCoordinator;
 use crate::input::{parse_ex, Ex, Feed, InputEngine};
-use crate::lsp::{self, Diag, LspClient};
 use crate::terminal::guard::TermGuard;
 use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
@@ -45,28 +42,6 @@ const TERM_TICK_MS: u64 = 33;
 /// F-014: with only a language server live (no terminal), poll more slowly — diagnostics arrive infrequently,
 /// so a ~10fps tick keeps them prompt without spinning.
 const LSP_TICK_MS: u64 = 100;
-
-/// What a pending LSP request was for, so its response (correlated by id) is dispatched correctly (F-014 #2).
-#[derive(Clone, Copy)]
-enum LspKind {
-    Hover,
-    Goto,
-    Format,
-    Rename,
-    /// A completion request; carries the length (bytes) of the identifier prefix already typed before the
-    /// cursor, so the accepted item replaces exactly that prefix (F-014 #5).
-    Completion(usize),
-    /// A references request; the response's locations open the references picker (F-014).
-    References,
-}
-
-/// The open completion popup menu (pum): the parsed candidates, the highlighted index, and the typed
-/// identifier prefix length the accepted item replaces (F-014 #5).
-struct CompletionMenu {
-    items: Vec<lsp::protocol::CompletionItem>,
-    selected: usize,
-    prefix_len: usize,
-}
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
@@ -178,21 +153,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut terminals: HashMap<DocumentId, term_buffer::Terminal> = HashMap::new();
     #[cfg(unix)]
     let mut pending_term_escape = false;
-    // F-014: one LSP client per server (keyed by server command), the buffers opened into them, the servers we
-    // already tried to spawn (so a missing binary is not retried each frame), and the normalized diagnostics.
-    let mut lsp: HashMap<String, LspClient> = HashMap::new();
-    let mut lsp_docs: HashMap<DocumentId, (String, i64, Revision)> = HashMap::new(); // id → (uri, version, rev)
-    let mut lsp_tried: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut diagnostics: HashMap<DocumentId, Vec<Diag>> = HashMap::new();
-    // Pending hover/goto requests keyed by (server command, request id); the transient hover panel (F-014 #2).
-    let mut lsp_pending: HashMap<(String, i64), LspKind> = HashMap::new();
-    let mut hover_panel: Option<Vec<String>> = None;
-    // F-014 #5: the open completion pum (persists across frames until dismissed) + the `<C-x>` awaiting `<C-o>`
-    // omni-trigger prefix (Vim/Native insert only). At most one pum is open.
-    let mut completion: Option<CompletionMenu> = None;
-    let mut pending_omni = false;
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let root_uri = lsp::path_to_uri(&cwd);
+    // F-014: all app-side LSP orchestration (clients, diagnostics, hover/completion, request dispatch,
+    // deferred edit-applies) lives behind the coordinator; the loop just drives it (CAP-LSP-COORD).
+    let mut lsp = LspCoordinator::new(std::env::current_dir().unwrap_or_default());
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -305,11 +268,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = ref_picker.as_ref() {
             p.rows()
-        } else if let Some(lines) = hover_panel.as_ref() {
-            // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
-            lines.iter().map(|l| (l.clone(), false)).collect()
         } else {
-            Vec::new()
+            // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
+            lsp.hover_overlay().unwrap_or_default()
         };
         // The Native leader (which-key) hint owns the command line while armed (F-013 NAT-2), shown with a
         // Space prefix — below the overlay, above the ordinary `:`/`/` line (none can co-occur).
@@ -329,15 +290,6 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         } else {
             engine.cmdline().map(|(pfx, t, _)| (pfx, t))
         };
-        // A goto-definition target resolved this frame; applied after render (opening a buffer would clash
-        // with the live `spans` borrow here). Likewise LSP format edits, applied after render.
-        let mut goto_jump: Option<(String, u32, u32)> = None;
-        let mut pending_edits: Vec<(usize, usize, String)> = Vec::new();
-        // F-014: references locations resolved this frame; the picker opens AFTER render (mutating
-        // `ref_picker` mid-frame would clash with `cmd_line`'s borrow of it).
-        let mut pending_refs: Option<Vec<(String, u32, u32)>> = None;
-        // F-014: a resolved rename — per-file UTF-16 TextEdits, applied across buffers after render.
-        let mut pending_rename: Vec<(String, Vec<lsp::protocol::LspTextEdit>)> = Vec::new();
         // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
         // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
         // `term_views` lends each grid to the renderer. On non-unix this is always empty.
@@ -359,121 +311,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         };
         #[cfg(not(unix))]
         let term_views = crate::ui::render::TermViews::new();
-        // F-014: keep the language server in sync with the FOCUSED file buffer (spawn once per server, didOpen
-        // once per buffer, didChange on a revision change) and pull any diagnostics into the model. Missing
-        // servers / non-code buffers are silent no-ops.
-        {
-            let id = ws.focused_buffer();
-            let focused_uri = if let Some(bf) = files.get(&id) {
-                bf.path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .and_then(lsp::server_for_ext)
-                    .and_then(|(key, cmd, lang)| {
-                        // Spawn the server once (track attempts so a missing binary is not retried each frame).
-                        if !lsp.contains_key(key) && lsp_tried.insert(key.to_string()) {
-                            if let Some(c) = LspClient::spawn(cmd, &root_uri) {
-                                lsp.insert(key.to_string(), c);
-                            }
-                        }
-                        let client = lsp.get_mut(key)?;
-                        let text = String::from_utf8_lossy(&snapshot);
-                        match lsp_docs.get_mut(&id) {
-                            None => {
-                                let uri = std::fs::canonicalize(&bf.path)
-                                    .map(|p| lsp::path_to_uri(&p))
-                                    .unwrap_or_else(|_| lsp::path_to_uri(&bf.path));
-                                client.did_open(&uri, lang, 1, &text);
-                                lsp_docs.insert(id, (uri.clone(), 1, revision));
-                                Some(uri)
-                            }
-                            Some((uri, version, last_rev)) => {
-                                if *last_rev != revision {
-                                    *version += 1;
-                                    *last_rev = revision;
-                                    client.did_change(uri, *version, &text);
-                                }
-                                Some(uri.clone())
-                            }
-                        }
-                    })
-            } else {
-                None
-            };
-            // Poll every client: apply diagnostics for the focused buffer (matched by uri), and dispatch any
-            // request responses (hover → panel, goto → jump) by their pending (serverKey, id).
-            for (key, client) in lsp.iter_mut() {
-                let polled = client.poll();
-                for params in polled.diagnostics {
-                    if Some(&params.uri) == focused_uri.as_ref() {
-                        diagnostics.insert(id, lsp::protocol::to_diags(&snapshot, &params));
-                    }
-                }
-                for (rid, result) in polled.responses {
-                    match lsp_pending.remove(&(key.clone(), rid)) {
-                        Some(LspKind::Hover) => hover_panel = lsp::protocol::parse_hover(&result),
-                        // Defer the jump until AFTER render — it may open a buffer (mutating `highlighters`),
-                        // which the frame's live `spans` borrow forbids here.
-                        Some(LspKind::Goto) => goto_jump = lsp::protocol::parse_definition(&result),
-                        // Convert TextEdits (UTF-16 ranges) to byte ranges; applied after render.
-                        Some(LspKind::Format) => {
-                            pending_edits = lsp::protocol::parse_text_edits(&result)
-                                .into_iter()
-                                .map(|((sl, sc), (el, ec), text)| {
-                                    (
-                                        lsp::model::lsp_pos_to_byte(&snapshot, sl, sc),
-                                        lsp::model::lsp_pos_to_byte(&snapshot, el, ec),
-                                        text,
-                                    )
-                                })
-                                .collect();
-                        }
-                        // A WorkspaceEdit spans files; keep the raw per-file UTF-16 edits and convert each
-                        // against its own bytes when applied after render (offsets are per-document).
-                        Some(LspKind::Rename) => {
-                            pending_rename = lsp::protocol::parse_workspace_edit(&result);
-                        }
-                        // Completion: open the pum from the parsed items, tightened to the typed prefix (RA
-                        // already filters; this drops any stragglers). Empty → a status note, no menu.
-                        Some(LspKind::Completion(prefix_len)) => {
-                            let cur = ws.focused().view.cursor().min(snapshot.len());
-                            let prefix = String::from_utf8_lossy(
-                                &snapshot[cur.saturating_sub(prefix_len)..cur],
-                            )
-                            .to_lowercase();
-                            let items: Vec<_> = lsp::protocol::parse_completion(&result)
-                                .into_iter()
-                                .filter(|it| it.label.to_lowercase().starts_with(&prefix))
-                                .collect();
-                            if items.is_empty() {
-                                status = "no completions".to_string();
-                            } else {
-                                completion = Some(CompletionMenu {
-                                    items,
-                                    selected: 0,
-                                    prefix_len,
-                                });
-                            }
-                        }
-                        // References: stash the locations; the picker is OPENED after render (setting
-                        // `ref_picker` here would clash with `cmd_line`'s live borrow of it, like goto_jump).
-                        Some(LspKind::References) => {
-                            let locs = lsp::protocol::parse_locations(&result);
-                            if locs.is_empty() {
-                                status = "no references".to_string();
-                            } else {
-                                status = format!("{} reference(s)", locs.len());
-                                pending_refs = Some(locs);
-                            }
-                        }
-                        None => {}
-                    }
-                }
-            }
-        }
-        let focus_diags: &[Diag] = diagnostics
-            .get(&ws.focused_buffer())
-            .map_or(&[][..], Vec::as_slice);
+        // F-014: sync the focused buffer with its server + poll all clients (diagnostics + response
+        // dispatch) — the coordinator owns all of it; deferred edits/refs are applied after render.
+        lsp.sync_and_poll(&ws, &files, revision, &snapshot, &mut status);
+        let focus_diags = lsp.diagnostics_for(ws.focused_buffer());
         render(
             &mut out,
             &ws,
@@ -487,84 +328,20 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &overlay_rows,
             &term_views,
             focus_diags,
-            completion
-                .as_ref()
-                .map(|m| (m.items.as_slice(), m.selected)),
+            lsp.completion_view(),
         )?;
-        // F-014: apply a deferred goto-definition jump (render is done, so opening a buffer is now free of the
-        // `spans` borrow). Same file → move the cursor; another file → open it, then move.
-        if let Some((uri, l, c)) = goto_jump.take() {
-            let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-            let target = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
-            let cur_path = files
-                .get(&ws.focused_buffer())
-                .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
-            if cur_path.as_deref() == Some(target.as_path()) {
-                ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&snapshot, l, c));
-            } else {
-                open_file_into_buffer(
-                    &target.display().to_string(),
-                    &mut ws,
-                    &mut files,
-                    &mut highlighters,
-                );
-                let bytes = ws.focused().doc.bytes().to_vec();
-                ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
-            }
-        }
-        // F-014: apply LSP format edits (deferred past the `spans` borrow) as one Lsp-origin undo group.
-        if !pending_edits.is_empty() {
-            ws.apply_edits(&pending_edits, TransactionOrigin::Lsp);
-            status = "formatted".to_string();
-        }
-        // F-014: open the references picker now render is done (past `cmd_line`'s borrow of `ref_picker`).
-        if let Some(locs) = pending_refs.take() {
-            ref_picker = Some(ref_picker::open(locs, &cwd));
-        }
-        // F-014: apply a resolved rename across every affected file. Each file is focused in turn (an already
-        // open buffer is reused, else it is opened — deferred here since opening mutates `highlighters`), its
-        // UTF-16 edits are mapped to byte offsets against ITS OWN bytes, and applied as one Lsp-origin undo
-        // group; then the original buffer is refocused. Opened files are modified buffers the user saves.
-        if !pending_rename.is_empty() {
-            let orig = ws.focused_buffer();
-            let (mut files_n, mut edits_n) = (0usize, 0usize);
-            for (uri, ledits) in pending_rename.drain(..) {
-                let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-                let target = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
-                let existing = files.iter().find_map(|(id, bf)| {
-                    (std::fs::canonicalize(&bf.path).ok().as_deref() == Some(target.as_path()))
-                        .then_some(*id)
-                });
-                match existing {
-                    Some(id) => {
-                        ws.focus_buffer(id);
-                    }
-                    None => {
-                        open_file_into_buffer(
-                            &target.display().to_string(),
-                            &mut ws,
-                            &mut files,
-                            &mut highlighters,
-                        );
-                    }
-                }
-                let bytes = ws.focused().doc.bytes().to_vec();
-                let byte_edits: Vec<(usize, usize, String)> = ledits
-                    .into_iter()
-                    .map(|((sl, sc), (el, ec), text)| {
-                        (
-                            lsp::model::lsp_pos_to_byte(&bytes, sl, sc),
-                            lsp::model::lsp_pos_to_byte(&bytes, el, ec),
-                            text,
-                        )
-                    })
-                    .collect();
-                edits_n += byte_edits.len();
-                ws.apply_edits(&byte_edits, TransactionOrigin::Lsp);
-                files_n += 1;
-            }
-            ws.focus_buffer(orig);
-            status = format!("renamed: {edits_n} edit(s) across {files_n} file(s)");
+        // F-014: apply the coordinator's deferred results now render is done (opening a buffer mutates
+        // `highlighters`, which the frame's `spans` borrow forbade during the poll). Then open the
+        // references picker (past `cmd_line`'s borrow of `ref_picker`).
+        lsp.apply_pending(
+            &mut ws,
+            &mut files,
+            &mut highlighters,
+            &snapshot,
+            &mut status,
+        );
+        if let Some(locs) = lsp.take_refs() {
+            ref_picker = Some(ref_picker::open(locs, lsp.cwd()));
         }
         // Async output (PTY, F-011; LSP diagnostics, F-014) must render without a keypress, so the loop polls
         // with a timeout while either is live. With neither it keeps the pure blocking read (no spin,
@@ -574,7 +351,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if !terminals.is_empty() {
             poll_ms = Some(TERM_TICK_MS);
         }
-        if poll_ms.is_none() && !lsp.is_empty() {
+        if poll_ms.is_none() && lsp.has_live_client() {
             poll_ms = Some(LSP_TICK_MS);
         }
         let key = if let Some(ms) = poll_ms {
@@ -596,80 +373,14 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             continue;
         }
         // F-014: any key dismisses a shown hover panel (a fresh `K` re-populates it after its response).
-        hover_panel = None;
-        // F-014 #5: the completion pum owns the keystream while open. `<C-n>`/`↓` and `<C-p>`/`↑` move the
-        // selection (wrapping); `<CR>`/`<Tab>` accept — replacing the typed identifier prefix with the item's
-        // text, staying in Insert; `<Esc>` closes; ANY OTHER key closes the menu and FALLS THROUGH so the
-        // keypress still types (keep-typing dismisses, like a real pum).
-        if let Some(menu) = completion.as_mut() {
-            let n = menu.items.len().max(1);
-            if is_ctrl(key, 'n') || key.code == KeyCode::Down {
-                menu.selected = (menu.selected + 1) % n;
-                continue;
-            }
-            if is_ctrl(key, 'p') || key.code == KeyCode::Up {
-                menu.selected = (menu.selected + n - 1) % n;
-                continue;
-            }
-            if key.code == KeyCode::Esc {
-                completion = None;
-                continue;
-            }
-            if matches!(key.code, KeyCode::Enter | KeyCode::Tab) {
-                let item = menu.items[menu.selected].clone();
-                let prefix_len = menu.prefix_len;
-                completion = None;
-                let cursor = ws.focused().view.cursor();
-                let start = cursor.saturating_sub(prefix_len);
-                ws.apply_edits(
-                    &[(start, cursor, item.insert.clone())],
-                    TransactionOrigin::Lsp,
-                );
-                ws.place_focused_cursor(start + item.insert.len());
-                status = format!("completed: {}", item.label);
-                continue;
-            }
-            completion = None; // any other key: dismiss, then fall through to type it
+        lsp.clear_hover();
+        // F-014 #5: the completion pum owns the keystream while open (nav / accept / dismiss); `<C-x><C-o>`
+        // in Vim/Native Insert opens it. Each returns whether it consumed the key (so the loop `continue`s).
+        if lsp.on_completion_key(key, &mut ws, &mut status) {
+            continue;
         }
-        // F-014 #5: `<C-x><C-o>` in Vim/Native Insert opens the omni-completion pum. A frontend two-key prefix
-        // (like the terminal `CTRL-\` escape): `<C-x>` arms `pending_omni`, `<C-o>` fires; any other key disarms
-        // and types. Gated to non-Emacs insert (in the Emacs profile `<C-x>` is a real prefix, `<C-o>` inserts).
-        if matches!(ws.focused().view.mode(), Mode::Insert) && !emacs_profile {
-            if pending_omni {
-                pending_omni = false;
-                if is_ctrl(key, 'o') {
-                    let bid = ws.focused_buffer();
-                    let server_key = files
-                        .get(&bid)
-                        .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
-                        .and_then(lsp::server_for_ext)
-                        .map(|(k, _, _)| k);
-                    if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
-                        if let Some(client) = lsp.get_mut(key_s) {
-                            let cursor = ws.focused().view.cursor().min(snapshot.len());
-                            // The identifier prefix already typed before the cursor (bytes to replace).
-                            let prefix_len = snapshot[..cursor]
-                                .iter()
-                                .rev()
-                                .take_while(|&&b| b.is_ascii_alphanumeric() || b == b'_')
-                                .count();
-                            let (line, ch) = lsp::model::byte_to_lsp_pos(&snapshot, cursor);
-                            let rid = client.request(
-                                "textDocument/completion",
-                                lsp::protocol::completion_params(uri, line, ch),
-                            );
-                            lsp_pending
-                                .insert((key_s.to_string(), rid), LspKind::Completion(prefix_len));
-                            status = "completing…".to_string();
-                        }
-                    }
-                    continue;
-                }
-                // Not `<C-o>`: the swallowed `<C-x>` is dropped; fall through to type this key.
-            } else if is_ctrl(key, 'x') {
-                pending_omni = true;
-                continue;
-            }
+        if lsp.on_omni_key(key, &ws, &files, &snapshot, emacs_profile, &mut status) {
+            continue;
         }
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).
         if confirm.is_some() {
@@ -734,7 +445,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
                     if cur_path.as_deref() == Some(target.as_path()) {
                         let bytes = ws.focused().doc.bytes().to_vec();
-                        ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                        ws.place_focused_cursor(crate::lsp::model::lsp_pos_to_byte(&bytes, l, c));
                     } else {
                         open_file_into_buffer(
                             &target.display().to_string(),
@@ -743,7 +454,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             &mut highlighters,
                         );
                         let bytes = ws.focused().doc.bytes().to_vec();
-                        ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                        ws.place_focused_cursor(crate::lsp::model::lsp_pos_to_byte(&bytes, l, c));
                     }
                 }
             }
@@ -854,34 +565,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             pending_window = true;
             continue;
         }
-        // F-014: `K` = hover, `<C-]>` = goto-definition. When the focused buffer has a live server, send the
-        // request for the cursor position; its response is dispatched in the poll loop next frame. Otherwise
-        // both keys fall through (they are unbound in the grammar).
-        if normal && (matches!(key.code, KeyCode::Char('K')) || is_ctrl(key, ']')) {
-            let bid = ws.focused_buffer();
-            let server_key = files
-                .get(&bid)
-                .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
-                .and_then(lsp::server_for_ext)
-                .map(|(k, _, _)| k);
-            if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
-                if let Some(client) = lsp.get_mut(key_s) {
-                    let (line, ch) =
-                        lsp::model::byte_to_lsp_pos(&snapshot, ws.focused().view.cursor());
-                    let hover = matches!(key.code, KeyCode::Char('K'));
-                    let method = if hover {
-                        "textDocument/hover"
-                    } else {
-                        "textDocument/definition"
-                    };
-                    let rid = client.request(method, lsp::protocol::position_params(uri, line, ch));
-                    lsp_pending.insert(
-                        (key_s.to_string(), rid),
-                        if hover { LspKind::Hover } else { LspKind::Goto },
-                    );
-                    continue;
-                }
-            }
+        // F-014: `K` = hover, `<C-]>` = goto-definition (when the focused buffer has a live server; else
+        // both fall through, unbound in the grammar). The coordinator sends the request.
+        if lsp.on_normal_key(key, normal, &ws, &files, &snapshot) {
+            continue;
         }
         // `C-p` opens the command palette (F-004 #2), context-filtered to the focused view.
         if normal && is_ctrl(key, 'p') {
@@ -1001,85 +688,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Feed::ExecuteEx(text) => {
                 match parse_ex(&text) {
                     Ex::NoHighlight => search_hl = None, // `:noh` clears the search highlight (F-009 #1)
-                    // `:fmt`/`:format` (F-014): ask the focused buffer's language server to format it; the
-                    // TextEdits come back on a later frame and are applied after render.
-                    Ex::Format => {
-                        let bid = ws.focused_buffer();
-                        let server_key = files
-                            .get(&bid)
-                            .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
-                            .and_then(lsp::server_for_ext)
-                            .map(|(k, _, _)| k);
-                        if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
-                            if let Some(client) = lsp.get_mut(key_s) {
-                                let rid = client.request(
-                                    "textDocument/formatting",
-                                    lsp::protocol::formatting_params(uri, 4, true),
-                                );
-                                lsp_pending.insert((key_s.to_string(), rid), LspKind::Format);
-                                status = "formatting…".to_string();
-                            } else {
-                                status = "no language server for this buffer".to_string();
-                            }
-                        } else {
-                            status = "no language server for this buffer".to_string();
-                        }
-                    }
-                    // `:rename {new}` (F-014): ask the language server to rename the symbol under the cursor;
-                    // the WorkspaceEdit comes back on a later frame and is applied across files after render.
-                    Ex::Rename(new_name) => {
-                        let bid = ws.focused_buffer();
-                        let server_key = files
-                            .get(&bid)
-                            .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
-                            .and_then(lsp::server_for_ext)
-                            .map(|(k, _, _)| k);
-                        if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
-                            if let Some(client) = lsp.get_mut(key_s) {
-                                let (line, ch) = lsp::model::byte_to_lsp_pos(
-                                    &snapshot,
-                                    ws.focused().view.cursor(),
-                                );
-                                let rid = client.request(
-                                    "textDocument/rename",
-                                    lsp::protocol::rename_params(uri, line, ch, &new_name),
-                                );
-                                lsp_pending.insert((key_s.to_string(), rid), LspKind::Rename);
-                                status = format!("renaming → {new_name}…");
-                            } else {
-                                status = "no language server for this buffer".to_string();
-                            }
-                        } else {
-                            status = "no language server for this buffer".to_string();
-                        }
-                    }
-                    // `:references` (F-014): ask for every reference to the symbol under the cursor; the
-                    // locations come back on a later frame and open the references picker.
-                    Ex::References => {
-                        let bid = ws.focused_buffer();
-                        let server_key = files
-                            .get(&bid)
-                            .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
-                            .and_then(lsp::server_for_ext)
-                            .map(|(k, _, _)| k);
-                        if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
-                            if let Some(client) = lsp.get_mut(key_s) {
-                                let (line, ch) = lsp::model::byte_to_lsp_pos(
-                                    &snapshot,
-                                    ws.focused().view.cursor(),
-                                );
-                                let rid = client.request(
-                                    "textDocument/references",
-                                    lsp::protocol::references_params(uri, line, ch, true),
-                                );
-                                lsp_pending.insert((key_s.to_string(), rid), LspKind::References);
-                                status = "finding references…".to_string();
-                            } else {
-                                status = "no language server for this buffer".to_string();
-                            }
-                        } else {
-                            status = "no language server for this buffer".to_string();
-                        }
+                    // `:fmt` / `:rename {new}` / `:references` (F-014): the coordinator sends the request; the
+                    // response (edits / WorkspaceEdit / locations) is dispatched + applied on a later frame.
+                    ex @ (Ex::Format | Ex::Rename(_) | Ex::References) => {
+                        lsp.on_ex(&ex, &ws, &files, &snapshot, &mut status);
                     }
                     // `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused
                     // window, and enter Terminal mode. Unix-only in slice 1.
@@ -1345,42 +957,6 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
     }
     Ok(())
-}
-
-/// Open `file` into a new focused buffer, registering its on-disk identity + a highlighter for its
-/// extension — the shared body of `:e` (F-007) and the file picker (F-013 NAT-3). Returns the status line.
-fn open_file_into_buffer(
-    file: &str,
-    ws: &mut Workspace,
-    files: &mut Files,
-    highlighters: &mut HashMap<DocumentId, highlight::CachedHighlight>,
-) -> String {
-    let p = PathBuf::from(file);
-    match std::fs::read(&p) {
-        Ok(raw) => {
-            let f = persist::encoding::FileFormat::detect(&raw);
-            let clean = f.to_buffer(&raw);
-            let id = ws.add_buffer(clean, Some(file.to_string()));
-            ws.focus_buffer(id);
-            if let Some(h) = p
-                .extension()
-                .and_then(|e| e.to_str())
-                .and_then(highlight::CachedHighlight::for_ext)
-            {
-                highlighters.insert(id, h);
-            }
-            files.insert(id, BufferFile { path: p, fmt: f });
-            format!("\"{file}\" {} bytes", raw.len())
-        }
-        Err(e) => format!("E484: can't open {file}: {e}"),
-    }
-}
-
-/// Whether `key` is `CTRL-<c>`.
-fn is_ctrl(key: crossterm::event::KeyEvent, c: char) -> bool {
-    key.modifiers
-        .contains(crossterm::event::KeyModifiers::CONTROL)
-        && key.code == KeyCode::Char(c)
 }
 
 /// Dispatch the key after a `C-w` prefix (F-007 MVP window commands): `w`/`C-w` focus next, `s` split

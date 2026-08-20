@@ -3,4 +3,5 @@
 
 pub(crate) mod cli;
 pub(crate) mod dispatch;
+pub(crate) mod lsp_coordinator;
 pub(crate) mod session;
