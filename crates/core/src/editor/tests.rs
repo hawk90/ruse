@@ -846,6 +846,25 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn apply_edits_batches_are_separate_undo_units_regardless_of_origin() {
+        // Each apply_edits call is its own undo group (GroupHint::BreakBefore), so a later batch never
+        // coalesces into an earlier one — independent of the caller-supplied origin (#305). This is the
+        // contract the LSP format/rename/code-action flows rely on: applying LSP edits leaves the user's
+        // prior edits as a distinct, still-undoable unit.
+        let mut st = EditorState::new(b"abc".to_vec());
+        st.apply_edits(
+            &[(3, 3, "X".to_string())],
+            crate::TransactionOrigin::UserInput,
+        ); // "abcX"
+        st.apply_edits(&[(0, 0, "Y".to_string())], crate::TransactionOrigin::Lsp); // "YabcX"
+        assert_eq!(text(&st), "YabcX");
+        apply_command(&mut st, &Command::Undo); // undoes ONLY the LSP batch
+        assert_eq!(text(&st), "abcX");
+        apply_command(&mut st, &Command::Undo); // then the earlier batch
+        assert_eq!(text(&st), "abc");
+    }
+
+    #[test]
     fn apply_edits_skips_overlapping_and_out_of_range() {
         let mut st = EditorState::new(b"abcdef".to_vec());
         let lsp = crate::TransactionOrigin::Lsp;
