@@ -910,11 +910,13 @@ impl EditorState {
         removed
     }
 
-    /// Apply a set of DISJOINT byte-range replacements (LSP formatting / code-action edits, F-014) as ONE undo
-    /// group tagged [`TransactionOrigin::Lsp`] — a separate undo unit from user edits (F-005). Each edit is
+    /// Apply a set of DISJOINT byte-range replacements as ONE undo group, tagged with the caller-supplied
+    /// `origin` — a separate undo unit from user edits (F-005). This is a PROVENANCE-AGNOSTIC batch-edit
+    /// primitive: the CORE provides the mechanism, the CALLER states the policy (the LSP frontend passes
+    /// [`TransactionOrigin::Lsp`]; a snippet/macro/AI batch would pass its own origin). Each edit is
     /// `(start, end, replacement)`; out-of-range or overlapping sets are skipped (formatter output is disjoint).
     /// The cursor is clamped into the new buffer. No-op on an empty/invalid set.
-    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)]) {
+    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)], origin: TransactionOrigin) {
         let len = self.doc.bytes().len();
         let mut valid: Vec<(usize, usize, String)> = edits
             .iter()
@@ -932,8 +934,8 @@ impl EditorState {
         let Ok(list) = EditList::new(es) else {
             return; // overlapping edits — refuse rather than corrupt the buffer
         };
-        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::Lsp)
-            .with_hint(GroupHint::BreakBefore);
+        let txn =
+            Transaction::new(self.doc.revision(), list, origin).with_hint(GroupHint::BreakBefore);
         if self.doc.apply(txn).is_ok() {
             self.view.last_was_edit = true;
             let clamped = self.view.cursor.min(self.doc.bytes().len());

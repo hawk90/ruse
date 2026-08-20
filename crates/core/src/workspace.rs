@@ -30,6 +30,7 @@ use crate::editor::{
 };
 use crate::effect::Effect;
 use crate::pattern::RegexError;
+use crate::transaction::TransactionOrigin;
 
 /// A handle to a [`View`] in the workspace arena (INV-HANDLE). Distinct from [`DocumentId`] (a buffer)
 /// so the type system keeps Buffer ≠ View (F-007 acceptance #4). The inner index is the arena slot;
@@ -344,16 +345,18 @@ impl Workspace {
         n
     }
 
-    /// Apply LSP formatting / code-action edits to the FOCUSED window (the swap-trick, like
-    /// [`Workspace::apply`]) as one `Lsp`-origin undo group (F-014). `edits` are disjoint `(start, end, text)`.
-    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)]) {
+    /// Apply a disjoint `(start, end, text)` batch edit to the FOCUSED window (the swap-trick, like
+    /// [`Workspace::apply`]) as one undo group, tagged with the caller-supplied `origin` — a
+    /// provenance-agnostic primitive (the LSP frontend passes [`TransactionOrigin::Lsp`]). See
+    /// [`EditorState::apply_edits`].
+    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)], origin: TransactionOrigin) {
         let vid = self.windows[self.focus].view;
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
         let mut st = EditorState::from_parts(doc, view);
-        st.apply_edits(edits);
+        st.apply_edits(edits, origin);
         let (doc, view) = st.into_parts();
 
         self.docs[slot] = Some(doc);
