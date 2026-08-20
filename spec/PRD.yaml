@@ -787,8 +787,16 @@ features:
     # ssh <host>` is wired as the local proof path (spawns `ruse agent`, prints the negotiated version/caps).
     # Deliberately a MODULE, not the deferred `workspace-runtime` crate: per RFC-0012 §Re-evaluation that
     # crate boundary returns only when the agent becomes a separately-deployed remote binary (the SSH slice).
-    # REMAINING (slices 2..N, all of acceptance): real SSH transport; agent bootstrap/version-matched install
-    # under $HOME (D-030); remote fs tree/watch/search/git/pty/port-forward services; remote-fs editing +
+    # progress (slice 2a, #316): the SSH stdio TRANSPORT SEAM. `remote/transport.rs` centralises how the agent
+    # is launched into two `Command` builders — `local_command` (slice-1 pipe) and `ssh_command` (`ssh -o
+    # BatchMode=yes <host> ruse agent`, RFC-0006 "SSH stdio first"). `AgentClient` was already transport-
+    # agnostic (it takes a `Command`), so only the launch differs; command ASSEMBLY is deterministically unit-
+    # tested (program + arg order). `ruse ssh <host>` now uses SSH (was local-only); no host still falls back
+    # to the local pipe. Live end-to-end is an env-gated ignored smoke (`tests/agent_ssh.rs`,
+    # RUSE_SSH_TEST_HOST). LIMITATION: no agent bootstrap yet, so a remote host must already have `ruse` on its
+    # PATH; BatchMode fails fast rather than prompting.
+    # REMAINING (slices 2b..N, all of acceptance): agent bootstrap/version-matched install under $HOME (D-030,
+    # offline-first upload); remote fs tree/watch/search/git/pty/port-forward services; remote-fs editing +
     # path/URI mapping; remote LSP/debug (rides on remote-fs); reconnect/resume. Stays `planned`.
     status: planned
     depends_on: [C-REMOTE, C-AGENT, C-WORKSPACE]

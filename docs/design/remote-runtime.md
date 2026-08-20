@@ -49,8 +49,16 @@ before "remote."
   returns only when the agent becomes a **separately-deployed remote binary** (the SSH/bootstrap slice), not
   at this local proof. Slice 1 is structurally a sibling of `lsp/` (framed JSON over a child's stdio), so a
   module is the honest, precedent-matching home.
-- **Slices 2..N — NOT built:** real SSH-stdio transport; agent bootstrap/version-matched install under `$HOME`
-  (no sudo, D-030); the remote fs-tree/watch/search/Git/PTY/port-forward services; remote-fs editing +
+- **Slice 2a — SSH stdio transport seam (F-017, #316): SHIPPED.** `apps/tui/src/remote/transport.rs`
+  centralises how the agent is launched into two `Command` builders: `local_command` (the slice-1 pipe) and
+  `ssh_command` (`ssh -o BatchMode=yes <host> ruse agent` — "SSH stdio first", non-interactive so a headless
+  client never hangs on a password prompt). `AgentClient` was already transport-agnostic (it takes a
+  `Command`), so only the launch differs; the command *assembly* is deterministically unit-tested and the live
+  wire is an env-gated ignored smoke (`tests/agent_ssh.rs`). **Limitation:** without agent bootstrap yet, a
+  remote host must already have `ruse` on its `PATH` (the remote command is `ruse agent`, not yet the
+  versioned `$HOME` install below).
+- **Slices 2b..N — NOT built:** agent bootstrap/version-matched install under `$HOME` (no sudo, D-030,
+  offline-first upload); the remote fs-tree/watch/search/Git/PTY/port-forward services; remote-fs editing +
   path/URI mapping; remote LSP/debug (ride on remote-fs); reconnect/resume. These carry the F-017 acceptance
   criteria and remain `planned`.
 

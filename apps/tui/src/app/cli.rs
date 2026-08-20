@@ -7,12 +7,13 @@
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 
 use ruse_core::Trace;
 
 use crate::remote::agent;
 use crate::remote::client::AgentClient;
+use crate::remote::transport;
 
 use crate::app::session::run as session_run;
 
@@ -29,9 +30,9 @@ pub fn run() -> ExitCode {
         // `ruse agent`: run the headless Workspace Agent over stdio (F-017). Spawned locally by `ruse ssh`
         // today, over SSH later. Blocks serving the client↔agent protocol until EOF.
         Some("agent") => return agent_serve(),
-        // `ruse ssh <host>`: F-017 slice 1 is a LOCAL proof of the client↔agent split — spawn `ruse agent`
-        // as a subprocess, handshake, and print the negotiated protocol version + capabilities. Real SSH
-        // transport + agent bootstrap are later slices.
+        // `ruse ssh [host]`: connect to a Workspace Agent and print the negotiated version + capabilities.
+        // With a host → SSH stdio (`ssh host ruse agent`, slice 2a; requires `ruse` on the remote PATH until
+        // agent bootstrap lands). No host → the local pipe proof (`ruse agent` subprocess, slice 1).
         Some("ssh") => return ssh_connect(args.get(1).map(String::as_str)),
         _ => {}
     }
@@ -65,20 +66,22 @@ fn agent_serve() -> ExitCode {
     }
 }
 
-/// `ruse ssh <host>` (F-017 slice 1): the LOCAL proof of the client↔agent split — spawn `<self> agent` as a
-/// subprocess, complete the version/capability handshake, and print the negotiated result. Real SSH transport
-/// + agent bootstrap are later slices; this proves the protocol foundation end-to-end without them.
+/// `ruse ssh [host]` (F-017): connect to a Workspace Agent, complete the version/capability handshake, and
+/// print the negotiated result. With a `host` this uses the SSH stdio transport (`ssh host ruse agent`, slice
+/// 2a); with none it falls back to the local pipe proof (`<self> agent`, slice 1). Agent bootstrap/install is
+/// a later slice, so a remote host must already have `ruse` on its `PATH`.
 #[allow(clippy::print_stdout, clippy::print_stderr)] // headless CLI output (D-041).
 fn ssh_connect(host: Option<&str>) -> ExitCode {
-    let exe = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("ruse ssh: cannot locate the agent binary: {e}");
-            return ExitCode::FAILURE;
-        }
+    let cmd = match host {
+        Some(h) => transport::ssh_command(h, transport::DEFAULT_REMOTE_AGENT_CMD),
+        None => match std::env::current_exe() {
+            Ok(exe) => transport::local_command(exe),
+            Err(e) => {
+                eprintln!("ruse ssh: cannot locate the agent binary: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
     };
-    let mut cmd = Command::new(exe);
-    cmd.arg("agent");
     match AgentClient::spawn(cmd, &["fs.readFile"]) {
         Ok(client) => {
             let h = host.unwrap_or("<local>");
@@ -87,11 +90,6 @@ fn ssh_connect(host: Option<&str>) -> ExitCode {
                 client.protocol_version(),
                 client.capabilities(),
             );
-            if host.is_some() {
-                eprintln!(
-                    "note: real SSH transport is not wired yet — F-017 slice 1 is a local proof."
-                );
-            }
             ExitCode::SUCCESS
         }
         Err(e) => {
