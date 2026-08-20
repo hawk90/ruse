@@ -696,9 +696,11 @@ features:
     # file). Slice 7 (#307): code-actions (:codeaction/:ca) — textDocument/codeAction w/ reconstructed
     # context.diagnostics → an action picker → Enter applies the WorkspaceEdit (shared multi-file apply w/
     # rename). ORCHESTRATION now lives in app/lsp_coordinator.rs (#306); apply_edits is provenance-agnostic
-    # (#305, origin param). REMAINING: command-only code actions (executeCommand), live-filter/snippets/resolve
-    # for completion, diagnostics MERGE by namespace + list UI, more languages, remote (C-AGENT), C-SCHEDULER.
-    # Stays `planned` — local, single language, no remote/merge yet.
+    # (#305, origin param). #308: fast RA-independent contract tests (mock JSON-RPC round-trip + undo). #309:
+    # diagnostics LIST — :diagnostics opens a picker over the focused buffer's diagnostics, Enter jumps.
+    # REMAINING: workspace-wide diagnostics list (needs per-buffer bytes) + multi-SOURCE merge by namespace,
+    # command-only code actions (executeCommand), live-filter/snippets/resolve for completion, more languages,
+    # remote (C-AGENT), C-SCHEDULER. Stays `planned` — local, single language, no remote/multi-source merge yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >

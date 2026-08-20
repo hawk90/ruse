@@ -21,8 +21,8 @@ use crate::ui::picker::{PickOutcome, Picker};
 use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{
-    action_picker, buffer_picker, file_picker, layout::window_rects, line_picker, palette,
-    ref_picker,
+    action_picker, buffer_picker, diag_picker, file_picker, layout::window_rects, line_picker,
+    palette, ref_picker,
 };
 use crate::{health, highlight, indent, line_index, persist, recover, screen, viewport};
 #[cfg(unix)]
@@ -150,6 +150,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut ref_picker: Option<Picker<(String, u32, u32)>> = None;
     // F-014: the LSP code-action picker — Enter applies the selected action's WorkspaceEdit.
     let mut action_picker: Option<Picker<crate::lsp::protocol::CodeAction>> = None;
+    // F-014: the diagnostics list picker — payload is the diagnostic's start byte; Enter jumps there.
+    let mut diag_picker: Option<Picker<usize>> = None;
     // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `pending_term_escape`
     // tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
     #[cfg(unix)]
@@ -273,6 +275,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = action_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = diag_picker.as_ref() {
+            p.rows()
         } else {
             // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
             lsp.hover_overlay().unwrap_or_default()
@@ -292,6 +296,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('*', p.query.as_str())) // references-picker prompt (* = references to symbol)
         } else if let Some(p) = action_picker.as_ref() {
             Some(('!', p.query.as_str())) // code-action-picker prompt (! = actions/fixes at cursor)
+        } else if let Some(p) = diag_picker.as_ref() {
+            Some(('✗', p.query.as_str())) // diagnostics-picker prompt
         } else if let Some(h) = leader_hint.as_ref() {
             Some((' ', h.as_str()))
         } else {
@@ -489,6 +495,18 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             if !matches!(outcome, PickOutcome::Continue) {
                 action_picker = None;
+            }
+            continue;
+        }
+        // F-014: the diagnostics picker jumps the cursor to the selected diagnostic's byte offset.
+        if let Some(outcome) = diag_picker.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                if let Some(off) = diag_picker.as_ref().and_then(|p| p.selected().copied()) {
+                    ws.place_focused_cursor(off);
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                diag_picker = None;
             }
             continue;
         }
@@ -721,6 +739,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // the request; the response is dispatched + applied (or opens a picker) on a later frame.
                     ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
                         lsp.on_ex(&ex, &ws, &files, &snapshot, &mut status);
+                    }
+                    // `:diagnostics` (F-014): open a picker over the focused buffer's already-collected
+                    // diagnostics (no server round-trip); Enter jumps to the selected one.
+                    Ex::Diagnostics => {
+                        let diags = lsp.diagnostics_for(ws.focused_buffer());
+                        if diags.is_empty() {
+                            status = "no diagnostics".to_string();
+                        } else {
+                            status = format!("{} diagnostic(s)", diags.len());
+                            diag_picker = Some(diag_picker::open(diags, &snapshot));
+                        }
                     }
                     // `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused
                     // window, and enter Terminal mode. Unix-only in slice 1.

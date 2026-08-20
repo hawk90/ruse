@@ -269,7 +269,12 @@ pub(crate) fn run_ex(
         }
         // `:terminal` (F-011) / `:fmt` / `:rename` / `:references` (F-014) are handled in `session::run`
         // (they need the terminals / lsp maps); they never reach here, but the match stays exhaustive.
-        Ex::Terminal | Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction => {}
+        Ex::Terminal
+        | Ex::Format
+        | Ex::Rename(_)
+        | Ex::References
+        | Ex::CodeAction
+        | Ex::Diagnostics => {}
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }

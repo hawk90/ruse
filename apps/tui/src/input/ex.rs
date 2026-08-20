@@ -28,6 +28,8 @@ pub enum Ex {
     References,
     /// `:codeaction`/`:ca` — list code actions (quickfixes/assists) at the cursor (F-014).
     CodeAction,
+    /// `:diagnostics`/`:diags`/`:diag` — list the focused buffer's diagnostics; Enter jumps (F-014).
+    Diagnostics,
     /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
@@ -407,6 +409,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "fmt" | "format" => Ex::Format,
         "references" | "refs" | "ref" => Ex::References,
         "codeaction" | "codeactions" | "ca" => Ex::CodeAction,
+        "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         "e!" | "edit!" => Ex::EditReload,
