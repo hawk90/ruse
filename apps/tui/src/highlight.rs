@@ -251,6 +251,10 @@ pub struct CachedHighlight {
     /// Markdown uses a tree WALK ([`markdown_decorations`]) instead of the generic highlights query — the
     /// parser is still `hl.parser` (the block grammar), but span production branches on this (F-031).
     markdown: bool,
+    /// The tree-sitter-md INLINE grammar parser (F-031 slice 1b). The block grammar leaves heading /
+    /// paragraph text as opaque `inline` nodes; this re-parses each such node's bytes to recover
+    /// emphasis / strong / code-span / link structure. `Some` only when `markdown`.
+    inline: Option<Parser>,
     rev: Option<Revision>,
     /// The `(revision, visible-range)` the cached spans were computed for. Spans are recomputed when
     /// EITHER changes — a new edit (revision) or a scroll (visible range) — since the query is bounded
@@ -265,9 +269,21 @@ pub struct CachedHighlight {
 impl CachedHighlight {
     /// A cached highlighter for the file extension `ext`, or `None` if unsupported.
     pub fn for_ext(ext: &str) -> Option<CachedHighlight> {
+        let markdown = matches!(ext, "md" | "markdown");
+        // Build the inline parser once, alongside the block parser, when this is Markdown. If the inline
+        // grammar fails to load we simply emit no inline decorations (block-level conceal still works).
+        let inline = if markdown {
+            let mut p = Parser::new();
+            p.set_language(&tree_sitter_md::INLINE_LANGUAGE.into())
+                .ok()
+                .map(|()| p)
+        } else {
+            None
+        };
         Some(CachedHighlight {
             hl: Highlight::for_ext(ext)?,
-            markdown: matches!(ext, "md" | "markdown"),
+            markdown,
+            inline,
             rev: None,
             key: None,
             tree: None,
@@ -316,7 +332,9 @@ impl CachedHighlight {
             self.rev = Some(rev);
         }
         self.spans = match &self.tree {
-            Some(tree) if self.markdown => markdown_decorations(tree, &visible),
+            Some(tree) if self.markdown => {
+                markdown_decorations(tree, src, self.inline.as_mut(), &visible)
+            }
             Some(tree) => self.hl.spans_with_injections(tree, src, visible.clone()),
             None => Vec::new(),
         };
@@ -419,14 +437,44 @@ impl CachedSearch {
 /// style them — proving the decoration model carries more than colour. Colours are unchanged from the
 /// previous `color_for`, so non-attributed captures paint byte-identically (the P6 identity guard).
 fn face_for(name: &str) -> CellStyle {
-    // F-031 markup faces (Markdown/Org): a heading is a bold title. More markup faces (emphasis, link,
-    // code) join as the inline provider lands.
-    if name == "markup.heading" {
-        return CellStyle {
-            fg: Color::Yellow,
-            bold: true,
-            ..CellStyle::default()
-        };
+    // F-031 markup faces (Markdown/Org): a heading is a bold title; slice 1b adds the inline faces the
+    // INLINE grammar drives — emphasis (italic), strong (bold), code span (a distinct fg), and links (a
+    // blue underline). These are exact-match names (the `.`-head fallback below would flatten them to a
+    // bare "markup" head), so they are handled before the split — mirroring `markup.heading`.
+    match name {
+        "markup.heading" => {
+            return CellStyle {
+                fg: Color::Yellow,
+                bold: true,
+                ..CellStyle::default()
+            };
+        }
+        "markup.strong" => {
+            return CellStyle {
+                bold: true,
+                ..CellStyle::default()
+            };
+        }
+        "markup.emphasis" => {
+            return CellStyle {
+                italic: true,
+                ..CellStyle::default()
+            };
+        }
+        "markup.code" => {
+            return CellStyle {
+                fg: Color::Green,
+                ..CellStyle::default()
+            };
+        }
+        "markup.link" => {
+            return CellStyle {
+                fg: Color::Blue,
+                underline: true,
+                ..CellStyle::default()
+            };
+        }
+        _ => {}
     }
     let head = name.split('.').next().unwrap_or(name);
     let fg = match head {
@@ -447,17 +495,26 @@ fn face_for(name: &str) -> CellStyle {
     }
 }
 
-/// Markdown rich-render decorations (F-031 slice 1, BLOCK grammar): for each ATX heading, CONCEAL the
-/// `# ` prefix (marker + following space, `[heading.start, content.start)`) and FACE the heading content
-/// as a bold title — so a heading renders as a styled line with the markup hidden. Only headings whose
-/// content intersects `visible` are emitted. Emphasis / links / lists (the inline grammar) are following
-/// slices. Produced by a tree walk rather than a highlights query because conceal is not a colour.
-fn markdown_decorations(tree: &Tree, visible: &std::ops::Range<usize>) -> Vec<Span> {
+/// Markdown rich-render decorations (F-031). The BLOCK grammar (slice 1) handles ATX headings: CONCEAL
+/// the `# ` prefix (`[heading.start, content.start)`) and FACE the heading content as a bold title. The
+/// INLINE grammar (slice 1b) handles the paragraph text the block grammar leaves as opaque `inline`
+/// nodes: each such node's bytes are re-parsed ([`inline_decorations`]) to conceal emphasis / strong /
+/// code-span markers and link punctuation while facing their content. Only decorations intersecting
+/// `visible` are emitted. Produced by a tree walk rather than a highlights query because conceal is not a
+/// colour. `inline` is the INLINE parser (see [`CachedHighlight::inline`]); `None` disables inline faces.
+fn markdown_decorations(
+    tree: &Tree,
+    src: &[u8],
+    mut inline: Option<&mut Parser>,
+    visible: &std::ops::Range<usize>,
+) -> Vec<Span> {
     let mut spans = Vec::new();
     let mut stack = vec![tree.root_node()];
     while let Some(node) = stack.pop() {
         if node.kind() == "atx_heading" {
             // The heading content is the `inline` child; the prefix before it (`# `) is what we conceal.
+            // Heading content keeps its bold-title face and is NOT re-parsed for inline markup (slice 1b
+            // scopes inline faces to paragraph text; headings stay as they were).
             let mut cursor = node.walk();
             let content = node
                 .children(&mut cursor)
@@ -484,11 +541,123 @@ fn markdown_decorations(tree: &Tree, visible: &std::ops::Range<usize>) -> Vec<Sp
             }
             continue; // headings have no nested blocks we care about
         }
+        // Paragraph / list-item body text is an opaque `inline` node to the block grammar: re-parse it
+        // with the INLINE grammar to recover emphasis/strong/code/link. (Heading `inline` children never
+        // reach here — the heading arm `continue`s above.)
+        if node.kind() == "inline" {
+            if let Some(parser) = inline.as_deref_mut() {
+                inline_decorations(node, src, parser, visible, &mut spans);
+            }
+            continue;
+        }
         let mut cursor = node.walk();
         stack.extend(node.children(&mut cursor));
     }
     spans.sort_by_key(|s| std::cmp::Reverse(s.end - s.start));
     spans
+}
+
+/// Re-parse one block-level `inline` node's bytes with the INLINE grammar and emit F-031 decorations for
+/// the inline constructs, shifting offsets from the sub-parse's local coordinates into buffer coordinates
+/// (the `injected_spans` offset-shift pattern). Concealed: the emphasis/strong/code delimiters and the
+/// link brackets + destination; faced: the content each wraps. Only spans intersecting `visible` are kept.
+fn inline_decorations(
+    inline_node: tree_sitter::Node,
+    src: &[u8],
+    parser: &mut Parser,
+    visible: &std::ops::Range<usize>,
+    out: &mut Vec<Span>,
+) {
+    let region = inline_node.byte_range();
+    let Some(slice) = src.get(region.clone()) else {
+        return;
+    };
+    let Some(subtree) = parser.parse(slice, None) else {
+        return;
+    };
+    let base = region.start;
+    // Push a decoration in BUFFER coordinates (local `+ base`) only if it intersects the viewport.
+    let mut emit = |start: usize, end: usize, style: CellStyle, conceal: bool| {
+        if end <= start {
+            return;
+        }
+        let (s, e) = (base + start, base + end);
+        if e > visible.start && s < visible.end {
+            out.push(Span {
+                start: s,
+                end: e,
+                style,
+                conceal,
+            });
+        }
+    };
+    let mut stack = vec![subtree.root_node()];
+    while let Some(node) = stack.pop() {
+        match node.kind() {
+            // `*x*` / `_x_`, `**x**` / `__x__`, `` `x` ``: the marker run at each end is concealed and the
+            // content between them is faced. tree-sitter-md emits ONE `emphasis_delimiter` node per marker
+            // char, so `**` is two adjacent delimiter nodes — collapse the leading and trailing contiguous
+            // runs to find the content span (the delimiters always sit flush against the node's edges).
+            kind @ ("emphasis" | "strong_emphasis" | "code_span") => {
+                let delim_kind = if kind == "code_span" {
+                    "code_span_delimiter"
+                } else {
+                    "emphasis_delimiter"
+                };
+                let mut cur = node.walk();
+                let delims: Vec<_> = node
+                    .children(&mut cur)
+                    .filter(|c| c.kind() == delim_kind)
+                    .collect();
+                if !delims.is_empty() {
+                    let face = match kind {
+                        "emphasis" => face_for("markup.emphasis"),
+                        "strong_emphasis" => face_for("markup.strong"),
+                        _ => face_for("markup.code"),
+                    };
+                    // Leading run: delimiters flush against the node start.
+                    let mut open_end = node.start_byte();
+                    let mut i = 0;
+                    while i < delims.len() && delims[i].start_byte() == open_end {
+                        open_end = delims[i].end_byte();
+                        i += 1;
+                    }
+                    // Trailing run: delimiters flush against the node end (stop before the leading run).
+                    let mut close_start = node.end_byte();
+                    let mut j = delims.len();
+                    while j > i && delims[j - 1].end_byte() == close_start {
+                        close_start = delims[j - 1].start_byte();
+                        j -= 1;
+                    }
+                    emit(node.start_byte(), open_end, CellStyle::default(), true);
+                    emit(open_end, close_start, face, false);
+                    emit(close_start, node.end_byte(), CellStyle::default(), true);
+                }
+            }
+            // `[label](url)`: show only `label` (faced as a link); conceal the `[`, and the `](url)` tail
+            // (bracket + destination + any title + closing paren) after it.
+            "inline_link" => {
+                let label = {
+                    let mut cur = node.walk();
+                    let found = node
+                        .children(&mut cur)
+                        .find(|c| c.kind() == "link_text")
+                        .map(|t| (t.start_byte(), t.end_byte()));
+                    found
+                };
+                if let Some((ts, te)) = label {
+                    emit(node.start_byte(), ts, CellStyle::default(), true);
+                    emit(ts, te, face_for("markup.link"), false);
+                    emit(te, node.end_byte(), CellStyle::default(), true);
+                }
+            }
+            _ => {}
+        }
+        // Descend so nested constructs (emphasis inside strong, a code span or emphasis inside a link
+        // label) are decorated too; shorter inner spans sort after the outer ones and win last-wins.
+        let mut cur = node.walk();
+        stack.extend(node.children(&mut cur));
+    }
 }
 
 #[cfg(test)]
@@ -530,6 +699,141 @@ mod tests {
         assert!(
             !spans.iter().any(|s| s.conceal && s.start >= 9),
             "no conceal leaks into the body; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_conceals_strong_markers_and_faces_content_bold() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"a **bold** z\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // The two `**` runs (bytes 2..4 and 8..10) are concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 2 && s.end == 4 && s.conceal),
+            "opening `**` concealed; got {spans:?}",
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 8 && s.end == 10 && s.conceal),
+            "closing `**` concealed; got {spans:?}",
+        );
+        // `bold` (bytes 4..8) is faced bold and NOT concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 4 && s.end == 8 && s.style.bold && !s.conceal),
+            "`bold` content faced bold, visible; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_conceals_code_backticks_and_faces_span() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"a `code` z\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // Backticks at bytes 2 and 7 are single-char delimiters, concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 2 && s.end == 3 && s.conceal),
+            "opening backtick concealed; got {spans:?}",
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 7 && s.end == 8 && s.conceal),
+            "closing backtick concealed; got {spans:?}",
+        );
+        // `code` (bytes 3..7) is faced (distinct green) and not concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 3 && s.end == 7 && s.style.fg == Color::Green && !s.conceal),
+            "`code` content faced, visible; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_conceals_emphasis_markers_and_faces_italic() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"a *x* z\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // Single `*` markers at bytes 2 and 4 are concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 2 && s.end == 3 && s.conceal),
+            "opening `*` concealed; got {spans:?}",
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 4 && s.end == 5 && s.conceal),
+            "closing `*` concealed; got {spans:?}",
+        );
+        // `x` (byte 3..4) is faced italic and visible.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 3 && s.end == 4 && s.style.italic && !s.conceal),
+            "`x` faced italic, visible; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_shows_link_label_and_conceals_url() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        // `[lab](http://x)` — label at bytes 1..4, the `[` at 0, and `](http://x)` at 4..15.
+        let src = b"[lab](http://x)\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // The label is faced as a link (blue underline) and visible.
+        assert!(
+            spans.iter().any(|s| s.start == 1
+                && s.end == 4
+                && s.style.fg == Color::Blue
+                && s.style.underline
+                && !s.conceal),
+            "link label faced + visible; got {spans:?}",
+        );
+        // The opening `[` (0..1) is concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 0 && s.end == 1 && s.conceal),
+            "opening `[` concealed; got {spans:?}",
+        );
+        // The `](url)` tail (4..15) is concealed, so the URL never shows.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 4 && s.end == 15 && s.conceal),
+            "the `](url)` tail concealed; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_heading_content_is_not_inline_reparsed() {
+        // Heading behavior is unchanged by slice 1b: `# *hi*` still conceals only the `# ` prefix and
+        // faces the whole content as a heading — the `*` markers are NOT concealed as emphasis.
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"# *hi*\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // `# ` prefix concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 0 && s.end == 2 && s.conceal),
+            "`# ` prefix concealed; got {spans:?}",
+        );
+        // No emphasis-marker conceal inside the heading content (the `*` at byte 2 stays visible).
+        assert!(
+            !spans
+                .iter()
+                .any(|s| s.start == 2 && s.end == 3 && s.conceal),
+            "heading content is not inline-reparsed; got {spans:?}",
         );
     }
 
