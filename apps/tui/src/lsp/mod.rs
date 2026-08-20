@@ -9,6 +9,7 @@ pub mod client;
 pub mod codec;
 pub mod model;
 pub mod protocol;
+pub mod snippet;
 
 pub use client::LspClient;
 pub use model::{counts, Diag};

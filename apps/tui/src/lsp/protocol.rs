@@ -222,8 +222,12 @@ pub fn parse_code_actions(result: &Value) -> Vec<CodeAction> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompletionItem {
     pub label: String,
+    /// The text to insert: for a snippet item (`snippet == true`) this is the raw LSP snippet BODY the
+    /// accept path expands via [`super::snippet::expand`]; otherwise it is inserted literally.
     pub insert: String,
     pub detail: Option<String>,
+    /// Whether `insert` is an LSP snippet body (`insertTextFormat == 2`) needing expansion.
+    pub snippet: bool,
 }
 
 /// Parse a completion response into [`CompletionItem`]s. Accepts both a `CompletionList` (`{ items: [...] }`)
@@ -241,21 +245,22 @@ pub fn parse_completion(result: &Value) -> Vec<CompletionItem> {
     arr.iter()
         .filter_map(|it| {
             let label = it.get("label")?.as_str()?.to_string();
-            let is_snippet = it.get("insertTextFormat").and_then(Value::as_u64) == Some(2);
-            let insert = if is_snippet {
-                label.clone()
-            } else {
-                it.get("textEdit")
-                    .and_then(|te| te.get("newText"))
-                    .and_then(Value::as_str)
-                    .or_else(|| it.get("insertText").and_then(Value::as_str))
-                    .map_or_else(|| label.clone(), str::to_string)
-            };
+            let snippet = it.get("insertTextFormat").and_then(Value::as_u64) == Some(2);
+            // Both formats resolve the insert text as textEdit.newText → insertText → label. For a snippet
+            // the resolved text is the raw SNIPPET BODY (`${1:…}`) that the accept path expands; for a plain
+            // item it is inserted literally.
+            let insert = it
+                .get("textEdit")
+                .and_then(|te| te.get("newText"))
+                .and_then(Value::as_str)
+                .or_else(|| it.get("insertText").and_then(Value::as_str))
+                .map_or_else(|| label.clone(), str::to_string);
             let detail = it.get("detail").and_then(Value::as_str).map(str::to_string);
             Some(CompletionItem {
                 label,
                 insert,
                 detail,
+                snippet,
             })
         })
         .collect()
@@ -423,12 +428,16 @@ mod tests {
         let arr = json!([
             {"label": "foo", "textEdit": {"range": {}, "newText": "foo()"}}
         ]);
-        assert_eq!(parse_completion(&arr)[0].insert, "foo()");
-        // Snippet item (insertTextFormat 2) inserts the clean label, not the snippet body.
+        let foo = &parse_completion(&arr)[0];
+        assert_eq!(foo.insert, "foo()");
+        assert!(!foo.snippet, "a plain item is not a snippet");
+        // Snippet item (insertTextFormat 2): keep the raw BODY + flag it (the accept path expands it).
         let snip = json!([
             {"label": "println!", "insertText": "println!(\"$1\")$0", "insertTextFormat": 2}
         ]);
-        assert_eq!(parse_completion(&snip)[0].insert, "println!");
+        let s = &parse_completion(&snip)[0];
+        assert_eq!(s.insert, "println!(\"$1\")$0");
+        assert!(s.snippet);
         assert!(parse_completion(&Value::Null).is_empty());
     }
 
