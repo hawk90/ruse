@@ -10,7 +10,10 @@ use std::path::PathBuf;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal as ct_terminal;
 
-use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, Revision, SplitDir, Workspace};
+use ruse_core::{
+    CaretGravity, Command, DocumentId, Mode, OpenKind, Revision, SplitDir, TransactionOrigin,
+    Workspace,
+};
 
 use crate::app::dispatch::{run_cmd, run_ex, BufferFile, Files};
 use crate::input::{parse_ex, Ex, Feed, InputEngine};
@@ -511,7 +514,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
         // F-014: apply LSP format edits (deferred past the `spans` borrow) as one Lsp-origin undo group.
         if !pending_edits.is_empty() {
-            ws.apply_edits(&pending_edits);
+            ws.apply_edits(&pending_edits, TransactionOrigin::Lsp);
             status = "formatted".to_string();
         }
         // F-014: open the references picker now render is done (past `cmd_line`'s borrow of `ref_picker`).
@@ -557,7 +560,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     })
                     .collect();
                 edits_n += byte_edits.len();
-                ws.apply_edits(&byte_edits);
+                ws.apply_edits(&byte_edits, TransactionOrigin::Lsp);
                 files_n += 1;
             }
             ws.focus_buffer(orig);
@@ -618,7 +621,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 completion = None;
                 let cursor = ws.focused().view.cursor();
                 let start = cursor.saturating_sub(prefix_len);
-                ws.apply_edits(&[(start, cursor, item.insert.clone())]);
+                ws.apply_edits(
+                    &[(start, cursor, item.insert.clone())],
+                    TransactionOrigin::Lsp,
+                );
                 ws.place_focused_cursor(start + item.insert.len());
                 status = format!("completed: {}", item.label);
                 continue;
