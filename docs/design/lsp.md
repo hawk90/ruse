@@ -106,6 +106,12 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
 - **Coordinator (2026-08-20, #306):** all app-side LSP orchestration now lives in `app/lsp_coordinator.rs`
   (`LspCoordinator`) — the session loop just calls its methods. `lsp/` stays the pure client. Future LSP work
   goes in the coordinator.
+- **Diagnostics list (landed):** `:diagnostics` / `:diags` / `:diag` opens a picker (`ui/diag_picker.rs`) over
+  the FOCUSED buffer's collected diagnostics — rows `line:col [E/W/I/H] message`; Enter jumps to the
+  diagnostic's byte offset. No server round-trip (reads the already-stored model). *Workspace-wide* (all open
+  buffers) needs a per-buffer bytes API to map each publish's UTF-16 ranges → that buffer's bytes (the
+  coordinator only has the focused snapshot today) — deferred, as is multi-SOURCE merge (LSP + tree-sitter +
+  compiler) by namespace.
 - **Later:** command-only code actions (`workspace/executeCommand`); live filter-as-you-type after the pum
   opens (slice 5 filters once at trigger time; further typing dismisses); snippet placeholder expansion;
   `completionItem/resolve` lazy docs + a docs side-panel; signature help; trigger-character auto-popup; a

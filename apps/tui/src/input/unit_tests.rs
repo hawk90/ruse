@@ -1730,6 +1730,11 @@ mod tests {
         // `:codeaction` / `:ca` (F-014 LSP code actions).
         assert_eq!(parse_ex("codeaction"), Ex::CodeAction);
         assert_eq!(parse_ex("ca"), Ex::CodeAction);
+        // `:diagnostics` / `:diags` / `:diag` (F-014 diagnostics list); `:d` is still delete.
+        assert_eq!(parse_ex("diagnostics"), Ex::Diagnostics);
+        assert_eq!(parse_ex("diags"), Ex::Diagnostics);
+        assert_eq!(parse_ex("diag"), Ex::Diagnostics);
+        assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine));
     }
 
     /// F-007 multi-buffer ex commands parse: `:enew`, `:ls`, `:bn`/`:bp`, `:b {n}` (with/without space),
