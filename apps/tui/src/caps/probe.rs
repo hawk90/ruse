@@ -12,7 +12,9 @@
 //! the bytes and reads the replies lives in `main.rs`; the protocol logic is tested here against
 //! canned streams (see `tests/caps_probe.rs`).
 
-use super::ledger::{CapValue, Capability, Confidence, Entry, KeyEncoding, Ledger, Source};
+use super::ledger::{
+    CapValue, Capability, Confidence, Entry, GraphicsProtocol, KeyEncoding, Ledger, Source,
+};
 
 /// DEC private mode numbers we query via DECRQM (`CSI ? <n> $ p`), paired with the capability each
 /// proves. Mouse is three cooperating modes; SGR-1006 is the one whose support gates the feature.
@@ -119,7 +121,19 @@ impl ProbeParser {
         };
         match final_byte {
             b'c' if params.first() == Some(&b'?') => {
-                // DA1 reply (`CSI ? ... c`). The fence — nothing more will come.
+                // DA1 reply (`CSI ? <attrs> c`). The fence — nothing more will come. A `4` among the
+                // attributes advertises SIXEL graphics (F-031 slice 3b / D-053).
+                let attrs = &params[1..]; // after the leading '?'
+                if attrs.split(|&b| b == b';').any(|p| parse_u16(p) == Some(4)) {
+                    ledger.record(
+                        Capability::InlineGraphics,
+                        Entry {
+                            value: CapValue::Graphics(GraphicsProtocol::Sixel),
+                            source: Source::Probed,
+                            confidence: Confidence::Confirmed,
+                        },
+                    );
+                }
                 return true;
             }
             b'u' if params.first() == Some(&b'?') => {
@@ -174,4 +188,26 @@ fn parse_u16(bytes: &[u8]) -> Option<u16> {
         n = n.checked_mul(10)?.checked_add(u16::from(d))?;
     }
     Some(n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn da1_attribute_4_records_sixel_graphics() {
+        // A DA1 reply advertising sixel (attribute `4`): `CSI ? 62 ; 4 ; 22 c` (F-031 slice 3b / D-053).
+        let mut l = Ledger::with_defaults();
+        let mut p = ProbeParser::new();
+        assert_eq!(p.feed(b"\x1b[?62;4;22c", &mut l), ProbeState::Fenced);
+        assert_eq!(l.graphics(), GraphicsProtocol::Sixel);
+    }
+
+    #[test]
+    fn da1_without_attribute_4_leaves_graphics_none() {
+        let mut l = Ledger::with_defaults();
+        let mut p = ProbeParser::new();
+        assert_eq!(p.feed(b"\x1b[?62;22c", &mut l), ProbeState::Fenced);
+        assert_eq!(l.graphics(), GraphicsProtocol::None);
+    }
 }

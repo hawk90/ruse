@@ -23,6 +23,21 @@ pub enum KeyEncoding {
     Kitty,
 }
 
+/// The inline-graphics protocol a terminal supports, as a DEGRADATION LADDER (F-031 slice 3b / D-053):
+/// higher = more preferred, so `graphics()` picking the max is "prefer Kitty, then Sixel, then iTerm2".
+/// `None` is a terminal with no inline graphics (the placeholder rung of INV-CAP-DEGRADE).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum GraphicsProtocol {
+    /// No inline image support — render the Unicode/placeholder rung.
+    None,
+    /// iTerm2 inline images (`OSC 1337`), env-hinted from `$TERM_PROGRAM`.
+    ITerm2,
+    /// Sixel (`DCS ... q`), advertised by a `4` in the DA1 attributes.
+    Sixel,
+    /// Kitty graphics protocol (`APC _G`), the most capable — env-hinted from `$TERM`/`$TERM_PROGRAM`.
+    Kitty,
+}
+
 /// A capability ruse probes and negotiates. Each maps to a census id under
 /// `FAM-TERMINAL-CAPABILITY` (spec/parity/inventory/neovim/{term_mode,key_encoding}.yaml).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -37,21 +52,26 @@ pub enum Capability {
     SynchronizedOutput,
     /// In-band resize reporting, mode 2048 (`nvim.termmode.resizeevents`).
     ResizeEvents,
+    /// Inline-graphics protocol for images (value: [`CapValue::Graphics`]) — F-031 slice 3b / D-053.
+    InlineGraphics,
 }
 
-/// The value a capability holds: a plain on/off, or the keyboard-encoding regime.
+/// The value a capability holds: a plain on/off, the keyboard-encoding regime, or the graphics protocol.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CapValue {
     Bool(bool),
     Encoding(KeyEncoding),
+    Graphics(GraphicsProtocol),
 }
 
 impl CapValue {
-    /// True when the capability is usable — `on`, or any negotiated (non-legacy) encoding.
+    /// True when the capability is usable — `on`, any negotiated (non-legacy) encoding, or any inline
+    /// graphics protocol (non-`None`).
     pub fn is_enabled(self) -> bool {
         match self {
             CapValue::Bool(b) => b,
             CapValue::Encoding(e) => e != KeyEncoding::Legacy,
+            CapValue::Graphics(g) => g != GraphicsProtocol::None,
         }
     }
 }
@@ -125,6 +145,10 @@ impl Ledger {
             .insert(Capability::SynchronizedOutput, def(CapValue::Bool(false)));
         l.rows
             .insert(Capability::ResizeEvents, def(CapValue::Bool(false)));
+        l.rows.insert(
+            Capability::InlineGraphics,
+            def(CapValue::Graphics(GraphicsProtocol::None)),
+        );
         l
     }
 
@@ -170,6 +194,14 @@ impl Ledger {
             _ => KeyEncoding::Legacy,
         }
     }
+
+    /// The inline-graphics protocol to use (defaults to `None` if untracked) — F-031 slice 3b / D-053.
+    pub fn graphics(&self) -> GraphicsProtocol {
+        match self.get(Capability::InlineGraphics).map(|e| e.value) {
+            Some(CapValue::Graphics(g)) => g,
+            _ => GraphicsProtocol::None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -190,6 +222,34 @@ mod tests {
         assert!(!l.enabled(Capability::BracketedPaste));
         assert_eq!(l.key_encoding(), KeyEncoding::Legacy);
         assert_eq!(l.get(Capability::SgrMouse).unwrap().source, Source::Default);
+    }
+
+    #[test]
+    fn graphics_ladder_defaults_none_records_and_override_wins() {
+        let mut l = Ledger::with_defaults();
+        assert_eq!(l.graphics(), GraphicsProtocol::None);
+        assert!(!l.enabled(Capability::InlineGraphics));
+        // A probed Sixel upgrades the default.
+        assert!(l.record(
+            Capability::InlineGraphics,
+            probed(CapValue::Graphics(GraphicsProtocol::Sixel)),
+        ));
+        assert_eq!(l.graphics(), GraphicsProtocol::Sixel);
+        assert!(l.enabled(Capability::InlineGraphics));
+        // A user override always wins (force graphics off).
+        l.set_override(
+            Capability::InlineGraphics,
+            CapValue::Graphics(GraphicsProtocol::None),
+        );
+        assert_eq!(l.graphics(), GraphicsProtocol::None);
+    }
+
+    #[test]
+    fn graphics_ladder_orders_by_preference() {
+        // The enum order encodes D-053 preference: Kitty > Sixel > iTerm2 > None.
+        assert!(GraphicsProtocol::Kitty > GraphicsProtocol::Sixel);
+        assert!(GraphicsProtocol::Sixel > GraphicsProtocol::ITerm2);
+        assert!(GraphicsProtocol::ITerm2 > GraphicsProtocol::None);
     }
 
     #[test]
