@@ -31,6 +31,8 @@ enum LspKind {
     References,
     /// A code-action request; the response's actions are stashed for the loop to open its picker.
     CodeAction,
+    /// A `completionItem/resolve` for the pum item at this index, at the request-time revision (F-014).
+    Resolve(Revision, usize),
 }
 
 /// The open completion popup menu (pum): the parsed candidates, the highlighted index, and the typed
@@ -66,6 +68,11 @@ pub(crate) struct LspCoordinator {
     /// A keystroke (word char / backspace) edited the buffer while the pum was open → re-request completion
     /// once the edit is synced (set in `on_completion_key`, consumed in `sync_and_poll`).
     refilter: bool,
+    /// The id of the latest `completionItem/resolve` request — the only one whose response is applied.
+    resolve_req: Option<i64>,
+    /// The pum index whose item to (lazily) resolve — set when the pum opens / selection moves, sent in
+    /// `sync_and_poll` (gated on the item having `data` and being unresolved).
+    pending_resolve: Option<usize>,
     // Deferred results — set while polling (inside the frame's `spans` borrow) and drained AFTER render.
     goto_jump: Option<(String, u32, u32)>,
     pending_edits: Vec<(usize, usize, String)>,
@@ -89,6 +96,8 @@ impl LspCoordinator {
             pending_omni: false,
             completion_req: None,
             refilter: false,
+            resolve_req: None,
+            pending_resolve: None,
             goto_jump: None,
             pending_edits: Vec::new(),
             pending_rename: Vec::new(),
@@ -189,6 +198,7 @@ impl LspCoordinator {
             selected,
             prefix_len,
         });
+        self.pending_resolve = Some(selected); // lazily resolve the shown selection
     }
 
     /// Keep the language server in sync with the FOCUSED file buffer (spawn once per server, didOpen once
@@ -242,6 +252,7 @@ impl LspCoordinator {
         // Poll every client: apply diagnostics for the focused buffer (matched by uri), and dispatch any
         // request responses by their pending (serverKey, id).
         let mut completion_responses: Vec<(i64, Revision, Value)> = Vec::new();
+        let mut resolve_responses: Vec<(i64, Revision, usize, Value)> = Vec::new();
         for (key, client) in self.lsp.iter_mut() {
             let polled = client.poll();
             for params in polled.diagnostics {
@@ -281,6 +292,10 @@ impl LspCoordinator {
                     Some(LspKind::Completion(req_rev)) => {
                         completion_responses.push((rid, req_rev, result));
                     }
+                    // Resolve: stash for after the loop (ingest_resolve is `&mut self`).
+                    Some(LspKind::Resolve(req_rev, idx)) => {
+                        resolve_responses.push((rid, req_rev, idx, result));
+                    }
                     // References: stash the locations; the loop opens its picker after render.
                     Some(LspKind::References) => {
                         let locs = lsp::protocol::parse_locations(&result);
@@ -318,6 +333,49 @@ impl LspCoordinator {
             if self.completion.is_some() {
                 self.request_completion(ws, files, snapshot, revision);
             }
+        }
+        // Merge resolve responses (detail/documentation/additionalTextEdits) into the pum item.
+        for (rid, req_rev, idx, result) in resolve_responses {
+            self.ingest_resolve(rid, req_rev, idx, &result, revision);
+        }
+        // Lazily resolve the selected item (fills detail/docs + auto-import), gated on it carrying `data`
+        // and being unresolved. One request per selection; stale responses dropped by resolve_req + revision.
+        if let Some(idx) = self.pending_resolve.take() {
+            let raw = self
+                .completion
+                .as_ref()
+                .and_then(|m| m.items.get(idx))
+                .and_then(|it| {
+                    (!it.resolved && lsp::protocol::has_resolve_data(it)).then(|| it.raw.clone())
+                });
+            if let Some(raw) = raw {
+                if let Some((key_s, _uri)) = self.focused_server(ws, files) {
+                    self.resolve_req = self.send(
+                        key_s,
+                        "completionItem/resolve",
+                        raw,
+                        LspKind::Resolve(revision, idx),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Merge a `completionItem/resolve` response into the pum item at `idx` — discarded unless it is the
+    /// latest resolve request (`resolve_req` id) at the current revision and the pum + index are still valid.
+    fn ingest_resolve(
+        &mut self,
+        rid: i64,
+        req_rev: Revision,
+        idx: usize,
+        result: &Value,
+        current_rev: Revision,
+    ) {
+        if Some(rid) != self.resolve_req || req_rev != current_rev {
+            return; // stale: superseded, or the buffer moved since the request
+        }
+        if let Some(item) = self.completion.as_mut().and_then(|m| m.items.get_mut(idx)) {
+            lsp::protocol::apply_resolve(item, result);
         }
     }
 
@@ -399,6 +457,8 @@ impl LspCoordinator {
     fn close_completion(&mut self) {
         self.completion = None;
         self.completion_req = None;
+        self.resolve_req = None;
+        self.pending_resolve = None;
     }
 
     /// The completion pum owns the keystream while open: `<C-n>`/`↓` and `<C-p>`/`↑` move (wrapping),
@@ -416,10 +476,12 @@ impl LspCoordinator {
         let n = menu.items.len().max(1);
         if is_ctrl(key, 'n') || key.code == KeyCode::Down {
             menu.selected = (menu.selected + 1) % n;
+            self.pending_resolve = Some(menu.selected);
             return true;
         }
         if is_ctrl(key, 'p') || key.code == KeyCode::Up {
             menu.selected = (menu.selected + n - 1) % n;
+            self.pending_resolve = Some(menu.selected);
             return true;
         }
         if key.code == KeyCode::Esc {
@@ -433,15 +495,35 @@ impl LspCoordinator {
             let cursor = ws.focused().view.cursor();
             let start = cursor.saturating_sub(prefix_len);
             // A snippet item's `insert` is a snippet body → expand to plain text + the first-tabstop cursor;
-            // a plain item inserts literally (cursor after it). One Lsp-origin undo group either way.
+            // a plain item inserts literally (cursor after it).
             let (text, caret) = if item.snippet {
                 let e = lsp::snippet::expand(&item.insert);
                 (e.text, e.cursor)
             } else {
                 (item.insert.clone(), item.insert.len())
             };
-            ws.apply_edits(&[(start, cursor, text)], TransactionOrigin::Lsp);
-            ws.place_focused_cursor(start + caret);
+            // The resolved `additionalTextEdits` (e.g. an auto-import), converted to byte edits against the
+            // CURRENT bytes and combined with the main insert into ONE Lsp-origin transaction. Cross-file
+            // edits (uri != focused) are dropped this slice. The caret is shifted by imports landing before it.
+            let bytes = ws.focused().doc.bytes().to_vec();
+            let mut edits = vec![(start, cursor, text)];
+            let mut shift: isize = 0;
+            for (uri, ledits) in &item.additional {
+                if !uri.is_empty() {
+                    continue; // additionalTextEdits target the completed (focused) doc; others deferred
+                }
+                for &((sl, sc), (el, ec), ref t) in ledits {
+                    let s = lsp::model::lsp_pos_to_byte(&bytes, sl, sc);
+                    let e = lsp::model::lsp_pos_to_byte(&bytes, el, ec);
+                    if e <= start {
+                        shift += t.len() as isize - (e as isize - s as isize);
+                    }
+                    edits.push((s, e, t.clone()));
+                }
+            }
+            ws.apply_edits(&edits, TransactionOrigin::Lsp);
+            let caret_pos = (start as isize + caret as isize + shift).max(0) as usize;
+            ws.place_focused_cursor(caret_pos);
             *status = format!("completed: {}", item.label);
             return true;
         }
@@ -708,6 +790,10 @@ mod tests {
             insert: label.to_string(),
             detail: None,
             snippet: false,
+            documentation: None,
+            additional: Vec::new(),
+            raw: serde_json::json!({"label": label}),
+            resolved: false,
         }
     }
 
@@ -768,5 +854,31 @@ mod tests {
             c.completion_req.is_none(),
             "closing clears the latest-id guard"
         );
+    }
+
+    /// `ingest_resolve` merges only for the latest request at the current revision with a valid index; every
+    /// stale / out-of-bounds case is a no-op (F-014 resolve contract).
+    #[test]
+    fn ingest_resolve_stale_index_and_merge() {
+        let rev = Revision::ZERO;
+        let resolved = json!({"detail": "struct HashMap"});
+        let mut c = LspCoordinator::new(std::path::PathBuf::from("/"));
+        c.completion = Some(menu(&["HashMap", "HashSet"], 0));
+        let detail0 = |c: &LspCoordinator| c.completion.as_ref().unwrap().items[0].detail.clone();
+
+        c.resolve_req = Some(9); // stale id
+        c.ingest_resolve(1, rev, 0, &resolved, rev);
+        assert_eq!(detail0(&c), None);
+
+        c.resolve_req = Some(1);
+        c.ingest_resolve(1, rev, 0, &resolved, rev.next()); // stale revision
+        assert_eq!(detail0(&c), None);
+
+        c.ingest_resolve(1, rev, 99, &resolved, rev); // bad index → no panic, no change
+        assert_eq!(detail0(&c), None);
+
+        c.ingest_resolve(1, rev, 0, &resolved, rev); // fresh + valid → merged
+        assert_eq!(detail0(&c).as_deref(), Some("struct HashMap"));
+        assert!(c.completion.as_ref().unwrap().items[0].resolved);
     }
 }
