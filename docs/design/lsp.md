@@ -38,7 +38,11 @@ reader thread + `mpsc` + the gated `event::poll` loop) — but over stdio **pipe
   server never blocks, and returns diagnostics; `did_open`/`did_change`; `Drop` = shutdown/exit + reap + join.
 - **`model.rs`** — the UI-facing `Diag { start, end, severity, message }` and `lsp_pos_to_byte` (LSP positions
   are UTF-16 line/character — an emoji is 2 units; this walks a line's UTF-16 units to a byte offset).
-- **`mod.rs`** — `server_for_ext` (rust → `rust-analyzer`, one process per server) and `path_to_uri`.
+- **`mod.rs`** — `server_for_ext` maps an extension to `(server key, launch Command, languageId)`, one
+  process per server key (rust→rust-analyzer, py→pyright, ts/js→typescript-language-server, go→gopls,
+  c/cpp/h→clangd, lua→lua-language-server; ts+js share one key, c+cpp share `clangd`). A missing binary is a
+  silent no-op. This hard-coded map is the seam a config-driven `language-servers` registry replaces later.
+  `path_to_uri`.
 
 ## Session integration + render
 
