@@ -14,7 +14,9 @@ pub mod ledger;
 pub mod probe;
 pub mod sequences;
 
-use ledger::{CapValue, Capability, Confidence, Entry, KeyEncoding, Ledger, Source};
+use ledger::{
+    CapValue, Capability, Confidence, Entry, GraphicsProtocol, KeyEncoding, Ledger, Source,
+};
 
 /// Seed the ledger from the environment BEFORE probing — a hint, never the verdict (architecture
 /// §6.1/§6.3: "do not identify a terminal by `TERM` alone"). Everything here is `Source::EnvHint`,
@@ -54,6 +56,21 @@ pub fn seed_env(ledger: &mut Ledger, term: &str, _colorterm: &str, term_program:
     if modern {
         ledger.record(Capability::BracketedPaste, hint(CapValue::Bool(true)));
     }
+
+    // Inline graphics (F-031 slice 3b / D-053): env HINTS. Kitty from `$TERM`/`$TERM_PROGRAM`, iTerm2
+    // from `$TERM_PROGRAM`. Sixel is confirmed by the DA1 probe (probe.rs), which outranks these hints.
+    let graphics = if looks_kitty {
+        Some(GraphicsProtocol::Kitty)
+    } else if term_program.eq_ignore_ascii_case("iTerm.app")
+        || term_program.eq_ignore_ascii_case("iterm2")
+    {
+        Some(GraphicsProtocol::ITerm2)
+    } else {
+        None
+    };
+    if let Some(g) = graphics {
+        ledger.record(Capability::InlineGraphics, hint(CapValue::Graphics(g)));
+    }
 }
 
 /// Apply user overrides — the highest authority, applied AFTER probing so they always win
@@ -84,6 +101,22 @@ pub fn apply_overrides(ledger: &mut Ledger, no_kitty: &str, no_mouse: &str, no_p
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seed_env_hints_inline_graphics() {
+        // Kitty terminal -> Kitty graphics hint.
+        let mut k = Ledger::with_defaults();
+        seed_env(&mut k, "xterm-kitty", "", "");
+        assert_eq!(k.graphics(), GraphicsProtocol::Kitty);
+        // iTerm2 -> iTerm2 graphics hint.
+        let mut i = Ledger::with_defaults();
+        seed_env(&mut i, "xterm-256color", "", "iTerm.app");
+        assert_eq!(i.graphics(), GraphicsProtocol::ITerm2);
+        // A plain xterm advertises no inline graphics from env alone.
+        let mut x = Ledger::with_defaults();
+        seed_env(&mut x, "xterm-256color", "", "");
+        assert_eq!(x.graphics(), GraphicsProtocol::None);
+    }
 
     #[test]
     fn override_forces_legacy_over_a_kitty_probe() {
