@@ -20,6 +20,7 @@
 // Public surface: the binary entry (`run`) plus the modules the integration tests and benches import
 // directly. Everything else is crate-internal.
 pub mod caps;
+pub mod graphics;
 pub mod highlight;
 pub mod input;
 pub mod line_index;
