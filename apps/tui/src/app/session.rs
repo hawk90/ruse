@@ -21,7 +21,8 @@ use crate::ui::picker::{PickOutcome, Picker};
 use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{
-    buffer_picker, file_picker, layout::window_rects, line_picker, palette, ref_picker,
+    action_picker, buffer_picker, file_picker, layout::window_rects, line_picker, palette,
+    ref_picker,
 };
 use crate::{health, highlight, indent, line_index, persist, recover, screen, viewport};
 #[cfg(unix)]
@@ -147,6 +148,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut file_picker: Option<Picker<PathBuf>> = None; // fuzzy file finder (`C-f`), opens like `:e`
                                                          // F-014: the LSP references picker — `(uri, line, character)` locations; Enter jumps (same/cross file).
     let mut ref_picker: Option<Picker<(String, u32, u32)>> = None;
+    // F-014: the LSP code-action picker — Enter applies the selected action's WorkspaceEdit.
+    let mut action_picker: Option<Picker<crate::lsp::protocol::CodeAction>> = None;
     // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `pending_term_escape`
     // tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
     #[cfg(unix)]
@@ -268,6 +271,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = ref_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = action_picker.as_ref() {
+            p.rows()
         } else {
             // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
             lsp.hover_overlay().unwrap_or_default()
@@ -285,6 +290,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('~', p.query.as_str())) // file-picker prompt (~ = find file)
         } else if let Some(p) = ref_picker.as_ref() {
             Some(('*', p.query.as_str())) // references-picker prompt (* = references to symbol)
+        } else if let Some(p) = action_picker.as_ref() {
+            Some(('!', p.query.as_str())) // code-action-picker prompt (! = actions/fixes at cursor)
         } else if let Some(h) = leader_hint.as_ref() {
             Some((' ', h.as_str()))
         } else {
@@ -342,6 +349,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         );
         if let Some(locs) = lsp.take_refs() {
             ref_picker = Some(ref_picker::open(locs, lsp.cwd()));
+        }
+        if let Some(actions) = lsp.take_actions() {
+            action_picker = Some(action_picker::open(actions));
         }
         // Async output (PTY, F-011; LSP diagnostics, F-014) must render without a keypress, so the loop polls
         // with a timeout while either is live. With neither it keeps the pure blocking read (no spin,
@@ -460,6 +470,25 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             if !matches!(outcome, PickOutcome::Continue) {
                 ref_picker = None;
+            }
+            continue;
+        }
+        // F-014: the code-action picker applies the selected action's WorkspaceEdit (the multi-file apply,
+        // inline here since the `spans` borrow is released post-render — like the references jump).
+        if let Some(outcome) = action_picker.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                if let Some(action) = action_picker.as_ref().and_then(|p| p.selected().cloned()) {
+                    lsp.apply_code_action(
+                        action.edit,
+                        &mut ws,
+                        &mut files,
+                        &mut highlighters,
+                        &mut status,
+                    );
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                action_picker = None;
             }
             continue;
         }
@@ -688,9 +717,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Feed::ExecuteEx(text) => {
                 match parse_ex(&text) {
                     Ex::NoHighlight => search_hl = None, // `:noh` clears the search highlight (F-009 #1)
-                    // `:fmt` / `:rename {new}` / `:references` (F-014): the coordinator sends the request; the
-                    // response (edits / WorkspaceEdit / locations) is dispatched + applied on a later frame.
-                    ex @ (Ex::Format | Ex::Rename(_) | Ex::References) => {
+                    // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
+                    // the request; the response is dispatched + applied (or opens a picker) on a later frame.
+                    ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
                         lsp.on_ex(&ex, &ws, &files, &snapshot, &mut status);
                     }
                     // `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused

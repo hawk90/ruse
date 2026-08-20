@@ -693,9 +693,12 @@ features:
     # diag+hover+format+rename+completion pipeline is verified end-to-end vs real rust-analyzer (live_lsp_pipeline
     # ignored smoke). Slice 6 (#304): references (:references/:refs/:ref) — textDocument/references → a
     # references picker (Picker<(uri,line,char)>, reusing the F-004/F-013 overlay) → Enter jumps (same/cross
-    # file). REMAINING: code-actions, live-filter/snippets/resolve for completion, diagnostics MERGE by namespace
-    # + list UI, more languages, remote (C-AGENT), C-SCHEDULER integration. Stays `planned` — local, single
-    # language, no remote/merge yet.
+    # file). Slice 7 (#307): code-actions (:codeaction/:ca) — textDocument/codeAction w/ reconstructed
+    # context.diagnostics → an action picker → Enter applies the WorkspaceEdit (shared multi-file apply w/
+    # rename). ORCHESTRATION now lives in app/lsp_coordinator.rs (#306); apply_edits is provenance-agnostic
+    # (#305, origin param). REMAINING: command-only code actions (executeCommand), live-filter/snippets/resolve
+    # for completion, diagnostics MERGE by namespace + list UI, more languages, remote (C-AGENT), C-SCHEDULER.
+    # Stays `planned` — local, single language, no remote/merge yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >

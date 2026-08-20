@@ -180,6 +180,43 @@ pub fn completion_params(uri: &str, line: u32, character: u32) -> Value {
     position_params(uri, line, character)
 }
 
+/// `textDocument/codeAction` params: a zero-width range at the cursor + the diagnostics overlapping it
+/// (so the server offers their quickfixes, alongside cursor-position assists/refactors). `diagnostics` is
+/// the LSP `Diagnostic[]` the caller reconstructs from its normalized model.
+pub fn code_action_params(uri: &str, line: u32, character: u32, diagnostics: Value) -> Value {
+    json!({
+        "textDocument": { "uri": uri },
+        "range": {
+            "start": { "line": line, "character": character },
+            "end": { "line": line, "character": character }
+        },
+        "context": { "diagnostics": diagnostics }
+    })
+}
+
+/// One code action the picker shows/applies: its `title` and the `WorkspaceEdit` it makes (per-file edits).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CodeAction {
+    pub title: String,
+    pub edit: Vec<(String, Vec<LspTextEdit>)>,
+}
+
+/// Parse a `textDocument/codeAction` response (a `(Command | CodeAction)[]`) into edit-bearing actions.
+/// Slice 1 keeps only actions that carry an inline `WorkspaceEdit`; command-only actions (which need a
+/// `workspace/executeCommand` round-trip) are dropped. Empty / null → none.
+pub fn parse_code_actions(result: &Value) -> Vec<CodeAction> {
+    let Some(arr) = result.as_array() else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|a| {
+            let title = a.get("title")?.as_str()?.to_string();
+            let edit = a.get("edit").map(parse_workspace_edit).unwrap_or_default();
+            (!edit.is_empty()).then_some(CodeAction { title, edit })
+        })
+        .collect()
+}
+
 /// One completion candidate the pum shows/inserts: `label` (displayed), `insert` (text put into the buffer),
 /// and an optional `detail` (a type/signature shown dimmed on the right).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -410,6 +447,22 @@ mod tests {
         assert_eq!(parse_definition(&link), Some(("file:///b.rs".into(), 7, 2)));
         assert_eq!(parse_definition(&json!([])), None);
         assert_eq!(parse_definition(&Value::Null), None);
+    }
+
+    #[test]
+    fn parse_code_actions_keeps_edit_bearing_only() {
+        let te = |c1, c2, t: &str| json!({"range":{"start":{"line":3,"character":c1},"end":{"line":3,"character":c2}},"newText":t});
+        let result = json!([
+            {"title": "Import Foo", "kind": "quickfix",
+             "edit": {"changes": {"file:///a.rs": [te(0, 0, "use x::Foo;\n")]}}},
+            // A command-only action (no inline edit) is dropped in slice 1.
+            {"title": "Run rustfmt", "command": {"title": "fmt", "command": "rust-analyzer.fmt"}}
+        ]);
+        let actions = parse_code_actions(&result);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].title, "Import Foo");
+        assert_eq!(actions[0].edit[0].0, "file:///a.rs");
+        assert!(parse_code_actions(&Value::Null).is_empty());
     }
 
     #[test]

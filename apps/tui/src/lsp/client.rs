@@ -225,10 +225,11 @@ mod tests {
     #[ignore = "spawns a real rust-analyzer; run with --ignored"]
     fn live_lsp_pipeline() {
         use crate::lsp::protocol::{
-            completion_params, formatting_params, parse_completion, parse_hover, parse_locations,
-            parse_text_edits, parse_workspace_edit, position_params, references_params,
-            rename_params,
+            code_action_params, completion_params, formatting_params, parse_completion,
+            parse_hover, parse_locations, parse_text_edits, parse_workspace_edit, position_params,
+            references_params, rename_params,
         };
+        use serde_json::Value;
         use std::process::Command as PCommand;
         use std::time::{Duration, Instant};
 
@@ -258,19 +259,20 @@ mod tests {
             mut got_rename,
             mut got_completion,
             mut got_refs,
-        ) = (false, false, false, false, false, false);
+            mut got_actions,
+        ) = (false, false, false, false, false, false, false);
         let mut hover_id: Option<i64> = None;
         let mut fmt_id: Option<i64> = None;
         let mut rename_id: Option<i64> = None;
         let mut completion_id: Option<i64> = None;
         let mut refs_id: Option<i64> = None;
-        let (mut last_hover, mut last_fmt, mut last_rename, mut last_completion, mut last_refs) = (
-            Instant::now(),
-            Instant::now(),
-            Instant::now(),
-            Instant::now(),
-            Instant::now(),
-        );
+        let mut action_id: Option<i64> = None;
+        let mut last_hover = Instant::now();
+        let mut last_fmt = Instant::now();
+        let mut last_rename = Instant::now();
+        let mut last_completion = Instant::now();
+        let mut last_refs = Instant::now();
+        let mut last_action = Instant::now();
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(120) {
             let polled = client.poll();
@@ -298,6 +300,11 @@ mod tests {
                 }
                 if Some(*id) == refs_id && !parse_locations(result).is_empty() {
                     got_refs = true;
+                }
+                // Code actions: RA's edit-bearing action availability at a spot is version-dependent, so
+                // assert the request/response WIRE round-trips (the id comes back), not non-empty content.
+                if Some(*id) == action_id {
+                    got_actions = true;
                 }
             }
             // Once diagnostics flow the server is ready; (re)send hover on `x` (line 1 col 4), a format, and a
@@ -336,7 +343,22 @@ mod tests {
                 ));
                 last_refs = Instant::now();
             }
-            if got_diag && got_hover && got_fmt && got_rename && got_completion && got_refs {
+            // Code action at the type-error line (empty diagnostics context — we assert the wire, not content).
+            if got_diag && !got_actions && last_action.elapsed() > Duration::from_secs(2) {
+                action_id = Some(client.request(
+                    "textDocument/codeAction",
+                    code_action_params(&file_uri, 1, 4, Value::Array(Vec::new())),
+                ));
+                last_action = Instant::now();
+            }
+            if got_diag
+                && got_hover
+                && got_fmt
+                && got_rename
+                && got_completion
+                && got_refs
+                && got_actions
+            {
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -354,5 +376,9 @@ mod tests {
             "no completion items arrived from rust-analyzer"
         );
         assert!(got_refs, "no references arrived from rust-analyzer");
+        assert!(
+            got_actions,
+            "no codeAction response arrived from rust-analyzer"
+        );
     }
 }
