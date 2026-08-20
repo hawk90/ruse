@@ -795,9 +795,18 @@ features:
     # to the local pipe. Live end-to-end is an env-gated ignored smoke (`tests/agent_ssh.rs`,
     # RUSE_SSH_TEST_HOST). LIMITATION: no agent bootstrap yet, so a remote host must already have `ruse` on its
     # PATH; BatchMode fails fast rather than prompting.
-    # REMAINING (slices 2b..N, all of acceptance): agent bootstrap/version-matched install under $HOME (D-030,
-    # offline-first upload); remote fs tree/watch/search/git/pty/port-forward services; remote-fs editing +
-    # path/URI mapping; remote LSP/debug (rides on remote-fs); reconnect/resume. Stays `planned`.
+    # progress (slice 2b, #317): the remote FILESYSTEM SERVICE SET. The agent grows from one service to four —
+    # `fs.readFile`/`fs.writeFile`/`fs.stat`/`fs.list` (CAPABILITIES, so negotiation now exercises a real set).
+    # writeFile create/truncates + echoes the byte count; stat returns exists/isDir/isFile/len (a MISSING path
+    # is `exists:false`, not an error — probe before read/write); list returns non-recursive `{name,isDir}`
+    # entries. AgentClient gains write_file/stat/list (typed FileStat/DirEntry). Each is proven end-to-end over
+    # the REAL `ruse agent` subprocess (write→read-back round-trip, stat present+absent, list finds the file) +
+    # mock serve tests. These are the fs primitives remote-fs editing (buffer open/save) will consume — NOT yet
+    # wired into the editor (that's product-shaping, a design-first slice). Text/UTF-8 only; binary later.
+    # REMAINING (slices 3..N, all of acceptance): remote-fs EDITING — open a remote path into a buffer + `:w`
+    # write-back (path/URI identity, product-shaping); agent bootstrap/version-matched install under $HOME
+    # (D-030, offline-first upload); remote watch/search/git/pty/port-forward; remote LSP/debug (rides on
+    # remote-fs); reconnect/resume; multiplexed per-service channels. Stays `planned`.
     status: planned
     depends_on: [C-REMOTE, C-AGENT, C-WORKSPACE]
     summary: >

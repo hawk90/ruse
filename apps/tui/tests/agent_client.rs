@@ -38,3 +38,48 @@ fn client_handshakes_and_reads_a_file_over_the_agent() {
 
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn client_writes_stats_and_lists_through_the_agent() {
+    let dir = std::env::temp_dir().join(format!("ruse_agent_fs_it_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ruse"));
+    cmd.arg("agent");
+    let mut client =
+        AgentClient::spawn(cmd, &["fs.readFile", "fs.writeFile", "fs.stat", "fs.list"])
+            .expect("spawn agent");
+
+    // Write a file THROUGH the agent, then read it back through the agent — the write is proven by the read.
+    let file = dir.join("hello.txt");
+    let fp = file.to_str().unwrap();
+    let n = client.write_file(fp, "written remotely").unwrap();
+    assert_eq!(n, "written remotely".len() as u64, "byte count echoed back");
+    assert_eq!(
+        client.read_file(fp).unwrap(),
+        "written remotely",
+        "the file the agent wrote reads back through the agent"
+    );
+
+    // stat: the written file exists; a missing sibling is `exists: false`, not an error.
+    let st = client.stat(fp).unwrap();
+    assert!(st.exists && st.is_file && st.len == 16);
+    assert!(
+        !client
+            .stat(dir.join("ghost").to_str().unwrap())
+            .unwrap()
+            .exists,
+        "a missing path stats as absent, not an error"
+    );
+
+    // list: the written file appears among the directory entries.
+    let names: Vec<String> = client
+        .list(dir.to_str().unwrap())
+        .unwrap()
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
+    assert!(names.contains(&"hello.txt".to_string()));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
