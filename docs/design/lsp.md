@@ -112,8 +112,14 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   buffers) needs a per-buffer bytes API to map each publish's UTF-16 ranges → that buffer's bytes (the
   coordinator only has the focused snapshot today) — deferred, as is multi-SOURCE merge (LSP + tree-sitter +
   compiler) by namespace.
-- **Later:** command-only code actions (`workspace/executeCommand`); live filter-as-you-type after the pum
-  opens (slice 5 filters once at trigger time; further typing dismisses); snippet placeholder expansion;
+- **Completion live-filter (landed):** while the pum is open, a word char / `<C-Backspace>` edits the buffer
+  AND keeps the pum open — the coordinator re-requests completion once the edit syncs (`refilter` flag →
+  `request_completion` in `sync_and_poll`). A response is applied only when it is the LATEST request
+  (`completion_req` id) at the CURRENT revision (`LspKind::Completion(Revision)`) — stale/out-of-order
+  responses are discarded; the pum refreshes preserving the selected item by label; an empty prefix / no
+  matches closes it. `ingest_completion` is the pure core (mock-tested, no server); `isIncomplete` is moot
+  (we re-request on every input change). Non-word keys still dismiss.
+- **Later:** command-only code actions (`workspace/executeCommand`); snippet placeholder expansion;
   `completionItem/resolve` lazy docs + a docs side-panel; signature help; trigger-character auto-popup; a
   source-preview line in the references picker; a floating name-input prompt + resource-op renames; a jumplist
   for `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list

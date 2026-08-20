@@ -395,7 +395,15 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if lsp.on_completion_key(key, &mut ws, &mut status) {
             continue;
         }
-        if lsp.on_omni_key(key, &ws, &files, &snapshot, emacs_profile, &mut status) {
+        if lsp.on_omni_key(
+            key,
+            &ws,
+            &files,
+            &snapshot,
+            revision,
+            emacs_profile,
+            &mut status,
+        ) {
             continue;
         }
         // A `:s///c` confirm loop owns the keystream while active: y/n/a/l/q per match (F-009 #2).

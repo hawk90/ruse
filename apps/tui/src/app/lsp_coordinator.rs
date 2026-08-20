@@ -24,9 +24,9 @@ enum LspKind {
     Goto,
     Format,
     Rename,
-    /// A completion request; carries the byte length of the identifier prefix already typed before the
-    /// cursor, so the accepted item replaces exactly that prefix (F-014 #5).
-    Completion(usize),
+    /// A completion request; carries the buffer revision at request time, so a response for a stale
+    /// revision (the buffer moved on since) is discarded rather than applied (F-014 live-filter).
+    Completion(Revision),
     /// A references request; the response's locations are stashed for the loop to open its picker.
     References,
     /// A code-action request; the response's actions are stashed for the loop to open its picker.
@@ -59,6 +59,13 @@ pub(crate) struct LspCoordinator {
     completion: Option<CompletionMenu>,
     /// The `<C-x>` awaiting `<C-o>` omni-trigger prefix (Vim/Native insert only).
     pending_omni: bool,
+    /// The id of the LATEST completion request — the ONLY id whose response is applied. Any other (stale,
+    /// out-of-order) completion response is discarded. Cleared to `None` whenever the pum closes, so a
+    /// response arriving after a close is dropped too (F-014 live-filter, request-id invalidation).
+    completion_req: Option<i64>,
+    /// A keystroke (word char / backspace) edited the buffer while the pum was open → re-request completion
+    /// once the edit is synced (set in `on_completion_key`, consumed in `sync_and_poll`).
+    refilter: bool,
     // Deferred results — set while polling (inside the frame's `spans` borrow) and drained AFTER render.
     goto_jump: Option<(String, u32, u32)>,
     pending_edits: Vec<(usize, usize, String)>,
@@ -80,6 +87,8 @@ impl LspCoordinator {
             hover_panel: None,
             completion: None,
             pending_omni: false,
+            completion_req: None,
+            refilter: false,
             goto_jump: None,
             pending_edits: Vec::new(),
             pending_rename: Vec::new(),
@@ -102,12 +111,84 @@ impl LspCoordinator {
         Some((key, uri))
     }
 
-    /// Send a request to `key`'s client and record its pending kind. Silent no-op if the client is gone.
-    fn send(&mut self, key: &str, method: &str, params: Value, kind: LspKind) {
-        if let Some(client) = self.lsp.get_mut(key) {
-            let rid = client.request(method, params);
-            self.pending.insert((key.to_string(), rid), kind);
+    /// Send a request to `key`'s client and record its pending kind; returns the request id (or `None` if
+    /// the client is gone).
+    fn send(&mut self, key: &str, method: &str, params: Value, kind: LspKind) -> Option<i64> {
+        let client = self.lsp.get_mut(key)?;
+        let rid = client.request(method, params);
+        self.pending.insert((key.to_string(), rid), kind);
+        Some(rid)
+    }
+
+    /// Send a `textDocument/completion` at the cursor and mark it the latest completion request (its id
+    /// gates which response is applied). Shared by the `<C-x><C-o>` trigger and the live-filter re-request.
+    fn request_completion(
+        &mut self,
+        ws: &Workspace,
+        files: &Files,
+        snapshot: &[u8],
+        revision: Revision,
+    ) {
+        if let Some((key_s, uri)) = self.focused_server(ws, files) {
+            let cur = ws.focused().view.cursor().min(snapshot.len());
+            let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, cur);
+            self.completion_req = self.send(
+                key_s,
+                "textDocument/completion",
+                lsp::protocol::completion_params(&uri, line, ch),
+                LspKind::Completion(revision),
+            );
         }
+    }
+
+    /// Apply a completion response — the pure core of the live-filter contract, unit-tested without a client.
+    /// DISCARDS the response unless it is the LATEST request (`rid == completion_req`) AND the buffer has not
+    /// moved since (`req_rev == current_rev`). Recomputes the typed identifier prefix from the CURRENT cursor,
+    /// filters items by it, and refreshes the pum — preserving the selected item by label when it survives.
+    /// An empty prefix or no surviving items closes the pum.
+    fn ingest_completion(
+        &mut self,
+        rid: i64,
+        req_rev: Revision,
+        result: &Value,
+        cur: usize,
+        snapshot: &[u8],
+        current_rev: Revision,
+    ) {
+        if Some(rid) != self.completion_req || req_rev != current_rev {
+            return; // stale: a newer request is in flight, or the buffer moved since this one
+        }
+        let prefix_len = identifier_prefix_len(snapshot, cur);
+        if prefix_len == 0 {
+            self.completion = None; // empty prefix → close rather than list the whole world
+            self.completion_req = None;
+            return;
+        }
+        let prefix =
+            String::from_utf8_lossy(&snapshot[cur.saturating_sub(prefix_len)..cur]).to_lowercase();
+        let items: Vec<_> = lsp::protocol::parse_completion(result)
+            .into_iter()
+            .filter(|it| it.label.to_lowercase().starts_with(&prefix))
+            .collect();
+        if items.is_empty() {
+            self.completion = None;
+            self.completion_req = None;
+            return;
+        }
+        // Preserve the current selection by label when it survives the refilter; else reset to the top.
+        let keep = self
+            .completion
+            .as_ref()
+            .and_then(|m| m.items.get(m.selected))
+            .map(|it| it.label.clone());
+        let selected = keep
+            .and_then(|lbl| items.iter().position(|it| it.label == lbl))
+            .unwrap_or(0);
+        self.completion = Some(CompletionMenu {
+            items,
+            selected,
+            prefix_len,
+        });
     }
 
     /// Keep the language server in sync with the FOCUSED file buffer (spawn once per server, didOpen once
@@ -160,6 +241,7 @@ impl LspCoordinator {
         };
         // Poll every client: apply diagnostics for the focused buffer (matched by uri), and dispatch any
         // request responses by their pending (serverKey, id).
+        let mut completion_responses: Vec<(i64, Revision, Value)> = Vec::new();
         for (key, client) in self.lsp.iter_mut() {
             let polled = client.poll();
             for params in polled.diagnostics {
@@ -194,26 +276,10 @@ impl LspCoordinator {
                     Some(LspKind::Rename) => {
                         self.pending_rename = lsp::protocol::parse_workspace_edit(&result);
                     }
-                    // Completion: open the pum from the parsed items, tightened to the typed prefix (RA
-                    // already filters; this drops any stragglers). Empty → a status note, no menu.
-                    Some(LspKind::Completion(prefix_len)) => {
-                        let cur = ws.focused().view.cursor().min(snapshot.len());
-                        let prefix =
-                            String::from_utf8_lossy(&snapshot[cur.saturating_sub(prefix_len)..cur])
-                                .to_lowercase();
-                        let items: Vec<_> = lsp::protocol::parse_completion(&result)
-                            .into_iter()
-                            .filter(|it| it.label.to_lowercase().starts_with(&prefix))
-                            .collect();
-                        if items.is_empty() {
-                            *status = "no completions".to_string();
-                        } else {
-                            self.completion = Some(CompletionMenu {
-                                items,
-                                selected: 0,
-                                prefix_len,
-                            });
-                        }
+                    // Completion: stash for after the loop — applying it calls `&mut self` (ingest_completion),
+                    // which cannot run while `self.lsp` is borrowed by `iter_mut()`.
+                    Some(LspKind::Completion(req_rev)) => {
+                        completion_responses.push((rid, req_rev, result));
                     }
                     // References: stash the locations; the loop opens its picker after render.
                     Some(LspKind::References) => {
@@ -237,6 +303,20 @@ impl LspCoordinator {
                     }
                     None => {}
                 }
+            }
+        }
+        // Apply completion responses now the `self.lsp` borrow is released (ingest_completion is `&mut self`).
+        let cur = ws.focused().view.cursor().min(snapshot.len());
+        for (rid, req_rev, result) in completion_responses {
+            self.ingest_completion(rid, req_rev, &result, cur, snapshot, revision);
+        }
+        // Live-filter: a word char / backspace edited the buffer while the pum was open — re-request now the
+        // edit is synced (the didChange above bumped the revision). One request per keystroke; stale
+        // responses are dropped by the completion_req id + revision guard in ingest_completion.
+        if self.refilter {
+            self.refilter = false;
+            if self.completion.is_some() {
+                self.request_completion(ws, files, snapshot, revision);
             }
         }
     }
@@ -314,6 +394,13 @@ impl LspCoordinator {
         self.hover_panel = None;
     }
 
+    /// Close the completion pum AND clear the latest-request id, so a completion response arriving after the
+    /// close is discarded (its id no longer matches `completion_req`).
+    fn close_completion(&mut self) {
+        self.completion = None;
+        self.completion_req = None;
+    }
+
     /// The completion pum owns the keystream while open: `<C-n>`/`↓` and `<C-p>`/`↑` move (wrapping),
     /// `<CR>`/`<Tab>` accept (replace the typed prefix, stay in Insert), `<Esc>` closes; any OTHER key
     /// closes the menu and returns `false` so the keypress still types. Returns whether the key was consumed.
@@ -336,13 +423,13 @@ impl LspCoordinator {
             return true;
         }
         if key.code == KeyCode::Esc {
-            self.completion = None;
+            self.close_completion();
             return true;
         }
         if matches!(key.code, KeyCode::Enter | KeyCode::Tab) {
             let item = menu.items[menu.selected].clone();
             let prefix_len = menu.prefix_len;
-            self.completion = None;
+            self.close_completion();
             let cursor = ws.focused().view.cursor();
             let start = cursor.saturating_sub(prefix_len);
             ws.apply_edits(
@@ -353,18 +440,27 @@ impl LspCoordinator {
             *status = format!("completed: {}", item.label);
             return true;
         }
-        self.completion = None; // any other key: dismiss, then fall through to type it
+        // Live-filter: a word char or backspace edits the buffer AND keeps the pum open — the edit falls
+        // through to be typed, and `refilter` triggers a fresh request (at the new revision) in sync_and_poll.
+        let word_char = matches!(key.code, KeyCode::Char(c) if c.is_alphanumeric() || c == '_');
+        if word_char || key.code == KeyCode::Backspace {
+            self.refilter = true;
+            return false; // do NOT consume — let the key edit the buffer
+        }
+        self.close_completion(); // any other key (space, punctuation, …): dismiss, then type it
         false
     }
 
     /// `<C-x><C-o>` in Vim/Native Insert opens the omni-completion pum (a frontend two-key prefix). Gated
     /// to non-Emacs insert. Returns whether the key was consumed.
+    #[allow(clippy::too_many_arguments)] // the omni trigger needs the full key + workspace + LSP context
     pub(crate) fn on_omni_key(
         &mut self,
         key: KeyEvent,
         ws: &Workspace,
         files: &Files,
         snapshot: &[u8],
+        revision: Revision,
         emacs_profile: bool,
         status: &mut String,
     ) -> bool {
@@ -374,21 +470,8 @@ impl LspCoordinator {
         if self.pending_omni {
             self.pending_omni = false;
             if is_ctrl(key, 'o') {
-                if let Some((key_s, uri)) = self.focused_server(ws, files) {
-                    let cursor = ws.focused().view.cursor().min(snapshot.len());
-                    // The identifier prefix already typed before the cursor (bytes to replace).
-                    let prefix_len = snapshot[..cursor]
-                        .iter()
-                        .rev()
-                        .take_while(|&&b| b.is_ascii_alphanumeric() || b == b'_')
-                        .count();
-                    let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, cursor);
-                    self.send(
-                        key_s,
-                        "textDocument/completion",
-                        lsp::protocol::completion_params(&uri, line, ch),
-                        LspKind::Completion(prefix_len),
-                    );
+                self.request_completion(ws, files, snapshot, revision);
+                if self.completion_req.is_some() {
                     *status = "completing…".to_string();
                 }
                 return true;
@@ -596,4 +679,88 @@ fn apply_workspace_edit(
     }
     ws.focus_buffer(orig);
     (files_n, edits_n)
+}
+
+/// The byte length of the identifier run (`[A-Za-z0-9_]`) immediately before `cur` in `snapshot` — the
+/// prefix a completion filters by and the accepted item replaces.
+fn identifier_prefix_len(snapshot: &[u8], cur: usize) -> usize {
+    let cur = cur.min(snapshot.len());
+    snapshot[..cur]
+        .iter()
+        .rev()
+        .take_while(|&&b| b.is_ascii_alphanumeric() || b == b'_')
+        .count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn item(label: &str) -> lsp::protocol::CompletionItem {
+        lsp::protocol::CompletionItem {
+            label: label.to_string(),
+            insert: label.to_string(),
+            detail: None,
+        }
+    }
+
+    fn menu(items: &[&str], selected: usize) -> CompletionMenu {
+        CompletionMenu {
+            items: items.iter().map(|l| item(l)).collect(),
+            selected,
+            prefix_len: 1,
+        }
+    }
+
+    /// The live-filter contract (F-014), tested WITHOUT a server: `ingest_completion` applies a response only
+    /// when it is the latest request (id) at the current revision, recomputes the prefix, filters, preserves
+    /// the selection when the item survives, and closes on an empty prefix / no matches.
+    #[test]
+    fn ingest_completion_stale_and_refilter_contract() {
+        let bytes = b"let wi"; // cursor at 6 → identifier prefix "wi" (len 2)
+        let cur = bytes.len();
+        let rev = Revision::ZERO;
+        let newer = rev.next();
+        let result =
+            json!({"items": [{"label": "width"}, {"label": "window"}, {"label": "wibble"}]});
+
+        // STALE by request-id: a response whose id isn't the latest is discarded.
+        let mut c = LspCoordinator::new(std::path::PathBuf::from("/"));
+        c.completion_req = Some(9);
+        c.ingest_completion(1, rev, &result, cur, bytes, rev);
+        assert!(c.completion.is_none(), "wrong id → discarded");
+
+        // STALE by revision: the buffer moved on since the request → discarded.
+        c.completion_req = Some(1);
+        c.ingest_completion(1, rev, &result, cur, bytes, newer);
+        assert!(c.completion.is_none(), "req_rev != current → discarded");
+
+        // FRESH: latest id + matching revision → open, filtered to the "wi" prefix (width/window/wibble).
+        c.completion_req = Some(1);
+        c.ingest_completion(1, rev, &result, cur, bytes, rev);
+        let m = c.completion.as_ref().expect("fresh response opens the pum");
+        assert_eq!(m.items.len(), 3);
+        assert_eq!(m.prefix_len, 2);
+
+        // SELECTION PRESERVED across a refilter when the selected label survives.
+        c.completion = Some(menu(&["width", "window", "wibble"], 1)); // "window" selected
+        c.completion_req = Some(2);
+        c.ingest_completion(2, rev, &result, cur, bytes, rev);
+        let m = c.completion.as_ref().unwrap();
+        assert_eq!(
+            m.items[m.selected].label, "window",
+            "selection kept by label"
+        );
+
+        // EMPTY PREFIX closes the pum (cursor not after an identifier char).
+        c.completion = Some(menu(&["width"], 0));
+        c.completion_req = Some(3);
+        c.ingest_completion(3, rev, &result, 0, b" ", rev);
+        assert!(c.completion.is_none(), "empty prefix → closed");
+        assert!(
+            c.completion_req.is_none(),
+            "closing clears the latest-id guard"
+        );
+    }
 }

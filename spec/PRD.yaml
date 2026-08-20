@@ -698,8 +698,10 @@ features:
     # rename). ORCHESTRATION now lives in app/lsp_coordinator.rs (#306); apply_edits is provenance-agnostic
     # (#305, origin param). #308: fast RA-independent contract tests (mock JSON-RPC round-trip + undo). #309:
     # diagnostics LIST — :diagnostics opens a picker over the focused buffer's diagnostics, Enter jumps.
-    # REMAINING: workspace-wide diagnostics list (needs per-buffer bytes) + multi-SOURCE merge by namespace,
-    # command-only code actions (executeCommand), live-filter/snippets/resolve for completion, more languages,
+    # #310: completion LIVE-FILTER — typing while the pum is open re-requests + refreshes; responses gated by
+    # request-id + revision (stale discard), selection preserved, empty-prefix closes (ingest_completion is
+    # mock-tested). REMAINING: workspace-wide diagnostics list (needs per-buffer bytes) + multi-SOURCE merge by
+    # namespace, command-only code actions (executeCommand), snippets/resolve for completion, more languages,
     # remote (C-AGENT), C-SCHEDULER. Stays `planned` — local, single language, no remote/multi-source merge yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
