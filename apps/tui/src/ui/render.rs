@@ -87,7 +87,9 @@ pub(crate) fn line_byte_at_col(line: &str, col: u16) -> usize {
 /// its true display width (F-006 #4), clipped to the rectangle. Tabs expand to the next stop measured
 /// from the pane's left edge; a wide glyph that would straddle the right edge is dropped and the rest
 /// of that line is skipped. `sel`/`block` paint the Visual selection in reverse video; `byte_style`
-/// carries the syntax FACE per byte (fg + bold/italic; empty ⇒ default) — F-031 slice 0.
+/// carries the syntax FACE per byte (fg + bold/italic; empty ⇒ default) — F-031 slice 0. `conceal` byte
+/// ranges are HIDDEN from layout (0 cells, following columns shift) EXCEPT on `caret_line`, which is
+/// revealed so its markup is visible and editable — F-031 slice 1 reveal-at-point.
 #[allow(clippy::too_many_arguments)] // painting one pane legitimately needs the full cell context
 pub(crate) fn paint_pane(
     cur: &mut screen::Screen,
@@ -99,6 +101,8 @@ pub(crate) fn paint_pane(
     block: Option<&[(usize, usize)]>,
     hl: &[(usize, usize)],
     underline: &[(usize, usize)],
+    conceal: &[(usize, usize)],
+    caret_line: usize,
 ) {
     use unicode_segmentation::UnicodeSegmentation;
     if rect.w == 0 || rect.h == 0 {
@@ -120,6 +124,11 @@ pub(crate) fn paint_pane(
         }
         if line < top || scol >= x1 {
             continue; // above the pane, or past its right edge (truncate)
+        }
+        // F-031 conceal: hide this cluster (no cell, no column advance) when its range is concealed AND
+        // its line is not the caret's — the caret line is revealed so its markup stays editable.
+        if line != caret_line && conceal.iter().any(|&(s, e)| i >= s && i < e) {
+            continue;
         }
         let srow = rect.y + (line - top) as u16;
         let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
@@ -232,6 +241,23 @@ pub(crate) fn render(
             *slot = s.style;
         }
     }
+    // F-031 conceal: the byte ranges the providers marked hidden (Markdown heading `# ` prefixes today).
+    // Disabled by `RUSE_CONCEAL=off` (the config-file `render.conceal` key has no loader yet — same seam
+    // as RUSE_PROFILE). The revealed line is the focused caret's buffer line (reveal-at-point).
+    let conceal_on = std::env::var("RUSE_CONCEAL").as_deref() != Ok("off");
+    let conceal: Vec<(usize, usize)> = if conceal_on {
+        spans
+            .iter()
+            .filter(|s| s.conceal)
+            .map(|s| (s.start, s.end))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let caret_line = fbytes[..focus.view.cursor().min(fbytes.len())]
+        .iter()
+        .filter(|&&c| c == b'\n')
+        .count();
 
     // Paint every window into its sub-rectangle; the focused view owns the terminal cursor below.
     for (i, &rect) in rects.iter().enumerate().take(ws.window_count()) {
@@ -254,6 +280,12 @@ pub(crate) fn render(
         // The focused pane also paints the `:s///c` confirm match / incsearch+hlsearch matches (F-009
         // #1) in reverse video, on top of any live Visual selection.
         let hl: &[(usize, usize)] = if i == ws.focus() { focus_hl } else { &[] };
+        // Conceal applies to the focused pane's view of the focused doc (F-031); other panes render markup.
+        let pane_conceal: &[(usize, usize)] = if i == ws.focus() && p.view.doc() == focus_doc {
+            &conceal
+        } else {
+            &[]
+        };
         // F-014: underline the focused buffer's diagnostic ranges.
         let underline: Vec<(usize, usize)> = if i == ws.focus() {
             diagnostics.iter().map(|d| (d.start, d.end)).collect()
@@ -270,6 +302,8 @@ pub(crate) fn render(
             block.as_deref(),
             hl,
             &underline,
+            pane_conceal,
+            caret_line,
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -615,7 +649,19 @@ mod render_tests {
             h: 2,
         };
         let mut cur = screen::Screen::new(8, 2);
-        paint_pane(&mut cur, rect, bytes, &styles, 0, None, None, &[], &[]);
+        paint_pane(
+            &mut cur,
+            rect,
+            bytes,
+            &styles,
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &[],
+            0,
+        );
         assert!(cur.cell(0, 0).style.bold, "byte 0 paints bold");
         assert!(cur.cell(0, 1).style.italic, "byte 1 paints italic");
 
@@ -630,11 +676,78 @@ mod render_tests {
             None,
             &[],
             &[],
+            &[],
+            0,
         );
         let c = sel.cell(0, 0);
         assert!(
             c.style.bold && c.style.reverse,
-            "selection reverse merges with the bold face"
+            "selection reverse merges with the bold face",
+        );
+    }
+
+    /// F-031 conceal (slice 1): a concealed range is HIDDEN (0 cells, following columns shift) on a
+    /// non-caret line, but REVEALED (painted normally) on the caret's own line so its markup stays
+    /// editable — the reveal-at-point rule (D-052). Selection/motion are unaffected (core untouched), so
+    /// P3/P4/P5 hold by construction.
+    #[test]
+    fn paint_pane_conceals_off_caret_line_and_reveals_on_it() {
+        let bytes = b"abcd\nabcd"; // two identical lines
+        let no_style: &[screen::CellStyle] = &[];
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 8,
+            h: 2,
+        };
+        let conceal = [(0usize, 2usize), (5, 7)]; // hide "ab" on line 0 and on line 1
+
+        // Caret on line 1: line 0's "ab" is concealed so 'c' shifts to col 0; line 1 is revealed so 'a'
+        // stays at col 0.
+        let mut s = screen::Screen::new(8, 2);
+        paint_pane(
+            &mut s,
+            rect,
+            bytes,
+            no_style,
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &conceal,
+            1,
+        );
+        assert_eq!(
+            s.cell(0, 0).content,
+            screen::Content::Cluster("c".into()),
+            "off-caret line: concealed 'ab' shifts 'c' to col 0",
+        );
+        assert_eq!(
+            s.cell(1, 0).content,
+            screen::Content::Cluster("a".into()),
+            "caret line revealed: 'a' stays at col 0",
+        );
+
+        // Caret on line 0: now line 0 is revealed, so 'a' stays at col 0 there too.
+        let mut s2 = screen::Screen::new(8, 2);
+        paint_pane(
+            &mut s2,
+            rect,
+            bytes,
+            no_style,
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &conceal,
+            0,
+        );
+        assert_eq!(
+            s2.cell(0, 0).content,
+            screen::Content::Cluster("a".into()),
+            "caret line revealed: 'a' stays at col 0",
         );
     }
 

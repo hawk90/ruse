@@ -13,14 +13,18 @@ use crate::screen::CellStyle;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{InputEdit, Parser, Point, Query, QueryCursor, Tree};
 
-/// A styled byte range: a syntax FACE (fg colour + text attributes) over `[start, end)`. Slice 0 of
-/// F-031 widened this from a bare colour to a full [`CellStyle`] so a capture can render bold/italic, not
-/// only a foreground colour — the first consumer of the decoration model (see docs/design/rich-rendering.md).
+/// A decoration over `[start, end)`: a syntax FACE (fg colour + text attributes) and, for F-031 rich
+/// rendering, an optional CONCEAL flag (the range is hidden from layout — 0 cells — unless its line is
+/// revealed under the caret). Slice 0 widened this from a bare colour to a [`CellStyle`]; slice 1 adds
+/// `conceal` (see docs/design/rich-rendering.md; the decoration model's `face | conceal` facets).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
     pub style: CellStyle,
+    /// Hide this range from the display (F-031 conceal). Always `false` for code-syntax spans; set by the
+    /// Markdown/Org providers on markup that should not show (heading `#` prefixes, emphasis markers).
+    pub conceal: bool,
 }
 
 /// A configured highlighter for one language: an owned parser plus the compiled highlights query, and
@@ -69,6 +73,10 @@ fn grammar_for(ext: &str) -> Option<(tree_sitter::Language, &'static str)> {
             tree_sitter_css::LANGUAGE.into(),
             tree_sitter_css::HIGHLIGHTS_QUERY,
         ),
+        // Markdown (F-031): the BLOCK grammar only. Its decorations (conceal + heading faces) are produced
+        // by a tree walk ([`markdown_decorations`]), not this query, so the query is empty — the parser is
+        // what we need here. The inline grammar (emphasis/links) is a following slice.
+        "md" | "markdown" => (tree_sitter_md::LANGUAGE.into(), ""),
         _ => return None,
     })
 }
@@ -138,6 +146,7 @@ impl Highlight {
                 start: cap.node.start_byte(),
                 end: cap.node.end_byte(),
                 style: face_for(name),
+                conceal: false,
             });
         }
         spans.sort_by_key(|s| std::cmp::Reverse(s.end - s.start));
@@ -239,6 +248,9 @@ impl Highlight {
 /// scrolling — no work is done at all.
 pub struct CachedHighlight {
     hl: Highlight,
+    /// Markdown uses a tree WALK ([`markdown_decorations`]) instead of the generic highlights query — the
+    /// parser is still `hl.parser` (the block grammar), but span production branches on this (F-031).
+    markdown: bool,
     rev: Option<Revision>,
     /// The `(revision, visible-range)` the cached spans were computed for. Spans are recomputed when
     /// EITHER changes — a new edit (revision) or a scroll (visible range) — since the query is bounded
@@ -255,6 +267,7 @@ impl CachedHighlight {
     pub fn for_ext(ext: &str) -> Option<CachedHighlight> {
         Some(CachedHighlight {
             hl: Highlight::for_ext(ext)?,
+            markdown: matches!(ext, "md" | "markdown"),
             rev: None,
             key: None,
             tree: None,
@@ -303,6 +316,7 @@ impl CachedHighlight {
             self.rev = Some(rev);
         }
         self.spans = match &self.tree {
+            Some(tree) if self.markdown => markdown_decorations(tree, &visible),
             Some(tree) => self.hl.spans_with_injections(tree, src, visible.clone()),
             None => Vec::new(),
         };
@@ -405,6 +419,15 @@ impl CachedSearch {
 /// style them — proving the decoration model carries more than colour. Colours are unchanged from the
 /// previous `color_for`, so non-attributed captures paint byte-identically (the P6 identity guard).
 fn face_for(name: &str) -> CellStyle {
+    // F-031 markup faces (Markdown/Org): a heading is a bold title. More markup faces (emphasis, link,
+    // code) join as the inline provider lands.
+    if name == "markup.heading" {
+        return CellStyle {
+            fg: Color::Yellow,
+            bold: true,
+            ..CellStyle::default()
+        };
+    }
     let head = name.split('.').next().unwrap_or(name);
     let fg = match head {
         "keyword" => Color::Magenta,
@@ -424,6 +447,50 @@ fn face_for(name: &str) -> CellStyle {
     }
 }
 
+/// Markdown rich-render decorations (F-031 slice 1, BLOCK grammar): for each ATX heading, CONCEAL the
+/// `# ` prefix (marker + following space, `[heading.start, content.start)`) and FACE the heading content
+/// as a bold title — so a heading renders as a styled line with the markup hidden. Only headings whose
+/// content intersects `visible` are emitted. Emphasis / links / lists (the inline grammar) are following
+/// slices. Produced by a tree walk rather than a highlights query because conceal is not a colour.
+fn markdown_decorations(tree: &Tree, visible: &std::ops::Range<usize>) -> Vec<Span> {
+    let mut spans = Vec::new();
+    let mut stack = vec![tree.root_node()];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "atx_heading" {
+            // The heading content is the `inline` child; the prefix before it (`# `) is what we conceal.
+            let mut cursor = node.walk();
+            let content = node
+                .children(&mut cursor)
+                .find(|c| matches!(c.kind(), "inline" | "heading_content"));
+            if let Some(inline) = content {
+                let (hstart, cstart, cend) =
+                    (node.start_byte(), inline.start_byte(), inline.end_byte());
+                if cstart < visible.end && cend > visible.start {
+                    if cstart > hstart {
+                        spans.push(Span {
+                            start: hstart,
+                            end: cstart,
+                            style: CellStyle::default(),
+                            conceal: true,
+                        });
+                    }
+                    spans.push(Span {
+                        start: cstart,
+                        end: cend,
+                        style: face_for("markup.heading"),
+                        conceal: false,
+                    });
+                }
+            }
+            continue; // headings have no nested blocks we care about
+        }
+        let mut cursor = node.walk();
+        stack.extend(node.children(&mut cursor));
+    }
+    spans.sort_by_key(|s| std::cmp::Reverse(s.end - s.start));
+    spans
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,6 +505,32 @@ mod tests {
     /// The whole-document range, for tests that want unrestricted spans.
     fn all(src: &[u8]) -> std::ops::Range<usize> {
         0..src.len()
+    }
+
+    #[test]
+    fn markdown_conceals_heading_prefix_and_faces_content() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"# Title\n\nbody\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // The `# ` prefix (marker + space, bytes 0..2) is concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 0 && s.end == 2 && s.conceal),
+            "the `# ` heading prefix is concealed; got {spans:?}",
+        );
+        // The heading content "Title" (bytes 2..7) is a bold title face, not concealed.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 2 && !s.conceal && s.style.bold),
+            "heading content is faced bold; got {spans:?}",
+        );
+        // Body text carries no decoration (nothing concealed off the heading).
+        assert!(
+            !spans.iter().any(|s| s.conceal && s.start >= 9),
+            "no conceal leaks into the body; got {spans:?}",
+        );
     }
 
     #[test]
