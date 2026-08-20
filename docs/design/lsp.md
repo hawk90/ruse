@@ -119,7 +119,12 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   responses are discarded; the pum refreshes preserving the selected item by label; an empty prefix / no
   matches closes it. `ingest_completion` is the pure core (mock-tested, no server); `isIncomplete` is moot
   (we re-request on every input change). Non-word keys still dismiss.
-- **Later:** command-only code actions (`workspace/executeCommand`); snippet placeholder expansion;
+- **Completion snippets (landed, slice 1):** a snippet completion item (`insertTextFormat == 2`) keeps its
+  raw body (`parse_completion` sets `CompletionItem.snippet`); accepting it runs the pure `lsp/snippet.rs`
+  `expand(body) -> {text, cursor}` (handles `$N`/`${N:default}`/`$0`/choices/escapes/`$var`), inserts the
+  plain `text`, and lands the cursor at the FIRST tabstop. Multi-tabstop `<Tab>`/`<S-Tab>` navigation +
+  placeholder selection is slice 2 (a snippet session over core `AnchorStore`) — not built.
+- **Later:** command-only code actions (`workspace/executeCommand`); snippet slice 2 (tabstop navigation);
   `completionItem/resolve` lazy docs + a docs side-panel; signature help; trigger-character auto-popup; a
   source-preview line in the references picker; a floating name-input prompt + resource-op renames; a jumplist
   for `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list

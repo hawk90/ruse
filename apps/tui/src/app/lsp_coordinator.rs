@@ -432,11 +432,16 @@ impl LspCoordinator {
             self.close_completion();
             let cursor = ws.focused().view.cursor();
             let start = cursor.saturating_sub(prefix_len);
-            ws.apply_edits(
-                &[(start, cursor, item.insert.clone())],
-                TransactionOrigin::Lsp,
-            );
-            ws.place_focused_cursor(start + item.insert.len());
+            // A snippet item's `insert` is a snippet body → expand to plain text + the first-tabstop cursor;
+            // a plain item inserts literally (cursor after it). One Lsp-origin undo group either way.
+            let (text, caret) = if item.snippet {
+                let e = lsp::snippet::expand(&item.insert);
+                (e.text, e.cursor)
+            } else {
+                (item.insert.clone(), item.insert.len())
+            };
+            ws.apply_edits(&[(start, cursor, text)], TransactionOrigin::Lsp);
+            ws.place_focused_cursor(start + caret);
             *status = format!("completed: {}", item.label);
             return true;
         }
@@ -702,6 +707,7 @@ mod tests {
             label: label.to_string(),
             insert: label.to_string(),
             detail: None,
+            snippet: false,
         }
     }
 
