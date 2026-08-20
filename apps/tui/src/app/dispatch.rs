@@ -6,11 +6,52 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{Command, DocumentId, Effect, SplitDir, Trace, Workspace};
 
+use crate::highlight;
 use crate::input::{BufTarget, Ex};
 use crate::persist;
 use crate::ui::prompts::Confirm;
+
+/// The per-buffer syntax-highlighter registry (F-007 / F-015), keyed by [`DocumentId`]. Shared by the
+/// session loop and the LSP coordinator (both open buffers that need a highlighter).
+pub(crate) type Highlighters = HashMap<DocumentId, highlight::CachedHighlight>;
+
+/// Open `file` into a NEW buffer, focus it, register its file identity + highlighter, and return a status
+/// line. Shared by the file picker / `:e` (session) and goto/rename/references (LSP coordinator). `E484`
+/// on a read error.
+pub(crate) fn open_file_into_buffer(
+    file: &str,
+    ws: &mut Workspace,
+    files: &mut Files,
+    highlighters: &mut Highlighters,
+) -> String {
+    let p = PathBuf::from(file);
+    match fs::read(&p) {
+        Ok(raw) => {
+            let f = persist::encoding::FileFormat::detect(&raw);
+            let clean = f.to_buffer(&raw);
+            let id = ws.add_buffer(clean, Some(file.to_string()));
+            ws.focus_buffer(id);
+            if let Some(h) = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .and_then(highlight::CachedHighlight::for_ext)
+            {
+                highlighters.insert(id, h);
+            }
+            files.insert(id, BufferFile { path: p, fmt: f });
+            format!("\"{file}\" {} bytes", raw.len())
+        }
+        Err(e) => format!("E484: can't open {file}: {e}"),
+    }
+}
+
+/// Whether `key` is `CTRL-<c>`. Shared frontend key predicate.
+pub(crate) fn is_ctrl(key: KeyEvent, c: char) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char(c)
+}
 
 /// One file buffer's on-disk identity: its path and the detected encoding/line-ending to restore on save
 /// (F-008). Held frontend-side (core is IO-free), keyed by [`DocumentId`] in a [`Files`] registry.
