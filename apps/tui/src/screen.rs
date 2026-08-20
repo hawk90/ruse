@@ -197,7 +197,9 @@ impl Screen {
         out
     }
 
-    fn cell(&self, row: u16, col: u16) -> Cell {
+    /// The cell at `(row, col)` (a blank if out of bounds). A read-only inspection accessor — the render
+    /// diff and cross-module render tests read painted cells through it.
+    pub(crate) fn cell(&self, row: u16, col: u16) -> Cell {
         self.idx(row, col)
             .map(|i| self.cells[i].clone())
             .unwrap_or_else(Cell::blank)

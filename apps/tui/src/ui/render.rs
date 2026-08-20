@@ -37,24 +37,69 @@ fn paint_grid(cur: &mut screen::Screen, rect: Rect, grid: &crate::term_grid::Gri
     }
 }
 
+/// Advance a display column past one grapheme cluster `g` — the ONE column rule shared by painting
+/// ([`paint_pane`]), the caret ([`cursor_cell`] via [`line_display_col`]), and the inverse
+/// ([`line_byte_at_col`]), so the three can never drift. `col` is relative to the line's left edge; a tab
+/// expands to the next `TAB_WIDTH` stop, every other cluster advances by its display width. This is the
+/// identity layout — F-031 slice 1 will teach it to skip concealed ranges and inject virtual cells.
+#[inline]
+pub(crate) fn advance_col(col: u16, g: &str) -> u16 {
+    if g == "\t" {
+        col + (TAB_WIDTH - (col % TAB_WIDTH))
+    } else {
+        col + screen::cluster_width(g)
+    }
+}
+
+/// The display column (0-based, from the line's left edge) of the grapheme boundary at byte offset
+/// `line_byte` within a single line `line` (no trailing `\n`). `line_byte` past the end clamps to the
+/// end. The caret's column ([`cursor_cell`]) and the P1/P2 coordinate tests go through here.
+pub(crate) fn line_display_col(line: &str, line_byte: usize) -> u16 {
+    use unicode_segmentation::UnicodeSegmentation;
+    let mut col: u16 = 0;
+    for (i, g) in line.grapheme_indices(true) {
+        if i >= line_byte {
+            break;
+        }
+        col = advance_col(col, g);
+    }
+    col
+}
+
+/// Inverse of [`line_display_col`]: the byte offset of the grapheme boundary at or just past display
+/// column `col` within `line`. A `col` beyond the line maps to its end. The P1 round-trip test exercises
+/// it now; slice 1 wires it into mouse/click resolution (`byte_of(row, col)`), so it is the seam's other
+/// half kept beside its forward map rather than being introduced late.
+#[allow(dead_code)] // consumed by the P1 test now; the click/byte_of path lands in F-031 slice 1
+pub(crate) fn line_byte_at_col(line: &str, col: u16) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    let mut cur: u16 = 0;
+    for (i, g) in line.grapheme_indices(true) {
+        if cur >= col {
+            return i;
+        }
+        cur = advance_col(cur, g);
+    }
+    line.len()
+}
+
 /// Paint one buffer view into its `rect`: `rect.h` lines from `top`, one GRAPHEME CLUSTER per cell at
 /// its true display width (F-006 #4), clipped to the rectangle. Tabs expand to the next stop measured
 /// from the pane's left edge; a wide glyph that would straddle the right edge is dropped and the rest
-/// of that line is skipped. `sel`/`block` paint the Visual selection in reverse video; `byte_color`
-/// carries the syntax colour per byte (empty ⇒ default).
+/// of that line is skipped. `sel`/`block` paint the Visual selection in reverse video; `byte_style`
+/// carries the syntax FACE per byte (fg + bold/italic; empty ⇒ default) — F-031 slice 0.
 #[allow(clippy::too_many_arguments)] // painting one pane legitimately needs the full cell context
 pub(crate) fn paint_pane(
     cur: &mut screen::Screen,
     rect: Rect,
     bytes: &[u8],
-    byte_color: &[crossterm::style::Color],
+    byte_style: &[screen::CellStyle],
     top: usize,
     sel: Option<(usize, usize)>,
     block: Option<&[(usize, usize)]>,
     hl: &[(usize, usize)],
     underline: &[(usize, usize)],
 ) {
-    use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
     if rect.w == 0 || rect.h == 0 {
         return;
@@ -80,29 +125,25 @@ pub(crate) fn paint_pane(
         let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
             || block.is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e))
             || hl.iter().any(|&(s, e)| i >= s && i < e);
-        let fg = byte_color.get(i).copied().unwrap_or(Color::Reset);
-        // F-014: a diagnostic range is underlined (keeping its syntax colour, per the chosen style).
-        let underlined = underline.iter().any(|&(s, e)| i >= s && i < e);
+        // The per-byte syntax face, plus the frame-local overlays (selection reverse, diagnostic underline).
+        let base = byte_style.get(i).copied().unwrap_or_default();
+        let underlined = underline.iter().any(|&(s, e)| i >= s && i < e); // F-014 diagnostic range
         if g == "\t" {
-            let stop = TAB_WIDTH - ((scol - x0) % TAB_WIDTH); // stops measured from the pane's left
-            for _ in 0..stop {
+            for _ in 0..(advance_col(scol - x0, "\t") - (scol - x0)) {
                 if scol >= x1 {
                     break;
                 }
-                scol = cur.put(srow, scol, " ", fg, selected);
+                scol = cur.put(srow, scol, " ", base.fg, selected);
             }
         } else if scol + screen::cluster_width(g) > x1 {
             scol = x1; // a wide glyph would cross the edge — drop it and skip the rest of the line
-        } else if underlined {
+        } else {
             let style = screen::CellStyle {
-                fg,
                 reverse: selected,
-                underline: true,
-                ..screen::CellStyle::default()
+                underline: base.underline || underlined,
+                ..base
             };
             scol = cur.put_styled(srow, scol, g, &style);
-        } else {
-            scol = cur.put(srow, scol, g, fg, selected);
         }
     }
 }
@@ -174,19 +215,21 @@ pub(crate) fn render(
     // Paint the whole frame into a fresh cell grid; the diff against `prev` emits only what changed.
     let mut cur = screen::Screen::new(cols, rows);
 
-    // Flatten the focused buffer's highlight spans into a per-byte colour (spans index into it). Panes
-    // showing the SAME buffer reuse it; a pane on a different buffer (post-MVP) renders uncoloured.
+    // Flatten the focused buffer's highlight spans into a per-byte FACE (spans index into it). Panes
+    // showing the SAME buffer reuse it; a pane on a different buffer (post-MVP) renders unstyled. Longest
+    // spans come first (highlight orders them), so this last-wins flatten lets the shortest/most-specific
+    // capture win — the slice-0 stand-in for the decoration model's priority resolution (F-031).
     let focus = ws.focused();
     let focus_doc = focus.view.doc();
     let fbytes = focus.doc.bytes();
-    let mut byte_color = vec![Color::Reset; fbytes.len()];
+    let mut byte_style = vec![screen::CellStyle::default(); fbytes.len()];
     for s in spans {
-        for slot in byte_color
+        for slot in byte_style
             .iter_mut()
             .take(s.end.min(fbytes.len()))
             .skip(s.start)
         {
-            *slot = s.color;
+            *slot = s.style;
         }
     }
 
@@ -201,8 +244,8 @@ pub(crate) fn render(
             continue;
         }
         let pbytes = p.doc.bytes();
-        let color: &[Color] = if p.view.doc() == focus_doc {
-            &byte_color
+        let style: &[screen::CellStyle] = if p.view.doc() == focus_doc {
+            &byte_style
         } else {
             &[]
         };
@@ -221,7 +264,7 @@ pub(crate) fn render(
             &mut cur,
             rect,
             pbytes,
-            color,
+            style,
             p.view.top(),
             sel,
             block.as_deref(),
@@ -485,22 +528,16 @@ pub(crate) fn flush_diff(
 /// (wide glyphs count 2, combining marks 0, tabs to the next stop) — grapheme-correct, not a char
 /// count (F-006 #4).
 pub(crate) fn cursor_cell(bytes: &[u8], pos: usize, top: usize) -> (u16, u16) {
-    use unicode_segmentation::UnicodeSegmentation;
     let pos = pos.min(bytes.len());
     let row = bytes[..pos].iter().filter(|&&c| c == b'\n').count();
     let line_start = bytes[..pos]
         .iter()
         .rposition(|&c| c == b'\n')
         .map_or(0, |i| i + 1);
+    // `line` runs from its start up to `pos`, so the caret column is the full display width of that
+    // slice — computed by the SHARED column rule, not a private re-derivation (F-031 slice 0).
     let line = std::str::from_utf8(&bytes[line_start..pos]).unwrap_or("");
-    let mut col: u16 = 0;
-    for g in line.graphemes(true) {
-        if g == "\t" {
-            col += TAB_WIDTH - (col % TAB_WIDTH);
-        } else {
-            col += screen::cluster_width(g);
-        }
-    }
+    let col = line_display_col(line, line.len());
     (row.saturating_sub(top) as u16, col)
 }
 
@@ -509,6 +546,97 @@ mod render_tests {
     use super::*;
     use crate::ui::layout::window_rects;
     use crossterm::style::Color;
+    use proptest::prelude::*;
+
+    // ---- F-031 slice 0: the display-coordinate layout seam (P1/P2/P6) + faces ----
+
+    proptest! {
+        /// P1 (round-trip) + P2 (monotonic): the shared column rule [`line_display_col`] and its inverse
+        /// [`line_byte_at_col`] agree, and the column never decreases in buffer order — over arbitrary
+        /// lines mixing ASCII, tabs, wide CJK (가), and a combining mark (´).
+        #[test]
+        fn layout_col_roundtrips_and_is_monotonic(line in "[a-z\t \u{ac00}\u{0301}]{0,40}") {
+            use unicode_segmentation::UnicodeSegmentation;
+            let boundaries: Vec<usize> = line
+                .grapheme_indices(true)
+                .map(|(i, _)| i)
+                .chain(std::iter::once(line.len()))
+                .collect();
+            let mut prev = 0u16;
+            for &b in &boundaries {
+                let c = line_display_col(&line, b);
+                prop_assert!(c >= prev, "P2: column decreased at byte {}", b); // monotonic
+                prev = c;
+                let back = line_byte_at_col(&line, c);
+                // P1: col -> byte -> col lands on the same column (robust to zero-width clusters).
+                prop_assert_eq!(line_display_col(&line, back), c, "P1: round-trip diverged at byte {}", b);
+            }
+        }
+    }
+
+    /// P6 (identity): the caret column is the documented rule — tabs to the next stop, wide clusters
+    /// count 2, a combining mark folds into its base's 1 — pinned by explicit expectations so the slice-0
+    /// refactor (paint and caret now share ONE `advance_col` rule) cannot silently drift the layout.
+    #[test]
+    fn cursor_cell_column_matches_documented_rule() {
+        let cases: &[(&str, usize, u16)] = &[
+            ("abc", 3, 3),        // plain ASCII
+            ("a\tb", 2, 4),       // 'a' -> col 1, tab -> next stop 4
+            ("\tx", 1, 4),        // leading tab -> col 4
+            ("가나", 3, 2),       // one wide (width-2) cluster before the second
+            ("e\u{0301}z", 3, 1), // 'e' + combining acute = one cluster, width 1
+        ];
+        for &(s, pos, want) in cases {
+            let (_row, col) = cursor_cell(s.as_bytes(), pos, 0);
+            assert_eq!(col, want, "caret column for {s:?} at byte {pos}");
+        }
+    }
+
+    /// The faces channel reaches the cell grid: a byte carrying a bold / italic face paints a bold /
+    /// italic cell, and a selection's reverse-video merges ON TOP of the face rather than replacing it
+    /// (F-031 slice 0 — the decoration model's first attribute).
+    #[test]
+    fn paint_pane_carries_bold_and_italic_faces() {
+        let bytes = b"ab";
+        let styles = [
+            screen::CellStyle {
+                bold: true,
+                ..screen::CellStyle::default()
+            },
+            screen::CellStyle {
+                italic: true,
+                ..screen::CellStyle::default()
+            },
+        ];
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 8,
+            h: 2,
+        };
+        let mut cur = screen::Screen::new(8, 2);
+        paint_pane(&mut cur, rect, bytes, &styles, 0, None, None, &[], &[]);
+        assert!(cur.cell(0, 0).style.bold, "byte 0 paints bold");
+        assert!(cur.cell(0, 1).style.italic, "byte 1 paints italic");
+
+        let mut sel = screen::Screen::new(8, 2);
+        paint_pane(
+            &mut sel,
+            rect,
+            bytes,
+            &styles,
+            0,
+            Some((0, 1)),
+            None,
+            &[],
+            &[],
+        );
+        let c = sel.cell(0, 0);
+        assert!(
+            c.style.bold && c.style.reverse,
+            "selection reverse merges with the bold face"
+        );
+    }
 
     /// F-009 #1: a search command carries its pattern for hlsearch; other commands do not.
     #[test]
