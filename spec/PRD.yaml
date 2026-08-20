@@ -932,3 +932,35 @@ features:
       - "`:trace save` writes the session's command list; `ruse --replay <trace> <file>` reproduces the edits."
       - A trace round-trips through its text form (to_text/from_text) without changing what it replays to.
       - The trace records semantic Commands (not keystrokes), so it survives keymap changes.
+
+  F-031:
+    title: Rich in-buffer rendering (prose mode)
+    stage: post-mvp
+    priority: could
+    status: planned
+    depends_on: [C-RENDER, C-VIEW, C-QUERY, C-ANCHOR]
+    summary: >
+      Render marked-up prose (Markdown, Org) the way Emacs does — hide markup, apply real faces
+      (bold/italic/heading/link), insert virtual text/lines, and place inline images — INSIDE the editing
+      buffer, in a TUI, degrading gracefully across terminals. The one new primitive is a decoration model
+      plus a display-coordinate layout pass (bytes + decorations -> display cells) that BOTH painting and the
+      caret consult, so hidden/virtual content stops breaking the 1-byte-1-cell assumption. Scoped as a
+      partial, single-frontend reactivation of the RFC-0009 render IR (deferred by RFC-0012), NOT the full
+      multi-frontend tree. Rendering is presentation-only — it never mutates the document (INV-DOC-VIEW).
+    trace:
+      parity: []
+      design: [../docs/design/rich-rendering.md]
+      verify: [../tests/property/layout-coordinates, ../tests/unit/rich-render-conceal]
+    acceptance:
+      - In an `.md` buffer, `**x**` renders `x` bold with the `**` markers hidden; moving the caret onto the
+        word reveals the markers (editable) and moving away re-hides them (reveal-at-point, D-052).
+      - Headings render with a distinct face and the document bytes are UNCHANGED — a content hash before and
+        after any number of render frames is identical (INV-DOC-VIEW).
+      - A fenced `![alt](img.png)` shows a real image on a graphics-capable terminal (Kitty first) and a
+        bordered `alt`+dimensions placeholder on a plain terminal — same buffer, two render profiles
+        (INV-CAP-DEGRADE, D-053).
+      - With `render.conceal = off`, rendering is byte-for-byte identical to plain syntax highlighting (no
+        column drift; caret and paint agree — the layout-pass identity guard, P6).
+      - Markdown and Org both render headings, emphasis, links (URL concealed, label faced), and checkboxes.
+      - Selecting and yanking across concealed markup copies the RAW markup bytes — conceal is
+        presentation-only, never mutation.

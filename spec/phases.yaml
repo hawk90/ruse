@@ -53,7 +53,7 @@ phases:
     goal: >
       Built-in LSP, tree-sitter highlighting, PTY terminal buffer. The editor becomes genuinely useful
       for daily development.
-    includes: [F-011, F-014, F-015, F-030]
+    includes: [F-011, F-014, F-015, F-030, F-031]
 
   - id: ecosystem
     title: "Ecosystem & multi-environment"

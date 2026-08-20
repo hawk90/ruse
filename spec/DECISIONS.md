@@ -699,3 +699,71 @@ related:
   shared-planner gating would materially cut duplication (a scaling threshold, not a correctness one); then
   introduce the signal and collapse the variants, superseding this.
 - Refs: [../docs/rfc/proposed/RFC-0016-emacs-command-divergence.md](../docs/rfc/proposed/RFC-0016-emacs-command-divergence.md), [../docs/design/emacs-cursor-and-mark-fidelity.md](../docs/design/emacs-cursor-and-mark-fidelity.md), D-047, D-049, D-050, D-026, D-027, INV-CMD-SEMANTIC, F-012.
+
+## D-052 — Conceal is presentation-only with reveal-at-point; default off, auto-markers for prose · decided
+- **Decision:** In rich in-buffer rendering (F-031), **conceal hides a buffer range from layout but never
+  mutates the document** (INV-DOC-VIEW): selection, yank, and operators act on the buffer bytes, not the
+  concealed display (you copy the raw `**`/`[[…]]`). An element is **revealed** (its markup shown, editable)
+  iff the caret lies within the element's grammar-node extent — practically, reveal every concealable range on
+  the caret's source line (Vim `concealcursor` unset on the current line; Emacs org markers appear when point
+  is on them). A search hit (`n`/`N`) or a diagnostic span inside a concealed range **force-reveals** that
+  element regardless of the caret. Horizontal motion steps over an un-revealed concealed range to its far
+  edge; vertical motion keeps a **display** goal column (`goal_col: CellCol`). Config `render.conceal =
+  off | markers | full`, **default `off` globally, auto-`markers` for `.md`/`.org`** buffers, resolved through
+  the config/census path (D-042), user-overridable per buffer.
+- **Reason:** A code editor must show raw bytes by default (surprise-free), so conceal is opt-in and prose-only
+  by default. Reveal-at-point is the one rule that makes editing rendered markup bearable (you can always get
+  at the syntax under the caret); modelling conceal as presentation-only keeps the document hash invariant
+  across render frames (F-031 acceptance #2) and keeps every mutation path (yank/operator/undo) reasoning about
+  bytes, not display. A display goal column (not the legacy char column) is required for `j`/`k` to behave
+  across lines whose concealed/virtual content differs — this also fixes the pre-existing char-vs-cell column
+  split (motions counted char columns while the caret was drawn in cell columns). Acceptance = the F-031
+  conceal/reveal/yank fixtures + the P1–P6 layout-coordinate property tests.
+- **Re-evaluate if:** reveal-on-caret-*line* proves too eager in dense prose (fall back to reveal-on-*element*
+  only); or a filetype needs a third caret-over-conceal policy that `conceallevel` + reveal-extent cannot
+  express.
+- Refs: [../docs/design/rich-rendering.md](../docs/design/rich-rendering.md), D-042, D-054, INV-DOC-VIEW, F-031, CAP-DECORATION.
+
+## D-053 — Inline graphics is a capability ladder (Kitty > Sixel > iTerm2 > None), lowered with degradation · decided
+- **Decision:** Inline images (F-031) are detected as a **ledger ladder** `Capability::InlineGraphics =
+  {Kitty > Sixel > iTerm2 > None}`, not a bool, extending the F-010 capability ledger (RFC-0005). Detection:
+  **Kitty** graphics via an `APC _G` transmit-and-query, **Sixel** via the DA1 reply param `4`, **iTerm2** via
+  the `$TERM_PROGRAM` env-hint; precedence UserOverride > Probed > EnvHint > Default (the existing ledger rule),
+  with `RUSE_GRAPHICS=off|kitty|sixel|iterm2` as the override. **When several are present, prefer the highest
+  rung (Kitty first);** Kitty is the first protocol implemented, Sixel second. Cell pixel size (to size an
+  image to N cells) is queried with `CSI 14 t`/`CSI 16 t` on the DA1-fenced batch. The tier is **pinned per
+  client-view** (INV-RENDER-PROFILE); an image lowers **real image → Unicode preview → labelled placeholder**
+  along the degradation ladder (INV-CAP-DEGRADE), and a runtime lowering failure falls to the compatibility
+  rung rather than tearing the screen. Untrusted image bytes are decoded in a size-bounded step (dimensions
+  bounded before allocation — no decode-bomb OOM).
+- **Reason:** Terminal graphics support is genuinely fragmented ("works some places, not others"), which is
+  precisely the case INV-CAP-DEGRADE exists for: the feature degrades in quality, never disappears. Modelling
+  it as a ledger ladder (like `KeyEncoding`) rather than a bool lets detection, precedence, override, and
+  per-client-view pinning reuse the exact F-010 machinery, and keeps a plain terminal fully usable (placeholder
+  with alt+dimensions). Kitty-first because it is the most capable and widely supported modern protocol; Sixel
+  second for legacy breadth. Acceptance = F-031 acceptance #3 (same buffer, two profiles: real image vs
+  placeholder).
+- **Re-evaluate if:** a fourth protocol appears, or the GUI backend (F-018) makes native raster the primary
+  path and the terminal ladder becomes one lowering among several.
+- Refs: [../docs/design/rich-rendering.md](../docs/design/rich-rendering.md), [../docs/rfc/proposed/RFC-0005-terminal-capability.md](../docs/rfc/proposed/RFC-0005-terminal-capability.md), [../docs/rfc/proposed/RFC-0009-render-model.md](../docs/rfc/proposed/RFC-0009-render-model.md), D-015, INV-CAP-DEGRADE, INV-RENDER-PROFILE, F-031, F-010, CAP-GRAPHICS.
+
+## D-054 — A second render tier reactivates only the TUI-local layout pass, not the full render IR · decided
+- **Decision:** Rich in-buffer rendering (F-031) is a second render **tier within the one TUI**, not a second
+  frontend — so it is an RFC-0012 re-boundary trigger that reintroduces **only** a TUI-local **layout pass**
+  (buffer bytes + decorations → display cells) plus the **decoration model** (the in-line facet of RFC-0009's
+  Semantic View Model). The backend-neutral, serializable, `schemaVersion`-carrying **multi-frontend Render
+  Tree stays deferred** until a real second frontend (GUI, F-018). The layout pass is an internal lowering
+  step, **not** the versioned wire IR; the decoration model is a strict subset of the eventual IR, so this
+  forecloses nothing. Recorded as RFC-0009 Addendum A.
+- **Reason:** The full multi-frontend IR earns its serialization/versioning/backend-neutrality cost only when a
+  second backend exists to lower it (RFC-0012's deferral rationale). But conceal/virtual-text/images cannot be
+  built without *some* layer between bytes and cells — today `paint_pane` and `cursor_cell` each re-derive
+  layout from raw bytes and would drift the moment a byte range is hidden or a virtual cell inserted.
+  Introducing just the layout pass (single-frontend, TUI-local) unblocks F-031 without resurrecting the
+  deferred machinery or smuggling in an unbounded DOM (D-014's fear). Acceptance = F-031 ships on the layout
+  pass while the multi-frontend tree remains unbuilt; the slice-0 identity refactor proves the pass is a pure
+  reshaping (byte-for-byte identical output with conceal off — P6).
+- **Re-evaluate if:** the GUI backend (F-018) lands — then §§1–7 reactivate in full and the layout pass is
+  re-expressed as the TUI lowering of the shared Render Tree; superseding this requires superseding it together
+  with the RFC-0009 deferral, never editing the addendum alone.
+- Refs: [../docs/rfc/proposed/RFC-0009-render-model.md](../docs/rfc/proposed/RFC-0009-render-model.md), [../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md](../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md), [../docs/design/rich-rendering.md](../docs/design/rich-rendering.md), D-014, D-052, D-053, INV-RENDER-IR, INV-DOC-VIEW, F-031, F-018, CAP-DECORATION.
