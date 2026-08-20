@@ -194,16 +194,20 @@ pub fn code_action_params(uri: &str, line: u32, character: u32, diagnostics: Val
     })
 }
 
-/// One code action the picker shows/applies: its `title` and the `WorkspaceEdit` it makes (per-file edits).
+/// One code action the picker shows/applies: its `title`, the inline `WorkspaceEdit` it makes, and/or a
+/// server `command` (id + arguments) to run via `workspace/executeCommand` (whose effect returns as a
+/// server `workspace/applyEdit`). An action has at least one of `edit`/`command`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodeAction {
     pub title: String,
     pub edit: Vec<(String, Vec<LspTextEdit>)>,
+    /// `(command id, arguments)` when the action runs a server command; `None` for a pure edit.
+    pub command: Option<(String, Vec<Value>)>,
 }
 
-/// Parse a `textDocument/codeAction` response (a `(Command | CodeAction)[]`) into edit-bearing actions.
-/// Slice 1 keeps only actions that carry an inline `WorkspaceEdit`; command-only actions (which need a
-/// `workspace/executeCommand` round-trip) are dropped. Empty / null → none.
+/// Parse a `textDocument/codeAction` response (a `(Command | CodeAction)[]`) into actionable actions — those
+/// with an inline `WorkspaceEdit` and/or a `command` (a bare `Command` object counts as command-only). An
+/// action with NEITHER is dropped. Empty / null → none.
 pub fn parse_code_actions(result: &Value) -> Vec<CodeAction> {
     let Some(arr) = result.as_array() else {
         return Vec::new();
@@ -212,7 +216,21 @@ pub fn parse_code_actions(result: &Value) -> Vec<CodeAction> {
         .filter_map(|a| {
             let title = a.get("title")?.as_str()?.to_string();
             let edit = a.get("edit").map(parse_workspace_edit).unwrap_or_default();
-            (!edit.is_empty()).then_some(CodeAction { title, edit })
+            // A CodeAction's `command` is an object; a bare `Command` action IS that object.
+            let cmd_obj = a.get("command").filter(|c| c.is_object()).unwrap_or(a);
+            let command = cmd_obj.get("command").and_then(Value::as_str).map(|id| {
+                let args = cmd_obj
+                    .get("arguments")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                (id.to_string(), args)
+            });
+            (!edit.is_empty() || command.is_some()).then_some(CodeAction {
+                title,
+                edit,
+                command,
+            })
         })
         .collect()
 }
@@ -562,25 +580,35 @@ mod tests {
     }
 
     #[test]
-    fn parse_code_actions_keeps_edit_bearing_only() {
+    fn parse_code_actions_keeps_edit_and_command_actions() {
         let te = |c1, c2, t: &str| json!({"range":{"start":{"line":3,"character":c1},"end":{"line":3,"character":c2}},"newText":t});
         let result = json!([
+            // Edit-only.
             {"title": "Import Foo", "kind": "quickfix",
              "edit": {"changes": {"file:///a.rs": [te(0, 0, "use x::Foo;\n")]}}},
-            // A command-only action (no inline edit) is dropped in slice 1.
-            {"title": "Run rustfmt", "command": {"title": "fmt", "command": "rust-analyzer.fmt"}},
-            // The `documentChanges` WorkspaceEdit form is also honored, and list ORDER is preserved.
-            {"title": "Add derive", "kind": "refactor.rewrite",
-             "edit": {"documentChanges": [
-                 {"textDocument": {"uri": "file:///b.rs", "version": 2}, "edits": [te(1, 1, "#[derive(Debug)]\n")]}
-             ]}}
+            // Command-only (kept now) — a CodeAction with a command object + arguments.
+            {"title": "Run rustfmt", "command": {"title": "fmt", "command": "rust-analyzer.fmt", "arguments": [1, 2]}},
+            // A bare Command (command id + arguments at top level) is command-only too.
+            {"title": "Reload", "command": "rust-analyzer.reload", "arguments": ["x"]},
+            // An action with NEITHER edit nor command is dropped.
+            {"title": "Nothing"}
         ]);
         let actions = parse_code_actions(&result);
-        assert_eq!(actions.len(), 2, "the command-only action is dropped");
+        assert_eq!(
+            actions.len(),
+            3,
+            "edit-only + command-only(x2) kept; empty dropped"
+        );
         assert_eq!(actions[0].title, "Import Foo");
         assert_eq!(actions[0].edit[0].0, "file:///a.rs");
-        assert_eq!(actions[1].title, "Add derive");
-        assert_eq!(actions[1].edit[0].0, "file:///b.rs"); // documentChanges form parsed
+        assert!(actions[0].command.is_none());
+        assert_eq!(actions[1].command.as_ref().unwrap().0, "rust-analyzer.fmt");
+        assert_eq!(actions[1].command.as_ref().unwrap().1.len(), 2); // arguments
+        assert!(actions[1].edit.is_empty());
+        assert_eq!(
+            actions[2].command.as_ref().unwrap().0,
+            "rust-analyzer.reload"
+        );
         assert!(parse_code_actions(&Value::Null).is_empty());
         assert!(parse_code_actions(&json!([])).is_empty());
     }

@@ -493,7 +493,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             if let PickOutcome::Accept = outcome {
                 if let Some(action) = action_picker.as_ref().and_then(|p| p.selected().cloned()) {
                     lsp.apply_code_action(
-                        action.edit,
+                        &action,
                         &mut ws,
                         &mut files,
                         &mut highlighters,

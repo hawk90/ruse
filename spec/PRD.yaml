@@ -705,8 +705,10 @@ features:
     # (gated on `data`), merge detail/documentation + apply additionalTextEdits (auto-import) on accept; pure
     # apply_resolve/ingest_resolve mock-tested. REMAINING: snippet slice 2 (tabstop <Tab> nav over AnchorStore),
     # completion docs panel + cross-file additionalTextEdits, workspace-wide diagnostics list (needs per-buffer
-    # bytes) + multi-SOURCE merge by namespace, command-only code actions (executeCommand), more languages,
-    # remote (C-AGENT), C-SCHEDULER. Stays `planned` — local, single language, no remote/multi-source merge yet.
+    # bytes) + multi-SOURCE merge by namespace, more languages, remote (C-AGENT), C-SCHEDULER. #313: command
+    # code actions — executeCommand + the server workspace/applyEdit is now surfaced+applied (Lsp origin,
+    # text-only, user-selected only; namespace allowlist deferred). Stays `planned` — local, single language,
+    # no remote/multi-source merge yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >
