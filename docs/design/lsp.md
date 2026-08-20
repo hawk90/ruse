@@ -124,6 +124,14 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   `expand(body) -> {text, cursor}` (handles `$N`/`${N:default}`/`$0`/choices/escapes/`$var`), inserts the
   plain `text`, and lands the cursor at the FIRST tabstop. Multi-tabstop `<Tab>`/`<S-Tab>` navigation +
   placeholder selection is slice 2 (a snippet session over core `AnchorStore`) — not built.
+- **Completion resolve (landed):** `completionItem/resolve` fills the extras servers omit for latency. The
+  SELECTED pum item is lazily resolved (gated on it carrying a `data` field — the capability signal; no `data`
+  ⇒ used as-is) when the pum opens / selection moves; the response (guarded by `resolve_req` id + revision +
+  a still-valid index) merges `detail` + `documentation` (stored; a docs panel is a follow-up) +
+  `additionalTextEdits` via the pure `apply_resolve` — which NEVER touches `insert`/`snippet` (no duplicate
+  insert). On accept the item's same-file `additionalTextEdits` (auto-import) are applied WITH the insert as
+  one `Lsp` transaction, the caret shift-corrected for imports landing above it. `apply_resolve` +
+  `ingest_resolve` are mock-tested. Cross-file additionalTextEdits + a docs panel are deferred.
 - **Later:** command-only code actions (`workspace/executeCommand`); snippet slice 2 (tabstop navigation);
   `completionItem/resolve` lazy docs + a docs side-panel; signature help; trigger-character auto-popup; a
   source-preview line in the references picker; a floating name-input prompt + resource-op renames; a jumplist

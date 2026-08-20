@@ -701,10 +701,12 @@ features:
     # #310: completion LIVE-FILTER — typing while the pum is open re-requests + refreshes; responses gated by
     # request-id + revision (stale discard), selection preserved, empty-prefix closes (ingest_completion is
     # mock-tested). #311: completion SNIPPETS slice 1 — snippet items expand (lsp/snippet.rs, pure+tested) on
-    # accept, cursor at the first tabstop. REMAINING: snippet slice 2 (tabstop <Tab> nav over AnchorStore) +
-    # resolve for completion, workspace-wide diagnostics list (needs per-buffer bytes) + multi-SOURCE merge by
-    # namespace, command-only code actions (executeCommand), more languages, remote (C-AGENT), C-SCHEDULER.
-    # Stays `planned` — local, single language, no remote/multi-source merge yet.
+    # accept, cursor at the first tabstop. #312: completion RESOLVE — lazily resolve the selected pum item
+    # (gated on `data`), merge detail/documentation + apply additionalTextEdits (auto-import) on accept; pure
+    # apply_resolve/ingest_resolve mock-tested. REMAINING: snippet slice 2 (tabstop <Tab> nav over AnchorStore),
+    # completion docs panel + cross-file additionalTextEdits, workspace-wide diagnostics list (needs per-buffer
+    # bytes) + multi-SOURCE merge by namespace, command-only code actions (executeCommand), more languages,
+    # remote (C-AGENT), C-SCHEDULER. Stays `planned` — local, single language, no remote/multi-source merge yet.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >

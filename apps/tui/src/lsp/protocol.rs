@@ -218,8 +218,8 @@ pub fn parse_code_actions(result: &Value) -> Vec<CodeAction> {
 }
 
 /// One completion candidate the pum shows/inserts: `label` (displayed), `insert` (text put into the buffer),
-/// and an optional `detail` (a type/signature shown dimmed on the right).
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// an optional `detail` (a type/signature shown dimmed on the right), plus the lazily-`resolve`d extras.
+#[derive(Clone, Debug)]
 pub struct CompletionItem {
     pub label: String,
     /// The text to insert: for a snippet item (`snippet == true`) this is the raw LSP snippet BODY the
@@ -228,6 +228,14 @@ pub struct CompletionItem {
     pub detail: Option<String>,
     /// Whether `insert` is an LSP snippet body (`insertTextFormat == 2`) needing expansion.
     pub snippet: bool,
+    /// Documentation text (filled by `completionItem/resolve`; a docs panel is a follow-up). Stored now.
+    pub documentation: Option<String>,
+    /// `additionalTextEdits` (per-file), e.g. an auto-import — applied WITH the insert on accept (F-014).
+    pub additional: Vec<(String, Vec<LspTextEdit>)>,
+    /// The ORIGINAL server item JSON — the `completionItem/resolve` request param (carries `data`).
+    pub raw: Value,
+    /// Whether this item has already been resolved (so it is not resolved again).
+    pub resolved: bool,
 }
 
 /// Parse a completion response into [`CompletionItem`]s. Accepts both a `CompletionList` (`{ items: [...] }`)
@@ -261,9 +269,61 @@ pub fn parse_completion(result: &Value) -> Vec<CompletionItem> {
                 insert,
                 detail,
                 snippet,
+                documentation: documentation_text(it),
+                additional: parse_additional_text_edits(it),
+                raw: it.clone(),
+                resolved: false,
             })
         })
         .collect()
+}
+
+/// The documentation text of a completion/resolve item — `documentation` as a plain string or a
+/// `MarkupContent { value }` (reusing [`markup_text`]). `None` when absent.
+fn documentation_text(item: &Value) -> Option<String> {
+    item.get("documentation").and_then(markup_text)
+}
+
+/// The `additionalTextEdits` of a completion/resolve item as per-file edits `[(uri, TextEdit[])]`. LSP
+/// scopes these to the completed document, so they are attributed to the FOCUSED buffer's uri by the caller;
+/// here we return them under a single empty-uri key (the caller maps them to the focused file). Empty → none.
+pub fn parse_additional_text_edits(item: &Value) -> Vec<(String, Vec<LspTextEdit>)> {
+    let Some(arr) = item.get("additionalTextEdits").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let edits = parse_edit_array(arr);
+    if edits.is_empty() {
+        Vec::new()
+    } else {
+        vec![(String::new(), edits)]
+    }
+}
+
+/// Whether `item` carries a `data` field — the signal that the server expects a `completionItem/resolve`
+/// round-trip (F-014). Items without `data` are used as-is (the capability-absent fallback).
+pub fn has_resolve_data(item: &CompletionItem) -> bool {
+    item.raw.get("data").is_some()
+}
+
+/// Merge a `completionItem/resolve` RESULT into `item` in place: fill `detail` (when the result supplies one),
+/// `documentation`, and `additionalTextEdits`; mark `resolved`. NEVER touches `insert`/`snippet` — the accept
+/// path always uses the ORIGINAL insert, so resolve can't duplicate or change the inserted text (F-014). A
+/// null / non-object result is a no-op beyond marking resolved (the fallback: keep the original item).
+pub fn apply_resolve(item: &mut CompletionItem, resolved: &Value) {
+    item.resolved = true;
+    if !resolved.is_object() {
+        return;
+    }
+    if let Some(d) = resolved.get("detail").and_then(Value::as_str) {
+        item.detail = Some(d.to_string());
+    }
+    if let Some(doc) = documentation_text(resolved) {
+        item.documentation = Some(doc);
+    }
+    let extra = parse_additional_text_edits(resolved);
+    if !extra.is_empty() {
+        item.additional = extra;
+    }
 }
 
 /// The display lines of a hover response, or `None` when the server has nothing. Handles `contents` as a
@@ -439,6 +499,49 @@ mod tests {
         assert_eq!(s.insert, "println!(\"$1\")$0");
         assert!(s.snippet);
         assert!(parse_completion(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn resolve_merges_extras_without_touching_insert() {
+        // An item with `data` is resolvable; one without is used as-is (fallback).
+        let items = parse_completion(&json!([
+            {"label": "HashMap", "insertText": "HashMap", "data": {"id": 7}},
+            {"label": "plain", "insertText": "plain"}
+        ]));
+        let (mut hm, plain) = (items[0].clone(), items[1].clone());
+        assert!(has_resolve_data(&hm));
+        assert!(!has_resolve_data(&plain));
+
+        // Resolve fills detail + documentation + additionalTextEdits (auto-import), never the insert text.
+        let resolved = json!({
+            "label": "HashMap",
+            "detail": "struct std::collections::HashMap",
+            "documentation": {"kind": "markdown", "value": "A hash map."},
+            "insertText": "SHOULD_BE_IGNORED",
+            "additionalTextEdits": [
+                {"range": {"start": {"line":0,"character":0}, "end": {"line":0,"character":0}},
+                 "newText": "use std::collections::HashMap;\n"}
+            ]
+        });
+        apply_resolve(&mut hm, &resolved);
+        assert!(hm.resolved);
+        assert_eq!(
+            hm.detail.as_deref(),
+            Some("struct std::collections::HashMap")
+        );
+        assert_eq!(hm.documentation.as_deref(), Some("A hash map."));
+        assert_eq!(
+            hm.insert, "HashMap",
+            "resolve must NOT change the insert text"
+        );
+        assert_eq!(hm.additional[0].1.len(), 1); // the import edit
+
+        // A null / non-object result is a no-op beyond marking resolved (fallback keeps the original).
+        let mut p2 = plain.clone();
+        apply_resolve(&mut p2, &Value::Null);
+        assert!(p2.resolved);
+        assert_eq!(p2.detail, plain.detail);
+        assert_eq!(p2.insert, "plain");
     }
 
     #[test]
