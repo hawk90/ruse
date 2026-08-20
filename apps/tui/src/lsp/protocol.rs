@@ -456,13 +456,21 @@ mod tests {
             {"title": "Import Foo", "kind": "quickfix",
              "edit": {"changes": {"file:///a.rs": [te(0, 0, "use x::Foo;\n")]}}},
             // A command-only action (no inline edit) is dropped in slice 1.
-            {"title": "Run rustfmt", "command": {"title": "fmt", "command": "rust-analyzer.fmt"}}
+            {"title": "Run rustfmt", "command": {"title": "fmt", "command": "rust-analyzer.fmt"}},
+            // The `documentChanges` WorkspaceEdit form is also honored, and list ORDER is preserved.
+            {"title": "Add derive", "kind": "refactor.rewrite",
+             "edit": {"documentChanges": [
+                 {"textDocument": {"uri": "file:///b.rs", "version": 2}, "edits": [te(1, 1, "#[derive(Debug)]\n")]}
+             ]}}
         ]);
         let actions = parse_code_actions(&result);
-        assert_eq!(actions.len(), 1);
+        assert_eq!(actions.len(), 2, "the command-only action is dropped");
         assert_eq!(actions[0].title, "Import Foo");
         assert_eq!(actions[0].edit[0].0, "file:///a.rs");
+        assert_eq!(actions[1].title, "Add derive");
+        assert_eq!(actions[1].edit[0].0, "file:///b.rs"); // documentChanges form parsed
         assert!(parse_code_actions(&Value::Null).is_empty());
+        assert!(parse_code_actions(&json!([])).is_empty());
     }
 
     #[test]

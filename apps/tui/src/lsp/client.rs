@@ -217,6 +217,77 @@ mod tests {
         assert!(matches!(classify(&log, 7), Incoming::Other));
     }
 
+    /// A MOCK JSON-RPC contract test (no process): for every request kind, build the exact `{id, result}`
+    /// envelope a server sends, run it through `classify` (→ `Response`), then the matching parser, and
+    /// assert the normalized output. This pins the protocol round-trip fast + RA-version-independently —
+    /// the `#[ignore]` live smoke is the complement (real wire, occasionally), not the everyday guard.
+    #[test]
+    fn classify_and_parse_every_response_shape() {
+        use crate::lsp::protocol::{
+            parse_code_actions, parse_completion, parse_definition, parse_hover, parse_locations,
+            parse_text_edits, parse_workspace_edit,
+        };
+        let init_id = 1;
+        // Classify `{id, result}` as a (non-init) Response and hand back the inner result.
+        let result_of = |id: i64, result: Value| -> Value {
+            let msg = json!({"jsonrpc": "2.0", "id": id, "result": result});
+            match classify(&msg, init_id) {
+                Incoming::Response(got, r) => {
+                    assert_eq!(got, id, "response id correlates");
+                    r
+                }
+                _ => panic!("expected a Response for id {id}"),
+            }
+        };
+        let loc = |uri: &str| json!({"uri": uri, "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}}});
+        let te = json!({"range": {"start": {"line":0,"character":0}, "end": {"line":0,"character":1}}, "newText": "X"});
+
+        // hover
+        assert!(parse_hover(&result_of(2, json!({"contents": "T"}))).is_some());
+        // definition (single Location)
+        assert_eq!(
+            parse_definition(&result_of(3, loc("file:///d.rs"))),
+            Some(("file:///d.rs".into(), 0, 0))
+        );
+        // references (Location[])
+        assert_eq!(
+            parse_locations(&result_of(
+                4,
+                json!([loc("file:///a.rs"), loc("file:///b.rs")])
+            ))
+            .len(),
+            2
+        );
+        // completion (CompletionList)
+        assert_eq!(
+            parse_completion(&result_of(5, json!({"items": [{"label": "foo"}]}))).len(),
+            1
+        );
+        // formatting (TextEdit[])
+        assert_eq!(
+            parse_text_edits(&result_of(6, json!([te.clone()]))).len(),
+            1
+        );
+        // rename (WorkspaceEdit, changes form)
+        assert_eq!(
+            parse_workspace_edit(&result_of(
+                7,
+                json!({"changes": {"file:///a.rs": [te.clone()]}})
+            ))
+            .len(),
+            1
+        );
+        // code actions (edit-bearing CodeAction[])
+        assert_eq!(
+            parse_code_actions(&result_of(
+                8,
+                json!([{"title": "Fix", "edit": {"changes": {"file:///a.rs": [te]}}}])
+            ))
+            .len(),
+            1
+        );
+    }
+
     // End-to-end against a REAL rust-analyzer (not run in CI). Verifies the whole pipeline: spawn → handshake
     // → didOpen → publishDiagnostics (parsed), a hover, a formatting, AND a rename request-response.
     // Run: `cargo test -p ruse-tui --lib -- --ignored live_diagnostics_hover_format_and_rename`. Requires
