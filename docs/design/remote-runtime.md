@@ -32,6 +32,28 @@ related:
 - **Debug** UI is local; the debugger and target each have their own location.
 - **Terminal** renders locally; the PTY runs remotely.
 
+## Implementation status
+
+Building bottom-up from the seam every remote service rides on, mirroring how LSP shipped a local subprocess
+before "remote."
+
+- **Slice 1 — client↔agent transport foundation (F-017, #315): SHIPPED, local pipe (no SSH yet).**
+  `apps/tui/src/remote/` hosts the versioned wire protocol (`Content-Length` framing, identical to
+  `lsp/codec.rs`), a headless serve loop (`ruse agent`), and a local `AgentClient` that spawns the agent,
+  handshakes (exchange `PROTOCOL_VERSION` + negotiate capabilities), and issues blocking request→response
+  calls. Capability negotiation **degrades** a wanted-but-unoffered service (dropped, never a failed
+  connect — the mechanism behind acceptance #3, built now so the SSH slice inherits it). One trivial service,
+  `fs.readFile`, proves *execution on the agent, UI on the client* end-to-end; `ruse ssh <host>` is wired as
+  the local proof path. It lives as a **module, not the deferred `workspace-runtime` crate** — per
+  [RFC-0012](../rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md) §Re-evaluation, that crate boundary
+  returns only when the agent becomes a **separately-deployed remote binary** (the SSH/bootstrap slice), not
+  at this local proof. Slice 1 is structurally a sibling of `lsp/` (framed JSON over a child's stdio), so a
+  module is the honest, precedent-matching home.
+- **Slices 2..N — NOT built:** real SSH-stdio transport; agent bootstrap/version-matched install under `$HOME`
+  (no sudo, D-030); the remote fs-tree/watch/search/Git/PTY/port-forward services; remote-fs editing +
+  path/URI mapping; remote LSP/debug (ride on remote-fs); reconnect/resume. These carry the F-017 acceptance
+  criteria and remain `planned`.
+
 ## Not like VS Code's local Remote extension
 
 There is **no required local Remote package**. The SSH connector is a **Built-in Service**; the user just

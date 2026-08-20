@@ -776,6 +776,20 @@ features:
     title: Remote client/runtime (SSH agent)
     stage: post-mvp
     priority: should
+    # progress (slice 1, #315): the client↔agent TRANSPORT FOUNDATION — the load-bearing seam every remote
+    # service rides on, proven WITHOUT SSH. `apps/tui/src/remote/` (structurally a sibling of `lsp/`: framed
+    # JSON over a child process's stdio) hosts the versioned wire protocol (`Content-Length` framing, same as
+    # lsp/codec.rs), a headless serve loop (`ruse agent`), and a local `AgentClient` that spawns the agent,
+    # handshakes (exchange PROTOCOL_VERSION + negotiate capabilities), and issues blocking calls. One trivial
+    # service, `fs.readFile`, proves "execution on the agent, UI on the client" end-to-end (integration test
+    # spawns the real `ruse agent` subprocess). Capability negotiation DEGRADES a wanted-but-unoffered service
+    # (dropped, not a failed connect — acceptance #3's mechanism, built now so the SSH slice is safe). `ruse
+    # ssh <host>` is wired as the local proof path (spawns `ruse agent`, prints the negotiated version/caps).
+    # Deliberately a MODULE, not the deferred `workspace-runtime` crate: per RFC-0012 §Re-evaluation that
+    # crate boundary returns only when the agent becomes a separately-deployed remote binary (the SSH slice).
+    # REMAINING (slices 2..N, all of acceptance): real SSH transport; agent bootstrap/version-matched install
+    # under $HOME (D-030); remote fs tree/watch/search/git/pty/port-forward services; remote-fs editing +
+    # path/URI mapping; remote LSP/debug (rides on remote-fs); reconnect/resume. Stays `planned`.
     status: planned
     depends_on: [C-REMOTE, C-AGENT, C-WORKSPACE]
     summary: >
