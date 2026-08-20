@@ -8,15 +8,19 @@
 
 use crossterm::style::Color;
 use ruse_core::{Regex, RegexOptions, Revision};
+
+use crate::screen::CellStyle;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{InputEdit, Parser, Point, Query, QueryCursor, Tree};
 
-/// A colored byte range.
+/// A styled byte range: a syntax FACE (fg colour + text attributes) over `[start, end)`. Slice 0 of
+/// F-031 widened this from a bare colour to a full [`CellStyle`] so a capture can render bold/italic, not
+/// only a foreground colour — the first consumer of the decoration model (see docs/design/rich-rendering.md).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
-    pub color: Color,
+    pub style: CellStyle,
 }
 
 /// A configured highlighter for one language: an owned parser plus the compiled highlights query, and
@@ -133,7 +137,7 @@ impl Highlight {
             spans.push(Span {
                 start: cap.node.start_byte(),
                 end: cap.node.end_byte(),
-                color: color_for(name),
+                style: face_for(name),
             });
         }
         spans.sort_by_key(|s| std::cmp::Reverse(s.end - s.start));
@@ -396,8 +400,13 @@ impl CachedSearch {
     }
 }
 
-fn color_for(name: &str) -> Color {
-    match name.split('.').next().unwrap_or(name) {
+/// The FACE for a tree-sitter capture: its foreground colour (as before) plus text attributes. Slice 0
+/// of F-031 adds the attribute channel — comments render italic and keywords bold, the way most editors
+/// style them — proving the decoration model carries more than colour. Colours are unchanged from the
+/// previous `color_for`, so non-attributed captures paint byte-identically (the P6 identity guard).
+fn face_for(name: &str) -> CellStyle {
+    let head = name.split('.').next().unwrap_or(name);
+    let fg = match head {
         "keyword" => Color::Magenta,
         "string" => Color::Green,
         "comment" => Color::DarkGrey,
@@ -406,6 +415,12 @@ fn color_for(name: &str) -> Color {
         "constant" | "number" => Color::Cyan,
         "attribute" | "label" => Color::DarkYellow,
         _ => Color::Reset,
+    };
+    CellStyle {
+        fg,
+        bold: head == "keyword",
+        italic: head == "comment",
+        ..CellStyle::default()
     }
 }
 
@@ -415,7 +430,7 @@ mod tests {
 
     /// A normalized, order-independent key for comparing two span sets.
     fn key(spans: &[Span]) -> Vec<(usize, usize, Color)> {
-        let mut v: Vec<_> = spans.iter().map(|s| (s.start, s.end, s.color)).collect();
+        let mut v: Vec<_> = spans.iter().map(|s| (s.start, s.end, s.style.fg)).collect();
         v.sort();
         v
     }
@@ -435,7 +450,7 @@ mod tests {
         assert!(
             spans
                 .iter()
-                .any(|s| s.start == 0 && s.color == Color::Magenta),
+                .any(|s| s.start == 0 && s.style.fg == Color::Magenta && s.style.bold),
             "the `fn` keyword is colored",
         );
     }
@@ -481,7 +496,7 @@ mod tests {
         assert!(
             spans
                 .iter()
-                .any(|s| s.start == 10 && s.color == Color::Magenta),
+                .any(|s| s.start == 10 && s.style.fg == Color::Magenta),
             "the visible line's `fn` keyword is colored"
         );
     }
@@ -552,7 +567,7 @@ mod tests {
             spans
                 .iter()
                 .find(|s| s.start == at && s.end == at + 4)
-                .map(|s| s.color)
+                .map(|s| s.style.fg)
         };
         let base = h.spans_from(&tree, src, 0..src.len());
         let full = h.spans_with_injections(&tree, src, 0..src.len());
