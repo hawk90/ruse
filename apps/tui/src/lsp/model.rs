@@ -21,6 +21,17 @@ impl Severity {
             _ => Severity::Error,
         }
     }
+
+    /// The LSP numeric severity (1=Error … 4=Hint) — the inverse of [`from_lsp`], for round-tripping a
+    /// diagnostic back into a `codeAction` request's `context.diagnostics` (F-014).
+    pub fn to_lsp(self) -> u8 {
+        match self {
+            Severity::Error => 1,
+            Severity::Warning => 2,
+            Severity::Info => 3,
+            Severity::Hint => 4,
+        }
+    }
 }
 
 /// One diagnostic as a byte range in the buffer plus its severity and message — the UI-facing shape.

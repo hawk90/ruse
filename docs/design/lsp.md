@@ -1,6 +1,6 @@
 # Built-in LSP (F-014) — design
 
-Status: **slices 1–6 landed** (local diagnostics + hover/goto + format + rename + completion + references, cross-platform). Owner capabilities:
+Status: **slices 1–7 landed** (local diagnostics + hover/goto + format + rename + completion + references + code-actions, cross-platform; orchestration in `app/lsp_coordinator.rs`). Owner capabilities:
 `CAP-LSP-COORD` (client + normalized model), `CAP-LSP-CODEC` (`DEP-SERDE`); `DEP-LSP-SERVER`. Spec:
 `spec/PRD.yaml` F-014.
 
@@ -96,12 +96,22 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   `open_file_into_buffer` then move — the goto path, run INLINE in the picker's accept since the `spans` borrow
   is already released post-render); Esc closes. The picker is OPENED after render (setting it mid-frame would
   clash with `cmd_line`'s borrow — deferred via `pending_refs`, like `goto_jump`). Verified end-to-end.
-- **Later:** live filter-as-you-type after the pum opens (slice 5 filters once at trigger time; further typing
-  dismisses); snippet placeholder expansion; `completionItem/resolve` lazy docs + a docs side-panel; signature
-  help; trigger-character auto-popup; code-actions; a source-preview line in the references picker; a floating
-  name-input prompt + resource-op renames; a jumplist for `<C-o>` back-navigation; merge LSP with
-  tree-sitter/compiler diagnostics by namespace; a diagnostics list / quickfix UI; more languages
-  (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
+- **Slice 7 (landed):** code-actions (`:codeaction` / `:ca`) — `textDocument/codeAction` at the cursor with a
+  reconstructed `context.diagnostics` (the normalized `Diag`s overlapping the cursor, round-tripped to LSP via
+  `Severity::to_lsp` + `byte_to_lsp_pos`, so the server offers their quickfixes alongside assists) →
+  `parse_code_actions` (edit-bearing actions only; command-only actions that need `workspace/executeCommand`
+  are dropped for now) → an **action picker** (`ui/action_picker.rs`, a `Picker<CodeAction>`) listing titles;
+  Enter applies the selected action's `WorkspaceEdit` via the shared multi-file `apply_workspace_edit` (the
+  same path as rename). The live smoke asserts the request/response wire round-trips.
+- **Coordinator (2026-08-20, #306):** all app-side LSP orchestration now lives in `app/lsp_coordinator.rs`
+  (`LspCoordinator`) — the session loop just calls its methods. `lsp/` stays the pure client. Future LSP work
+  goes in the coordinator.
+- **Later:** command-only code actions (`workspace/executeCommand`); live filter-as-you-type after the pum
+  opens (slice 5 filters once at trigger time; further typing dismisses); snippet placeholder expansion;
+  `completionItem/resolve` lazy docs + a docs side-panel; signature help; trigger-character auto-popup; a
+  source-preview line in the references picker; a floating name-input prompt + resource-op renames; a jumplist
+  for `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list
+  / quickfix UI; more languages (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
 
 ## Verification
 

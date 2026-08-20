@@ -29,6 +29,8 @@ enum LspKind {
     Completion(usize),
     /// A references request; the response's locations are stashed for the loop to open its picker.
     References,
+    /// A code-action request; the response's actions are stashed for the loop to open its picker.
+    CodeAction,
 }
 
 /// The open completion popup menu (pum): the parsed candidates, the highlighted index, and the typed
@@ -62,6 +64,7 @@ pub(crate) struct LspCoordinator {
     pending_edits: Vec<(usize, usize, String)>,
     pending_rename: Vec<(String, Vec<lsp::protocol::LspTextEdit>)>,
     pending_refs: Option<Vec<(String, u32, u32)>>,
+    pending_actions: Option<Vec<lsp::protocol::CodeAction>>,
 }
 
 impl LspCoordinator {
@@ -81,6 +84,7 @@ impl LspCoordinator {
             pending_edits: Vec::new(),
             pending_rename: Vec::new(),
             pending_refs: None,
+            pending_actions: None,
         }
     }
 
@@ -221,6 +225,16 @@ impl LspCoordinator {
                             self.pending_refs = Some(locs);
                         }
                     }
+                    // Code actions: stash the edit-bearing actions; the loop opens its picker after render.
+                    Some(LspKind::CodeAction) => {
+                        let actions = lsp::protocol::parse_code_actions(&result);
+                        if actions.is_empty() {
+                            *status = "no code actions".to_string();
+                        } else {
+                            *status = format!("{} code action(s)", actions.len());
+                            self.pending_actions = Some(actions);
+                        }
+                    }
                     None => {}
                 }
             }
@@ -258,48 +272,10 @@ impl LspCoordinator {
             self.pending_edits.clear();
             *status = "formatted".to_string();
         }
-        // Rename across every affected file: focus each in turn (reuse an open buffer, else open it), map
-        // its UTF-16 edits to byte offsets against ITS OWN bytes, apply as one Lsp-origin undo group, then
-        // refocus the original. Opened files are modified buffers the user saves.
+        // Rename across every affected file (the multi-file WorkspaceEdit apply, shared with code actions).
         if !self.pending_rename.is_empty() {
-            let orig = ws.focused_buffer();
-            let (mut files_n, mut edits_n) = (0usize, 0usize);
-            for (uri, ledits) in std::mem::take(&mut self.pending_rename) {
-                let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-                let target = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
-                let existing = files.iter().find_map(|(id, bf)| {
-                    (std::fs::canonicalize(&bf.path).ok().as_deref() == Some(target.as_path()))
-                        .then_some(*id)
-                });
-                match existing {
-                    Some(id) => {
-                        ws.focus_buffer(id);
-                    }
-                    None => {
-                        open_file_into_buffer(
-                            &target.display().to_string(),
-                            ws,
-                            files,
-                            highlighters,
-                        );
-                    }
-                }
-                let bytes = ws.focused().doc.bytes().to_vec();
-                let byte_edits: Vec<(usize, usize, String)> = ledits
-                    .into_iter()
-                    .map(|((sl, sc), (el, ec), text)| {
-                        (
-                            lsp::model::lsp_pos_to_byte(&bytes, sl, sc),
-                            lsp::model::lsp_pos_to_byte(&bytes, el, ec),
-                            text,
-                        )
-                    })
-                    .collect();
-                edits_n += byte_edits.len();
-                ws.apply_edits(&byte_edits, TransactionOrigin::Lsp);
-                files_n += 1;
-            }
-            ws.focus_buffer(orig);
+            let edit = std::mem::take(&mut self.pending_rename);
+            let (files_n, edits_n) = apply_workspace_edit(edit, ws, files, highlighters);
             *status = format!("renamed: {edits_n} edit(s) across {files_n} file(s)");
         }
     }
@@ -307,6 +283,25 @@ impl LspCoordinator {
     /// The references locations resolved this frame (the loop opens its generic picker from these).
     pub(crate) fn take_refs(&mut self) -> Option<Vec<(String, u32, u32)>> {
         self.pending_refs.take()
+    }
+
+    /// The code actions resolved this frame (the loop opens its generic picker from these).
+    pub(crate) fn take_actions(&mut self) -> Option<Vec<lsp::protocol::CodeAction>> {
+        self.pending_actions.take()
+    }
+
+    /// Apply a selected code action's `WorkspaceEdit` across every affected file (the same multi-file apply
+    /// as rename). Called from the action picker's accept, where the `spans` borrow is already released.
+    pub(crate) fn apply_code_action(
+        &self,
+        edit: Vec<(String, Vec<lsp::protocol::LspTextEdit>)>,
+        ws: &mut Workspace,
+        files: &mut Files,
+        highlighters: &mut Highlighters,
+        status: &mut String,
+    ) {
+        let (files_n, edits_n) = apply_workspace_edit(edit, ws, files, highlighters);
+        *status = format!("applied: {edits_n} edit(s) across {files_n} file(s)");
     }
 
     /// The working directory, for relativizing picker paths.
@@ -440,7 +435,8 @@ impl LspCoordinator {
         false
     }
 
-    /// `:fmt` / `:rename {new}` / `:references` (F-014). Returns whether the ex line was an LSP one (handled).
+    /// `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014). Returns whether the ex line was an
+    /// LSP one (handled).
     pub(crate) fn on_ex(
         &mut self,
         ex: &Ex,
@@ -449,7 +445,10 @@ impl LspCoordinator {
         snapshot: &[u8],
         status: &mut String,
     ) -> bool {
-        if !matches!(ex, Ex::Format | Ex::Rename(_) | Ex::References) {
+        if !matches!(
+            ex,
+            Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction
+        ) {
             return false;
         }
         let Some((key_s, uri)) = self.focused_server(ws, files) else {
@@ -486,6 +485,37 @@ impl LspCoordinator {
                 );
                 *status = "finding references…".to_string();
             }
+            Ex::CodeAction => {
+                let cursor = ws.focused().view.cursor();
+                let (line, ch) = lsp::model::byte_to_lsp_pos(snapshot, cursor);
+                // Reconstruct the LSP diagnostics overlapping the cursor so the server offers their
+                // quickfixes (alongside cursor-position assists/refactors).
+                let diags = self.diagnostics.get(&ws.focused_buffer());
+                let ctx: Vec<Value> = diags
+                    .into_iter()
+                    .flatten()
+                    .filter(|d| d.start <= cursor && cursor <= d.end)
+                    .map(|d| {
+                        let (sl, sc) = lsp::model::byte_to_lsp_pos(snapshot, d.start);
+                        let (el, ec) = lsp::model::byte_to_lsp_pos(snapshot, d.end);
+                        serde_json::json!({
+                            "range": {
+                                "start": {"line": sl, "character": sc},
+                                "end": {"line": el, "character": ec}
+                            },
+                            "severity": d.severity.to_lsp(),
+                            "message": d.message,
+                        })
+                    })
+                    .collect();
+                self.send(
+                    key_s,
+                    "textDocument/codeAction",
+                    lsp::protocol::code_action_params(&uri, line, ch, Value::Array(ctx)),
+                    LspKind::CodeAction,
+                );
+                *status = "finding code actions…".to_string();
+            }
             _ => unreachable!("guarded by the matches! above"),
         }
         true
@@ -516,4 +546,54 @@ impl LspCoordinator {
     pub(crate) fn has_live_client(&self) -> bool {
         !self.lsp.is_empty()
     }
+}
+
+/// Apply a `WorkspaceEdit` (per-file UTF-16 `TextEdit`s) across every affected file, returning
+/// `(files, edits)` applied. Each file is focused in turn (reuse an open buffer, else open it), its edits
+/// are mapped to byte offsets against ITS OWN bytes, and applied as one `Lsp`-origin undo group; then the
+/// original buffer is refocused. Opened files are modified buffers the user saves. Shared by rename and
+/// code-action apply. Must run AFTER render (opening a buffer mutates `highlighters`).
+fn apply_workspace_edit(
+    edit: Vec<(String, Vec<lsp::protocol::LspTextEdit>)>,
+    ws: &mut Workspace,
+    files: &mut Files,
+    highlighters: &mut Highlighters,
+) -> (usize, usize) {
+    if edit.is_empty() {
+        return (0, 0);
+    }
+    let orig = ws.focused_buffer();
+    let (mut files_n, mut edits_n) = (0usize, 0usize);
+    for (uri, ledits) in edit {
+        let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
+        let target = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+        let existing = files.iter().find_map(|(id, bf)| {
+            (std::fs::canonicalize(&bf.path).ok().as_deref() == Some(target.as_path()))
+                .then_some(*id)
+        });
+        match existing {
+            Some(id) => {
+                ws.focus_buffer(id);
+            }
+            None => {
+                open_file_into_buffer(&target.display().to_string(), ws, files, highlighters);
+            }
+        }
+        let bytes = ws.focused().doc.bytes().to_vec();
+        let byte_edits: Vec<(usize, usize, String)> = ledits
+            .into_iter()
+            .map(|((sl, sc), (el, ec), text)| {
+                (
+                    lsp::model::lsp_pos_to_byte(&bytes, sl, sc),
+                    lsp::model::lsp_pos_to_byte(&bytes, el, ec),
+                    text,
+                )
+            })
+            .collect();
+        edits_n += byte_edits.len();
+        ws.apply_edits(&byte_edits, TransactionOrigin::Lsp);
+        files_n += 1;
+    }
+    ws.focus_buffer(orig);
+    (files_n, edits_n)
 }

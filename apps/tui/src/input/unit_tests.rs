@@ -1727,6 +1727,9 @@ mod tests {
         assert_eq!(parse_ex("references"), Ex::References);
         assert_eq!(parse_ex("refs"), Ex::References);
         assert_eq!(parse_ex("ref"), Ex::References);
+        // `:codeaction` / `:ca` (F-014 LSP code actions).
+        assert_eq!(parse_ex("codeaction"), Ex::CodeAction);
+        assert_eq!(parse_ex("ca"), Ex::CodeAction);
     }
 
     /// F-007 multi-buffer ex commands parse: `:enew`, `:ls`, `:bn`/`:bp`, `:b {n}` (with/without space),
