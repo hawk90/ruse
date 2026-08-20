@@ -24,6 +24,8 @@ pub enum Ex {
     Format,
     /// `:rename {new}`/`:rn {new}` — rename the symbol under the cursor via the language server (F-014).
     Rename(String),
+    /// `:references`/`:refs`/`:ref` — list all references to the symbol under the cursor (F-014).
+    References,
     /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
@@ -401,6 +403,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "only" | "on" => Ex::Only,
         "terminal" | "term" => Ex::Terminal,
         "fmt" | "format" => Ex::Format,
+        "references" | "refs" | "ref" => Ex::References,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         "e!" | "edit!" => Ex::EditReload,

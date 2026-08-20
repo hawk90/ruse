@@ -20,7 +20,9 @@ use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
 use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
-use crate::ui::{buffer_picker, file_picker, layout::window_rects, line_picker, palette};
+use crate::ui::{
+    buffer_picker, file_picker, layout::window_rects, line_picker, palette, ref_picker,
+};
 use crate::{health, highlight, indent, line_index, persist, recover, screen, viewport};
 #[cfg(unix)]
 use crate::{pty, term_buffer};
@@ -51,6 +53,8 @@ enum LspKind {
     /// A completion request; carries the length (bytes) of the identifier prefix already typed before the
     /// cursor, so the accepted item replaces exactly that prefix (F-014 #5).
     Completion(usize),
+    /// A references request; the response's locations open the references picker (F-014).
+    References,
 }
 
 /// The open completion popup menu (pum): the parsed candidates, the highlighted index, and the typed
@@ -163,8 +167,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut line_picker: Option<Picker<usize>> = None;
     let mut buffer_picker: Option<Picker<DocumentId>> = None;
     let mut file_picker: Option<Picker<PathBuf>> = None; // fuzzy file finder (`C-f`), opens like `:e`
-                                                         // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `pending_term_escape`
-                                                         // tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
+                                                         // F-014: the LSP references picker — `(uri, line, character)` locations; Enter jumps (same/cross file).
+    let mut ref_picker: Option<Picker<(String, u32, u32)>> = None;
+    // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `pending_term_escape`
+    // tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
     #[cfg(unix)]
     let mut terminals: HashMap<DocumentId, term_buffer::Terminal> = HashMap::new();
     #[cfg(unix)]
@@ -182,9 +188,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // omni-trigger prefix (Vim/Native insert only). At most one pum is open.
     let mut completion: Option<CompletionMenu> = None;
     let mut pending_omni = false;
-    let root_uri = std::env::current_dir()
-        .map(|p| lsp::path_to_uri(&p))
-        .unwrap_or_default();
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let root_uri = lsp::path_to_uri(&cwd);
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -295,6 +300,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = file_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = ref_picker.as_ref() {
+            p.rows()
         } else if let Some(lines) = hover_panel.as_ref() {
             // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
             lines.iter().map(|l| (l.clone(), false)).collect()
@@ -312,6 +319,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('@', p.query.as_str())) // buffer-picker prompt
         } else if let Some(p) = file_picker.as_ref() {
             Some(('~', p.query.as_str())) // file-picker prompt (~ = find file)
+        } else if let Some(p) = ref_picker.as_ref() {
+            Some(('*', p.query.as_str())) // references-picker prompt (* = references to symbol)
         } else if let Some(h) = leader_hint.as_ref() {
             Some((' ', h.as_str()))
         } else {
@@ -321,6 +330,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // with the live `spans` borrow here). Likewise LSP format edits, applied after render.
         let mut goto_jump: Option<(String, u32, u32)> = None;
         let mut pending_edits: Vec<(usize, usize, String)> = Vec::new();
+        // F-014: references locations resolved this frame; the picker opens AFTER render (mutating
+        // `ref_picker` mid-frame would clash with `cmd_line`'s borrow of it).
+        let mut pending_refs: Option<Vec<(String, u32, u32)>> = None;
         // F-014: a resolved rename — per-file UTF-16 TextEdits, applied across buffers after render.
         let mut pending_rename: Vec<(String, Vec<lsp::protocol::LspTextEdit>)> = Vec::new();
         // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
@@ -440,6 +452,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                                 });
                             }
                         }
+                        // References: stash the locations; the picker is OPENED after render (setting
+                        // `ref_picker` here would clash with `cmd_line`'s live borrow of it, like goto_jump).
+                        Some(LspKind::References) => {
+                            let locs = lsp::protocol::parse_locations(&result);
+                            if locs.is_empty() {
+                                status = "no references".to_string();
+                            } else {
+                                status = format!("{} reference(s)", locs.len());
+                                pending_refs = Some(locs);
+                            }
+                        }
                         None => {}
                     }
                 }
@@ -490,6 +513,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if !pending_edits.is_empty() {
             ws.apply_edits(&pending_edits);
             status = "formatted".to_string();
+        }
+        // F-014: open the references picker now render is done (past `cmd_line`'s borrow of `ref_picker`).
+        if let Some(locs) = pending_refs.take() {
+            ref_picker = Some(ref_picker::open(locs, &cwd));
         }
         // F-014: apply a resolved rename across every affected file. Each file is focused in turn (an already
         // open buffer is reused, else it is opened — deferred here since opening mutates `highlighters`), its
@@ -684,6 +711,38 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             if !matches!(outcome, PickOutcome::Continue) {
                 file_picker = None;
+            }
+            continue;
+        }
+        // F-014: the references picker jumps to the selected location. The `spans` borrow is released by
+        // now (render is done), so opening a cross-file buffer here is free — no defer needed (unlike the
+        // response-loop goto). Same file → move; other file → open then move (the goto path, inline).
+        if let Some(outcome) = ref_picker.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                if let Some((uri, l, c)) = ref_picker.as_ref().and_then(|p| p.selected().cloned()) {
+                    let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
+                    let target =
+                        std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+                    let cur_path = files
+                        .get(&ws.focused_buffer())
+                        .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
+                    if cur_path.as_deref() == Some(target.as_path()) {
+                        let bytes = ws.focused().doc.bytes().to_vec();
+                        ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                    } else {
+                        open_file_into_buffer(
+                            &target.display().to_string(),
+                            &mut ws,
+                            &mut files,
+                            &mut highlighters,
+                        );
+                        let bytes = ws.focused().doc.bytes().to_vec();
+                        ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                    }
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                ref_picker = None;
             }
             continue;
         }
@@ -981,6 +1040,34 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                                 );
                                 lsp_pending.insert((key_s.to_string(), rid), LspKind::Rename);
                                 status = format!("renaming → {new_name}…");
+                            } else {
+                                status = "no language server for this buffer".to_string();
+                            }
+                        } else {
+                            status = "no language server for this buffer".to_string();
+                        }
+                    }
+                    // `:references` (F-014): ask for every reference to the symbol under the cursor; the
+                    // locations come back on a later frame and open the references picker.
+                    Ex::References => {
+                        let bid = ws.focused_buffer();
+                        let server_key = files
+                            .get(&bid)
+                            .and_then(|bf| bf.path.extension().and_then(|e| e.to_str()))
+                            .and_then(lsp::server_for_ext)
+                            .map(|(k, _, _)| k);
+                        if let (Some(key_s), Some((uri, _, _))) = (server_key, lsp_docs.get(&bid)) {
+                            if let Some(client) = lsp.get_mut(key_s) {
+                                let (line, ch) = lsp::model::byte_to_lsp_pos(
+                                    &snapshot,
+                                    ws.focused().view.cursor(),
+                                );
+                                let rid = client.request(
+                                    "textDocument/references",
+                                    lsp::protocol::references_params(uri, line, ch, true),
+                                );
+                                lsp_pending.insert((key_s.to_string(), rid), LspKind::References);
+                                status = "finding references…".to_string();
                             } else {
                                 status = "no language server for this buffer".to_string();
                             }

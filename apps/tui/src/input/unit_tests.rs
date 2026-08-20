@@ -1723,6 +1723,10 @@ mod tests {
         assert!(matches!(parse_ex("rename"), Ex::Unknown(_)));
         assert!(matches!(parse_ex("rename a b"), Ex::Unknown(_)));
         assert!(matches!(parse_ex("rn"), Ex::Unknown(_)));
+        // `:references` / `:refs` / `:ref` (F-014 LSP references).
+        assert_eq!(parse_ex("references"), Ex::References);
+        assert_eq!(parse_ex("refs"), Ex::References);
+        assert_eq!(parse_ex("ref"), Ex::References);
     }
 
     /// F-007 multi-buffer ex commands parse: `:enew`, `:ls`, `:bn`/`:bp`, `:b {n}` (with/without space),
