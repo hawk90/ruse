@@ -57,10 +57,18 @@ before "remote."
   wire is an env-gated ignored smoke (`tests/agent_ssh.rs`). **Limitation:** without agent bootstrap yet, a
   remote host must already have `ruse` on its `PATH` (the remote command is `ruse agent`, not yet the
   versioned `$HOME` install below).
-- **Slices 2b..N — NOT built:** agent bootstrap/version-matched install under `$HOME` (no sudo, D-030,
-  offline-first upload); the remote fs-tree/watch/search/Git/PTY/port-forward services; remote-fs editing +
-  path/URI mapping; remote LSP/debug (ride on remote-fs); reconnect/resume. These carry the F-017 acceptance
-  criteria and remain `planned`.
+- **Slice 2b — remote filesystem service set (F-017, #317): SHIPPED.** The agent grows from one service to
+  four: `fs.readFile` / `fs.writeFile` (create+truncate, echoes byte count) / `fs.stat` (exists·isDir·isFile·len;
+  a missing path is `exists:false`, not an error — probe before read/write) / `fs.list` (non-recursive
+  `{name,isDir}`). `AgentClient` gains `write_file`/`stat`/`list` (typed `FileStat`/`DirEntry`); each is proven
+  end-to-end over the real `ruse agent` subprocess (write→read-back, stat present+absent, list finds the file)
+  plus mock `serve` tests. These are the primitives **remote-fs editing** consumes; they are **not yet wired
+  into buffer open/save** (that carries path/URI identity questions — a design-first slice). Text/UTF-8 only.
+- **Slices 3..N — NOT built:** remote-fs **editing** — open a remote path into a buffer + `:w` write-back
+  (path/URI identity); agent bootstrap/version-matched install under `$HOME` (no sudo, D-030, offline-first
+  upload); the remote watch/search/Git/PTY/port-forward services; remote LSP/debug (ride on remote-fs);
+  reconnect/resume; multiplexed per-service channels. These carry the F-017 acceptance criteria and remain
+  `planned`.
 
 ## Not like VS Code's local Remote extension
 

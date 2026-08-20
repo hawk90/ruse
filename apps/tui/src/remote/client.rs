@@ -112,6 +112,62 @@ impl AgentClient {
             .unwrap_or_default()
             .to_string())
     }
+
+    /// `fs.writeFile` — write text to a file on the agent (create/truncate); returns the byte count.
+    pub fn write_file(&mut self, path: &str, content: &str) -> io::Result<u64> {
+        let r = self.call("fs/writeFile", json!({ "path": path, "content": content }))?;
+        Ok(r.get("bytesWritten").and_then(Value::as_u64).unwrap_or(0))
+    }
+
+    /// `fs.stat` — metadata for a path on the agent. A missing path is `FileStat { exists: false, .. }`, not
+    /// an error (probe before read/write without catching).
+    pub fn stat(&mut self, path: &str) -> io::Result<FileStat> {
+        let r = self.call("fs/stat", json!({ "path": path }))?;
+        Ok(FileStat {
+            exists: r.get("exists").and_then(Value::as_bool).unwrap_or(false),
+            is_dir: r.get("isDir").and_then(Value::as_bool).unwrap_or(false),
+            is_file: r.get("isFile").and_then(Value::as_bool).unwrap_or(false),
+            len: r.get("len").and_then(Value::as_u64).unwrap_or(0),
+        })
+    }
+
+    /// `fs.list` — the immediate entries of a directory on the agent (non-recursive).
+    pub fn list(&mut self, path: &str) -> io::Result<Vec<DirEntry>> {
+        let r = self.call("fs/list", json!({ "path": path }))?;
+        let entries = r
+            .get("entries")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .map(|e| DirEntry {
+                        name: e
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                        is_dir: e.get("isDir").and_then(Value::as_bool).unwrap_or(false),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(entries)
+    }
+}
+
+/// Metadata for a path on the agent (`fs.stat`). `exists: false` means the path was absent, not an IO error.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct FileStat {
+    pub exists: bool,
+    pub is_dir: bool,
+    pub is_file: bool,
+    pub len: u64,
+}
+
+/// One immediate entry of a directory on the agent (`fs.list`).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct DirEntry {
+    pub name: String,
+    pub is_dir: bool,
 }
 
 impl Drop for AgentClient {
