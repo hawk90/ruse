@@ -14,8 +14,10 @@
 //! - [`protocol`] — the wire format (`Content-Length` framing, same as `lsp/codec.rs`) + negotiation.
 //! - [`agent`] — the headless serve loop (`ruse agent`): read a request, dispatch to a service, reply.
 //! - [`client`] — the local side: spawn the agent, handshake, issue blocking calls.
+//! - [`transport`] — how the agent is launched: a local subprocess (slice 1) or `ssh host ruse agent` (2a).
 
 pub mod agent;
 pub mod client;
 pub mod error;
 pub mod protocol;
+pub mod transport;
