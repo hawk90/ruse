@@ -304,6 +304,103 @@ lowering failure pins that node to the compatibility rung (placeholder), never t
 (INV-RENDER-PROFILE). Decoding untrusted image bytes is a sandboxed, size-bounded step (a decode bomb must not
 OOM the editor — bound dimensions before allocation).
 
+### 8.3 Compositing images with the cell-diff renderer (slice 3b-2 — the crux)
+
+The hazard: a terminal image is a **raw escape written at a screen position**, not a grid of `Cell`s, so it
+does **not** fit `screen.rs`'s cell grid or its frame diff (which emits only changed cells). Forcing image
+bytes through the cell model would corrupt the diff. The chosen model is **reserve-in-grid + overlay-after-flush**:
+
+1. **Reserve.** The image's `virt_lines` block already reserves `height` rows in the cell grid (slice 3a). On
+   a graphics-capable client the reserved rows are painted as **blanks** (not the placeholder box), so the
+   diff keeps those cells consistent and, when the image is later deleted, the correct background shows.
+2. **Overlay pass (new).** *After* `flush_diff` writes the cell changes, a **graphics pass** reconciles a
+   small owned map `placed: HashMap<Handle, Placement>` (handle → screen row/col + rows×cols) against the
+   blocks visible this frame:
+   - a block **newly visible or moved** → (transmit the image if not already resident) + **place** it at its
+     block's top-left screen cell (`CSI` cursor-move, then the Kitty `APC _G` place);
+   - a block **no longer visible / scrolled off / whose buffer moved** → **delete** its placement
+     (Kitty `_Ga=d`), so the reserved blanks underneath repaint normally;
+   - a block **unchanged** (same handle, same screen position) → **emit nothing** (mirrors the cell diff's
+     "unchanged ⇒ zero bytes", so a still frame stays silent).
+   The pass runs outside the cell critical section and touches only `Write`; the cell grid never holds image
+   bytes.
+   - **Concrete Kitty commands** (`APC _G <keys> ; <base64 payload> ESC \`): **transmit** once per resident
+     image — `a=t` (transmit), `f=100` (PNG) or `f=32` (RGBA), `i=<image-id>`, chunked with `m=1` on all but
+     the last chunk (payload split into ≤4096-byte base64 runs); **place** — move the cursor to the block's
+     top-left cell (`CSI <row> ; <col> H`) then `a=p, i=<image-id>, p=<placement-id>, c=<cols>, r=<rows>`;
+     **delete a placement** — `a=d, d=i, i=<image-id>, p=<placement-id>` (frees the on-screen placement, keeps
+     the transmitted image); **free the image** (on cache eviction) — `a=d, d=I, i=<image-id>`.
+3. **Placement lifecycle.** Transmit-once/place-many: an image is transmitted (assigned a Kitty image id)
+   the first time it enters view and kept resident; re-scrolling only re-places (cheap). Deleting a placement
+   does not evict the transmitted image (cache stays warm for scroll-back).
+4. **Synchronized output** (TERM-SYNC, if present) wraps the *cell flush + graphics pass* together so a frame
+   with an image update does not tear.
+
+This keeps INV-RENDER-IR honest: the decoration model carries a **semantic image node** (handle + rows); the
+Kitty/Sixel escape bytes are produced only here, in the **TUI backend lowering** — no provider or core code
+emits terminal bytes. It is the same "lower per capability" the render-and-frontends doc mandates, realized
+for one backend.
+
+### 8.4 Decode, sizing, and identity
+
+- **Handle / cache.** The image handle is the resolved file path (relative to the buffer's directory) plus its
+  mtime; a stable **image-id** is a hash of the handle (so re-opening the same file reuses the Kitty id). Two
+  caches, both bounded LRU: a **decoded/scaled payload** cache (`handle → encoded bytes`, sized to the current
+  cell metric) and the **resident-image registry** (`image-id → transmitted`, so we transmit once). Eviction
+  frees the payload and, if the image was transmitted, emits the Kitty **free** (`a=d, d=I`); an evicted image
+  that scrolls back is re-decoded + re-transmitted lazily. The registry is capped by count AND by an estimated
+  GPU/terminal memory budget (large images cost more), evicting least-recently-placed first.
+- **Re-decode triggers.** A changed mtime (the file was edited on disk) or a changed cell pixel metric (font
+  resize / terminal change) invalidates the payload cache for that handle; the id is stable so the placement
+  just re-transmits.
+- **Sizing.** Cell pixel size comes from `CSI 14 t` (text-area px) / `CSI 16 t` (cell px), added to the
+  DA1-fenced probe batch (a new `t`-final arm in the parser — guard the pixel-vs-cell confusion,
+  architecture.md:692). The image is scaled to `cols × rows` cells: `cols` = min(image aspect width, pane
+  width); **`rows` (the `VirtLine.height`) becomes dynamic** — derived from the image aspect ratio and cell
+  pixel size, replacing slice 3a's fixed 2. The row-coordinate model (3a) already handles any height.
+- **Decode safety.** Decoding uses a bounded step: reject dimensions above a megapixel cap **before**
+  allocation (decode-bomb guard), cap the on-disk read size, and treat any decode/IO error as a soft failure.
+
+### 8.5 Failure modes & testing
+
+- **Missing file / decode error / oversized** → fall back to the **placeholder** block (3a) showing the alt
+  text + the reason; never crash, never tear (INV-CAP-DEGRADE / INV-RENDER-PROFILE).
+- **Capability absent** (`graphics() == None`) → placeholder, exactly as today.
+- **Testing.** Unit-test the pure pieces off any terminal: the Kitty `APC _G` payload/`base64` chunk encoder,
+  the cell→pixel sizing math, and the placement-diff (newly-visible / moved / unchanged / gone → the right
+  transmit/place/delete/no-op decisions) via a mock `Write`. A real Kitty draw is an env-gated `#[ignore]`
+  smoke (CI has no graphics-capable terminal), mirroring `live_lsp_pipeline`.
+
+### 8.6 Slice 3b-2 scope (chosen)
+
+**In:** Kitty graphics only (the ladder's top rung); reserve+overlay compositing; the graphics pass +
+placement map; `CSI 14/16 t` pixel sizing; dynamic block height; decode-bounded file load; degrade to the 3a
+placeholder on any failure/absence; `TermGuard::graphics()` pinned once (like `sync_output`) and threaded into
+render. **Out (follow-ups):** Sixel + iTerm2 lowering (3b-3); the Kitty-APC *detection* probe (env hint stands
+in); animated images; image reflow on horizontal resize beyond a re-place; a Unicode half-block preview rung.
+
+### 8.7 Scroll & partial visibility
+
+Scrolling is where the placement map earns its keep — it is driven by the SAME `top` the cell renderer uses,
+so image and text move in lockstep:
+
+- **Fully above/below the viewport** → the block is not painted; the graphics pass finds a stale `placed`
+  entry and emits a **delete-placement**. No transmit/decode churn (the image stays resident for scroll-back).
+- **Fully visible, same screen position as last frame** → **no-op** (the still-frame silence rule).
+- **Fully visible, moved** (scrolled by N rows, or the buffer above it changed height) → **re-place** at the
+  new cell (one `CSI H` + `a=p`); no re-transmit.
+- **Partially clipped at the viewport top/bottom** → Kitty crops via the placement's cell rectangle
+  (`c`/`r` plus a source-offset), so a half-scrolled image shows its visible band; the reserved blank cells
+  bound it. If cropping is unavailable, that frame falls to the placeholder for the block rather than drawing
+  an overflowing image (INV-RENDER-PROFILE — never paint outside the pane).
+- **The block's own reserved rows** already come from the slice-3a row model, so `top`/`scrolloff` math is
+  unchanged; only the *overlay* is added. (The documented 3a limitation — `top` is buffer-line based, so
+  scrolloff can be slightly loose near a tall block — is inherited, not worsened.)
+
+Multi-pane: a placement belongs to the focused pane's view (like conceal/virt today); an image in a
+non-focused pane is not placed in slice 3b-2 (its block shows the placeholder). Per-pane placement is a
+follow-up when a real second pane shows the same image.
+
 ## 9. Governance & spec deltas
 
 This is **architecture-tier** (it introduces the display-coordinate boundary and reactivates part of RFC-0009).
