@@ -68,9 +68,9 @@ pub(crate) fn line_display_col(line: &str, line_byte: usize) -> u16 {
 
 /// Inverse of [`line_display_col`]: the byte offset of the grapheme boundary at or just past display
 /// column `col` within `line`. A `col` beyond the line maps to its end. The P1 round-trip test exercises
-/// it now; slice 1 wires it into mouse/click resolution (`byte_of(row, col)`), so it is the seam's other
-/// half kept beside its forward map rather than being introduced late.
-#[allow(dead_code)] // consumed by the P1 test now; the click/byte_of path lands in F-031 slice 1
+/// it now; a later slice wires it into mouse/click resolution (`byte_of(row, col)`), so it is the seam's
+/// other half kept beside its forward map rather than being introduced late.
+#[allow(dead_code)] // exercised by the P1 test now; the click/byte_of path lands in a later F-031 slice
 pub(crate) fn line_byte_at_col(line: &str, col: u16) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
     let mut cur: u16 = 0;
@@ -103,6 +103,7 @@ pub(crate) fn paint_pane(
     underline: &[(usize, usize)],
     conceal: &[(usize, usize, Option<&str>)],
     caret_line: usize,
+    virt: &[highlight::VirtLine],
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
@@ -110,23 +111,38 @@ pub(crate) fn paint_pane(
         return;
     }
     let (x0, x1) = (rect.x, rect.x + rect.w);
-    let bottom = top + rect.h as usize;
     let text = std::str::from_utf8(bytes).unwrap_or("<binary>");
     let mut line: usize = 0;
     let mut scol: u16 = x0;
+    // Display rows added by virtual blocks (image placeholders) on lines ABOVE the current one — every
+    // subsequent buffer line paints that many rows lower (F-031 slice 3a row-coordinate model).
+    let mut virt_before: u16 = 0;
     for (i, g) in text.grapheme_indices(true) {
         if g == "\n" {
+            // Finished buffer line `line`: if it is on-screen and carries a virtual block, paint the block
+            // on the rows just below its text and grow the running offset.
+            if line >= top {
+                let disp = (line - top) as u16 + virt_before;
+                if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
+                    paint_virt_block(cur, rect, disp + 1, vb);
+                    virt_before += vb.height;
+                }
+            }
             line += 1;
             scol = x0;
-            if line >= bottom {
-                break; // past the bottom of this pane
+            if line >= top && (line - top) as u16 + virt_before >= rect.h {
+                break; // next line is past the bottom of this pane (display rows include virtual ones)
             }
             continue;
         }
         if line < top || scol >= x1 {
             continue; // above the pane, or past its right edge (truncate)
         }
-        let srow = rect.y + (line - top) as u16;
+        let disp = (line - top) as u16 + virt_before;
+        if disp >= rect.h {
+            continue; // clipped below the pane by the virtual rows above
+        }
+        let srow = rect.y + disp;
         // F-031 conceal: on a non-caret line, a concealed cluster paints NO cell and does not advance the
         // column (following glyphs shift left) — the caret line is revealed so its markup stays editable.
         // At the range's START, any virt_text (a bullet/checkbox glyph) is painted in the marker's place.
@@ -167,6 +183,46 @@ pub(crate) fn paint_pane(
                 ..base
             };
             scol = cur.put_styled(srow, scol, g, &style);
+        }
+    }
+    // A virtual block on the FINAL buffer line (a file that ends without a trailing newline) never hits the
+    // `\n` branch above, so paint it here.
+    if line >= top {
+        let disp = (line - top) as u16 + virt_before;
+        if disp < rect.h {
+            if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
+                paint_virt_block(cur, rect, disp + 1, vb);
+            }
+        }
+    }
+}
+
+/// Paint an image PLACEHOLDER block (F-031 slice 3a): `vb.height` rows from display row `disp_row` within
+/// `rect` — a `🖼 label` line, then rule lines — clipped to the pane. This is the degrade placeholder rung;
+/// a graphics-capable terminal replaces it with real pixels in slice 3b (INV-CAP-DEGRADE).
+fn paint_virt_block(cur: &mut screen::Screen, rect: Rect, disp_row: u16, vb: &highlight::VirtLine) {
+    use crossterm::style::Color;
+    use unicode_segmentation::UnicodeSegmentation;
+    let (x0, x1) = (rect.x, rect.x + rect.w);
+    for r in 0..vb.height {
+        let disp = disp_row + r;
+        if disp >= rect.h {
+            break;
+        }
+        let srow = rect.y + disp;
+        if r == 0 {
+            let label = format!("\u{1f5bc} {}", vb.label); // 🖼 alt
+            let mut col = x0;
+            for gph in label.graphemes(true) {
+                if col >= x1 {
+                    break;
+                }
+                col = cur.put(srow, col, gph, Color::DarkGrey, false);
+            }
+        } else {
+            for col in x0..x1 {
+                cur.put(srow, col, "\u{2500}", Color::DarkGrey, false); // ─
+            }
         }
     }
 }
@@ -222,6 +278,7 @@ pub(crate) fn render(
     cmd_line: Option<(char, &str)>,
     status: &str,
     spans: &[highlight::Span],
+    virt_lines: &[highlight::VirtLine],
     rects: &[Rect],
     prev: &mut screen::Screen,
     sync: bool,
@@ -301,6 +358,12 @@ pub(crate) fn render(
             } else {
                 &[]
             };
+        // Virtual blocks (image placeholders) likewise paint into the focused pane's view (F-031 slice 3a).
+        let pane_virt: &[highlight::VirtLine] = if i == ws.focus() && p.view.doc() == focus_doc {
+            virt_lines
+        } else {
+            &[]
+        };
         // F-014: underline the focused buffer's diagnostic ranges.
         let underline: Vec<(usize, usize)> = if i == ws.focus() {
             diagnostics.iter().map(|d| (d.start, d.end)).collect()
@@ -319,6 +382,7 @@ pub(crate) fn render(
             &underline,
             pane_conceal,
             caret_line,
+            pane_virt,
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -359,8 +423,12 @@ pub(crate) fn render(
                 .clamp(10, 40);
             let height = rows.len().min(10) as u16;
             // Anchor at the focused cursor's screen cell (same math the terminal cursor uses below).
-            let (crow, ccol) =
-                cursor_cell(focus.doc.bytes(), focus.view.cursor(), focus.view.top());
+            let (crow, ccol) = cursor_cell(
+                focus.doc.bytes(),
+                focus.view.cursor(),
+                focus.view.top(),
+                virt_lines,
+            );
             let frect = rects.get(ws.focus()).copied().unwrap_or(Rect {
                 x: 0,
                 y: 0,
@@ -487,7 +555,12 @@ pub(crate) fn render(
             }
             return out.flush();
         }
-        let (row, col) = cursor_cell(focus.doc.bytes(), focus.view.cursor(), focus.view.top());
+        let (row, col) = cursor_cell(
+            focus.doc.bytes(),
+            focus.view.cursor(),
+            focus.view.top(),
+            virt_lines,
+        );
         let screen_row = (frect.y + row).min(rows.saturating_sub(1));
         let screen_col = (frect.x + col).min(cols.saturating_sub(1));
         queue!(out, cursor::MoveTo(screen_col, screen_row), cursor::Show)?;
@@ -575,10 +648,16 @@ pub(crate) fn flush_diff(
 
 /// The cursor's on-screen `(row, col)`: `row` relative to the viewport `top`, `col` in DISPLAY cells
 /// (wide glyphs count 2, combining marks 0, tabs to the next stop) — grapheme-correct, not a char
-/// count (F-006 #4).
-pub(crate) fn cursor_cell(bytes: &[u8], pos: usize, top: usize) -> (u16, u16) {
+/// count (F-006 #4). `virt` adds the display rows of any virtual blocks (image placeholders) sitting
+/// between `top` and the caret's line, so the caret stays aligned with the painted rows (F-031 slice 3a).
+pub(crate) fn cursor_cell(
+    bytes: &[u8],
+    pos: usize,
+    top: usize,
+    virt: &[highlight::VirtLine],
+) -> (u16, u16) {
     let pos = pos.min(bytes.len());
-    let row = bytes[..pos].iter().filter(|&&c| c == b'\n').count();
+    let buf_row = bytes[..pos].iter().filter(|&&c| c == b'\n').count();
     let line_start = bytes[..pos]
         .iter()
         .rposition(|&c| c == b'\n')
@@ -587,7 +666,13 @@ pub(crate) fn cursor_cell(bytes: &[u8], pos: usize, top: usize) -> (u16, u16) {
     // slice — computed by the SHARED column rule, not a private re-derivation (F-031 slice 0).
     let line = std::str::from_utf8(&bytes[line_start..pos]).unwrap_or("");
     let col = line_display_col(line, line.len());
-    (row.saturating_sub(top) as u16, col)
+    // Virtual rows inserted for lines in `[top, buf_row)` push the caret down (F-031 slice 3a).
+    let virt_above: u16 = virt
+        .iter()
+        .filter(|v| v.after_line >= top && v.after_line < buf_row)
+        .map(|v| v.height)
+        .sum();
+    (buf_row.saturating_sub(top) as u16 + virt_above, col)
 }
 
 #[cfg(test)]
@@ -636,7 +721,7 @@ mod render_tests {
             ("e\u{0301}z", 3, 1), // 'e' + combining acute = one cluster, width 1
         ];
         for &(s, pos, want) in cases {
-            let (_row, col) = cursor_cell(s.as_bytes(), pos, 0);
+            let (_row, col) = cursor_cell(s.as_bytes(), pos, 0, &[]);
             assert_eq!(col, want, "caret column for {s:?} at byte {pos}");
         }
     }
@@ -676,6 +761,7 @@ mod render_tests {
             &[],
             &[],
             0,
+            &[],
         );
         assert!(cur.cell(0, 0).style.bold, "byte 0 paints bold");
         assert!(cur.cell(0, 1).style.italic, "byte 1 paints italic");
@@ -693,6 +779,7 @@ mod render_tests {
             &[],
             &[],
             0,
+            &[],
         );
         let c = sel.cell(0, 0);
         assert!(
@@ -732,6 +819,7 @@ mod render_tests {
             &[],
             &conceal,
             1,
+            &[],
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -758,6 +846,7 @@ mod render_tests {
             &[],
             &conceal,
             0,
+            &[],
         );
         assert_eq!(
             s2.cell(0, 0).content,
@@ -794,6 +883,7 @@ mod render_tests {
             &[],
             &conceal,
             1,
+            &[],
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -809,6 +899,71 @@ mod render_tests {
             s.cell(1, 0).content,
             screen::Content::Cluster("-".into()),
             "caret line revealed: raw '-' marker shows",
+        );
+    }
+
+    /// F-031 slice 3a (row model): virtual blocks above the caret's line shift the caret DOWN by their
+    /// height, so the drawn caret stays on its painted row.
+    #[test]
+    fn cursor_cell_row_accounts_for_virtual_blocks_above() {
+        let bytes = b"a\nb\nc"; // buffer lines 0, 1, 2
+        let virt = [highlight::VirtLine {
+            after_line: 0,
+            height: 2,
+            label: "img".into(),
+        }];
+        // Caret on line 2 ('c' at byte 4): row 2 + 2 virtual rows above = screen row 4.
+        assert_eq!(cursor_cell(bytes, 4, 0, &virt).0, 4);
+        // Caret on line 0 ('a' at byte 0): nothing above, row 0.
+        assert_eq!(cursor_cell(bytes, 0, 0, &virt).0, 0);
+    }
+
+    /// F-031 slice 3a (row model): a virtual block pushes the buffer lines below it DOWN, and the block's
+    /// first row shows the placeholder label.
+    #[test]
+    fn paint_pane_places_lines_below_a_virtual_block() {
+        let bytes = b"a\nb"; // line 0 "a", line 1 "b"
+        let no_style: &[screen::CellStyle] = &[];
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 8,
+            h: 5,
+        };
+        let virt = [highlight::VirtLine {
+            after_line: 0,
+            height: 2,
+            label: "x".into(),
+        }];
+        let mut s = screen::Screen::new(8, 5);
+        paint_pane(
+            &mut s,
+            rect,
+            bytes,
+            no_style,
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &[],
+            9,
+            &virt,
+        );
+        assert_eq!(
+            s.cell(0, 0).content,
+            screen::Content::Cluster("a".into()),
+            "line 0 at row 0",
+        );
+        assert_eq!(
+            s.cell(1, 0).content,
+            screen::Content::Cluster("\u{1f5bc}".into()),
+            "placeholder label (🖼) on the first block row",
+        );
+        assert_eq!(
+            s.cell(3, 0).content,
+            screen::Content::Cluster("b".into()),
+            "line 1 pushed below the 2-row block",
         );
     }
 

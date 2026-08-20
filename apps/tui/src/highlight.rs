@@ -32,6 +32,21 @@ pub struct Span {
     pub virt: Option<&'static str>,
 }
 
+/// A block of virtual display ROWS inserted after buffer line `after_line` (F-031 slice 3a). Its `height`
+/// rows are not backed by any buffer bytes; `label` is the text to show — an image's alt text, for the
+/// low-capability PLACEHOLDER rung. A graphics-capable terminal replaces the placeholder with real pixels
+/// in slice 3b (INV-CAP-DEGRADE). This is the first `virt_lines` consumer and what forces the display-row
+/// coordinate model (`cursor_cell` / `paint_pane` must count these rows).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct VirtLine {
+    pub after_line: usize,
+    pub height: u16,
+    pub label: String,
+}
+
+/// The height (display rows) of an image placeholder block — a small fixed box for slice 3a.
+const IMAGE_PLACEHOLDER_ROWS: u16 = 2;
+
 /// A configured highlighter for one language: an owned parser plus the compiled highlights query, and
 /// the compiled injections query when the grammar ships one (`None` otherwise).
 pub struct Highlight {
@@ -261,6 +276,9 @@ pub struct CachedHighlight {
     /// paragraph text as opaque `inline` nodes; this re-parses each such node's bytes to recover
     /// emphasis / strong / code-span / link structure. `Some` only when `markdown`.
     inline: Option<Parser>,
+    /// The virtual-line blocks (image placeholders) for the current frame, refreshed by [`Self::recompute`]
+    /// alongside `spans`. Empty for non-Markdown highlighters (F-031 slice 3a).
+    virt_lines: Vec<VirtLine>,
     rev: Option<Revision>,
     /// The `(revision, visible-range)` the cached spans were computed for. Spans are recomputed when
     /// EITHER changes — a new edit (revision) or a scroll (visible range) — since the query is bounded
@@ -290,6 +308,7 @@ impl CachedHighlight {
             hl: Highlight::for_ext(ext)?,
             markdown,
             inline,
+            virt_lines: Vec::new(),
             rev: None,
             key: None,
             tree: None,
@@ -321,8 +340,26 @@ impl CachedHighlight {
     }
 
     pub fn spans(&mut self, rev: Revision, src: &[u8], visible: std::ops::Range<usize>) -> &[Span] {
+        self.recompute(rev, src, visible);
+        &self.spans
+    }
+
+    /// Spans PLUS the virtual-line blocks (F-031 slice 3a: Markdown image placeholders) for the same
+    /// frame — both borrow `self` immutably, so the caller holds them together across one `render`.
+    pub fn spans_and_virt(
+        &mut self,
+        rev: Revision,
+        src: &[u8],
+        visible: std::ops::Range<usize>,
+    ) -> (&[Span], &[VirtLine]) {
+        self.recompute(rev, src, visible);
+        (&self.spans, &self.virt_lines)
+    }
+
+    /// Reparse (incrementally) if needed and refresh the cached spans + virt_lines for `(rev, visible)`.
+    fn recompute(&mut self, rev: Revision, src: &[u8], visible: std::ops::Range<usize>) {
         if self.key.as_ref() == Some(&(rev, visible.clone())) {
-            return &self.spans;
+            return;
         }
         if self.rev != Some(rev) {
             // Edit the old tree to match the new bytes so the parse reuses unchanged subtrees. No old
@@ -337,15 +374,22 @@ impl CachedHighlight {
             self.src.extend_from_slice(src);
             self.rev = Some(rev);
         }
-        self.spans = match &self.tree {
+        let (spans, virt) = match &self.tree {
             Some(tree) if self.markdown => {
-                markdown_decorations(tree, src, self.inline.as_mut(), &visible)
+                let mut virt = Vec::new();
+                let spans =
+                    markdown_decorations(tree, src, self.inline.as_mut(), &visible, &mut virt);
+                (spans, virt)
             }
-            Some(tree) => self.hl.spans_with_injections(tree, src, visible.clone()),
-            None => Vec::new(),
+            Some(tree) => (
+                self.hl.spans_with_injections(tree, src, visible.clone()),
+                Vec::new(),
+            ),
+            None => (Vec::new(), Vec::new()),
         };
+        self.spans = spans;
+        self.virt_lines = virt;
         self.key = Some((rev, visible));
-        &self.spans
     }
 }
 
@@ -513,6 +557,7 @@ fn markdown_decorations(
     src: &[u8],
     mut inline: Option<&mut Parser>,
     visible: &std::ops::Range<usize>,
+    out_virt: &mut Vec<VirtLine>,
 ) -> Vec<Span> {
     let mut spans = Vec::new();
     let mut stack = vec![tree.root_node()];
@@ -554,7 +599,7 @@ fn markdown_decorations(
         // reach here — the heading arm `continue`s above.)
         if node.kind() == "inline" {
             if let Some(parser) = inline.as_deref_mut() {
-                inline_decorations(node, src, parser, visible, &mut spans);
+                inline_decorations(node, src, parser, visible, &mut spans, out_virt);
             }
             continue;
         }
@@ -630,6 +675,7 @@ fn inline_decorations(
     parser: &mut Parser,
     visible: &std::ops::Range<usize>,
     out: &mut Vec<Span>,
+    out_virt: &mut Vec<VirtLine>,
 ) {
     let region = inline_node.byte_range();
     let Some(slice) = src.get(region.clone()) else {
@@ -714,6 +760,34 @@ fn inline_decorations(
                     emit(ts, te, face_for("markup.link"), false);
                     emit(te, node.end_byte(), CellStyle::default(), true);
                 }
+            }
+            // `![alt](url)`: hide the raw markup on the source line and reserve a placeholder BLOCK below
+            // it (F-031 slice 3a). Real pixels replace the block on a graphics-capable terminal (3b).
+            "image" => {
+                let after_line = ruse_core::pos::line_of(src, base + node.start_byte());
+                let alt = {
+                    let mut cur = node.walk();
+                    let desc = node
+                        .children(&mut cur)
+                        .find(|c| c.kind() == "image_description")
+                        .map(|c| (c.start_byte(), c.end_byte()));
+                    desc.and_then(|(s, e)| slice.get(s..e))
+                        .and_then(|b| std::str::from_utf8(b).ok())
+                        .unwrap_or("image")
+                        .to_string()
+                };
+                emit(
+                    node.start_byte(),
+                    node.end_byte(),
+                    CellStyle::default(),
+                    true,
+                );
+                out_virt.push(VirtLine {
+                    after_line,
+                    height: IMAGE_PLACEHOLDER_ROWS,
+                    label: alt,
+                });
+                continue; // don't descend into the image's alt/url children
             }
             _ => {}
         }
@@ -898,6 +972,28 @@ mod tests {
                 .iter()
                 .any(|s| s.start == 2 && s.end == 3 && s.conceal),
             "heading content is not inline-reparsed; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_image_makes_a_virtline_placeholder() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"text\n\n![a cat](cat.png)\n\nmore\n";
+        let (spans, virt) = h.spans_and_virt(Revision(0), src, all(src));
+        assert_eq!(
+            virt.len(),
+            1,
+            "one image -> one placeholder block; got {virt:?}"
+        );
+        assert_eq!(virt[0].label, "a cat", "the alt text is the block label");
+        assert_eq!(
+            virt[0].after_line, 2,
+            "block sits on the image's buffer line (0-based)"
+        );
+        assert!(virt[0].height >= 1);
+        assert!(
+            spans.iter().any(|s| s.conceal),
+            "the raw image markup is concealed; got {spans:?}",
         );
     }
 
