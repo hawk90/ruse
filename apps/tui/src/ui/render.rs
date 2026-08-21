@@ -109,13 +109,15 @@ pub(crate) fn paint_pane(
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
-    // When a graphics-capable terminal will draw the real image, the block's cells must stay BLANK — some
-    // terminals (Ghostty) draw text ABOVE images, so a painted placeholder would COVER the image (§8.3).
-    // Paint the placeholder box only when we are NOT going to overlay real pixels there.
-    let paint_block = |cur: &mut screen::Screen, disp_row: u16, vb: &highlight::VirtLine| {
-        if !(graphics_on && vb.path.is_some()) {
-            paint_virt_block(cur, rect, disp_row, vb);
-        }
+    // A graphics-capable terminal shows the real image via Unicode PLACEHOLDER cells (§8.8): the cell grid
+    // itself carries the image, so tmux renders it at the correct pane position. Otherwise paint the text
+    // placeholder box.
+    let paint_block = |cur: &mut screen::Screen, disp_row: u16, vb: &highlight::VirtLine| match (
+        graphics_on,
+        &vb.path,
+    ) {
+        (true, Some(path)) => paint_image_cells(cur, rect, disp_row, vb.height, path),
+        _ => paint_virt_block(cur, rect, disp_row, vb),
     };
     if rect.w == 0 || rect.h == 0 {
         return;
@@ -224,10 +226,37 @@ fn collect_image(
             graphics::Placement {
                 row: rect.y + disp_row,
                 col: rect.x,
-                cols: rect.w,
+                cols: rect.w.min(graphics::MAX_PLACEHOLDER),
                 rows: vb.height,
             },
         ));
+    }
+}
+
+/// Paint an image's Unicode PLACEHOLDER cells (F-031 slice 3b-2c): `rows × cols` cells, each holding the
+/// placeholder char + row/col diacritics with `fg` = the image id encoded as RGB. The terminal composites
+/// the image slice into each cell, so positioning rides the normal cell grid (correct inside a tmux pane).
+fn paint_image_cells(cur: &mut screen::Screen, rect: Rect, disp_row: u16, rows: u16, path: &str) {
+    let id = graphics::image_id(path);
+    let (r, g, b) = graphics::id_rgb(id);
+    let style = screen::CellStyle {
+        fg: crossterm::style::Color::Rgb { r, g, b },
+        ..screen::CellStyle::default()
+    };
+    let cols = rect.w.min(graphics::MAX_PLACEHOLDER);
+    for ir in 0..rows {
+        if disp_row + ir >= rect.h {
+            break;
+        }
+        let srow = rect.y + disp_row + ir;
+        for ic in 0..cols {
+            cur.put_styled(
+                srow,
+                rect.x + ic,
+                &graphics::placeholder_cell(ir, ic),
+                &style,
+            );
+        }
     }
 }
 
