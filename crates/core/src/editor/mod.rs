@@ -1063,7 +1063,7 @@ impl EditorState {
     pub fn set_register_raw(&mut self, name: Option<char>, bytes: Vec<u8>) {
         self.view
             .registers
-            .write(name, crate::register::Register::charwise(bytes));
+            .set_macro(name, crate::register::Register::charwise(bytes));
     }
 
     /// The highlighted byte range `[start, end)` of the current charwise/linewise Visual selection, or

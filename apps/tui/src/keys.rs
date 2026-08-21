@@ -37,9 +37,10 @@ pub fn enqueue_macro(queue: &mut VecDeque<KeyEvent>, budget: &mut u32, bytes: &[
 /// [`Step::Replay`] hand the register name back to the caller.
 #[derive(Default)]
 pub struct MacroState {
-    recording: Option<(char, Vec<KeyEvent>)>,
+    recording: Option<(char, Vec<KeyEvent>)>, // register name (case preserved: UPPER = append on stop)
     pending_q: bool,  // `q` armed: the next key names the register to record INTO
     pending_at: bool, // `@` armed: the next key names the register to REPLAY
+    last_played: Option<char>, // the last register replayed, for `@@`
     queue: VecDeque<KeyEvent>,
     budget: u32,
 }
@@ -59,12 +60,6 @@ pub enum Step {
 
 fn is_bare(key: KeyEvent, c: char) -> bool {
     key.code == KeyCode::Char(c) && key.modifiers.is_empty()
-}
-fn letter(key: KeyEvent) -> Option<char> {
-    match key.code {
-        KeyCode::Char(c @ 'a'..='z') => Some(c),
-        _ => None,
-    }
 }
 
 impl MacroState {
@@ -118,19 +113,32 @@ impl MacroState {
                 buf.push(key);
             }
         }
-        // Register-name after `q` — start recording into it (a non-letter aborts the arm).
+        // Register-name after `q` — start recording into it. A lowercase name overwrites, an UPPERCASE name
+        // appends (`qA` extends macro a); the case is preserved and honoured at [`Step::Store`] time. A
+        // non-letter aborts the arm.
         if self.pending_q {
             self.pending_q = false;
-            if let Some(c) = letter(key) {
-                self.recording = Some((c, Vec::new()));
+            if let KeyCode::Char(c) = key.code {
+                if c.is_ascii_alphabetic() {
+                    self.recording = Some((c, Vec::new()));
+                }
             }
             return Step::Consumed;
         }
-        // Register-name after `@` — hand the name back so the caller can read + replay it.
+        // Register-name after `@` — resolve the register (any-case letter → lowercase slot; `@@` repeats the
+        // last macro) and hand it back so the caller reads + replays it.
         if self.pending_at {
             self.pending_at = false;
-            return match letter(key) {
-                Some(c) => Step::Replay(c),
+            let target = match key.code {
+                KeyCode::Char(c) if c.is_ascii_alphabetic() => Some(c.to_ascii_lowercase()),
+                KeyCode::Char('@') => self.last_played, // `@@` — repeat the last-played macro
+                _ => None,
+            };
+            return match target {
+                Some(c) => {
+                    self.last_played = Some(c);
+                    Step::Replay(c)
+                }
                 None => Step::Consumed,
             };
         }
@@ -396,6 +404,56 @@ mod tests {
             bytes, b"@b",
             "the literal @b was recorded; the replayed y was not"
         );
+    }
+
+    #[test]
+    fn at_at_repeats_the_last_played_macro() {
+        let mut m = MacroState::new();
+        m.step(ch('@'), false, true);
+        assert_eq!(
+            m.step(ch('a'), false, true),
+            Step::Replay('a'),
+            "@a plays a"
+        );
+        m.step(ch('@'), false, true);
+        assert_eq!(
+            m.step(ch('@'), false, true),
+            Step::Replay('a'),
+            "@@ repeats a"
+        );
+    }
+
+    #[test]
+    fn at_at_before_any_play_is_a_noop() {
+        let mut m = MacroState::new();
+        m.step(ch('@'), false, true);
+        assert_eq!(
+            m.step(ch('@'), false, true),
+            Step::Consumed,
+            "nothing to repeat yet"
+        );
+    }
+
+    #[test]
+    fn uppercase_q_records_for_append_and_uppercase_at_reads_lowercase() {
+        let mut m = MacroState::new();
+        m.step(ch('q'), false, true);
+        m.step(ch('A'), false, true); // record into A → append to a
+        assert!(m.is_recording());
+        m.step(ch('x'), false, true);
+        match m.step(ch('q'), false, true) {
+            Step::Store(reg, bytes) => {
+                assert_eq!(
+                    reg, 'A',
+                    "append is signalled by the uppercase register name"
+                );
+                assert_eq!(bytes, b"x");
+            }
+            other => panic!("expected Store, got {other:?}"),
+        }
+        // `@A` plays the lowercase slot a.
+        m.step(ch('@'), false, true);
+        assert_eq!(m.step(ch('A'), false, true), Step::Replay('a'));
     }
 
     #[test]

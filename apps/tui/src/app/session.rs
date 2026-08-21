@@ -459,9 +459,16 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 continue;
             }
             crate::keys::Step::Replay(reg) => {
+                // `{count}@{reg}` repeats the macro `count` times; the count was accumulated by the engine
+                // from the digits typed before `@`, so consume it here. The recursion budget is shared
+                // across all copies, so `999@a` of a big macro still terminates.
+                let n = engine.take_count().max(1);
                 let bytes = ws.register_bytes(Some(reg));
-                if !macros.replay(&bytes) {
-                    status = "macro replay aborted (key limit)".to_string();
+                for _ in 0..n {
+                    if !macros.replay(&bytes) {
+                        status = "macro replay aborted (key limit)".to_string();
+                        break;
+                    }
                 }
                 continue;
             }
