@@ -689,6 +689,33 @@ fn markdown_decorations(
                 }
             }
         }
+        // A Markdown table (tree-sitter-md pipe_table): the HEADER row is faced bold and the DELIMITER row
+        // (`|---|---|`) dimmed. Neither `continue`s — the walk descends so cell inline markup still parses;
+        // the shorter inline spans sort after these longer ones and win. Data-row `|` dimming is a follow-up.
+        if node.kind() == "pipe_table_header" {
+            let (s, e) = (node.start_byte(), node.end_byte());
+            if s < visible.end && e > visible.start {
+                spans.push(Span {
+                    start: s,
+                    end: e,
+                    style: face_for("markup.strong"),
+                    conceal: false,
+                    virt: None,
+                });
+            }
+        }
+        if node.kind() == "pipe_table_delimiter_row" {
+            let (s, e) = (node.start_byte(), node.end_byte());
+            if s < visible.end && e > visible.start {
+                spans.push(Span {
+                    start: s,
+                    end: e,
+                    style: face_for("comment"),
+                    conceal: false,
+                    virt: None,
+                });
+            }
+        }
         // A fenced code block's info string (the ```lang tag): face the language label dim so it reads as
         // a distinct tag rather than plain text. The body is left to the injection query (known languages
         // are highlighted; unknown ones stay plain). Faces the whole info_string span; falls through.
@@ -1104,6 +1131,28 @@ mod tests {
                 .iter()
                 .any(|s| s.conceal && s.virt == Some("\u{2611} ")),
             "task `[x]` -> checked box virt; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_table_header_bold_and_delimiter_dim() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"| a | b |\n|---|---|\n| 1 | 2 |\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // The header row (bytes 0..9) carries a bold face.
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 0 && !s.conceal && s.style.bold),
+            "header row is bold; got {spans:?}",
+        );
+        // The delimiter row (starts at byte 10) is dimmed (DarkGrey).
+        let delim = "| a | b |\n".len();
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == delim && !s.conceal && s.style.fg == Color::DarkGrey),
+            "delimiter row is dimmed; got {spans:?}",
         );
     }
 
