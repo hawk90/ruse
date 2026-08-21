@@ -105,9 +105,18 @@ pub(crate) fn paint_pane(
     caret_line: usize,
     virt: &[highlight::VirtLine],
     out_images: &mut Vec<(String, graphics::Placement)>,
+    graphics_on: bool,
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
+    // When a graphics-capable terminal will draw the real image, the block's cells must stay BLANK — some
+    // terminals (Ghostty) draw text ABOVE images, so a painted placeholder would COVER the image (§8.3).
+    // Paint the placeholder box only when we are NOT going to overlay real pixels there.
+    let paint_block = |cur: &mut screen::Screen, disp_row: u16, vb: &highlight::VirtLine| {
+        if !(graphics_on && vb.path.is_some()) {
+            paint_virt_block(cur, rect, disp_row, vb);
+        }
+    };
     if rect.w == 0 || rect.h == 0 {
         return;
     }
@@ -125,7 +134,7 @@ pub(crate) fn paint_pane(
             if line >= top {
                 let disp = (line - top) as u16 + virt_before;
                 if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
-                    paint_virt_block(cur, rect, disp + 1, vb);
+                    paint_block(cur, disp + 1, vb);
                     collect_image(out_images, rect, disp + 1, vb);
                     virt_before += vb.height;
                 }
@@ -193,7 +202,7 @@ pub(crate) fn paint_pane(
         let disp = (line - top) as u16 + virt_before;
         if disp < rect.h {
             if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
-                paint_virt_block(cur, rect, disp + 1, vb);
+                paint_block(cur, disp + 1, vb);
                 collect_image(out_images, rect, disp + 1, vb);
             }
         }
@@ -312,6 +321,7 @@ pub(crate) fn render(
     terminals: &TermViews,
     diagnostics: &[crate::lsp::Diag],
     completion: Option<(&[crate::lsp::protocol::CompletionItem], usize)>,
+    graphics_on: bool,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
@@ -412,6 +422,7 @@ pub(crate) fn render(
             caret_line,
             pane_virt,
             &mut images,
+            graphics_on,
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -794,6 +805,7 @@ mod render_tests {
             0,
             &[],
             &mut Vec::new(),
+            false,
         );
         assert!(cur.cell(0, 0).style.bold, "byte 0 paints bold");
         assert!(cur.cell(0, 1).style.italic, "byte 1 paints italic");
@@ -813,6 +825,7 @@ mod render_tests {
             0,
             &[],
             &mut Vec::new(),
+            false,
         );
         let c = sel.cell(0, 0);
         assert!(
@@ -854,6 +867,7 @@ mod render_tests {
             1,
             &[],
             &mut Vec::new(),
+            false,
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -882,6 +896,7 @@ mod render_tests {
             0,
             &[],
             &mut Vec::new(),
+            false,
         );
         assert_eq!(
             s2.cell(0, 0).content,
@@ -920,6 +935,7 @@ mod render_tests {
             1,
             &[],
             &mut Vec::new(),
+            false,
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -988,6 +1004,7 @@ mod render_tests {
             9,
             &virt,
             &mut Vec::new(),
+            false,
         );
         assert_eq!(
             s.cell(0, 0).content,

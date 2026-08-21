@@ -356,6 +356,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             &term_views,
             focus_diags,
             lsp.completion_view(),
+            has_graphics,
         )?;
         // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
         // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).

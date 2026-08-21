@@ -65,8 +65,9 @@ pub fn transmit_png(id: ImageId, png: &[u8]) -> Vec<u8> {
         let more = if chunks.peek().is_some() { 1 } else { 0 };
         out.extend_from_slice(b"\x1b_G");
         if first {
-            // Only the FIRST chunk carries the control keys; continuations carry `m` alone.
-            out.extend_from_slice(format!("a=t,f=100,i={id},m={more}").as_bytes());
+            // Only the FIRST chunk carries the control keys; continuations carry `m` alone. `q=2`
+            // suppresses the terminal's OK/error reply so it never lands in the editor's input stream.
+            out.extend_from_slice(format!("a=t,f=100,i={id},q=2,m={more}").as_bytes());
             first = false;
         } else {
             out.extend_from_slice(format!("m={more}").as_bytes());
@@ -81,7 +82,7 @@ pub fn transmit_png(id: ImageId, png: &[u8]) -> Vec<u8> {
 /// The `a=p` PLACE command — display image `id` in a `cols × rows` cell box. The caller moves the cursor
 /// to the target `(row, col)` first (a `CSI <row>;<col> H`), which [`move_cursor`] builds.
 pub fn place(id: ImageId, cols: u16, rows: u16) -> Vec<u8> {
-    format!("\x1b_Ga=p,i={id},p={PLACEMENT_ID},c={cols},r={rows}\x1b\\").into_bytes()
+    format!("\x1b_Ga=p,i={id},p={PLACEMENT_ID},q=2,c={cols},r={rows}\x1b\\").into_bytes()
 }
 
 /// A `CSI <row>;<col> H` cursor move (1-based), for positioning a placement.
@@ -233,7 +234,7 @@ mod tests {
         let out = transmit_png(7, &big);
         let s = String::from_utf8_lossy(&out);
         assert!(
-            s.starts_with("\x1b_Ga=t,f=100,i=7,m=1;"),
+            s.starts_with("\x1b_Ga=t,f=100,i=7,q=2,m=1;"),
             "first chunk carries the keys"
         );
         assert!(s.contains("\x1b_Gm=0;"), "the last chunk is marked m=0");
@@ -243,7 +244,7 @@ mod tests {
 
     #[test]
     fn place_delete_free_commands() {
-        assert_eq!(place(5, 20, 8), b"\x1b_Ga=p,i=5,p=1,c=20,r=8\x1b\\");
+        assert_eq!(place(5, 20, 8), b"\x1b_Ga=p,i=5,p=1,q=2,c=20,r=8\x1b\\");
         assert_eq!(delete_placement(5), b"\x1b_Ga=d,d=i,i=5,p=1\x1b\\");
         assert_eq!(free_image(5), b"\x1b_Ga=d,d=I,i=5\x1b\\");
         assert_eq!(move_cursor(2, 4), b"\x1b[3;5H"); // 0-based -> 1-based CSI
