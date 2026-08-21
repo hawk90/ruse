@@ -183,6 +183,22 @@ impl RegisterStore {
         }
     }
 
+    /// Store a MACRO into a named register (D-055): a lowercase name OVERWRITES its slot, an uppercase name
+    /// APPENDS to it (`qA` extends macro `a`). Unlike [`RegisterStore::write`], this does NOT mirror into the
+    /// unnamed slot — recording a macro must not clobber the paste register (Vim behaviour). A non-letter
+    /// name is ignored (a macro must name `a`-`z`/`A`-`Z`).
+    pub fn set_macro(&mut self, name: Option<char>, reg: Register) {
+        if let Some(c) = name {
+            if let Some(i) = Self::index(c) {
+                self.named[i] = if c.is_ascii_uppercase() {
+                    append(&self.named[i], &reg)
+                } else {
+                    reg
+                };
+            }
+        }
+    }
+
     /// Write a captured value on a YANK. Same slot routing as [`RegisterStore::write`], plus: an
     /// unregistered yank (`name` is `None`) ALSO seeds the yank register `"0` (Vim `:help quote0`). A yank
     /// into a named register does NOT touch `"0`.
@@ -339,5 +355,21 @@ mod tests {
             "uppercase reads the same slot"
         );
         assert!(s.get(Some('q')).is_empty(), "an untouched slot is empty");
+    }
+
+    #[test]
+    fn set_macro_appends_uppercase_and_never_mirrors_unnamed() {
+        let mut s = RegisterStore::new();
+        // Lowercase overwrites, and (unlike write) does NOT touch the unnamed slot (D-055).
+        s.set_macro(Some('a'), Register::charwise(b"iZ".to_vec()));
+        assert_eq!(s.get(Some('a')).text(), b"iZ");
+        assert!(
+            s.unnamed().is_empty(),
+            "recording a macro must not clobber the paste register"
+        );
+        // Uppercase appends onto the same slot (`qA`), still without mirroring.
+        s.set_macro(Some('A'), Register::charwise(b"jj".to_vec()));
+        assert_eq!(s.get(Some('a')).text(), b"iZjj", "uppercase name appends");
+        assert!(s.unnamed().is_empty(), "still no unnamed mirror");
     }
 }
