@@ -3,7 +3,7 @@
 //! (slice 3b-2b) does the file IO and writes the bytes. No `image` crate — Kitty decodes PNG itself
 //! (`f=100`), so we hand it the file's raw bytes. See docs/design/rich-rendering.md §8.3-8.7.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// Base64 (standard alphabet, padded) — the encoding Kitty payloads use. Hand-rolled to avoid a dep.
 pub fn base64(data: &[u8]) -> String {
@@ -34,9 +34,6 @@ pub fn base64(data: &[u8]) -> String {
 
 /// A resident image's id (stable per source — e.g. a hash of its path + mtime; assigned by the caller).
 pub type ImageId = u32;
-
-/// One placement identifier per image in this slice (a single on-screen copy).
-const PLACEMENT_ID: u32 = 1;
 
 /// The base64 chunk size Kitty accepts per `APC` (payload is split into `m=1` continuations).
 const CHUNK: usize = 4096;
@@ -79,27 +76,6 @@ pub fn transmit_png(id: ImageId, png: &[u8]) -> Vec<u8> {
     out
 }
 
-/// The `a=p` PLACE command — display image `id` in a `cols × rows` cell box. The caller moves the cursor
-/// to the target `(row, col)` first (a `CSI <row>;<col> H`), which [`move_cursor`] builds.
-pub fn place(id: ImageId, cols: u16, rows: u16) -> Vec<u8> {
-    format!("\x1b_Ga=p,i={id},p={PLACEMENT_ID},q=2,c={cols},r={rows}\x1b\\").into_bytes()
-}
-
-/// A `CSI <row>;<col> H` cursor move (1-based), for positioning a placement.
-pub fn move_cursor(row: u16, col: u16) -> Vec<u8> {
-    format!("\x1b[{};{}H", row + 1, col + 1).into_bytes()
-}
-
-/// The `a=d,d=i` DELETE-placement command — removes the on-screen copy but keeps the transmitted image.
-pub fn delete_placement(id: ImageId) -> Vec<u8> {
-    format!("\x1b_Ga=d,d=i,i={id},p={PLACEMENT_ID}\x1b\\").into_bytes()
-}
-
-/// The `a=d,d=I` FREE-image command — releases the transmitted image (on cache eviction).
-pub fn free_image(id: ImageId) -> Vec<u8> {
-    format!("\x1b_Ga=d,d=I,i={id}\x1b\\").into_bytes()
-}
-
 /// `a=d,d=A` — delete ALL placements and free ALL images. Emitted on exit so no inline image is left
 /// drawn on the terminal after the editor quits (F-031 slice 3b-2b cleanup).
 pub fn delete_all() -> Vec<u8> {
@@ -138,46 +114,6 @@ pub fn fit_cols(img_w: u32, img_h: u32, rows: u16, cell_aspect: f32, max_cols: u
     }
     let cols = (f32::from(rows) / cell_aspect * (img_w as f32 / img_h as f32)).round();
     (cols as u16).clamp(1, max_cols)
-}
-
-/// One reconciliation op the render loop turns into bytes (reading the file only for `Transmit`).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GraphicsOp {
-    /// Transmit the (not-yet-resident) image before its first placement.
-    Transmit(ImageId),
-    /// Place / re-place an image at a new cell rectangle.
-    Place { id: ImageId, at: Placement },
-    /// Remove an on-screen placement no longer visible (the image stays resident).
-    DeletePlacement(ImageId),
-}
-
-/// Reconcile the previous placements against what is visible NOW (§8.3): transmit newly-resident images,
-/// (re)place new or moved ones, delete those scrolled off, and emit nothing for an unchanged placement —
-/// mirroring the cell diff's still-frame silence. `placed` and `resident` are updated to the new state.
-pub fn reconcile(
-    placed: &mut HashMap<ImageId, Placement>,
-    resident: &mut HashSet<ImageId>,
-    visible: &[(ImageId, Placement)],
-) -> Vec<GraphicsOp> {
-    let now: HashMap<ImageId, Placement> = visible.iter().copied().collect();
-    let mut ops = Vec::new();
-    // Deletes first: previously placed, not visible now.
-    for &id in placed.keys() {
-        if !now.contains_key(&id) {
-            ops.push(GraphicsOp::DeletePlacement(id));
-        }
-    }
-    // Transmit (once) + place (new or moved). Unchanged placements emit nothing.
-    for &(id, at) in visible {
-        if resident.insert(id) {
-            ops.push(GraphicsOp::Transmit(id));
-        }
-        if placed.get(&id) != Some(&at) {
-            ops.push(GraphicsOp::Place { id, at });
-        }
-    }
-    *placed = now;
-    ops
 }
 
 /// Wrap a raw terminal escape in the tmux PASSTHROUGH envelope (`\x1bPtmux; … \x1b\\`) so tmux forwards it
@@ -339,14 +275,6 @@ mod tests {
     }
 
     #[test]
-    fn place_delete_free_commands() {
-        assert_eq!(place(5, 20, 8), b"\x1b_Ga=p,i=5,p=1,q=2,c=20,r=8\x1b\\");
-        assert_eq!(delete_placement(5), b"\x1b_Ga=d,d=i,i=5,p=1\x1b\\");
-        assert_eq!(free_image(5), b"\x1b_Ga=d,d=I,i=5\x1b\\");
-        assert_eq!(move_cursor(2, 4), b"\x1b[3;5H"); // 0-based -> 1-based CSI
-    }
-
-    #[test]
     fn png_dimensions_reads_ihdr_and_rejects_non_png() {
         // Minimal PNG header: signature + IHDR length + "IHDR" + 4x4 dimensions.
         let mut png = vec![0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n'];
@@ -457,37 +385,6 @@ mod tests {
         assert!(
             buf.windows(3).any(|w| w == b"U=1"),
             "virtual placement carried"
-        );
-    }
-
-    #[test]
-    fn reconcile_transmits_places_moves_and_deletes() {
-        let mut placed = HashMap::new();
-        let mut resident = HashSet::new();
-        let a = Placement {
-            row: 1,
-            col: 0,
-            cols: 20,
-            rows: 5,
-        };
-        // First frame: image 1 newly visible -> transmit + place.
-        let ops = reconcile(&mut placed, &mut resident, &[(1, a)]);
-        assert_eq!(
-            ops,
-            vec![GraphicsOp::Transmit(1), GraphicsOp::Place { id: 1, at: a }]
-        );
-        // Same position next frame -> nothing (still-frame silence; already resident).
-        assert!(reconcile(&mut placed, &mut resident, &[(1, a)]).is_empty());
-        // Moved -> re-place only (no re-transmit).
-        let b = Placement { row: 3, ..a };
-        assert_eq!(
-            reconcile(&mut placed, &mut resident, &[(1, b)]),
-            vec![GraphicsOp::Place { id: 1, at: b }],
-        );
-        // Scrolled off -> delete the placement.
-        assert_eq!(
-            reconcile(&mut placed, &mut resident, &[]),
-            vec![GraphicsOp::DeletePlacement(1)],
         );
     }
 }
