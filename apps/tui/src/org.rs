@@ -49,23 +49,49 @@ fn bullet(start: usize, end: usize, glyph: &'static str) -> Span {
 }
 
 /// Org decorations for the `visible` byte range of `src`. Line-oriented: headings (leading `*` run),
-/// list bullets / checkboxes, and inline links + emphasis. No virtual-line blocks in this slice (Org
-/// images `[[file:...]]` are a follow-up), so the `VirtLine` vec is always empty.
-pub fn decorations(src: &[u8], visible: &Range<usize>) -> (Vec<Span>, Vec<VirtLine>) {
+/// list bullets / checkboxes, inline links + emphasis, and inline IMAGES — a description-less
+/// `[[file:x.png]]` link conceals its markup and reserves an `image_rows`-tall block below (mirrors
+/// Markdown `![](…)`; the render loop draws real pixels or the text fallback via the returned `VirtLine`).
+pub fn decorations(
+    src: &[u8],
+    visible: &Range<usize>,
+    image_rows: u16,
+) -> (Vec<Span>, Vec<VirtLine>) {
     let text = std::str::from_utf8(src).unwrap_or("");
     let mut spans = Vec::new();
+    let mut virt = Vec::new();
     let mut base = 0usize;
-    for line in text.split_inclusive('\n') {
+    for (line_idx, line) in text.split_inclusive('\n').enumerate() {
         let content = line.strip_suffix('\n').unwrap_or(line);
         if base < visible.end && base + line.len() > visible.start {
-            scan_line(content, base, &mut spans);
+            scan_line(content, base, line_idx, image_rows, &mut spans, &mut virt);
         }
         base += line.len();
     }
-    (spans, Vec::new())
+    (spans, virt)
 }
 
-fn scan_line(content: &str, base: usize, out: &mut Vec<Span>) {
+/// The image file `path` if `target` is an Org image link destination — a `file:`-prefixed or bare path
+/// ending in a known image extension. `None` for a non-image link (a URL, a `.org`/`.txt` target, …).
+fn image_path(target: &str) -> Option<String> {
+    let p = target.strip_prefix("file:").unwrap_or(target);
+    let ext = p.rsplit('.').next()?.to_ascii_lowercase();
+    matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "svg"
+    )
+    .then(|| p.to_string())
+}
+
+#[allow(clippy::too_many_arguments)] // a line scan legitimately needs the full decoration context
+fn scan_line(
+    content: &str,
+    base: usize,
+    line_idx: usize,
+    image_rows: u16,
+    out: &mut Vec<Span>,
+    out_virt: &mut Vec<VirtLine>,
+) {
     let b = content.as_bytes();
     // Heading: a leading run of `*` then a space — conceal `«stars» ` and face the title.
     let stars = b.iter().take_while(|&&c| c == b'*').count();
@@ -99,13 +125,24 @@ fn scan_line(content: &str, base: usize, out: &mut Vec<Span>) {
                 ("\u{2022} ", indent + 2)
             };
         out.push(bullet(base + indent, base + prefix_end, glyph));
-        scan_inline(content, prefix_end, base, out);
+        scan_inline(
+            content, prefix_end, base, line_idx, image_rows, out, out_virt,
+        );
         return;
     }
-    scan_inline(content, 0, base, out);
+    scan_inline(content, 0, base, line_idx, image_rows, out, out_virt);
 }
 
-fn scan_inline(content: &str, from: usize, base: usize, out: &mut Vec<Span>) {
+#[allow(clippy::too_many_arguments)] // the inline scan carries the same decoration context as scan_line
+fn scan_inline(
+    content: &str,
+    from: usize,
+    base: usize,
+    line_idx: usize,
+    image_rows: u16,
+    out: &mut Vec<Span>,
+    out_virt: &mut Vec<VirtLine>,
+) {
     let b = content.as_bytes();
     let mut i = from;
     while i < b.len() {
@@ -117,6 +154,20 @@ fn scan_inline(content: &str, from: usize, base: usize, out: &mut Vec<Span>) {
                     let label_start = i + 2 + sep + 2;
                     out.push(conceal(base + i, base + label_start));
                     out.push(faced(base + label_start, base + close, "markup.link"));
+                } else if let Some(path) = image_path(inner) {
+                    // A description-less image link: conceal the whole `[[…]]` on the source line and
+                    // reserve an image block below it (F-031). Real pixels / text fallback come from the
+                    // render loop reading `path` — the same VirtLine channel Markdown `![](…)` uses.
+                    out.push(conceal(base + i, base + close + 2));
+                    let label = path.rsplit('/').next().unwrap_or(&path).to_string();
+                    out_virt.push(VirtLine {
+                        after_line: line_idx,
+                        height: image_rows,
+                        label,
+                        path: Some(path),
+                    });
+                    i = close + 2;
+                    continue;
                 } else {
                     out.push(conceal(base + i, base + i + 2));
                     out.push(faced(base + i + 2, base + close, "markup.link"));
@@ -193,7 +244,10 @@ mod tests {
     use super::*;
 
     fn spans(src: &str) -> Vec<Span> {
-        decorations(src.as_bytes(), &(0..src.len())).0
+        decorations(src.as_bytes(), &(0..src.len()), 12).0
+    }
+    fn virt(src: &str) -> Vec<VirtLine> {
+        decorations(src.as_bytes(), &(0..src.len()), 12).1
     }
 
     #[test]
@@ -246,6 +300,47 @@ mod tests {
         assert!(
             s.iter().filter(|x| x.conceal).count() >= 2,
             "target + brackets concealed"
+        );
+    }
+
+    #[test]
+    fn image_link_reserves_a_block_and_conceals_markup() {
+        // A description-less image link on line 1 → concealed markup + one VirtLine after line 1.
+        let src = "before\n[[file:/tmp/pic.png]]\nafter\n";
+        let v = virt(src);
+        assert_eq!(v.len(), 1, "one image block; got {v:?}");
+        assert_eq!(v[0].after_line, 1, "block sits after the link's line");
+        assert_eq!(v[0].height, 12, "reserves the graphics-height rows");
+        assert_eq!(
+            v[0].path.as_deref(),
+            Some("/tmp/pic.png"),
+            "file: prefix stripped"
+        );
+        assert_eq!(v[0].label, "pic.png", "label is the basename");
+        // The whole [[…]] is concealed on the source line.
+        let base = "before\n".len();
+        let s = spans(src);
+        assert!(
+            s.iter().any(|x| x.conceal && x.start == base),
+            "link markup concealed; got {s:?}",
+        );
+    }
+
+    #[test]
+    fn described_link_and_non_image_target_are_not_images() {
+        // A link WITH a description is a normal link even if it points at an image.
+        assert!(
+            virt("[[file:/tmp/pic.png][a pic]]\n").is_empty(),
+            "described link is not inlined"
+        );
+        // A non-image target reserves no block.
+        assert!(
+            virt("[[https://example.com]]\n").is_empty(),
+            "URL is not an image"
+        );
+        assert!(
+            virt("[[file:notes.org]]\n").is_empty(),
+            ".org is not an image"
         );
     }
 

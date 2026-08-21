@@ -389,7 +389,7 @@ impl CachedHighlight {
         }
         // Org is a pure line scanner — no tree-sitter parse (F-031 slice 4). Short-circuit before the tree.
         if self.org {
-            let (spans, virt) = crate::org::decorations(src, &visible);
+            let (spans, virt) = crate::org::decorations(src, &visible, self.image_rows);
             self.spans = spans;
             self.virt_lines = virt;
             self.key = Some((rev, visible));
