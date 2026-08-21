@@ -710,6 +710,33 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn gi_resumes_insert_at_the_last_insert_position() {
+        // Insert "XY" at the start of line 2, leave Insert, move to line 1, `gi` returns to Insert there.
+        let st = run(
+            "ab\ncd",
+            &[
+                Command::Move(1, Motion::Down), // line 2 start (byte 3)
+                Command::EnterInsert,
+                Command::InsertChar('X'),
+                Command::InsertChar('Y'), // caret now at byte 5
+                Command::EnterNormal,     // leaving Insert records `^ at the caret
+                Command::Move(1, Motion::Up),
+                Command::InsertAtLastInsert,
+            ],
+        );
+        assert_eq!(st.mode(), Mode::Insert, "gi enters Insert");
+        assert_eq!(st.cursor(), 5, "gi resumes at the last-insert caret");
+        assert_eq!(text(&st), "ab\nXYcd", "no text change from gi itself");
+    }
+
+    #[test]
+    fn gi_before_any_insert_goes_to_start() {
+        let st = run("abc", &[Command::InsertAtLastInsert]);
+        assert_eq!(st.mode(), Mode::Insert);
+        assert_eq!(st.cursor(), 0, "no prior insert → start of buffer");
+    }
+
+    #[test]
     fn named_mark_snaps_after_a_shrinking_edit() {
         // Mark near the end, then delete most of the buffer; the mark must stay in range (no panic on jump).
         let st = run(

@@ -1256,6 +1256,7 @@ mod tests {
         assert_eq!(feed("g,"), Feed::Cmd(Command::GotoNewerChange));
         assert_eq!(feed("ma"), Feed::Cmd(Command::SetNamedMark('a')));
         assert_eq!(feed("`a"), Feed::Cmd(Command::GotoNamedMark('a')));
+        assert_eq!(feed("gi"), Feed::Cmd(Command::InsertAtLastInsert));
         // Counts multiply the single-key actions (Vim `3x` / `3~` / `3rz`).
         assert_eq!(feed("3x"), Feed::Cmd(Command::DeleteUnder(3)));
         assert_eq!(feed("3~"), Feed::Cmd(Command::ToggleCase(3)));

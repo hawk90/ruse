@@ -1462,6 +1462,8 @@ impl InputEngine {
                     // `g;` / `g,` — walk the change list to older / newer change positions (Vim).
                     KeyCode::Char(';') => self.action(Command::GotoOlderChange),
                     KeyCode::Char(',') => self.action(Command::GotoNewerChange),
+                    // `gi` — resume Insert at the last-insert position (Vim `` `^ ``).
+                    KeyCode::Char('i') => self.action(Command::InsertAtLastInsert),
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // `gR` — enter Virtual Replace mode (tab-aware overwrite).
