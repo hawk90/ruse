@@ -564,6 +564,13 @@ pub(crate) fn face_for(name: &str) -> CellStyle {
                 ..CellStyle::default()
             };
         }
+        "markup.quote" => {
+            return CellStyle {
+                fg: Color::DarkGrey,
+                italic: true,
+                ..CellStyle::default()
+            };
+        }
         _ => {}
     }
     let head = name.split('.').next().unwrap_or(name);
@@ -680,6 +687,21 @@ fn markdown_decorations(
                         virt: Some(glyph),
                     });
                 }
+            }
+        }
+        // A block quote: face the whole `> …` block dim italic (markup.quote). Does NOT `continue` — we
+        // fall through to descend so the quote's inline text is re-parsed; those shorter emphasis/strong/
+        // code spans sort AFTER this longer one and win last, so inner markup stays visible over the quote.
+        if node.kind() == "block_quote" {
+            let (qs, qe) = (node.start_byte(), node.end_byte());
+            if qs < visible.end && qe > visible.start {
+                spans.push(Span {
+                    start: qs,
+                    end: qe,
+                    style: face_for("markup.quote"),
+                    conceal: false,
+                    virt: None,
+                });
             }
         }
         let mut cursor = node.walk();
@@ -1067,6 +1089,25 @@ mod tests {
                 .iter()
                 .any(|s| s.conceal && s.virt == Some("\u{2611} ")),
             "task `[x]` -> checked box virt; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_block_quote_is_faced_dim_and_inner_markup_wins() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"> quoted **bold** text\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // The block quote carries a dim (DarkGrey) italic face over its whole span.
+        assert!(
+            spans
+                .iter()
+                .any(|s| !s.conceal && s.style.fg == Color::DarkGrey && s.style.italic),
+            "block quote is faced dim italic; got {spans:?}",
+        );
+        // The inner `**bold**` still emits a bold face (a shorter span that wins over the quote base).
+        assert!(
+            spans.iter().any(|s| !s.conceal && s.style.bold),
+            "inner strong markup survives inside the quote; got {spans:?}",
         );
     }
 
