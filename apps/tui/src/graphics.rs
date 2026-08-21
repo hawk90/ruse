@@ -162,6 +162,57 @@ pub fn reconcile(
     ops
 }
 
+/// A stable image id from its source path — a hash, so re-opening the same file reuses the Kitty id
+/// (forced non-zero). F-031 slice 3b-2b.
+pub fn image_id(path: &str) -> ImageId {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut h);
+    (h.finish() as u32) | 1
+}
+
+/// The post-flush GRAPHICS PASS (§8.3): reconcile the visible image blocks against the resident/placed
+/// state and write the Kitty transmit/place/delete escapes to `out`. `read_png(path)` returns the file's
+/// bytes when it is a usable image (the caller resolves the path + bounds the read + verifies it is a PNG);
+/// a path that fails to load is skipped so the placeholder painted underneath remains (INV-CAP-DEGRADE).
+pub fn graphics_pass<W: std::io::Write>(
+    out: &mut W,
+    images: &[(String, Placement)],
+    placed: &mut HashMap<ImageId, Placement>,
+    resident: &mut HashSet<ImageId>,
+    mut read_png: impl FnMut(&str) -> Option<Vec<u8>>,
+) -> std::io::Result<()> {
+    let mut by_id: HashMap<ImageId, &str> = HashMap::new();
+    let visible: Vec<(ImageId, Placement)> = images
+        .iter()
+        .map(|(p, pl)| {
+            let id = image_id(p);
+            by_id.insert(id, p.as_str());
+            (id, *pl)
+        })
+        .collect();
+    for op in reconcile(placed, resident, &visible) {
+        match op {
+            GraphicsOp::Transmit(id) => match by_id.get(&id).and_then(|p| read_png(p)) {
+                Some(png) => out.write_all(&transmit_png(id, &png))?,
+                // Load failed: undo residency AND the just-recorded placement so a later frame retries.
+                None => {
+                    resident.remove(&id);
+                    placed.remove(&id);
+                }
+            },
+            GraphicsOp::Place { id, at } => {
+                if resident.contains(&id) {
+                    out.write_all(&move_cursor(at.row, at.col))?;
+                    out.write_all(&place(id, at.cols, at.rows))?;
+                }
+            }
+            GraphicsOp::DeletePlacement(id) => out.write_all(&delete_placement(id))?,
+        }
+    }
+    out.flush()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +269,46 @@ mod tests {
         assert_eq!(fit_rows(1000, 10, 10, 0.5, 40), 1);
         // Clamped to max_rows.
         assert_eq!(fit_rows(10, 1000, 10, 0.5, 40), 40);
+    }
+
+    #[test]
+    fn graphics_pass_transmits_places_and_degrades_on_load_failure() {
+        let at = Placement {
+            row: 2,
+            col: 0,
+            cols: 20,
+            rows: 8,
+        };
+        // A loadable image → transmit + place bytes appear.
+        let (mut placed, mut resident) = (HashMap::new(), HashSet::new());
+        let mut buf = Vec::new();
+        graphics_pass(
+            &mut buf,
+            &[("ok.png".into(), at)],
+            &mut placed,
+            &mut resident,
+            |_| Some(vec![1, 2, 3]),
+        )
+        .unwrap();
+        let s = String::from_utf8_lossy(&buf);
+        assert!(s.contains("\x1b_Ga=t"), "transmit emitted");
+        assert!(s.contains("a=p,i="), "place emitted");
+        // A failed load → no escapes, and the id is left retryable (not resident, not placed).
+        let (mut placed2, mut resident2) = (HashMap::new(), HashSet::new());
+        let mut buf2 = Vec::new();
+        graphics_pass(
+            &mut buf2,
+            &[("bad.png".into(), at)],
+            &mut placed2,
+            &mut resident2,
+            |_| None,
+        )
+        .unwrap();
+        assert!(buf2.is_empty(), "no escapes for an unloadable image");
+        assert!(
+            resident2.is_empty() && placed2.is_empty(),
+            "failed load stays retryable"
+        );
     }
 
     #[test]

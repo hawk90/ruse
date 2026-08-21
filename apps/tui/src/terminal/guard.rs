@@ -32,6 +32,13 @@ impl TermGuard {
         self.ledger.enabled(caps::ledger::Capability::SgrMouse)
     }
 
+    /// The inline-graphics protocol detected at startup, pinned like [`Self::sync_output`] (F-031 slice
+    /// 3b-2b / D-053). The render loop lowers image blocks to real pixels on a capable terminal, else the
+    /// placeholder (INV-CAP-DEGRADE).
+    pub(crate) fn graphics(&self) -> caps::ledger::GraphicsProtocol {
+        self.ledger.graphics()
+    }
+
     pub(crate) fn enter() -> io::Result<TermGuard> {
         terminal::enable_raw_mode()?;
         queue!(io::stdout(), terminal::EnterAlternateScreen)?;
