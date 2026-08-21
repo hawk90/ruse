@@ -200,12 +200,19 @@ pub struct View {
     /// Caret gravity (D-050): `OnChar` for Vim/Neovim (default), `BetweenChar` for the Emacs profile. Gates
     /// the Normal-mode on-character edit clamp in [`commit`] so Emacs point rests after the last char.
     caret: CaretGravity,
-    /// The position of the most recent change — Vim's automatic `` `. `` mark. Set in [`commit`] to the
-    /// cursor after any committing EDIT, and snapped like the other stored offsets so a later edit that
-    /// resized the buffer under it keeps it in range. `None` until the first edit. Named marks (`m{a-z}`)
-    /// and the other special marks stay deferred; this is the one Vim maintains without a setter.
-    last_change: Option<usize>,
+    /// The change list (Vim `:changes`): recent EDIT positions, oldest → newest, bounded to
+    /// [`MAX_CHANGES`]. Its last entry is the `` `. `` mark. Pushed in [`commit`] after any committing edit
+    /// (adjacent identical positions coalesce) and snapped so a later buffer-resizing edit keeps every entry
+    /// in range. Navigated by `g;` / `g,` through [`change_idx`].
+    changes: Vec<usize>,
+    /// The current cursor into [`changes`] for `g;`/`g,`. Equals `changes.len()` (past the newest) right
+    /// after an edit, so the first `g;` lands on the newest change; walks toward 0 (oldest) on `g;` and back
+    /// toward the newest on `g,`. Reset to `changes.len()` whenever a new change is pushed.
+    change_idx: usize,
 }
+
+/// Maximum entries kept in a View's change list (Vim's default `:changes` history is ~100).
+const MAX_CHANGES: usize = 100;
 
 /// The editor over a single [`Document`] and its [`View`] — the top-level headless handle the TUI and
 /// tests drive. F-007's Workspace will own many `(Document, View)` pairs referenced by handle; today
@@ -245,14 +252,47 @@ impl View {
                 smart: false,
             },
             caret: CaretGravity::OnChar,
-            last_change: None,
+            changes: Vec::new(),
+            change_idx: 0,
         }
     }
 
     /// The position of the last change (Vim `` `. ``), or `None` before the first edit.
     #[must_use]
     pub fn last_change(&self) -> Option<usize> {
-        self.last_change
+        self.changes.last().copied()
+    }
+
+    /// Record `pos` as the newest change (Vim change list). Adjacent identical positions coalesce; the list
+    /// is bounded to [`MAX_CHANGES`] (oldest dropped). Resets the `g;`/`g,` cursor past the newest entry.
+    fn push_change(&mut self, pos: usize) {
+        if self.changes.last() != Some(&pos) {
+            self.changes.push(pos);
+            if self.changes.len() > MAX_CHANGES {
+                self.changes.remove(0);
+            }
+        }
+        self.change_idx = self.changes.len();
+    }
+
+    /// Step the change-list cursor (`g;` = `older`, `g,` = newer) and return the position to jump to, or
+    /// `None` when there is nowhere to go (empty list, or already at the oldest/newest end).
+    fn nav_change(&mut self, older: bool) -> Option<usize> {
+        if self.changes.is_empty() {
+            return None;
+        }
+        if older {
+            if self.change_idx == 0 {
+                return None; // already at the oldest change
+            }
+            self.change_idx -= 1;
+        } else {
+            if self.change_idx + 1 >= self.changes.len() {
+                return None; // already at (or past) the newest change
+            }
+            self.change_idx += 1;
+        }
+        self.changes.get(self.change_idx).copied()
     }
 
     /// The regex compile options for a search in this view (magic default; case per config).
@@ -350,6 +390,11 @@ enum Action {
     Redo,
     /// `g-`/`g+`: step along chronological creation order (`older` = `g-`), across branches.
     UndoChrono {
+        older: bool,
+    },
+    /// `g;`/`g,`: step the change list (`older` = `g;`) and move the cursor to that change. The step
+    /// mutates `change_idx`, so it happens in [`commit`] (the planner is pure); a no-op at either end.
+    JumpChange {
         older: bool,
     },
     Nop,
@@ -1103,6 +1148,8 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let was_selection = entry_selection.is_some();
     let entry_cursor = st.view.cursor;
     let entry_anchor = st.view.anchor;
+    // `g;`/`g,` resolve their destination here (they step `change_idx`, which the pure planner cannot do).
+    let mut nav_target: Option<usize> = None;
     match plan.action {
         Action::Txn { edits, hint } => {
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
@@ -1139,6 +1186,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         Action::UndoChrono { older } => {
             st.doc.undo_chronological(older);
         }
+        Action::JumpChange { older } => {
+            nav_target = st.view.nav_change(older);
+        }
         Action::BlockInsertArm {
             edits,
             hint,
@@ -1159,16 +1209,20 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     }
     // The cursor the plan computed is valid for the post-action buffer, except undo/redo which resize the
     // text unpredictably — clamp and snap to a char boundary either way.
-    st.view.cursor = snap(st.doc.bytes(), plan.cursor);
+    // `g;`/`g,` navigate the change list: the action stepped `change_idx` above and yielded the target
+    // (or `None` at an end), which overrides the plan's placeholder cursor for this frame only.
+    let resolved_cursor = nav_target.unwrap_or(plan.cursor);
+    st.view.cursor = snap(st.doc.bytes(), resolved_cursor);
     st.view.mode = plan.mode;
     st.view.last_was_edit = plan.is_edit;
-    // Vim's automatic `` `. `` mark: an edit records where it happened (the cursor it left behind), so a
-    // later `` `. `` returns there. Motions/undo don't move it. Snapped below with the other stored offsets.
+    // Vim change list: an edit records where it happened (the cursor it left behind) as the newest entry,
+    // which is also the `` `. `` mark. Motions/undo/g;/g, don't push. Snapped below with the other offsets.
     if plan.is_edit {
-        st.view.last_change = Some(st.view.cursor);
+        st.view.push_change(st.view.cursor);
     }
-    if let Some(c) = st.view.last_change {
-        st.view.last_change = Some(snap(st.doc.bytes(), c));
+    let len = st.doc.bytes().len();
+    for c in st.view.changes.iter_mut() {
+        *c = snap(st.doc.bytes(), (*c).min(len));
     }
     // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
     if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {

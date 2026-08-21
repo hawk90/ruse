@@ -798,6 +798,28 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 None => nop(cur, st.view.mode),
             }
         }
+        // `g;`/`g,` — step the change list. The cursor here is a placeholder; `commit` steps `change_idx`
+        // (a mutation the pure planner cannot make) and overrides it with the resolved change position.
+        Command::GotoOlderChange => Plan {
+            action: Action::JumpChange { older: true },
+            cursor: cur,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: None,
+        },
+        Command::GotoNewerChange => Plan {
+            action: Action::JumpChange { older: false },
+            cursor: cur,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: None,
+        },
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
         // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
         // group starts here mid-insert-session (Vim `i_CTRL-G_u`). Cursor and mode are untouched.
