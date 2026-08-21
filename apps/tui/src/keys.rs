@@ -29,6 +29,124 @@ pub fn enqueue_macro(queue: &mut VecDeque<KeyEvent>, budget: &mut u32, bytes: &[
     full
 }
 
+/// The macro record/replay state machine (D-055), extracted from the session loop so the full
+/// record→stop→replay cycle is unit-testable without driving the terminal. It owns the recording buffer,
+/// the two prefix flags (`q`/`@`), the replay key-queue, and the recursion budget; the session calls
+/// [`MacroState::step`] for every key and [`MacroState::next_replay`] to drain queued keys before reading
+/// the terminal. Register I/O stays OUTSIDE (it lives in the core `Workspace`) — [`Step::Store`] /
+/// [`Step::Replay`] hand the register name back to the caller.
+#[derive(Default)]
+pub struct MacroState {
+    recording: Option<(char, Vec<KeyEvent>)>,
+    pending_q: bool,  // `q` armed: the next key names the register to record INTO
+    pending_at: bool, // `@` armed: the next key names the register to REPLAY
+    queue: VecDeque<KeyEvent>,
+    budget: u32,
+}
+
+/// What the session should do with a key after [`MacroState::step`] has processed it.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Step {
+    /// Dispatch this key normally (engine + intercepts). It was also captured if a recording is active.
+    Dispatch(KeyEvent),
+    /// The macro layer consumed the key (a `q`/`@` prefix arm, or a register-name that started recording).
+    Consumed,
+    /// Recording just stopped — store these bytes into register `char`, then move on.
+    Store(char, Vec<u8>),
+    /// `@{char}` — the caller reads register `char`'s bytes and passes them to [`MacroState::replay`].
+    Replay(char),
+}
+
+fn is_bare(key: KeyEvent, c: char) -> bool {
+    key.code == KeyCode::Char(c) && key.modifiers.is_empty()
+}
+fn letter(key: KeyEvent) -> Option<char> {
+    match key.code {
+        KeyCode::Char(c @ 'a'..='z') => Some(c),
+        _ => None,
+    }
+}
+
+impl MacroState {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether a recording is currently in progress (`q{reg}` seen, no stopping `q` yet).
+    #[must_use]
+    pub fn is_recording(&self) -> bool {
+        self.recording.is_some()
+    }
+
+    /// Pop the next queued replay key, or `None` when the queue is empty. Draining to empty resets the
+    /// recursion budget, so the NEXT top-level `@` starts fresh. The session calls this before reading the
+    /// terminal; a `None` key came from the terminal (a *typed* key).
+    pub fn next_replay(&mut self) -> Option<KeyEvent> {
+        let k = self.queue.pop_front();
+        if k.is_none() {
+            self.budget = 0;
+        }
+        k
+    }
+
+    /// Enqueue register bytes for replay, honouring the shared recursion budget. Returns `false` if the
+    /// macro was TRUNCATED at [`MACRO_KEY_CAP`] (the caller shows a status).
+    pub fn replay(&mut self, bytes: &[u8]) -> bool {
+        enqueue_macro(&mut self.queue, &mut self.budget, bytes)
+    }
+
+    /// Process one key. `from_replay` is true for a key drained from the replay queue (never re-recorded —
+    /// Vim records `@x`, not its expansion); `normal` is whether the focused view is in Normal mode with no
+    /// command-line open (the `q`/`@` prefixes only arm there).
+    pub fn step(&mut self, key: KeyEvent, from_replay: bool, normal: bool) -> Step {
+        // A typed bare `q` STOPS a live recording — unless it is the register-name for a pending `q`/`@`
+        // (e.g. `@q` while recording runs macro q; it must not be read as a stop).
+        if !from_replay && !self.pending_q && !self.pending_at {
+            if let Some((reg, buf)) = self.recording.as_ref() {
+                if is_bare(key, 'q') {
+                    let bytes = encode_all(buf);
+                    let reg = *reg;
+                    self.recording = None;
+                    return Step::Store(reg, bytes);
+                }
+            }
+        }
+        // Capture every other typed key while recording (including a `@x` typed mid-recording).
+        if !from_replay {
+            if let Some((_, buf)) = self.recording.as_mut() {
+                buf.push(key);
+            }
+        }
+        // Register-name after `q` — start recording into it (a non-letter aborts the arm).
+        if self.pending_q {
+            self.pending_q = false;
+            if let Some(c) = letter(key) {
+                self.recording = Some((c, Vec::new()));
+            }
+            return Step::Consumed;
+        }
+        // Register-name after `@` — hand the name back so the caller can read + replay it.
+        if self.pending_at {
+            self.pending_at = false;
+            return match letter(key) {
+                Some(c) => Step::Replay(c),
+                None => Step::Consumed,
+            };
+        }
+        // Arm the prefixes (Normal only). `q` only arms when NOT recording (a recording `q` stopped above).
+        if normal && self.recording.is_none() && is_bare(key, 'q') {
+            self.pending_q = true;
+            return Step::Consumed;
+        }
+        if normal && is_bare(key, '@') {
+            self.pending_at = true;
+            return Step::Consumed;
+        }
+        Step::Dispatch(key)
+    }
+}
+
 /// Encode one key event to its macro bytes, or `None` for a key outside the slice-1 alphabet (arrows, Fn,
 /// Alt, …) — the recorder simply drops those for now (D-055 defers them). Printable chars encode as UTF-8;
 /// `Ctrl`-`a`..`z` collapse to `0x01`..`0x1a`, matching the control bytes a terminal actually sends.
@@ -189,6 +307,94 @@ mod tests {
             budget,
             MACRO_KEY_CAP - 2,
             "budget decremented by keys pushed"
+        );
+    }
+
+    #[test]
+    fn full_record_stop_replay_cycle() {
+        use std::collections::HashMap;
+        let mut m = MacroState::new();
+        let mut regs: HashMap<char, Vec<u8>> = HashMap::new();
+
+        // Record `q a  x x  q` — arm, start into reg a, capture two x, stop.
+        assert_eq!(m.step(ch('q'), false, true), Step::Consumed);
+        assert!(
+            !m.is_recording(),
+            "q only arms; recording starts on the register name"
+        );
+        assert_eq!(m.step(ch('a'), false, true), Step::Consumed);
+        assert!(m.is_recording());
+        assert_eq!(
+            m.step(ch('x'), false, true),
+            Step::Dispatch(ch('x')),
+            "captured AND dispatched"
+        );
+        assert_eq!(m.step(ch('x'), false, true), Step::Dispatch(ch('x')));
+        match m.step(ch('q'), false, true) {
+            Step::Store(reg, bytes) => {
+                regs.insert(reg, bytes);
+            }
+            other => panic!("expected Store, got {other:?}"),
+        }
+        assert!(!m.is_recording());
+        assert_eq!(
+            regs[&'a'], b"xx",
+            "the two captured x's are stored as bytes"
+        );
+
+        // Replay `@ a` — arm, resolve the register, enqueue; keys drain as `from_replay`.
+        assert_eq!(m.step(ch('@'), false, true), Step::Consumed);
+        match m.step(ch('a'), false, true) {
+            Step::Replay(reg) => assert!(m.replay(&regs[&reg])),
+            other => panic!("expected Replay, got {other:?}"),
+        }
+        assert_eq!(m.next_replay(), Some(ch('x')));
+        assert_eq!(m.next_replay(), Some(ch('x')));
+        assert_eq!(m.next_replay(), None, "queue drained");
+    }
+
+    #[test]
+    fn insert_macro_round_trips_through_the_state_machine() {
+        let mut m = MacroState::new();
+        // `q b  i Z <Esc>  q`
+        m.step(ch('q'), false, true);
+        m.step(ch('b'), false, true);
+        for k in [ch('i'), ch('Z'), key(KeyCode::Esc)] {
+            assert!(matches!(m.step(k, false, true), Step::Dispatch(_)));
+        }
+        let bytes = match m.step(ch('q'), false, true) {
+            Step::Store(_, b) => b,
+            other => panic!("expected Store, got {other:?}"),
+        };
+        assert_eq!(bytes, vec![b'i', b'Z', 0x1b]);
+        assert_eq!(decode(&bytes), vec![ch('i'), ch('Z'), key(KeyCode::Esc)]);
+    }
+
+    #[test]
+    fn replayed_keys_are_not_re_recorded_and_at_x_records_literally() {
+        let mut m = MacroState::new();
+        // Start recording into a, then type `@b` mid-record: both keys captured literally (not expanded).
+        m.step(ch('q'), false, true);
+        m.step(ch('a'), false, true);
+        assert_eq!(
+            m.step(ch('@'), false, true),
+            Step::Consumed,
+            "@ arms (and is captured)"
+        );
+        assert_eq!(
+            m.step(ch('b'), false, true),
+            Step::Replay('b'),
+            "b resolves the @, still captured"
+        );
+        // A key arriving from the replay queue is NOT captured into the recording.
+        assert!(matches!(m.step(ch('y'), true, true), Step::Dispatch(_)));
+        let bytes = match m.step(ch('q'), false, true) {
+            Step::Store(_, b) => b,
+            other => panic!("expected Store, got {other:?}"),
+        };
+        assert_eq!(
+            bytes, b"@b",
+            "the literal @b was recorded; the replayed y was not"
         );
     }
 
