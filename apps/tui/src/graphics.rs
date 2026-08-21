@@ -100,6 +100,12 @@ pub fn free_image(id: ImageId) -> Vec<u8> {
     format!("\x1b_Ga=d,d=I,i={id}\x1b\\").into_bytes()
 }
 
+/// `a=d,d=A` — delete ALL placements and free ALL images. Emitted on exit so no inline image is left
+/// drawn on the terminal after the editor quits (F-031 slice 3b-2b cleanup).
+pub fn delete_all() -> Vec<u8> {
+    b"\x1b_Ga=d,d=A\x1b\\".to_vec()
+}
+
 /// Parse a PNG's pixel dimensions from its IHDR (`(width, height)`), or `None` if the bytes are not a PNG.
 /// The 8-byte signature is followed by the IHDR chunk whose data starts at byte 16: width then height, big-
 /// endian u32. Kitty needs no client decode, but we read the size to choose the block's cell height.
@@ -224,7 +230,9 @@ pub fn graphics_pass<W: std::io::Write>(
             },
             GraphicsOp::Place { id, at } => {
                 if resident.contains(&id) {
-                    out.write_all(&move_cursor(at.row, at.col))?;
+                    // Inside tmux the cursor move must ALSO pass through, or tmux never moves the OUTER
+                    // terminal's cursor and the image lands at (0,0) instead of the block.
+                    out.write_all(&apc(move_cursor(at.row, at.col)))?;
                     out.write_all(&apc(place(id, at.cols, at.rows)))?;
                 }
             }
@@ -360,15 +368,15 @@ mod tests {
             |_| Some(vec![1, 2, 3]),
         )
         .unwrap();
-        // The transmit/place APCs are wrapped in the tmux passthrough envelope.
+        // Everything (transmit, cursor move, place) is wrapped so tmux forwards it to the outer terminal.
         assert!(
             buf.windows(7).any(|w| w == b"\x1bPtmux;"),
             "tmux envelope present"
         );
-        // The plain cursor-move CSI stays unwrapped (tmux handles it natively).
+        // The cursor move is wrapped too (a doubled ESC before the CSI), so tmux moves the OUTER cursor.
         assert!(
-            buf.windows(3).any(|w| w == b"\x1b[1"),
-            "cursor move not wrapped"
+            buf.windows(3).any(|w| w == b"\x1b\x1b["),
+            "cursor move wrapped for passthrough"
         );
     }
 

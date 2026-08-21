@@ -1059,6 +1059,18 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
         }
     }
+    // F-031 3b-2b: clear any inline images on exit so none is left drawn after the editor quits.
+    if has_graphics {
+        use std::io::Write;
+        let del = graphics::delete_all();
+        let del = if in_tmux {
+            graphics::wrap_tmux(&del)
+        } else {
+            del
+        };
+        let _ = out.write_all(&del);
+        let _ = out.flush();
+    }
     Ok(())
 }
 
