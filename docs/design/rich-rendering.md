@@ -401,6 +401,66 @@ Multi-pane: a placement belongs to the focused pane's view (like conceal/virt to
 non-focused pane is not placed in slice 3b-2 (its block shows the placeholder). Per-pane placement is a
 follow-up when a real second pane shows the same image.
 
+### 8.8 Positioning via Unicode placeholders (the tmux-correct method — slice 3b-2c)
+
+**Why direct placement fails.** The reserve+overlay of §8.3 draws the image with a Kitty placement at the
+*cursor* — which lands at the OUTER terminal's absolute coordinates. Live testing exposed the fatal case:
+inside a **tmux pane**, ruse only knows *pane-relative* coordinates, does not know the pane's offset within
+the window, and tmux does not clip a passthrough image to the pane. So the image lands at the window's
+top-left (0,0), overflows the pane, and isn't cleared on the pane's own redraws. Cursor-based placement is
+**structurally unable** to position an image inside a tmux pane. (Direct placement is fine on a bare Kitty
+terminal; it is tmux that breaks it, and tmux is a first-class target.)
+
+**The fix: Kitty Unicode placeholders (virtual placements).** Position the image with **cells**, not the
+cursor — so it rides tmux's normal cell rendering and inherits the pane's offset and clipping for free. This
+is how `image.nvim` et al. draw in tmux, and it works uniformly on Kitty / Ghostty / tmux.
+
+Mechanism:
+
+1. **Transmit** the image once (as today): `\x1b_Ga=t,f=100,i=ID,q=2; <b64> \x1b\\`.
+2. **Create a VIRTUAL placement**: `\x1b_Ga=p,U=1,i=ID,c=COLS,r=ROWS,q=2\x1b\\`. `U=1` means "do not draw at
+   the cursor — draw wherever my Unicode placeholder cells appear."
+3. **Paint placeholder CELLS** into the grid over the block's `ROWS × COLS` region. Each cell holds:
+   - the placeholder character **`U+10EEEE`** followed by two combining diacritics — the **row** index and
+     the **column** index of that cell within the image, drawn from the fixed **rowcolumn-diacritics table**
+     (297 entries; index → codepoint). A third diacritic encodes the image-id's high byte *only if needed* —
+     we **mask the id to 24 bits** so it never is.
+   - foreground colour = the image id as RGB: `fg = Rgb { (id>>16)&0xff, (id>>8)&0xff, id&0xff }`. The
+     terminal reads the id from the cell's colour and the (row, col) from the diacritics, and composites the
+     right slice of the image into that cell.
+
+Because the placeholder cells are ORDINARY cells, the frame diff emits them, tmux renders them at the correct
+pane position and clips them to the pane — **no cursor math, no pane-offset knowledge, no per-frame
+placement**. Only the transmit + virtual-placement APCs still need the tmux passthrough envelope (they carry
+no position), and they are sent once per image, not per frame.
+
+**What changes vs. §8.3:**
+
+- `paint_pane`: for a graphics-on image block, paint **placeholder cells** (U+10EEEE + row/col diacritics,
+  `fg = id`) instead of blanks. `screen::CellStyle` already carries an `Rgb` fg; the cell content is a normal
+  grapheme cluster (base + combining marks, width 1).
+- `graphics_pass`: drops `move_cursor` / direct `place` / the per-screen-position placement diff. It now only
+  **transmits + virtual-places each resident image once** (reconcile keyed on image id, not screen rect).
+  Visibility is driven entirely by whether the placeholder cells are painted (a scrolled-off block paints no
+  cells → the image is not shown), so there is no per-frame delete. `delete_all` on exit still frees
+  everything.
+- Sizing unchanged: `COLS` = block width (clamped to ≤ 297 and the pane width), `ROWS` = `image_rows`. Kitty
+  scales the image into that cell box; aspect-exact sizing (the `CSI 14/16 t` pixel probe) stays a follow-up.
+
+**Degrade / failure:** graphics off → the placeholder box (unchanged). A load failure → no virtual placement
+is created, so the placeholder cells reference a nonexistent image and the terminal draws nothing: a blank
+band (a text fallback for the failed-load case is a follow-up; the common case shows the image).
+
+**The diacritics table** is the one precision-critical constant — the Kitty `rowcolumn-diacritics` list of 297
+combining codepoints, embedded verbatim; index `i` yields the diacritic that encodes value `i`. Rows/cols are
+bounded to `[0, 296]` (our blocks are ≤ ~40 rows; columns are clamped). The emitted bytes are verified by the
+pty byte-capture harness (structure: `U+10EEEE` + two diacritics per cell, `fg` = id), then the pixels are
+eyeballed on a real Ghostty+tmux.
+
+This supersedes §8.3's cursor placement as the positioning mechanism; the reserve model stays (the block still
+reserves `ROWS` display rows via the slice-3a row model), but the reserved cells become placeholder cells
+rather than blanks-plus-an-overlay.
+
 ## 9. Governance & spec deltas
 
 This is **architecture-tier** (it introduces the display-coordinate boundary and reactivates part of RFC-0009).
