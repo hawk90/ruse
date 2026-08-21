@@ -100,6 +100,10 @@ fn grammar_for(ext: &str) -> Option<(tree_sitter::Language, &'static str)> {
         // by a tree walk ([`markdown_decorations`]), not this query, so the query is empty — the parser is
         // what we need here. The inline grammar (emphasis/links) is a following slice.
         "md" | "markdown" => (tree_sitter_md::LANGUAGE.into(), ""),
+        // Org (F-031 slice 4) has NO tree-sitter grammar here (tree-sitter-org pins an incompatible
+        // tree-sitter 0.20). This filler language/parser is never used — the org path is a hand-rolled
+        // line scanner (`crate::org`) that `recompute` calls before any parse.
+        "org" | "orgmode" => (tree_sitter_md::LANGUAGE.into(), ""),
         _ => return None,
     })
 }
@@ -275,6 +279,9 @@ pub struct CachedHighlight {
     /// Markdown uses a tree WALK ([`markdown_decorations`]) instead of the generic highlights query — the
     /// parser is still `hl.parser` (the block grammar), but span production branches on this (F-031).
     markdown: bool,
+    /// Org uses a hand-rolled LINE scanner ([`crate::org`]) and never touches the tree-sitter tree (F-031
+    /// slice 4). Mutually exclusive with `markdown`.
+    org: bool,
     /// The tree-sitter-md INLINE grammar parser (F-031 slice 1b). The block grammar leaves heading /
     /// paragraph text as opaque `inline` nodes; this re-parses each such node's bytes to recover
     /// emphasis / strong / code-span / link structure. `Some` only when `markdown`.
@@ -314,6 +321,7 @@ impl CachedHighlight {
         Some(CachedHighlight {
             hl: Highlight::for_ext(ext)?,
             markdown,
+            org: matches!(ext, "org" | "orgmode"),
             inline,
             virt_lines: Vec::new(),
             image_rows: IMAGE_PLACEHOLDER_ROWS,
@@ -377,6 +385,14 @@ impl CachedHighlight {
     /// Reparse (incrementally) if needed and refresh the cached spans + virt_lines for `(rev, visible)`.
     fn recompute(&mut self, rev: Revision, src: &[u8], visible: std::ops::Range<usize>) {
         if self.key.as_ref() == Some(&(rev, visible.clone())) {
+            return;
+        }
+        // Org is a pure line scanner — no tree-sitter parse (F-031 slice 4). Short-circuit before the tree.
+        if self.org {
+            let (spans, virt) = crate::org::decorations(src, &visible);
+            self.spans = spans;
+            self.virt_lines = virt;
+            self.key = Some((rev, visible));
             return;
         }
         if self.rev != Some(rev) {
@@ -510,7 +526,7 @@ impl CachedSearch {
 /// of F-031 adds the attribute channel — comments render italic and keywords bold, the way most editors
 /// style them — proving the decoration model carries more than colour. Colours are unchanged from the
 /// previous `color_for`, so non-attributed captures paint byte-identically (the P6 identity guard).
-fn face_for(name: &str) -> CellStyle {
+pub(crate) fn face_for(name: &str) -> CellStyle {
     // F-031 markup faces (Markdown/Org): a heading is a bold title; slice 1b adds the inline faces the
     // INLINE grammar drives — emphasis (italic), strong (bold), code span (a distinct fg), and links (a
     // blue underline). These are exact-match names (the `.`-head fallback below would flatten them to a
