@@ -798,10 +798,12 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
         }
         Command::IncrementNumber(delta) => {
-            // `CTRL-A`/`CTRL-X`: adjust the decimal number at or after the cursor on the current line.
+            // `CTRL-A`/`CTRL-X`: adjust the number at or after the cursor on the current line. A `0x`-prefixed
+            // hex literal increments in hex (`0x1f`→`0x20`); otherwise a decimal (with optional `-` sign).
             let ls = crate::pos::line_start(b, cur);
             let le = line_end(b, cur);
-            // First digit at or after the cursor (Vim searches forward on the line).
+            // First decimal digit at or after the cursor (Vim searches forward). A hex literal always has one
+            // (its `0`), so this anchors both bases.
             let mut d = cur.max(ls);
             while d < le && !b[d].is_ascii_digit() {
                 d += 1;
@@ -809,7 +811,39 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             if d >= le {
                 return nop(cur, st.view.mode); // no number on the rest of the line
             }
-            // The maximal digit run around `d`, plus a leading `-` sign if directly before it.
+            // Detect a `0x`/`0X` hex literal: either the prefix starts at `d`, or `d` sits inside the hex
+            // digits (walk left over hex digits to the `x`, check the `0` before it).
+            let hex_at_d = b[d] == b'0'
+                && matches!(b.get(d + 1), Some(b'x') | Some(b'X'))
+                && b.get(d + 2).is_some_and(u8::is_ascii_hexdigit);
+            let mut hleft = d;
+            while hleft > ls && b[hleft - 1].is_ascii_hexdigit() {
+                hleft -= 1;
+            }
+            let hex_inside =
+                hleft >= ls + 2 && matches!(b[hleft - 1], b'x' | b'X') && b[hleft - 2] == b'0';
+            if hex_at_d || hex_inside {
+                let prefix = if hex_at_d { d } else { hleft - 2 };
+                let mut end = prefix + 2;
+                while end < le && b[end].is_ascii_hexdigit() {
+                    end += 1;
+                }
+                let val: i128 = std::str::from_utf8(&b[prefix + 2..end])
+                    .ok()
+                    .and_then(|s| i128::from_str_radix(s, 16).ok())
+                    .unwrap_or(0);
+                // Hex stays non-negative (Vim wraps at 0 for the default unsigned view); output is lowercase.
+                let new_text = format!("0x{:x}", (val + i128::from(*delta)).max(0));
+                let bytes = new_text.into_bytes();
+                let cursor = prefix + bytes.len().saturating_sub(1);
+                return edit(
+                    one(Edit::replace(prefix, end - prefix, bytes)),
+                    cursor,
+                    st.view.mode,
+                    hint,
+                );
+            }
+            // Decimal: the maximal digit run around `d`, plus a leading `-` sign if directly before it.
             let mut start = d;
             while start > ls && b[start - 1].is_ascii_digit() {
                 start -= 1;
