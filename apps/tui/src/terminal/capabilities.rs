@@ -29,6 +29,7 @@ pub(crate) fn detect_capabilities() -> caps::ledger::Ledger {
         &std::env::var("RUSE_NO_KITTY").unwrap_or_default(),
         &std::env::var("RUSE_NO_MOUSE").unwrap_or_default(),
         &std::env::var("RUSE_NO_PASTE").unwrap_or_default(),
+        &std::env::var("RUSE_GRAPHICS").unwrap_or_default(),
     );
     ledger
 }
