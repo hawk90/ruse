@@ -401,6 +401,13 @@ fn hspace_end(b: &[u8], from: usize) -> usize {
     e
 }
 
+/// The apostrophe-mark (`'{a-z}` / `'.`) target for a mark at `pos`: the first non-blank of that position's
+/// LINE (Vim's linewise mark jump), clamped into range.
+fn mark_line_target(b: &[u8], pos: usize) -> usize {
+    let p = pos.min(b.len());
+    motion::first_non_blank(b, crate::pos::line_start(b, p))
+}
+
 /// The active Emacs region as an ordered `[s, e)` byte span, or `None` when no mark is set or the mark
 /// coincides with point (a degenerate region — the region commands are inert then). Shared by
 /// `KillRegion` / `CopyRegion` / `EmacsCaseRegion`.
@@ -806,6 +813,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 None => nop(cur, st.view.mode),
             }
         }
+        // `'.` — LINEWISE to the first non-blank of the last change's line. No-op before any edit.
+        Command::GotoLastChangeLine => match st.view.last_change() {
+            Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
         // `g;`/`g,` — step the change list. The cursor here is a placeholder; `commit` steps `change_idx`
         // (a mutation the pure planner cannot make) and overrides it with the resolved change position.
         Command::GotoOlderChange => Plan {
@@ -851,6 +863,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 set_anchor: None,
                 set_mark: None,
             },
+            None => nop(cur, st.view.mode),
+        },
+        // `'{a-z}` — LINEWISE to the first non-blank of a named mark's line. No-op if unset.
+        Command::GotoNamedMarkLine(ch) => match st.view.named_mark(*ch) {
+            Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
             None => nop(cur, st.view.mode),
         },
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets

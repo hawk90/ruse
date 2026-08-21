@@ -163,6 +163,8 @@ pub enum Command {
     /// `` `. `` — jump the cursor to the position of the most recent change (Vim's automatic `.` mark).
     /// A no-op before the first edit. Operator-pending (`` d`. ``) and named marks are deferred.
     GotoLastChange,
+    /// `'.` — jump LINEWISE to the first non-blank of the last change's line (Vim). No-op before any edit.
+    GotoLastChangeLine,
     /// `g;` — jump to the next OLDER position in the change list (Vim). A no-op at the oldest change.
     GotoOlderChange,
     /// `g,` — jump to the next NEWER position in the change list (Vim). A no-op at the newest change.
@@ -174,6 +176,8 @@ pub enum Command {
     SetNamedMark(char),
     /// `` `{a-z} `` — jump the cursor to named mark `char` (Vim). A no-op if that mark is unset.
     GotoNamedMark(char),
+    /// `'{a-z}` — jump LINEWISE to the first non-blank of named mark `char`'s line (Vim). No-op if unset.
+    GotoNamedMarkLine(char),
     /// `CTRL-G u` in Insert — break the undo sequence: the NEXT edit starts a fresh undo group, so a
     /// later `u` stops here instead of undoing the whole insert session. A nop that only clears the
     /// edit-continuation state (Vim `i_CTRL-G_u`). Undo-of-a-session is not observable via the parity
@@ -683,11 +687,13 @@ impl Command {
             Command::JoinLines => "join_lines".into(),
             Command::JoinLinesNoSpace => "join_lines_no_space".into(),
             Command::GotoLastChange => "goto_last_change".into(),
+            Command::GotoLastChangeLine => "goto_last_change_line".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
             Command::GotoNewerChange => "goto_newer_change".into(),
             Command::InsertAtLastInsert => "insert_at_last_insert".into(),
             Command::SetNamedMark(c) => format!("set_named_mark {}", *c as u32),
             Command::GotoNamedMark(c) => format!("goto_named_mark {}", *c as u32),
+            Command::GotoNamedMarkLine(c) => format!("goto_named_mark_line {}", *c as u32),
             Command::BreakUndo => "break_undo".into(),
             Command::ShiftRight(n) => format!("shift_right {n}"),
             Command::ShiftLeft(n) => format!("shift_left {n}"),
@@ -929,6 +935,7 @@ impl Command {
             "join_lines" => Command::JoinLines,
             "join_lines_no_space" => Command::JoinLinesNoSpace,
             "goto_last_change" => Command::GotoLastChange,
+            "goto_last_change_line" => Command::GotoLastChangeLine,
             "goto_older_change" => Command::GotoOlderChange,
             "goto_newer_change" => Command::GotoNewerChange,
             "insert_at_last_insert" => Command::InsertAtLastInsert,
@@ -943,6 +950,12 @@ impl Command {
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::GotoNamedMark(c)
+            }
+            "goto_named_mark_line" => {
+                let cp = arg_u32(arg, line)?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::GotoNamedMarkLine(c)
             }
             "break_undo" => Command::BreakUndo,
             "shift_right" => {
@@ -1217,6 +1230,9 @@ mod tests {
             Command::JoinLines,
             Command::JoinLinesNoSpace,
             Command::GotoLastChange,
+            Command::GotoLastChangeLine,
+            Command::GotoNamedMarkLine('a'),
+            Command::GotoNamedMarkLine('z'),
             Command::GotoOlderChange,
             Command::GotoNewerChange,
             Command::InsertAtLastInsert,
