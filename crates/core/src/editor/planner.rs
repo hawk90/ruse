@@ -797,6 +797,48 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 edit(one(Edit::delete(le, 1)), le, st.view.mode, hint)
             }
         }
+        Command::IncrementNumber(delta) => {
+            // `CTRL-A`/`CTRL-X`: adjust the decimal number at or after the cursor on the current line.
+            let ls = crate::pos::line_start(b, cur);
+            let le = line_end(b, cur);
+            // First digit at or after the cursor (Vim searches forward on the line).
+            let mut d = cur.max(ls);
+            while d < le && !b[d].is_ascii_digit() {
+                d += 1;
+            }
+            if d >= le {
+                return nop(cur, st.view.mode); // no number on the rest of the line
+            }
+            // The maximal digit run around `d`, plus a leading `-` sign if directly before it.
+            let mut start = d;
+            while start > ls && b[start - 1].is_ascii_digit() {
+                start -= 1;
+            }
+            let mut end = d;
+            while end < le && b[end].is_ascii_digit() {
+                end += 1;
+            }
+            let num_start = if start > ls && b[start - 1] == b'-' {
+                start - 1
+            } else {
+                start
+            };
+            // Parse (i128 to absorb any i64 span), add the delta, and re-render. An unparseable/overflowing
+            // run is left untouched.
+            let val: i128 = std::str::from_utf8(&b[num_start..end])
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let new_text = (val + i128::from(*delta)).to_string();
+            let bytes = new_text.into_bytes();
+            let cursor = num_start + bytes.len().saturating_sub(1); // land on the last digit (Vim)
+            edit(
+                one(Edit::replace(num_start, end - num_start, bytes)),
+                cursor,
+                st.view.mode,
+                hint,
+            )
+        }
         Command::GotoLastChange => {
             // `` `. `` — move to the last change position (snapped into range). No-op before any edit.
             match st.view.last_change() {

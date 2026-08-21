@@ -638,6 +638,37 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn increment_number_adjusts_and_lands_on_last_digit() {
+        // Cursor on the '4' of "x = 4": +1 → 5.
+        let st = run(
+            "x = 4",
+            &[Command::Move(4, Motion::Right), Command::IncrementNumber(1)],
+        );
+        assert_eq!(text(&st), "x = 5");
+        assert_eq!(st.cursor(), 4, "cursor on the last digit of the result");
+        // Cursor BEFORE the number still finds it forward on the line.
+        let st = run("x = 4", &[Command::IncrementNumber(3)]);
+        assert_eq!(text(&st), "x = 7");
+        // A carry grows the digit count; cursor on the new last digit.
+        let st = run("9", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "10");
+        assert_eq!(st.cursor(), 1);
+    }
+
+    #[test]
+    fn increment_handles_sign_and_decrement_and_noop() {
+        // Decrement below zero grows a '-' sign.
+        let st = run("0", &[Command::IncrementNumber(-3)]);
+        assert_eq!(text(&st), "-3");
+        // A leading '-' is treated as the number's sign.
+        let st = run("-3", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "-2");
+        // No number after the cursor → no-op.
+        let st = run("abc", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "abc");
+    }
+
+    #[test]
     fn goto_last_change_jumps_to_the_last_edit() {
         // Edit on line 2, move away to the top, then `` `. `` returns to the change.
         let st = run(

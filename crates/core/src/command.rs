@@ -160,6 +160,10 @@ pub enum Command {
     /// `gJ` — join the current line with the next WITHOUT inserting a space or stripping the next
     /// line's leading whitespace: only the newline is removed (Vim `gJ`).
     JoinLinesNoSpace,
+    /// `CTRL-A` / `CTRL-X` — add the signed `i64` to the decimal number at or after the cursor on the
+    /// current line (`CTRL-A` = +count, `CTRL-X` = −count). No-op if the line has no number after the
+    /// cursor. Decimal only; the cursor lands on the last digit of the result (Vim).
+    IncrementNumber(i64),
     /// `` `. `` — jump the cursor to the position of the most recent change (Vim's automatic `.` mark).
     /// A no-op before the first edit. Operator-pending (`` d`. ``) and named marks are deferred.
     GotoLastChange,
@@ -686,6 +690,7 @@ impl Command {
             Command::ToggleCase(n) => format!("toggle_case {n}"),
             Command::JoinLines => "join_lines".into(),
             Command::JoinLinesNoSpace => "join_lines_no_space".into(),
+            Command::IncrementNumber(d) => format!("increment_number {d}"),
             Command::GotoLastChange => "goto_last_change".into(),
             Command::GotoLastChangeLine => "goto_last_change_line".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
@@ -934,6 +939,12 @@ impl Command {
             }
             "join_lines" => Command::JoinLines,
             "join_lines_no_space" => Command::JoinLinesNoSpace,
+            "increment_number" => {
+                let d: i64 = arg
+                    .and_then(|a| a.trim().parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::IncrementNumber(d)
+            }
             "goto_last_change" => Command::GotoLastChange,
             "goto_last_change_line" => Command::GotoLastChangeLine,
             "goto_older_change" => Command::GotoOlderChange,
@@ -1229,6 +1240,8 @@ mod tests {
             Command::ToggleCase(4),
             Command::JoinLines,
             Command::JoinLinesNoSpace,
+            Command::IncrementNumber(1),
+            Command::IncrementNumber(-3),
             Command::GotoLastChange,
             Command::GotoLastChangeLine,
             Command::GotoNamedMarkLine('a'),

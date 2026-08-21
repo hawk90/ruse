@@ -557,6 +557,30 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_a_and_ctrl_x_increment_decrement_by_count() {
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(ctrl('a'), Mode::Normal),
+            Feed::Cmd(Command::IncrementNumber(1))
+        );
+        assert_eq!(
+            e.feed(ctrl('x'), Mode::Normal),
+            Feed::Cmd(Command::IncrementNumber(-1))
+        );
+        // `3<C-a>` adds 3; `2<C-x>` subtracts 2.
+        assert_eq!(e.feed(k('3'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('a'), Mode::Normal),
+            Feed::Cmd(Command::IncrementNumber(3))
+        );
+        assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('x'), Mode::Normal),
+            Feed::Cmd(Command::IncrementNumber(-2))
+        );
+    }
+
+    #[test]
     fn emacs_profile_is_non_modal() {
         // F-012 seam: the Emacs profile resolves global-map C- motions to commands and self-inserts a
         // printable key — regardless of the (Vim) mode passed, and without the modal grammar.
