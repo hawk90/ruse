@@ -30,6 +30,8 @@ pub enum Ex {
     CodeAction,
     /// `:diagnostics`/`:diags`/`:diag` — list the focused buffer's diagnostics; Enter jumps (F-014).
     Diagnostics,
+    /// `:registers`/`:reg`/`:display` — view the non-empty registers (F-029). View-only.
+    Registers,
     /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
@@ -410,6 +412,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "references" | "refs" | "ref" => Ex::References,
         "codeaction" | "codeactions" | "ca" => Ex::CodeAction,
         "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
+        "registers" | "reg" | "display" | "di" => Ex::Registers,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         "e!" | "edit!" => Ex::EditReload,
