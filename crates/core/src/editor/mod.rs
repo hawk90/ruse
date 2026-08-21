@@ -1056,6 +1056,16 @@ impl EditorState {
         &self.view.registers
     }
 
+    /// Write raw bytes into a named register as a CHARWISE entry (D-055 macro recording): the frontend
+    /// stores a recorded keystroke stream into `"{name}`, sharing the same a-z slots as yank/paste so a
+    /// macro pastes as text and yanked text runs as a macro. `name` is `Some('a'..='z')`; the byte content
+    /// is opaque to the core (it is a key stream, not display text).
+    pub fn set_register_raw(&mut self, name: Option<char>, bytes: Vec<u8>) {
+        self.view
+            .registers
+            .write(name, crate::register::Register::charwise(bytes));
+    }
+
     /// The highlighted byte range `[start, end)` of the current charwise/linewise Visual selection, or
     /// `None` in Normal/Insert **and for a blockwise selection** (a rectangle is not one contiguous range —
     /// use [`EditorState::block_spans`] to paint that). Charwise includes the character under the active

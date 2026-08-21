@@ -237,6 +237,39 @@ impl Workspace {
         effects
     }
 
+    /// Store raw macro bytes into a named register of the FOCUSED view (D-055; the swap-trick). Shares the
+    /// a-z slots with yank/paste, so a recorded macro pastes as text and yanked text runs as a macro.
+    pub fn set_register_raw(&mut self, name: Option<char>, bytes: Vec<u8>) {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        st.set_register_raw(name, bytes);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+    }
+
+    /// The raw bytes of a named register of the FOCUSED view (D-055 macro replay; the swap-trick). Empty
+    /// when the register is unset.
+    pub fn register_bytes(&mut self, name: Option<char>) -> Vec<u8> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let st = EditorState::from_parts(doc, view);
+        let bytes = st.registers().get(name).text().to_vec();
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        bytes
+    }
+
     /// Run `:[range]s/pat/rep/flags` against the FOCUSED Window (the swap-trick, like [`Workspace::apply`]),
     /// applying every substitution as one undo group. Returns the count, or a [`RegexError`] (F-009 #2).
     pub fn substitute(
@@ -1229,6 +1262,18 @@ mod tests {
         let mut w = Workspace::new(b"z\n3\n1\n2\n".to_vec());
         w.sort_lines(SubRange::Lines(2, 4), false, true, false);
         assert_eq!(w.focused().doc.bytes(), b"z\n1\n2\n3\n");
+    }
+
+    /// D-055: raw macro bytes round-trip through a named register — `set_register_raw` then `register_bytes`
+    /// return the same key stream, and it shares the a-z slots with yank/paste (unset reads empty).
+    #[test]
+    fn macro_register_bytes_round_trip() {
+        let mut w = Workspace::new(b"hello\n".to_vec());
+        assert_eq!(w.register_bytes(Some('a')), b"", "unset register is empty");
+        w.set_register_raw(Some('a'), b"iZ\x1b".to_vec()); // a macro: insert Z, escape
+        assert_eq!(w.register_bytes(Some('a')), b"iZ\x1b");
+        // A different register is independent.
+        assert_eq!(w.register_bytes(Some('b')), b"");
     }
 
     /// F-007 #2: view-local state (cursor/selection/mode) lives in the View; an edit through one View
