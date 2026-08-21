@@ -916,6 +916,28 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             set_anchor: None,
             set_mark: None,
         },
+        // `CTRL-O`/`CTRL-I` — step the jumplist. `commit` mutates it (the planner is pure); the placeholder
+        // cursor is overridden with the resolved jump position.
+        Command::GotoOlderJump => Plan {
+            action: Action::JumpList { older: true },
+            cursor: cur,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: None,
+        },
+        Command::GotoNewerJump => Plan {
+            action: Action::JumpList { older: false },
+            cursor: cur,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: None,
+        },
         // `m{a-z}` — install a named mark at the cursor. The cursor stays; `commit` writes the mark table.
         Command::SetNamedMark(ch) => Plan {
             action: Action::SetNamedMark { ch: *ch },

@@ -173,6 +173,10 @@ pub enum Command {
     GotoOlderChange,
     /// `g,` — jump to the next NEWER position in the change list (Vim). A no-op at the newest change.
     GotoNewerChange,
+    /// `CTRL-O` — jump to the next OLDER position in the jumplist (Vim). A no-op at the oldest jump.
+    GotoOlderJump,
+    /// `CTRL-I` / `Tab` — jump to the next NEWER position in the jumplist (Vim). A no-op at the newest.
+    GotoNewerJump,
     /// `gi` — resume Insert at the last-insert position (Vim's `` `^ ``). Enters Insert at buffer start
     /// before any Insert session has ended.
     InsertAtLastInsert,
@@ -695,6 +699,8 @@ impl Command {
             Command::GotoLastChangeLine => "goto_last_change_line".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
             Command::GotoNewerChange => "goto_newer_change".into(),
+            Command::GotoOlderJump => "goto_older_jump".into(),
+            Command::GotoNewerJump => "goto_newer_jump".into(),
             Command::InsertAtLastInsert => "insert_at_last_insert".into(),
             Command::SetNamedMark(c) => format!("set_named_mark {}", *c as u32),
             Command::GotoNamedMark(c) => format!("goto_named_mark {}", *c as u32),
@@ -949,6 +955,8 @@ impl Command {
             "goto_last_change_line" => Command::GotoLastChangeLine,
             "goto_older_change" => Command::GotoOlderChange,
             "goto_newer_change" => Command::GotoNewerChange,
+            "goto_older_jump" => Command::GotoOlderJump,
+            "goto_newer_jump" => Command::GotoNewerJump,
             "insert_at_last_insert" => Command::InsertAtLastInsert,
             "set_named_mark" => {
                 let cp = arg_u32(arg, line)?;
@@ -1248,6 +1256,8 @@ mod tests {
             Command::GotoNamedMarkLine('z'),
             Command::GotoOlderChange,
             Command::GotoNewerChange,
+            Command::GotoOlderJump,
+            Command::GotoNewerJump,
             Command::InsertAtLastInsert,
             Command::SetNamedMark('a'),
             Command::SetNamedMark('z'),

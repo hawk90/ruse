@@ -1230,6 +1230,9 @@ impl InputEngine {
             KeyCode::Char('x') if ctrl => {
                 self.action(Command::IncrementNumber(-i64::from(self.mcount())))
             }
+            // `CTRL-O` / `CTRL-I` — walk the jumplist back / forward (before the plain `o`/`i` arms).
+            KeyCode::Char('o') if ctrl => self.action(Command::GotoOlderJump),
+            KeyCode::Char('i') if ctrl => self.action(Command::GotoNewerJump),
             KeyCode::Char('i') if self.normal.op.is_some() => {
                 self.normal.awaiting = Awaiting::TextObjectChar { inner: true };
                 Feed::Pending
@@ -1282,6 +1285,7 @@ impl InputEngine {
             }
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Char('r') if ctrl => self.action(Command::Redo),
+            KeyCode::Tab => self.action(Command::GotoNewerJump),
             KeyCode::Char('r') => {
                 self.normal.awaiting = Awaiting::ReplaceChar;
                 Feed::Pending

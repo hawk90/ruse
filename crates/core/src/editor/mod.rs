@@ -217,6 +217,13 @@ pub struct View {
     /// [`commit`] on an Insert→Normal transition to the pre-clamp caret, and snapped like the marks. `None`
     /// until the first Insert session ends.
     last_insert: Option<usize>,
+    /// The jumplist (Vim): the cursor positions BEFORE each jump (search / `G` / `%` / a mark / paragraph),
+    /// oldest → newest, bounded to [`MAX_CHANGES`]. Navigated by `CTRL-O` (older) / `CTRL-I` (newer) through
+    /// [`jump_idx`]; recorded in [`apply_command`] and snapped every commit like the marks.
+    jumps: Vec<usize>,
+    /// The current cursor into [`jumps`] for `CTRL-O`/`CTRL-I`. Equals `jumps.len()` (past the newest) until
+    /// the first `CTRL-O`, which saves the current position so `CTRL-I` can return, then walks the list.
+    jump_idx: usize,
 }
 
 /// Maximum entries kept in a View's change list (Vim's default `:changes` history is ~100).
@@ -264,6 +271,8 @@ impl View {
             change_idx: 0,
             named_marks: [None; 26],
             last_insert: None,
+            jumps: Vec::new(),
+            jump_idx: 0,
         }
     }
 
@@ -324,6 +333,46 @@ impl View {
             self.change_idx += 1;
         }
         self.changes.get(self.change_idx).copied()
+    }
+
+    /// Record `from` as a jumplist entry — the position a jump command LEFT (Vim). Adjacent identical
+    /// positions coalesce; bounded to [`MAX_CHANGES`]; resets the `CTRL-O`/`CTRL-I` cursor past the newest.
+    fn push_jump(&mut self, from: usize) {
+        if self.jumps.last() != Some(&from) {
+            self.jumps.push(from);
+            if self.jumps.len() > MAX_CHANGES {
+                self.jumps.remove(0);
+            }
+        }
+        self.jump_idx = self.jumps.len();
+    }
+
+    /// Step the jumplist (`CTRL-O` = `older`, `CTRL-I` = newer) from the current position `now`, returning
+    /// the position to jump to or `None` at an end. The FIRST `CTRL-O` saves `now` onto the list so a later
+    /// `CTRL-I` returns to it (Vim); subsequent steps just walk the cursor.
+    fn nav_jump(&mut self, older: bool, now: usize) -> Option<usize> {
+        if older {
+            if self.jump_idx == self.jumps.len() {
+                // First move back: remember where we are so `CTRL-I` can return, then step onto the list.
+                if self.jumps.last() != Some(&now) {
+                    self.jumps.push(now);
+                    if self.jumps.len() > MAX_CHANGES {
+                        self.jumps.remove(0);
+                    }
+                }
+                self.jump_idx = self.jumps.len().saturating_sub(1);
+            }
+            if self.jump_idx == 0 {
+                return None; // already at the oldest jump
+            }
+            self.jump_idx -= 1;
+        } else {
+            if self.jump_idx + 1 >= self.jumps.len() {
+                return None; // already at (or past) the newest jump
+            }
+            self.jump_idx += 1;
+        }
+        self.jumps.get(self.jump_idx).copied()
     }
 
     /// The regex compile options for a search in this view (magic default; case per config).
@@ -426,6 +475,11 @@ enum Action {
     /// `g;`/`g,`: step the change list (`older` = `g;`) and move the cursor to that change. The step
     /// mutates `change_idx`, so it happens in [`commit`] (the planner is pure); a no-op at either end.
     JumpChange {
+        older: bool,
+    },
+    /// `CTRL-O`/`CTRL-I`: step the jumplist (`older` = `CTRL-O`) and move the cursor there. Mutates the
+    /// jumplist (saves the current pos on the first `CTRL-O`), so it happens in [`commit`]; no-op at an end.
+    JumpList {
         older: bool,
     },
     /// `m{a-z}`: install named mark `ch` at the current cursor. Mutates the mark table, so it applies in
@@ -1235,6 +1289,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         Action::JumpChange { older } => {
             nav_target = st.view.nav_change(older);
         }
+        Action::JumpList { older } => {
+            nav_target = st.view.nav_jump(older, entry_cursor);
+        }
         Action::SetNamedMark { ch } => {
             st.view.set_named_mark(ch, st.view.cursor);
         }
@@ -1286,6 +1343,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // The last-insert position (`gi`) snaps the same way.
     if let Some(li) = st.view.last_insert {
         st.view.last_insert = Some(snap(st.doc.bytes(), li.min(len)));
+    }
+    // Jumplist entries snap into range too (a buffer-resizing edit under a jump keeps it valid).
+    for j in st.view.jumps.iter_mut() {
+        *j = snap(st.doc.bytes(), (*j).min(len));
     }
     // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
     if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {
@@ -1380,10 +1441,40 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     plan.effects
 }
 
+/// Whether `cmd` is a Vim JUMP — a command that sets the `''`/jumplist "before" mark (search, `G`/`gg`, `%`,
+/// a mark jump, paragraph/sentence motion). A plain `h`/`j`/`k`/`l`/word motion is NOT a jump. `CTRL-O`/
+/// `CTRL-I` themselves are excluded so navigating the jumplist does not record new entries.
+fn is_jump(cmd: &Command) -> bool {
+    use crate::motion::Motion as M;
+    match cmd {
+        Command::SearchNext(_) | Command::SearchPrev(_) | Command::SearchWordUnder { .. } => true,
+        Command::GotoLastChange
+        | Command::GotoLastChangeLine
+        | Command::GotoNamedMark(_)
+        | Command::GotoNamedMarkLine(_) => true,
+        Command::Move(_, m) => matches!(
+            m,
+            M::GotoLine
+                | M::LastLine
+                | M::MatchBracket
+                | M::ParagraphFwd
+                | M::ParagraphBack
+                | M::SentenceFwd
+                | M::SentenceBack
+        ),
+        _ => false,
+    }
+}
+
 /// Convenience: plan then commit one command, then maintain the sticky desired column (curswant).
 pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
+    // A jump records the position it LEAVES onto the jumplist (Vim), so `CTRL-O` can return there.
+    let jump_from = is_jump(cmd).then_some(st.view.cursor);
     let p = plan(st, cmd);
     let effects = commit(st, p);
+    if let Some(from) = jump_from {
+        st.view.push_jump(from);
+    }
     update_curswant(st, cmd);
     effects
 }
