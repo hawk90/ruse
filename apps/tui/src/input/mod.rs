@@ -1442,6 +1442,8 @@ impl InputEngine {
                     KeyCode::Char('~') if self.normal.op.is_none() => {
                         self.arm_case_op(Op::CaseToggle)
                     }
+                    // `gJ` — join with the next line WITHOUT inserting a space (Vim `gJ`).
+                    KeyCode::Char('J') => self.action(Command::JoinLinesNoSpace),
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // `gR` — enter Virtual Replace mode (tab-aware overwrite).
