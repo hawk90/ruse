@@ -117,14 +117,13 @@ pub(crate) fn paint_pane(
         graphics_on,
         &vb.path,
     ) {
-        (true, Some(path)) => paint_image_cells(
-            cur,
-            rect,
-            disp_row,
-            vb.height,
-            path,
-            image_dims.get(path).copied(),
-        ),
+        // A graphics terminal shows the real image ONLY when its pixel dimensions were read (the PNG exists
+        // and parsed). If the path is missing/unreadable there are no dims — paint a text "not found" band
+        // instead of a blank placeholder grid, so a broken link reads as an error rather than empty space.
+        (true, Some(path)) => match image_dims.get(path).copied() {
+            Some(dims) => paint_image_cells(cur, rect, disp_row, vb.height, path, Some(dims)),
+            None => paint_missing_image(cur, rect, disp_row, vb.height, path),
+        },
         _ => paint_virt_block(cur, rect, disp_row, vb),
     };
     if rect.w == 0 || rect.h == 0 {
@@ -253,8 +252,11 @@ fn collect_image(
     vb: &highlight::VirtLine,
     dims: Option<(u32, u32)>,
 ) {
+    // No dims ⇒ the image could not be loaded; it renders as a text "not found" band, so record NO
+    // graphics placement (a transmit would fail anyway) — keeps the graphics pass in sync with the cells.
+    let Some(dims) = dims else { return };
     if let Some(path) = &vb.path {
-        let (left, cols) = image_layout(rect, vb.height, dims);
+        let (left, cols) = image_layout(rect, vb.height, Some(dims));
         out.push((
             path.clone(),
             graphics::Placement {
@@ -324,6 +326,39 @@ fn paint_virt_block(cur: &mut screen::Screen, rect: Rect, disp_row: u16, vb: &hi
                 cur.put(srow, col, "\u{2500}", Color::DarkGrey, false); // ─
             }
         }
+    }
+}
+
+/// Paint the "image could not be loaded" fallback band (F-031): `[image: <path> (not found)]` in red on
+/// the first row, blank rows below, filling `vb.height` rows from `disp_row`. Shown on a graphics terminal
+/// when the path is missing/unreadable, so a broken link is legible rather than a silent empty band.
+fn paint_missing_image(
+    cur: &mut screen::Screen,
+    rect: Rect,
+    disp_row: u16,
+    height: u16,
+    path: &str,
+) {
+    use crossterm::style::Color;
+    use unicode_segmentation::UnicodeSegmentation;
+    let (x0, x1) = (rect.x, rect.x + rect.w);
+    for r in 0..height {
+        let disp = disp_row + r;
+        if disp >= rect.h {
+            break;
+        }
+        let srow = rect.y + disp;
+        if r == 0 {
+            let label = format!("[image: {path} (not found)]");
+            let mut col = x0;
+            for gph in label.graphemes(true) {
+                if col >= x1 {
+                    break;
+                }
+                col = cur.put(srow, col, gph, Color::Red, false);
+            }
+        }
+        // rows below the label stay blank (already cleared by the frame)
     }
 }
 
@@ -1094,6 +1129,62 @@ mod render_tests {
             s.cell(3, 0).content,
             screen::Content::Cluster("b".into()),
             "line 1 pushed below the 2-row block",
+        );
+    }
+
+    /// F-031: on a graphics terminal, an image whose path could not be loaded (no dims) paints the
+    /// `[image: … (not found)]` text band, NOT blank placeholder cells, and records no graphics placement.
+    #[test]
+    fn paint_pane_shows_text_fallback_for_a_missing_image() {
+        let bytes = b"a\nb";
+        let no_style: &[screen::CellStyle] = &[];
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 40,
+            h: 5,
+        };
+        let virt = [highlight::VirtLine {
+            after_line: 0,
+            height: 2,
+            label: "alt".into(),
+            path: Some("/no/such.png".into()),
+        }];
+        let mut s = screen::Screen::new(40, 5);
+        let mut images = Vec::new();
+        paint_pane(
+            &mut s,
+            rect,
+            bytes,
+            no_style,
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &[],
+            9,
+            &virt,
+            &mut images,
+            true,                              // graphics ON, but the image can't be loaded
+            &std::collections::HashMap::new(), // no dims recorded → treated as not-found
+        );
+        // Row 1 (just below line 0) begins the fallback band with the "[image:" text.
+        assert_eq!(
+            s.cell(1, 0).content,
+            screen::Content::Cluster("[".into()),
+            "fallback band starts with '['",
+        );
+        let row: String = (0..7)
+            .map(|c| match &s.cell(1, c).content {
+                screen::Content::Cluster(g) => g.clone(),
+                _ => " ".into(),
+            })
+            .collect();
+        assert_eq!(row, "[image:", "not-found text band, not placeholder cells");
+        assert!(
+            images.is_empty(),
+            "an unloadable image records no graphics placement"
         );
     }
 
