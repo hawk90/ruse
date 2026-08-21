@@ -689,6 +689,21 @@ fn markdown_decorations(
                 }
             }
         }
+        // A fenced code block's info string (the ```lang tag): face the language label dim so it reads as
+        // a distinct tag rather than plain text. The body is left to the injection query (known languages
+        // are highlighted; unknown ones stay plain). Faces the whole info_string span; falls through.
+        if node.kind() == "info_string" {
+            let (ls, le) = (node.start_byte(), node.end_byte());
+            if ls < le && ls < visible.end && le > visible.start {
+                spans.push(Span {
+                    start: ls,
+                    end: le,
+                    style: face_for("label"),
+                    conceal: false,
+                    virt: None,
+                });
+            }
+        }
         // A block quote: face the whole `> …` block dim italic (markup.quote). Does NOT `continue` — we
         // fall through to descend so the quote's inline text is re-parsed; those shorter emphasis/strong/
         // code spans sort AFTER this longer one and win last, so inner markup stays visible over the quote.
@@ -1089,6 +1104,21 @@ mod tests {
                 .iter()
                 .any(|s| s.conceal && s.virt == Some("\u{2611} ")),
             "task `[x]` -> checked box virt; got {spans:?}",
+        );
+    }
+
+    #[test]
+    fn markdown_fenced_code_language_label_is_faced() {
+        let mut h = CachedHighlight::for_ext("md").expect("markdown grammar loads");
+        let src = b"```rust\nfn main() {}\n```\n";
+        let spans = h.spans(Revision(0), src, all(src));
+        // "rust" (bytes 3..7) is faced as a label (DarkYellow), not concealed.
+        let label_fg = face_for("label").fg;
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 3 && s.end == 7 && !s.conceal && s.style.fg == label_fg),
+            "the ```rust language label is faced; got {spans:?}",
         );
     }
 
