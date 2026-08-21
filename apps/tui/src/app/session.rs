@@ -152,8 +152,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut macros = crate::keys::MacroState::new();
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
-                                              // The three modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads:
-                                              // command palette (`C-p`), buffer-line jump (`C-l`), buffer switch (`C-b`). At most one is open.
+                                              // The last `:s` (pattern, replacement, flags) — recorded on every substitute so `&` can repeat it (F-009).
+    let mut last_substitute: Option<(String, String, ruse_core::SubFlags)> = None;
+    // The three modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads:
+    // command palette (`C-p`), buffer-line jump (`C-l`), buffer switch (`C-b`). At most one is open.
     let mut palette: Option<Picker<Command>> = None;
     let mut line_picker: Option<Picker<usize>> = None;
     let mut buffer_picker: Option<Picker<DocumentId>> = None;
@@ -752,6 +754,23 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             pending_z = true;
             continue;
         }
+        // `&` repeats the last `:s` on the CURRENT line WITHOUT its flags (Vim `&`). No-op before any `:s`.
+        if normal && key.code == KeyCode::Char('&') && key.modifiers.is_empty() {
+            status = match &last_substitute {
+                Some((pat, rep, _flags)) => match ws.substitute(
+                    ruse_core::SubRange::CurrentLine,
+                    pat,
+                    rep,
+                    ruse_core::SubFlags::default(), // `&` drops the previous flags (Vim)
+                ) {
+                    Ok(out) if out.replacements == 0 => format!("E486: pattern not found: {pat}"),
+                    Ok(out) => format!("{} substitutions on {} lines", out.replacements, out.lines),
+                    Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                },
+                None => "no previous substitute".to_string(),
+            };
+            continue;
+        }
         // `C-d` / `C-u` scroll a half page: move the cursor half the pane down / up (column preserved via
         // the core Move), and the per-frame scroll pass follows it. `C-f`/`C-b` are taken by the pickers.
         if normal && (is_ctrl(key, 'd') || is_ctrl(key, 'u')) {
@@ -994,16 +1013,32 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             status = format!("buffer {} deleted", id.0);
                         }
                     }
-                    ex => run_ex(
-                        &ex,
-                        &mut ws,
-                        &files,
-                        &initial,
-                        &recorded,
-                        &mut status,
-                        &mut quit,
-                        &mut confirm,
-                    ),
+                    ex => {
+                        // Record a `:s` so `&` can repeat it (Vim). A non-empty pattern only — an empty
+                        // pattern reuses the last search, which is not modelled here.
+                        if let Ex::Substitute(spec) = &ex {
+                            if !spec.pattern.is_empty() {
+                                last_substitute = Some((
+                                    spec.pattern.clone(),
+                                    spec.replacement.clone(),
+                                    ruse_core::SubFlags {
+                                        global: spec.global,
+                                        ignore_case: spec.ignore_case,
+                                    },
+                                ));
+                            }
+                        }
+                        run_ex(
+                            &ex,
+                            &mut ws,
+                            &files,
+                            &initial,
+                            &recorded,
+                            &mut status,
+                            &mut quit,
+                            &mut confirm,
+                        )
+                    }
                 }
             }
             Feed::Pending | Feed::Ignored => {}

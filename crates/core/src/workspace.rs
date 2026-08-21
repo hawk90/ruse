@@ -1302,6 +1302,20 @@ mod tests {
         assert_eq!(w.register_bytes(Some('b')), b"");
     }
 
+    /// F-009: a current-line substitute (what `&` repeats) acts only on the cursor's line, first match by
+    /// default — running it again after moving the cursor repeats on the new line.
+    #[test]
+    fn substitute_current_line_repeats_on_the_cursors_line() {
+        let mut w = Workspace::new(b"x x\nx x\n".to_vec());
+        w.substitute(SubRange::CurrentLine, "x", "y", SubFlags::default())
+            .unwrap();
+        assert_eq!(w.focused().doc.bytes(), b"y x\nx x\n", "first x on line 1");
+        w.place_focused_cursor(4); // start of line 2
+        w.substitute(SubRange::CurrentLine, "x", "y", SubFlags::default())
+            .unwrap();
+        assert_eq!(w.focused().doc.bytes(), b"y x\ny x\n", "repeat on line 2");
+    }
+
     /// F-029: `register_snapshot` lists only the NON-EMPTY registers, in `"`, `0`, a..z order.
     #[test]
     fn register_snapshot_lists_non_empty_in_order() {
