@@ -24,6 +24,7 @@ pub mod graphics;
 pub mod highlight;
 pub mod input;
 pub mod line_index;
+pub mod org;
 pub mod persist;
 pub mod screen;
 
