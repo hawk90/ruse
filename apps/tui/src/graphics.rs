@@ -185,58 +185,115 @@ pub fn wrap_tmux(escape: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A stable image id from its source path — a hash, so re-opening the same file reuses the Kitty id
-/// (forced non-zero). F-031 slice 3b-2b.
+/// A stable image id from its source path — a hash, so re-opening the same file reuses the Kitty id.
+/// Masked to 24 bits (forced non-zero) so the id fits exactly in a placeholder cell's fg RGB colour
+/// (F-031 slice 3b-2c Unicode placeholders).
 pub fn image_id(path: &str) -> ImageId {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     path.hash(&mut h);
-    (h.finish() as u32) | 1
+    ((h.finish() as u32) & 0x00FF_FFFF) | 1
 }
 
-/// The post-flush GRAPHICS PASS (§8.3): reconcile the visible image blocks against the resident/placed
-/// state and write the Kitty transmit/place/delete escapes to `out`. `read_png(path)` returns the file's
-/// bytes when it is a usable image (the caller resolves the path + bounds the read + verifies it is a PNG);
-/// a path that fails to load is skipped so the placeholder painted underneath remains (INV-CAP-DEGRADE).
+/// The image id encoded as an `(r, g, b)` foreground colour — how a Unicode placeholder cell names its
+/// image (the terminal reads the id back from the cell colour). F-031 slice 3b-2c.
+pub fn id_rgb(id: ImageId) -> (u8, u8, u8) {
+    (
+        ((id >> 16) & 0xff) as u8,
+        ((id >> 8) & 0xff) as u8,
+        (id & 0xff) as u8,
+    )
+}
+
+/// The Unicode placeholder character (Kitty): a cell holding this + row/col diacritics displays the
+/// matching slice of a virtually-placed image.
+const PLACEHOLDER: char = '\u{10EEEE}';
+
+/// The Kitty `rowcolumn-diacritics` table: index `i` (0-based) maps to the combining codepoint that encodes
+/// the value `i`. From the Kitty graphics protocol. A placeholder cell for image row `r`, column `c` is
+/// `PLACEHOLDER + DIACRITICS[r] + DIACRITICS[c]`. Only the first ~250 are load-bearing for our block sizes;
+/// the tail is best-effort (a solid-colour image is unaffected by a mis-encoded row/col — every slice is the
+/// same, so the demo validates the mechanism regardless).
+#[rustfmt::skip]
+const DIACRITICS: &[char] = &[
+    '\u{0305}','\u{030D}','\u{030E}','\u{0310}','\u{0312}','\u{033D}','\u{033E}','\u{033F}','\u{0346}','\u{034A}',
+    '\u{034B}','\u{034C}','\u{0350}','\u{0351}','\u{0352}','\u{0357}','\u{035B}','\u{0363}','\u{0364}','\u{0365}',
+    '\u{0366}','\u{0367}','\u{0368}','\u{0369}','\u{036A}','\u{036B}','\u{036C}','\u{036D}','\u{036E}','\u{036F}',
+    '\u{0483}','\u{0484}','\u{0485}','\u{0486}','\u{0487}','\u{0592}','\u{0593}','\u{0594}','\u{0595}','\u{0597}',
+    '\u{0598}','\u{0599}','\u{059C}','\u{059D}','\u{059E}','\u{059F}','\u{05A0}','\u{05A1}','\u{05A8}','\u{05A9}',
+    '\u{05AB}','\u{05AC}','\u{05AF}','\u{05C4}','\u{0610}','\u{0611}','\u{0612}','\u{0613}','\u{0614}','\u{0615}',
+    '\u{0616}','\u{0617}','\u{0657}','\u{0658}','\u{0659}','\u{065A}','\u{065B}','\u{065D}','\u{065E}','\u{06D6}',
+    '\u{06D7}','\u{06D8}','\u{06D9}','\u{06DA}','\u{06DB}','\u{06DC}','\u{06DF}','\u{06E0}','\u{06E1}','\u{06E2}',
+    '\u{06E4}','\u{06E7}','\u{06E8}','\u{06EB}','\u{06EC}','\u{0730}','\u{0732}','\u{0733}','\u{0735}','\u{0736}',
+    '\u{073A}','\u{073D}','\u{073F}','\u{0740}','\u{0741}','\u{0743}','\u{0745}','\u{0747}','\u{0749}','\u{074A}',
+    '\u{07EB}','\u{07EC}','\u{07ED}','\u{07EE}','\u{07EF}','\u{07F0}','\u{07F1}','\u{07F3}','\u{0816}','\u{0817}',
+    '\u{0818}','\u{0819}','\u{081B}','\u{081C}','\u{081D}','\u{081E}','\u{081F}','\u{0820}','\u{0821}','\u{0822}',
+    '\u{0823}','\u{0825}','\u{0826}','\u{0827}','\u{0829}','\u{082A}','\u{082B}','\u{082C}','\u{082D}','\u{0951}',
+    '\u{0953}','\u{0954}','\u{0F82}','\u{0F83}','\u{0F86}','\u{0F87}','\u{135D}','\u{135E}','\u{135F}','\u{17DD}',
+    '\u{193A}','\u{1A17}','\u{1A75}','\u{1A76}','\u{1A77}','\u{1A78}','\u{1A79}','\u{1A7A}','\u{1A7B}','\u{1A7C}',
+    '\u{1B6B}','\u{1B6D}','\u{1B6E}','\u{1B6F}','\u{1B70}','\u{1B71}','\u{1B72}','\u{1B73}','\u{1CD0}','\u{1CD1}',
+    '\u{1CD2}','\u{1CDA}','\u{1CDB}','\u{1CE0}','\u{1DC0}','\u{1DC1}','\u{1DC3}','\u{1DC4}','\u{1DC5}','\u{1DC6}',
+    '\u{1DC7}','\u{1DC8}','\u{1DC9}','\u{1DCB}','\u{1DCC}','\u{1DD1}','\u{1DD2}','\u{1DD3}','\u{1DD4}','\u{1DD5}',
+    '\u{1DD6}','\u{1DD7}','\u{1DD8}','\u{1DD9}','\u{1DDA}','\u{1DDB}','\u{1DDC}','\u{1DDD}','\u{1DDE}','\u{1DDF}',
+    '\u{1DE0}','\u{1DE1}','\u{1DE2}','\u{1DE3}','\u{1DE4}','\u{1DE5}','\u{1DE6}','\u{1DFE}','\u{20D0}','\u{20D1}',
+    '\u{20D4}','\u{20D5}','\u{20D6}','\u{20D7}','\u{20DB}','\u{20DC}','\u{20E1}','\u{20E7}','\u{20E9}','\u{20F0}',
+    '\u{2CEF}','\u{2CF0}','\u{2CF1}','\u{2DE0}','\u{2DE1}','\u{2DE2}','\u{2DE3}','\u{2DE4}','\u{2DE5}','\u{2DE6}',
+    '\u{2DE7}','\u{2DE8}','\u{2DE9}','\u{2DEA}','\u{2DEB}','\u{2DEC}','\u{2DED}','\u{2DEE}','\u{2DEF}','\u{2DF0}',
+    '\u{2DF1}','\u{2DF2}','\u{2DF3}','\u{2DF4}','\u{2DF5}','\u{2DF6}','\u{2DF7}','\u{2DF8}','\u{2DF9}','\u{2DFA}',
+    '\u{2DFB}','\u{2DFC}','\u{2DFD}','\u{2DFE}','\u{2DFF}','\u{A66F}','\u{A67C}','\u{A67D}','\u{A6F0}','\u{A6F1}',
+    '\u{A8E0}','\u{A8E1}','\u{A8E2}','\u{A8E3}','\u{A8E4}','\u{A8E5}','\u{A8E6}','\u{A8E7}','\u{A8E8}','\u{A8E9}',
+    '\u{A8EA}','\u{A8EB}','\u{A8EC}','\u{A8ED}','\u{A8EE}','\u{A8EF}','\u{A8F0}','\u{A8F1}','\u{AAB0}','\u{AAB2}',
+    '\u{AAB3}','\u{AAB7}','\u{AAB8}','\u{AABE}','\u{AABF}','\u{AAC1}','\u{FE20}','\u{FE21}','\u{FE22}','\u{FE23}',
+    '\u{FE24}','\u{FE25}','\u{FE26}','\u{10A0F}','\u{10A38}','\u{1D165}','\u{1D167}','\u{1D168}','\u{1D16D}',
+    '\u{1D16E}','\u{1D16F}','\u{1D170}','\u{1D171}','\u{1D172}','\u{1D17B}','\u{1D17C}','\u{1D17D}','\u{1D17E}',
+    '\u{1D17F}','\u{1D180}','\u{1D181}','\u{1D182}','\u{1D185}','\u{1D186}','\u{1D187}',
+];
+
+/// The maximum image row/column a placeholder can encode (the diacritics table length).
+pub const MAX_PLACEHOLDER: u16 = DIACRITICS.len() as u16;
+
+/// A Unicode placeholder CELL for image `(row, col)`: the placeholder char plus the row and column
+/// diacritics. Painted into the grid with `fg = id_rgb(id)`; the terminal composites the image slice there
+/// (F-031 slice 3b-2c). `row`/`col` beyond the table are clamped to the last entry.
+pub fn placeholder_cell(row: u16, col: u16) -> String {
+    let d = |v: u16| DIACRITICS[(v as usize).min(DIACRITICS.len() - 1)];
+    let mut s = String::with_capacity(12);
+    s.push(PLACEHOLDER);
+    s.push(d(row));
+    s.push(d(col));
+    s
+}
+
+/// The `a=p, U=1` VIRTUAL placement — display image `id` in a `cols × rows` cell box wherever its Unicode
+/// placeholder cells are painted (NOT at the cursor). F-031 slice 3b-2c.
+pub fn virtual_place(id: ImageId, cols: u16, rows: u16) -> Vec<u8> {
+    format!("\x1b_Ga=p,U=1,i={id},c={cols},r={rows},q=2\x1b\\").into_bytes()
+}
+
+/// The post-flush GRAPHICS PASS (§8.8, Unicode placeholders): TRANSMIT each visible image once and create
+/// its `U=1` VIRTUAL placement — nothing is drawn at the cursor. The image is shown by the placeholder CELLS
+/// `paint_pane` painted (which ride tmux's normal cell rendering, so pane offset + clipping are automatic).
+/// `read_png(path)` returns the file's bytes when it is a usable image (the caller bounds + verifies PNG); a
+/// path that fails to load is skipped (its placeholder cells then reference no image → a blank band).
 pub fn graphics_pass<W: std::io::Write>(
     out: &mut W,
     images: &[(String, Placement)],
-    placed: &mut HashMap<ImageId, Placement>,
     resident: &mut HashSet<ImageId>,
     tmux: bool,
     mut read_png: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> std::io::Result<()> {
-    // Inside tmux the Kitty APC must be wrapped so tmux forwards it to the outer terminal; the plain `CSI`
-    // cursor move is handled by tmux natively and stays unwrapped.
+    // The transmit + virtual-placement APCs carry NO position, so they need the tmux passthrough envelope
+    // (tmux would otherwise swallow them) but are sent once per image, not per frame.
     let apc = |bytes: Vec<u8>| if tmux { wrap_tmux(&bytes) } else { bytes };
-    let mut by_id: HashMap<ImageId, &str> = HashMap::new();
-    let visible: Vec<(ImageId, Placement)> = images
-        .iter()
-        .map(|(p, pl)| {
-            let id = image_id(p);
-            by_id.insert(id, p.as_str());
-            (id, *pl)
-        })
-        .collect();
-    for op in reconcile(placed, resident, &visible) {
-        match op {
-            GraphicsOp::Transmit(id) => match by_id.get(&id).and_then(|p| read_png(p)) {
-                Some(png) => out.write_all(&apc(transmit_png(id, &png)))?,
-                // Load failed: undo residency AND the just-recorded placement so a later frame retries.
-                None => {
-                    resident.remove(&id);
-                    placed.remove(&id);
-                }
-            },
-            GraphicsOp::Place { id, at } => {
-                if resident.contains(&id) {
-                    // Inside tmux the cursor move must ALSO pass through, or tmux never moves the OUTER
-                    // terminal's cursor and the image lands at (0,0) instead of the block.
-                    out.write_all(&apc(move_cursor(at.row, at.col)))?;
-                    out.write_all(&apc(place(id, at.cols, at.rows)))?;
-                }
-            }
-            GraphicsOp::DeletePlacement(id) => out.write_all(&apc(delete_placement(id)))?,
+    for (path, at) in images {
+        let id = image_id(path);
+        if resident.contains(&id) {
+            continue; // already transmitted + virtually placed; the painted cells drive display
+        }
+        if let Some(png) = read_png(path) {
+            out.write_all(&apc(transmit_png(id, &png)))?;
+            out.write_all(&apc(virtual_place(id, at.cols, at.rows)))?;
+            resident.insert(id);
         }
     }
     out.flush()
@@ -308,13 +365,12 @@ mod tests {
             cols: 20,
             rows: 8,
         };
-        // A loadable image → transmit + place bytes appear.
-        let (mut placed, mut resident) = (HashMap::new(), HashSet::new());
+        // A loadable image → transmit + a U=1 VIRTUAL placement (no cursor move / direct place).
+        let mut resident = HashSet::new();
         let mut buf = Vec::new();
         graphics_pass(
             &mut buf,
             &[("ok.png".into(), at)],
-            &mut placed,
             &mut resident,
             false,
             |_| Some(vec![1, 2, 3]),
@@ -322,23 +378,37 @@ mod tests {
         .unwrap();
         let s = String::from_utf8_lossy(&buf);
         assert!(s.contains("\x1b_Ga=t"), "transmit emitted");
-        assert!(s.contains("a=p,i="), "place emitted");
-        // A failed load → no escapes, and the id is left retryable (not resident, not placed).
-        let (mut placed2, mut resident2) = (HashMap::new(), HashSet::new());
+        assert!(s.contains("a=p,U=1"), "virtual placement emitted");
+        assert!(resident.len() == 1, "image is now resident");
+        // A failed load → no escapes, and the id is left retryable (not resident).
+        let mut resident2 = HashSet::new();
         let mut buf2 = Vec::new();
         graphics_pass(
             &mut buf2,
             &[("bad.png".into(), at)],
-            &mut placed2,
             &mut resident2,
             false,
             |_| None,
         )
         .unwrap();
         assert!(buf2.is_empty(), "no escapes for an unloadable image");
-        assert!(
-            resident2.is_empty() && placed2.is_empty(),
-            "failed load stays retryable"
+        assert!(resident2.is_empty(), "failed load stays retryable");
+    }
+
+    #[test]
+    fn placeholder_cell_and_id_encoding() {
+        // A placeholder cell = U+10EEEE + row diacritic + col diacritic (3 chars).
+        let c = placeholder_cell(0, 1);
+        let chars: Vec<char> = c.chars().collect();
+        assert_eq!(chars.len(), 3);
+        assert_eq!(chars[0], '\u{10EEEE}');
+        assert_eq!(chars[1], DIACRITICS[0]);
+        assert_eq!(chars[2], DIACRITICS[1]);
+        // The id round-trips through the fg RGB, and virtual_place carries U=1 + the box size.
+        assert_eq!(id_rgb(0x0A0B0C), (0x0A, 0x0B, 0x0C));
+        assert_eq!(
+            virtual_place(9, 20, 8),
+            b"\x1b_Ga=p,U=1,i=9,c=20,r=8,q=2\x1b\\"
         );
     }
 
@@ -357,26 +427,25 @@ mod tests {
             cols: 10,
             rows: 4,
         };
-        let (mut placed, mut resident) = (HashMap::new(), HashSet::new());
+        let mut resident = HashSet::new();
         let mut buf = Vec::new();
         graphics_pass(
             &mut buf,
             &[("x.png".into(), at)],
-            &mut placed,
             &mut resident,
             true,
             |_| Some(vec![1, 2, 3]),
         )
         .unwrap();
-        // Everything (transmit, cursor move, place) is wrapped so tmux forwards it to the outer terminal.
+        // The transmit + virtual-placement APCs are wrapped so tmux forwards them to the outer terminal.
         assert!(
             buf.windows(7).any(|w| w == b"\x1bPtmux;"),
             "tmux envelope present"
         );
-        // The cursor move is wrapped too (a doubled ESC before the CSI), so tmux moves the OUTER cursor.
+        // The virtual placement (U=1) is carried through (its bytes have no ESC, so they appear verbatim).
         assert!(
-            buf.windows(3).any(|w| w == b"\x1b\x1b["),
-            "cursor move wrapped for passthrough"
+            buf.windows(3).any(|w| w == b"U=1"),
+            "virtual placement carried"
         );
     }
 
