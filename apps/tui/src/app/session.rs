@@ -142,6 +142,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                                            // are 3b-3), so we must NOT emit Kitty bytes there. `graphics.rs` speaks Kitty only.
     let has_graphics = guard.graphics() == crate::caps::ledger::GraphicsProtocol::Kitty;
     let image_rows: u16 = if has_graphics { 12 } else { 2 };
+    // Inside tmux the graphics escapes must be wrapped so tmux forwards them (needs `allow-passthrough on`).
+    let in_tmux = std::env::var_os("TMUX").is_some();
     let mut placed: HashMap<graphics::ImageId, graphics::Placement> = HashMap::new();
     let mut resident: HashSet<graphics::ImageId> = HashSet::new();
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
@@ -369,7 +371,14 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 let bytes = std::fs::read(path).ok()?;
                 graphics::png_dimensions(&bytes).is_some().then_some(bytes)
             };
-            graphics::graphics_pass(&mut out, &images, &mut placed, &mut resident, read_png)?;
+            graphics::graphics_pass(
+                &mut out,
+                &images,
+                &mut placed,
+                &mut resident,
+                in_tmux,
+                read_png,
+            )?;
         }
         // F-014: apply the coordinator's deferred results now render is done (opening a buffer mutates
         // `highlighters`, which the frame's `spans` borrow forbade during the poll). Then open the

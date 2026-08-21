@@ -163,6 +163,22 @@ pub fn reconcile(
     ops
 }
 
+/// Wrap a raw terminal escape in the tmux PASSTHROUGH envelope (`\x1bPtmux; … \x1b\\`) so tmux forwards it
+/// to the OUTER terminal instead of swallowing it — every inner `\x1b` is doubled per the tmux contract.
+/// Needed for Kitty graphics inside tmux (with `set -g allow-passthrough on`). F-031 slice 3b-2b.
+pub fn wrap_tmux(escape: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(escape.len() + 10);
+    out.extend_from_slice(b"\x1bPtmux;");
+    for &b in escape {
+        if b == 0x1b {
+            out.push(0x1b);
+        }
+        out.push(b);
+    }
+    out.extend_from_slice(b"\x1b\\");
+    out
+}
+
 /// A stable image id from its source path — a hash, so re-opening the same file reuses the Kitty id
 /// (forced non-zero). F-031 slice 3b-2b.
 pub fn image_id(path: &str) -> ImageId {
@@ -181,8 +197,12 @@ pub fn graphics_pass<W: std::io::Write>(
     images: &[(String, Placement)],
     placed: &mut HashMap<ImageId, Placement>,
     resident: &mut HashSet<ImageId>,
+    tmux: bool,
     mut read_png: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> std::io::Result<()> {
+    // Inside tmux the Kitty APC must be wrapped so tmux forwards it to the outer terminal; the plain `CSI`
+    // cursor move is handled by tmux natively and stays unwrapped.
+    let apc = |bytes: Vec<u8>| if tmux { wrap_tmux(&bytes) } else { bytes };
     let mut by_id: HashMap<ImageId, &str> = HashMap::new();
     let visible: Vec<(ImageId, Placement)> = images
         .iter()
@@ -195,7 +215,7 @@ pub fn graphics_pass<W: std::io::Write>(
     for op in reconcile(placed, resident, &visible) {
         match op {
             GraphicsOp::Transmit(id) => match by_id.get(&id).and_then(|p| read_png(p)) {
-                Some(png) => out.write_all(&transmit_png(id, &png))?,
+                Some(png) => out.write_all(&apc(transmit_png(id, &png)))?,
                 // Load failed: undo residency AND the just-recorded placement so a later frame retries.
                 None => {
                     resident.remove(&id);
@@ -205,10 +225,10 @@ pub fn graphics_pass<W: std::io::Write>(
             GraphicsOp::Place { id, at } => {
                 if resident.contains(&id) {
                     out.write_all(&move_cursor(at.row, at.col))?;
-                    out.write_all(&place(id, at.cols, at.rows))?;
+                    out.write_all(&apc(place(id, at.cols, at.rows)))?;
                 }
             }
-            GraphicsOp::DeletePlacement(id) => out.write_all(&delete_placement(id))?,
+            GraphicsOp::DeletePlacement(id) => out.write_all(&apc(delete_placement(id)))?,
         }
     }
     out.flush()
@@ -288,6 +308,7 @@ mod tests {
             &[("ok.png".into(), at)],
             &mut placed,
             &mut resident,
+            false,
             |_| Some(vec![1, 2, 3]),
         )
         .unwrap();
@@ -302,6 +323,7 @@ mod tests {
             &[("bad.png".into(), at)],
             &mut placed2,
             &mut resident2,
+            false,
             |_| None,
         )
         .unwrap();
@@ -309,6 +331,44 @@ mod tests {
         assert!(
             resident2.is_empty() && placed2.is_empty(),
             "failed load stays retryable"
+        );
+    }
+
+    #[test]
+    fn wrap_tmux_doubles_inner_esc_and_envelopes() {
+        // `\x1b_Gx\x1b\\` -> `\x1bPtmux;` + doubled ESCs + `\x1b\\`.
+        let w = wrap_tmux(b"\x1b_Gx\x1b\\");
+        assert_eq!(w, b"\x1bPtmux;\x1b\x1b_Gx\x1b\x1b\\\x1b\\");
+    }
+
+    #[test]
+    fn graphics_pass_wraps_for_tmux() {
+        let at = Placement {
+            row: 0,
+            col: 0,
+            cols: 10,
+            rows: 4,
+        };
+        let (mut placed, mut resident) = (HashMap::new(), HashSet::new());
+        let mut buf = Vec::new();
+        graphics_pass(
+            &mut buf,
+            &[("x.png".into(), at)],
+            &mut placed,
+            &mut resident,
+            true,
+            |_| Some(vec![1, 2, 3]),
+        )
+        .unwrap();
+        // The transmit/place APCs are wrapped in the tmux passthrough envelope.
+        assert!(
+            buf.windows(7).any(|w| w == b"\x1bPtmux;"),
+            "tmux envelope present"
+        );
+        // The plain cursor-move CSI stays unwrapped (tmux handles it natively).
+        assert!(
+            buf.windows(3).any(|w| w == b"\x1b[1"),
+            "cursor move not wrapped"
         );
     }
 
