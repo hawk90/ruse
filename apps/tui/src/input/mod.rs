@@ -93,9 +93,11 @@ enum Awaiting {
     GSecond,
     /// After `r`: the next key is the replacement char.
     ReplaceChar,
-    /// After `` ` `` (backtick): the next key names a mark to jump to. Only `.` (the last-change mark) is
-    /// wired; named marks `a`–`z` are deferred, so any other key aborts.
+    /// After `` ` `` (backtick): the next key names a mark to jump to — `.` (last change) or a named mark
+    /// `a`–`z`. Any other key aborts.
     MarkJump,
+    /// After `m`: the next key names the mark (`a`–`z`) to SET at the cursor. Any other key aborts.
+    SetMarkChar,
     /// After `"`: the next key is the register NAME (`a`–`z`, or `A`–`Z` to append). It arms a one-shot
     /// pending register that the FOLLOWING yank/delete/change/paste targets — emitted as a
     /// [`Command::SetRegister`] the core applies before that command. `"` itself does not reset the count.
@@ -1055,9 +1057,14 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::RegisterSelect;
                 return Feed::Pending;
             }
-            // `` ` `` — arm a mark jump; the next key names the mark (only `.` = last change is wired).
+            // `` ` `` — arm a mark jump; the next key names the mark (`.` = last change, or `a`–`z`).
             KeyCode::Char('`') => {
                 self.normal.awaiting = Awaiting::MarkJump;
+                return Feed::Pending;
+            }
+            // `m` — arm a mark SET; the next key names the mark (`a`–`z`).
+            KeyCode::Char('m') => {
+                self.normal.awaiting = Awaiting::SetMarkChar;
                 return Feed::Pending;
             }
             _ => {}
@@ -1486,9 +1493,20 @@ impl InputEngine {
             Awaiting::MarkJump => {
                 self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
-                    // `` `. `` — jump to the last-change mark. Named marks `a`–`z` are deferred.
+                    // `` `. `` — jump to the last-change mark.
                     KeyCode::Char('.') => self.action(Command::GotoLastChange),
-                    // Any other mark name is not wired yet — abort the pending construct.
+                    // `` `{a-z} `` — jump to a named mark.
+                    KeyCode::Char(c @ 'a'..='z') => self.action(Command::GotoNamedMark(c)),
+                    // Any other mark name is not wired — abort the pending construct.
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::SetMarkChar => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // `m{a-z}` — set a named mark at the cursor.
+                    KeyCode::Char(c @ 'a'..='z') => self.action(Command::SetNamedMark(c)),
+                    // Uppercase/global marks and specials are deferred — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }

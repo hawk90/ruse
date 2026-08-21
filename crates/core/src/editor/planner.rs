@@ -820,6 +820,31 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             set_anchor: None,
             set_mark: None,
         },
+        // `m{a-z}` — install a named mark at the cursor. The cursor stays; `commit` writes the mark table.
+        Command::SetNamedMark(ch) => Plan {
+            action: Action::SetNamedMark { ch: *ch },
+            cursor: cur,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: None,
+        },
+        // `` `{a-z} `` — jump to a named mark (snapped). No-op if unset.
+        Command::GotoNamedMark(ch) => match st.view.named_mark(*ch) {
+            Some(pos) => Plan {
+                action: Action::Nop,
+                cursor: motion::snap(b, pos),
+                mode: st.view.mode,
+                is_edit: false,
+                effects: Vec::new(),
+                set_register: None,
+                set_anchor: None,
+                set_mark: None,
+            },
+            None => nop(cur, st.view.mode),
+        },
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
         // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
         // group starts here mid-insert-session (Vim `i_CTRL-G_u`). Cursor and mode are untouched.

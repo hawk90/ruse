@@ -689,6 +689,46 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn named_mark_set_then_jump_returns_to_it() {
+        // Set mark 'a' on line 2, move to line 1, `` `a `` returns to line 2's start (byte 2).
+        let st = run(
+            "ab\ncd\nef",
+            &[
+                Command::Move(1, Motion::Down), // to line 2 ("cd"), byte 3
+                Command::SetNamedMark('a'),
+                Command::Move(1, Motion::Up), // away to line 1
+                Command::GotoNamedMark('a'),
+            ],
+        );
+        assert_eq!(st.cursor(), 3, "`a returns to where mark a was set");
+    }
+
+    #[test]
+    fn goto_unset_named_mark_is_noop() {
+        let st = run("abc", &[Command::GotoNamedMark('q')]);
+        assert_eq!(st.cursor(), 0, "jumping an unset mark does not move");
+    }
+
+    #[test]
+    fn named_mark_snaps_after_a_shrinking_edit() {
+        // Mark near the end, then delete most of the buffer; the mark must stay in range (no panic on jump).
+        let st = run(
+            "hello world",
+            &[
+                Command::Move(9, Motion::Right), // near the end
+                Command::SetNamedMark('a'),
+                Command::Move(9, Motion::Left), // back to start
+                Command::DeleteForward(8),      // shrink the buffer under the mark
+                Command::GotoNamedMark('a'),
+            ],
+        );
+        assert!(
+            st.cursor() <= text(&st).len(),
+            "mark jump stays in range after shrink"
+        );
+    }
+
+    #[test]
     fn change_list_nav_is_noop_at_the_ends_and_before_edits() {
         // No edits → g;/g, do nothing.
         let st = run("abc", &[Command::GotoOlderChange, Command::GotoNewerChange]);

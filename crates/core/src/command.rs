@@ -167,6 +167,10 @@ pub enum Command {
     GotoOlderChange,
     /// `g,` — jump to the next NEWER position in the change list (Vim). A no-op at the newest change.
     GotoNewerChange,
+    /// `m{a-z}` — set the named mark `char` at the cursor (Vim). Per-buffer; the cursor does not move.
+    SetNamedMark(char),
+    /// `` `{a-z} `` — jump the cursor to named mark `char` (Vim). A no-op if that mark is unset.
+    GotoNamedMark(char),
     /// `CTRL-G u` in Insert — break the undo sequence: the NEXT edit starts a fresh undo group, so a
     /// later `u` stops here instead of undoing the whole insert session. A nop that only clears the
     /// edit-continuation state (Vim `i_CTRL-G_u`). Undo-of-a-session is not observable via the parity
@@ -678,6 +682,8 @@ impl Command {
             Command::GotoLastChange => "goto_last_change".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
             Command::GotoNewerChange => "goto_newer_change".into(),
+            Command::SetNamedMark(c) => format!("set_named_mark {}", *c as u32),
+            Command::GotoNamedMark(c) => format!("goto_named_mark {}", *c as u32),
             Command::BreakUndo => "break_undo".into(),
             Command::ShiftRight(n) => format!("shift_right {n}"),
             Command::ShiftLeft(n) => format!("shift_left {n}"),
@@ -921,6 +927,18 @@ impl Command {
             "goto_last_change" => Command::GotoLastChange,
             "goto_older_change" => Command::GotoOlderChange,
             "goto_newer_change" => Command::GotoNewerChange,
+            "set_named_mark" => {
+                let cp = arg_u32(arg, line)?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::SetNamedMark(c)
+            }
+            "goto_named_mark" => {
+                let cp = arg_u32(arg, line)?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::GotoNamedMark(c)
+            }
             "break_undo" => Command::BreakUndo,
             "shift_right" => {
                 let n = arg_u32(arg, line)?;
@@ -1196,6 +1214,10 @@ mod tests {
             Command::GotoLastChange,
             Command::GotoOlderChange,
             Command::GotoNewerChange,
+            Command::SetNamedMark('a'),
+            Command::SetNamedMark('z'),
+            Command::GotoNamedMark('a'),
+            Command::GotoNamedMark('z'),
             Command::BreakUndo,
             Command::ShiftRight(1),
             Command::ShiftRight(3),

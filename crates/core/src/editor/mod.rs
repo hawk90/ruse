@@ -209,6 +209,10 @@ pub struct View {
     /// after an edit, so the first `g;` lands on the newest change; walks toward 0 (oldest) on `g;` and back
     /// toward the newest on `g,`. Reset to `changes.len()` whenever a new change is pushed.
     change_idx: usize,
+    /// The per-buffer named marks `a`–`z` (Vim `m{a-z}` / `` `{a-z} ``), indexed by `c - 'a'`. `None` = unset.
+    /// Set by [`Command::SetNamedMark`], read by [`Command::GotoNamedMark`], and snapped on every commit like
+    /// the change list. Uppercase/global marks and numbered marks stay deferred.
+    named_marks: [Option<usize>; 26],
 }
 
 /// Maximum entries kept in a View's change list (Vim's default `:changes` history is ~100).
@@ -254,6 +258,23 @@ impl View {
             caret: CaretGravity::OnChar,
             changes: Vec::new(),
             change_idx: 0,
+            named_marks: [None; 26],
+        }
+    }
+
+    /// The byte offset of named mark `c` (`a`–`z`), or `None` if unset / not a lowercase letter.
+    fn named_mark(&self, c: char) -> Option<usize> {
+        let i = (c as usize).checked_sub('a' as usize)?;
+        self.named_marks.get(i).copied().flatten()
+    }
+
+    /// Set named mark `c` (`a`–`z`) to `pos`. A non-lowercase `c` is ignored (the input layer only sends
+    /// `a`–`z`, so this is a defensive guard).
+    fn set_named_mark(&mut self, c: char, pos: usize) {
+        if let Some(i) = (c as usize).checked_sub('a' as usize) {
+            if let Some(slot) = self.named_marks.get_mut(i) {
+                *slot = Some(pos);
+            }
         }
     }
 
@@ -396,6 +417,11 @@ enum Action {
     /// mutates `change_idx`, so it happens in [`commit`] (the planner is pure); a no-op at either end.
     JumpChange {
         older: bool,
+    },
+    /// `m{a-z}`: install named mark `ch` at the current cursor. Mutates the mark table, so it applies in
+    /// [`commit`]; the cursor does not move.
+    SetNamedMark {
+        ch: char,
     },
     Nop,
     /// Install the one-shot pending register (`"x`). Distinct from `Nop` so [`commit`] knows NOT to clear
@@ -1189,6 +1215,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         Action::JumpChange { older } => {
             nav_target = st.view.nav_change(older);
         }
+        Action::SetNamedMark { ch } => {
+            st.view.set_named_mark(ch, st.view.cursor);
+        }
         Action::BlockInsertArm {
             edits,
             hint,
@@ -1223,6 +1252,11 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let len = st.doc.bytes().len();
     for c in st.view.changes.iter_mut() {
         *c = snap(st.doc.bytes(), (*c).min(len));
+    }
+    // Named marks (`m{a-z}`) snap into range too, so an edit that shrank the buffer under a mark can never
+    // make a later `` `{a-z} `` jump out of bounds.
+    for m in st.view.named_marks.iter_mut().flatten() {
+        *m = snap(st.doc.bytes(), (*m).min(len));
     }
     // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
     if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {
