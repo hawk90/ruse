@@ -716,6 +716,23 @@ fn markdown_decorations(
                 });
             }
         }
+        // Dim the `|` delimiters in header + data rows (matching the Org table slice). These length-1 spans
+        // sort after the longer header-bold span and win, so the pipes read as separators, cells stay normal.
+        if matches!(node.kind(), "pipe_table_header" | "pipe_table_row") {
+            let (s, e) = (node.start_byte(), node.end_byte().min(src.len()));
+            for (off, &byte) in src[s..e].iter().enumerate() {
+                let i = s + off;
+                if byte == b'|' && i >= visible.start && i < visible.end {
+                    spans.push(Span {
+                        start: i,
+                        end: i + 1,
+                        style: face_for("comment"),
+                        conceal: false,
+                        virt: None,
+                    });
+                }
+            }
+        }
         // A fenced code block's info string (the ```lang tag): face the language label dim so it reads as
         // a distinct tag rather than plain text. The body is left to the injection query (known languages
         // are highlighted; unknown ones stay plain). Faces the whole info_string span; falls through.
@@ -1153,6 +1170,13 @@ mod tests {
                 .iter()
                 .any(|s| s.start == delim && !s.conceal && s.style.fg == Color::DarkGrey),
             "delimiter row is dimmed; got {spans:?}",
+        );
+        // The header row's leading `|` (byte 0) is dimmed as a length-1 span (wins over the bold).
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.start == 0 && s.end == 1 && s.style.fg == Color::DarkGrey),
+            "header pipe delimiter is dimmed; got {spans:?}",
         );
     }
 
