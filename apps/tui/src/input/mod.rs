@@ -1222,6 +1222,14 @@ impl InputEngine {
             KeyCode::Char('s') if self.normal.op.is_none() => {
                 self.action(Command::Change(self.mcount(), Motion::Right))
             }
+            // `CTRL-A` / `CTRL-X` — increment / decrement the number under-or-after the cursor by the count.
+            // Placed before the plain `a`/`x` arms so the ctrl-modified keys are not swallowed by them.
+            KeyCode::Char('a') if ctrl => {
+                self.action(Command::IncrementNumber(i64::from(self.mcount())))
+            }
+            KeyCode::Char('x') if ctrl => {
+                self.action(Command::IncrementNumber(-i64::from(self.mcount())))
+            }
             KeyCode::Char('i') if self.normal.op.is_some() => {
                 self.normal.awaiting = Awaiting::TextObjectChar { inner: true };
                 Feed::Pending
