@@ -3,7 +3,7 @@
 //! and routes it (confirm loop / overlays / window prefix / the input engine). Plus the two small
 //! frontend intercepts it calls: `is_ctrl` and the `C-w` window-command dispatch.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::PathBuf;
 
@@ -24,7 +24,7 @@ use crate::ui::{
     action_picker, buffer_picker, diag_picker, file_picker, layout::window_rects, line_picker,
     palette, ref_picker,
 };
-use crate::{health, highlight, indent, line_index, persist, recover, screen, viewport};
+use crate::{graphics, health, highlight, indent, line_index, persist, recover, screen, viewport};
 #[cfg(unix)]
 use crate::{pty, term_buffer};
 
@@ -136,6 +136,14 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // Starts empty so the first frame paints in full.
     let mut prev_frame = screen::Screen::new(0, 0);
     let sync_output = guard.sync_output(); // pinned once from the F-010 ledger (INV-RENDER-PROFILE)
+                                           // F-031 slice 3b-2b: the pinned inline-graphics protocol + the persistent placement state the graphics
+                                           // pass reconciles each frame. A graphics-capable terminal reserves taller image blocks (room for pixels).
+                                           // Only KITTY is lowered in this slice; a Sixel/iTerm2 terminal falls to the placeholder (its escapes
+                                           // are 3b-3), so we must NOT emit Kitty bytes there. `graphics.rs` speaks Kitty only.
+    let has_graphics = guard.graphics() == crate::caps::ledger::GraphicsProtocol::Kitty;
+    let image_rows: u16 = if has_graphics { 12 } else { 2 };
+    let mut placed: HashMap<graphics::ImageId, graphics::Placement> = HashMap::new();
+    let mut resident: HashSet<graphics::ImageId> = HashSet::new();
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
     let mut pending_z = false; // a `z` scroll prefix awaits its second key (`zz`/`zt`/`zb`)
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
@@ -234,6 +242,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // Syntax highlighting is the FOCUSED buffer's own grammar (F-007): each file buffer has its own
         // highlighter in the registry; a scratch/no-file buffer has none, so it paints unhighlighted.
         let focused_id = ws.focused_buffer();
+        // F-031 3b-2b: reserve taller image blocks on a graphics-capable terminal (no-op after the first).
+        if let Some(h) = highlighters.get_mut(&focused_id) {
+            h.set_image_rows(image_rows);
+        }
         let (spans, virt_lines): (&[highlight::Span], &[highlight::VirtLine]) =
             match highlighters.get_mut(&focused_id) {
                 Some(h) => h.spans_and_virt(revision, &snapshot, visible.clone()),
@@ -329,7 +341,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // dispatch) — the coordinator owns all of it; deferred edits/refs are applied after render.
         lsp.sync_and_poll(&ws, &files, revision, &snapshot, &mut status);
         let focus_diags = lsp.diagnostics_for(ws.focused_buffer());
-        render(
+        let images = render(
             &mut out,
             &ws,
             cmd_line,
@@ -345,6 +357,19 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             focus_diags,
             lsp.completion_view(),
         )?;
+        // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
+        // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).
+        if has_graphics {
+            let read_png = |path: &str| -> Option<Vec<u8>> {
+                let meta = std::fs::metadata(path).ok()?;
+                if meta.len() > (16 << 20) {
+                    return None; // coarse decode-bomb / runaway guard (16 MiB)
+                }
+                let bytes = std::fs::read(path).ok()?;
+                graphics::png_dimensions(&bytes).is_some().then_some(bytes)
+            };
+            graphics::graphics_pass(&mut out, &images, &mut placed, &mut resident, read_png)?;
+        }
         // F-014: apply the coordinator's deferred results now render is done (opening a buffer mutates
         // `highlighters`, which the frame's `spans` borrow forbade during the poll). Then open the
         // references picker (past `cmd_line`'s borrow of `ref_picker`).

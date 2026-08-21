@@ -9,7 +9,7 @@ use crossterm::{cursor, queue, terminal};
 use ruse_core::{Command, Mode, SelectKind, SplitDir, Workspace};
 
 use crate::ui::layout::Rect;
-use crate::{highlight, screen};
+use crate::{graphics, highlight, screen};
 
 /// One indent level's width in display columns — matches the editor's `editor.tab_width` default.
 pub(crate) const TAB_WIDTH: u16 = 4;
@@ -104,6 +104,7 @@ pub(crate) fn paint_pane(
     conceal: &[(usize, usize, Option<&str>)],
     caret_line: usize,
     virt: &[highlight::VirtLine],
+    out_images: &mut Vec<(String, graphics::Placement)>,
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
@@ -125,6 +126,7 @@ pub(crate) fn paint_pane(
                 let disp = (line - top) as u16 + virt_before;
                 if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
                     paint_virt_block(cur, rect, disp + 1, vb);
+                    collect_image(out_images, rect, disp + 1, vb);
                     virt_before += vb.height;
                 }
             }
@@ -192,8 +194,31 @@ pub(crate) fn paint_pane(
         if disp < rect.h {
             if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
                 paint_virt_block(cur, rect, disp + 1, vb);
+                collect_image(out_images, rect, disp + 1, vb);
             }
         }
+    }
+}
+
+/// Record an image block's on-screen placement (F-031 slice 3b-2b) for the render loop's graphics pass —
+/// only for a block that carries a `path` (a real image, not a plain virtual block). The placeholder is
+/// still painted underneath, so a non-graphics terminal (or a failed load) degrades to it automatically.
+fn collect_image(
+    out: &mut Vec<(String, graphics::Placement)>,
+    rect: Rect,
+    disp_row: u16,
+    vb: &highlight::VirtLine,
+) {
+    if let Some(path) = &vb.path {
+        out.push((
+            path.clone(),
+            graphics::Placement {
+                row: rect.y + disp_row,
+                col: rect.x,
+                cols: rect.w,
+                rows: vb.height,
+            },
+        ));
     }
 }
 
@@ -287,13 +312,16 @@ pub(crate) fn render(
     terminals: &TermViews,
     diagnostics: &[crate::lsp::Diag],
     completion: Option<(&[crate::lsp::protocol::CompletionItem], usize)>,
-) -> io::Result<()> {
+) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     let text_rows = rows.saturating_sub(1);
     // Paint the whole frame into a fresh cell grid; the diff against `prev` emits only what changed.
     let mut cur = screen::Screen::new(cols, rows);
+    // The focused pane's visible image blocks (path + screen placement), returned for the graphics pass
+    // that draws real pixels after the cell flush (F-031 slice 3b-2b).
+    let mut images: Vec<(String, graphics::Placement)> = Vec::new();
 
     // Flatten the focused buffer's highlight spans into a per-byte FACE (spans index into it). Panes
     // showing the SAME buffer reuse it; a pane on a different buffer (post-MVP) renders unstyled. Longest
@@ -383,6 +411,7 @@ pub(crate) fn render(
             pane_conceal,
             caret_line,
             pane_virt,
+            &mut images,
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -553,7 +582,8 @@ pub(crate) fn render(
             } else {
                 queue!(out, cursor::Hide)?;
             }
-            return out.flush();
+            out.flush()?;
+            return Ok(images);
         }
         let (row, col) = cursor_cell(
             focus.doc.bytes(),
@@ -565,7 +595,8 @@ pub(crate) fn render(
         let screen_col = (frect.x + col).min(cols.saturating_sub(1));
         queue!(out, cursor::MoveTo(screen_col, screen_row), cursor::Show)?;
     }
-    out.flush()
+    out.flush()?;
+    Ok(images)
 }
 
 /// Emit only the cells that changed between `cur` and `prev` (F-006 #1). Each changed run is one
@@ -762,6 +793,7 @@ mod render_tests {
             &[],
             0,
             &[],
+            &mut Vec::new(),
         );
         assert!(cur.cell(0, 0).style.bold, "byte 0 paints bold");
         assert!(cur.cell(0, 1).style.italic, "byte 1 paints italic");
@@ -780,6 +812,7 @@ mod render_tests {
             &[],
             0,
             &[],
+            &mut Vec::new(),
         );
         let c = sel.cell(0, 0);
         assert!(
@@ -820,6 +853,7 @@ mod render_tests {
             &conceal,
             1,
             &[],
+            &mut Vec::new(),
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -847,6 +881,7 @@ mod render_tests {
             &conceal,
             0,
             &[],
+            &mut Vec::new(),
         );
         assert_eq!(
             s2.cell(0, 0).content,
@@ -884,6 +919,7 @@ mod render_tests {
             &conceal,
             1,
             &[],
+            &mut Vec::new(),
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -911,6 +947,7 @@ mod render_tests {
             after_line: 0,
             height: 2,
             label: "img".into(),
+            path: None,
         }];
         // Caret on line 2 ('c' at byte 4): row 2 + 2 virtual rows above = screen row 4.
         assert_eq!(cursor_cell(bytes, 4, 0, &virt).0, 4);
@@ -934,6 +971,7 @@ mod render_tests {
             after_line: 0,
             height: 2,
             label: "x".into(),
+            path: None,
         }];
         let mut s = screen::Screen::new(8, 5);
         paint_pane(
@@ -949,6 +987,7 @@ mod render_tests {
             &[],
             9,
             &virt,
+            &mut Vec::new(),
         );
         assert_eq!(
             s.cell(0, 0).content,

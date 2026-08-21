@@ -42,6 +42,9 @@ pub struct VirtLine {
     pub after_line: usize,
     pub height: u16,
     pub label: String,
+    /// The image's source path (an `![](path)` destination) — the render loop reads it to draw real pixels
+    /// on a graphics-capable terminal (F-031 slice 3b-2b). `None` for a non-image block.
+    pub path: Option<String>,
 }
 
 /// The height (display rows) of an image placeholder block — a small fixed box for slice 3a.
@@ -279,6 +282,10 @@ pub struct CachedHighlight {
     /// The virtual-line blocks (image placeholders) for the current frame, refreshed by [`Self::recompute`]
     /// alongside `spans`. Empty for non-Markdown highlighters (F-031 slice 3a).
     virt_lines: Vec<VirtLine>,
+    /// The display height (rows) an image block reserves — tall on a graphics-capable terminal (room for
+    /// real pixels), short otherwise (just the alt placeholder). Set by [`Self::set_image_rows`] from the
+    /// pinned graphics capability (F-031 slice 3b-2b); defaults to the placeholder height.
+    image_rows: u16,
     rev: Option<Revision>,
     /// The `(revision, visible-range)` the cached spans were computed for. Spans are recomputed when
     /// EITHER changes — a new edit (revision) or a scroll (visible range) — since the query is bounded
@@ -309,6 +316,7 @@ impl CachedHighlight {
             markdown,
             inline,
             virt_lines: Vec::new(),
+            image_rows: IMAGE_PLACEHOLDER_ROWS,
             rev: None,
             key: None,
             tree: None,
@@ -344,6 +352,16 @@ impl CachedHighlight {
         &self.spans
     }
 
+    /// Set the reserved display height for image blocks (F-031 slice 3b-2b). A graphics-capable terminal
+    /// wants room for real pixels; a plain one only needs the short alt placeholder. Invalidates the cache
+    /// so the next `spans` call re-emits blocks at the new height.
+    pub fn set_image_rows(&mut self, rows: u16) {
+        if rows != self.image_rows {
+            self.image_rows = rows.max(1);
+            self.key = None;
+        }
+    }
+
     /// Spans PLUS the virtual-line blocks (F-031 slice 3a: Markdown image placeholders) for the same
     /// frame — both borrow `self` immutably, so the caller holds them together across one `render`.
     pub fn spans_and_virt(
@@ -377,8 +395,14 @@ impl CachedHighlight {
         let (spans, virt) = match &self.tree {
             Some(tree) if self.markdown => {
                 let mut virt = Vec::new();
-                let spans =
-                    markdown_decorations(tree, src, self.inline.as_mut(), &visible, &mut virt);
+                let spans = markdown_decorations(
+                    tree,
+                    src,
+                    self.inline.as_mut(),
+                    &visible,
+                    &mut virt,
+                    self.image_rows,
+                );
                 (spans, virt)
             }
             Some(tree) => (
@@ -558,6 +582,7 @@ fn markdown_decorations(
     mut inline: Option<&mut Parser>,
     visible: &std::ops::Range<usize>,
     out_virt: &mut Vec<VirtLine>,
+    image_rows: u16,
 ) -> Vec<Span> {
     let mut spans = Vec::new();
     let mut stack = vec![tree.root_node()];
@@ -599,7 +624,7 @@ fn markdown_decorations(
         // reach here — the heading arm `continue`s above.)
         if node.kind() == "inline" {
             if let Some(parser) = inline.as_deref_mut() {
-                inline_decorations(node, src, parser, visible, &mut spans, out_virt);
+                inline_decorations(node, src, parser, visible, &mut spans, out_virt, image_rows);
             }
             continue;
         }
@@ -676,6 +701,7 @@ fn inline_decorations(
     visible: &std::ops::Range<usize>,
     out: &mut Vec<Span>,
     out_virt: &mut Vec<VirtLine>,
+    image_rows: u16,
 ) {
     let region = inline_node.byte_range();
     let Some(slice) = src.get(region.clone()) else {
@@ -765,17 +791,22 @@ fn inline_decorations(
             // it (F-031 slice 3a). Real pixels replace the block on a graphics-capable terminal (3b).
             "image" => {
                 let after_line = ruse_core::pos::line_of(src, base + node.start_byte());
-                let alt = {
+                // The alt text (`image_description`) labels the placeholder; the destination
+                // (`link_destination`) is the file the render loop reads for real pixels.
+                let child_range = |kind: &str| -> Option<(usize, usize)> {
                     let mut cur = node.walk();
-                    let desc = node
-                        .children(&mut cur)
-                        .find(|c| c.kind() == "image_description")
-                        .map(|c| (c.start_byte(), c.end_byte()));
-                    desc.and_then(|(s, e)| slice.get(s..e))
-                        .and_then(|b| std::str::from_utf8(b).ok())
-                        .unwrap_or("image")
-                        .to_string()
+                    let found = node.children(&mut cur).find(|c| c.kind() == kind);
+                    found.map(|c| (c.start_byte(), c.end_byte()))
                 };
+                let text = |range: Option<(usize, usize)>| {
+                    range
+                        .and_then(|(s, e)| slice.get(s..e))
+                        .and_then(|b| std::str::from_utf8(b).ok())
+                        .map(str::to_string)
+                };
+                let alt =
+                    text(child_range("image_description")).unwrap_or_else(|| "image".to_string());
+                let path = text(child_range("link_destination"));
                 emit(
                     node.start_byte(),
                     node.end_byte(),
@@ -784,8 +815,9 @@ fn inline_decorations(
                 );
                 out_virt.push(VirtLine {
                     after_line,
-                    height: IMAGE_PLACEHOLDER_ROWS,
+                    height: image_rows,
                     label: alt,
+                    path,
                 });
                 continue; // don't descend into the image's alt/url children
             }
