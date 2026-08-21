@@ -104,9 +104,25 @@ fn scan_line(
         ));
         return;
     }
-    // List item: optional indent, then `-`/`+`, then a space. A `[ ]`/`[X]` after it is a checkbox.
     let indent = b.iter().take_while(|&&c| c == b' ').count();
     let rest = &b[indent..];
+    // Table row: optional indent then `|`. A SEPARATOR row (only `|`/`-`/`+`/space, e.g. `|---+---|`) is
+    // dimmed whole; a DATA row dims just its `|` delimiters, leaving cell text (and its inline markup)
+    // normal. Header-vs-body styling needs cross-line lookahead and is deferred.
+    if rest.first() == Some(&b'|') {
+        if rest.iter().all(|&c| matches!(c, b'|' | b'-' | b'+' | b' ')) {
+            out.push(faced(base + indent, base + content.len(), "comment"));
+        } else {
+            for (i, &c) in b.iter().enumerate() {
+                if c == b'|' {
+                    out.push(faced(base + i, base + i + 1, "comment"));
+                }
+            }
+        }
+        scan_inline(content, indent, base, line_idx, image_rows, out, out_virt);
+        return;
+    }
+    // List item: optional indent, then `-`/`+`, then a space. A `[ ]`/`[X]` after it is a checkbox.
     if matches!(rest.first(), Some(b'-') | Some(b'+')) && rest.get(1) == Some(&b' ') {
         let after = &b[indent + 2..];
         let (glyph, prefix_end): (&'static str, usize) =
@@ -341,6 +357,26 @@ mod tests {
         assert!(
             virt("[[file:notes.org]]\n").is_empty(),
             ".org is not an image"
+        );
+    }
+
+    #[test]
+    fn table_dims_separators_and_pipe_delimiters() {
+        use crossterm::style::Color;
+        let src = "| a | b |\n|---+---|\n| 1 | 2 |\n";
+        let s = spans(src);
+        // The separator row (line 2, bytes 10..19) is dimmed whole.
+        let sep_start = "| a | b |\n".len();
+        assert!(
+            s.iter()
+                .any(|x| x.start == sep_start && !x.conceal && x.style.fg == Color::DarkGrey),
+            "separator row dimmed whole; got {s:?}",
+        );
+        // The header row's leading `|` (byte 0) is dimmed, its cell text is not.
+        assert!(
+            s.iter()
+                .any(|x| x.start == 0 && x.end == 1 && x.style.fg == Color::DarkGrey),
+            "data-row `|` delimiter dimmed; got {s:?}",
         );
     }
 
