@@ -148,12 +148,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
     let mut pending_z = false; // a `z` scroll prefix awaits its second key (`zz`/`zt`/`zb`)
                                // Vim macros (D-055): `q{a-z}` records the raw keystroke stream into a register, `@{a-z}` replays it.
-    let mut pending_q = false; // `q` awaits the register name to START recording
-    let mut pending_at = false; // `@` awaits the register name to REPLAY
-    let mut recording: Option<(char, Vec<crossterm::event::KeyEvent>)> = None; // (register, keys captured)
-    let mut replay_queue: std::collections::VecDeque<crossterm::event::KeyEvent> = // keys pending replay
-        std::collections::VecDeque::new();
-    let mut replay_budget: u32 = 0; // remaining keys a top-level `@` may still expand (recursion guard)
+                               // The whole record/replay state machine lives in `keys::MacroState` (unit-tested end to end).
+    let mut macros = crate::keys::MacroState::new();
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
                                               // The three modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads:
@@ -424,12 +420,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             poll_ms = Some(LSP_TICK_MS);
         }
         // Macro replay (D-055): drain the replay queue before reading the terminal, so `@{reg}`'s decoded
-        // keys flow through the same dispatch as if re-typed. A key from the queue is `from_replay` — it is
-        // NOT re-recorded into an active recording (Vim records `@x` literally, not its expansion).
-        let (key, from_replay) = match replay_queue.pop_front() {
+        // keys flow through the same dispatch as if re-typed. A key from the queue is `from_replay`.
+        let (raw_key, from_replay) = match macros.next_replay() {
             Some(k) => (k, true),
             None => {
-                replay_budget = 0; // no macro is expanding right now — reset the recursion guard
                 let k = if let Some(ms) = poll_ms {
                     if event::poll(std::time::Duration::from_millis(ms))? {
                         match event::read()? {
@@ -448,26 +442,30 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 (k, false)
             }
         };
-        if key.kind == KeyEventKind::Release {
+        if raw_key.kind == KeyEventKind::Release {
             continue;
         }
-        // Macro recording (D-055): capture every TYPED key into the active recording. A typed `q` STOPS the
-        // recording (and is not itself recorded); the register-name key after `q`/`@` was consumed before
-        // recording began, so it never reaches here. Replay-queue keys are never captured.
-        if !from_replay {
-            if let Some((reg, buf)) = recording.as_mut() {
-                if matches!(key.code, KeyCode::Char('q')) && key.modifiers.is_empty() {
-                    let bytes = crate::keys::encode_all(buf);
-                    let n = buf.len();
-                    let reg = *reg;
-                    recording = None;
-                    ws.set_register_raw(Some(reg), bytes);
-                    status = format!("recorded @{reg} ({n} keys)");
-                    continue;
-                }
-                buf.push(key);
+        // Run the key through the macro state machine (capture / stop / `q`|`@` prefixes). Only a
+        // `Dispatch` falls through to the normal engine + intercepts; the rest are handled here.
+        let macro_normal =
+            matches!(ws.focused().view.mode(), Mode::Normal) && engine.cmdline().is_none();
+        let key = match macros.step(raw_key, from_replay, macro_normal) {
+            crate::keys::Step::Dispatch(k) => k,
+            crate::keys::Step::Consumed => continue,
+            crate::keys::Step::Store(reg, bytes) => {
+                let n = bytes.len();
+                ws.set_register_raw(Some(reg), bytes);
+                status = format!("recorded @{reg} ({n} keys)");
+                continue;
             }
-        }
+            crate::keys::Step::Replay(reg) => {
+                let bytes = ws.register_bytes(Some(reg));
+                if !macros.replay(&bytes) {
+                    status = "macro replay aborted (key limit)".to_string();
+                }
+                continue;
+            }
+        };
         // F-014: any key dismisses a shown hover panel (a fresh `K` re-populates it after its response).
         lsp.clear_hover();
         // F-014 #5: the completion pum owns the keystream while open (nav / accept / dismiss); `<C-x><C-o>`
@@ -673,29 +671,6 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // `z` scroll prefix: the second key recenters the view on the cursor line (`zz`/`z.` center,
         // `zt`/`z<CR>` top, `zb`/`z-` bottom). Only `top` moves; the per-frame scroll pass then applies
         // `scrolloff`, so `zt`/`zb` land the line `scrolloff` rows inside the edge, as in Vim.
-        // Macro record-register selection (D-055): `q` armed this; the next key names the register `a`-`z`
-        // to record INTO. A non-letter aborts (nothing recorded).
-        if pending_q {
-            pending_q = false;
-            if let KeyCode::Char(c @ 'a'..='z') = key.code {
-                recording = Some((c, Vec::new()));
-                status = format!("recording @{c}");
-            }
-            continue;
-        }
-        // Macro replay-register selection (D-055): `@` armed this; the next key names the register `a`-`z`
-        // to REPLAY. Its bytes decode to keys pushed onto the replay queue. A recursion budget (shared by a
-        // whole top-level `@` expansion) caps runaway self-invoking macros.
-        if pending_at {
-            pending_at = false;
-            if let KeyCode::Char(c @ 'a'..='z') = key.code {
-                let bytes = ws.register_bytes(Some(c));
-                if !crate::keys::enqueue_macro(&mut replay_queue, &mut replay_budget, &bytes) {
-                    status = "macro replay aborted (key limit)".to_string();
-                }
-            }
-            continue;
-        }
         if pending_z {
             pending_z = false;
             let to = match key.code {
@@ -755,21 +730,6 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // `z` arms the scroll-prefix (handled above on the next key). Normal-only, plain `z` (no ctrl).
         if normal && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
             pending_z = true;
-            continue;
-        }
-        // `q` arms macro recording (D-055) — Normal-only, plain `q`, and only when NOT already recording
-        // (a `q` mid-recording is the STOP, handled at the top of the loop). The next key is the register.
-        if normal
-            && recording.is_none()
-            && key.code == KeyCode::Char('q')
-            && key.modifiers.is_empty()
-        {
-            pending_q = true;
-            continue;
-        }
-        // `@` arms macro replay (D-055) — Normal-only, plain `@`. The next key is the register to replay.
-        if normal && key.code == KeyCode::Char('@') && key.modifiers.is_empty() {
-            pending_at = true;
             continue;
         }
         // `C-d` / `C-u` scroll a half page: move the cursor half the pane down / up (column preserved via
