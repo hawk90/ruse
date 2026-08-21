@@ -710,6 +710,47 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn apostrophe_mark_jumps_linewise_to_first_non_blank() {
+        // Line 2 is "  xy" (2-space indent). Set mark a on the 'y' (byte 7), leave to line 1, then
+        // `'a` lands on the FIRST NON-BLANK of line 2 (byte 5, the 'x'), not the exact mark column.
+        let st = run(
+            "ab\n  xy",
+            &[
+                Command::Move(1, Motion::Down),  // line 2
+                Command::Move(3, Motion::Right), // onto 'y' at byte 7
+                Command::SetNamedMark('a'),
+                Command::Move(1, Motion::Up), // away
+                Command::GotoNamedMarkLine('a'),
+            ],
+        );
+        assert_eq!(
+            st.cursor(),
+            5,
+            "'a lands on the line's first non-blank, not the mark column"
+        );
+    }
+
+    #[test]
+    fn apostrophe_last_change_line_is_linewise() {
+        // Edit on an indented line 2, move away, `'.` returns to its first non-blank.
+        let st = run(
+            "ab\n   cd",
+            &[
+                Command::Move(1, Motion::Down),
+                Command::Move(4, Motion::Right), // onto 'd' (byte 7)
+                Command::DeleteUnder(1),         // change on line 2
+                Command::Move(1, Motion::Up),
+                Command::GotoLastChangeLine,
+            ],
+        );
+        assert_eq!(
+            st.cursor(),
+            6,
+            "'. lands on line 2's first non-blank (byte 6, the 'c')"
+        );
+    }
+
+    #[test]
     fn gi_resumes_insert_at_the_last_insert_position() {
         // Insert "XY" at the start of line 2, leave Insert, move to line 1, `gi` returns to Insert there.
         let st = run(

@@ -98,6 +98,9 @@ enum Awaiting {
     MarkJump,
     /// After `m`: the next key names the mark (`a`–`z`) to SET at the cursor. Any other key aborts.
     SetMarkChar,
+    /// After `'` (apostrophe): the next key names a mark to jump to LINEWISE (first non-blank of its line) —
+    /// `.` (last change) or `a`–`z`. Any other key aborts.
+    MarkJumpLine,
     /// After `"`: the next key is the register NAME (`a`–`z`, or `A`–`Z` to append). It arms a one-shot
     /// pending register that the FOLLOWING yank/delete/change/paste targets — emitted as a
     /// [`Command::SetRegister`] the core applies before that command. `"` itself does not reset the count.
@@ -1067,6 +1070,11 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::SetMarkChar;
                 return Feed::Pending;
             }
+            // `'` — arm a LINEWISE mark jump; the next key names the mark (`.` or `a`–`z`).
+            KeyCode::Char('\'') => {
+                self.normal.awaiting = Awaiting::MarkJumpLine;
+                return Feed::Pending;
+            }
             _ => {}
         }
         // Visual and Select: the selection already exists, so operators act on it directly and motions
@@ -1509,6 +1517,17 @@ impl InputEngine {
                     // `m{a-z}` — set a named mark at the cursor.
                     KeyCode::Char(c @ 'a'..='z') => self.action(Command::SetNamedMark(c)),
                     // Uppercase/global marks and specials are deferred — abort.
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::MarkJumpLine => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // `'.` — linewise to the last-change line.
+                    KeyCode::Char('.') => self.action(Command::GotoLastChangeLine),
+                    // `'{a-z}` — linewise to a named mark's line.
+                    KeyCode::Char(c @ 'a'..='z') => self.action(Command::GotoNamedMarkLine(c)),
+                    // Any other mark name is not wired — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
