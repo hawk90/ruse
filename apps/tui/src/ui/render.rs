@@ -106,6 +106,7 @@ pub(crate) fn paint_pane(
     virt: &[highlight::VirtLine],
     out_images: &mut Vec<(String, graphics::Placement)>,
     graphics_on: bool,
+    image_dims: &std::collections::HashMap<String, (u32, u32)>,
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
@@ -116,7 +117,14 @@ pub(crate) fn paint_pane(
         graphics_on,
         &vb.path,
     ) {
-        (true, Some(path)) => paint_image_cells(cur, rect, disp_row, vb.height, path),
+        (true, Some(path)) => paint_image_cells(
+            cur,
+            rect,
+            disp_row,
+            vb.height,
+            path,
+            image_dims.get(path).copied(),
+        ),
         _ => paint_virt_block(cur, rect, disp_row, vb),
     };
     if rect.w == 0 || rect.h == 0 {
@@ -137,7 +145,13 @@ pub(crate) fn paint_pane(
                 let disp = (line - top) as u16 + virt_before;
                 if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
                     paint_block(cur, disp + 1, vb);
-                    collect_image(out_images, rect, disp + 1, vb);
+                    collect_image(
+                        out_images,
+                        rect,
+                        disp + 1,
+                        vb,
+                        vb.path.as_deref().and_then(|p| image_dims.get(p)).copied(),
+                    );
                     virt_before += vb.height;
                 }
             }
@@ -205,28 +219,48 @@ pub(crate) fn paint_pane(
         if disp < rect.h {
             if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
                 paint_block(cur, disp + 1, vb);
-                collect_image(out_images, rect, disp + 1, vb);
+                collect_image(
+                    out_images,
+                    rect,
+                    disp + 1,
+                    vb,
+                    vb.path.as_deref().and_then(|p| image_dims.get(p)).copied(),
+                );
             }
         }
     }
 }
 
-/// Record an image block's on-screen placement (F-031 slice 3b-2b) for the render loop's graphics pass —
-/// only for a block that carries a `path` (a real image, not a plain virtual block). The placeholder is
-/// still painted underneath, so a non-graphics terminal (or a failed load) degrades to it automatically.
+/// The image's `(left_col, cols)` within the pane: sized to the image's natural aspect (from its pixel
+/// dimensions) and CENTRED horizontally, rather than stretched to full width. Unknown dimensions fall back
+/// to full width. Both painting and `collect_image` go through this so the placeholder cells and the virtual
+/// placement agree. F-031 slice 3b-2c.
+fn image_layout(rect: Rect, rows: u16, dims: Option<(u32, u32)>) -> (u16, u16) {
+    let cols = match dims {
+        Some((w, h)) => graphics::fit_cols(w, h, rows, 0.5, rect.w.min(graphics::MAX_PLACEHOLDER)),
+        None => rect.w.min(graphics::MAX_PLACEHOLDER),
+    };
+    let left = rect.x + rect.w.saturating_sub(cols) / 2;
+    (left, cols)
+}
+
+/// Record an image block's on-screen placement (F-031 slice 3b-2c) for the render loop's graphics pass —
+/// only for a block that carries a `path`. Sized to the image's aspect and centred (see [`image_layout`]).
 fn collect_image(
     out: &mut Vec<(String, graphics::Placement)>,
     rect: Rect,
     disp_row: u16,
     vb: &highlight::VirtLine,
+    dims: Option<(u32, u32)>,
 ) {
     if let Some(path) = &vb.path {
+        let (left, cols) = image_layout(rect, vb.height, dims);
         out.push((
             path.clone(),
             graphics::Placement {
                 row: rect.y + disp_row,
-                col: rect.x,
-                cols: rect.w.min(graphics::MAX_PLACEHOLDER),
+                col: left,
+                cols,
                 rows: vb.height,
             },
         ));
@@ -236,26 +270,29 @@ fn collect_image(
 /// Paint an image's Unicode PLACEHOLDER cells (F-031 slice 3b-2c): `rows × cols` cells, each holding the
 /// placeholder char + row/col diacritics with `fg` = the image id encoded as RGB. The terminal composites
 /// the image slice into each cell, so positioning rides the normal cell grid (correct inside a tmux pane).
-fn paint_image_cells(cur: &mut screen::Screen, rect: Rect, disp_row: u16, rows: u16, path: &str) {
+/// Sized to the image's aspect and centred (see [`image_layout`]).
+fn paint_image_cells(
+    cur: &mut screen::Screen,
+    rect: Rect,
+    disp_row: u16,
+    rows: u16,
+    path: &str,
+    dims: Option<(u32, u32)>,
+) {
     let id = graphics::image_id(path);
     let (r, g, b) = graphics::id_rgb(id);
     let style = screen::CellStyle {
         fg: crossterm::style::Color::Rgb { r, g, b },
         ..screen::CellStyle::default()
     };
-    let cols = rect.w.min(graphics::MAX_PLACEHOLDER);
+    let (left, cols) = image_layout(rect, rows, dims);
     for ir in 0..rows {
         if disp_row + ir >= rect.h {
             break;
         }
         let srow = rect.y + disp_row + ir;
         for ic in 0..cols {
-            cur.put_styled(
-                srow,
-                rect.x + ic,
-                &graphics::placeholder_cell(ir, ic),
-                &style,
-            );
+            cur.put_styled(srow, left + ic, &graphics::placeholder_cell(ir, ic), &style);
         }
     }
 }
@@ -351,6 +388,7 @@ pub(crate) fn render(
     diagnostics: &[crate::lsp::Diag],
     completion: Option<(&[crate::lsp::protocol::CompletionItem], usize)>,
     graphics_on: bool,
+    image_dims: &std::collections::HashMap<String, (u32, u32)>,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
@@ -452,6 +490,7 @@ pub(crate) fn render(
             pane_virt,
             &mut images,
             graphics_on,
+            image_dims,
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -835,6 +874,7 @@ mod render_tests {
             &[],
             &mut Vec::new(),
             false,
+            &std::collections::HashMap::new(),
         );
         assert!(cur.cell(0, 0).style.bold, "byte 0 paints bold");
         assert!(cur.cell(0, 1).style.italic, "byte 1 paints italic");
@@ -855,6 +895,7 @@ mod render_tests {
             &[],
             &mut Vec::new(),
             false,
+            &std::collections::HashMap::new(),
         );
         let c = sel.cell(0, 0);
         assert!(
@@ -897,6 +938,7 @@ mod render_tests {
             &[],
             &mut Vec::new(),
             false,
+            &std::collections::HashMap::new(),
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -926,6 +968,7 @@ mod render_tests {
             &[],
             &mut Vec::new(),
             false,
+            &std::collections::HashMap::new(),
         );
         assert_eq!(
             s2.cell(0, 0).content,
@@ -965,6 +1008,7 @@ mod render_tests {
             &[],
             &mut Vec::new(),
             false,
+            &std::collections::HashMap::new(),
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1034,6 +1078,7 @@ mod render_tests {
             &virt,
             &mut Vec::new(),
             false,
+            &std::collections::HashMap::new(),
         );
         assert_eq!(
             s.cell(0, 0).content,
