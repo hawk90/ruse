@@ -772,6 +772,16 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 )
             }
         }
+        Command::JoinLinesNoSpace => {
+            // Join WITHOUT a space: delete only the newline, keeping the next line's leading whitespace
+            // (Vim `gJ`). No-op on the last line. The cursor rests at the join seam.
+            let le = line_end(b, cur);
+            if le >= b.len() {
+                nop(cur, st.view.mode)
+            } else {
+                edit(one(Edit::delete(le, 1)), le, st.view.mode, hint)
+            }
+        }
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
         // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
         // group starts here mid-insert-session (Vim `i_CTRL-G_u`). Cursor and mode are untouched.

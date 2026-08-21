@@ -622,6 +622,20 @@ mod single_key_edit_tests {
         let st = run("only", &[Command::JoinLines]);
         assert_eq!(text(&st), "only");
     }
+
+    #[test]
+    fn join_no_space_keeps_indent_and_inserts_nothing() {
+        // gJ removes only the newline: the next line's leading whitespace is preserved, no space added.
+        let st = run("foo\n   bar", &[Command::JoinLinesNoSpace]);
+        assert_eq!(text(&st), "foo   bar");
+        assert_eq!(st.cursor(), 3, "cursor rests at the join seam");
+    }
+
+    #[test]
+    fn join_no_space_on_last_line_is_noop() {
+        let st = run("only", &[Command::JoinLinesNoSpace]);
+        assert_eq!(text(&st), "only");
+    }
 }
 
 #[cfg(test)]
