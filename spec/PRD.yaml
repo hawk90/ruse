@@ -231,15 +231,19 @@ features:
     # selection key + p/P within mode_key.normal (the operators that WRITE registers stay under F-023).
     # Carve-outs (NOT F-029 acceptance): numbered ring `"1`-`"9`, small-delete `"-`, black-hole `"_`,
     # expression `"=`, clipboard `"+`/`"*` are not modelled yet; `:registers` awaits the F-026 command engine.
+    # MACROS (q record / @ replay) are DESIGNED as D-055: recording captures RAW KEYSTROKES and stores them as
+    # bytes in these same a-z registers, replayed by re-feeding the input engine (so `"ap` shows a macro and
+    # yanked text runs as one). This is a distinct mechanism from dot-repeat/trace (which record resolved
+    # Commands). Implementation is a follow-up slice — NOT yet an F-029 acceptance criterion. See macros.md.
     status: done
     depends_on: [C-EDITLANG, C-REGISTER]
-    summary: Named/unnamed/yank-only registers via the `"{register}` prefix + p/P; entries carry a shape that survives round-trip. Census anchor = the `"` selection key (registers are a prefix, not a dedicated surface); numbered ring/black-hole/clipboard are carve-outs.
+    summary: Named/unnamed/yank-only registers via the `"{register}` prefix + p/P; entries carry a shape that survives round-trip. Census anchor = the `"` selection key (registers are a prefix, not a dedicated surface); numbered ring/black-hole/clipboard are carve-outs. Macros (q/@) are a designed carve-out reusing these registers (D-055).
     trace:
       # repointed off legacy VIM-REG-* onto the mode_key.normal census (D-043): the `"{register}` selection
       # prefix + put p/P. Numbered/other register semantics are documented carve-outs. vim.md rows retired.
       parity: [nvim.key.normal.x22x7bregisterx7d, nvim.key.normal.x5bx22xx5dp, nvim.key.normal.x5bx22xx5dP]
       contract: [../spec/parity/contracts/vim-style.yaml]
-      design: [../docs/design/register-model.md]
+      design: [../docs/design/register-model.md, ../docs/design/macros.md]
       verify: [../tests/parity/vim/registers.yaml]
     acceptance:
       - "The unnamed and yank-only (reg 0) registers behave per the L2 checklist; `\"ayy` / `\"ap` address a named register."

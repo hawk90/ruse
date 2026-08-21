@@ -767,3 +767,28 @@ related:
   re-expressed as the TUI lowering of the shared Render Tree; superseding this requires superseding it together
   with the RFC-0009 deferral, never editing the addendum alone.
 - Refs: [../docs/rfc/proposed/RFC-0009-render-model.md](../docs/rfc/proposed/RFC-0009-render-model.md), [../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md](../docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md), [../docs/design/rich-rendering.md](../docs/design/rich-rendering.md), D-014, D-052, D-053, INV-RENDER-IR, INV-DOC-VIEW, F-031, F-018, CAP-DECORATION.
+
+## D-055 — Vim macros record RAW KEYSTROKES into the shared a-z registers, replayed by re-feeding the input engine · decided
+- **Decision:** Macro recording (`q{a-z}` … `q`) captures the literal `KeyEvent` stream and stores it as **raw
+  bytes** in the SAME named a-z registers as yank/paste (`register.rs`); replay (`@{a-z}`) reads those bytes,
+  decodes them back to `KeyEvent`s, and **re-feeds the input engine** as if the keys were re-typed. Macros are a
+  DISTINCT mechanism from dot-repeat and the F-022 command trace, both of which record RESOLVED `Command`s
+  (`ChangeIntent`/`Feed::Replay`, `recorded: Vec<Command>`) — the wrong granularity, since a macro must replay
+  mode changes, counts, insert-mode text, and partial-then-completed sequences verbatim. The keystroke stream is
+  the ONLY faithful unit. Raw keys ride the frontend (a session record buffer + a replay key-queue drained
+  before `event::read()`); a small new core accessor `EditorState::set_register_raw(name, bytes)` lets the
+  frontend write the shared register (today `registers()` is read-only). A key ↔ bytes codec
+  (`apps/tui/src/keys.rs`) is new: `pty::encode_key` is one-way and lossy, so it cannot be reused.
+- **Reason:** Recording keystrokes (not commands) makes a macro containing `.` re-feed the literal `.` key,
+  resolving against whatever the last change is at REPLAY time — which is exactly Vim's behaviour and directly
+  answers the open concern noted at D-025 ("ChangeIntent serialization when a macro contains `.`"): there is no
+  ChangeIntent to serialize, so the concern dissolves. Sharing the a-z registers (rather than a private macro
+  store) preserves the Vim identity that a register is one thing: `"ap` pastes a macro's keys as text, and
+  yanked text can be executed as a macro — parity a separate store would break. The codec's slice-1 alphabet
+  (printable UTF-8; Esc/CR/Tab/BS; Ctrl-a..z) covers the vast majority of real macros; arrows/Fn/Alt encode to a
+  reserved, decode-tolerant escape so extending the alphabet later is backward-compatible.
+- **Re-evaluate if:** registers gain cross-session PERSISTENCE (a serialized register format would need to pin
+  the raw-key byte encoding as a stable on-disk contract — promoting this from architecture to a persistent
+  format/contract decision); or if a non-keystroke frontend (GUI, F-018) needs to record macros without a
+  `KeyEvent` stream, at which point the recording unit is re-examined at the command/intent layer.
+- Refs: [../docs/design/macros.md](../docs/design/macros.md), [../docs/rfc/proposed/RFC-0004-input-profiles.md](../docs/rfc/proposed/RFC-0004-input-profiles.md), D-025, D-026, F-003, F-029, CAP-VIM-PROFILE.
