@@ -93,6 +93,9 @@ enum Awaiting {
     GSecond,
     /// After `r`: the next key is the replacement char.
     ReplaceChar,
+    /// After `` ` `` (backtick): the next key names a mark to jump to. Only `.` (the last-change mark) is
+    /// wired; named marks `a`–`z` are deferred, so any other key aborts.
+    MarkJump,
     /// After `"`: the next key is the register NAME (`a`–`z`, or `A`–`Z` to append). It arms a one-shot
     /// pending register that the FOLLOWING yank/delete/change/paste targets — emitted as a
     /// [`Command::SetRegister`] the core applies before that command. `"` itself does not reset the count.
@@ -1052,6 +1055,11 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::RegisterSelect;
                 return Feed::Pending;
             }
+            // `` ` `` — arm a mark jump; the next key names the mark (only `.` = last change is wired).
+            KeyCode::Char('`') => {
+                self.normal.awaiting = Awaiting::MarkJump;
+                return Feed::Pending;
+            }
             _ => {}
         }
         // Visual and Select: the selection already exists, so operators act on it directly and motions
@@ -1469,6 +1477,15 @@ impl InputEngine {
                     KeyCode::Char(c) => self.action(Command::ReplaceChar(self.mcount(), c)),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::MarkJump => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // `` `. `` — jump to the last-change mark. Named marks `a`–`z` are deferred.
+                    KeyCode::Char('.') => self.action(Command::GotoLastChange),
+                    // Any other mark name is not wired yet — abort the pending construct.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }

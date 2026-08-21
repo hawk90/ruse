@@ -160,6 +160,9 @@ pub enum Command {
     /// `gJ` — join the current line with the next WITHOUT inserting a space or stripping the next
     /// line's leading whitespace: only the newline is removed (Vim `gJ`).
     JoinLinesNoSpace,
+    /// `` `. `` — jump the cursor to the position of the most recent change (Vim's automatic `.` mark).
+    /// A no-op before the first edit. Operator-pending (`` d`. ``) and named marks are deferred.
+    GotoLastChange,
     /// `CTRL-G u` in Insert — break the undo sequence: the NEXT edit starts a fresh undo group, so a
     /// later `u` stops here instead of undoing the whole insert session. A nop that only clears the
     /// edit-continuation state (Vim `i_CTRL-G_u`). Undo-of-a-session is not observable via the parity
@@ -668,6 +671,7 @@ impl Command {
             Command::ToggleCase(n) => format!("toggle_case {n}"),
             Command::JoinLines => "join_lines".into(),
             Command::JoinLinesNoSpace => "join_lines_no_space".into(),
+            Command::GotoLastChange => "goto_last_change".into(),
             Command::BreakUndo => "break_undo".into(),
             Command::ShiftRight(n) => format!("shift_right {n}"),
             Command::ShiftLeft(n) => format!("shift_left {n}"),
@@ -908,6 +912,7 @@ impl Command {
             }
             "join_lines" => Command::JoinLines,
             "join_lines_no_space" => Command::JoinLinesNoSpace,
+            "goto_last_change" => Command::GotoLastChange,
             "break_undo" => Command::BreakUndo,
             "shift_right" => {
                 let n = arg_u32(arg, line)?;
@@ -1180,6 +1185,7 @@ mod tests {
             Command::ToggleCase(4),
             Command::JoinLines,
             Command::JoinLinesNoSpace,
+            Command::GotoLastChange,
             Command::BreakUndo,
             Command::ShiftRight(1),
             Command::ShiftRight(3),
