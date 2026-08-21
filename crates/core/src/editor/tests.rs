@@ -658,6 +658,49 @@ mod single_key_edit_tests {
         let st = run("abc", &[Command::GotoLastChange]);
         assert_eq!(st.cursor(), 0, "no last change yet → cursor unmoved");
     }
+
+    #[test]
+    fn change_list_g_semicolon_walks_older_then_g_comma_newer() {
+        // Two changes: delete on line 1 (byte 0), then delete on line 3 (byte 6 after the first delete).
+        // Buffer "a\nb\nc" → after x at 0: "\nb\nc"; move to line 3; x at its start.
+        let st = run(
+            "a\nb\nc",
+            &[
+                Command::DeleteUnder(1),        // change #1 at byte 0
+                Command::Move(2, Motion::Down), // to line 3 ("c")
+                Command::DeleteUnder(1),        // change #2 at that line's start
+                Command::Move(1, Motion::Up),   // move away
+            ],
+        );
+        let change2 = st.cursor(); // where we are is near change #2's line; capture positions via nav
+                                   // g; → newest change (#2), g; again → older (#1 at byte 0), g, → back to newest (#2).
+        let mut st = st;
+        crate::editor::apply_command(&mut st, &Command::GotoOlderChange);
+        let newest = st.cursor();
+        crate::editor::apply_command(&mut st, &Command::GotoOlderChange);
+        assert_eq!(
+            st.cursor(),
+            0,
+            "second g; reaches the oldest change at byte 0"
+        );
+        crate::editor::apply_command(&mut st, &Command::GotoNewerChange);
+        assert_eq!(st.cursor(), newest, "g, returns to the newer change");
+        let _ = change2;
+    }
+
+    #[test]
+    fn change_list_nav_is_noop_at_the_ends_and_before_edits() {
+        // No edits → g;/g, do nothing.
+        let st = run("abc", &[Command::GotoOlderChange, Command::GotoNewerChange]);
+        assert_eq!(st.cursor(), 0, "no changes → nav is a no-op");
+        // One edit, then g, (newer) with nothing newer is a no-op; g; reaches it.
+        let mut st = run("abcd", &[Command::DeleteUnder(1)]);
+        let at_edit = st.cursor();
+        crate::editor::apply_command(&mut st, &Command::GotoNewerChange);
+        assert_eq!(st.cursor(), at_edit, "g, at the newest end does not move");
+        crate::editor::apply_command(&mut st, &Command::GotoOlderChange);
+        assert_eq!(st.cursor(), at_edit, "g; lands on the single change");
+    }
 }
 
 #[cfg(test)]

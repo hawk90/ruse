@@ -1452,6 +1452,9 @@ impl InputEngine {
                     }
                     // `gJ` — join with the next line WITHOUT inserting a space (Vim `gJ`).
                     KeyCode::Char('J') => self.action(Command::JoinLinesNoSpace),
+                    // `g;` / `g,` — walk the change list to older / newer change positions (Vim).
+                    KeyCode::Char(';') => self.action(Command::GotoOlderChange),
+                    KeyCode::Char(',') => self.action(Command::GotoNewerChange),
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // `gR` — enter Virtual Replace mode (tab-aware overwrite).

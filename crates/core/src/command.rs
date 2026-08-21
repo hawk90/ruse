@@ -163,6 +163,10 @@ pub enum Command {
     /// `` `. `` — jump the cursor to the position of the most recent change (Vim's automatic `.` mark).
     /// A no-op before the first edit. Operator-pending (`` d`. ``) and named marks are deferred.
     GotoLastChange,
+    /// `g;` — jump to the next OLDER position in the change list (Vim). A no-op at the oldest change.
+    GotoOlderChange,
+    /// `g,` — jump to the next NEWER position in the change list (Vim). A no-op at the newest change.
+    GotoNewerChange,
     /// `CTRL-G u` in Insert — break the undo sequence: the NEXT edit starts a fresh undo group, so a
     /// later `u` stops here instead of undoing the whole insert session. A nop that only clears the
     /// edit-continuation state (Vim `i_CTRL-G_u`). Undo-of-a-session is not observable via the parity
@@ -672,6 +676,8 @@ impl Command {
             Command::JoinLines => "join_lines".into(),
             Command::JoinLinesNoSpace => "join_lines_no_space".into(),
             Command::GotoLastChange => "goto_last_change".into(),
+            Command::GotoOlderChange => "goto_older_change".into(),
+            Command::GotoNewerChange => "goto_newer_change".into(),
             Command::BreakUndo => "break_undo".into(),
             Command::ShiftRight(n) => format!("shift_right {n}"),
             Command::ShiftLeft(n) => format!("shift_left {n}"),
@@ -913,6 +919,8 @@ impl Command {
             "join_lines" => Command::JoinLines,
             "join_lines_no_space" => Command::JoinLinesNoSpace,
             "goto_last_change" => Command::GotoLastChange,
+            "goto_older_change" => Command::GotoOlderChange,
+            "goto_newer_change" => Command::GotoNewerChange,
             "break_undo" => Command::BreakUndo,
             "shift_right" => {
                 let n = arg_u32(arg, line)?;
@@ -1186,6 +1194,8 @@ mod tests {
             Command::JoinLines,
             Command::JoinLinesNoSpace,
             Command::GotoLastChange,
+            Command::GotoOlderChange,
+            Command::GotoNewerChange,
             Command::BreakUndo,
             Command::ShiftRight(1),
             Command::ShiftRight(3),
