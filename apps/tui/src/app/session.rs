@@ -342,6 +342,22 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // dispatch) — the coordinator owns all of it; deferred edits/refs are applied after render.
         lsp.sync_and_poll(&ws, &files, revision, &snapshot, &mut status);
         let focus_diags = lsp.diagnostics_for(ws.focused_buffer());
+        // F-031 3b-2c: read each visible image's pixel dimensions (IHDR only) so render can size it to its
+        // natural aspect and centre it. Cheap — only the 24-byte header, only when graphics are on.
+        let image_dims: HashMap<String, (u32, u32)> = if has_graphics {
+            use std::io::Read;
+            virt_lines
+                .iter()
+                .filter_map(|v| {
+                    let p = v.path.as_ref()?;
+                    let mut hdr = [0u8; 24];
+                    std::fs::File::open(p).ok()?.read_exact(&mut hdr).ok()?;
+                    graphics::png_dimensions(&hdr).map(|d| (p.clone(), d))
+                })
+                .collect()
+        } else {
+            HashMap::new()
+        };
         let images = render(
             &mut out,
             &ws,
@@ -358,6 +374,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             focus_diags,
             lsp.completion_view(),
             has_graphics,
+            &image_dims,
         )?;
         // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
         // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).

@@ -129,6 +129,17 @@ pub fn fit_rows(img_w: u32, img_h: u32, cols: u16, cell_aspect: f32, max_rows: u
     (rows as u16).clamp(1, max_rows)
 }
 
+/// The cell WIDTH (cols) to show an `img_w × img_h`-px image `rows` cells tall, preserving aspect —
+/// the inverse of [`fit_rows`]. `cell_aspect` = cell width ÷ cell height (≈ 0.5). Clamped to `[1, max_cols]`.
+/// Used to size an image to its natural aspect within the block (then centred) rather than stretching it.
+pub fn fit_cols(img_w: u32, img_h: u32, rows: u16, cell_aspect: f32, max_cols: u16) -> u16 {
+    if img_h == 0 || rows == 0 {
+        return 1;
+    }
+    let cols = (f32::from(rows) / cell_aspect * (img_w as f32 / img_h as f32)).round();
+    (cols as u16).clamp(1, max_cols)
+}
+
 /// One reconciliation op the render loop turns into bytes (reading the file only for `Transmit`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GraphicsOp {
