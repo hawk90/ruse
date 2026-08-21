@@ -1,8 +1,10 @@
 //! The macro key codec (D-055): a round-trippable `KeyEvent` ↔ bytes encoding. A recorded Vim macro is the
 //! RAW keystroke stream stored as bytes in a register, so `encode` mirrors what a terminal delivers (and what
 //! `pty::encode_key` forwards — but that one is lossy/one-way) and `decode` inverts it. The slice-1 alphabet
-//! is printable UTF-8 + `Esc`/`Enter`/`Tab`/`Backspace` + `Ctrl-a..z`; other keys are DEFERRED (they encode to
-//! nothing, and `decode` skips bytes it does not recognise, so a hand-edited register still runs).
+//! is printable UTF-8 + `Esc`/`Enter`/`Tab`/`Backspace` + `Ctrl-a..z` + the navigation keys (arrows,
+//! Home/End, PageUp/Down, Delete/Insert, BackTab) via a reserved `0x80`+tag prefix. Fn/Alt/Shift-specials are
+//! still DEFERRED (they encode to nothing, and `decode` skips bytes it does not recognise, so a hand-edited
+//! register still runs).
 
 use std::collections::VecDeque;
 
@@ -173,9 +175,49 @@ pub fn encode(key: KeyEvent) -> Option<Vec<u8>> {
         KeyCode::Tab => vec![b'\t'],
         KeyCode::Backspace => vec![0x7f],
         KeyCode::Esc => vec![0x1b],
-        _ => return None, // arrows / Fn / Alt / … — deferred (PR C)
+        // Navigation keys ride a reserved `0x80` prefix + a tag byte. `0x80` is an invalid UTF-8 lead, so
+        // an older `decode` already skipped it — this encoding is backward-compatible. Fn/Alt/Shift-specials
+        // have no tag and fall out as `None` (still deferred).
+        code => vec![0x80, special_tag(code)?],
     };
     Some(bytes)
+}
+
+/// The `0x80`-prefix tag byte for a navigation key, or `None` for a key not in the macro alphabet.
+/// Paired with [`special_from_tag`] as the inverse.
+fn special_tag(code: KeyCode) -> Option<u8> {
+    Some(match code {
+        KeyCode::Up => b'A',
+        KeyCode::Down => b'B',
+        KeyCode::Right => b'C',
+        KeyCode::Left => b'D',
+        KeyCode::Home => b'H',
+        KeyCode::End => b'F',
+        KeyCode::PageUp => b'5',
+        KeyCode::PageDown => b'6',
+        KeyCode::Delete => b'3',
+        KeyCode::Insert => b'2',
+        KeyCode::BackTab => b'Z',
+        _ => return None,
+    })
+}
+
+/// The navigation [`KeyCode`] for a `0x80`-prefix tag byte, or `None` for an unknown tag (skipped on decode).
+fn special_from_tag(tag: u8) -> Option<KeyCode> {
+    Some(match tag {
+        b'A' => KeyCode::Up,
+        b'B' => KeyCode::Down,
+        b'C' => KeyCode::Right,
+        b'D' => KeyCode::Left,
+        b'H' => KeyCode::Home,
+        b'F' => KeyCode::End,
+        b'5' => KeyCode::PageUp,
+        b'6' => KeyCode::PageDown,
+        b'3' => KeyCode::Delete,
+        b'2' => KeyCode::Insert,
+        b'Z' => KeyCode::BackTab,
+        _ => return None,
+    })
 }
 
 /// Encode a whole key sequence to bytes (concatenation of [`encode`], skipping unencodable keys).
@@ -207,6 +249,14 @@ pub fn decode(bytes: &[u8]) -> Vec<KeyEvent> {
             0x7f | 0x08 => out.push(plain(KeyCode::Backspace)),
             0x01..=0x1a => out.push(ctrl((b - 1 + b'a') as char)), // C-a..C-z (Tab/CR handled above)
             0x00..=0x1f => {} // other C0 controls not in the alphabet — skip
+            0x80 => {
+                // A navigation key: `0x80` + tag. Consume both; an unknown/absent tag is skipped.
+                if let Some(code) = bytes.get(i + 1).copied().and_then(special_from_tag) {
+                    out.push(plain(code));
+                }
+                i += 2;
+                continue;
+            }
             _ => {
                 // A UTF-8 scalar: consume its full width (1–4 bytes); a malformed lead byte is skipped.
                 let width = utf8_width(b);
@@ -295,13 +345,41 @@ mod tests {
     }
 
     #[test]
-    fn arrows_and_unencodable_keys_are_dropped() {
-        assert_eq!(encode(key(KeyCode::Up)), None);
-        // encode_all silently drops them, keeping the rest of the sequence.
+    fn navigation_keys_round_trip_via_the_0x80_prefix() {
+        let nav = [
+            KeyCode::Up,
+            KeyCode::Down,
+            KeyCode::Left,
+            KeyCode::Right,
+            KeyCode::Home,
+            KeyCode::End,
+            KeyCode::PageUp,
+            KeyCode::PageDown,
+            KeyCode::Delete,
+            KeyCode::Insert,
+            KeyCode::BackTab,
+        ];
+        for code in nav {
+            let b = encode(key(code)).expect("nav key encodes");
+            assert_eq!(b[0], 0x80, "reserved prefix");
+            assert_eq!(decode(&b), vec![key(code)], "round-trip {code:?}");
+        }
+        // Mixed with printable text, in order.
+        let seq = vec![ch('a'), key(KeyCode::Left), ch('b')];
+        assert_eq!(decode(&encode_all(&seq)), seq);
+    }
+
+    #[test]
+    fn unencodable_keys_are_still_dropped() {
+        // Fn / Alt / etc. stay deferred: encoded to nothing, skipped by encode_all.
+        assert_eq!(encode(key(KeyCode::F(5))), None);
         assert_eq!(
-            encode_all(&[ch('a'), key(KeyCode::Up), ch('b')]),
+            encode_all(&[ch('a'), key(KeyCode::F(5)), ch('b')]),
             vec![b'a', b'b']
         );
+        // A stray/trailing 0x80 with no tag decodes to nothing (no panic).
+        assert_eq!(decode(&[0x80]), vec![]);
+        assert_eq!(decode(&[b'x', 0x80, b'?']), vec![ch('x')]); // unknown tag skipped
     }
 
     #[test]
