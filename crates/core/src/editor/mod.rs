@@ -213,6 +213,10 @@ pub struct View {
     /// Set by [`Command::SetNamedMark`], read by [`Command::GotoNamedMark`], and snapped on every commit like
     /// the change list. Uppercase/global marks and numbered marks stay deferred.
     named_marks: [Option<usize>; 26],
+    /// Where Insert mode was last left (Vim's `` `^ `` mark), for `gi` to resume Insert there. Set in
+    /// [`commit`] on an Insert→Normal transition to the pre-clamp caret, and snapped like the marks. `None`
+    /// until the first Insert session ends.
+    last_insert: Option<usize>,
 }
 
 /// Maximum entries kept in a View's change list (Vim's default `:changes` history is ~100).
@@ -259,7 +263,13 @@ impl View {
             changes: Vec::new(),
             change_idx: 0,
             named_marks: [None; 26],
+            last_insert: None,
         }
+    }
+
+    /// The last-insert position (Vim `` `^ ``), or `None` before any Insert session has ended.
+    fn last_insert(&self) -> Option<usize> {
+        self.last_insert
     }
 
     /// The byte offset of named mark `c` (`a`–`z`), or `None` if unset / not a lowercase letter.
@@ -1242,6 +1252,11 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // (or `None` at an end), which overrides the plan's placeholder cursor for this frame only.
     let resolved_cursor = nav_target.unwrap_or(plan.cursor);
     st.view.cursor = snap(st.doc.bytes(), resolved_cursor);
+    // Vim `` `^ ``: leaving Insert for Normal records where the caret was (the pre-clamp insert position),
+    // so `gi` resumes Insert exactly there. Checked before the mode is overwritten below.
+    if matches!(st.view.mode, Mode::Insert) && matches!(plan.mode, Mode::Normal) {
+        st.view.last_insert = Some(entry_cursor);
+    }
     st.view.mode = plan.mode;
     st.view.last_was_edit = plan.is_edit;
     // Vim change list: an edit records where it happened (the cursor it left behind) as the newest entry,
@@ -1257,6 +1272,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // make a later `` `{a-z} `` jump out of bounds.
     for m in st.view.named_marks.iter_mut().flatten() {
         *m = snap(st.doc.bytes(), (*m).min(len));
+    }
+    // The last-insert position (`gi`) snaps the same way.
+    if let Some(li) = st.view.last_insert {
+        st.view.last_insert = Some(snap(st.doc.bytes(), li.min(len)));
     }
     // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
     if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {

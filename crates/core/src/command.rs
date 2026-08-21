@@ -167,6 +167,9 @@ pub enum Command {
     GotoOlderChange,
     /// `g,` — jump to the next NEWER position in the change list (Vim). A no-op at the newest change.
     GotoNewerChange,
+    /// `gi` — resume Insert at the last-insert position (Vim's `` `^ ``). Enters Insert at buffer start
+    /// before any Insert session has ended.
+    InsertAtLastInsert,
     /// `m{a-z}` — set the named mark `char` at the cursor (Vim). Per-buffer; the cursor does not move.
     SetNamedMark(char),
     /// `` `{a-z} `` — jump the cursor to named mark `char` (Vim). A no-op if that mark is unset.
@@ -682,6 +685,7 @@ impl Command {
             Command::GotoLastChange => "goto_last_change".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
             Command::GotoNewerChange => "goto_newer_change".into(),
+            Command::InsertAtLastInsert => "insert_at_last_insert".into(),
             Command::SetNamedMark(c) => format!("set_named_mark {}", *c as u32),
             Command::GotoNamedMark(c) => format!("goto_named_mark {}", *c as u32),
             Command::BreakUndo => "break_undo".into(),
@@ -927,6 +931,7 @@ impl Command {
             "goto_last_change" => Command::GotoLastChange,
             "goto_older_change" => Command::GotoOlderChange,
             "goto_newer_change" => Command::GotoNewerChange,
+            "insert_at_last_insert" => Command::InsertAtLastInsert,
             "set_named_mark" => {
                 let cp = arg_u32(arg, line)?;
                 let c = char::from_u32(cp)
@@ -1214,6 +1219,7 @@ mod tests {
             Command::GotoLastChange,
             Command::GotoOlderChange,
             Command::GotoNewerChange,
+            Command::InsertAtLastInsert,
             Command::SetNamedMark('a'),
             Command::SetNamedMark('z'),
             Command::GotoNamedMark('a'),

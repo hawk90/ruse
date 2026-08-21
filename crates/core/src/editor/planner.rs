@@ -457,6 +457,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             st.view.mode,
         ),
         Command::EnterInsert => nop(cur, Mode::Insert),
+        // `gi` — resume Insert at the last-insert position (snapped), or the buffer start if none yet.
+        Command::InsertAtLastInsert => {
+            let at = st
+                .view
+                .last_insert()
+                .map_or(0, |p| motion::snap(b, p.min(b.len())));
+            nop(at, Mode::Insert)
+        }
         Command::EnterInsertAfter => nop(next_boundary(b, cur), Mode::Insert),
         Command::InsertLineStart => nop(motion::first_non_blank(b, cur), Mode::Insert),
         Command::AppendLineEnd => nop(line_end(b, cur), Mode::Insert),
