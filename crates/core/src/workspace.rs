@@ -270,6 +270,32 @@ impl Workspace {
         bytes
     }
 
+    /// A snapshot of the FOCUSED view's NON-EMPTY registers as `(name, bytes)` — the unnamed slot (`"`), the
+    /// yank register (`0`), and the named `a`-`z` — for `:registers` (the swap-trick). Order: `"`, `0`, a..z.
+    pub fn register_snapshot(&mut self) -> Vec<(char, Vec<u8>)> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let st = EditorState::from_parts(doc, view);
+        let regs = st.registers();
+        let mut out = Vec::new();
+        for (name, r) in std::iter::once(('"', regs.get(None)))
+            .chain(std::iter::once(('0', regs.yank0())))
+            .chain(('a'..='z').map(|c| (c, regs.get(Some(c)))))
+        {
+            if !r.is_empty() {
+                out.push((name, r.text().to_vec()));
+            }
+        }
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        out
+    }
+
     /// Run `:[range]s/pat/rep/flags` against the FOCUSED Window (the swap-trick, like [`Workspace::apply`]),
     /// applying every substitution as one undo group. Returns the count, or a [`RegexError`] (F-009 #2).
     pub fn substitute(
@@ -1274,6 +1300,21 @@ mod tests {
         assert_eq!(w.register_bytes(Some('a')), b"iZ\x1b");
         // A different register is independent.
         assert_eq!(w.register_bytes(Some('b')), b"");
+    }
+
+    /// F-029: `register_snapshot` lists only the NON-EMPTY registers, in `"`, `0`, a..z order.
+    #[test]
+    fn register_snapshot_lists_non_empty_in_order() {
+        let mut w = Workspace::new(b"hello\n".to_vec());
+        assert!(w.register_snapshot().is_empty(), "nothing set yet");
+        w.set_register_raw(Some('b'), b"dd".to_vec());
+        w.set_register_raw(Some('a'), b"iZ\x1b".to_vec());
+        let snap = w.register_snapshot();
+        assert_eq!(
+            snap,
+            vec![('a', b"iZ\x1b".to_vec()), ('b', b"dd".to_vec())],
+            "a before b; empty slots omitted",
+        );
     }
 
     /// F-007 #2: view-local state (cursor/selection/mode) lives in the View; an edit through one View
