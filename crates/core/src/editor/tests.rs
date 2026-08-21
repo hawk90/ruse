@@ -850,6 +850,56 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn jumplist_records_jumps_and_ctrl_o_ctrl_i_walk_it() {
+        // Lines: "one\ntwo\nthree\nfour" — jump gg (to line 1) then G (to last line), building the jumplist,
+        // then CTRL-O walks back and CTRL-I forward.
+        let src = "one\ntwo\nthree\nfour";
+        // Start on line 2, jump to line 1 (gg), then to last line (G).
+        let mut st = crate::editor::EditorState::new(src.as_bytes().to_vec());
+        crate::editor::apply_command(&mut st, &Command::Move(2, Motion::Down)); // → line 3 area (not a jump)
+        let before_gg = st.cursor();
+        crate::editor::apply_command(&mut st, &Command::Move(1, Motion::GotoLine)); // gg → line 1 (a jump)
+        assert_eq!(st.cursor(), 0, "gg to line 1");
+        crate::editor::apply_command(&mut st, &Command::Move(0, Motion::LastLine)); // G → last line (a jump)
+        let at_last = st.cursor();
+        // CTRL-O: first back saves the current (last line), steps to the newest recorded jump (line-1 pos 0).
+        crate::editor::apply_command(&mut st, &Command::GotoOlderJump);
+        assert_eq!(st.cursor(), 0, "CTRL-O returns to the gg position");
+        // CTRL-O again: to the position gg jumped FROM (before_gg).
+        crate::editor::apply_command(&mut st, &Command::GotoOlderJump);
+        assert_eq!(st.cursor(), before_gg, "second CTRL-O to where gg started");
+        // CTRL-I forward returns toward the newer jumps.
+        crate::editor::apply_command(&mut st, &Command::GotoNewerJump);
+        assert_eq!(st.cursor(), 0, "CTRL-I forward to the gg position");
+        crate::editor::apply_command(&mut st, &Command::GotoNewerJump);
+        assert_eq!(
+            st.cursor(),
+            at_last,
+            "CTRL-I forward to the saved last-line position"
+        );
+    }
+
+    #[test]
+    fn jumplist_nav_is_noop_without_jumps() {
+        let st = run("abc", &[Command::GotoOlderJump, Command::GotoNewerJump]);
+        assert_eq!(st.cursor(), 0, "nothing recorded → no movement");
+    }
+
+    #[test]
+    fn plain_motions_do_not_record_jumps() {
+        // h/j/k/l/w are NOT jumps, so CTRL-O after them does nothing.
+        let st = run(
+            "hello world",
+            &[Command::Move(3, Motion::Right), Command::GotoOlderJump],
+        );
+        assert_eq!(
+            st.cursor(),
+            3,
+            "a plain motion is not a jump; CTRL-O is a no-op"
+        );
+    }
+
+    #[test]
     fn change_list_nav_is_noop_at_the_ends_and_before_edits() {
         // No edits → g;/g, do nothing.
         let st = run("abc", &[Command::GotoOlderChange, Command::GotoNewerChange]);

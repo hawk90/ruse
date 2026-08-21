@@ -557,6 +557,27 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_o_ctrl_i_and_tab_walk_the_jumplist() {
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(ctrl('o'), Mode::Normal),
+            Feed::Cmd(Command::GotoOlderJump)
+        );
+        assert_eq!(
+            e.feed(ctrl('i'), Mode::Normal),
+            Feed::Cmd(Command::GotoNewerJump)
+        );
+        // CTRL-I is Tab in a terminal, so plain Tab is also forward.
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+                Mode::Normal
+            ),
+            Feed::Cmd(Command::GotoNewerJump)
+        );
+    }
+
+    #[test]
     fn ctrl_a_and_ctrl_x_increment_decrement_by_count() {
         let mut e = InputEngine::new();
         assert_eq!(
