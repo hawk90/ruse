@@ -636,6 +636,28 @@ mod single_key_edit_tests {
         let st = run("only", &[Command::JoinLinesNoSpace]);
         assert_eq!(text(&st), "only");
     }
+
+    #[test]
+    fn goto_last_change_jumps_to_the_last_edit() {
+        // Edit on line 2, move away to the top, then `` `. `` returns to the change.
+        let st = run(
+            "one\ntwo\nthree",
+            &[
+                Command::Move(1, Motion::Down),
+                Command::DeleteUnder(1), // delete 't' at the start of line 2 — the last change
+                Command::Move(1, Motion::Up), // move away to line 1
+                Command::GotoLastChange,
+            ],
+        );
+        // The change was at the start of line 2 (byte 4); `` `. `` lands there.
+        assert_eq!(st.cursor(), 4, "`. returns to the last change position");
+    }
+
+    #[test]
+    fn goto_last_change_before_any_edit_is_noop() {
+        let st = run("abc", &[Command::GotoLastChange]);
+        assert_eq!(st.cursor(), 0, "no last change yet → cursor unmoved");
+    }
 }
 
 #[cfg(test)]

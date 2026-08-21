@@ -200,6 +200,11 @@ pub struct View {
     /// Caret gravity (D-050): `OnChar` for Vim/Neovim (default), `BetweenChar` for the Emacs profile. Gates
     /// the Normal-mode on-character edit clamp in [`commit`] so Emacs point rests after the last char.
     caret: CaretGravity,
+    /// The position of the most recent change — Vim's automatic `` `. `` mark. Set in [`commit`] to the
+    /// cursor after any committing EDIT, and snapped like the other stored offsets so a later edit that
+    /// resized the buffer under it keeps it in range. `None` until the first edit. Named marks (`m{a-z}`)
+    /// and the other special marks stay deferred; this is the one Vim maintains without a setter.
+    last_change: Option<usize>,
 }
 
 /// The editor over a single [`Document`] and its [`View`] — the top-level headless handle the TUI and
@@ -240,7 +245,14 @@ impl View {
                 smart: false,
             },
             caret: CaretGravity::OnChar,
+            last_change: None,
         }
+    }
+
+    /// The position of the last change (Vim `` `. ``), or `None` before the first edit.
+    #[must_use]
+    pub fn last_change(&self) -> Option<usize> {
+        self.last_change
     }
 
     /// The regex compile options for a search in this view (magic default; case per config).
@@ -1150,6 +1162,14 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     st.view.cursor = snap(st.doc.bytes(), plan.cursor);
     st.view.mode = plan.mode;
     st.view.last_was_edit = plan.is_edit;
+    // Vim's automatic `` `. `` mark: an edit records where it happened (the cursor it left behind), so a
+    // later `` `. `` returns there. Motions/undo don't move it. Snapped below with the other stored offsets.
+    if plan.is_edit {
+        st.view.last_change = Some(st.view.cursor);
+    }
+    if let Some(c) = st.view.last_change {
+        st.view.last_change = Some(snap(st.doc.bytes(), c));
+    }
     // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
     if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {
         st.view.replace_stack.clear();
