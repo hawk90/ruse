@@ -669,6 +669,28 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn increment_hex_literal_stays_hex() {
+        // 0x1f + 1 → 0x20 (prefix preserved, lowercase output).
+        let st = run("0x1f", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "0x20");
+        // Carry widens: 0xff + 1 → 0x100.
+        let st = run("0xff", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "0x100");
+        // Cursor INSIDE the hex digits (on the '1') still adjusts the whole literal.
+        let st = run(
+            "0x1f",
+            &[Command::Move(2, Motion::Right), Command::IncrementNumber(1)],
+        );
+        assert_eq!(text(&st), "0x20");
+        // Hex clamps at 0 (no negative hex).
+        let st = run("0x0", &[Command::IncrementNumber(-5)]);
+        assert_eq!(text(&st), "0x0");
+        // A plain decimal next to no 0x is unaffected by the hex path.
+        let st = run("value 10 end", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "value 11 end");
+    }
+
+    #[test]
     fn goto_last_change_jumps_to_the_last_edit() {
         // Edit on line 2, move away to the top, then `` `. `` returns to the change.
         let st = run(
