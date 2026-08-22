@@ -1700,12 +1700,15 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
                     // A register name — a letter (`a`–`z` / `A`–`Z`), the yank register `0`, the numbered
-                    // delete-ring `1`–`9`, or the small-delete register `-`: emit `SetRegister` for the core
+                    // delete-ring `1`–`9`, the small-delete `-`, or the blackhole `_`: emit `SetRegister` for the core
                     // to hold as the pending register the next yank/delete/change/paste reads. `action`
                     // clears the transient axes — which is why the register PREFIX must precede a count
                     // (`"a3yy`, as in Vim). `"0p`/`"1p`/`"-p` paste from read-only edit-history slots.
                     KeyCode::Char(c)
-                        if c.is_ascii_alphabetic() || c.is_ascii_digit() || c == '-' =>
+                        if c.is_ascii_alphabetic()
+                            || c.is_ascii_digit()
+                            || c == '-'
+                            || c == '_' =>
                     {
                         self.action(Command::SetRegister(Some(c)))
                     }

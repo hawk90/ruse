@@ -1910,6 +1910,13 @@ mod tests {
             e.feed(k('a'), vis),
             Feed::Cmd(Command::SetRegister(Some('a')))
         );
+        // The blackhole `"_` is a valid register name too.
+        let mut e = InputEngine::new();
+        e.feed(k('"'), Mode::Normal);
+        assert_eq!(
+            e.feed(k('_'), Mode::Normal),
+            Feed::Cmd(Command::SetRegister(Some('_')))
+        );
     }
 
     #[test]
