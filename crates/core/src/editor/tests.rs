@@ -2086,6 +2086,41 @@ mod visual_tests {
     }
 
     #[test]
+    fn visual_r_replaces_every_selected_char() {
+        // Select "hel" (v + 2l), `rx` → "xxxlo".
+        let st = run(
+            "hello",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::ReplaceSelectionChar('x'),
+            ],
+        );
+        assert_eq!(text(&st), "xxxlo");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn visual_r_keeps_newlines_across_a_linewise_selection() {
+        // Linewise-select two lines, `r-` fills every char with '-' but keeps the line break.
+        let st = run(
+            "ab\ncd\n",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(1, Motion::Down),
+                Command::ReplaceSelectionChar('-'),
+            ],
+        );
+        assert_eq!(text(&st), "--\n--\n");
+    }
+
+    #[test]
     fn visual_p_replaces_selection_and_swaps_the_register() {
         // Yank "foo" (chars via y3l), select "bar" (v + 2l), then `p` replaces it with "foo".
         let st = run(

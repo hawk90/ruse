@@ -161,6 +161,9 @@ pub enum Command {
     DeleteForward(u32),
     /// `{count}r{char}` — replace `count` chars with `char`; a no-op if fewer than `count` remain (Vim).
     ReplaceChar(u32, char),
+    /// Visual `r{char}` — replace EVERY non-newline character in the selection with `char`, preserving line
+    /// breaks and the selection's length; cursor to the start, back to Normal.
+    ReplaceSelectionChar(char),
     /// `{count}~` — toggle the case of `count` chars, clamped at EOL, then move past the last (Vim).
     ToggleCase(u32),
     /// `gu`/`gU`/`g~` {motion} — recase the operator span with `case` (lower / upper / toggle), leaving
@@ -758,6 +761,7 @@ impl Command {
             Command::DeleteUnder(n) => format!("delete_under {n}"),
             Command::DeleteForward(n) => format!("delete_forward {n}"),
             Command::ReplaceChar(n, c) => format!("replace_char {n} {}", *c as u32),
+            Command::ReplaceSelectionChar(c) => format!("replace_selection_char {}", *c as u32),
             Command::ToggleCase(n) => format!("toggle_case {n}"),
             Command::JoinLines => "join_lines".into(),
             Command::JoinLinesNoSpace => "join_lines_no_space".into(),
@@ -1054,6 +1058,12 @@ impl Command {
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::ReplaceChar(n, c)
+            }
+            "replace_selection_char" => {
+                let cp = arg_u32(arg, line)?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::ReplaceSelectionChar(c)
             }
             "toggle_case" => {
                 let n = arg_u32(arg, line)?;
@@ -1428,6 +1438,8 @@ mod tests {
             Command::InsertChar('h'),
             Command::ReplaceChar(1, 'z'),
             Command::ReplaceChar(3, 'z'),
+            Command::ReplaceSelectionChar('x'),
+            Command::ReplaceSelectionChar('가'),
             Command::ReplaceChar(1, '가'),
             Command::ToggleCase(1),
             Command::ToggleCase(4),

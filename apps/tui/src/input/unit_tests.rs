@@ -1327,6 +1327,21 @@ mod tests {
     }
 
     #[test]
+    fn visual_r_emits_replace_selection_char() {
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        assert_eq!(e.feed(k('r'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('x'), vis),
+            Feed::Cmd(Command::ReplaceSelectionChar('x'))
+        );
+        // Normal `r` is unaffected — still the count-based char replace.
+        assert_eq!(feed("rz"), Feed::Cmd(Command::ReplaceChar(1, 'z')));
+    }
+
+    #[test]
     fn visual_p_and_capital_p_emit_paste_selection() {
         let mut e = InputEngine::new();
         let vis = Mode::Visual {
