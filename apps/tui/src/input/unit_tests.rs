@@ -486,8 +486,28 @@ mod tests {
             }
             other => panic!("expected Sort, got {other:?}"),
         }
-        // A `/pattern/` sort form is not understood → Unknown, not a bogus Sort.
-        assert!(matches!(parse_ex("sort /x/"), Ex::Unknown(_)));
+        // `i` = case-insensitive.
+        match parse_ex("sort i") {
+            Ex::Sort(_, s) => assert!(s.ignore_case && s.pattern.is_none()),
+            other => panic!("expected Sort, got {other:?}"),
+        }
+        // `/pattern/` — the pattern is captured (delimiters stripped); `r` alone (no pattern) stays inert.
+        match parse_ex("sort /id=/") {
+            Ex::Sort(_, s) => {
+                assert_eq!(s.pattern.as_deref(), Some("id="));
+                assert!(!s.use_match);
+            }
+            other => panic!("expected Sort, got {other:?}"),
+        }
+        // `/pattern/ r` — sort on the matched text (order-independent: flags precede the pattern in Vim, so
+        // this is written `sort r /pat/`).
+        match parse_ex("sort rn /\\d\\+/") {
+            Ex::Sort(_, s) => {
+                assert_eq!(s.pattern.as_deref(), Some("\\d\\+"));
+                assert!(s.use_match && s.numeric);
+            }
+            other => panic!("expected Sort, got {other:?}"),
+        }
     }
 
     #[test]

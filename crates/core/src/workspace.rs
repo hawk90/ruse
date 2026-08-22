@@ -523,20 +523,14 @@ impl Workspace {
 
     /// Run `:[range]sort` against the FOCUSED window (swap-trick): sort the range's lines as one undo
     /// group. Returns the number of lines removed by the `unique` flag.
-    pub fn sort_lines(
-        &mut self,
-        range: SubRange,
-        reverse: bool,
-        numeric: bool,
-        unique: bool,
-    ) -> usize {
+    pub fn sort_lines(&mut self, range: SubRange, opts: &crate::SortOptions) -> usize {
         let vid = self.windows[self.focus].view;
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
         let mut st = EditorState::from_parts(doc, view);
-        let n = st.sort_lines(range, reverse, numeric, unique);
+        let n = st.sort_lines(range, opts);
         let (doc, view) = st.into_parts();
 
         self.docs[slot] = Some(doc);
@@ -1312,24 +1306,31 @@ mod tests {
     /// one undo group; a range limits it to those lines.
     #[test]
     fn sort_lines_variants() {
+        use crate::SortOptions;
+        let opts = |reverse, numeric, unique| SortOptions {
+            reverse,
+            numeric,
+            unique,
+            ..SortOptions::default()
+        };
         let mut w = Workspace::new(b"banana\napple\ncherry\n".to_vec());
-        w.sort_lines(SubRange::WholeFile, false, false, false);
+        w.sort_lines(SubRange::WholeFile, &opts(false, false, false));
         assert_eq!(w.focused().doc.bytes(), b"apple\nbanana\ncherry\n");
 
         // numeric: 10 sorts after 2, not lexicographically before it.
         let mut w = Workspace::new(b"10\n2\n1\n".to_vec());
-        w.sort_lines(SubRange::WholeFile, false, true, false);
+        w.sort_lines(SubRange::WholeFile, &opts(false, true, false));
         assert_eq!(w.focused().doc.bytes(), b"1\n2\n10\n");
 
         // reverse (descending).
         let mut w = Workspace::new(b"a\nb\nc\n".to_vec());
-        w.sort_lines(SubRange::WholeFile, true, false, false);
+        w.sort_lines(SubRange::WholeFile, &opts(true, false, false));
         assert_eq!(w.focused().doc.bytes(), b"c\nb\na\n");
 
         // unique drops duplicate lines after sorting.
         let mut w = Workspace::new(b"b\na\nb\na\n".to_vec());
         assert_eq!(
-            w.sort_lines(SubRange::WholeFile, false, false, true),
+            w.sort_lines(SubRange::WholeFile, &opts(false, false, true)),
             2,
             "2 dupes removed"
         );
@@ -1337,8 +1338,47 @@ mod tests {
 
         // A range limits the sort to those lines; the rest stays put.
         let mut w = Workspace::new(b"z\n3\n1\n2\n".to_vec());
-        w.sort_lines(SubRange::Lines(2, 4), false, true, false);
+        w.sort_lines(SubRange::Lines(2, 4), &opts(false, true, false));
         assert_eq!(w.focused().doc.bytes(), b"z\n1\n2\n3\n");
+    }
+
+    #[test]
+    fn sort_lines_ignore_case_and_pattern() {
+        use crate::SortOptions;
+        // `i` — case-insensitive: "Banana" sorts with "apple"/"cherry", not before all lowercase.
+        let mut w = Workspace::new(b"cherry\nBanana\napple\n".to_vec());
+        w.sort_lines(
+            SubRange::WholeFile,
+            &SortOptions {
+                ignore_case: true,
+                ..SortOptions::default()
+            },
+        );
+        assert_eq!(w.focused().doc.bytes(), b"apple\nBanana\ncherry\n");
+
+        // `/pattern/` — sort on the text AFTER the match (here, after the leading `id=` tag).
+        let mut w = Workspace::new(b"id=charlie\nid=alice\nid=bob\n".to_vec());
+        w.sort_lines(
+            SubRange::WholeFile,
+            &SortOptions {
+                pattern: Some("id=".into()),
+                ..SortOptions::default()
+            },
+        );
+        assert_eq!(w.focused().doc.bytes(), b"id=alice\nid=bob\nid=charlie\n");
+
+        // `/pattern/` + `r` — sort on the MATCHED text itself (the number), numerically.
+        let mut w = Workspace::new(b"a99\nb100\nc9\n".to_vec());
+        w.sort_lines(
+            SubRange::WholeFile,
+            &SortOptions {
+                pattern: Some("\\d\\+".into()),
+                use_match: true,
+                numeric: true,
+                ..SortOptions::default()
+            },
+        );
+        assert_eq!(w.focused().doc.bytes(), b"c9\na99\nb100\n");
     }
 
     /// D-055: raw macro bytes round-trip through a named register — `set_register_raw` then `register_bytes`

@@ -46,7 +46,7 @@ pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};
 pub use editor::{
     apply_command, commit, plan, CaretGravity, EditorOption, EditorState, GlobalCmd, IndentStyle,
-    LineAddr, Mode, Plan, SubFlags, SubOutcome, SubRange, Substitution, View,
+    LineAddr, Mode, Plan, SortOptions, SubFlags, SubOutcome, SubRange, Substitution, View,
 };
 pub use effect::Effect;
 pub use motion::Motion;
