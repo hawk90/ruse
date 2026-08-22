@@ -36,6 +36,7 @@ mod register_tests {
                 Command::Paste {
                     after: true,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -51,6 +52,7 @@ mod register_tests {
                 Command::Paste {
                     after: true,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -67,6 +69,7 @@ mod register_tests {
                 Command::Paste {
                     after: true,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -82,10 +85,45 @@ mod register_tests {
                 Command::Paste {
                     after: true,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
         assert_eq!(text(&st), "ffoo");
+    }
+
+    #[test]
+    fn gp_leaves_cursor_just_after_the_pasted_text() {
+        // Yank "f", `p` (move_after=false) rests ON the pasted char; `gp` rests just AFTER it.
+        let p = run(
+            "foo",
+            &[
+                Command::Yank(1, Motion::Right),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        let gp = run(
+            "foo",
+            &[
+                Command::Yank(1, Motion::Right),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: true,
+                },
+            ],
+        );
+        assert_eq!(text(&p), "ffoo");
+        assert_eq!(text(&gp), "ffoo", "same text as p");
+        assert_eq!(
+            gp.cursor(),
+            p.cursor() + 1,
+            "gp rests one past where p rested"
+        );
     }
 
     #[test]
@@ -99,6 +137,7 @@ mod register_tests {
                 Command::Paste {
                     after: false,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -116,6 +155,7 @@ mod register_tests {
                 Command::Paste {
                     after: true,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -129,6 +169,7 @@ mod register_tests {
             &[Command::Paste {
                 after: true,
                 count: 1,
+                move_after: false,
             }],
         );
         assert_eq!(text(&st), "hello");
@@ -154,6 +195,7 @@ mod register_tests {
                 Command::Paste {
                     after: true,
                     count: 2,
+                    move_after: false,
                 },
             ],
         );
@@ -197,6 +239,7 @@ mod register_tests {
                 Command::Paste {
                     after: true,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -1703,6 +1746,7 @@ mod visual_tests {
                 Command::Paste {
                     after: true,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -1825,6 +1869,7 @@ mod blockwise_tests {
         cmds.push(Command::Paste {
             after: false,
             count: 1,
+            move_after: false,
         });
         let st = run("abc\ndef\nghi", &cmds);
         // Yank leaves the buffer; `P` drops "ab"/"de" back at column 0 on rows 0 and 1.
@@ -1847,6 +1892,7 @@ mod blockwise_tests {
                 Command::Paste {
                     after: true,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -1870,6 +1916,7 @@ mod blockwise_tests {
                 Command::Paste {
                     after: false,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -3452,6 +3499,7 @@ mod mark_tests {
                 Command::Paste {
                     after: false,
                     count: 1,
+                    move_after: false,
                 },
             ],
         );
@@ -3585,6 +3633,7 @@ mod caret_gravity_tests {
             Command::Paste {
                 after: true,
                 count: 1,
+                move_after: false,
             }, // insert "abc" after the caret char
         ];
         let vim = run_with(CaretGravity::OnChar, "abc", 0, &cmds);

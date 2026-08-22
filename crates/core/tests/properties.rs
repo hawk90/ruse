@@ -69,7 +69,11 @@ fn command() -> impl Strategy<Value = Command> {
         (1u32..4, motion()).prop_map(|(n, m)| Command::Delete(n, m)),
         (1u32..4, motion()).prop_map(|(n, m)| Command::Change(n, m)),
         (1u32..4, motion()).prop_map(|(n, m)| Command::Yank(n, m)),
-        (any::<bool>(), 1u32..4).prop_map(|(after, count)| Command::Paste { after, count }),
+        (any::<bool>(), 1u32..4).prop_map(|(after, count)| Command::Paste {
+            after,
+            count,
+            move_after: false,
+        }),
         (0u8..3).prop_map(|k| Command::EnterVisual {
             kind: match k {
                 0 => SelectKind::Charwise,

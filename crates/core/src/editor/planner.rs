@@ -1159,7 +1159,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             levels,
         } => plan_set_indents(st, *first_line, *last_line, levels, hint),
         // Paste reads the pending register (`"xp`) or the unnamed slot; `commit` clears the pending slot.
-        Command::Paste { after, count } => paste(
+        Command::Paste {
+            after,
+            count,
+            move_after,
+        } => paste(
             b,
             cur,
             st.view.mode,
@@ -1167,6 +1171,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             *after,
             *count,
             st.view.caret,
+            *move_after,
         ),
         // `"x` — install the one-shot pending register. A pure state set: no edit, no cursor/mode change.
         Command::SetRegister(name) => Plan {
@@ -1462,6 +1467,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 false,
                 *count,
                 st.view.caret,
+                false, // Emacs yank is not `gp` — normal cursor placement
             );
             if !matches!(p.action, Action::Nop) {
                 p.set_mark = Some(MarkWrite::Set(cur));
@@ -2193,6 +2199,7 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
     }
 }
 
+#[allow(clippy::too_many_arguments)] // paste legitimately needs the full register + gravity + gp context
 fn paste(
     b: &[u8],
     cur: usize,
@@ -2201,6 +2208,7 @@ fn paste(
     after: bool,
     count: u32,
     gravity: CaretGravity,
+    move_after: bool,
 ) -> Plan {
     let nop = Plan {
         action: Action::Nop,
@@ -2244,22 +2252,26 @@ fn paste(
 
     if reg.is_linewise() {
         // Linewise content is normalized to end with '\n'; `{count}p` stacks that many whole-line copies.
+        // `gp`/`gP` (move_after) leave the cursor on the line AFTER the pasted block instead of on it.
         let text = repeat(reg.text());
+        let tlen = text.len();
         if after {
             let le = line_end(b, cur);
             if le < b.len() {
                 // Insert after the current line's newline: the stored "...\n" becomes a fresh line below.
-                mk(le + 1, text, le + 1)
+                let c = if move_after { le + 1 + tlen } else { le + 1 };
+                mk(le + 1, text, c)
             } else {
                 // Last line has no trailing newline: prepend one and drop the stored trailing newline so no
                 // dangling blank line is created. Cursor lands at the start of the pasted line.
                 let mut bytes = vec![b'\n'];
                 bytes.extend_from_slice(text.strip_suffix(b"\n").unwrap_or(&text));
-                mk(le, bytes, le + 1)
+                let end = le + bytes.len();
+                mk(le, bytes, if move_after { end } else { le + 1 })
             }
         } else {
             let ls = line_start(b, cur);
-            mk(ls, text, ls)
+            mk(ls, text, if move_after { ls + tlen } else { ls })
         }
     } else {
         // `{count}p` inserts that many copies inline. Vim's charwise-paste cursor rule splits on whether the
@@ -2280,18 +2292,30 @@ fn paste(
         };
         if after {
             // Insert after the cursor char; cursor lands on the first pasted byte for multi-line content,
-            // else per gravity on/after the last pasted byte.
+            // else per gravity on/after the last pasted byte. `gp` (move_after) rests just past the paste.
             let at = if cur < b.len() {
                 next_boundary(b, cur)
             } else {
                 cur
             };
-            let cursor = if multiline { at } else { tail(at + n) };
+            let cursor = if move_after {
+                at + n
+            } else if multiline {
+                at
+            } else {
+                tail(at + n)
+            };
             mk(at, text, cursor)
         } else {
             // Insert before the cursor; cursor lands on the first pasted byte for multi-line content, else
-            // per gravity on/after the last pasted byte.
-            let cursor = if multiline { cur } else { tail(cur + n) };
+            // per gravity on/after the last pasted byte. `gP` (move_after) rests just past the paste.
+            let cursor = if move_after {
+                cur + n
+            } else if multiline {
+                cur
+            } else {
+                tail(cur + n)
+            };
             mk(cur, text, cursor)
         }
     }

@@ -241,6 +241,8 @@ pub enum Command {
     Paste {
         after: bool,
         count: u32,
+        /// `gp`/`gP` (Vim): leave the cursor JUST AFTER the pasted text instead of on/before it.
+        move_after: bool,
     },
     /// `"x` — select the register `x` (`a`–`z`, or `A`–`Z` to append) for the FOLLOWING yank/delete/
     /// change/paste. `None` selects the unnamed register (the default). Emitted by the input engine on the
@@ -760,13 +762,16 @@ impl Command {
                 motion_token(*motion)
             ),
             Command::Yank(n, m) => format!("yank {n} {}", motion_token(*m)),
-            Command::Paste { after, count } => {
-                if *after {
-                    format!("paste_after {count}")
-                } else {
-                    format!("paste_before {count}")
-                }
-            }
+            Command::Paste {
+                after,
+                count,
+                move_after,
+            } => match (*after, *move_after) {
+                (true, false) => format!("paste_after {count}"),
+                (false, false) => format!("paste_before {count}"),
+                (true, true) => format!("paste_after_move {count}"),
+                (false, true) => format!("paste_before_move {count}"),
+            },
             Command::SetRegister(name) => match name {
                 Some(c) => format!("select_register {}", *c as u32),
                 None => "select_register".into(),
@@ -1088,10 +1093,22 @@ impl Command {
             "paste_after" => Command::Paste {
                 after: true,
                 count: arg_u32(arg, line)?,
+                move_after: false,
             },
             "paste_before" => Command::Paste {
                 after: false,
                 count: arg_u32(arg, line)?,
+                move_after: false,
+            },
+            "paste_after_move" => Command::Paste {
+                after: true,
+                count: arg_u32(arg, line)?,
+                move_after: true,
+            },
+            "paste_before_move" => Command::Paste {
+                after: false,
+                count: arg_u32(arg, line)?,
+                move_after: true,
             },
             "select_register" => {
                 // No arg → the unnamed register; otherwise a decimal Unicode scalar for the register name.
@@ -1427,18 +1444,22 @@ mod tests {
             Command::Paste {
                 after: true,
                 count: 1,
+                move_after: false,
             },
             Command::Paste {
                 after: false,
                 count: 1,
+                move_after: false,
             },
             Command::Paste {
                 after: true,
                 count: 2,
+                move_after: true,
             },
             Command::Paste {
                 after: false,
                 count: 5,
+                move_after: true,
             },
             Command::SetRegister(None),
             Command::SetRegister(Some('a')),
