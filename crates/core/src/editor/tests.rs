@@ -131,6 +131,41 @@ mod register_tests {
     }
 
     #[test]
+    fn insert_ctrl_w_deletes_the_word_before_the_caret() {
+        // `A<C-w>` at end of "foo bar" removes "bar", staying in Insert.
+        let st = run(
+            "foo bar",
+            &[Command::AppendLineEnd, Command::InsertDeleteWordBack],
+        );
+        assert_eq!(text(&st), "foo ");
+        assert_eq!(st.mode(), Mode::Insert);
+        assert_eq!(st.cursor(), 4);
+        // At column 0 it is a no-op.
+        let st = run("hi", &[Command::EnterInsert, Command::InsertDeleteWordBack]);
+        assert_eq!(text(&st), "hi");
+    }
+
+    #[test]
+    fn insert_ctrl_u_deletes_to_first_non_blank_then_indent() {
+        // First `<C-u>` deletes back to the first non-blank (keeps the indent); a second deletes the indent.
+        let st = run(
+            "    hello",
+            &[Command::AppendLineEnd, Command::InsertDeleteToLineStart],
+        );
+        assert_eq!(text(&st), "    ", "indent preserved on the first C-u");
+        assert_eq!(st.cursor(), 4);
+        let st = run(
+            "    hello",
+            &[
+                Command::AppendLineEnd,
+                Command::InsertDeleteToLineStart,
+                Command::InsertDeleteToLineStart,
+            ],
+        );
+        assert_eq!(text(&st), "", "the second C-u removes the indent too");
+    }
+
+    #[test]
     fn insert_register_splices_register_text_at_the_caret() {
         // `y3l` yanks "foo" into the unnamed register; `i` then `<C-r>"` inserts it at the caret.
         let st = run(

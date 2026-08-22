@@ -124,6 +124,12 @@ pub enum Command {
     /// the same slots as paste (`"`, `0`–`9`, `-`, `a`–`z`). Recorded in the insert session, so `.` replays
     /// it and re-reads the register at replay time (Vim). Empty/unsupported register inserts nothing.
     InsertRegister(char),
+    /// `i_CTRL-W` — delete the word before the caret, staying in Insert (Vim). Deletes `[word-back, caret)`
+    /// on the current line (does not cross the line start). A no-op at column 0.
+    InsertDeleteWordBack,
+    /// `i_CTRL-U` — delete everything before the caret on the current line, staying in Insert. Deletes back
+    /// to the first non-blank; when the caret is already at/before it, deletes the leading indent too (Vim).
+    InsertDeleteToLineStart,
     InsertNewline,
     /// `o`/`O`/`<CR>` seeded with a tree-suggested indent (F-015 Phase 2): open a line (per `kind`) whose
     /// leading whitespace is `level × shiftwidth`, leaving the cursor after it in Insert. The frontend owns
@@ -708,6 +714,8 @@ impl Command {
                 s
             }
             Command::InsertRegister(c) => format!("insert_register {}", *c as u32),
+            Command::InsertDeleteWordBack => "insert_delete_word_back".into(),
+            Command::InsertDeleteToLineStart => "insert_delete_to_line_start".into(),
             Command::InsertNewline => "insert_newline".into(),
             Command::OpenLineIndent { kind, level } => {
                 let k = match kind {
@@ -952,6 +960,8 @@ impl Command {
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::InsertRegister(c)
             }
+            "insert_delete_word_back" => Command::InsertDeleteWordBack,
+            "insert_delete_to_line_start" => Command::InsertDeleteToLineStart,
             "insert_newline" => Command::InsertNewline,
             "open_line_indent" => {
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
@@ -1389,6 +1399,8 @@ mod tests {
             Command::InsertRegister('0'),
             Command::InsertRegister('a'),
             Command::InsertRegister('-'),
+            Command::InsertDeleteWordBack,
+            Command::InsertDeleteToLineStart,
             Command::InsertNewline,
             Command::OpenLineIndent {
                 kind: OpenKind::Below,

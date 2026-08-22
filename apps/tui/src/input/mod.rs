@@ -993,6 +993,13 @@ impl InputEngine {
             self.insert.ctrl_r = true;
             return Feed::Pending;
         }
+        // `i_CTRL-W` / `i_CTRL-U` — delete the word before the caret / everything before it on the line.
+        if ctrl && key.code == KeyCode::Char('w') {
+            return self.action(Command::InsertDeleteWordBack);
+        }
+        if ctrl && key.code == KeyCode::Char('u') {
+            return self.action(Command::InsertDeleteToLineStart);
+        }
         if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code) {
             let cmd = value.clone();
             self.reset();

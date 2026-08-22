@@ -619,6 +619,19 @@ mod tests {
     }
 
     #[test]
+    fn insert_ctrl_w_and_ctrl_u_emit_delete_commands() {
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(ctrl('w'), Mode::Insert),
+            Feed::Cmd(Command::InsertDeleteWordBack)
+        );
+        assert_eq!(
+            e.feed(ctrl('u'), Mode::Insert),
+            Feed::Cmd(Command::InsertDeleteToLineStart)
+        );
+    }
+
+    #[test]
     fn insert_ctrl_r_inserts_the_named_register() {
         let mut e = InputEngine::new();
         // `<C-r>` arms the prefix (pending), then the register name completes it.
