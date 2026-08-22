@@ -45,6 +45,10 @@ enum Op {
     ShiftLeft,
     /// `=` — reindent the operator span's lines to their bracket depth (linewise).
     Reindent,
+    /// `gq` / `gw` — reflow the operator span's lines to `'textwidth'`. `Format` moves the caret to the
+    /// last reformatted line; `FormatKeep` (`gw`) restores it.
+    Format,
+    FormatKeep,
 }
 
 impl Op {
@@ -564,6 +568,13 @@ impl InputEngine {
                         count: total,
                         motion: m,
                     }
+                } else if op == Op::Format || op == Op::FormatKeep {
+                    // `gq`/`gw` over a motion — the planner reflows the motion's LINES to textwidth.
+                    Command::Format {
+                        count: total,
+                        motion: m,
+                        keep_cursor: op == Op::FormatKeep,
+                    }
                 } else if let Some(wise) = self.normal.forced_wise {
                     let opk = match op {
                         Op::Delete => OpKind::Delete,
@@ -575,7 +586,9 @@ impl InputEngine {
                         | Op::CaseToggle
                         | Op::ShiftRight
                         | Op::ShiftLeft
-                        | Op::Reindent => {
+                        | Op::Reindent
+                        | Op::Format
+                        | Op::FormatKeep => {
                             unreachable!()
                         }
                     };
@@ -604,7 +617,9 @@ impl InputEngine {
                         | Op::CaseToggle
                         | Op::ShiftRight
                         | Op::ShiftLeft
-                        | Op::Reindent => {
+                        | Op::Reindent
+                        | Op::Format
+                        | Op::FormatKeep => {
                             unreachable!()
                         }
                     }
@@ -1442,7 +1457,9 @@ impl InputEngine {
                         | Op::CaseToggle
                         | Op::ShiftRight
                         | Op::ShiftLeft
-                        | Op::Reindent => SearchOp::Move,
+                        | Op::Reindent
+                        | Op::Format
+                        | Op::FormatKeep => SearchOp::Move,
                     },
                     None => SearchOp::Move,
                 };
@@ -1587,6 +1604,14 @@ impl InputEngine {
                     }
                     KeyCode::Char('~') if self.normal.op.is_none() => {
                         self.arm_case_op(Op::CaseToggle)
+                    }
+                    // `gq` / `gw` — arm the reflow operator over the next motion (`gqap`, `gwj`). Normal
+                    // only; the doubled `gqq`/`gqgq` line form is deferred (it collides with macro `q`).
+                    KeyCode::Char('q') if matches!(mode, Mode::Normal) => {
+                        self.arm_case_op(Op::Format)
+                    }
+                    KeyCode::Char('w') if matches!(mode, Mode::Normal) => {
+                        self.arm_case_op(Op::FormatKeep)
                     }
                     // `gn` / `gN` — the search-match text object: select (bare) or operate on (`dgn`/`cgn`/
                     // `ygn`) the next / previous match of the last search pattern. Operator-aware.

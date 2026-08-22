@@ -229,6 +229,14 @@ pub enum Command {
         count: u32,
         motion: Motion,
     },
+    /// `gq` / `gw` {motion} — reflow the motion's LINES to `'textwidth'` (or 79 when tw=0): each blank-line-
+    /// separated paragraph is re-wrapped, preserving its first line's indent. `gw` (`keep_cursor`) restores
+    /// the cursor to where it started; `gq` leaves it on the last reformatted line. Operator-over-motion.
+    Format {
+        count: u32,
+        motion: Motion,
+        keep_cursor: bool,
+    },
     /// Set the indent level of each line in `[first_line, last_line]` to `levels[i] × shiftwidth`
     /// (blank lines stay empty), as one undo group. The frontend emits this for the tree-aware `=` — it
     /// computes the levels from the syntax tree, so the levels are concrete and the trace replays exactly
@@ -769,6 +777,15 @@ impl Command {
             Command::Reindent { count, motion } => {
                 format!("reindent {count} {}", motion_token(*motion))
             }
+            Command::Format {
+                count,
+                motion,
+                keep_cursor,
+            } => format!(
+                "format {count} {} {}",
+                motion_token(*motion),
+                if *keep_cursor { "keep" } else { "move" }
+            ),
             Command::SetIndents {
                 first_line,
                 last_line,
@@ -1095,6 +1112,25 @@ impl Command {
                 });
             }
             "reindent" => return op_cmd(arg, |count, motion| Command::Reindent { count, motion }),
+            "format" => {
+                // `format {count} {motion} {keep|move}`
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let count = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let motion = it
+                    .next()
+                    .and_then(motion_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let keep_cursor = matches!(it.next(), Some("keep"));
+                return Ok(Command::Format {
+                    count,
+                    motion,
+                    keep_cursor,
+                });
+            }
             "set_indents" => {
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 let mut it = a.split_whitespace();
@@ -1404,6 +1440,16 @@ mod tests {
             Command::Reindent {
                 count: 1,
                 motion: Motion::Line,
+            },
+            Command::Format {
+                count: 1,
+                motion: Motion::AParagraph,
+                keep_cursor: false,
+            },
+            Command::Format {
+                count: 2,
+                motion: Motion::Down,
+                keep_cursor: true,
             },
             Command::SetIndents {
                 first_line: 0,

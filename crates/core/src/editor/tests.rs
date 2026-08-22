@@ -1308,6 +1308,93 @@ mod shift_tests {
 }
 
 #[cfg(test)]
+mod format_tests {
+    use crate::editor::*;
+
+    fn run_tw(initial: &str, tw: usize, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        st.set_option(EditorOption::TextWidth(tw));
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn gq_reflows_a_paragraph_to_textwidth() {
+        // tw=10; `gqap` re-wraps the run of words so no line exceeds 10 columns.
+        let st = run_tw(
+            "aa bb cc dd ee ff\n",
+            10,
+            &[Command::Format {
+                count: 1,
+                motion: Motion::AParagraph,
+                keep_cursor: false,
+            }],
+        );
+        assert_eq!(text(&st), "aa bb cc\ndd ee ff\n");
+        assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn gq_preserves_indent_and_blank_line_separators() {
+        // Two paragraphs; the first line's indent is applied to every wrapped line of that paragraph.
+        let st = run_tw(
+            "  one two three four\n\nfive six seven eight\n",
+            12,
+            &[Command::Format {
+                count: 1,
+                motion: Motion::AParagraph,
+                keep_cursor: false,
+            }],
+        );
+        // Only the FIRST paragraph is in `ap`'s span here; indent "  " kept, wrapped at 12 cols.
+        assert_eq!(
+            text(&st),
+            "  one two\n  three four\n\nfive six seven eight\n"
+        );
+    }
+
+    #[test]
+    fn gw_keeps_the_cursor() {
+        // `gw` reflows like `gq` but restores the caret roughly to where it was.
+        let st = run_tw(
+            "aa bb cc dd ee ff\n",
+            10,
+            &[
+                Command::Move(4, Motion::Right),
+                Command::Format {
+                    count: 1,
+                    motion: Motion::AParagraph,
+                    keep_cursor: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "aa bb cc\ndd ee ff\n");
+        assert_eq!(st.cursor(), 4, "gw restores the caret column");
+    }
+
+    #[test]
+    fn textwidth_zero_falls_back_to_79() {
+        // With tw=0, a short line under 79 cols is left as one line (no wrap).
+        let st = run_tw(
+            "short line of words\n",
+            0,
+            &[Command::Format {
+                count: 1,
+                motion: Motion::AParagraph,
+                keep_cursor: false,
+            }],
+        );
+        assert_eq!(text(&st), "short line of words\n");
+    }
+}
+
+#[cfg(test)]
 mod insert_entry_tests {
     use crate::editor::*;
 
