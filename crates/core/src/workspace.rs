@@ -281,8 +281,12 @@ impl Workspace {
         let st = EditorState::from_parts(doc, view);
         let regs = st.registers();
         let mut out = Vec::new();
+        // Vim `:reg` order: unnamed, the yank register "0, the numbered delete-ring "1–"9, the small-delete
+        // register "-, then the named slots "a–"z. Empty slots are omitted.
         for (name, r) in std::iter::once(('"', regs.get(None)))
             .chain(std::iter::once(('0', regs.yank0())))
+            .chain(('1'..='9').map(|c| (c, regs.get(Some(c)))))
+            .chain(std::iter::once(('-', regs.get(Some('-')))))
             .chain(('a'..='z').map(|c| (c, regs.get(Some(c)))))
         {
             if !r.is_empty() {

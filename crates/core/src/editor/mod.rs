@@ -1409,7 +1409,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let was_kill = st.view.last_was_kill;
     st.view.last_was_kill = false;
     match plan.set_register {
-        Some(RegWrite::Edit(reg)) => st.view.registers.write(st.view.pending_register, reg),
+        Some(RegWrite::Edit(reg)) => st.view.registers.delete(st.view.pending_register, reg),
         Some(RegWrite::Yank(reg)) => st.view.registers.yank(st.view.pending_register, reg),
         Some(RegWrite::KillAppend(reg)) => {
             if was_kill {
