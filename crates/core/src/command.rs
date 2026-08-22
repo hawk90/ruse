@@ -457,6 +457,8 @@ pub enum WordCase {
     Capitalize,
     /// Vim `g~` — flip each letter's case (upper↔lower). Not produced by the Emacs case commands.
     Toggle,
+    /// Vim `g?` — ROT13 each ASCII letter (Caesar shift by 13). Not produced by the Emacs case commands.
+    Rot13,
 }
 
 fn motion_token(m: Motion) -> String {
@@ -684,6 +686,7 @@ fn word_case_token(case: WordCase) -> &'static str {
         WordCase::Downcase => "downcase",
         WordCase::Capitalize => "capitalize",
         WordCase::Toggle => "toggle",
+        WordCase::Rot13 => "rot13",
     }
 }
 
@@ -694,6 +697,7 @@ fn arg_word_case(arg: Option<&str>, line: &str) -> Result<WordCase, CommandParse
         Some("downcase") => Ok(WordCase::Downcase),
         Some("capitalize") => Ok(WordCase::Capitalize),
         Some("toggle") => Ok(WordCase::Toggle),
+        Some("rot13") => Ok(WordCase::Rot13),
         _ => Err(CommandParseError::BadArgument(line.to_string())),
     }
 }
@@ -1414,6 +1418,12 @@ mod tests {
             Command::CaseSelection(WordCase::Upcase),
             Command::CaseSelection(WordCase::Downcase),
             Command::CaseSelection(WordCase::Toggle),
+            Command::CaseSelection(WordCase::Rot13),
+            Command::CaseMotion {
+                count: 1,
+                motion: Motion::AParagraph,
+                case: WordCase::Rot13,
+            },
             Command::JoinLines,
             Command::JoinLinesNoSpace,
             Command::IncrementNumber(1),
