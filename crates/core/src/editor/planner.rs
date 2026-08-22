@@ -712,6 +712,29 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 hint,
             )
         }
+        // `i_CTRL-T` — indent the current line by one shiftwidth; the caret rides right with the text.
+        Command::InsertIndent => {
+            let ls = line_start(b, cur);
+            let unit = st.indent_unit();
+            edit(
+                one(Edit::insert(ls, unit.clone())),
+                cur + unit.len(),
+                Mode::Insert,
+                hint,
+            )
+        }
+        // `i_CTRL-D` — dedent the current line by one shiftwidth; the caret rides left (never before the line
+        // start). A no-op when there is no leading whitespace.
+        Command::InsertDedent => {
+            let ls = line_start(b, cur);
+            let le = line_end(b, ls);
+            let remove = shift_left_remove(b, ls, le, st.view.indent.tab_width);
+            if remove == 0 {
+                return nop(cur, Mode::Insert);
+            }
+            let cursor = cur.saturating_sub(remove).max(ls);
+            edit(one(Edit::delete(ls, remove)), cursor, Mode::Insert, hint)
+        }
         Command::InsertNewline => edit(
             one(Edit::insert(cur, b"\n".to_vec())),
             cur + 1,

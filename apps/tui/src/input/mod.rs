@@ -1000,6 +1000,13 @@ impl InputEngine {
         if ctrl && key.code == KeyCode::Char('u') {
             return self.action(Command::InsertDeleteToLineStart);
         }
+        // `i_CTRL-T` / `i_CTRL-D` — indent / dedent the current line by one shiftwidth.
+        if ctrl && key.code == KeyCode::Char('t') {
+            return self.action(Command::InsertIndent);
+        }
+        if ctrl && key.code == KeyCode::Char('d') {
+            return self.action(Command::InsertDedent);
+        }
         if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code) {
             let cmd = value.clone();
             self.reset();
