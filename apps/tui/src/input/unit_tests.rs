@@ -2239,6 +2239,67 @@ mod search_tests {
     }
 
     #[test]
+    fn gn_and_gn_backward_emit_the_search_object_with_the_last_pattern() {
+        let mut e = InputEngine::new();
+        // Before any search, `gn` finds no pattern and aborts cleanly.
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('n'), Mode::Normal), Feed::Ignored);
+        // After a search, bare `gn` = the Move (Visual-select) object; `gN` sets backward.
+        e.set_last_search("foo".into());
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::Cmd(Command::SearchObject {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: false,
+            })
+        );
+        e.feed(k('g'), Mode::Normal);
+        assert_eq!(
+            e.feed(k('N'), Mode::Normal),
+            Feed::Cmd(Command::SearchObject {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: true,
+            })
+        );
+    }
+
+    #[test]
+    fn operator_and_count_fold_into_gn() {
+        let mut e = InputEngine::new();
+        e.set_last_search("foo".into());
+        // `2cgn` → change the object, count 2 (advance to the 2nd match), pattern baked in.
+        assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('c'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::Cmd(Command::SearchObject {
+                op: SearchOp::Change,
+                count: 2,
+                pattern: "foo".into(),
+                backward: false,
+            })
+        );
+        // `dgn` → delete the object.
+        assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::Cmd(Command::SearchObject {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "foo".into(),
+                backward: false,
+            })
+        );
+    }
+
+    #[test]
     fn empty_search_pattern_is_inert() {
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);

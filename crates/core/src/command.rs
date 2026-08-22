@@ -300,6 +300,19 @@ pub enum Command {
         count: u32,
         pattern: String,
     },
+    /// `gn` / `gN` — the search-match text object (Vim `:help gn`). Unlike [`Command::Search`] (which spans
+    /// `[cursor, match)`), this operates on the WHOLE match: the one under the cursor, or — if the cursor is
+    /// not on a match — the next (`gn`, `backward: false`) or previous (`gN`, `backward: true`) match.
+    /// `count` advances that many matches. `op` = [`SearchOp::Move`] is the bare form: enter Visual with the
+    /// match selected (so `gn` then an operator works); `Delete`/`Change`/`Yank` operate on the match
+    /// directly (`dgn`/`cgn`/`ygn`). Because the pattern is baked in, `.` replays `cgn` — the idiom that
+    /// makes gn powerful (change one match, `n.` through the rest).
+    SearchObject {
+        op: SearchOp,
+        count: u32,
+        pattern: String,
+        backward: bool,
+    },
     // history / file / control
     Undo,
     Redo,
@@ -816,6 +829,17 @@ impl Command {
             Command::Search { op, count, pattern } => {
                 format!("search {} {count} {pattern}", search_op_token(*op))
             }
+            // Direction before the pattern (pattern is LAST so it may contain spaces).
+            Command::SearchObject {
+                op,
+                count,
+                pattern,
+                backward,
+            } => format!(
+                "search_object {} {count} {} {pattern}",
+                search_op_token(*op),
+                if *backward { "bwd" } else { "fwd" }
+            ),
             Command::Undo => "undo".into(),
             Command::Redo => "redo".into(),
             Command::UndoOlder => "undo_older".into(),
@@ -1184,6 +1208,26 @@ impl Command {
                 let pattern = parts.next().unwrap_or("").to_string();
                 Command::Search { op, count, pattern }
             }
+            "search_object" => {
+                // `search_object {op} {count} {fwd|bwd} {pattern...}` — pattern is the untrimmed remainder.
+                let mut parts = raw.splitn(4, ' ');
+                let op = parts
+                    .next()
+                    .and_then(search_op_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let count: u32 = parts
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let backward = matches!(parts.next(), Some("bwd"));
+                let pattern = parts.next().unwrap_or("").to_string();
+                Command::SearchObject {
+                    op,
+                    count,
+                    pattern,
+                    backward,
+                }
+            }
             "undo" => Command::Undo,
             "redo" => Command::Redo,
             "undo_older" => Command::UndoOlder,
@@ -1514,6 +1558,30 @@ mod tests {
                 op: SearchOp::Yank,
                 count: 3,
                 pattern: "a b".into(),
+            },
+            Command::SearchObject {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: false,
+            },
+            Command::SearchObject {
+                op: SearchOp::Change,
+                count: 2,
+                pattern: "foo bar".into(),
+                backward: false,
+            },
+            Command::SearchObject {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "x".into(),
+                backward: true,
+            },
+            Command::SearchObject {
+                op: SearchOp::Yank,
+                count: 3,
+                pattern: "a b".into(),
+                backward: true,
             },
             Command::Undo,
             Command::Redo,

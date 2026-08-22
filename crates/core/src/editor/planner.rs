@@ -199,6 +199,82 @@ fn plan_search(
     }
 }
 
+/// `gn` / `gN` (the search-match text object, Vim `:help gn`). Selects/operates on the WHOLE match under the
+/// cursor, or — when the cursor is not on a match — the next (`gn`) or previous (`gN`) one; `count` advances
+/// that many matches (wrapping). The bare form ([`SearchOp::Move`]) enters charwise Visual with the match
+/// selected; `Delete`/`Change`/`Yank` operate on the match span `[start, end)` directly.
+#[allow(clippy::too_many_arguments)]
+fn plan_search_object(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    op: &SearchOp,
+    count: u32,
+    pattern: &str,
+    backward: bool,
+    hint: GroupHint,
+) -> Plan {
+    let spans = match_spans(b, pattern, st.view.search_options());
+    if spans.is_empty() {
+        return nop(cur, st.view.mode);
+    }
+    let len = spans.len();
+    // The match to start from: forward, the first whose end is past the cursor (the one containing it, or
+    // the next), wrapping to the first; backward, the one containing the cursor, else the last that starts
+    // before it, wrapping to the last.
+    let start_idx = if backward {
+        spans
+            .iter()
+            .rposition(|&(s, e)| s <= cur && cur < e)
+            .or_else(|| spans.iter().rposition(|&(s, _)| s < cur))
+            .unwrap_or(len - 1)
+    } else {
+        spans.iter().position(|&(_, e)| e > cur).unwrap_or(0)
+    };
+    // Advance `count-1` further matches in the direction of travel, wrapping around the document.
+    let steps = i64::from(count.max(1)) - 1;
+    let delta = if backward { -steps } else { steps };
+    let idx = (start_idx as i64 + delta).rem_euclid(len as i64) as usize;
+    let (s, e) = spans[idx];
+    match op {
+        // Bare `gn`/`gN`: enter charwise Visual with the match selected (anchor at its start, cursor on its
+        // last char). `commit` applies `set_anchor` after its enter-selection default, so this span wins.
+        SearchOp::Move => Plan {
+            action: Action::Nop,
+            cursor: prev_boundary(b, e),
+            mode: Mode::Visual {
+                kind: SelectKind::Charwise,
+            },
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: Some(s),
+            set_mark: None,
+        },
+        SearchOp::Delete => {
+            let reg = captured(b, s, e, false);
+            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
+        }
+        SearchOp::Change => {
+            let reg = captured(b, s, e, false);
+            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+        }
+        SearchOp::Yank => {
+            let reg = captured(b, s, e, false);
+            Plan {
+                action: Action::Nop,
+                cursor: s,
+                mode: st.view.mode,
+                is_edit: false,
+                effects: Vec::new(),
+                set_register: Some(RegWrite::Yank(reg)),
+                set_anchor: None,
+                set_mark: None,
+            }
+        }
+    }
+}
+
 /// `gR`-mode typing (Virtual Replace): tab-aware overwrite — over a multi-column tab, insert before it
 /// (it shrinks) until its last column, then replace it; at end-of-line, append; else overwrite one char,
 /// remembering the original for `<BS>`.
@@ -1337,6 +1413,12 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Search { op, count, pattern } => {
             plan_search(st, b, cur, op, *count, pattern, hint)
         }
+        Command::SearchObject {
+            op,
+            count,
+            pattern,
+            backward,
+        } => plan_search_object(st, b, cur, op, *count, pattern, *backward, hint),
         // `*`/`#` are resolved by the frontend (it reads the word under the cursor from the buffer and
         // rewrites this to a concrete `SearchNext`/`SearchPrev`), so the pure core never acts on it.
         Command::SearchWordUnder { .. } => nop(cur, st.view.mode),

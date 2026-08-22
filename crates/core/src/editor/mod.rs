@@ -1241,7 +1241,7 @@ mod range;
 pub(crate) use range::*;
 
 mod search;
-use search::{search_bwd, search_fwd};
+use search::{match_spans, search_bwd, search_fwd};
 
 mod substitute;
 /// The first decimal number in `s` (with an optional leading `-`), for `:sort n`. Lines without a number
