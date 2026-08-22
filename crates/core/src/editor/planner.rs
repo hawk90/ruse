@@ -1283,6 +1283,45 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             st.view.caret,
             *move_after,
         ),
+        // `]p`/`[p` — indent-adjusting paste. For a linewise register, reindent its lines to the current
+        // line's indent before pasting; a charwise/blockwise register pastes unchanged (Vim `]p` = `p`).
+        Command::PasteIndent { after, count } => {
+            let reg = st.view.registers.get(st.view.pending_register);
+            if reg.is_linewise() {
+                let (target_cols, _) = indent_cols(
+                    &b[line_start(b, cur)..line_end(b, cur)],
+                    st.view.indent.tab_width,
+                );
+                let adjusted = reindent_register(
+                    reg.text(),
+                    target_cols,
+                    st.view.indent.tab_width,
+                    st.view.indent.style,
+                );
+                let tmp = Register::linewise(adjusted);
+                paste(
+                    b,
+                    cur,
+                    st.view.mode,
+                    &tmp,
+                    *after,
+                    *count,
+                    st.view.caret,
+                    false,
+                )
+            } else {
+                paste(
+                    b,
+                    cur,
+                    st.view.mode,
+                    reg,
+                    *after,
+                    *count,
+                    st.view.caret,
+                    false,
+                )
+            }
+        }
         // `"x` — install the one-shot pending register. A pure state set: no edit, no cursor/mode change.
         Command::SetRegister(name) => Plan {
             action: Action::SetPending(*name),
@@ -2313,6 +2352,70 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
         set_anchor: None,
         set_mark: None,
     }
+}
+
+/// Leading-whitespace measure of a single line (no trailing `\n`): its indent width in display COLUMNS
+/// (a tab advances to the next `tab_width` multiple) and the BYTE length of that leading whitespace.
+fn indent_cols(line: &[u8], tab_width: usize) -> (usize, usize) {
+    let tw = tab_width.max(1);
+    let (mut cols, mut n) = (0usize, 0usize);
+    for &c in line {
+        match c {
+            b' ' => {
+                cols += 1;
+                n += 1;
+            }
+            b'\t' => {
+                cols += tw - (cols % tw);
+                n += 1;
+            }
+            _ => break,
+        }
+    }
+    (cols, n)
+}
+
+/// Re-indent a linewise register's bytes for `]p`/`[p`: the first line takes `target_cols` of indent and
+/// every other line shifts by the same column delta (Vim). Indent is rebuilt in the editor's style (spaces,
+/// or tabs + a spaces remainder); a blank line stays blank. Input/output both end each line with `\n`.
+fn reindent_register(
+    text: &[u8],
+    target_cols: usize,
+    tab_width: usize,
+    style: IndentStyle,
+) -> Vec<u8> {
+    let tw = tab_width.max(1);
+    let first_end = text.iter().position(|&c| c == b'\n').unwrap_or(text.len());
+    let (first_cols, _) = indent_cols(&text[..first_end], tw);
+    let delta = target_cols as isize - first_cols as isize;
+    let build = |cols: usize| -> Vec<u8> {
+        match style {
+            IndentStyle::Space => vec![b' '; cols],
+            IndentStyle::Tab => {
+                let mut v = vec![b'\t'; cols / tw];
+                v.extend(std::iter::repeat_n(b' ', cols % tw));
+                v
+            }
+        }
+    };
+    let mut out = Vec::with_capacity(text.len());
+    for line in text.split_inclusive(|&c| c == b'\n') {
+        let (body, nl): (&[u8], &[u8]) = match line.strip_suffix(b"\n") {
+            Some(b) => (b, b"\n"),
+            None => (line, b""),
+        };
+        let (cols, ws) = indent_cols(body, tw);
+        let content = &body[ws..];
+        if content.is_empty() {
+            out.extend_from_slice(nl); // a blank line stays blank (no indent)
+        } else {
+            let new_cols = (cols as isize + delta).max(0) as usize;
+            out.extend_from_slice(&build(new_cols));
+            out.extend_from_slice(content);
+            out.extend_from_slice(nl);
+        }
+    }
+    out
 }
 
 #[allow(clippy::too_many_arguments)] // paste legitimately needs the full register + gravity + gp context

@@ -60,6 +60,77 @@ mod register_tests {
     }
 
     #[test]
+    fn bracket_p_reindents_a_linewise_paste_to_the_current_line() {
+        // Yank "  copyme" (indent 2) linewise, move to "    target" (indent 4), `]p` pastes below with the
+        // indent shifted by +2 so the pasted line matches the target's indent.
+        let st = run(
+            "    target\n  copyme\n",
+            &[
+                Command::Move(1, Motion::Down),
+                Command::Yank(1, Motion::Line),
+                Command::Move(1, Motion::Up),
+                Command::PasteIndent {
+                    after: true,
+                    count: 1,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "    target\n    copyme\n  copyme\n");
+    }
+
+    #[test]
+    fn bracket_p_shifts_a_multi_line_block_by_a_constant_delta() {
+        // A two-line register (indents 2 and 6) pasted onto an indent-0 line: delta = 0-2 = -2, so both
+        // lines dedent by 2 → indents 0 and 4, preserving their relative structure.
+        let st = run(
+            "top\n  a\n      b\n",
+            &[
+                Command::Move(1, Motion::Down),
+                Command::Yank(2, Motion::Line),
+                Command::Move(2, Motion::Up),
+                Command::PasteIndent {
+                    after: true,
+                    count: 1,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "top\na\n    b\n  a\n      b\n");
+    }
+
+    #[test]
+    fn bracket_capital_p_pastes_above_with_indent() {
+        let st = run(
+            "    target\n  copyme\n",
+            &[
+                Command::Move(1, Motion::Down),
+                Command::Yank(1, Motion::Line),
+                Command::Move(1, Motion::Up),
+                Command::PasteIndent {
+                    after: false,
+                    count: 1,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "    copyme\n    target\n  copyme\n");
+    }
+
+    #[test]
+    fn bracket_p_on_a_charwise_register_pastes_unchanged() {
+        // `]p` on a charwise register behaves like `p` (no indent adjust).
+        let st = run(
+            "abcXYZ",
+            &[
+                Command::Yank(3, Motion::Right), // "abc" charwise into unnamed
+                Command::PasteIndent {
+                    after: true,
+                    count: 1,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "aabcbcXYZ");
+    }
+
+    #[test]
     fn insert_register_splices_register_text_at_the_caret() {
         // `y3l` yanks "foo" into the unnamed register; `i` then `<C-r>"` inserts it at the caret.
         let st = run(

@@ -248,6 +248,13 @@ pub enum Command {
         /// `gp`/`gP` (Vim): leave the cursor JUST AFTER the pasted text instead of on/before it.
         move_after: bool,
     },
+    /// `]p` / `[p` (and `]P`/`[P`) — paste like `p`/`P` but ADJUST the indent of a linewise register to the
+    /// current line: the first pasted line takes the current line's indent, the rest shift by the same
+    /// column delta (Vim `:help ]p`). A charwise/blockwise register pastes unchanged (Vim `]p` = `p` there).
+    PasteIndent {
+        after: bool,
+        count: u32,
+    },
     /// `"x` — select the register `x` (`a`–`z`, or `A`–`Z` to append) for the FOLLOWING yank/delete/
     /// change/paste. `None` selects the unnamed register (the default). Emitted by the input engine on the
     /// register name key; the editor holds it as a one-shot pending register the next such command reads,
@@ -790,6 +797,13 @@ impl Command {
                 (true, true) => format!("paste_after_move {count}"),
                 (false, true) => format!("paste_before_move {count}"),
             },
+            Command::PasteIndent { after, count } => {
+                if *after {
+                    format!("paste_after_indent {count}")
+                } else {
+                    format!("paste_before_indent {count}")
+                }
+            }
             Command::SetRegister(name) => match name {
                 Some(c) => format!("select_register {}", *c as u32),
                 None => "select_register".into(),
@@ -1144,6 +1158,14 @@ impl Command {
                 after: false,
                 count: arg_u32(arg, line)?,
                 move_after: true,
+            },
+            "paste_after_indent" => Command::PasteIndent {
+                after: true,
+                count: arg_u32(arg, line)?,
+            },
+            "paste_before_indent" => Command::PasteIndent {
+                after: false,
+                count: arg_u32(arg, line)?,
             },
             "select_register" => {
                 // No arg → the unnamed register; otherwise a decimal Unicode scalar for the register name.
@@ -1519,6 +1541,14 @@ mod tests {
                 after: false,
                 count: 5,
                 move_after: true,
+            },
+            Command::PasteIndent {
+                after: true,
+                count: 1,
+            },
+            Command::PasteIndent {
+                after: false,
+                count: 3,
             },
             Command::SetRegister(None),
             Command::SetRegister(Some('a')),

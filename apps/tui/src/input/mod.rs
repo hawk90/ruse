@@ -105,6 +105,10 @@ enum Awaiting {
     /// pending register that the FOLLOWING yank/delete/change/paste targets — emitted as a
     /// [`Command::SetRegister`] the core applies before that command. `"` itself does not reset the count.
     RegisterSelect,
+    /// After `]` or `[`: the next key selects a bracket command. Only the indent-adjusting pastes are wired
+    /// so far — `]p`/`]P`/`[p`/`[P` ([`Command::PasteIndent`]). `open` records which bracket started it (`]`
+    /// pastes below like `p`, `[` above like `P`, before the second key's own `p`/`P` refines it).
+    BracketPrefix { open_bracket: bool },
 }
 
 /// The Normal-grammar layer's OWNED state (KL-OBL-4): the three orthogonal transient axes of the
@@ -1104,6 +1108,18 @@ impl InputEngine {
                 };
             }
             KeyCode::Char('%') => return self.motion(Motion::MatchBracket),
+            // `]` / `[` — arm a bracket-command prefix; the next key selects the command. Only the indent-
+            // adjusting pastes `]p`/`]P`/`[p`/`[P` are wired. The count (`3]p`) is preserved for it.
+            KeyCode::Char(']') => {
+                self.normal.awaiting = Awaiting::BracketPrefix {
+                    open_bracket: false,
+                };
+                return Feed::Pending;
+            }
+            KeyCode::Char('[') => {
+                self.normal.awaiting = Awaiting::BracketPrefix { open_bracket: true };
+                return Feed::Pending;
+            }
             // `"x` — arm register selection. Deliberately does NOT reset the count/operator axes, so a
             // count typed after it still lands (`"a3yy`). The next key is the register name (see the
             // `RegisterSelect` tier above). Shared by Normal and Visual (Vim supports `"ayiw` and `"xy`).
@@ -1628,6 +1644,23 @@ impl InputEngine {
                     }
                     // Any other name is unusable; a pending construct is in flight, so it is `closed/abort`
                     // (operator-pending), leaking no state.
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::BracketPrefix { open_bracket } => {
+                self.normal.awaiting = Awaiting::Nothing;
+                let count = self.mcount();
+                return match key.code {
+                    // Indent-adjusting paste. Only `]p` pastes AFTER (below); `]P`, `[p`, `[P` all paste
+                    // BEFORE (above), matching Vim. Other bracket commands (`[(`, `]}`, …) are not wired.
+                    KeyCode::Char('p') => self.action(Command::PasteIndent {
+                        after: !open_bracket,
+                        count,
+                    }),
+                    KeyCode::Char('P') => self.action(Command::PasteIndent {
+                        after: false,
+                        count,
+                    }),
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
