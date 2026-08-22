@@ -1327,6 +1327,22 @@ mod tests {
     }
 
     #[test]
+    fn visual_p_and_capital_p_emit_paste_selection() {
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        assert_eq!(
+            e.feed(k('p'), vis),
+            Feed::Cmd(Command::PasteSelection { swap: true })
+        );
+        assert_eq!(
+            e.feed(k('P'), vis),
+            Feed::Cmd(Command::PasteSelection { swap: false })
+        );
+    }
+
+    #[test]
     fn block_selection_operators_route_like_any_selection() {
         let mut e = InputEngine::new();
         let blk = Mode::Visual {

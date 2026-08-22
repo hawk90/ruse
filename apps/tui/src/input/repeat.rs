@@ -111,6 +111,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsHorizontalSpace { .. }
         | C::EmacsOpenLine
         | C::DeleteSelection
+        | C::PasteSelection { .. }
         | C::OpForced {
             op: OpKind::Delete, ..
         }
