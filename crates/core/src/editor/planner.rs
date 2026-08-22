@@ -667,6 +667,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let n = bytes.len();
             edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
         }
+        // `i_CTRL-R{reg}` — splice the named register's raw bytes at the caret, staying in Insert with the
+        // cursor after the inserted text. An empty register is a no-op. `"` reads the unnamed register (via
+        // `get`'s fallback). The bytes are inserted verbatim (linewise registers keep their trailing `\n`).
+        Command::InsertRegister(name) => {
+            let bytes = st.view.registers.get(Some(*name)).text().to_vec();
+            if bytes.is_empty() {
+                return nop(cur, Mode::Insert);
+            }
+            let n = bytes.len();
+            edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
+        }
         Command::InsertNewline => edit(
             one(Edit::insert(cur, b"\n".to_vec())),
             cur + 1,

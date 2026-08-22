@@ -557,6 +557,31 @@ mod tests {
     }
 
     #[test]
+    fn insert_ctrl_r_inserts_the_named_register() {
+        let mut e = InputEngine::new();
+        // `<C-r>` arms the prefix (pending), then the register name completes it.
+        assert_eq!(e.feed(ctrl('r'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Cmd(Command::InsertRegister('a'))
+        );
+        // `<C-r>"` reads the unnamed register; `<C-r>1`/`<C-r>-` reach the delete slots.
+        e.feed(ctrl('r'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('"'), Mode::Insert),
+            Feed::Cmd(Command::InsertRegister('"'))
+        );
+        e.feed(ctrl('r'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('1'), Mode::Insert),
+            Feed::Cmd(Command::InsertRegister('1'))
+        );
+        // A non-register second key aborts the prefix without inserting.
+        assert_eq!(e.feed(ctrl('r'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k(' '), Mode::Insert), Feed::Ignored);
+    }
+
+    #[test]
     fn ctrl_o_ctrl_i_and_tab_walk_the_jumplist() {
         let mut e = InputEngine::new();
         assert_eq!(
@@ -2417,6 +2442,7 @@ mod state_machine_props {
                         || e.normal.awaiting != Awaiting::Nothing
                         || !e.activations.is_empty()
                         || e.insert.ctrl_g
+                        || e.insert.ctrl_r
                         || e.cmdline.is_some(); // an open command-line namespace is real pending state (F-026)
                     prop_assert!(has_state, "Feed::Pending but the engine is idle");
                 } else {
@@ -2425,6 +2451,7 @@ mod state_machine_props {
                     prop_assert!(e.normal.awaiting == Awaiting::Nothing, "key-expectation leaked after {:?}", feed);
                     prop_assert!(e.activations.is_empty(), "one-shot leaked after {:?}", feed);
                     prop_assert!(!e.insert.ctrl_g, "ctrl-g prefix leaked after {:?}", feed);
+                    prop_assert!(!e.insert.ctrl_r, "ctrl-r prefix leaked after {:?}", feed);
                 }
             }
         }

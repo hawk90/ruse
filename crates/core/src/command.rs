@@ -120,6 +120,10 @@ pub enum Command {
     VirtualReplaceType(char),
     // edit
     InsertChar(char),
+    /// `i_CTRL-R{reg}` — insert the named register's contents at the caret, staying in Insert (Vim). Reads
+    /// the same slots as paste (`"`, `0`–`9`, `-`, `a`–`z`). Recorded in the insert session, so `.` replays
+    /// it and re-reads the register at replay time (Vim). Empty/unsupported register inserts nothing.
+    InsertRegister(char),
     InsertNewline,
     /// `o`/`O`/`<CR>` seeded with a tree-suggested indent (F-015 Phase 2): open a line (per `kind`) whose
     /// leading whitespace is `level × shiftwidth`, leaving the cursor after it in Insert. The frontend owns
@@ -696,6 +700,7 @@ impl Command {
                 let _ = write!(s, "{}", *c as u32);
                 s
             }
+            Command::InsertRegister(c) => format!("insert_register {}", *c as u32),
             Command::InsertNewline => "insert_newline".into(),
             Command::OpenLineIndent { kind, level } => {
                 let k = match kind {
@@ -926,6 +931,12 @@ impl Command {
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::InsertChar(c)
+            }
+            "insert_register" => {
+                let cp = arg_u32(arg, line)?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::InsertRegister(c)
             }
             "insert_newline" => Command::InsertNewline,
             "open_line_indent" => {
@@ -1352,6 +1363,10 @@ mod tests {
             },
             Command::InsertChar('🎉'),
             Command::InsertChar(' '),
+            Command::InsertRegister('"'),
+            Command::InsertRegister('0'),
+            Command::InsertRegister('a'),
+            Command::InsertRegister('-'),
             Command::InsertNewline,
             Command::OpenLineIndent {
                 kind: OpenKind::Below,

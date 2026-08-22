@@ -60,6 +60,43 @@ mod register_tests {
     }
 
     #[test]
+    fn insert_register_splices_register_text_at_the_caret() {
+        // `y3l` yanks "foo" into the unnamed register; `i` then `<C-r>"` inserts it at the caret.
+        let st = run(
+            "foobar",
+            &[
+                Command::Yank(3, Motion::Right),
+                Command::EnterInsert,
+                Command::InsertRegister('"'),
+            ],
+        );
+        assert_eq!(text(&st), "foofoobar");
+        assert_eq!(st.mode(), Mode::Insert, "stays in Insert after <C-r>");
+        assert_eq!(st.cursor(), 3, "cursor lands after the inserted text");
+    }
+
+    #[test]
+    fn insert_register_reads_a_named_slot_and_noops_when_empty() {
+        // `"ay3l` fills "a; `<C-r>a` inserts it. `<C-r>z` (empty) inserts nothing.
+        let st = run(
+            "abcXYZ",
+            &[
+                Command::SetRegister(Some('a')),
+                Command::Yank(3, Motion::Right),
+                Command::Move(100, Motion::Right),
+                Command::EnterInsertAfter,
+                Command::InsertRegister('a'),
+                Command::InsertRegister('z'),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "abcXYZabc",
+            "named register inserted, empty one is a no-op"
+        );
+    }
+
+    #[test]
     fn numbered_ring_paste_reaches_older_line_deletes() {
         // Two successive `dd`s push the numbered ring; `"2p` recalls the FIRST-deleted line, `"1p` the
         // most recent — the end-to-end proof that a delete commit feeds the ring (RegWrite::Edit).
