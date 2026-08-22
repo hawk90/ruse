@@ -5,8 +5,9 @@
 
 use crate::ui::picker::{PickItem, Picker};
 
-/// The 1-based line number of byte offset `pos` and that line's text (trimmed for the preview).
-fn line_and_text(bytes: &[u8], pos: usize) -> (usize, String) {
+/// The 1-based line number of byte offset `pos` and that line's text (trimmed for the preview). Shared with
+/// the `:jumps`/`:changes` position viewers ([`crate::ui::pos_picker`]).
+pub(crate) fn line_and_text(bytes: &[u8], pos: usize) -> (usize, String) {
     let pos = pos.min(bytes.len());
     let line = bytes[..pos].iter().filter(|&&b| b == b'\n').count() + 1;
     let start = bytes[..pos]

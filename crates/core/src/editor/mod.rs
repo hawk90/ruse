@@ -1156,6 +1156,18 @@ impl EditorState {
         self.view.cursor
     }
 
+    /// The jumplist positions (oldest → newest) for `:jumps`.
+    #[must_use]
+    pub fn jumps_snapshot(&self) -> Vec<usize> {
+        self.view.jumps.clone()
+    }
+
+    /// The change-list positions (oldest → newest) for `:changes`.
+    #[must_use]
+    pub fn changes_snapshot(&self) -> Vec<usize> {
+        self.view.changes.clone()
+    }
+
     /// The SET marks for `:marks` — the named marks `a`–`z`, the `.` last-change mark, and the `^`
     /// last-insert mark — as `(name, byte offset)`, in that order (unset marks omitted).
     #[must_use]
