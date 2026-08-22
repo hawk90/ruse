@@ -557,6 +557,48 @@ mod tests {
     }
 
     #[test]
+    fn bracket_paste_emits_indent_adjusting_paste() {
+        // `]p` pastes AFTER; `]P`, `[p`, `[P` all paste BEFORE (Vim). A count carries through (`2]p`).
+        assert_eq!(
+            feed("]p"),
+            Feed::Cmd(Command::PasteIndent {
+                after: true,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("]P"),
+            Feed::Cmd(Command::PasteIndent {
+                after: false,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("[p"),
+            Feed::Cmd(Command::PasteIndent {
+                after: false,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("[P"),
+            Feed::Cmd(Command::PasteIndent {
+                after: false,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("2]p"),
+            Feed::Cmd(Command::PasteIndent {
+                after: true,
+                count: 2
+            })
+        );
+        // An unwired bracket command aborts cleanly.
+        assert_eq!(feed("]x"), Feed::Ignored);
+    }
+
+    #[test]
     fn insert_ctrl_r_inserts_the_named_register() {
         let mut e = InputEngine::new();
         // `<C-r>` arms the prefix (pending), then the register name completes it.
