@@ -632,6 +632,19 @@ mod tests {
     }
 
     #[test]
+    fn insert_ctrl_t_and_ctrl_d_emit_indent_commands() {
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(ctrl('t'), Mode::Insert),
+            Feed::Cmd(Command::InsertIndent)
+        );
+        assert_eq!(
+            e.feed(ctrl('d'), Mode::Insert),
+            Feed::Cmd(Command::InsertDedent)
+        );
+    }
+
+    #[test]
     fn insert_ctrl_r_inserts_the_named_register() {
         let mut e = InputEngine::new();
         // `<C-r>` arms the prefix (pending), then the register name completes it.

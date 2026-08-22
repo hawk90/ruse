@@ -166,6 +166,22 @@ mod register_tests {
     }
 
     #[test]
+    fn insert_ctrl_t_and_ctrl_d_indent_the_line() {
+        // Default indent is 4 spaces. `A<C-t>` indents "x" → "    x" and the caret rides right.
+        let st = run("x", &[Command::AppendLineEnd, Command::InsertIndent]);
+        assert_eq!(text(&st), "    x");
+        assert_eq!(st.mode(), Mode::Insert);
+        assert_eq!(st.cursor(), 5, "caret moved right by the inserted indent");
+        // `<C-d>` on an indented line removes one shiftwidth; the caret rides left.
+        let st = run("    x", &[Command::AppendLineEnd, Command::InsertDedent]);
+        assert_eq!(text(&st), "x");
+        assert_eq!(st.cursor(), 1);
+        // `<C-d>` with no indent is a no-op.
+        let st = run("x", &[Command::EnterInsert, Command::InsertDedent]);
+        assert_eq!(text(&st), "x");
+    }
+
+    #[test]
     fn insert_register_splices_register_text_at_the_caret() {
         // `y3l` yanks "foo" into the unnamed register; `i` then `<C-r>"` inserts it at the caret.
         let st = run(

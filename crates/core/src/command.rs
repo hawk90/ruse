@@ -130,6 +130,11 @@ pub enum Command {
     /// `i_CTRL-U` — delete everything before the caret on the current line, staying in Insert. Deletes back
     /// to the first non-blank; when the caret is already at/before it, deletes the leading indent too (Vim).
     InsertDeleteToLineStart,
+    /// `i_CTRL-T` — indent the current line by one shiftwidth, staying in Insert; the caret rides with the
+    /// text. `i_CTRL-D` dedents by one shiftwidth. Independent of the caret column (Vim).
+    InsertIndent,
+    /// `i_CTRL-D` — dedent the current line by one shiftwidth (see [`Command::InsertIndent`]).
+    InsertDedent,
     InsertNewline,
     /// `o`/`O`/`<CR>` seeded with a tree-suggested indent (F-015 Phase 2): open a line (per `kind`) whose
     /// leading whitespace is `level × shiftwidth`, leaving the cursor after it in Insert. The frontend owns
@@ -716,6 +721,8 @@ impl Command {
             Command::InsertRegister(c) => format!("insert_register {}", *c as u32),
             Command::InsertDeleteWordBack => "insert_delete_word_back".into(),
             Command::InsertDeleteToLineStart => "insert_delete_to_line_start".into(),
+            Command::InsertIndent => "insert_indent".into(),
+            Command::InsertDedent => "insert_dedent".into(),
             Command::InsertNewline => "insert_newline".into(),
             Command::OpenLineIndent { kind, level } => {
                 let k = match kind {
@@ -962,6 +969,8 @@ impl Command {
             }
             "insert_delete_word_back" => Command::InsertDeleteWordBack,
             "insert_delete_to_line_start" => Command::InsertDeleteToLineStart,
+            "insert_indent" => Command::InsertIndent,
+            "insert_dedent" => Command::InsertDedent,
             "insert_newline" => Command::InsertNewline,
             "open_line_indent" => {
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
@@ -1401,6 +1410,8 @@ mod tests {
             Command::InsertRegister('-'),
             Command::InsertDeleteWordBack,
             Command::InsertDeleteToLineStart,
+            Command::InsertIndent,
+            Command::InsertDedent,
             Command::InsertNewline,
             Command::OpenLineIndent {
                 kind: OpenKind::Below,
