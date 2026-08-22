@@ -1543,6 +1543,40 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 Err(_) => nop(s, Mode::Normal),
             }
         }
+        // Visual `r{char}` — overwrite every non-newline char in the selection with `c`, keeping line
+        // breaks and the byte length's char count; cursor to the span start, back to Normal.
+        Command::ReplaceSelectionChar(c) => {
+            let Some(anchor) = st.view.anchor else {
+                return nop(cur, Mode::Normal);
+            };
+            let line = matches!(
+                st.view.mode,
+                Mode::Visual {
+                    kind: SelectKind::Linewise
+                } | Mode::Select {
+                    kind: SelectKind::Linewise
+                }
+            );
+            let (s, e) = selection_range(b, anchor, cur, line);
+            if s >= e {
+                return nop(s, Mode::Normal);
+            }
+            match std::str::from_utf8(&b[s..e]) {
+                Ok(text) => {
+                    let new: String = text
+                        .chars()
+                        .map(|ch| if ch == '\n' { '\n' } else { *c })
+                        .collect();
+                    edit(
+                        one(Edit::replace(s, e - s, new.into_bytes())),
+                        s,
+                        Mode::Normal,
+                        hint,
+                    )
+                }
+                Err(_) => nop(s, Mode::Normal),
+            }
+        }
         // Visual `p`/`P` — replace the selection with the register; `swap` puts the deleted text into the
         // unnamed register (Vim `p`), `P` preserves the register (so it can overwrite successive selections).
         Command::PasteSelection { swap } => {

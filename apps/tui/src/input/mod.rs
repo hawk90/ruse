@@ -1240,6 +1240,13 @@ impl InputEngine {
                     self.normal.awaiting = Awaiting::GSecond;
                     return Feed::Pending;
                 }
+                // Visual `r{char}` — replace every selected char with the next key (Vim `v_r`). Arm the
+                // shared ReplaceChar expectation; its resolution sees the selection mode and emits the
+                // selection form. Keeps the count axis (unused here) like Normal `r`.
+                KeyCode::Char('r') => {
+                    self.normal.awaiting = Awaiting::ReplaceChar;
+                    return Feed::Pending;
+                }
                 // Visual `p`/`P` — replace the selection with the register. `p` swaps the deleted text into
                 // the unnamed register; `P` preserves it (paste the same thing over successive selections).
                 KeyCode::Char('p') => return self.action(Command::PasteSelection { swap: true }),
@@ -1678,7 +1685,14 @@ impl InputEngine {
             Awaiting::ReplaceChar => {
                 self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
-                    // The count accumulated before `r` is still live (the `r` arm did not reset it).
+                    // In a selection, `r{char}` replaces EVERY selected char with it (Vim `v_r`); in Normal
+                    // it replaces `count` chars under the cursor. The count accumulated before `r` is still
+                    // live (the `r` arm did not reset it).
+                    KeyCode::Char(c)
+                        if matches!(mode, Mode::Visual { .. } | Mode::Select { .. }) =>
+                    {
+                        self.action(Command::ReplaceSelectionChar(c))
+                    }
                     KeyCode::Char(c) => self.action(Command::ReplaceChar(self.mcount(), c)),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
