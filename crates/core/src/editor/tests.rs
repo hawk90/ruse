@@ -219,6 +219,27 @@ mod register_tests {
     }
 
     #[test]
+    fn blackhole_delete_preserves_the_yank_register() {
+        // `yy` into unnamed, then `"_dd` deletes a MIDDLE line WITHOUT clobbering the yank; `p` still pastes it.
+        let st = run(
+            "keep\ntrash\nlast\n",
+            &[
+                Command::Yank(1, Motion::Line),   // unnamed = "keep\n"
+                Command::Move(1, Motion::Down),   // to "trash"
+                Command::SetRegister(Some('_')),  // "_
+                Command::Delete(1, Motion::Line), // "_dd — discarded; cursor drops to "last"
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        // "trash" was deleted into the blackhole; the paste re-inserts the still-intact "keep" below "last".
+        assert_eq!(text(&st), "keep\nlast\nkeep\n");
+    }
+
+    #[test]
     fn numbered_ring_paste_reaches_older_line_deletes() {
         // Two successive `dd`s push the numbered ring; `"2p` recalls the FIRST-deleted line, `"1p` the
         // most recent — the end-to-end proof that a delete commit feeds the ring (RegWrite::Edit).

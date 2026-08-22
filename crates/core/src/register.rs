@@ -1,8 +1,8 @@
 //! The register store — each slot carries yanked/deleted text plus its *type* (charwise/linewise/blockwise),
 //! which governs paste geometry. This implements the Vim surface of D-026: the unnamed slot, named slots
-//! (`"a`–`"z`/`"A`–`"Z`), the yank register `"0`, the numbered delete-ring `"1`–`"9`, and the small-delete
-//! register `"-`. The Emacs kill-ring (bounded ordered ring, coalescing, yank-pop) is still **deferred**
-//! (see `docs/design/register-model.md`).
+//! (`"a`–`"z`/`"A`–`"Z`), the yank register `"0`, the numbered delete-ring `"1`–`"9`, the small-delete
+//! register `"-`, and the blackhole `"_`. The Emacs kill-ring (bounded ordered ring, coalescing, yank-pop)
+//! is still **deferred** (see `docs/design/register-model.md`).
 
 /// The paste GEOMETRY a register carries — the one dimension that governs how a paste lands.
 /// Charwise splices inline; linewise opens whole lines; blockwise drops a rectangle, one stored row per
@@ -94,8 +94,8 @@ impl Register {
 }
 
 /// The register STORE: the unnamed slot, the 26 named slots `a`–`z` (D-026's additive expansion over the
-/// single-slot model), the yank register `"0`, the numbered delete-ring `"1`–`"9`, and the small-delete
-/// register `"-`.
+/// single-slot model), the yank register `"0`, the numbered delete-ring `"1`–`"9`, the small-delete
+/// register `"-`, and the blackhole `"_`.
 ///
 /// Vim linkage (`:help registers`): a yank/delete/change into `"x` ALSO mirrors into the unnamed register
 /// (unnamed always reflects the LAST write); a plain, unregistered edit writes the unnamed slot only. An
@@ -121,6 +121,9 @@ pub struct RegisterStore {
     numbered: [Register; 9],
     /// The small-delete register `"-`: the last unnamed delete of less than one line.
     small_delete: Register,
+    /// The blackhole register `"_`: always empty. A write/yank/delete NAMING it is discarded (nothing else,
+    /// including the unnamed slot and the delete rings, is touched); a read yields nothing (Vim `:help quote_`).
+    blackhole: Register,
 }
 
 impl Default for RegisterStore {
@@ -131,6 +134,7 @@ impl Default for RegisterStore {
             yank0: Register::default(),
             numbered: std::array::from_fn(|_| Register::default()),
             small_delete: Register::default(),
+            blackhole: Register::default(),
         }
     }
 }
@@ -169,6 +173,7 @@ impl RegisterStore {
             Some('0') => &self.yank0,
             Some(c @ '1'..='9') => &self.numbered[c as usize - '1' as usize],
             Some('-') => &self.small_delete,
+            Some('_') => &self.blackhole,
             Some(c) => match Self::index(c) {
                 Some(i) => &self.named[i],
                 None => &self.unnamed,
@@ -196,6 +201,8 @@ impl RegisterStore {
     pub fn write(&mut self, name: Option<char>, reg: Register) {
         match name {
             None => self.unnamed = reg,
+            // The blackhole `"_` swallows the write — the unnamed slot and every other register are untouched.
+            Some('_') => {}
             Some(c) => match Self::index(c) {
                 Some(i) => {
                     self.named[i] = if c.is_ascii_uppercase() {
@@ -483,6 +490,23 @@ mod tests {
         assert!(
             s.small_delete().is_empty(),
             "a multi-line delete does not go to \"-"
+        );
+    }
+
+    #[test]
+    fn blackhole_discards_and_reads_empty() {
+        let mut s = RegisterStore::new();
+        s.yank(None, Register::charwise(b"keep".to_vec())); // seed unnamed + "0
+                                                            // A delete/yank into "_ is swallowed: unnamed, "0, the ring, and "- are all untouched.
+        s.delete(Some('_'), Register::linewise(b"gone".to_vec()));
+        s.yank(Some('_'), Register::charwise(b"also gone".to_vec()));
+        assert_eq!(s.unnamed().text(), b"keep", "\"_ never touches unnamed");
+        assert_eq!(s.get(Some('0')).text(), b"keep", "\"_ never touches \"0");
+        assert!(s.get(Some('1')).is_empty(), "\"_ never shifts the ring");
+        assert!(s.small_delete().is_empty());
+        assert!(
+            s.get(Some('_')).is_empty(),
+            "the blackhole always reads empty"
         );
     }
 
