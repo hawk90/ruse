@@ -811,29 +811,52 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             if d >= le {
                 return nop(cur, st.view.mode); // no number on the rest of the line
             }
-            // Detect a `0x`/`0X` hex literal: either the prefix starts at `d`, or `d` sits inside the hex
-            // digits (walk left over hex digits to the `x`, check the `0` before it).
-            let hex_at_d = b[d] == b'0'
-                && matches!(b.get(d + 1), Some(b'x') | Some(b'X'))
-                && b.get(d + 2).is_some_and(u8::is_ascii_hexdigit);
+            // Detect a based literal `0x`/`0X` (hex), `0b`/`0B` (binary), or `0o`/`0O` (octal) — matching
+            // Neovim's `nrformats`. Two ways `d` (the first decimal digit) can land on one: the `0` prefix
+            // starts AT `d`, or `d` sits inside the digit run (walk left over base-max hex digits — the
+            // widest alphabet — to a base letter, and check the `0` before it). `is_digit_of` classifies a
+            // byte for a base; the base letter picks the radix and the output format.
+            let radix_of = |c: u8| match c {
+                b'x' | b'X' => Some(16u32),
+                b'o' | b'O' => Some(8),
+                b'b' | b'B' => Some(2),
+                _ => None,
+            };
+            let is_digit_of = |c: u8, radix: u32| (c as char).is_digit(radix);
+            let based_at_d = b[d] == b'0'
+                && b.get(d + 1)
+                    .copied()
+                    .and_then(radix_of)
+                    .is_some_and(|r| b.get(d + 2).copied().is_some_and(|c| is_digit_of(c, r)));
+            // For "inside" detection walk left over the WIDEST alphabet (hex digits); the base letter found
+            // there fixes the true radix (`0b101`: from the `0` we'd never enter, but from a `1` we walk to `b`).
             let mut hleft = d;
             while hleft > ls && b[hleft - 1].is_ascii_hexdigit() {
                 hleft -= 1;
             }
-            let hex_inside =
-                hleft >= ls + 2 && matches!(b[hleft - 1], b'x' | b'X') && b[hleft - 2] == b'0';
-            if hex_at_d || hex_inside {
-                let prefix = if hex_at_d { d } else { hleft - 2 };
+            let based_inside =
+                hleft >= ls + 2 && b[hleft - 2] == b'0' && radix_of(b[hleft - 1]).is_some();
+            if based_at_d || based_inside {
+                let prefix = if based_at_d { d } else { hleft - 2 };
+                let radix = radix_of(b[prefix + 1]).unwrap_or(16);
+                let letter = b[prefix + 1]; // keep the original `x`/`X`/`b`/`B`/`o`/`O` case (Vim does)
                 let mut end = prefix + 2;
-                while end < le && b[end].is_ascii_hexdigit() {
+                while end < le && is_digit_of(b[end], radix) {
                     end += 1;
                 }
                 let val: i128 = std::str::from_utf8(&b[prefix + 2..end])
                     .ok()
-                    .and_then(|s| i128::from_str_radix(s, 16).ok())
+                    .and_then(|s| i128::from_str_radix(s, radix).ok())
                     .unwrap_or(0);
-                // Hex stays non-negative (Vim wraps at 0 for the default unsigned view); output is lowercase.
-                let new_text = format!("0x{:x}", (val + i128::from(*delta)).max(0));
+                // Based literals stay non-negative (Vim wraps at 0 for the default unsigned view); the numeric
+                // body is rendered in its own base (lowercase digits), keeping the original `0{letter}` prefix.
+                let n = (val + i128::from(*delta)).max(0);
+                let body = match radix {
+                    2 => format!("{n:b}"),
+                    8 => format!("{n:o}"),
+                    _ => format!("{n:x}"),
+                };
+                let new_text = format!("0{}{body}", letter as char);
                 let bytes = new_text.into_bytes();
                 let cursor = prefix + bytes.len().saturating_sub(1);
                 return edit(

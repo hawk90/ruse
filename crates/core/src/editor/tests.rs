@@ -734,6 +734,30 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn increment_binary_and_octal_stay_in_base() {
+        // Binary: 0b101 (5) + 1 → 0b110, carry widens 0b111 + 1 → 0b1000.
+        let st = run("0b101", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "0b110");
+        let st = run("0b111", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "0b1000");
+        // Octal: 0o17 (15) + 1 → 0o20; prefix + lowercase preserved.
+        let st = run("0o17", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "0o20");
+        // Cursor INSIDE the digits still adjusts the whole literal (on the '0' of 0o17's body).
+        let st = run(
+            "0o17",
+            &[Command::Move(3, Motion::Right), Command::IncrementNumber(1)],
+        );
+        assert_eq!(text(&st), "0o20");
+        // Both clamp at 0 (no negative based literals).
+        let st = run("0b0", &[Command::IncrementNumber(-5)]);
+        assert_eq!(text(&st), "0b0");
+        // A capital prefix keeps its letter but lowercases the digits.
+        let st = run("0B10", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "0B11");
+    }
+
+    #[test]
     fn goto_last_change_jumps_to_the_last_edit() {
         // Edit on line 2, move away to the top, then `` `. `` returns to the change.
         let st = run(
