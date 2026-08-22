@@ -1106,6 +1106,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => {
+                // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
+                // has no substitute history); like the current-line `&`, it calls `substitute` directly.
+                if matches!(cmd, Command::RepeatSubstituteGlobal) {
+                    status = match &last_substitute {
+                        Some((pat, rep, flags)) => {
+                            match ws.substitute(ruse_core::SubRange::WholeFile, pat, rep, *flags) {
+                                Ok(out) if out.replacements == 0 => {
+                                    format!("E486: pattern not found: {pat}")
+                                }
+                                Ok(out) => {
+                                    format!(
+                                        "{} substitutions on {} lines",
+                                        out.replacements, out.lines
+                                    )
+                                }
+                                Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                            }
+                        }
+                        None => "no previous substitute".to_string(),
+                    };
+                    continue;
+                }
                 // `*`/`#` (word under cursor): the engine has no buffer, so resolve the keyword here, then
                 // rewrite to a concrete search — records the deterministic pattern and drives hlsearch/`n`.
                 let cmd = if let Command::SearchWordUnder {

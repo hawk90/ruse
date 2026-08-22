@@ -1312,6 +1312,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // `*`/`#` are resolved by the frontend (it reads the word under the cursor from the buffer and
         // rewrites this to a concrete `SearchNext`/`SearchPrev`), so the pure core never acts on it.
         Command::SearchWordUnder { .. } => nop(cur, st.view.mode),
+        // `g&` — resolved in the frontend against its last-substitute state; a no-op in the pure core.
+        Command::RepeatSubstituteGlobal => nop(cur, st.view.mode),
         Command::Undo => Plan {
             action: Action::Undo,
             cursor: cur,
