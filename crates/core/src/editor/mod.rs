@@ -81,6 +81,8 @@ pub enum EditorOption {
     ShiftWidth(usize),
     /// `'expandtab'` (`et`) — indent with spaces (`true`) vs a tab (`false`).
     ExpandTab(bool),
+    /// `'textwidth'` (`tw`) — the width `gq`/`gw` wrap to; `0` means use the 79-column fallback.
+    TextWidth(usize),
 }
 
 /// The indent config a shift/indent operator (`>>`/`<<`) reads: `editor.tab_width` +
@@ -190,6 +192,8 @@ pub struct View {
     block_insert: Option<BlockInsert>,
     /// The indent config (`editor.tab_width` + `editor.indent_style`).
     indent: IndentConfig,
+    /// `'textwidth'` (`tw`): the column `gq`/`gw` wrap to; `0` = use the 79-column fallback (Vim).
+    text_width: usize,
     /// The STICKY desired column (Vim `curswant`): the char column `j`/`k` aim for, preserved across shorter
     /// interior lines rather than collapsing to the short line's end. Maintained in [`apply_command`] — kept
     /// on a vertical move, set to [`MAXCOL`] by `$`/`<End>` (ride each line's end), and recomputed from the
@@ -261,6 +265,7 @@ impl View {
                 tab_width: 4,
                 style: IndentStyle::Space,
             },
+            text_width: 0,
             curswant: 0,
             search_case: SearchCase {
                 ignore: false,
@@ -621,6 +626,7 @@ impl EditorState {
                     IndentStyle::Tab
                 }
             }
+            EditorOption::TextWidth(n) => self.view.text_width = n,
         }
     }
 

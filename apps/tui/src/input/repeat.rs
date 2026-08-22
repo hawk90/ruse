@@ -95,6 +95,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::ShiftLeft(_)
         | C::ShiftMotion { .. }
         | C::Reindent { .. }
+        | C::Format { .. }
         | C::Paste { .. }
         | C::PasteIndent { .. }
         | C::EmacsYank { .. }

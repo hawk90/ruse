@@ -632,6 +632,46 @@ mod tests {
     }
 
     #[test]
+    fn gq_and_gw_arm_the_reflow_operator() {
+        // `gqap` → format the paragraph (cursor moves); `gwj` → format down (cursor kept).
+        assert_eq!(
+            feed("gqap"),
+            Feed::Cmd(Command::Format {
+                count: 1,
+                motion: Motion::AParagraph,
+                keep_cursor: false,
+            })
+        );
+        assert_eq!(
+            feed("gwj"),
+            Feed::Cmd(Command::Format {
+                count: 1,
+                motion: Motion::Down,
+                keep_cursor: true,
+            })
+        );
+        // A count multiplies through: `2gqj`.
+        assert_eq!(
+            feed("2gqj"),
+            Feed::Cmd(Command::Format {
+                count: 2,
+                motion: Motion::Down,
+                keep_cursor: false,
+            })
+        );
+    }
+
+    #[test]
+    fn set_textwidth_parses() {
+        use ruse_core::EditorOption;
+        assert_eq!(
+            parse_ex("set textwidth=72"),
+            Ex::Set(EditorOption::TextWidth(72))
+        );
+        assert_eq!(parse_ex("set tw=0"), Ex::Set(EditorOption::TextWidth(0)));
+    }
+
+    #[test]
     fn insert_ctrl_t_and_ctrl_d_emit_indent_commands() {
         let mut e = InputEngine::new();
         assert_eq!(

@@ -1320,6 +1320,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 plan_reindent(st, first, last, hint)
             }
         }
+        Command::Format {
+            count,
+            motion,
+            keep_cursor,
+        } => plan_format(st, cur, *count, *motion, *keep_cursor, hint),
         Command::SetIndents {
             first_line,
             last_line,
@@ -2058,6 +2063,109 @@ fn plan_set_indents(
         set_anchor: None,
         set_mark: None,
     }
+}
+
+/// Re-wrap a block of text to `width` columns for `gq`/`gw`. Each blank-line-separated PARAGRAPH is joined
+/// into a single word stream and greedily re-broken so no line exceeds `width` (always ≥1 word/line); the
+/// paragraph's FIRST line's leading whitespace is used as the indent of every wrapped line. Blank lines are
+/// preserved as paragraph separators. Width is measured in `char`s (an MVP approximation of display width).
+fn reflow(block: &str, width: usize) -> String {
+    let width = width.max(1);
+    let mut out: Vec<String> = Vec::new();
+    let mut para: Vec<&str> = Vec::new();
+    let flush = |para: &mut Vec<&str>, out: &mut Vec<String>| {
+        if para.is_empty() {
+            return;
+        }
+        let indent: String = para[0]
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .collect();
+        let words: Vec<&str> = para.iter().flat_map(|l| l.split_whitespace()).collect();
+        para.clear();
+        if words.is_empty() {
+            return;
+        }
+        let mut line = indent.clone();
+        let mut have_word = false;
+        for w in words {
+            let wlen = w.chars().count();
+            if !have_word {
+                line.push_str(w);
+                have_word = true;
+            } else if line.chars().count() + 1 + wlen > width {
+                out.push(std::mem::replace(&mut line, {
+                    let mut s = indent.clone();
+                    s.push_str(w);
+                    s
+                }));
+            } else {
+                line.push(' ');
+                line.push_str(w);
+            }
+        }
+        out.push(line);
+    };
+    for l in block.split('\n') {
+        if l.trim().is_empty() {
+            flush(&mut para, &mut out);
+            out.push(String::new()); // preserve the blank separator line
+        } else {
+            para.push(l);
+        }
+    }
+    flush(&mut para, &mut out);
+    out.join("\n")
+}
+
+/// `gq`/`gw` {motion} — reflow the motion's whole lines to `'textwidth'` (or 79 when tw=0). `gw`
+/// (`keep_cursor`) restores the caret; `gq` leaves it at the start of the last reformatted line.
+fn plan_format(
+    st: &EditorState,
+    cur: usize,
+    count: u32,
+    motion: Motion,
+    keep_cursor: bool,
+    hint: GroupHint,
+) -> Plan {
+    let b = st.bytes();
+    let (s, e, _) = op_span(b, cur, motion, count);
+    if s >= e {
+        return nop(cur, st.view.mode);
+    }
+    let start = line_start(b, s);
+    let end = line_end(b, e - 1); // through the last touched line (exclusive of its trailing newline)
+    let Ok(block) = std::str::from_utf8(&b[start..end]) else {
+        return nop(cur, Mode::Normal);
+    };
+    let width = if st.view.text_width > 0 {
+        st.view.text_width
+    } else {
+        79
+    };
+    let new = reflow(block, width);
+    if new.as_bytes() == &b[start..end] {
+        // Already wrapped — no edit; still move the cursor per gq (Vim) unless gw.
+        let cursor = if keep_cursor { cur } else { start };
+        return nop(cursor, Mode::Normal);
+    }
+    let new_bytes = new.into_bytes();
+    // gw restores the caret (clamped into the resized buffer); gq lands on the last reformatted line's start.
+    let cursor = if keep_cursor {
+        cur.min(start + new_bytes.len())
+    } else {
+        let last_line_off = new_bytes
+            .iter()
+            .rposition(|&c| c == b'\n')
+            .map_or(0, |i| i + 1);
+        start + last_line_off
+    };
+    edit(
+        one(Edit::replace(start, end - start, new_bytes)),
+        cursor,
+        Mode::Normal,
+        hint,
+    )
 }
 
 fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: GroupHint) -> Plan {

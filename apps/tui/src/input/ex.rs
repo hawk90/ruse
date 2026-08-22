@@ -149,7 +149,8 @@ fn parse_time_travel(line: &str) -> Option<Ex> {
 }
 
 /// Parse `:set {option}` for the options this MVP honors: `ignorecase`/`ic`, `smartcase`/`scs`,
-/// `expandtab`/`et` (each with a `no` prefix to turn off), and `shiftwidth`/`sw`/`tabstop`/`ts` `=N`.
+/// `expandtab`/`et` (each with a `no` prefix to turn off), and `shiftwidth`/`sw`/`tabstop`/`ts`/
+/// `textwidth`/`tw` `=N`.
 /// An unknown option returns `None` (→ `Unknown`); a bare `:set` (no option) is not handled here.
 fn parse_set(line: &str) -> Option<Ex> {
     let opt = line
@@ -168,6 +169,7 @@ fn parse_set(line: &str) -> Option<Ex> {
             let n: usize = v.trim().parse().ok()?;
             match k.trim() {
                 "shiftwidth" | "sw" | "tabstop" | "ts" => EditorOption::ShiftWidth(n),
+                "textwidth" | "tw" => EditorOption::TextWidth(n),
                 _ => return None,
             }
         }
