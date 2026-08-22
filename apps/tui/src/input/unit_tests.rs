@@ -1205,6 +1205,35 @@ mod tests {
     }
 
     #[test]
+    fn visual_case_keys_emit_case_selection() {
+        use ruse_core::WordCase;
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        assert_eq!(
+            e.feed(k('U'), vis),
+            Feed::Cmd(Command::CaseSelection(WordCase::Upcase))
+        );
+        assert_eq!(
+            e.feed(k('u'), vis),
+            Feed::Cmd(Command::CaseSelection(WordCase::Downcase))
+        );
+        assert_eq!(
+            e.feed(k('~'), vis),
+            Feed::Cmd(Command::CaseSelection(WordCase::Toggle))
+        );
+        // In SELECT mode a printable key replaces the selection instead (namespace policy), not case it.
+        let sel = Mode::Select {
+            kind: SelectKind::Charwise,
+        };
+        assert_eq!(
+            e.feed(k('U'), sel),
+            Feed::Cmd(Command::ReplaceSelection('U'))
+        );
+    }
+
+    #[test]
     fn block_selection_operators_route_like_any_selection() {
         let mut e = InputEngine::new();
         let blk = Mode::Visual {

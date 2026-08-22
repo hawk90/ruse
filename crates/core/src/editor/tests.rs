@@ -1898,6 +1898,51 @@ mod visual_tests {
     }
 
     #[test]
+    fn visual_case_recases_the_selection() {
+        use crate::command::WordCase;
+        // `v` + 2×l selects "hel"; `U` uppercases it, cursor back to the start, Normal.
+        let st = run(
+            "hello",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::CaseSelection(WordCase::Upcase),
+            ],
+        );
+        assert_eq!(text(&st), "HELlo");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.cursor(), 0);
+        // `u` lowercases.
+        let st = run(
+            "HELLO",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::MoveRight,
+                Command::CaseSelection(WordCase::Downcase),
+            ],
+        );
+        assert_eq!(text(&st), "heLLO");
+        // `~` toggles.
+        let st = run(
+            "aBc",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::CaseSelection(WordCase::Toggle),
+            ],
+        );
+        assert_eq!(text(&st), "AbC");
+    }
+
+    #[test]
     fn entering_visual_sets_a_collapsed_selection() {
         let st = run(
             "hello",
