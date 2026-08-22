@@ -1223,7 +1223,19 @@ mod tests {
             e.feed(k('~'), vis),
             Feed::Cmd(Command::CaseSelection(WordCase::Toggle))
         );
-        // In SELECT mode a printable key replaces the selection instead (namespace policy), not case it.
+        // The `g`-prefixed forms also recase in Visual: `gu`/`gU`/`g~`.
+        assert_eq!(e.feed(k('g'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('u'), vis),
+            Feed::Cmd(Command::CaseSelection(WordCase::Downcase))
+        );
+        assert_eq!(e.feed(k('g'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('U'), vis),
+            Feed::Cmd(Command::CaseSelection(WordCase::Upcase))
+        );
+        // In SELECT mode a printable case key replaces the selection instead (namespace policy), not case
+        // it — the `g`-prefix arming is Visual-only.
         let sel = Mode::Select {
             kind: SelectKind::Charwise,
         };
