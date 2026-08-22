@@ -986,16 +986,13 @@ impl EditorState {
         Some(count)
     }
 
-    /// `:[range]sort[!] [n] [u]` — sort the range's lines (whole file when the caller passes `WholeFile`)
-    /// as one undo group: lexicographic, or `numeric` on each line's first decimal number; `reverse` (`!`)
-    /// descending; `unique` (`u`) drops adjacent duplicates after sorting. Returns the lines removed by `u`.
-    pub fn sort_lines(
-        &mut self,
-        range: SubRange,
-        reverse: bool,
-        numeric: bool,
-        unique: bool,
-    ) -> usize {
+    /// `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file when the caller
+    /// passes `WholeFile`) as one undo group. The sort KEY per line is, in order: the text after the first
+    /// `pattern` match (or the matched text itself under `r`), else the whole line; lowercased under `i`
+    /// (`ignore_case`); its first decimal number under `n` (`numeric`). `reverse` (`!`) sorts descending;
+    /// `unique` (`u`) drops runs of equal KEYS after sorting. The sort is stable. Returns lines removed by
+    /// `u`.
+    pub fn sort_lines(&mut self, range: SubRange, opts: &SortOptions) -> usize {
         let bytes = self.doc.bytes();
         let Ok(hay) = std::str::from_utf8(bytes) else {
             return 0;
@@ -1021,18 +1018,42 @@ impl EditorState {
         let last = last.min(lines.len() - 1);
         let first = first.min(last);
 
-        let mut seg: Vec<String> = lines[first..=last].to_vec();
-        if numeric {
-            seg.sort_by_key(|l| first_number(l));
-        } else {
-            seg.sort();
+        // The comparable key for one line, honoring `/pattern/`, `r`, `i`, and `n`.
+        let compiled = opts.pattern.as_deref().and_then(|p| {
+            crate::pattern::Regex::compile(p, crate::pattern::Options::default()).ok()
+        });
+        let key_of = |line: &str| -> SortKey {
+            // Slice the pattern-selected base: text after the match, or the match itself under `r`; a line
+            // the pattern does not match yields an empty base (Vim floats non-matching lines to the front).
+            let base: &str = match &compiled {
+                Some(re) => match re.find_at(line, 0) {
+                    Some(m) if opts.use_match => &line[m.start..m.end],
+                    Some(m) => &line[m.end..],
+                    None => "",
+                },
+                None => line,
+            };
+            if opts.numeric {
+                SortKey::Num(first_number(base))
+            } else if opts.ignore_case {
+                SortKey::Text(base.to_lowercase())
+            } else {
+                SortKey::Text(base.to_string())
+            }
+        };
+
+        let mut keyed: Vec<(SortKey, String)> = lines[first..=last]
+            .iter()
+            .map(|l| (key_of(l), l.clone()))
+            .collect();
+        keyed.sort_by(|a, b| a.0.cmp(&b.0)); // stable (Vim's sort is stable)
+        if opts.unique {
+            keyed.dedup_by(|a, b| a.0 == b.0);
         }
-        if unique {
-            seg.dedup();
+        if opts.reverse {
+            keyed.reverse();
         }
-        if reverse {
-            seg.reverse();
-        }
+        let seg: Vec<String> = keyed.into_iter().map(|(_, l)| l).collect();
         let removed = (last - first + 1) - seg.len();
         lines.splice(first..=last, seg);
 
@@ -1244,6 +1265,33 @@ mod search;
 use search::{match_spans, search_bwd, search_fwd};
 
 mod substitute;
+/// The options a `:sort` carries (parsed by the frontend from `[!][i][n][r][u] [/pattern/]`). Grouped into
+/// one struct so [`EditorState::sort_lines`] and the `Workspace` wrapper take a single argument.
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub struct SortOptions {
+    /// `!` — sort descending.
+    pub reverse: bool,
+    /// `n` — sort on each line's first decimal number (in the pattern-selected key).
+    pub numeric: bool,
+    /// `u` — drop runs of equal sort KEYS after sorting.
+    pub unique: bool,
+    /// `i` — compare case-insensitively.
+    pub ignore_case: bool,
+    /// `/pattern/` — sort on the text AFTER the first match (or the matched text under `use_match`), not the
+    /// whole line. `None` sorts on the whole line.
+    pub pattern: Option<String>,
+    /// `r` — with a pattern, sort on the MATCHED text itself rather than what follows it.
+    pub use_match: bool,
+}
+
+/// A line's comparable sort key: a number (`n`) or text. All keys in one sort share a variant, so the
+/// derived ordering (which compares `Num` < `Text` across variants) never actually mixes them.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum SortKey {
+    Num(i64),
+    Text(String),
+}
+
 /// The first decimal number in `s` (with an optional leading `-`), for `:sort n`. Lines without a number
 /// sort as `0` (Vim keeps them before the numbered lines, which a stable sort preserves).
 fn first_number(s: &str) -> i64 {

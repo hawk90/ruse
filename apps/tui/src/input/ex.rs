@@ -47,7 +47,7 @@ pub enum Ex {
     /// `:[range]t {addr}`/`:copy`/`:co` — copy the range's lines to after the destination line.
     Copy(SubRange, LineAddr),
     /// `:[range]sort[!] [n][u]` — sort the range's lines (whole file with no range).
-    Sort(SubRange, SortSpec),
+    Sort(SubRange, ruse_core::SortOptions),
     /// `:set {option}` — set one editor option on the focused view (F-009 / indent config).
     Set(EditorOption),
     /// `:earlier [N]` / `:ea` — go back N changes in chronological (branch-aware) undo time (F-005 #3).
@@ -175,19 +175,9 @@ fn parse_set(line: &str) -> Option<Ex> {
     Some(Ex::Set(ex))
 }
 
-/// A parsed `:sort` command: the flags this MVP honors (`!` reverse, `n` numeric, `u` unique).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct SortSpec {
-    /// `!` — sort descending.
-    pub reverse: bool,
-    /// `n` — sort on each line's first decimal number.
-    pub numeric: bool,
-    /// `u` — drop duplicate lines after sorting.
-    pub unique: bool,
-}
-
-/// Parse `:[range]sort[!] [flags]` (`sort`/`sor`). No range = the WHOLE FILE (Vim). Honors `!`, `n`, `u`;
-/// other Vim sort flags (`i`/`r`/`b`/`x`) are accepted but ignored, and a `/pattern/` form is not a sort.
+/// Parse `:[range]sort[!] [i][n][r][u] [/pattern/]` (`sort`/`sor`). No range = the WHOLE FILE (Vim). Honors
+/// `!` reverse, `n` numeric, `u` unique, `i` case-insensitive, and a trailing `/pattern/` (with `r` = sort
+/// on the matched text). Other Vim flags (`b`/`x` binary/hex numeric, `l`/`o`) are accepted but ignored.
 fn parse_sort(line: &str) -> Option<Ex> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
@@ -200,11 +190,21 @@ fn parse_sort(line: &str) -> Option<Ex> {
         Some(r) => (true, r),
         None => (false, rest),
     };
-    let flags = rest.trim();
-    // Only a bare flag run is a sort we understand; anything else (e.g. `/pat/`) falls through to Unknown.
+    // A trailing `/pattern/` (Vim): everything from the first `/` is the pattern (optionally closed by a
+    // second `/`); the flag run is what precedes it. `//` with no closer means "to end of line".
+    let (flag_str, pattern) = match rest.find('/') {
+        Some(i) => {
+            let after = &rest[i + 1..];
+            let pat = after.strip_suffix('/').unwrap_or(after);
+            (&rest[..i], (!pat.is_empty()).then(|| pat.to_string()))
+        }
+        None => (rest, None),
+    };
+    let flags = flag_str.trim();
+    // Only a bare flag run before any pattern is a sort we understand.
     if !flags
         .chars()
-        .all(|c| matches!(c, 'n' | 'u' | 'i' | 'r' | 'b' | 'x'))
+        .all(|c| matches!(c, 'n' | 'u' | 'i' | 'r' | 'b' | 'x' | 'l' | 'o'))
     {
         return None;
     }
@@ -215,10 +215,14 @@ fn parse_sort(line: &str) -> Option<Ex> {
     };
     Some(Ex::Sort(
         range,
-        SortSpec {
+        ruse_core::SortOptions {
             reverse,
             numeric: flags.contains('n'),
             unique: flags.contains('u'),
+            ignore_case: flags.contains('i'),
+            // `r` only means "sort on the match" when there is a pattern; otherwise it is inert.
+            use_match: flags.contains('r') && pattern.is_some(),
+            pattern,
         },
     ))
 }

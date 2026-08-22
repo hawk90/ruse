@@ -201,9 +201,9 @@ pub(crate) fn run_ex(
                 None => "E486: invalid copy".into(),
             };
         }
-        // `:[range]sort[!] [n][u]` — sort the range's lines (whole file with no range).
+        // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
         Ex::Sort(range, spec) => {
-            let removed = ws.sort_lines(*range, spec.reverse, spec.numeric, spec.unique);
+            let removed = ws.sort_lines(*range, spec);
             *status = if removed > 0 {
                 format!("sorted, {removed} fewer lines")
             } else {
