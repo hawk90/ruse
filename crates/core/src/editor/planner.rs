@@ -678,6 +678,40 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let n = bytes.len();
             edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
         }
+        // `i_CTRL-W` — delete the word before the caret (within the current line), staying in Insert.
+        Command::InsertDeleteWordBack => {
+            let ls = line_start(b, cur);
+            if cur <= ls {
+                return nop(cur, Mode::Insert);
+            }
+            let wb = motion::target(b, cur, Motion::WordBack, 1).max(ls);
+            // If the word motion did not move (e.g. only whitespace precedes), delete one grapheme instead.
+            let start = if wb < cur { wb } else { prev_boundary(b, cur) };
+            edit(
+                one(Edit::delete(start, cur - start)),
+                start,
+                Mode::Insert,
+                hint,
+            )
+        }
+        // `i_CTRL-U` — delete to the line's first non-blank; if already at/before it, delete the indent too.
+        Command::InsertDeleteToLineStart => {
+            let ls = line_start(b, cur);
+            if cur <= ls {
+                return nop(cur, Mode::Insert);
+            }
+            let mut fnb = ls;
+            while fnb < cur && matches!(b[fnb], b' ' | b'\t') {
+                fnb += 1;
+            }
+            let start = if cur > fnb { fnb } else { ls };
+            edit(
+                one(Edit::delete(start, cur - start)),
+                start,
+                Mode::Insert,
+                hint,
+            )
+        }
         Command::InsertNewline => edit(
             one(Edit::insert(cur, b"\n".to_vec())),
             cur + 1,
