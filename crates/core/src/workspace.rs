@@ -296,6 +296,22 @@ impl Workspace {
         out
     }
 
+    /// The FOCUSED view's set marks (`a`-`z`, `.`, `^`) as `(name, byte offset)` for `:marks` (swap-trick).
+    pub fn marks_snapshot(&mut self) -> Vec<(char, usize)> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let st = EditorState::from_parts(doc, view);
+        let marks = st.marks_snapshot();
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        marks
+    }
+
     /// Run `:[range]s/pat/rep/flags` against the FOCUSED Window (the swap-trick, like [`Workspace::apply`]),
     /// applying every substitution as one undo group. Returns the count, or a [`RegexError`] (F-009 #2).
     pub fn substitute(
@@ -1314,6 +1330,25 @@ mod tests {
         w.substitute(SubRange::CurrentLine, "x", "y", SubFlags::default())
             .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"y x\ny x\n", "repeat on line 2");
+    }
+
+    /// F-003: `marks_snapshot` lists the set named marks then `.` (last change) and `^` (last insert).
+    #[test]
+    fn marks_snapshot_lists_named_then_dot_and_caret() {
+        let mut w = Workspace::new(b"abc\ndef\n".to_vec());
+        assert!(w.marks_snapshot().is_empty(), "nothing set yet");
+        w.place_focused_cursor(5);
+        w.apply(&Command::SetNamedMark('a'));
+        w.apply(&Command::DeleteUnder(1)); // sets the `.` last-change mark
+        let snap = w.marks_snapshot();
+        assert!(
+            snap.iter().any(|&(c, _)| c == 'a'),
+            "named mark a present; got {snap:?}"
+        );
+        assert!(
+            snap.iter().any(|&(c, _)| c == '.'),
+            "last-change `.` present; got {snap:?}"
+        );
     }
 
     /// F-029: `register_snapshot` lists only the NON-EMPTY registers, in `"`, `0`, a..z order.
