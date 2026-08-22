@@ -32,6 +32,8 @@ pub enum Ex {
     Diagnostics,
     /// `:registers`/`:reg`/`:display` — view the non-empty registers (F-029). View-only.
     Registers,
+    /// `:marks` — view the set marks (a-z, `.`, `^`); Enter jumps to the mark (F-003).
+    Marks,
     /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
@@ -413,6 +415,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "codeaction" | "codeactions" | "ca" => Ex::CodeAction,
         "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
         "registers" | "reg" | "display" | "di" => Ex::Registers,
+        "marks" => Ex::Marks,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         "e!" | "edit!" => Ex::EditReload,

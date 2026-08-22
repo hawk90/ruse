@@ -7,6 +7,7 @@ pub(crate) mod diag_picker;
 pub(crate) mod file_picker;
 pub(crate) mod layout;
 pub(crate) mod line_picker;
+pub(crate) mod marks_picker;
 pub(crate) mod palette;
 pub(crate) mod picker;
 pub(crate) mod prompts;

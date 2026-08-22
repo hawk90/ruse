@@ -22,7 +22,7 @@ use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{
     action_picker, buffer_picker, diag_picker, file_picker, layout::window_rects, line_picker,
-    palette, ref_picker, register_picker,
+    marks_picker, palette, ref_picker, register_picker,
 };
 use crate::{graphics, health, highlight, indent, line_index, persist, recover, screen, viewport};
 #[cfg(unix)]
@@ -168,6 +168,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut diag_picker: Option<Picker<usize>> = None;
     // F-029: the `:registers` viewer — payload is the register name; view-only (Enter just closes).
     let mut reg_picker: Option<Picker<char>> = None;
+    // F-003: the `:marks` viewer — payload is the mark's byte offset; Enter jumps the cursor there.
+    let mut marks_picker: Option<Picker<usize>> = None;
     // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `pending_term_escape`
     // tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
     #[cfg(unix)]
@@ -300,6 +302,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = reg_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = marks_picker.as_ref() {
+            p.rows()
         } else {
             // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
             lsp.hover_overlay().unwrap_or_default()
@@ -323,6 +327,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('✗', p.query.as_str())) // diagnostics-picker prompt
         } else if let Some(p) = reg_picker.as_ref() {
             Some(('"', p.query.as_str())) // registers-viewer prompt (" = registers)
+        } else if let Some(p) = marks_picker.as_ref() {
+            Some(('\'', p.query.as_str())) // marks-viewer prompt (' = marks)
         } else if let Some(h) = leader_hint.as_ref() {
             Some((' ', h.as_str()))
         } else {
@@ -618,6 +624,18 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // F-003: the `:marks` viewer jumps the cursor to the selected mark's byte offset on Enter.
+        if let Some(outcome) = marks_picker.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                if let Some(off) = marks_picker.as_ref().and_then(|p| p.selected().copied()) {
+                    ws.place_focused_cursor(off);
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                marks_picker = None;
+            }
+            continue;
+        }
         // The command palette dispatches the selected command by its stable id, through the normal command
         // path (so it undoes/records like any other).
         if let Some(outcome) = palette.as_mut().map(|p| p.on_key(key)) {
@@ -885,6 +903,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         } else {
                             status = format!("{} register(s)", snapshot.len());
                             reg_picker = Some(register_picker::open(snapshot));
+                        }
+                    }
+                    // `:marks` (F-003): open a picker over the set marks; Enter jumps to the selected one.
+                    Ex::Marks => {
+                        let snapshot = ws.marks_snapshot();
+                        if snapshot.is_empty() {
+                            status = "no marks set".to_string();
+                        } else {
+                            status = format!("{} mark(s)", snapshot.len());
+                            marks_picker =
+                                Some(marks_picker::open(snapshot, ws.focused().doc.bytes()));
                         }
                     }
                     // `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused

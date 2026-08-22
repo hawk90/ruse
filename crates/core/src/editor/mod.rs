@@ -1156,6 +1156,25 @@ impl EditorState {
         self.view.cursor
     }
 
+    /// The SET marks for `:marks` — the named marks `a`–`z`, the `.` last-change mark, and the `^`
+    /// last-insert mark — as `(name, byte offset)`, in that order (unset marks omitted).
+    #[must_use]
+    pub fn marks_snapshot(&self) -> Vec<(char, usize)> {
+        let mut out = Vec::new();
+        for c in 'a'..='z' {
+            if let Some(p) = self.view.named_mark(c) {
+                out.push((c, p));
+            }
+        }
+        if let Some(p) = self.view.last_change() {
+            out.push(('.', p));
+        }
+        if let Some(p) = self.view.last_insert() {
+            out.push(('^', p));
+        }
+        out
+    }
+
     /// The mark's byte offset, or `None` when no mark is set. The mark is the Emacs profile's other end of
     /// the region (`set-mark-command` and the region ops); one-caret degenerate is `None`. View-local. For
     /// the Emacs parity comparator and a future `:marks`.

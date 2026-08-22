@@ -227,6 +227,8 @@ pub(crate) fn run_ex(
         Ex::NoHighlight => {}
         // `:registers` is handled in the run loop (it opens the frontend-owned register-viewer picker).
         Ex::Registers => {}
+        // `:marks` is handled in the run loop (it opens the frontend-owned marks-viewer picker).
+        Ex::Marks => {}
         // `:lmap`/`:lunmap` are handled in the run loop (they mutate engine-owned Lang-Arg state — the
         // `engine` this fn does not borrow); never reach here.
         Ex::Lmap { .. } | Ex::Lunmap { .. } => {}
