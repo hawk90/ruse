@@ -422,6 +422,14 @@ fn recase(text: &str, case: WordCase) -> String {
             }
             out
         }
+        WordCase::Rot13 => text
+            .chars()
+            .map(|ch| match ch {
+                'a'..='z' => (((ch as u8 - b'a' + 13) % 26) + b'a') as char,
+                'A'..='Z' => (((ch as u8 - b'A' + 13) % 26) + b'A') as char,
+                other => other,
+            })
+            .collect(),
         WordCase::Capitalize => {
             let mut out = String::with_capacity(text.len());
             let mut at_word_start = true;

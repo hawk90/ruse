@@ -36,10 +36,11 @@ enum Op {
     Delete,
     Change,
     Yank,
-    /// `gu` — lowercase the operator span. `gU` = upper, `g~` = toggle.
+    /// `gu` — lowercase the operator span. `gU` = upper, `g~` = toggle, `g?` = ROT13.
     CaseLower,
     CaseUpper,
     CaseToggle,
+    Rot13,
     /// `>` / `<` — indent the operator span's lines right / left (linewise).
     ShiftRight,
     ShiftLeft,
@@ -58,6 +59,7 @@ impl Op {
             Op::CaseLower => Some(WordCase::Downcase),
             Op::CaseUpper => Some(WordCase::Upcase),
             Op::CaseToggle => Some(WordCase::Toggle),
+            Op::Rot13 => Some(WordCase::Rot13),
             _ => None,
         }
     }
@@ -584,6 +586,7 @@ impl InputEngine {
                         Op::CaseLower
                         | Op::CaseUpper
                         | Op::CaseToggle
+                        | Op::Rot13
                         | Op::ShiftRight
                         | Op::ShiftLeft
                         | Op::Reindent
@@ -615,6 +618,7 @@ impl InputEngine {
                         Op::CaseLower
                         | Op::CaseUpper
                         | Op::CaseToggle
+                        | Op::Rot13
                         | Op::ShiftRight
                         | Op::ShiftLeft
                         | Op::Reindent
@@ -1399,6 +1403,13 @@ impl InputEngine {
             {
                 self.case_linewise()
             }
+            // `g??` — the doubled ROT13 operator (linewise). `?` is not otherwise bound in Normal (backward
+            // search is unwired), so this guard is the only meaning of `?` after `g?` armed the operator.
+            KeyCode::Char('?')
+                if matches!(self.normal.op, Some(OpPending { op: Op::Rot13, .. })) =>
+            {
+                self.case_linewise()
+            }
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Char('r') if ctrl => self.action(Command::Redo),
             KeyCode::Tab => self.action(Command::GotoNewerJump),
@@ -1455,6 +1466,7 @@ impl InputEngine {
                         Op::CaseLower
                         | Op::CaseUpper
                         | Op::CaseToggle
+                        | Op::Rot13
                         | Op::ShiftRight
                         | Op::ShiftLeft
                         | Op::Reindent
@@ -1594,8 +1606,11 @@ impl InputEngine {
                     KeyCode::Char('~') if matches!(mode, Mode::Visual { .. }) => {
                         self.action(Command::CaseSelection(WordCase::Toggle))
                     }
-                    // `gu` / `gU` / `g~` — arm a case operator (lower / upper / toggle) over the next
-                    // motion. Only from Normal (no operator already pending): `dgu` is not a Vim command.
+                    KeyCode::Char('?') if matches!(mode, Mode::Visual { .. }) => {
+                        self.action(Command::CaseSelection(WordCase::Rot13))
+                    }
+                    // `gu` / `gU` / `g~` / `g?` — arm a case operator (lower / upper / toggle / ROT13) over
+                    // the next motion. Only from Normal (no operator already pending): `dgu` is not Vim.
                     KeyCode::Char('u') if self.normal.op.is_none() => {
                         self.arm_case_op(Op::CaseLower)
                     }
@@ -1605,6 +1620,7 @@ impl InputEngine {
                     KeyCode::Char('~') if self.normal.op.is_none() => {
                         self.arm_case_op(Op::CaseToggle)
                     }
+                    KeyCode::Char('?') if self.normal.op.is_none() => self.arm_case_op(Op::Rot13),
                     // `gq` / `gw` — arm the reflow operator over the next motion (`gqap`, `gwj`). Normal
                     // only; the doubled `gqq`/`gqgq` line form is deferred (it collides with macro `q`).
                     KeyCode::Char('q') if matches!(mode, Mode::Normal) => {

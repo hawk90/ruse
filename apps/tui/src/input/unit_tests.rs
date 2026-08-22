@@ -632,6 +632,47 @@ mod tests {
     }
 
     #[test]
+    fn g_question_is_the_rot13_operator() {
+        use ruse_core::WordCase;
+        // `g?$` → ROT13 to end of line.
+        assert_eq!(
+            feed("g?$"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::LineEnd,
+                case: WordCase::Rot13,
+            })
+        );
+        // `g?ap` → ROT13 a paragraph; `g??` → the doubled linewise form.
+        assert_eq!(
+            feed("g?ap"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::AParagraph,
+                case: WordCase::Rot13,
+            })
+        );
+        assert_eq!(
+            feed("g??"),
+            Feed::Cmd(Command::CaseMotion {
+                count: 1,
+                motion: Motion::Line,
+                case: WordCase::Rot13,
+            })
+        );
+        // Visual `g?` recases the selection.
+        let mut e = InputEngine::new();
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        assert_eq!(e.feed(k('g'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('?'), vis),
+            Feed::Cmd(Command::CaseSelection(WordCase::Rot13))
+        );
+    }
+
+    #[test]
     fn gq_and_gw_arm_the_reflow_operator() {
         // `gqap` → format the paragraph (cursor moves); `gwj` → format down (cursor kept).
         assert_eq!(

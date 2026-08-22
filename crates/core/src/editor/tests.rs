@@ -1400,6 +1400,41 @@ mod format_tests {
     }
 
     #[test]
+    fn rot13_over_a_motion_and_is_involutive() {
+        use crate::command::WordCase;
+        // `g?$` ROT13s to end of line: "Hello" -> "Uryyb".
+        let st = run_tw(
+            "Hello\n",
+            0,
+            &[Command::CaseMotion {
+                count: 1,
+                motion: Motion::LineEnd,
+                case: WordCase::Rot13,
+            }],
+        );
+        assert_eq!(text(&st), "Uryyb\n");
+        // Applying ROT13 twice restores the original (involution); non-letters untouched.
+        let st = run_tw(
+            "aZ9!\n",
+            0,
+            &[
+                Command::CaseMotion {
+                    count: 1,
+                    motion: Motion::LineEnd,
+                    case: WordCase::Rot13,
+                },
+                Command::Move(1, Motion::LineStart),
+                Command::CaseMotion {
+                    count: 1,
+                    motion: Motion::LineEnd,
+                    case: WordCase::Rot13,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "aZ9!\n");
+    }
+
+    #[test]
     fn textwidth_zero_falls_back_to_79() {
         // With tw=0, a short line under 79 cols is left as one line (no wrap).
         let st = run_tw(
