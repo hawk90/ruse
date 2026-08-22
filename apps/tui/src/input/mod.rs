@@ -614,6 +614,33 @@ impl InputEngine {
         Feed::Cmd(cmd)
     }
 
+    /// Emit `gn`/`gN` — the search-match text object. Reads the last search pattern and folds in any pending
+    /// operator (`dgn`/`cgn`/`ygn`); the bare form ([`SearchOp::Move`]) selects the match in Visual. With no
+    /// prior search there is nothing to match, so the pending construct aborts (leaking no state). Emitted as
+    /// a single [`Command::SearchObject`] with the pattern baked in, so `.` can replay `cgn`.
+    fn search_object(&mut self, backward: bool) -> Feed {
+        let Some(pattern) = self.last_search.clone() else {
+            // No prior search — nothing to match; abort the pending construct, leaking no state.
+            self.reset();
+            return Feed::Ignored;
+        };
+        let op = match self.normal.op {
+            Some(OpPending { op: Op::Delete, .. }) => SearchOp::Delete,
+            Some(OpPending { op: Op::Change, .. }) => SearchOp::Change,
+            Some(OpPending { op: Op::Yank, .. }) => SearchOp::Yank,
+            // No operator (or a non-d/c/y one that gn does not accept): the bare, Visual-selecting form.
+            _ => SearchOp::Move,
+        };
+        let count = self.normal.op.map_or(1, |p| p.count.max(1)) * self.mcount();
+        self.reset();
+        Feed::Cmd(Command::SearchObject {
+            op,
+            count,
+            pattern,
+            backward,
+        })
+    }
+
     /// Arm a case operator (`gu`/`gU`/`g~`) so the next motion recases its span. No doubling detection
     /// here — the linewise `guu`/`gUU`/`g~~` form is handled where the second key is dispatched.
     fn arm_case_op(&mut self, op: Op) -> Feed {
@@ -1479,6 +1506,10 @@ impl InputEngine {
                     KeyCode::Char('~') if self.normal.op.is_none() => {
                         self.arm_case_op(Op::CaseToggle)
                     }
+                    // `gn` / `gN` — the search-match text object: select (bare) or operate on (`dgn`/`cgn`/
+                    // `ygn`) the next / previous match of the last search pattern. Operator-aware.
+                    KeyCode::Char('n') => self.search_object(false),
+                    KeyCode::Char('N') => self.search_object(true),
                     // `gJ` — join with the next line WITHOUT inserting a space (Vim `gJ`).
                     KeyCode::Char('J') => self.action(Command::JoinLinesNoSpace),
                     // `g;` / `g,` — walk the change list to older / newer change positions (Vim).

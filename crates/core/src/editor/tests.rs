@@ -2861,6 +2861,99 @@ mod search_tests {
         );
         assert_eq!(st.as_str().unwrap(), "XYZdef");
     }
+
+    fn gn(op: SearchOp, count: u32, pattern: &str, backward: bool) -> Command {
+        Command::SearchObject {
+            op,
+            count,
+            pattern: pattern.to_string(),
+            backward,
+        }
+    }
+
+    #[test]
+    fn gn_selects_the_next_match_in_visual() {
+        // Cursor at 0 (before any match); `gn` selects the first "foo" as a charwise Visual span.
+        let st = run("x foo y foo", &[gn(SearchOp::Move, 1, "foo", false)]);
+        assert_eq!(
+            st.mode(),
+            Mode::Visual {
+                kind: SelectKind::Charwise
+            }
+        );
+        assert_eq!(
+            st.selection_span(),
+            Some((2, 5)),
+            "selects the first foo [2,5)"
+        );
+    }
+
+    #[test]
+    fn gn_selects_the_match_under_the_cursor() {
+        // Cursor INSIDE the first match (on the 'o' at byte 3) selects THAT match, not the next.
+        let st = run(
+            "x foo y foo",
+            &[
+                Command::Move(3, Motion::Right),
+                gn(SearchOp::Move, 1, "foo", false),
+            ],
+        );
+        assert_eq!(
+            st.selection_span(),
+            Some((2, 5)),
+            "the containing match, not the next"
+        );
+    }
+
+    #[test]
+    fn dgn_deletes_the_next_whole_match() {
+        let st = run("x foo y", &[gn(SearchOp::Delete, 1, "foo", false)]);
+        assert_eq!(st.as_str().unwrap(), "x  y");
+        assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn cgn_deletes_the_match_and_enters_insert() {
+        let st = run("x foo y", &[gn(SearchOp::Change, 1, "foo", false)]);
+        assert_eq!(st.as_str().unwrap(), "x  y");
+        assert_eq!(st.mode(), Mode::Insert);
+        assert_eq!(
+            st.cursor(),
+            2,
+            "cursor at the match start, ready to type the replacement"
+        );
+    }
+
+    #[test]
+    fn count_gn_reaches_a_later_match() {
+        // `2gn` from the top selects the SECOND match.
+        let st = run("a b a b a", &[gn(SearchOp::Move, 2, "a", false)]);
+        assert_eq!(st.selection_span(), Some((4, 5)), "the 2nd 'a'");
+    }
+
+    #[test]
+    fn gn_backward_selects_the_previous_match() {
+        // Cursor past the last match; `gN` walks backward to it.
+        let st = run(
+            "foo bar foo",
+            &[
+                Command::Move(100, Motion::Right),
+                gn(SearchOp::Move, 1, "foo", true),
+            ],
+        );
+        assert_eq!(
+            st.selection_span(),
+            Some((8, 11)),
+            "the last foo, selected backward"
+        );
+    }
+
+    #[test]
+    fn gn_with_no_match_is_a_noop() {
+        let st = run("hello", &[gn(SearchOp::Move, 1, "zzz", false)]);
+        assert_eq!(st.mode(), Mode::Normal, "no match — stays in Normal");
+        assert_eq!(st.cursor(), 0);
+    }
 }
 
 #[cfg(test)]

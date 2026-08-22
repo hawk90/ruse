@@ -2,7 +2,7 @@
 //! engine captures and replays. Split out of `input/mod.rs` as a self-contained data definition; the
 //! `InputEngine::record` builder that constructs it stays in the engine core.
 
-use ruse_core::{Command, OpKind};
+use ruse_core::{Command, OpKind, SearchOp};
 
 /// A recorded **change-intent** for Vim dot-repeat (D-025 / D-047): the buffer-modifying command that
 /// began the change, plus — for changes that enter Insert — the exact commands typed until `<Esc>`.
@@ -72,6 +72,12 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::ReplaceSelection(_)
         | C::OpForced {
             op: OpKind::Change, ..
+        }
+        // `cgn`/`cgN` — the gn idiom: dot replays the change (re-searching from the new cursor), so `n.`
+        // (or bare `.`) walks the change through every match. This is why gn matters.
+        | C::SearchObject {
+            op: SearchOp::Change,
+            ..
         } => ChangeKind::InsertEntering,
         // Self-contained buffer edits — dot-repeatable as a single command.
         C::Delete(..)
@@ -104,6 +110,11 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::DeleteSelection
         | C::OpForced {
             op: OpKind::Delete, ..
+        }
+        // `dgn`/`dgN` — delete the match; dot-repeatable to sweep the next match.
+        | C::SearchObject {
+            op: SearchOp::Delete,
+            ..
         } => ChangeKind::Immediate,
         // Everything else (motions, mode switches, yank incl. forced yank, search, undo/redo) is not a change.
         _ => ChangeKind::NotAChange,

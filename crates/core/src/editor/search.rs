@@ -25,6 +25,23 @@ pub(crate) fn search_fwd(
         .map(|m| m.start)
 }
 
+/// Every match of `pattern` in `b`, as `(start, end)` byte spans (end exclusive), in document order.
+/// Zero-width matches are dropped — a text object over an empty span (`gn`) is meaningless and would make
+/// selection/advance loop. Invalid UTF-8 or an unrepresentable/malformed pattern yields an empty list.
+pub(crate) fn match_spans(b: &[u8], pattern: &str, opts: pattern::Options) -> Vec<(usize, usize)> {
+    let Ok(hay) = std::str::from_utf8(b) else {
+        return Vec::new();
+    };
+    let Ok(re) = pattern::Regex::compile(pattern, opts) else {
+        return Vec::new();
+    };
+    re.find_all(hay)
+        .into_iter()
+        .filter(|m| m.end > m.start)
+        .map(|m| (m.start, m.end))
+        .collect()
+}
+
 /// The byte offset of the previous match starting strictly before `before`, wrapping to the last match.
 pub(crate) fn search_bwd(
     b: &[u8],
