@@ -159,6 +159,9 @@ struct InsertState {
     /// Insert-mode `CTRL-G` prefix: the next key is expected to be `u` (undo-break,
     /// [`Command::BreakUndo`]). A one-key expectation local to Insert; any other second key aborts it.
     ctrl_g: bool,
+    /// Insert-mode `CTRL-R` prefix: the next key is the register NAME whose contents to insert at the caret
+    /// ([`Command::InsertRegister`]). A one-key expectation local to Insert; a non-register key aborts it.
+    ctrl_r: bool,
 }
 
 /// The active input profile (F-012 / RFC-0014, F-013 / RFC-0016). Vim is a MODAL grammar (Normal/Insert/
@@ -928,6 +931,21 @@ impl InputEngine {
     /// Normal), `CTRL-G` (prefix) — then the Insert layer binds, else the `open/insert` policy applies.
     fn feed_insert(&mut self, key: KeyEvent) -> Feed {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // `CTRL-R` prefix: consume the second key as the register NAME and insert its contents at the caret.
+        // Accepts the same names the paste path reads (`"`, `0`–`9`, `-`, `a`–`z`/`A`–`Z`); any other key
+        // aborts without inserting. Checked before the layer so the register key never reaches text insertion.
+        if self.insert.ctrl_r {
+            self.insert.ctrl_r = false;
+            return match key.code {
+                KeyCode::Char(c) if c == '"' || c == '-' || c.is_ascii_alphanumeric() => {
+                    self.action(Command::InsertRegister(c))
+                }
+                _ => {
+                    self.reset();
+                    Feed::Ignored
+                }
+            };
+        }
         // `CTRL-G` prefix: consume the second key. `u` (or `U`) breaks the undo group; anything else
         // aborts the prefix without inserting (Vim beeps). Checked before the layer so the printable
         // path never sees the prefixed key.
@@ -963,6 +981,12 @@ impl InputEngine {
         if ctrl && key.code == KeyCode::Char('g') {
             self.reset();
             self.insert.ctrl_g = true;
+            return Feed::Pending;
+        }
+        // `i_CTRL-R` — arm the register-insert prefix; the next key names the register.
+        if ctrl && key.code == KeyCode::Char('r') {
+            self.reset();
+            self.insert.ctrl_r = true;
             return Feed::Pending;
         }
         if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code) {
