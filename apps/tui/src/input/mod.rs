@@ -1214,6 +1214,13 @@ impl InputEngine {
                 KeyCode::Char('~') if matches!(mode, Mode::Visual { .. }) => {
                     return self.action(Command::CaseSelection(WordCase::Toggle))
                 }
+                // `g` prefix in Visual: arm `GSecond` so `gu`/`gU`/`g~` recase the selection and the
+                // `g`-motions (`gg`/`ge`/`gE`/`g_`) extend it. Was previously swallowed by the ignore policy.
+                // Select mode is excluded: there a printable key REPLACES the selection (namespace policy).
+                KeyCode::Char('g') if matches!(mode, Mode::Visual { .. }) => {
+                    self.normal.awaiting = Awaiting::GSecond;
+                    return Feed::Pending;
+                }
                 // `o` swaps the selection's ends (cursor <-> anchor); the SAME text stays selected but a
                 // later motion extends the other end. In Normal `o` is OpenBelow — here it is the swap.
                 KeyCode::Char('o') => return self.action(Command::SwapSelectionEnds),
@@ -1560,6 +1567,16 @@ impl InputEngine {
                         forward: false,
                         whole_word: false,
                     }),
+                    // In Visual, `gu`/`gU`/`g~` recase the selection immediately (same as bare `u`/`U`/`~`).
+                    KeyCode::Char('u') if matches!(mode, Mode::Visual { .. }) => {
+                        self.action(Command::CaseSelection(WordCase::Downcase))
+                    }
+                    KeyCode::Char('U') if matches!(mode, Mode::Visual { .. }) => {
+                        self.action(Command::CaseSelection(WordCase::Upcase))
+                    }
+                    KeyCode::Char('~') if matches!(mode, Mode::Visual { .. }) => {
+                        self.action(Command::CaseSelection(WordCase::Toggle))
+                    }
                     // `gu` / `gU` / `g~` — arm a case operator (lower / upper / toggle) over the next
                     // motion. Only from Normal (no operator already pending): `dgu` is not a Vim command.
                     KeyCode::Char('u') if self.normal.op.is_none() => {
