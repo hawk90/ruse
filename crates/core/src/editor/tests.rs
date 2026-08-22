@@ -60,6 +60,45 @@ mod register_tests {
     }
 
     #[test]
+    fn numbered_ring_paste_reaches_older_line_deletes() {
+        // Two successive `dd`s push the numbered ring; `"2p` recalls the FIRST-deleted line, `"1p` the
+        // most recent — the end-to-end proof that a delete commit feeds the ring (RegWrite::Edit).
+        let st = run(
+            "one\ntwo\nthree\n",
+            &[
+                Command::Delete(1, Motion::Line), // delete "one" → "1
+                Command::Delete(1, Motion::Line), // delete "two" → "1, "one" shifts to "2
+                Command::SetRegister(Some('2')),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        // Buffer is "three"; pasting "2 (="one\n") below the first line.
+        assert_eq!(text(&st), "three\none\n");
+    }
+
+    #[test]
+    fn small_delete_register_recalls_a_sub_line_delete() {
+        // `x` is a sub-line delete → the small-delete register `"-`; `"-p` puts it back.
+        let st = run(
+            "abc",
+            &[
+                Command::DeleteUnder(1), // delete 'a' → "-
+                Command::SetRegister(Some('-')),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "bac");
+    }
+
+    #[test]
     fn xp_transposes_two_characters() {
         // The classic Vim idiom: `x` yanks the char, `p` puts it after the next one.
         let st = run(

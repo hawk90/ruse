@@ -1561,16 +1561,18 @@ impl InputEngine {
             Awaiting::RegisterSelect => {
                 self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
-                    // A register name (`a`–`z` / `A`–`Z`, or the yank register `0`): emit `SetRegister` for
-                    // the core to hold as the pending register the next yank/delete/change/paste reads.
-                    // `action` clears the transient axes — which is why the register PREFIX must precede a
-                    // count (`"a3yy`, as in Vim). `"0p` pastes the last yank (`"0` is read-only from edits).
-                    KeyCode::Char(c) if c.is_ascii_alphabetic() || c == '0' => {
+                    // A register name — a letter (`a`–`z` / `A`–`Z`), the yank register `0`, the numbered
+                    // delete-ring `1`–`9`, or the small-delete register `-`: emit `SetRegister` for the core
+                    // to hold as the pending register the next yank/delete/change/paste reads. `action`
+                    // clears the transient axes — which is why the register PREFIX must precede a count
+                    // (`"a3yy`, as in Vim). `"0p`/`"1p`/`"-p` paste from read-only edit-history slots.
+                    KeyCode::Char(c)
+                        if c.is_ascii_alphabetic() || c.is_ascii_digit() || c == '-' =>
+                    {
                         self.action(Command::SetRegister(Some(c)))
                     }
-                    // The numbered delete-ring (`"1`–`"9`) and other registers are not modelled yet; a
-                    // pending construct is in flight, so an unusable name is `closed/abort` (operator-
-                    // pending), leaking no state.
+                    // Any other name is unusable; a pending construct is in flight, so it is `closed/abort`
+                    // (operator-pending), leaking no state.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
