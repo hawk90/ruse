@@ -312,6 +312,34 @@ impl Workspace {
         marks
     }
 
+    /// The FOCUSED view's jumplist positions for `:jumps` (swap-trick).
+    pub fn jumps_snapshot(&mut self) -> Vec<usize> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+        let st = EditorState::from_parts(doc, view);
+        let out = st.jumps_snapshot();
+        let (doc, view) = st.into_parts();
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        out
+    }
+
+    /// The FOCUSED view's change-list positions for `:changes` (swap-trick).
+    pub fn changes_snapshot(&mut self) -> Vec<usize> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+        let st = EditorState::from_parts(doc, view);
+        let out = st.changes_snapshot();
+        let (doc, view) = st.into_parts();
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        out
+    }
+
     /// Run `:[range]s/pat/rep/flags` against the FOCUSED Window (the swap-trick, like [`Workspace::apply`]),
     /// applying every substitution as one undo group. Returns the count, or a [`RegexError`] (F-009 #2).
     pub fn substitute(

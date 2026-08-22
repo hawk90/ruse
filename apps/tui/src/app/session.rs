@@ -22,7 +22,7 @@ use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{
     action_picker, buffer_picker, diag_picker, file_picker, layout::window_rects, line_picker,
-    marks_picker, palette, ref_picker, register_picker,
+    marks_picker, palette, pos_picker, ref_picker, register_picker,
 };
 use crate::{graphics, health, highlight, indent, line_index, persist, recover, screen, viewport};
 #[cfg(unix)]
@@ -170,6 +170,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut reg_picker: Option<Picker<char>> = None;
     // F-003: the `:marks` viewer — payload is the mark's byte offset; Enter jumps the cursor there.
     let mut marks_picker: Option<Picker<usize>> = None;
+    // F-003: the shared `:jumps` / `:changes` position viewer — payload is a byte offset; Enter jumps.
+    let mut pos_picker: Option<Picker<usize>> = None;
     // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `pending_term_escape`
     // tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
     #[cfg(unix)]
@@ -304,6 +306,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = marks_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = pos_picker.as_ref() {
+            p.rows()
         } else {
             // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
             lsp.hover_overlay().unwrap_or_default()
@@ -329,6 +333,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('"', p.query.as_str())) // registers-viewer prompt (" = registers)
         } else if let Some(p) = marks_picker.as_ref() {
             Some(('\'', p.query.as_str())) // marks-viewer prompt (' = marks)
+        } else if let Some(p) = pos_picker.as_ref() {
+            Some(('↕', p.query.as_str())) // jumps/changes position-viewer prompt
         } else if let Some(h) = leader_hint.as_ref() {
             Some((' ', h.as_str()))
         } else {
@@ -636,6 +642,18 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // F-003: the `:jumps` / `:changes` position viewer jumps the cursor to the selected offset on Enter.
+        if let Some(outcome) = pos_picker.as_mut().map(|p| p.on_key(key)) {
+            if let PickOutcome::Accept = outcome {
+                if let Some(off) = pos_picker.as_ref().and_then(|p| p.selected().copied()) {
+                    ws.place_focused_cursor(off);
+                }
+            }
+            if !matches!(outcome, PickOutcome::Continue) {
+                pos_picker = None;
+            }
+            continue;
+        }
         // The command palette dispatches the selected command by its stable id, through the normal command
         // path (so it undoes/records like any other).
         if let Some(outcome) = palette.as_mut().map(|p| p.on_key(key)) {
@@ -914,6 +932,22 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             status = format!("{} mark(s)", snapshot.len());
                             marks_picker =
                                 Some(marks_picker::open(snapshot, ws.focused().doc.bytes()));
+                        }
+                    }
+                    // `:jumps` / `:changes` (F-003): position viewers over the jumplist / change list;
+                    // Enter jumps. Both share the `pos_picker` overlay (never open at once).
+                    Ex::Jumps | Ex::Changes => {
+                        let positions = if matches!(parse_ex(&text), Ex::Jumps) {
+                            ws.jumps_snapshot()
+                        } else {
+                            ws.changes_snapshot()
+                        };
+                        if positions.is_empty() {
+                            status = "empty".to_string();
+                        } else {
+                            status = format!("{} position(s)", positions.len());
+                            pos_picker =
+                                Some(pos_picker::open(positions, ws.focused().doc.bytes()));
                         }
                     }
                     // `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused

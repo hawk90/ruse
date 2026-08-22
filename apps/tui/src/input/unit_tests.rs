@@ -1792,6 +1792,8 @@ mod tests {
         assert_eq!(parse_ex("reg"), Ex::Registers);
         assert_eq!(parse_ex("display"), Ex::Registers);
         assert_eq!(parse_ex("marks"), Ex::Marks);
+        assert_eq!(parse_ex("jumps"), Ex::Jumps);
+        assert_eq!(parse_ex("changes"), Ex::Changes);
         assert_eq!(parse_ex("d"), Ex::Delete(SubRange::CurrentLine));
     }
 
