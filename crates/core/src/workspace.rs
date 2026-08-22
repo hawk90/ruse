@@ -1346,6 +1346,26 @@ mod tests {
         assert_eq!(w.register_bytes(Some('b')), b"");
     }
 
+    /// F-009: a whole-file substitute (what `g&` repeats) applies across every line, honouring the flags.
+    #[test]
+    fn substitute_whole_file_is_what_g_ampersand_repeats() {
+        let mut w = Workspace::new(b"x x\nx x\n".to_vec());
+        // `g&` reuses the last flags — here global (all matches on every line).
+        let out = w
+            .substitute(
+                SubRange::WholeFile,
+                "x",
+                "y",
+                SubFlags {
+                    global: true,
+                    ignore_case: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(w.focused().doc.bytes(), b"y y\ny y\n");
+        assert_eq!(out.replacements, 4);
+    }
+
     /// F-009: a current-line substitute (what `&` repeats) acts only on the cursor's line, first match by
     /// default — running it again after moving the cursor repeats on the new line.
     #[test]

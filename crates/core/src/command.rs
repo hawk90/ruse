@@ -284,6 +284,10 @@ pub enum Command {
         forward: bool,
         whole_word: bool,
     },
+    /// `g&` — repeat the last `:s` over the WHOLE FILE with its flags (Vim). The core has no substitute
+    /// history, so the FRONTEND resolves this against its last-substitute state (like [`SearchWordUnder`]);
+    /// the planner treats it as a no-op.
+    RepeatSubstituteGlobal,
     /// `{count}/{pattern}<CR>` as a MOTION: bare it moves to the `count`-th forward match; under an
     /// operator (`op`) it folds into a charwise-exclusive edit over `[cursor, match)` (`d/pat`, `c/pat`,
     /// `y/pat`). The pattern is literal (v0; C-REGEX later) and carried so traces replay deterministically.
@@ -802,6 +806,7 @@ impl Command {
                 if *forward { "fwd" } else { "bwd" },
                 if *whole_word { "whole" } else { "any" }
             ),
+            Command::RepeatSubstituteGlobal => "repeat_substitute_global".into(),
             // Pattern LAST so it may contain spaces (parsed as the untrimmed remainder, like search_next).
             Command::Search { op, count, pattern } => {
                 format!("search {} {count} {pattern}", search_op_token(*op))
@@ -1147,6 +1152,7 @@ impl Command {
                     whole_word,
                 }
             }
+            "repeat_substitute_global" => Command::RepeatSubstituteGlobal,
             "search" => {
                 // `search {op} {count} {pattern...}` — pattern is the untrimmed remainder (may hold spaces).
                 let mut parts = raw.splitn(3, ' ');
@@ -1258,6 +1264,7 @@ mod tests {
             Command::GotoNewerChange,
             Command::GotoOlderJump,
             Command::GotoNewerJump,
+            Command::RepeatSubstituteGlobal,
             Command::InsertAtLastInsert,
             Command::SetNamedMark('a'),
             Command::SetNamedMark('z'),

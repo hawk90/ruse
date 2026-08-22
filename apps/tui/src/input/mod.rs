@@ -1484,6 +1484,8 @@ impl InputEngine {
                     KeyCode::Char(',') => self.action(Command::GotoNewerChange),
                     // `gi` — resume Insert at the last-insert position (Vim `` `^ ``).
                     KeyCode::Char('i') => self.action(Command::InsertAtLastInsert),
+                    // `g&` — repeat the last `:s` over the whole file with its flags (frontend-resolved).
+                    KeyCode::Char('&') => self.action(Command::RepeatSubstituteGlobal),
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).
                     KeyCode::Char('v') => self.action(Command::ReselectVisual),
                     // `gR` — enter Virtual Replace mode (tab-aware overwrite).
