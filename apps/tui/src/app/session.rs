@@ -146,9 +146,14 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let in_tmux = std::env::var_os("TMUX").is_some();
     let mut resident: HashSet<graphics::ImageId> = HashSet::new();
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
-    let mut pending_z = false; // a `z` scroll prefix awaits its second key (`zz`/`zt`/`zb`)
-                               // Vim macros (D-055): `q{a-z}` records the raw keystroke stream into a register, `@{a-z}` replays it.
-                               // The whole record/replay state machine lives in `keys::MacroState` (unit-tested end to end).
+    let mut pending_z = false; // a `z` scroll/fold prefix awaits its second key (`zz`/`zt`/`zb`/`zf`/`zo`…)
+                               // F-003 manual folds, keyed by buffer (slice 1: per-buffer, not per-window). Closed folds collapse in
+                               // render; the cursor/scroll skip them; edits shift/drop them.
+    let mut folds: HashMap<DocumentId, Vec<crate::folds::Fold>> = HashMap::new();
+    // Per-buffer line count from the previous frame, to detect edit-driven line shifts for the fold ranges.
+    let mut fold_lines: HashMap<DocumentId, usize> = HashMap::new();
+    // Vim macros (D-055): `q{a-z}` records the raw keystroke stream into a register, `@{a-z}` replays it.
+    // The whole record/replay state machine lives in `keys::MacroState` (unit-tested end to end).
     let mut macros = crate::keys::MacroState::new();
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
@@ -196,6 +201,29 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
         line_idx.refresh(revision, &snapshot);
+        // F-003 fold reconcile (per frame): (a) shift/drop folds when the buffer's line count changed since
+        // last frame — approximating the edit point as the cursor line; (b) snap the cursor OUT of any closed
+        // fold onto its summary (start) line, so it never rests on a hidden row.
+        {
+            let buf = ws.focused_buffer();
+            let nlines = line_idx.line_of(snapshot.len());
+            if let Some(fv) = folds.get_mut(&buf) {
+                if !fv.is_empty() {
+                    let prev = *fold_lines.get(&buf).unwrap_or(&nlines);
+                    if nlines != prev {
+                        let delta = nlines as isize - prev as isize;
+                        let at = line_idx.line_of(ws.focused().view.cursor());
+                        crate::folds::shift(fv, at, delta);
+                    }
+                }
+                let cline = line_idx.line_of(ws.focused().view.cursor());
+                let snapped = crate::folds::snap_out(fv, cline);
+                if snapped != cline {
+                    ws.place_focused_cursor(line_idx.nth_line_start(snapped));
+                }
+            }
+            fold_lines.insert(buf, nlines);
+        }
         // Panic-rescue mirror + recovery journal are keyed to the FOCUSED buffer's own file path (F-007):
         // a hard kill while editing ANY file-backed buffer (incl. a `:e`-opened one) persists it — the
         // journal is recovered by reopening that file. A scratch buffer (no `files` entry) is skipped so
@@ -398,6 +426,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             lsp.completion_view(),
             has_graphics,
             &image_dims,
+            folds
+                .get(&ws.focused_buffer())
+                .map_or(&[][..], Vec::as_slice),
         )?;
         // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
         // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).
@@ -731,6 +762,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // `scrolloff`, so `zt`/`zb` land the line `scrolloff` rows inside the edge, as in Vim.
         if pending_z {
             pending_z = false;
+            // Scroll-align verbs (zz/zt/zb/z./z-/z<CR>) — unchanged.
             let to = match key.code {
                 KeyCode::Char('z' | '.') => Some(viewport::RecenterTo::Center),
                 KeyCode::Char('t') | KeyCode::Enter => Some(viewport::RecenterTo::Top),
@@ -740,6 +772,63 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             if let Some(to) = to {
                 let row = line_idx.line_of(ws.focused().view.cursor());
                 ws.set_top(ws.focus(), viewport::recenter(row, focused_h, to));
+                continue;
+            }
+            // Fold verbs (F-003). `zf` folds the Visual selection; the rest act on the fold at the cursor.
+            let buf = ws.focused_buffer();
+            let cur_line = line_idx.line_of(ws.focused().view.cursor());
+            let fv = folds.entry(buf).or_default();
+            match key.code {
+                // `zf` — create a CLOSED fold over the Visual selection's lines (Normal zf{motion} is slice 2).
+                KeyCode::Char('f') => {
+                    if let Some((s, e)) = ws.focused().view.selection_span(&snapshot) {
+                        let (a, b) = (line_idx.line_of(s), line_idx.line_of(e.saturating_sub(1)));
+                        let (start, end) = (a.min(b), a.max(b));
+                        if end > start {
+                            fv.push(crate::folds::Fold {
+                                start,
+                                end,
+                                closed: true,
+                            });
+                            run_cmd(
+                                Command::EnterNormal,
+                                &mut ws,
+                                &files,
+                                &mut recorded,
+                                &mut status,
+                                &mut quit,
+                            );
+                            ws.place_focused_cursor(line_idx.nth_line_start(start));
+                            status = format!("folded {} lines", end - start + 1);
+                        }
+                    } else {
+                        status = "zf needs a Visual selection (zf{motion} is coming)".to_string();
+                    }
+                }
+                // `zo`/`zc`/`za` — open / close / toggle the fold containing the cursor line.
+                KeyCode::Char('o' | 'c' | 'a') => {
+                    if let Some(idx) = crate::folds::fold_at(fv, cur_line) {
+                        fv[idx].closed = match key.code {
+                            KeyCode::Char('o') => false,
+                            KeyCode::Char('c') => true,
+                            _ => !fv[idx].closed,
+                        };
+                        let start = fv[idx].start;
+                        if fv[idx].closed {
+                            ws.place_focused_cursor(line_idx.nth_line_start(start));
+                        }
+                    }
+                }
+                // `zR` / `zM` — open / close ALL folds.
+                KeyCode::Char('R') => fv.iter_mut().for_each(|f| f.closed = false),
+                KeyCode::Char('M') => fv.iter_mut().for_each(|f| f.closed = true),
+                // `zd` — delete the fold at the cursor line.
+                KeyCode::Char('d') => {
+                    if let Some(idx) = crate::folds::fold_at(fv, cur_line) {
+                        fv.remove(idx);
+                    }
+                }
+                _ => {}
             }
             continue;
         }
@@ -785,8 +874,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             file_picker = Some(file_picker::open());
             continue;
         }
-        // `z` arms the scroll-prefix (handled above on the next key). Normal-only, plain `z` (no ctrl).
-        if normal && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
+        // `z` arms the scroll/fold prefix. In Normal (scroll + fold verbs) and Visual (so `zf` folds the
+        // selection); plain `z` (no ctrl), never on the command line.
+        let visual = matches!(
+            ws.focused().view.mode(),
+            Mode::Visual { .. } | Mode::Select { .. }
+        );
+        if (normal || visual) && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
             pending_z = true;
             continue;
         }
