@@ -2086,6 +2086,48 @@ mod visual_tests {
     }
 
     #[test]
+    fn visual_p_replaces_selection_and_swaps_the_register() {
+        // Yank "foo" (chars via y3l), select "bar" (v + 2l), then `p` replaces it with "foo".
+        let st = run(
+            "foo bar",
+            &[
+                Command::Yank(3, Motion::Right), // unnamed = "foo"
+                Command::Move(4, Motion::Right), // onto 'b'
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::MoveRight,
+                Command::MoveRight, // select "bar"
+                Command::PasteSelection { swap: true },
+            ],
+        );
+        assert_eq!(text(&st), "foo foo");
+        assert_eq!(st.mode(), Mode::Normal);
+        // The swap put the replaced "bar" into the unnamed register — a following `p` pastes it.
+        assert_eq!(st.register().text(), b"bar");
+    }
+
+    #[test]
+    fn visual_capital_p_preserves_the_register() {
+        // `P` replaces but does NOT clobber the register, so the same text can overwrite again.
+        let st = run(
+            "foo bar",
+            &[
+                Command::Yank(3, Motion::Right),
+                Command::Move(4, Motion::Right),
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::PasteSelection { swap: false },
+            ],
+        );
+        assert_eq!(text(&st), "foo foo");
+        assert_eq!(st.register().text(), b"foo", "P keeps the register intact");
+    }
+
+    #[test]
     fn entering_visual_sets_a_collapsed_selection() {
         let st = run(
             "hello",

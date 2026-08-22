@@ -270,6 +270,12 @@ pub enum Command {
         /// `gp`/`gP` (Vim): leave the cursor JUST AFTER the pasted text instead of on/before it.
         move_after: bool,
     },
+    /// Visual `p` / `P` — replace the current selection with the register's contents. `swap` (Vim `p`) puts
+    /// the deleted selection into the unnamed register; `P` (`swap: false`) preserves the register so it can
+    /// be pasted over successive selections. A no-op outside a selection.
+    PasteSelection {
+        swap: bool,
+    },
     /// `]p` / `[p` (and `]P`/`[P`) — paste like `p`/`P` but ADJUST the indent of a linewise register to the
     /// current line: the first pasted line takes the current line's indent, the rest shift by the same
     /// column delta (Vim `:help ]p`). A charwise/blockwise register pastes unchanged (Vim `]p` = `p` there).
@@ -844,6 +850,13 @@ impl Command {
                     format!("paste_before_indent {count}")
                 }
             }
+            Command::PasteSelection { swap } => {
+                if *swap {
+                    "paste_selection swap".into()
+                } else {
+                    "paste_selection keep".into()
+                }
+            }
             Command::SetRegister(name) => match name {
                 Some(c) => format!("select_register {}", *c as u32),
                 None => "select_register".into(),
@@ -1235,6 +1248,9 @@ impl Command {
             "paste_before_indent" => Command::PasteIndent {
                 after: false,
                 count: arg_u32(arg, line)?,
+            },
+            "paste_selection" => Command::PasteSelection {
+                swap: !matches!(arg.map(str::trim), Some("keep")),
             },
             "select_register" => {
                 // No arg → the unnamed register; otherwise a decimal Unicode scalar for the register name.
@@ -1642,6 +1658,8 @@ mod tests {
                 after: false,
                 count: 3,
             },
+            Command::PasteSelection { swap: true },
+            Command::PasteSelection { swap: false },
             Command::SetRegister(None),
             Command::SetRegister(Some('a')),
             Command::SetRegister(Some('Z')),

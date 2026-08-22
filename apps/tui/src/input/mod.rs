@@ -1240,6 +1240,10 @@ impl InputEngine {
                     self.normal.awaiting = Awaiting::GSecond;
                     return Feed::Pending;
                 }
+                // Visual `p`/`P` — replace the selection with the register. `p` swaps the deleted text into
+                // the unnamed register; `P` preserves it (paste the same thing over successive selections).
+                KeyCode::Char('p') => return self.action(Command::PasteSelection { swap: true }),
+                KeyCode::Char('P') => return self.action(Command::PasteSelection { swap: false }),
                 // `o` swaps the selection's ends (cursor <-> anchor); the SAME text stays selected but a
                 // later motion extends the other end. In Normal `o` is OpenBelow — here it is the swap.
                 KeyCode::Char('o') => return self.action(Command::SwapSelectionEnds),

@@ -1543,6 +1543,48 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 Err(_) => nop(s, Mode::Normal),
             }
         }
+        // Visual `p`/`P` — replace the selection with the register; `swap` puts the deleted text into the
+        // unnamed register (Vim `p`), `P` preserves the register (so it can overwrite successive selections).
+        Command::PasteSelection { swap } => {
+            let Some(anchor) = st.view.anchor else {
+                return nop(cur, Mode::Normal);
+            };
+            let line = matches!(
+                st.view.mode,
+                Mode::Visual {
+                    kind: SelectKind::Linewise
+                } | Mode::Select {
+                    kind: SelectKind::Linewise
+                }
+            );
+            let (s, e) = selection_range(b, anchor, cur, line);
+            if s >= e {
+                return nop(s, Mode::Normal);
+            }
+            let deleted = captured(b, s, e, line);
+            let reg = st.view.registers.get(st.view.pending_register).clone();
+            let repl = reg.text().to_vec();
+            // Cursor: charwise register → on the last pasted byte; linewise/empty → at the span start.
+            let cursor = if repl.is_empty() || reg.is_linewise() {
+                s
+            } else {
+                s + repl.len() - 1
+            };
+            let set_register = swap.then_some(RegWrite::Edit(deleted));
+            Plan {
+                action: Action::Txn {
+                    edits: one(Edit::replace(s, e - s, repl)),
+                    hint: GroupHint::BreakBefore,
+                },
+                cursor,
+                mode: Mode::Normal,
+                is_edit: true,
+                effects: Vec::new(),
+                set_register,
+                set_anchor: None,
+                set_mark: None,
+            }
+        }
         Command::SearchNext(pat) => {
             let m = search_fwd(b, pat, cur + 1, st.view.search_options()).unwrap_or(cur);
             nop(m, st.view.mode)
