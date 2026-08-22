@@ -1013,6 +1013,7 @@ mod tests {
         w.apply(&Command::Paste {
             after: true,
             count: 1,
+            move_after: false,
         });
         assert_eq!(w.focused().doc.bytes(), b"one\none\ntwo\ntwo\nthree\n");
 
@@ -1022,6 +1023,7 @@ mod tests {
         w.apply(&Command::Paste {
             after: true,
             count: 1,
+            move_after: false,
         });
         assert_eq!(w.focused().doc.bytes(), b"a\nb\nb");
     }
@@ -1234,6 +1236,7 @@ mod tests {
         w.apply(&Command::Paste {
             after: true,
             count: u32::MAX,
+            move_after: false,
         });
         // Bounded to ~64 MiB, NOT 3 × 4.29e9 ≈ 12 GiB.
         assert!(

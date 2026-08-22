@@ -1204,10 +1204,12 @@ impl InputEngine {
             KeyCode::Char('p') => self.action(Command::Paste {
                 after: true,
                 count: self.mcount(),
+                move_after: false,
             }),
             KeyCode::Char('P') => self.action(Command::Paste {
                 after: false,
                 count: self.mcount(),
+                move_after: false,
             }),
             // Line-operator synonyms: `D`=`d$`, `C`=`c$`, `Y`=`y$` (nvim 0.6+ charwise), `S`=`cc`.
             // Each is the existing operator applied to an implicit motion, routed through the same
@@ -1484,6 +1486,17 @@ impl InputEngine {
                     KeyCode::Char(',') => self.action(Command::GotoNewerChange),
                     // `gi` — resume Insert at the last-insert position (Vim `` `^ ``).
                     KeyCode::Char('i') => self.action(Command::InsertAtLastInsert),
+                    // `gp` / `gP` — paste like `p`/`P` but leave the cursor JUST AFTER the pasted text.
+                    KeyCode::Char('p') => self.action(Command::Paste {
+                        after: true,
+                        count: self.mcount(),
+                        move_after: true,
+                    }),
+                    KeyCode::Char('P') => self.action(Command::Paste {
+                        after: false,
+                        count: self.mcount(),
+                        move_after: true,
+                    }),
                     // `g&` — repeat the last `:s` over the whole file with its flags (frontend-resolved).
                     KeyCode::Char('&') => self.action(Command::RepeatSubstituteGlobal),
                     // `gv` — re-select the last visual selection (D-027 depth-1 slice).

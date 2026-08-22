@@ -147,9 +147,12 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
             count: n,
             motion: *motion,
         },
-        C::Paste { after, .. } => C::Paste {
+        C::Paste {
+            after, move_after, ..
+        } => C::Paste {
             after: *after,
             count: n,
+            move_after: *move_after,
         },
         other => other.clone(),
     }

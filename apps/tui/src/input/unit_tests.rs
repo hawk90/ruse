@@ -1729,14 +1729,32 @@ mod tests {
             feed("p"),
             Feed::Cmd(Command::Paste {
                 after: true,
-                count: 1
+                count: 1,
+                move_after: false
             })
         );
         assert_eq!(
             feed("P"),
             Feed::Cmd(Command::Paste {
                 after: false,
-                count: 1
+                count: 1,
+                move_after: false
+            })
+        );
+        assert_eq!(
+            feed("gp"),
+            Feed::Cmd(Command::Paste {
+                after: true,
+                count: 1,
+                move_after: true
+            })
+        );
+        assert_eq!(
+            feed("gP"),
+            Feed::Cmd(Command::Paste {
+                after: false,
+                count: 1,
+                move_after: true
             })
         );
     }
