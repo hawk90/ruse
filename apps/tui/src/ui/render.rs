@@ -107,6 +107,7 @@ pub(crate) fn paint_pane(
     out_images: &mut Vec<(String, graphics::Placement)>,
     graphics_on: bool,
     image_dims: &std::collections::HashMap<String, (u32, u32)>,
+    folds: &[crate::folds::Fold],
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
@@ -136,12 +137,19 @@ pub(crate) fn paint_pane(
     // Display rows added by virtual blocks (image placeholders) on lines ABOVE the current one — every
     // subsequent buffer line paints that many rows lower (F-031 slice 3a row-coordinate model).
     let mut virt_before: u16 = 0;
+    // Display rows REMOVED by closed folds on lines above the current one — the negative-space twin of
+    // `virt_before` (F-003 folds). `disp = (line-top) + virt_before − folded_before`.
+    let mut folded_before: u16 = 0;
+    // The display row for the current buffer `line` given the running virt/fold offsets.
+    let disp_of = |line: usize, virt_before: u16, folded_before: u16| -> u16 {
+        ((line - top) as u16 + virt_before).saturating_sub(folded_before)
+    };
     for (i, g) in text.grapheme_indices(true) {
         if g == "\n" {
-            // Finished buffer line `line`: if it is on-screen and carries a virtual block, paint the block
-            // on the rows just below its text and grow the running offset.
-            if line >= top {
-                let disp = (line - top) as u16 + virt_before;
+            // Finished buffer line `line`: paint a virtual block below it (unless the line is folded away),
+            // then grow the running offsets — `folded_before` for a line hidden inside a closed fold.
+            if line >= top && !crate::folds::hidden(folds, line) {
+                let disp = disp_of(line, virt_before, folded_before);
                 if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
                     paint_block(cur, disp + 1, vb);
                     collect_image(
@@ -154,21 +162,43 @@ pub(crate) fn paint_pane(
                     virt_before += vb.height;
                 }
             }
+            if crate::folds::hidden(folds, line) {
+                folded_before += 1; // this line collapsed into the fold above it — remove its row
+            }
             line += 1;
             scol = x0;
-            if line >= top && (line - top) as u16 + virt_before >= rect.h {
-                break; // next line is past the bottom of this pane (display rows include virtual ones)
+            if line >= top && disp_of(line, virt_before, folded_before) >= rect.h {
+                break; // next line is past the bottom of this pane (display rows include virt/fold offsets)
             }
             continue;
         }
         if line < top || scol >= x1 {
             continue; // above the pane, or past its right edge (truncate)
         }
-        let disp = (line - top) as u16 + virt_before;
+        if crate::folds::hidden(folds, line) {
+            continue; // a line collapsed inside a closed fold paints nothing (its `\n` bumps folded_before)
+        }
+        let disp = disp_of(line, virt_before, folded_before);
         if disp >= rect.h {
-            continue; // clipped below the pane by the virtual rows above
+            continue; // clipped below the pane by the virtual/fold rows above
         }
         let srow = rect.y + disp;
+        // A closed fold's START row shows a one-line summary in place of its text; paint it once (at the
+        // line's first cell) and skip the rest of the start line's graphemes.
+        if let Some(fold) = crate::folds::closed_starting_at(folds, line) {
+            if scol == x0 {
+                let line_text = text[i..].split('\n').next().unwrap_or("");
+                let mut c = x0;
+                for gph in crate::folds::summary(fold, line_text).graphemes(true) {
+                    if c >= x1 {
+                        break;
+                    }
+                    c = cur.put(srow, c, gph, Color::DarkGrey, false);
+                }
+            }
+            scol = x1; // skip the real content of the fold's start line
+            continue;
+        }
         // F-031 conceal: on a non-caret line, a concealed cluster paints NO cell and does not advance the
         // column (following glyphs shift left) — the caret line is revealed so its markup stays editable.
         // At the range's START, any virt_text (a bullet/checkbox glyph) is painted in the marker's place.
@@ -213,8 +243,8 @@ pub(crate) fn paint_pane(
     }
     // A virtual block on the FINAL buffer line (a file that ends without a trailing newline) never hits the
     // `\n` branch above, so paint it here.
-    if line >= top {
-        let disp = (line - top) as u16 + virt_before;
+    if line >= top && !crate::folds::hidden(folds, line) {
+        let disp = disp_of(line, virt_before, folded_before);
         if disp < rect.h {
             if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
                 paint_block(cur, disp + 1, vb);
@@ -424,6 +454,7 @@ pub(crate) fn render(
     completion: Option<(&[crate::lsp::protocol::CompletionItem], usize)>,
     graphics_on: bool,
     image_dims: &std::collections::HashMap<String, (u32, u32)>,
+    folds: &[crate::folds::Fold],
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
@@ -504,6 +535,8 @@ pub(crate) fn render(
         } else {
             &[]
         };
+        // Folds are per-view; slice 1 collapses only the FOCUSED pane's folds (F-003).
+        let pane_folds: &[crate::folds::Fold] = if i == ws.focus() { folds } else { &[] };
         // F-014: underline the focused buffer's diagnostic ranges.
         let underline: Vec<(usize, usize)> = if i == ws.focus() {
             diagnostics.iter().map(|d| (d.start, d.end)).collect()
@@ -526,6 +559,7 @@ pub(crate) fn render(
             &mut images,
             graphics_on,
             image_dims,
+            pane_folds,
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -571,6 +605,7 @@ pub(crate) fn render(
                 focus.view.cursor(),
                 focus.view.top(),
                 virt_lines,
+                folds,
             );
             let frect = rects.get(ws.focus()).copied().unwrap_or(Rect {
                 x: 0,
@@ -704,6 +739,7 @@ pub(crate) fn render(
             focus.view.cursor(),
             focus.view.top(),
             virt_lines,
+            folds,
         );
         let screen_row = (frect.y + row).min(rows.saturating_sub(1));
         let screen_col = (frect.x + col).min(cols.saturating_sub(1));
@@ -800,9 +836,12 @@ pub(crate) fn cursor_cell(
     pos: usize,
     top: usize,
     virt: &[highlight::VirtLine],
+    folds: &[crate::folds::Fold],
 ) -> (u16, u16) {
     let pos = pos.min(bytes.len());
     let buf_row = bytes[..pos].iter().filter(|&&c| c == b'\n').count();
+    // A caret inside a closed fold displays on the fold's summary (start) row.
+    let disp_row = crate::folds::snap_out(folds, buf_row);
     let line_start = bytes[..pos]
         .iter()
         .rposition(|&c| c == b'\n')
@@ -811,13 +850,18 @@ pub(crate) fn cursor_cell(
     // slice — computed by the SHARED column rule, not a private re-derivation (F-031 slice 0).
     let line = std::str::from_utf8(&bytes[line_start..pos]).unwrap_or("");
     let col = line_display_col(line, line.len());
-    // Virtual rows inserted for lines in `[top, buf_row)` push the caret down (F-031 slice 3a).
+    // Virtual rows inserted for lines in `[top, disp_row)` push the caret down (F-031 slice 3a); rows
+    // collapsed by closed folds above it pull the caret up (F-003 folds).
     let virt_above: u16 = virt
         .iter()
-        .filter(|v| v.after_line >= top && v.after_line < buf_row)
+        .filter(|v| v.after_line >= top && v.after_line < disp_row)
         .map(|v| v.height)
         .sum();
-    (buf_row.saturating_sub(top) as u16 + virt_above, col)
+    let folded_above = crate::folds::hidden_before(folds, disp_row).min(disp_row) as u16;
+    (
+        (disp_row.saturating_sub(top) as u16 + virt_above).saturating_sub(folded_above),
+        col,
+    )
 }
 
 #[cfg(test)]
@@ -866,7 +910,7 @@ mod render_tests {
             ("e\u{0301}z", 3, 1), // 'e' + combining acute = one cluster, width 1
         ];
         for &(s, pos, want) in cases {
-            let (_row, col) = cursor_cell(s.as_bytes(), pos, 0, &[]);
+            let (_row, col) = cursor_cell(s.as_bytes(), pos, 0, &[], &[]);
             assert_eq!(col, want, "caret column for {s:?} at byte {pos}");
         }
     }
@@ -910,6 +954,7 @@ mod render_tests {
             &mut Vec::new(),
             false,
             &std::collections::HashMap::new(),
+            &[],
         );
         assert!(cur.cell(0, 0).style.bold, "byte 0 paints bold");
         assert!(cur.cell(0, 1).style.italic, "byte 1 paints italic");
@@ -931,6 +976,7 @@ mod render_tests {
             &mut Vec::new(),
             false,
             &std::collections::HashMap::new(),
+            &[],
         );
         let c = sel.cell(0, 0);
         assert!(
@@ -974,6 +1020,7 @@ mod render_tests {
             &mut Vec::new(),
             false,
             &std::collections::HashMap::new(),
+            &[],
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1004,6 +1051,7 @@ mod render_tests {
             &mut Vec::new(),
             false,
             &std::collections::HashMap::new(),
+            &[],
         );
         assert_eq!(
             s2.cell(0, 0).content,
@@ -1044,6 +1092,7 @@ mod render_tests {
             &mut Vec::new(),
             false,
             &std::collections::HashMap::new(),
+            &[],
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1074,9 +1123,63 @@ mod render_tests {
             path: None,
         }];
         // Caret on line 2 ('c' at byte 4): row 2 + 2 virtual rows above = screen row 4.
-        assert_eq!(cursor_cell(bytes, 4, 0, &virt).0, 4);
+        assert_eq!(cursor_cell(bytes, 4, 0, &virt, &[]).0, 4);
         // Caret on line 0 ('a' at byte 0): nothing above, row 0.
-        assert_eq!(cursor_cell(bytes, 0, 0, &virt).0, 0);
+        assert_eq!(cursor_cell(bytes, 0, 0, &virt, &[]).0, 0);
+    }
+
+    /// F-003 folds: a closed fold collapses its interior lines — its START row shows the summary and the
+    /// line below the fold paints on the very next display row.
+    #[test]
+    fn paint_pane_collapses_a_closed_fold() {
+        let bytes = b"a\nb\nc\nd\ne"; // lines 0..=4
+        let no_style: &[screen::CellStyle] = &[];
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 5,
+        };
+        // Fold lines 1..=3 closed: line 1 shows the summary, lines 2/3 hidden, line 4 paints on row 2.
+        let folds = [crate::folds::Fold {
+            start: 1,
+            end: 3,
+            closed: true,
+        }];
+        let mut s = screen::Screen::new(20, 5);
+        paint_pane(
+            &mut s,
+            rect,
+            bytes,
+            no_style,
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &[],
+            9,
+            &[],
+            &mut Vec::new(),
+            false,
+            &std::collections::HashMap::new(),
+            &folds,
+        );
+        assert_eq!(
+            s.cell(0, 0).content,
+            screen::Content::Cluster("a".into()),
+            "line 0 on row 0",
+        );
+        assert_eq!(
+            s.cell(1, 0).content,
+            screen::Content::Cluster("\u{25b8}".into()),
+            "fold summary (▸) on the fold's start row",
+        );
+        assert_eq!(
+            s.cell(2, 0).content,
+            screen::Content::Cluster("e".into()),
+            "line 4 collapses up to row 2 (lines 2,3 hidden)",
+        );
     }
 
     /// F-031 slice 3a (row model): a virtual block pushes the buffer lines below it DOWN, and the block's
@@ -1114,6 +1217,7 @@ mod render_tests {
             &mut Vec::new(),
             false,
             &std::collections::HashMap::new(),
+            &[],
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1168,6 +1272,7 @@ mod render_tests {
             &mut images,
             true,                              // graphics ON, but the image can't be loaded
             &std::collections::HashMap::new(), // no dims recorded → treated as not-found
+            &[],
         );
         // Row 1 (just below line 0) begins the fallback band with the "[image:" text.
         assert_eq!(
