@@ -1203,6 +1203,17 @@ impl InputEngine {
                 KeyCode::Char('c') | KeyCode::Char('s') => {
                     return self.action(Command::ChangeSelection)
                 }
+                // Visual `u`/`U`/`~` recase the selection (Visual only; in Select a printable key replaces
+                // it via the namespace policy). `gu`/`gU`/`g~` in Visual are a follow-up.
+                KeyCode::Char('u') if matches!(mode, Mode::Visual { .. }) => {
+                    return self.action(Command::CaseSelection(WordCase::Downcase))
+                }
+                KeyCode::Char('U') if matches!(mode, Mode::Visual { .. }) => {
+                    return self.action(Command::CaseSelection(WordCase::Upcase))
+                }
+                KeyCode::Char('~') if matches!(mode, Mode::Visual { .. }) => {
+                    return self.action(Command::CaseSelection(WordCase::Toggle))
+                }
                 // `o` swaps the selection's ends (cursor <-> anchor); the SAME text stays selected but a
                 // later motion extends the other end. In Normal `o` is OpenBelow — here it is the swap.
                 KeyCode::Char('o') => return self.action(Command::SwapSelectionEnds),

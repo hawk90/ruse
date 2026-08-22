@@ -89,6 +89,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::CaseMotion { .. }
         | C::JoinLines
         | C::JoinLinesNoSpace
+        | C::CaseSelection(_)
         | C::IncrementNumber(_)
         | C::ShiftRight(_)
         | C::ShiftLeft(_)

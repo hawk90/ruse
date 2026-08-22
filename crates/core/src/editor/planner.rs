@@ -1505,6 +1505,31 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 _ => nop(s, Mode::Normal),
             }
         }
+        // Visual `u`/`U`/`~` — recase the selection in place, cursor at its start, back to Normal.
+        Command::CaseSelection(case) => {
+            let Some(anchor) = st.view.anchor else {
+                return nop(cur, Mode::Normal);
+            };
+            let line = matches!(
+                st.view.mode,
+                Mode::Visual {
+                    kind: SelectKind::Linewise
+                } | Mode::Select {
+                    kind: SelectKind::Linewise
+                }
+            );
+            let (s, e) = selection_range(b, anchor, cur, line);
+            if s >= e {
+                return nop(s, Mode::Normal);
+            }
+            match std::str::from_utf8(&b[s..e]) {
+                Ok(text) => {
+                    let new = recase(text, *case).into_bytes();
+                    edit(one(Edit::replace(s, e - s, new)), s, Mode::Normal, hint)
+                }
+                Err(_) => nop(s, Mode::Normal),
+            }
+        }
         Command::SearchNext(pat) => {
             let m = search_fwd(b, pat, cur + 1, st.view.search_options()).unwrap_or(cur);
             nop(m, st.view.mode)

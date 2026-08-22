@@ -170,6 +170,9 @@ pub enum Command {
         motion: Motion,
         case: WordCase,
     },
+    /// Visual `u`/`U`/`~` — recase the whole selection (lower / upper / toggle), leaving the cursor at the
+    /// selection start and returning to Normal. A no-op outside a selection.
+    CaseSelection(WordCase),
     /// `J` — join the current line with the next on a single space.
     JoinLines,
     /// `gJ` — join the current line with the next WITHOUT inserting a space or stripping the next
@@ -790,6 +793,7 @@ impl Command {
                 motion_token(*motion),
                 word_case_token(*case)
             ),
+            Command::CaseSelection(case) => format!("case_selection {}", word_case_token(*case)),
             Command::OpForced {
                 op,
                 count,
@@ -1131,6 +1135,12 @@ impl Command {
                     case,
                 });
             }
+            "case_selection" => {
+                return Ok(Command::CaseSelection(arg_word_case(
+                    arg.map(str::trim),
+                    line,
+                )?));
+            }
             "op_forced" => {
                 // `op_forced {op} {wise} {count} {motion}`
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
@@ -1365,6 +1375,9 @@ mod tests {
             Command::ReplaceChar(1, '가'),
             Command::ToggleCase(1),
             Command::ToggleCase(4),
+            Command::CaseSelection(WordCase::Upcase),
+            Command::CaseSelection(WordCase::Downcase),
+            Command::CaseSelection(WordCase::Toggle),
             Command::JoinLines,
             Command::JoinLinesNoSpace,
             Command::IncrementNumber(1),
