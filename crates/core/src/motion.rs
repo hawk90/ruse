@@ -93,6 +93,9 @@ pub enum Motion {
     GotoLine,
     /// Go to the last line's first non-blank char (bare `G`). Linewise under an operator.
     LastLine,
+    /// Vim `[count]go` — go to the `count`-th BYTE of the buffer (1-based; bare `go` = byte 1), snapped to a
+    /// char boundary. Exclusive charwise under an operator (`dgo`). `count` past the end clamps to the last byte.
+    GotoByte,
     /// Jump to the matching bracket of `()`, `[]`, or `{}` (`%`). Nesting-aware; the match may be on another
     /// line. If the cursor is not on a bracket, the first bracket forward on the line is matched instead.
     MatchBracket,
@@ -998,6 +1001,16 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     if m == Motion::LastLine {
         return first_non_blank(b, last_line_start(b));
     }
+    // `{count}go`: the count is an absolute 1-based BYTE offset (not a repeat); a count past EOF lands on the
+    // LAST byte (Vim never rests the cursor past the final char). Snapped to a char boundary.
+    if m == Motion::GotoByte {
+        return snap(
+            b,
+            (n as usize)
+                .saturating_sub(1)
+                .min(b.len().saturating_sub(1)),
+        );
+    }
     // Bracket match jumps to a single computed position (count is not a repeat; `count%` is deferred).
     if m == Motion::MatchBracket {
         return match_bracket(b, cur0).unwrap_or(cur0);
@@ -1058,6 +1071,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::FindChar { .. }
             | Motion::GotoLine
             | Motion::LastLine
+            | Motion::GotoByte
             | Motion::MatchBracket
             | Motion::LineLastNonBlank
             | Motion::Column
@@ -1120,8 +1134,9 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             }
             (e, next_boundary(b, cur))
         }
-        // `^` / `|` are exclusive and can point either way (indent / column left or right): ordered pair.
-        Motion::LineFirstNonBlank | Motion::Column => {
+        // `^` / `|` / `go` are exclusive and can point either way (indent / column / byte, left or right):
+        // ordered pair from the cursor to the absolute target.
+        Motion::LineFirstNonBlank | Motion::Column | Motion::GotoByte => {
             let t = target(b, cur, m, n);
             (cur.min(t), cur.max(t))
         }
