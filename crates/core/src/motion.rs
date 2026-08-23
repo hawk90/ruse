@@ -1156,7 +1156,17 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
     let n = count.max(1);
     match m {
         // forward / rightward → [cursor, target)
-        Motion::Right | Motion::WordFwd | Motion::BigWordFwd => (cur, target(b, cur, m, n)),
+        Motion::Right => (cur, target(b, cur, m, n)),
+        // `dw`/`dW`: Vim does NOT let an `w`/`W` operator cross the line's newline. When the motion would
+        // land on a later line, the operated text ends at the END OF THIS LINE — through any trailing
+        // whitespace, but before the newline — so `dw` on the last word EMPTIES the line instead of joining
+        // it to the next. (Captured from nvim: `dw` on ["foo","bar"] → ["","bar"], on ["foo   ","bar"] →
+        // ["","bar"] deleting "foo   ".) When the motion stays on the line, the target is unchanged.
+        Motion::WordFwd | Motion::BigWordFwd => {
+            let t = target(b, cur, m, n);
+            let le = line_end(b, cur);
+            (cur, if t > le { le } else { t })
+        }
         // `d$` reaches the line end (deletes the last char too), unlike the bare `$` move which stops on it.
         Motion::LineEnd => (cur, line_end(b, cur)),
         // Paragraph motions as a charwise span (`c}` / a Visual `}` extend): forward → [cursor, target),

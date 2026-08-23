@@ -2129,6 +2129,41 @@ mod word_class_tests {
     }
 
     #[test]
+    fn dw_on_last_word_does_not_join_the_next_line() {
+        // Vim: an `w` operator never crosses the newline — `dw` on the last word empties the line instead
+        // of joining it. Expects captured from nvim v0.12.4 (oracle fixtures dw_last_word_*).
+        // Whole line is one word.
+        let st = run("foo\nbar", &[Command::Delete(1, Motion::WordFwd)]);
+        assert_eq!(
+            text(&st),
+            "\nbar",
+            "dw deletes 'foo', leaves an empty first line"
+        );
+        // Trailing whitespace after the last word is deleted too (through EOL, not the newline).
+        let st = run("foo   \nbar", &[Command::Delete(1, Motion::WordFwd)]);
+        assert_eq!(
+            text(&st),
+            "\nbar",
+            "dw deletes 'foo   ' up to (not incl.) the newline"
+        );
+        // Mid-line last word with trailing whitespace.
+        let st = run(
+            "ab cd  \nef",
+            &[
+                Command::Move(1, Motion::WordFwd),
+                Command::Delete(1, Motion::WordFwd),
+            ],
+        );
+        assert_eq!(text(&st), "ab \nef", "wdw deletes 'cd  ' up to EOL");
+        // `dW` at EOL likewise stops at the newline.
+        let st = run("foo.bar\nbaz", &[Command::Delete(1, Motion::BigWordFwd)]);
+        assert_eq!(text(&st), "\nbaz", "dW deletes 'foo.bar', no join");
+        // `2dw` where the 2nd word ends the line: both words go, the newline stays.
+        let st = run("a b\nc d", &[Command::Delete(2, Motion::WordFwd)]);
+        assert_eq!(text(&st), "\nc d", "2dw deletes 'a b' up to EOL, no join");
+    }
+
+    #[test]
     fn multibyte_is_one_word() {
         // "가나 다": w skips the Hangul word to the next.
         let st = run("가나 다", &[Command::Move(1, Motion::WordFwd)]);

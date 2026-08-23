@@ -907,6 +907,136 @@
       }
     },
     {
+      "name": "dw_last_word_joins_next",
+      "lines": [
+        "foo",
+        "bar"
+      ],
+      "keys": "dw",
+      "expect": {
+        "text": [
+          "",
+          "bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dw_last_word_trailing_ws",
+      "lines": [
+        "foo   ",
+        "bar"
+      ],
+      "keys": "dw",
+      "expect": {
+        "text": [
+          "",
+          "bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo   ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dw_midline_last_word_trailing_ws",
+      "lines": [
+        "ab cd  ",
+        "ef"
+      ],
+      "keys": "wdw",
+      "expect": {
+        "text": [
+          "ab ",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "cd  ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dW_last_word_at_eol",
+      "lines": [
+        "foo.bar",
+        "baz"
+      ],
+      "keys": "dW",
+      "expect": {
+        "text": [
+          "",
+          "baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo.bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_dw_crosses_eol",
+      "lines": [
+        "a b",
+        "c d"
+      ],
+      "keys": "2dw",
+      "expect": {
+        "text": [
+          "",
+          "c d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_on_empty_line",
       "lines": [
         ""
