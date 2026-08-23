@@ -1026,6 +1026,12 @@ impl InputEngine {
         if ctrl && key.code == KeyCode::Char('d') {
             return self.action(Command::InsertDedent);
         }
+        // `<Tab>` inserts whitespace to the next tabstop (spaces under `expandtab`, else a hard tab). Without
+        // this, Tab falls through to the Insert unmatched policy, which only emits for `Char` keys — so a raw
+        // `KeyCode::Tab` would silently do nothing.
+        if key.code == KeyCode::Tab {
+            return self.action(Command::InsertTab);
+        }
         if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code) {
             let cmd = value.clone();
             self.reset();

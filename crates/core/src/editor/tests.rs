@@ -1399,6 +1399,63 @@ mod shift_tests {
     }
 
     #[test]
+    fn insert_tab_expandtab_fills_to_next_tabstop() {
+        // At column 0 a full tabstop of spaces is inserted.
+        let st = run_indent(
+            "hello",
+            4,
+            IndentStyle::Space,
+            &[Command::EnterInsert, Command::InsertTab],
+        );
+        assert_eq!(text(&st), "    hello");
+        assert_eq!(st.cursor(), 4);
+
+        // Mid-line (caret after "he", vcol 2): only 2 spaces to reach the next tabstop (col 4).
+        let st = run_indent(
+            "hello",
+            4,
+            IndentStyle::Space,
+            &[
+                Command::Move(2, Motion::Right),
+                Command::EnterInsert,
+                Command::InsertTab,
+            ],
+        );
+        assert_eq!(text(&st), "he  llo");
+        assert_eq!(st.cursor(), 4);
+
+        // On a tabstop boundary (vcol 4): a full unit is inserted, not zero.
+        let st = run_indent(
+            "hello",
+            4,
+            IndentStyle::Space,
+            &[
+                Command::Move(4, Motion::Right),
+                Command::EnterInsert,
+                Command::InsertTab,
+            ],
+        );
+        assert_eq!(text(&st), "hell    o");
+        assert_eq!(st.cursor(), 8);
+    }
+
+    #[test]
+    fn insert_tab_tab_style_inserts_a_hard_tab() {
+        let st = run_indent(
+            "hello",
+            4,
+            IndentStyle::Tab,
+            &[
+                Command::Move(2, Motion::Right),
+                Command::EnterInsert,
+                Command::InsertTab,
+            ],
+        );
+        assert_eq!(text(&st), "he\tllo");
+        assert_eq!(st.cursor(), 3, "caret after the one-byte tab");
+    }
+
+    #[test]
     fn shift_right_leaves_a_truly_empty_line_untouched() {
         let st = run("", &[Command::ShiftRight(1)]);
         assert_eq!(text(&st), "", "Vim never indents an empty line");

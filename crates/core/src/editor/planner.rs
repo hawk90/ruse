@@ -860,6 +860,21 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let cursor = cur.saturating_sub(remove).max(ls);
             edit(one(Edit::delete(ls, remove)), cursor, Mode::Insert, hint)
         }
+        // `<Tab>` in Insert: insert whitespace at the caret to the next tabstop. Space style (`expandtab`)
+        // inserts `tab_width - (vcol % tab_width)` spaces so the caret lands on a tabstop column even when
+        // it started mid-line; tab style inserts one `\t`. Unlike `i_CTRL-T` this is caret-relative.
+        Command::InsertTab => {
+            let ins: Vec<u8> = match st.view.indent.style {
+                IndentStyle::Tab => vec![b'\t'],
+                IndentStyle::Space => {
+                    let ts = st.view.indent.tab_width.max(1);
+                    let vcol = crate::motion::vcol_of(b, line_start(b, cur), cur, ts);
+                    vec![b' '; ts - (vcol % ts)]
+                }
+            };
+            let cursor = cur + ins.len();
+            edit(one(Edit::insert(cur, ins)), cursor, Mode::Insert, hint)
+        }
         Command::InsertNewline => edit(
             one(Edit::insert(cur, b"\n".to_vec())),
             cur + 1,
