@@ -2979,6 +2979,578 @@
       }
     },
     {
+      "name": "replace_mode_overwrites",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "RXYZ<Esc>",
+      "expect": {
+        "text": [
+          "XYZdef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "replace_mode_past_eol_appends",
+      "lines": [
+        "ab"
+      ],
+      "keys": "RXYZ<Esc>",
+      "expect": {
+        "text": [
+          "XYZ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "replace_mode_backspace_restores",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "RXY<BS><BS><Esc>",
+      "expect": {
+        "text": [
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gU_inner_word",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "gUiw",
+      "expect": {
+        "text": [
+          "FOO bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gu_a_word",
+      "lines": [
+        "FOO BAR"
+      ],
+      "keys": "guaw",
+      "expect": {
+        "text": [
+          "foo BAR"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "g_tilde_inner_word",
+      "lines": [
+        "FooBar baz"
+      ],
+      "keys": "g~iw",
+      "expect": {
+        "text": [
+          "fOObAR baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gU_a_paragraph",
+      "lines": [
+        "one two",
+        "three"
+      ],
+      "keys": "gUip",
+      "expect": {
+        "text": [
+          "ONE TWO",
+          "THREE"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gU_to_eol",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "gU$",
+      "expect": {
+        "text": [
+          "FOO BAR"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gu_word_motion",
+      "lines": [
+        "FOO BAR"
+      ],
+      "keys": "guw",
+      "expect": {
+        "text": [
+          "foo BAR"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_sentence_fwd",
+      "lines": [
+        "One two. Three four."
+      ],
+      "keys": "d)",
+      "expect": {
+        "text": [
+          "Three four."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "One two. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "sentence_back",
+      "lines": [
+        "One. Two three."
+      ],
+      "keys": "$(x",
+      "expect": {
+        "text": [
+          "One. wo three."
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "T",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dap_around_paragraph",
+      "lines": [
+        "a",
+        "b",
+        "",
+        "c"
+      ],
+      "keys": "dap",
+      "expect": {
+        "text": [
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gi_resume_insert",
+      "lines": [
+        "abc"
+      ],
+      "keys": "iX<Esc>llgiY<Esc>",
+      "expect": {
+        "text": [
+          "XYabc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "increment_hex_ff",
+      "lines": [
+        "0xff"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0x100"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "increment_negative_wraps",
+      "lines": [
+        "-1"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "increment_binary",
+      "lines": [
+        "0b101"
+      ],
+      "keys": "<C-a>",
+      "expect": {
+        "text": [
+          "0b110"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "replace_char_unicode",
+      "lines": [
+        "αβγ"
+      ],
+      "keys": "lrx",
+      "expect": {
+        "text": [
+          "αxγ"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_change_column",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "\u0016jjcX\u001b",
+      "expect": {
+        "text": [
+          "abc",
+          "def",
+          "ghi"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_yank_paste",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "\u0016jly$p",
+      "expect": {
+        "text": [
+          "abc",
+          "deeff"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "ef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ef",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "dib_paren_alias",
+      "lines": [
+        "x(abc)y"
+      ],
+      "keys": "fadib",
+      "expect": {
+        "text": [
+          "x()y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dab_brace_alias",
+      "lines": [
+        "x{abc}y"
+      ],
+      "keys": "fadaB",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "{abc}",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cip_inner_paragraph",
+      "lines": [
+        "one",
+        "two",
+        "",
+        "three"
+      ],
+      "keys": "cipZ<Esc>",
+      "expect": {
+        "text": [
+          "Z",
+          "",
+          "three"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\ntwo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "register_append_uppercase",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "\"ayyj\"Ayyk\"ap",
+      "expect": {
+        "text": [
+          "one",
+          "one",
+          "two",
+          "two"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\ntwo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_unicode_multibyte",
       "lines": [
         "αβγ"

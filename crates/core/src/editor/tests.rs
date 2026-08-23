@@ -3257,6 +3257,24 @@ mod text_object_tests {
     }
 
     #[test]
+    fn change_paragraph_is_linewise() {
+        // `cip`/`cap` are LINEWISE changes (paragraphs are linewise): collapse the paragraph's lines to one
+        // empty line and enter Insert, register linewise. Verified vs nvim v0.12.4 (fixture cip_*).
+        let st = run(
+            "one\ntwo\n\nthree",
+            &[Command::Change(1, Motion::InnerParagraph)],
+        );
+        assert_eq!(
+            text(&st),
+            "\n\nthree",
+            "cip clears the paragraph to one empty line"
+        );
+        assert_eq!(st.mode(), Mode::Insert);
+        assert!(st.register().is_linewise(), "cip register is linewise");
+        assert_eq!(st.register().text(), b"one\ntwo\n");
+    }
+
+    #[test]
     fn inner_block_on_own_lines_is_linewise() {
         // Vim: `di(`/`ci(` on a block whose braces are on their own lines act LINEWISE. Expects captured
         // from nvim v0.12.4 (oracle fixtures di_paren_multiline / ci_paren_multiline / ci_brace_*).

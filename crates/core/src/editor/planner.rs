@@ -84,12 +84,20 @@ fn plan_block_insert(
 /// `c{motion}` / `cc`: delete the change span, capture it to a register, and enter Insert. `cc`/`S` is
 /// the linewise case that preserves the leading indent (Vim autoindent-like).
 fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) -> Plan {
-    // A change is LINEWISE for `cc`/`S` (Motion::Line) and for an inner block whose braces sit on their own
-    // lines (`ci(`/`ci{` — Vim's linewise inner block). Both keep the first line's indent, collapse the rest
-    // to one empty line, keep the trailing newline, and enter Insert after the indent — identical machinery,
-    // differing only in which line range they act on.
+    // A change is LINEWISE for `cc`/`S` (Motion::Line), the paragraph objects (`cip`/`cap` — paragraphs are
+    // linewise), and an inner block whose braces sit on their own lines (`ci(`/`ci{`). All keep the first
+    // line's indent, collapse the rest to one empty line, keep the trailing newline, and enter Insert after
+    // the indent — identical machinery, differing only in which line range they act on.
     let linewise_range = if *m == Motion::Line {
         Some(change_range(b, cur, *m, count))
+    } else if matches!(m, Motion::InnerParagraph | Motion::AParagraph) {
+        let (s, e, _) = crate::editor::range::op_span(b, cur, *m, count); // whole paragraph lines
+        let content_end = if e > s && b.get(e - 1) == Some(&b'\n') {
+            e - 1
+        } else {
+            e
+        };
+        Some((s, content_end))
     } else {
         crate::editor::range::linewise_inner_block(b, cur, *m).map(|(s, e)| (s + 1, e - 1))
     };
