@@ -275,8 +275,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut resident: HashSet<graphics::ImageId> = HashSet::new();
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
     let mut pending_z = false; // a `z` scroll/fold prefix awaits its second key (`zz`/`zt`/`zb`/`zf`/`zo`…)
-                               // Manual folds, keyed by buffer (slice 1: per-buffer, not per-window). Closed folds collapse in
-                               // render; the cursor/scroll skip them; edits shift/drop them.
+                               // A `[`/`]` prefix (Some(open)) awaits its second key; only `[z`/`]z` (fold nav) are handled here — every
+                               // other bracket command (`]p`/`[p`, …) is still armed in the engine, so this observes without shadowing it.
+    let mut pending_bracket: Option<bool> = None;
+    // Manual folds, keyed by buffer (slice 1: per-buffer, not per-window). Closed folds collapse in
+    // render; the cursor/scroll skip them; edits shift/drop them.
     let mut folds: HashMap<DocumentId, Vec<crate::folds::Fold>> = HashMap::new();
     // Per-buffer line count from the previous frame, to detect edit-driven line shifts for the fold ranges.
     let mut fold_lines: HashMap<DocumentId, usize> = HashMap::new();
@@ -929,6 +932,34 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         }
                     }
                 }
+                // `zj` / `zk` — move the cursor DOWN to the next fold's start / UP to the previous fold's
+                // end (`{count}` repeats; a closed fold counts as one, which is inherent since we step over
+                // whole folds, not lines). Cursor-only, column 0 — matching nvim, which ignores 'startofline'
+                // here (verified: `zj` lands at col 0 even with `startofline` on). Landing inside a closed
+                // fold is snapped onto its summary row by the per-frame fold reconcile.
+                KeyCode::Char('j') | KeyCode::Char('k') => {
+                    let n = engine.take_count().max(1);
+                    let down = matches!(key.code, KeyCode::Char('j'));
+                    let mut line = cur_line;
+                    let mut moved = false;
+                    for _ in 0..n {
+                        let next = if down {
+                            crate::folds::next_fold_start(fv, line)
+                        } else {
+                            crate::folds::prev_fold_end(fv, line)
+                        };
+                        match next {
+                            Some(l) => {
+                                line = l;
+                                moved = true;
+                            }
+                            None => break, // no more folds that way — keep the last landing
+                        }
+                    }
+                    if moved {
+                        ws.place_focused_cursor(line_idx.nth_line_start(line));
+                    }
+                }
                 // `zR` / `zM` — open / close ALL folds.
                 KeyCode::Char('R') => fv.iter_mut().for_each(|f| f.closed = false),
                 KeyCode::Char('M') => fv.iter_mut().for_each(|f| f.closed = true),
@@ -951,6 +982,36 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             continue;
         }
         let normal = matches!(ws.focused().view.mode(), Mode::Normal) && engine.cmdline().is_none();
+        // A `[`/`]` prefix is in flight (armed below AND in the engine). Only the fold-nav second key `z`
+        // (`[z`/`]z`) is a frontend view move; anything else falls through to the engine, which still holds
+        // its `BracketPrefix` and resolves `]p`/`[p`/… normally. `[z` → the current fold's START, `]z` → its
+        // END (Vim's "current open fold"); non-overlapping slice-1 folds make `fold_at` the innermost one.
+        // No fold at the cursor → no-op (Vim beeps). Count is ignored (Vim: `[z`/`]z` take none), so consume
+        // it via `take_count`, which also resets the engine's dangling `BracketPrefix`.
+        if let Some(open) = pending_bracket.take() {
+            if normal && key.code == KeyCode::Char('z') {
+                engine.take_count();
+                let buf = ws.focused_buffer();
+                let cur_line = line_idx.line_of(ws.focused().view.cursor());
+                if let Some(fv) = folds.get(&buf) {
+                    if let Some(idx) = crate::folds::fold_at(fv, cur_line) {
+                        let target = if open { fv[idx].start } else { fv[idx].end };
+                        ws.place_focused_cursor(line_idx.nth_line_start(target));
+                    }
+                }
+                continue;
+            }
+            // Not `z`: fall through so the engine's still-armed BracketPrefix consumes this key.
+        }
+        // Arm the `[`/`]` fold-nav prefix while STILL letting the key reach the engine (below), which arms
+        // its own BracketPrefix for `]p`/`[p`. We only add the `z` follow-up; everything else is unchanged.
+        if normal
+            && key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Char('[') | KeyCode::Char(']'))
+        {
+            pending_bracket = Some(key.code == KeyCode::Char('['));
+            // no `continue`: fall through to `engine.feed` so BracketPrefix is armed for non-`z` seconds.
+        }
         if normal && is_ctrl(key, 'w') {
             pending_window = true;
             continue;

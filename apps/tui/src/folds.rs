@@ -38,6 +38,22 @@ pub fn fold_at(folds: &[Fold], line: usize) -> Option<usize> {
     folds.iter().position(|f| f.contains(line))
 }
 
+/// The START line of the next fold strictly BELOW `line` (`zj`), or `None` if there is none. A fold whose
+/// start is at or above `line` is skipped — so a cursor already inside (or at the start of) a fold jumps to
+/// the FOLLOWING fold, matching Vim. Non-overlapping folds mean the answer is the smallest such `start`.
+#[must_use]
+pub fn next_fold_start(folds: &[Fold], line: usize) -> Option<usize> {
+    folds.iter().map(|f| f.start).filter(|&s| s > line).min()
+}
+
+/// The END line of the previous fold strictly ABOVE `line` (`zk`), or `None` if there is none. A fold whose
+/// end is at or below `line` is skipped, so a cursor inside a fold jumps to the PRECEDING fold's end. The
+/// answer is the largest such `end`.
+#[must_use]
+pub fn prev_fold_end(folds: &[Fold], line: usize) -> Option<usize> {
+    folds.iter().map(|f| f.end).filter(|&e| e < line).max()
+}
+
 /// The CLOSED fold that starts at buffer `line` (the row whose summary the renderer paints), or `None`.
 #[must_use]
 pub fn closed_starting_at(folds: &[Fold], line: usize) -> Option<&Fold> {
@@ -175,6 +191,72 @@ mod tests {
         let mut folds = vec![f(1, 2, true)];
         shift(&mut folds, 8, 3);
         assert_eq!(folds, vec![f(1, 2, true)]);
+    }
+
+    #[test]
+    fn next_fold_start_moves_down_past_current() {
+        // Two folds: A = [2,4], B = [6,8] (mirrors the nvim manual verification buffer).
+        let folds = [f(2, 4, false), f(6, 8, false)];
+        // From above every fold → first fold's start.
+        assert_eq!(next_fold_start(&folds, 1), Some(2));
+        // In the gap between the folds → next fold's start.
+        assert_eq!(next_fold_start(&folds, 5), Some(6));
+        // Inside fold A (line 3): its OWN start (2) is not below, so we skip to B's start.
+        assert_eq!(next_fold_start(&folds, 3), Some(6));
+        // Exactly on fold A's start (2): still skip to B (Vim does not re-land the current fold).
+        assert_eq!(next_fold_start(&folds, 2), Some(6));
+        // At/after the last fold → nothing below.
+        assert_eq!(next_fold_start(&folds, 8), None);
+        assert_eq!(next_fold_start(&folds, 9), None);
+        // No folds at all.
+        assert_eq!(next_fold_start(&[], 3), None);
+    }
+
+    #[test]
+    fn prev_fold_end_moves_up_past_current() {
+        let folds = [f(2, 4, false), f(6, 8, false)];
+        // From below every fold → last fold's end.
+        assert_eq!(prev_fold_end(&folds, 9), Some(8));
+        // In the gap → the fold above's end.
+        assert_eq!(prev_fold_end(&folds, 5), Some(4));
+        // Inside fold B (line 7): its OWN end (8) is not above, so skip to A's end (4).
+        assert_eq!(prev_fold_end(&folds, 7), Some(4));
+        // Exactly on fold B's end (8): skip to A's end.
+        assert_eq!(prev_fold_end(&folds, 8), Some(4));
+        // Inside fold A with no fold above → nothing.
+        assert_eq!(prev_fold_end(&folds, 3), None);
+        // At/above the first fold → nothing above.
+        assert_eq!(prev_fold_end(&folds, 2), None);
+        assert_eq!(prev_fold_end(&folds, 0), None);
+        assert_eq!(prev_fold_end(&[], 3), None);
+    }
+
+    #[test]
+    fn fold_at_gives_bracket_z_endpoints() {
+        // `[z` lands on fold_at(cursor).start; `]z` on .end. Outside any fold → None (no-op).
+        let folds = [f(2, 4, false), f(6, 8, true)];
+        let idx = fold_at(&folds, 3).unwrap();
+        assert_eq!(folds[idx].start, 2, "[z from inside fold A");
+        assert_eq!(folds[idx].end, 4, "]z from inside fold A");
+        // On a boundary still resolves to that fold.
+        assert_eq!(fold_at(&folds, 2), Some(0));
+        assert_eq!(fold_at(&folds, 8), Some(1));
+        // In the gap → no current fold (Vim beeps; ruse no-ops).
+        assert_eq!(fold_at(&folds, 5), None);
+    }
+
+    #[test]
+    fn next_prev_repeat_composes_for_counts() {
+        // `{count}zj` / `{count}zk` iterate the single-step helper; verify a 2-hop chain.
+        let folds = [f(2, 4, false), f(6, 8, false)];
+        let a = next_fold_start(&folds, 1).unwrap(); // 1 -> 2
+        let b = next_fold_start(&folds, a).unwrap(); // 2 -> 6
+        assert_eq!((a, b), (2, 6), "2zj from line 1 lands on fold B's start");
+        let c = prev_fold_end(&folds, 9).unwrap(); // 9 -> 8
+        let d = prev_fold_end(&folds, c).unwrap(); // 8 -> 4
+        assert_eq!((c, d), (8, 4), "2zk from line 9 lands on fold A's end");
+        // Over-count: the second hop past the last fold returns None, so the caller keeps the last landing.
+        assert_eq!(next_fold_start(&folds, b), None);
     }
 
     #[test]
