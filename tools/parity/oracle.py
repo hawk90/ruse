@@ -369,6 +369,39 @@ FIXTURES: list[dict] = [
     {"name": "w_last_word_rests_on_last_char", "lines": ["abc def"], "keys": "wwx"},
     {"name": "w_single_word_rests_on_last_char", "lines": ["abc"], "keys": "wx"},
     {"name": "bigw_last_word_rests_on_last_char", "lines": ["foo.bar baz"], "keys": "WWx"},
+    #     ROUND 4 sweep — replace mode / case-over-object / search-motion op / sentences / indent ------
+    #     Replace mode (R)
+    {"name": "replace_mode_overwrites", "lines": ["abcdef"], "keys": "RXYZ<Esc>"},
+    {"name": "replace_mode_past_eol_appends", "lines": ["ab"], "keys": "RXYZ<Esc>"},
+    {"name": "replace_mode_backspace_restores", "lines": ["abcdef"], "keys": "RXY<BS><BS><Esc>"},
+    #     case operators over a text object
+    {"name": "gU_inner_word", "lines": ["foo bar"], "keys": "gUiw"},
+    {"name": "gu_a_word", "lines": ["FOO BAR"], "keys": "guaw"},
+    {"name": "g_tilde_inner_word", "lines": ["FooBar baz"], "keys": "g~iw"},
+    {"name": "gU_a_paragraph", "lines": ["one two", "three"], "keys": "gUip"},
+    #     case operators over a motion
+    {"name": "gU_to_eol", "lines": ["foo bar"], "keys": "gU$"},
+    {"name": "gu_word_motion", "lines": ["FOO BAR"], "keys": "guw"},
+    #     sentence motions
+    {"name": "d_sentence_fwd", "lines": ["One two. Three four."], "keys": "d)"},
+    {"name": "sentence_back", "lines": ["One. Two three."], "keys": "$(x"},
+    #     paragraph object around
+    {"name": "dap_around_paragraph", "lines": ["a", "b", "", "c"], "keys": "dap"},
+    #     gi resume insert
+    {"name": "gi_resume_insert", "lines": ["abc"], "keys": "iX<Esc>llgiY<Esc>"},
+    #     increment edge cases
+    {"name": "increment_hex_ff", "lines": ["0xff"], "keys": "<C-a>"},
+    {"name": "increment_negative_wraps", "lines": ["-1"], "keys": "<C-a>"},
+    {"name": "increment_binary", "lines": ["0b101"], "keys": "<C-a>"},
+    #     replace char across multibyte
+    {"name": "replace_char_unicode", "lines": ["αβγ"], "keys": "lrx"},
+    #     ROUND 4b — search-motion operators / blockwise / object aliases / register append
+    {"name": "block_change_column", "lines": ["abc", "def", "ghi"], "keys": "\x16jjcX\x1b"},
+    {"name": "block_yank_paste", "lines": ["abc", "def"], "keys": "\x16jly$p"},
+    {"name": "dib_paren_alias", "lines": ["x(abc)y"], "keys": "fadib"},
+    {"name": "dab_brace_alias", "lines": ["x{abc}y"], "keys": "fadaB"},
+    {"name": "cip_inner_paragraph", "lines": ["one", "two", "", "three"], "keys": "cipZ<Esc>"},
+    {"name": "register_append_uppercase", "lines": ["one", "two"], "keys": "\"ayyj\"Ayyk\"ap"},
     #     multi-byte / unicode buffers (byte-index correctness) --------------------------------------
     {"name": "x_unicode_multibyte", "lines": ["αβγ"], "keys": "x"},
     {"name": "x_emoji", "lines": ["a😀b"], "keys": "lx"},
