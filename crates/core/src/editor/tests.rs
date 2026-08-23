@@ -1398,6 +1398,31 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn context_mark_jumps_back_and_toggles() {
+        let src = "one\ntwo\nthree\nfour";
+        let mut st = crate::editor::EditorState::new(src.as_bytes().to_vec());
+        crate::editor::apply_command(&mut st, &Command::Move(2, Motion::Down)); // → line 3 (not a jump)
+        let origin = st.cursor();
+        crate::editor::apply_command(&mut st, &Command::Move(1, Motion::GotoLine)); // gg (a jump) → 0
+        assert_eq!(st.cursor(), 0);
+        // `` `` `` jumps back to where gg left from (the context mark).
+        crate::editor::apply_command(&mut st, &Command::GotoContextMark);
+        assert_eq!(st.cursor(), origin, "`` returns to the pre-jump position");
+        // Repeating toggles back to where we just were (0), because `` is itself a jump.
+        crate::editor::apply_command(&mut st, &Command::GotoContextMark);
+        assert_eq!(st.cursor(), 0, "repeated `` toggles to the other position");
+    }
+
+    #[test]
+    fn context_mark_is_noop_without_jumps() {
+        let st = run(
+            "abc",
+            &[Command::GotoContextMark, Command::GotoContextMarkLine],
+        );
+        assert_eq!(st.cursor(), 0, "no jump recorded → no movement");
+    }
+
+    #[test]
     fn plain_motions_do_not_record_jumps() {
         // h/j/k/l/w are NOT jumps, so CTRL-O after them does nothing.
         let st = run(

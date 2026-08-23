@@ -308,6 +308,13 @@ impl View {
         self.changes.last().copied()
     }
 
+    /// The context mark (Vim `` ` ``/`'`): the position before the latest jump — the newest jumplist entry.
+    /// `None` before any jump. Read by `` `` ``/`''`; the jump they perform then records a fresh entry, so
+    /// repeating toggles between the two positions.
+    pub fn context_mark(&self) -> Option<usize> {
+        self.jumps.last().copied()
+    }
+
     /// Record `pos` as the newest change (Vim change list). Adjacent identical positions coalesce; the list
     /// is bounded to [`MAX_CHANGES`] (oldest dropped). Resets the `g;`/`g,` cursor past the newest entry.
     fn push_change(&mut self, pos: usize) {
@@ -1536,7 +1543,9 @@ fn is_jump(cmd: &Command) -> bool {
         Command::GotoLastChange
         | Command::GotoLastChangeLine
         | Command::GotoNamedMark(_)
-        | Command::GotoNamedMarkLine(_) => true,
+        | Command::GotoNamedMarkLine(_)
+        | Command::GotoContextMark
+        | Command::GotoContextMarkLine => true,
         Command::Move(_, m) => matches!(
             m,
             M::GotoLine

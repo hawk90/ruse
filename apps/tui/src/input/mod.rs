@@ -1746,6 +1746,10 @@ impl InputEngine {
                 return match key.code {
                     // `` `. `` — jump to the last-change mark.
                     KeyCode::Char('.') => self.action(Command::GotoLastChange),
+                    // `` `` `` / `` `' `` — jump to the context mark (position before the latest jump).
+                    KeyCode::Char('`') | KeyCode::Char('\'') => {
+                        self.action(Command::GotoContextMark)
+                    }
                     // `` `{a-z} `` — jump to a named mark.
                     KeyCode::Char(c @ 'a'..='z') => self.action(Command::GotoNamedMark(c)),
                     // Any other mark name is not wired — abort the pending construct.
@@ -1766,6 +1770,10 @@ impl InputEngine {
                 return match key.code {
                     // `'.` — linewise to the last-change line.
                     KeyCode::Char('.') => self.action(Command::GotoLastChangeLine),
+                    // `''` / `` '` `` — linewise to the context mark's line (position before the latest jump).
+                    KeyCode::Char('\'') | KeyCode::Char('`') => {
+                        self.action(Command::GotoContextMarkLine)
+                    }
                     // `'{a-z}` — linewise to a named mark's line.
                     KeyCode::Char(c @ 'a'..='z') => self.action(Command::GotoNamedMarkLine(c)),
                     // Any other mark name is not wired — abort.
