@@ -346,6 +346,17 @@ fn line_count(buf: &[u8]) -> usize {
     buf.iter().filter(|&&b| b == b'\n').count() + usize::from(buf.last() != Some(&b'\n'))
 }
 
+/// The write-report suffix flagging a missing final newline: `" [noeol]"` when `buf` is non-empty and does
+/// not end in `\n`, else `""`. ruse preserves EOL presence exactly (no silent fixeol), so this makes the
+/// missing terminator visible on `:w` (as Vim does) rather than a silent surprise.
+fn noeol_marker(buf: &[u8]) -> &'static str {
+    if buf.is_empty() || buf.last() == Some(&b'\n') {
+        ""
+    } else {
+        " [noeol]"
+    }
+}
+
 pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String) {
     // Multi-buffer honesty (F-007): only a buffer WITH a file writes. A scratch buffer (`:enew`) has no
     // registry entry, so `:w` declines rather than clobbering another buffer's file.
@@ -361,10 +372,15 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String) {
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
             tracing::info!(event = "save", path = %bf.path.display(), bytes = bytes.len());
             // Vim-style write report: `"file" 42L, 1024B written` (L = buffer lines, B = bytes on disk).
+            // ruse preserves final-newline presence exactly (no silent fixeol); when the file was written
+            // WITHOUT a trailing newline, surface `[noeol]` (as Vim does) so the missing EOL is never a
+            // silent surprise. The check is on the buffer bytes (to_disk only re-applies BOM/CRLF, not EOL).
+            let doc_bytes = ws.focused().doc.bytes();
             *status = format!(
-                "\"{}\" {}L, {}B written",
+                "\"{}\"{} {}L, {}B written",
                 bf.path.display(),
-                line_count(ws.focused().doc.bytes()),
+                noeol_marker(doc_bytes),
+                line_count(doc_bytes),
                 bytes.len()
             );
         }
@@ -430,5 +446,21 @@ mod dispatch_tests {
         assert_eq!(line_count(b"a\nb\n"), 2, "two lines with trailing newline");
         assert_eq!(line_count(b"\n"), 1, "a lone newline is one line");
         assert_eq!(line_count(b"\n\n"), 2, "two blank lines");
+    }
+
+    #[test]
+    fn noeol_marker_flags_a_missing_final_newline() {
+        assert_eq!(noeol_marker(b"a\n"), "", "trailing newline → no marker");
+        assert_eq!(noeol_marker(b""), "", "empty buffer → no marker");
+        assert_eq!(
+            noeol_marker(b"a"),
+            " [noeol]",
+            "no trailing newline → marker"
+        );
+        assert_eq!(
+            noeol_marker(b"a\nb"),
+            " [noeol]",
+            "missing final newline → marker"
+        );
     }
 }
