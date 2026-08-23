@@ -93,6 +93,15 @@ pub enum Motion {
     GotoLine,
     /// Go to the last line's first non-blank char (bare `G`). Linewise under an operator.
     LastLine,
+    /// Vim `+` / `<CR>` — `count` lines DOWN, landing on the first non-blank char (`^` on the target
+    /// line). Linewise under an operator (`d+` deletes this line and the next). Clamps at the last line.
+    DownFirstNonBlank,
+    /// Vim `-` — `count` lines UP, landing on the first non-blank char. Linewise under an operator
+    /// (`d-` deletes this line and the one above). Clamps at the first line.
+    UpFirstNonBlank,
+    /// Vim `_` — `count-1` lines DOWN, landing on the first non-blank char (`_` alone == `^`, `2_` == one
+    /// line down). Linewise under an operator (`d_` == `dd`, `2d_` deletes two lines). Clamps at the last line.
+    LineUnderscore,
     /// Vim `[count]go` — go to the `count`-th BYTE of the buffer (1-based; bare `go` = byte 1), snapped to a
     /// char boundary. Exclusive charwise under an operator (`dgo`). `count` past the end clamps to the last byte.
     GotoByte,
@@ -1027,6 +1036,36 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
         }
         return last_non_blank(b, ls);
     }
+    // `+`/`<CR>` (down), `-` (up), `_` (count-1 down): the count is a line delta (not a repeat), then the
+    // first non-blank char of the target line. Clamped at the buffer edges.
+    if matches!(
+        m,
+        Motion::DownFirstNonBlank | Motion::UpFirstNonBlank | Motion::LineUnderscore
+    ) {
+        let delta: isize = match m {
+            Motion::DownFirstNonBlank => n as isize,
+            Motion::LineUnderscore => (n - 1) as isize,
+            _ => -(n as isize), // UpFirstNonBlank
+        };
+        let mut ls = line_start(b, cur0);
+        if delta >= 0 {
+            for _ in 0..delta {
+                let le = line_end(b, ls);
+                if le >= b.len() {
+                    break;
+                }
+                ls = le + 1;
+            }
+        } else {
+            for _ in 0..(-delta) {
+                if ls == 0 {
+                    break;
+                }
+                ls = line_start(b, ls - 1);
+            }
+        }
+        return first_non_blank(b, ls);
+    }
     // `{count}|`: the count is the 1-based display column of the current line (not a repeat).
     if m == Motion::Column {
         return at_col(b, line_start(b, cur0), (n - 1) as usize);
@@ -1071,6 +1110,9 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::FindChar { .. }
             | Motion::GotoLine
             | Motion::LastLine
+            | Motion::DownFirstNonBlank
+            | Motion::UpFirstNonBlank
+            | Motion::LineUnderscore
             | Motion::GotoByte
             | Motion::MatchBracket
             | Motion::LineLastNonBlank
@@ -1194,9 +1236,14 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         }
         Motion::Tag { around } => tag_span(b, cur, around),
         // vertical / linewise motions are not charwise — callers handle Line / line-jumps specially
-        Motion::Up | Motion::Down | Motion::Line | Motion::GotoLine | Motion::LastLine => {
-            (cur, cur)
-        }
+        Motion::Up
+        | Motion::Down
+        | Motion::Line
+        | Motion::GotoLine
+        | Motion::LastLine
+        | Motion::DownFirstNonBlank
+        | Motion::UpFirstNonBlank
+        | Motion::LineUnderscore => (cur, cur),
     }
 }
 
@@ -1296,6 +1343,78 @@ mod gunderscore_column_tests {
         assert_eq!(target(b, 0, Motion::Column, 99), 6);
         // `d5|` from column 1 spans the ordered pair [0, 4).
         assert_eq!(char_span(b, 0, Motion::Column, 5), (0, 4));
+    }
+}
+
+#[cfg(test)]
+mod line_first_non_blank_motion_tests {
+    //! Vim `+` / `<CR>` (down), `-` (up), `_` (count-1 down) — line motions landing on the first
+    //! non-blank of the target line. (Operator linewise-ness is covered in `editor::tests`.)
+    use super::{target, Motion};
+
+    // "a\n  bc\n   d\nef\n": line starts 0,2,7,12; first-non-blanks 0,4,10,12.
+    const B: &[u8] = b"a\n  bc\n   d\nef\n";
+
+    #[test]
+    fn plus_goes_count_lines_down_to_first_non_blank() {
+        assert_eq!(
+            target(B, 0, Motion::DownFirstNonBlank, 1),
+            4,
+            "+ -> line 1 'b'"
+        );
+        assert_eq!(
+            target(B, 0, Motion::DownFirstNonBlank, 2),
+            10,
+            "2+ -> line 2 'd'"
+        );
+        // Past the last line clamps to the final (empty) line after the last newline — consistent with
+        // how `G`/`j` treat a buffer ending in `\n` in this editor's line model.
+        assert_eq!(
+            target(B, 0, Motion::DownFirstNonBlank, 99),
+            15,
+            "clamp at last line"
+        );
+    }
+
+    #[test]
+    fn minus_goes_count_lines_up_to_first_non_blank() {
+        assert_eq!(
+            target(B, 12, Motion::UpFirstNonBlank, 1),
+            10,
+            "- -> line 2 'd'"
+        );
+        assert_eq!(
+            target(B, 12, Motion::UpFirstNonBlank, 3),
+            0,
+            "3- -> line 0 'a'"
+        );
+        // Past the first line clamps to line 0.
+        assert_eq!(
+            target(B, 12, Motion::UpFirstNonBlank, 99),
+            0,
+            "clamp at first line"
+        );
+    }
+
+    #[test]
+    fn underscore_is_count_minus_one_lines_down() {
+        // `_` alone == `^` (first non-blank of the current line), no vertical move.
+        assert_eq!(
+            target(B, 5, Motion::LineUnderscore, 1),
+            target(B, 5, Motion::LineFirstNonBlank, 1),
+            "_ == ^"
+        );
+        // `2_` moves one line down; `3_` two lines down.
+        assert_eq!(
+            target(B, 4, Motion::LineUnderscore, 2),
+            10,
+            "2_ -> one line down"
+        );
+        assert_eq!(
+            target(B, 0, Motion::LineUnderscore, 3),
+            10,
+            "3_ -> two lines down"
+        );
     }
 }
 

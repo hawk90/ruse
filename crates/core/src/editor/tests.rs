@@ -2086,6 +2086,39 @@ mod line_jump_tests {
     }
 
     #[test]
+    fn plus_minus_underscore_are_linewise_operators() {
+        // `d+` on line 0 deletes lines 0..=1 (this line + the next), linewise.
+        let st = run(
+            "one\ntwo\nthree\n",
+            &[Command::Delete(1, Motion::DownFirstNonBlank)],
+        );
+        assert_eq!(text(&st), "three\n", "d+ deletes this line and the next");
+        assert!(st.register().is_linewise());
+
+        // `d-` on the last line deletes it and the one above.
+        let st = run(
+            "one\ntwo\nthree\n",
+            &[
+                Command::Move(3, Motion::GotoLine),
+                Command::Delete(1, Motion::UpFirstNonBlank),
+            ],
+        );
+        assert_eq!(text(&st), "one\n", "d- deletes this line and the one above");
+
+        // `d_` == `dd` (just the cursor's line); `2d_` == `2dd`.
+        let st = run(
+            "one\ntwo\nthree\n",
+            &[Command::Delete(1, Motion::LineUnderscore)],
+        );
+        assert_eq!(text(&st), "two\nthree\n", "d_ == dd");
+        let st = run(
+            "one\ntwo\nthree\n",
+            &[Command::Delete(2, Motion::LineUnderscore)],
+        );
+        assert_eq!(text(&st), "three\n", "2d_ == 2dd");
+    }
+
+    #[test]
     fn count_beyond_end_clamps_to_last_line() {
         let st = run("a\nb\n", &[Command::Move(99, Motion::GotoLine)]);
         // line 99 doesn't exist → clamp to the last line (the empty line after the final newline).

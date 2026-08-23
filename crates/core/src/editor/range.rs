@@ -43,8 +43,13 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
         (start, end, true)
     };
     match m {
-        // Line jumps (`dG`, `dgg`, `d{n}G`) are linewise across every line between the cursor and target.
-        Motion::GotoLine | Motion::LastLine => whole_lines(motion::target(b, cur, m, count)),
+        // Line jumps (`dG`, `dgg`, `d{n}G`) and first-non-blank line motions (`d+`, `d-`, `d_`) are
+        // linewise across every line between the cursor and target.
+        Motion::GotoLine
+        | Motion::LastLine
+        | Motion::DownFirstNonBlank
+        | Motion::UpFirstNonBlank
+        | Motion::LineUnderscore => whole_lines(motion::target(b, cur, m, count)),
         // Vertical motions under an operator are linewise (`dj` deletes this line and the next). A motion
         // that cannot move a line (`dj` on the last line) fails the operator entirely (Vim) — a no-op range.
         Motion::Up | Motion::Down => {
@@ -179,7 +184,14 @@ pub(crate) fn forced_span(
 /// newline is kept so `cc` leaves an empty line to type into); else the same charwise span as delete.
 pub(crate) fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
     // Line jumps under change keep the final newline, leaving an empty line to type into (as `cc` does).
-    if matches!(m, Motion::GotoLine | Motion::LastLine) {
+    if matches!(
+        m,
+        Motion::GotoLine
+            | Motion::LastLine
+            | Motion::DownFirstNonBlank
+            | Motion::UpFirstNonBlank
+            | Motion::LineUnderscore
+    ) {
         let t = motion::target(b, cur, m, count);
         let start = line_start(b, cur.min(t));
         return (start, line_end(b, cur.max(t)));

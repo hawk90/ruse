@@ -49,6 +49,52 @@ mod tests {
     }
 
     #[test]
+    fn plus_minus_underscore_line_motions() {
+        // `+` / `-` / `_` — first-non-blank line motions, operator-aware and linewise.
+        assert_eq!(
+            feed("+"),
+            Feed::Cmd(Command::Move(1, Motion::DownFirstNonBlank))
+        );
+        assert_eq!(
+            feed("2+"),
+            Feed::Cmd(Command::Move(2, Motion::DownFirstNonBlank))
+        );
+        assert_eq!(
+            feed("-"),
+            Feed::Cmd(Command::Move(1, Motion::UpFirstNonBlank))
+        );
+        assert_eq!(
+            feed("3-"),
+            Feed::Cmd(Command::Move(3, Motion::UpFirstNonBlank))
+        );
+        assert_eq!(
+            feed("_"),
+            Feed::Cmd(Command::Move(1, Motion::LineUnderscore))
+        );
+        assert_eq!(
+            feed("d+"),
+            Feed::Cmd(Command::Delete(1, Motion::DownFirstNonBlank))
+        );
+        assert_eq!(
+            feed("d_"),
+            Feed::Cmd(Command::Delete(1, Motion::LineUnderscore))
+        );
+        assert_eq!(
+            feed("2d-"),
+            Feed::Cmd(Command::Delete(2, Motion::UpFirstNonBlank))
+        );
+        // `<CR>` is a synonym for `+` (KeyCode::Enter, not a Char, so drive the engine directly).
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                Mode::Normal
+            ),
+            Feed::Cmd(Command::Move(1, Motion::DownFirstNonBlank))
+        );
+    }
+
+    #[test]
     fn goto_byte_motion() {
         // `[count]go` — go to the count-th byte; bare `go` = byte 1; operator-aware `dgo`.
         assert_eq!(feed("go"), Feed::Cmd(Command::Move(1, Motion::GotoByte)));
