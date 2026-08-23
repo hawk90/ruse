@@ -3098,6 +3098,54 @@ mod text_object_tests {
     }
 
     #[test]
+    fn inner_block_on_own_lines_is_linewise() {
+        // Vim: `di(`/`ci(` on a block whose braces are on their own lines act LINEWISE. Expects captured
+        // from nvim v0.12.4 (oracle fixtures di_paren_multiline / ci_paren_multiline / ci_brace_*).
+        // `di(` removes the whole inner line(s).
+        let st = run(
+            "foo(\nbar\n)baz",
+            &[Command::Delete(1, pair('(', ')', false))],
+        );
+        assert_eq!(text(&st), "foo(\n)baz", "di( deletes the whole inner line");
+        assert!(st.register().is_linewise(), "register is linewise");
+        assert_eq!(st.register().text(), b"bar\n");
+        // `ci(` collapses the inner to ONE empty line (like cc) and enters Insert.
+        let st = run(
+            "foo(\nbar\n)baz",
+            &[Command::Change(1, pair('(', ')', false))],
+        );
+        assert_eq!(text(&st), "foo(\n\n)baz", "ci( leaves one empty inner line");
+        assert_eq!(st.mode(), Mode::Insert);
+        // Multiple inner lines collapse to one; first line's indent is PRESERVED (cc semantics).
+        let st = run(
+            "fn(){\n    body\n}",
+            &[Command::MoveDown, Command::Change(1, pair('{', '}', false))],
+        );
+        assert_eq!(
+            text(&st),
+            "fn(){\n    \n}",
+            "ci{{ keeps the indent, clears the content"
+        );
+        // `da(` (around) stays CHARWISE even multiline — deletes through both braces on one line.
+        let st = run(
+            "foo(\nbar\n)baz",
+            &[Command::Delete(1, pair('(', ')', true))],
+        );
+        assert_eq!(
+            text(&st),
+            "foobaz",
+            "da( is charwise across the whole block"
+        );
+        assert!(!st.register().is_linewise());
+        // Content sharing the open/close line stays CHARWISE (not the special case).
+        let st = run(
+            "foo(bar\nbaz)qux",
+            &[Command::Delete(1, pair('(', ')', false))],
+        );
+        assert_eq!(text(&st), "foo()qux", "inline-open block stays charwise");
+    }
+
+    #[test]
     fn delimiter_pair_inner_and_around() {
         // cursor inside the parens of "a(bc)d".
         let st = run(

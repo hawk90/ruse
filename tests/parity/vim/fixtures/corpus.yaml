@@ -1498,6 +1498,221 @@
       }
     },
     {
+      "name": "ci_paren_multiline",
+      "lines": [
+        "foo(",
+        "bar",
+        ")baz"
+      ],
+      "keys": "ci(Z<Esc>",
+      "expect": {
+        "text": [
+          "foo(",
+          "Z",
+          ")baz"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bar\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_paren_multiline",
+      "lines": [
+        "foo(",
+        "bar",
+        ")baz"
+      ],
+      "keys": "di(",
+      "expect": {
+        "text": [
+          "foo(",
+          ")baz"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bar\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ci_brace_multiline_2lines",
+      "lines": [
+        "fn(){",
+        "a",
+        "b",
+        "}"
+      ],
+      "keys": "jci{Z<Esc>",
+      "expect": {
+        "text": [
+          "fn(){",
+          "Z",
+          "}"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_brace_multiline_2lines",
+      "lines": [
+        "fn(){",
+        "a",
+        "b",
+        "}"
+      ],
+      "keys": "jdi{",
+      "expect": {
+        "text": [
+          "fn(){",
+          "}"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "da_paren_multiline",
+      "lines": [
+        "foo(",
+        "bar",
+        ")baz"
+      ],
+      "keys": "da(",
+      "expect": {
+        "text": [
+          "foobaz"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "(\nbar\n)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ci_paren_multiline_inline_open",
+      "lines": [
+        "foo(bar",
+        "baz)qux"
+      ],
+      "keys": "ci(Z<Esc>",
+      "expect": {
+        "text": [
+          "foo(Z)qux"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar\nbaz",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ci_paren_single_line",
+      "lines": [
+        "foo(bar)baz"
+      ],
+      "keys": "f(ci(Z<Esc>",
+      "expect": {
+        "text": [
+          "foo(Z)baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ci_brace_indented_inner",
+      "lines": [
+        "fn(){",
+        "    body",
+        "}"
+      ],
+      "keys": "jci{X<Esc>",
+      "expect": {
+        "text": [
+          "fn(){",
+          "    X",
+          "}"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "    body\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "visual_iw_delete",
       "lines": [
         "foo bar"

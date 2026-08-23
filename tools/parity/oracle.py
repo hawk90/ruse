@@ -288,6 +288,16 @@ FIXTURES: list[dict] = [
     {"name": "dot_repeats_x", "lines": ["abcdef"], "keys": "x.."},
     #     named registers --------------------------------------------------------------------------
     {"name": "named_reg_yank_paste", "lines": ["one", "two"], "keys": '"ayyj"ap'},
+    #     inner/around block on its own lines — Vim's "linewise inner block" special case ------------
+    {"name": "ci_paren_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "ci(Z<Esc>"},
+    {"name": "di_paren_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "di("},
+    {"name": "ci_brace_multiline_2lines", "lines": ["fn(){", "a", "b", "}"], "keys": "jci{Z<Esc>"},
+    {"name": "di_brace_multiline_2lines", "lines": ["fn(){", "a", "b", "}"], "keys": "jdi{"},
+    {"name": "da_paren_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "da("},
+    # NOT linewise: content shares the open/close line, so it stays charwise (regression guard).
+    {"name": "ci_paren_multiline_inline_open", "lines": ["foo(bar", "baz)qux"], "keys": "ci(Z<Esc>"},
+    {"name": "ci_paren_single_line", "lines": ["foo(bar)baz"], "keys": "f(ci(Z<Esc>"},
+    {"name": "ci_brace_indented_inner", "lines": ["fn(){", "    body", "}"], "keys": "jci{X<Esc>"},
     #     visual-mode operators ----------------------------------------------------------------------
     {"name": "visual_iw_delete", "lines": ["foo bar"], "keys": "viwd"},
     {"name": "visual_line_delete", "lines": ["a", "b", "c"], "keys": "Vjd"},
