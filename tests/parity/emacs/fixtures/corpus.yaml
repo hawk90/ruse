@@ -922,6 +922,547 @@
         "mark": null,
         "kill": null
       }
+    },
+    {
+      "name": "forward_word_over_punct",
+      "text": "foo.bar",
+      "ops": [
+        "forward-word"
+      ],
+      "expect": {
+        "text": [
+          "foo.bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "forward_word_leading_punct",
+      "text": "...foo",
+      "ops": [
+        "forward-word"
+      ],
+      "expect": {
+        "text": [
+          "...foo"
+        ],
+        "point": 6,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "forward_word_at_eob",
+      "text": "foo",
+      "ops": [
+        "forward-word"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_word_over_punct",
+      "text": "foo.bar",
+      "ops": [
+        "backward-word"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "foo.bar"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_word_from_end_punct",
+      "text": "foo.bar",
+      "ops": [
+        "backward-word"
+      ],
+      "point": 7,
+      "expect": {
+        "text": [
+          "foo.bar"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_word_at_bob",
+      "text": "foo bar",
+      "ops": [
+        "backward-word"
+      ],
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "kill_word_leading_space",
+      "text": "  foo",
+      "ops": [
+        "kill-word"
+      ],
+      "expect": {
+        "text": [
+          ""
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "  foo"
+      }
+    },
+    {
+      "name": "kill_word_over_punct",
+      "text": "foo.bar",
+      "ops": [
+        "kill-word"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": ".bar"
+      }
+    },
+    {
+      "name": "backward_kill_word_over_punct",
+      "text": "foo.bar",
+      "ops": [
+        "backward-kill-word"
+      ],
+      "point": 7,
+      "expect": {
+        "text": [
+          "foo."
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": "bar"
+      }
+    },
+    {
+      "name": "backward_kill_word_trailing_space",
+      "text": "foo bar ",
+      "ops": [
+        "backward-kill-word"
+      ],
+      "point": 8,
+      "expect": {
+        "text": [
+          "foo "
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": "bar "
+      }
+    },
+    {
+      "name": "transpose_chars_mid",
+      "text": "abcde",
+      "ops": [
+        "transpose-chars"
+      ],
+      "point": 2,
+      "expect": {
+        "text": [
+          "acbde"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "transpose_chars_at_eol_multiline",
+      "text": "ab\ncd",
+      "ops": [
+        "transpose-chars"
+      ],
+      "point": 2,
+      "expect": {
+        "text": [
+          "ba",
+          "cd"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "transpose_words_mid",
+      "text": "foo bar baz",
+      "ops": [
+        "transpose-words"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "bar foo baz"
+        ],
+        "point": 7,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "upcase_word_leading_space",
+      "text": "  foo",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "  FOO"
+        ],
+        "point": 5,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "capitalize_word_mixed_case",
+      "text": "fOO bar",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "Foo bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "downcase_word_over_punct",
+      "text": "FOO.BAR",
+      "ops": [
+        "downcase-word"
+      ],
+      "expect": {
+        "text": [
+          "foo.BAR"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "upcase_word_at_eob",
+      "text": "foo",
+      "ops": [
+        "upcase-word"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "open_line_at_eol",
+      "text": "foo",
+      "ops": [
+        "open-line"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo",
+          ""
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "just_one_space_none",
+      "text": "foobar",
+      "ops": [
+        "just-one-space"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "just_one_space_leading",
+      "text": "   foo",
+      "ops": [
+        "just-one-space"
+      ],
+      "expect": {
+        "text": [
+          " foo"
+        ],
+        "point": 1,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "delete_horizontal_space_leading",
+      "text": "   foo",
+      "ops": [
+        "delete-horizontal-space"
+      ],
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "delete_indentation_empty_prev",
+      "text": "\n   bar",
+      "ops": [
+        "delete-indentation"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "bar"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "kill_line_on_empty_line",
+      "text": "\nfoo",
+      "ops": [
+        "kill-line"
+      ],
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "\n"
+      }
+    },
+    {
+      "name": "kill_two_words_then_yank",
+      "text": "foo bar baz",
+      "ops": [
+        "kill-word",
+        "kill-word",
+        "move-end-of-line",
+        "yank"
+      ],
+      "expect": {
+        "text": [
+          " bazfoo bar"
+        ],
+        "point": 11,
+        "mark": 4,
+        "kill": "foo bar"
+      }
+    },
+    {
+      "name": "kill_line_mid_then_yank",
+      "text": "hello world",
+      "ops": [
+        "kill-line",
+        "yank"
+      ],
+      "point": 6,
+      "expect": {
+        "text": [
+          "hello world"
+        ],
+        "point": 11,
+        "mark": 6,
+        "kill": "world"
+      }
+    },
+    {
+      "name": "copy_region_then_upcase_region",
+      "text": "foo bar",
+      "ops": [
+        "set-mark-command",
+        "forward-word",
+        "kill-ring-save",
+        "upcase-region"
+      ],
+      "expect": {
+        "text": [
+          "FOO bar"
+        ],
+        "point": 3,
+        "mark": 0,
+        "kill": "foo"
+      }
+    },
+    {
+      "name": "exchange_point_and_mark_twice",
+      "text": "abcdef",
+      "ops": [
+        "set-mark-command",
+        "forward-char",
+        "forward-char",
+        "forward-char",
+        "exchange-point-and-mark",
+        "exchange-point-and-mark"
+      ],
+      "expect": {
+        "text": [
+          "abcdef"
+        ],
+        "point": 3,
+        "mark": 0,
+        "kill": null
+      }
+    },
+    {
+      "name": "forward_word_stops_at_underscore",
+      "text": "foo_bar",
+      "ops": [
+        "forward-word"
+      ],
+      "expect": {
+        "text": [
+          "foo_bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_word_stops_at_underscore",
+      "text": "foo_bar",
+      "ops": [
+        "backward-word"
+      ],
+      "point": 7,
+      "expect": {
+        "text": [
+          "foo_bar"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "kill_word_stops_at_underscore",
+      "text": "foo_bar",
+      "ops": [
+        "kill-word"
+      ],
+      "expect": {
+        "text": [
+          "_bar"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "foo"
+      }
+    },
+    {
+      "name": "upcase_word_stops_at_underscore",
+      "text": "foo_bar",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "FOO_bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_kill_word_cross_punct",
+      "text": "foo.bar",
+      "ops": [
+        "backward-kill-word"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "bar"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "foo."
+      }
+    },
+    {
+      "name": "transpose_words_over_punct",
+      "text": "foo.bar",
+      "ops": [
+        "transpose-words"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "bar.foo"
+        ],
+        "point": 7,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "mark_word_over_leading_punct",
+      "text": ".foo",
+      "ops": [
+        "mark-word"
+      ],
+      "expect": {
+        "text": [
+          ".foo"
+        ],
+        "point": 0,
+        "mark": 4,
+        "kill": null
+      }
     }
   ]
 }

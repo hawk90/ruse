@@ -33,11 +33,19 @@ pub enum Motion {
     WordEnd,
     /// Vim `ge` — backward to the end of the previous (small-)word. Inclusive under an operator (`dge`).
     WordEndBack,
-    /// Emacs `forward-word` / `M-f` (and the span for `kill-word` / `M-d`). Like `WordEnd` it stops at the
-    /// end of the word, but as a CURSOR move it rests point AFTER the last word char (Emacs point is
-    /// between-character, D-050), where Vim `e` (`WordEnd`) rests ON it. Its operator span is the same
-    /// `[cursor, word_end_excl)` as `WordEnd`, so `Delete(EmacsWordFwd)` is Emacs `kill-word`.
+    /// Emacs `forward-word` / `M-f` (and the span for `kill-word` / `M-d`). Emacs word motions use a TWO-class
+    /// syntax split — word constituents (ASCII alphanumerics + non-ASCII) vs everything else (whitespace AND
+    /// punctuation AND `_`, all non-word in fundamental-mode) — so it SKIPS a leading non-word run then moves
+    /// over the word, landing AFTER the last word char (Emacs point is between-character, D-050). This differs
+    /// from Vim's three-class `e`/`WordEnd` (where a punctuation run is its OWN word and `_` is a word char):
+    /// `forward-word` on `...foo` reaches the end of `foo`, and on `foo_bar` stops after `foo`. Its operator
+    /// span is `[cursor, emacs_word_fwd)`, so `Delete(EmacsWordFwd)` is Emacs `kill-word`.
     EmacsWordFwd,
+    /// Emacs `backward-word` / `M-b` (and the span for `backward-kill-word` / `M-DEL`). The mirror of
+    /// [`Motion::EmacsWordFwd`]: two-class syntax, so it skips a trailing non-word run backward then moves
+    /// over the word to its start. Differs from Vim `b` (`WordBack`) exactly as the forward pair differs:
+    /// `backward-word` on `foo.bar` from inside `bar` skips the `.` and lands at the start of `foo`.
+    EmacsWordBack,
     /// WORD motions (Vim `W`/`B`/`E`): whitespace-delimited only, so `foo.bar` is one WORD.
     BigWordFwd,
     BigWordBack,
@@ -314,6 +322,41 @@ pub(crate) fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
     let cw = class(b[i]);
     while i < b.len() && same_group(cw, class(b[i]), big) {
         i += 1;
+    }
+    i
+}
+
+/// Whether a byte is an Emacs word constituent in fundamental-mode: ASCII alphanumerics, plus any non-ASCII
+/// byte (a multibyte letter is a word char in Emacs too). Crucially `_`, punctuation, and whitespace are all
+/// NON-word — this is the two-class split that distinguishes Emacs `forward-word`/`backward-word` from Vim's
+/// three-class small-word motions (where punctuation is its own class and `_` joins the word).
+fn is_emacs_word(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c >= 0x80
+}
+
+/// Emacs `forward-word` from `pos`: skip a leading run of non-word bytes, then consume the run of word bytes,
+/// landing one past the last (Emacs point is between-character). This is the span end for `kill-word` too.
+/// Crosses newlines freely — a newline is just another non-word byte, exactly as Emacs `forward-word` does.
+fn emacs_word_fwd(b: &[u8], pos: usize) -> usize {
+    let mut i = pos.min(b.len());
+    while i < b.len() && !is_emacs_word(b[i]) {
+        i += 1;
+    }
+    while i < b.len() && is_emacs_word(b[i]) {
+        i += 1;
+    }
+    i
+}
+
+/// Emacs `backward-word` from `pos`: the mirror of [`emacs_word_fwd`] — skip a trailing run of non-word bytes
+/// going left, then consume the run of word bytes, landing on the word's first byte.
+fn emacs_word_back(b: &[u8], pos: usize) -> usize {
+    let mut i = pos.min(b.len());
+    while i > 0 && !is_emacs_word(b[i - 1]) {
+        i -= 1;
+    }
+    while i > 0 && is_emacs_word(b[i - 1]) {
+        i -= 1;
     }
     i
 }
@@ -1134,7 +1177,8 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             Motion::WordBack => prev_word_start(b, c, false),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c, false)), // land ON the last char
             Motion::WordEndBack => prev_boundary(b, prev_word_end_excl(b, c, false)), // Vim `ge`
-            Motion::EmacsWordFwd => word_end_excl(b, c, false), // land AFTER the last char (Emacs point)
+            Motion::EmacsWordFwd => emacs_word_fwd(b, c), // Emacs forward-word: two-class, land AFTER the word
+            Motion::EmacsWordBack => emacs_word_back(b, c), // Emacs backward-word: two-class mirror
             Motion::BigWordFwd => next_word_start(b, c, true),
             Motion::BigWordBack => prev_word_start(b, c, true),
             Motion::BigWordEnd => prev_boundary(b, word_end_excl(b, c, true)),
@@ -1196,9 +1240,8 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // Sentence motions are exclusive charwise: forward → [cursor, next), backward → [prev, cursor).
         Motion::SentenceFwd => (cur, target(b, cur, m, n)),
         Motion::SentenceBack => (target(b, cur, m, n), cur),
-        // inclusive end-of-word (Vim `de` / `dE`); `EmacsWordFwd` shares the same `[cursor, word_end_excl)`
-        // span, which is exactly Emacs `kill-word` (`M-d`).
-        Motion::WordEnd | Motion::BigWordEnd | Motion::EmacsWordFwd => {
+        // inclusive end-of-word (Vim `de` / `dE`).
+        Motion::WordEnd | Motion::BigWordEnd => {
             let big = m == Motion::BigWordEnd;
             let mut e = cur;
             for _ in 0..n {
@@ -1206,10 +1249,21 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             }
             (cur, e)
         }
-        // backward / leftward → [target, cursor)
-        Motion::Left | Motion::WordBack | Motion::BigWordBack | Motion::LineStart => {
-            (target(b, cur, m, n), cur)
+        // Emacs `kill-word` (`M-d`): `[cursor, emacs_word_fwd)` — the two-class forward-word span, which
+        // (unlike Vim `de`) skips a leading non-word run and stops at `_`/punctuation boundaries.
+        Motion::EmacsWordFwd => {
+            let mut e = cur;
+            for _ in 0..n {
+                e = emacs_word_fwd(b, e);
+            }
+            (cur, e)
         }
+        // backward / leftward → [target, cursor)
+        Motion::Left
+        | Motion::WordBack
+        | Motion::EmacsWordBack
+        | Motion::BigWordBack
+        | Motion::LineStart => (target(b, cur, m, n), cur),
         // `ge`/`gE` are INCLUSIVE backward: span from the previous word-end (landed-on char included) up to
         // and including the cursor char (Vim `dge` on `r` of "foo bar" → "fo").
         Motion::WordEndBack | Motion::BigWordEndBack => {
@@ -1319,6 +1373,36 @@ mod emacs_word_tests {
         );
         // From mid-buffer it takes the rest of the current word: "foobar baz" at index 3 kills "bar".
         assert_eq!(char_span(b"foobar baz", 3, Motion::EmacsWordFwd, 1), (3, 6));
+    }
+
+    #[test]
+    fn emacs_word_fwd_is_two_class_over_punct_and_underscore() {
+        // Oracle-pinned (GNU Emacs 30.2): Emacs `forward-word` uses a TWO-class syntax split. A leading
+        // punctuation run is SKIPPED (not its own word as in Vim `e`): "...foo" reaches the end of "foo".
+        assert_eq!(target(b"...foo", 0, Motion::EmacsWordFwd, 1), 6);
+        // `_` is a NON-word char (symbol syntax) in fundamental-mode, so `foo_bar` is two words and
+        // forward-word / kill-word stop after "foo" — where Vim would treat `_` as a word char and take all.
+        assert_eq!(target(b"foo_bar", 0, Motion::EmacsWordFwd, 1), 3);
+        assert_eq!(char_span(b"foo_bar", 0, Motion::EmacsWordFwd, 1), (0, 3));
+        // A leading whitespace run is skipped too (kill-word from a space eats through the next word).
+        assert_eq!(char_span(b"  foo", 0, Motion::EmacsWordFwd, 1), (0, 5));
+    }
+
+    #[test]
+    fn emacs_word_back_is_the_two_class_mirror() {
+        // Oracle-pinned: `backward-word` skips a trailing non-word run then moves over the word to its start.
+        // From inside "bar" of "foo.bar" it skips the "." and lands at the start of "foo" (index 0) — where
+        // Vim `b` (WordBack) stops at the "." (index 3, punctuation being its own word).
+        assert_eq!(target(b"foo.bar", 4, Motion::EmacsWordBack, 1), 0);
+        assert_eq!(target(b"foo.bar", 4, Motion::WordBack, 1), 3);
+        // From the end of "foo.bar" it lands at the start of "bar" (skips nothing, over "bar").
+        assert_eq!(target(b"foo.bar", 7, Motion::EmacsWordBack, 1), 4);
+        // `_` is non-word: from the end of "foo_bar" backward-word stops at the start of "bar" (index 4).
+        assert_eq!(target(b"foo_bar", 7, Motion::EmacsWordBack, 1), 4);
+        // Backward-kill-word span crossing the "." run: [emacs_word_back, cursor) = [0, 4) = "foo.".
+        assert_eq!(char_span(b"foo.bar", 4, Motion::EmacsWordBack, 1), (0, 4));
+        // At buffer start it is inert.
+        assert_eq!(target(b"foo bar", 0, Motion::EmacsWordBack, 1), 0);
     }
 }
 

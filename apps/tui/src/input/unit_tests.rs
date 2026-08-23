@@ -1192,9 +1192,11 @@ mod tests {
             e.feed(meta('f'), Mode::Insert),
             Feed::Cmd(Command::Move(1, Motion::EmacsWordFwd))
         );
+        // `M-b` (Emacs backward-word) is the two-class mirror of `M-f` — it uses EmacsWordBack, not Vim `b`/
+        // WordBack (which treats a punctuation run as its own word and `_` as a word char).
         assert_eq!(
             e.feed(meta('b'), Mode::Insert),
-            Feed::Cmd(Command::Move(1, Motion::WordBack))
+            Feed::Cmd(Command::Move(1, Motion::EmacsWordBack))
         );
         // `M-d` kills a word forward into the register (kill ring) — its own `EmacsKillWord` command (D-051),
         // distinct from Vim `Delete` so consecutive Emacs kills accumulate and Vim deletes never do.
