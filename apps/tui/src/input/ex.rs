@@ -585,3 +585,63 @@ fn single_char(s: &str) -> Option<char> {
     let c = cs.next()?;
     cs.next().is_none().then_some(c)
 }
+
+/// Fill an empty `:s` pattern from the last search (`/` / `*`), exactly as Vim resolves `:s//repl/`. A
+/// no-op for a non-empty pattern, a non-substitute command, or when there is no last search to borrow.
+pub(crate) fn reuse_last_search(ex: &mut Ex, last_search: Option<&str>) {
+    if let Ex::Substitute(spec) = ex {
+        if spec.pattern.is_empty() {
+            if let Some(last) = last_search {
+                spec.pattern = last.to_string();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod reuse_last_search_tests {
+    use super::*;
+
+    fn sub(pattern: &str) -> Ex {
+        Ex::Substitute(SubSpec {
+            range: SubRange::CurrentLine,
+            pattern: pattern.to_string(),
+            replacement: "X".to_string(),
+            global: false,
+            ignore_case: None,
+            confirm: false,
+        })
+    }
+
+    fn pattern_of(ex: &Ex) -> &str {
+        match ex {
+            Ex::Substitute(s) => &s.pattern,
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn empty_pattern_borrows_the_last_search() {
+        let mut ex = sub("");
+        reuse_last_search(&mut ex, Some("foo"));
+        assert_eq!(pattern_of(&ex), "foo");
+    }
+
+    #[test]
+    fn non_empty_pattern_is_left_alone() {
+        let mut ex = sub("bar");
+        reuse_last_search(&mut ex, Some("foo"));
+        assert_eq!(
+            pattern_of(&ex),
+            "bar",
+            "an explicit pattern wins over the last search"
+        );
+    }
+
+    #[test]
+    fn empty_pattern_without_a_last_search_stays_empty() {
+        let mut ex = sub("");
+        reuse_last_search(&mut ex, None);
+        assert_eq!(pattern_of(&ex), "");
+    }
+}
