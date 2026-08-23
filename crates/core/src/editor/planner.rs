@@ -713,6 +713,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 if let Some(session) = st.view.block_insert {
                     return block_replicate(b, cur, session, hint);
                 }
+                // Autoindent cleanup (Vim): if this Insert session opened a line with auto-indent and
+                // nothing non-blank was typed on it, leaving Insert removes the indent so no trailing
+                // whitespace is left. Guarded to ONLY a line that is entirely blank with the caret at its
+                // end — exactly the auto-indent-leftover shape — so user-typed content is never touched.
+                if st.view.auto_indent_pending {
+                    let ls = line_start(b, cur);
+                    let le = line_end(b, cur);
+                    if cur == le && le > ls && b[ls..le].iter().all(|&c| c == b' ' || c == b'\t') {
+                        return edit(one(Edit::delete(ls, le - ls)), ls, Mode::Normal, hint);
+                    }
+                }
             }
             // Vim: leaving Insert OR Replace nudges the cursor left one, but never before the line start.
             // Leaving Visual (Esc) just collapses the selection in place — no nudge.
