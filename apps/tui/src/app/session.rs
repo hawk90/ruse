@@ -289,6 +289,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                                               // which defaults hlsearch off — a slow-terminal-era default; matches are viewport-cached here).
     let mut hlsearch_on = true;
     let mut incsearch_on = true;
+    // `:set (no)fixeol` write preference; OFF by default — byte-preserve (no silent fixeol) is the honest
+    // default. When ON, `:w` ADDS a trailing `\n` if the buffer lacks one (Vim's fixendofline).
+    let mut fixeol_on = false;
     // The last `:s` (pattern, replacement, flags) — recorded on every substitute so `&` can repeat it (F-009).
     let mut last_substitute: Option<(String, String, ruse_core::SubFlags)> = None;
     // The three modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads:
@@ -1112,6 +1115,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         incsearch_on = on;
                         status = format!("incsearch {}", if on { "on" } else { "off" });
                     }
+                    // `:set (no)fixeol` — opt-in trailing-newline-on-save (frontend write flag; OFF default).
+                    Ex::SetFixEol(on) => {
+                        fixeol_on = on;
+                        status = format!("fixeol {}", if on { "on" } else { "off" });
+                    }
                     // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
                     // the request; the response is dispatched + applied (or opens a picker) on a later frame.
                     ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
@@ -1318,6 +1326,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             &mut status,
                             &mut quit,
                             &mut confirm,
+                            fixeol_on,
                         )
                     }
                 }

@@ -65,6 +65,9 @@ pub enum Ex {
     SetHlSearch(bool),
     /// `:set (no)incsearch` — toggle incremental highlight while typing `/`…`?` (frontend; ON by default).
     SetIncSearch(bool),
+    /// `:set (no)fixeol` / `(no)fixendofline` — opt-in: on save, ADD a final `\n` when the buffer lacks one
+    /// (frontend write preference; OFF by default — byte-preserve is the honest default). Vim's fixendofline.
+    SetFixEol(bool),
     /// `:lmap {lhs} {rhs}` — install a Lang-Arg (`lmap`) mapping (F-027). Single-char lhs/rhs for MVP.
     Lmap {
         lhs: char,
@@ -168,6 +171,8 @@ fn parse_set(line: &str) -> Option<Ex> {
         "nohlsearch" | "nohls" => return Some(Ex::SetHlSearch(false)),
         "incsearch" | "is" => return Some(Ex::SetIncSearch(true)),
         "noincsearch" | "nois" => return Some(Ex::SetIncSearch(false)),
+        "fixeol" | "fixendofline" => return Some(Ex::SetFixEol(true)),
+        "nofixeol" | "nofixendofline" => return Some(Ex::SetFixEol(false)),
         _ => {}
     }
     let ex = match opt {
@@ -672,5 +677,14 @@ mod set_hlsearch_incsearch_tests {
         // The abbreviations still resolve, and unrelated options are untouched.
         assert_eq!(parse_ex("set hls"), Ex::SetHlSearch(true));
         assert_eq!(parse_ex("set ic"), Ex::Set(EditorOption::IgnoreCase(true)));
+    }
+
+    #[test]
+    fn parses_fixeol_toggles() {
+        assert_eq!(parse_ex("set fixeol"), Ex::SetFixEol(true));
+        assert_eq!(parse_ex("set nofixeol"), Ex::SetFixEol(false));
+        // Vim's long spelling resolves the same way.
+        assert_eq!(parse_ex("set fixendofline"), Ex::SetFixEol(true));
+        assert_eq!(parse_ex("set nofixendofline"), Ex::SetFixEol(false));
     }
 }

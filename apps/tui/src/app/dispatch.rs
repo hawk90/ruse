@@ -92,9 +92,10 @@ pub(crate) fn run_ex(
     status: &mut String,
     quit: &mut bool,
     confirm: &mut Option<Confirm>,
+    fixeol: bool,
 ) {
     match ex {
-        Ex::Save => save(ws, files, status),
+        Ex::Save => save(ws, files, status, fixeol),
         // `:q` refuses when the focused buffer has unsaved changes (Vim E37); `:q!` discards them.
         Ex::Quit => {
             if ws.focused().doc.is_modified() {
@@ -107,7 +108,7 @@ pub(crate) fn run_ex(
         Ex::SaveQuit => {
             // `:wq`/`:x` on a buffer with no file errors (save declines) and does NOT quit — matching Vim.
             let had_file = files.contains_key(&ws.focused_buffer());
-            save(ws, files, status);
+            save(ws, files, status, fixeol);
             if had_file {
                 *quit = true;
             }
@@ -227,6 +228,8 @@ pub(crate) fn run_ex(
         Ex::NoHighlight => {}
         // `:set (no)hlsearch/incsearch` are handled in the run loop (frontend render flags); never here.
         Ex::SetHlSearch(_) | Ex::SetIncSearch(_) => {}
+        // `:set (no)fixeol` is handled in the run loop (a frontend write flag threaded into `save`); never here.
+        Ex::SetFixEol(_) => {}
         // `:registers` is handled in the run loop (it opens the frontend-owned register-viewer picker).
         Ex::Registers => {}
         // `:marks` is handled in the run loop (it opens the frontend-owned marks-viewer picker).
@@ -330,7 +333,9 @@ pub(crate) fn apply_effect(
     quit: &mut bool,
 ) {
     match eff {
-        Effect::Save => save(ws, files, status),
+        // A command-driven write (e.g. `ZZ`) always byte-preserves; `:set fixeol` is honored only on the
+        // `:w`/`:wq` ex path (which threads the session flag), matching where the opt-in is documented.
+        Effect::Save => save(ws, files, status, false),
         Effect::Quit => *quit = true,
         Effect::Status(s) => *status = s,
     }
@@ -357,30 +362,45 @@ fn noeol_marker(buf: &[u8]) -> &'static str {
     }
 }
 
-pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String) {
+/// Whether `save` should append a final `\n` to the buffer before writing: only under `:set fixeol` (OFF by
+/// default — byte-preserve stays the honest default), and only when the buffer is non-empty and lacks one.
+/// Mirrors Vim's `fixendofline` opt-in; an empty buffer is left empty (Vim writes no newline into one).
+fn needs_final_newline(buf: &[u8], fixeol: bool) -> bool {
+    fixeol && !buf.is_empty() && buf.last() != Some(&b'\n')
+}
+
+pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeol: bool) {
     // Multi-buffer honesty (F-007): only a buffer WITH a file writes. A scratch buffer (`:enew`) has no
     // registry entry, so `:w` declines rather than clobbering another buffer's file.
     let Some(bf) = files.get(&ws.focused_buffer()) else {
         *status = "E32: No file name".into();
         return;
     };
+    // `:set fixeol` (opt-in) ADDS a trailing `\n` when the buffer lacks one. Append it to the SOURCE bytes
+    // BEFORE `to_disk` so the encoding step (BOM/CRLF re-application) treats the newline like any other —
+    // e.g. a CRLF file gets `\r\n`. Default (byte-preserve) leaves the bytes untouched.
+    let doc_bytes = ws.focused().doc.bytes();
+    let mut source = doc_bytes.to_vec();
+    if needs_final_newline(&source, fixeol) {
+        source.push(b'\n');
+    }
     // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).
-    let bytes = bf.fmt.to_disk(ws.focused().doc.bytes());
+    let bytes = bf.fmt.to_disk(&source);
     match persist::atomic::save(&bf.path, &bytes) {
         Ok(()) => {
             ws.focused_doc_mut().mark_saved();
             persist::journal::clear(Some(bf.path.as_path())); // saved bytes are durable — nothing to recover
             tracing::info!(event = "save", path = %bf.path.display(), bytes = bytes.len());
             // Vim-style write report: `"file" 42L, 1024B written` (L = buffer lines, B = bytes on disk).
-            // ruse preserves final-newline presence exactly (no silent fixeol); when the file was written
-            // WITHOUT a trailing newline, surface `[noeol]` (as Vim does) so the missing EOL is never a
-            // silent surprise. The check is on the buffer bytes (to_disk only re-applies BOM/CRLF, not EOL).
-            let doc_bytes = ws.focused().doc.bytes();
+            // ruse preserves final-newline presence exactly by default (no silent fixeol); when the file was
+            // written WITHOUT a trailing newline, surface `[noeol]` (as Vim does) so the missing EOL is never
+            // a silent surprise. The check is on the SOURCE bytes actually written (to_disk only re-applies
+            // BOM/CRLF, not EOL), so a successful `:set fixeol` write ends in `\n` and shows no marker.
             *status = format!(
                 "\"{}\"{} {}L, {}B written",
                 bf.path.display(),
-                noeol_marker(doc_bytes),
-                line_count(doc_bytes),
+                noeol_marker(&source),
+                line_count(&source),
                 bytes.len()
             );
         }
@@ -414,6 +434,7 @@ mod dispatch_tests {
                 &mut status,
                 &mut quit,
                 &mut confirm,
+                false,
             );
             (status, quit)
         };
@@ -461,6 +482,33 @@ mod dispatch_tests {
             noeol_marker(b"a\nb"),
             " [noeol]",
             "missing final newline → marker"
+        );
+    }
+
+    #[test]
+    fn needs_final_newline_only_when_fixeol_and_missing() {
+        // Default (byte-preserve): never append, whatever the buffer looks like.
+        assert!(
+            !needs_final_newline(b"a", false),
+            "fixeol off → never append"
+        );
+        assert!(!needs_final_newline(b"a\n", false));
+        // `:set fixeol`: append only for a non-empty buffer that lacks a trailing newline.
+        assert!(
+            needs_final_newline(b"a", true),
+            "fixeol on + missing newline → append"
+        );
+        assert!(
+            needs_final_newline(b"a\nb", true),
+            "fixeol on + missing final newline → append"
+        );
+        assert!(
+            !needs_final_newline(b"a\n", true),
+            "already ends in newline → no-op (idempotent)"
+        );
+        assert!(
+            !needs_final_newline(b"", true),
+            "empty buffer stays empty (Vim writes no newline into one)"
         );
     }
 }
