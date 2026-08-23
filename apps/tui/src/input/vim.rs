@@ -23,6 +23,11 @@ pub(crate) fn motion_key(code: KeyCode) -> Option<Motion> {
         KeyCode::Char('E') => Motion::BigWordEnd,
         KeyCode::Char('$') => Motion::LineEnd,
         KeyCode::Char('^') => Motion::LineFirstNonBlank,
+        // `+` / `<CR>` — count lines down to the first non-blank; `-` — count lines up; `_` — count-1 down
+        // (`_` alone == `^`). All linewise under an operator (`d+`, `d-`, `d_`==`dd`).
+        KeyCode::Char('+') | KeyCode::Enter => Motion::DownFirstNonBlank,
+        KeyCode::Char('-') => Motion::UpFirstNonBlank,
+        KeyCode::Char('_') => Motion::LineUnderscore,
         KeyCode::Char('|') => Motion::Column,
         KeyCode::Char('}') => Motion::ParagraphFwd,
         KeyCode::Char('{') => Motion::ParagraphBack,
