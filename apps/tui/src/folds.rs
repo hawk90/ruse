@@ -1,5 +1,9 @@
-//! Manual folds (F-003 slice 1) — pure, view-local state and the geometry that collapses a range of buffer
-//! lines into one summary row. Frontend-only: a fold changes only what rows paint and how the cursor/scroll
+//! Manual folds — pure, view-local state and the geometry that collapses a range of buffer lines into one
+//! summary row. No dedicated PRD feature yet: folds are an F-007 (workspace) post-MVP carve-out, and their
+//! census rows (`zf`/`zo`/`zc`/… on mode_key.normal) are unclassified pending the parity burn-down (D-043);
+//! this ships ahead of that classification. (Earlier this header cited "F-003 slice 1" — wrong: F-003 is
+//! the keymap-layer router, not folds.)
+//! Frontend-only: a fold changes only what rows paint and how the cursor/scroll
 //! skip lines, never the buffer bytes or motion spans (so the core stays view-free, INV-DOC-VIEW). These are
 //! the inverse of the F-031 virtual lines — those ADD display rows, a closed fold REMOVES them. Everything
 //! here is pure over `&[Fold]`, so it is unit-tested directly; the session owns the `Vec<Fold>` per view and
