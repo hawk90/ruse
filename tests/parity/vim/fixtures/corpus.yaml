@@ -1890,6 +1890,485 @@
       }
     },
     {
+      "name": "d2fx_count_find",
+      "lines": [
+        "axbxcxd"
+      ],
+      "keys": "d2fx",
+      "expect": {
+        "text": [
+          "cxd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "axbx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dit_tag_inner",
+      "lines": [
+        "<a>hi</a>"
+      ],
+      "keys": "fhdit",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "hi",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dat_tag_around",
+      "lines": [
+        "x<b>hi</b>y"
+      ],
+      "keys": "fhdat",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "<b>hi</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "das_sentence_around",
+      "lines": [
+        "One. Two. Three."
+      ],
+      "keys": "wdas",
+      "expect": {
+        "text": [
+          "Two. Three."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "One. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dis_sentence_inner",
+      "lines": [
+        "One. Two. Three."
+      ],
+      "keys": "wdis",
+      "expect": {
+        "text": [
+          " Two. Three."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "One.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ci_angle_inner",
+      "lines": [
+        "a<bcd>e"
+      ],
+      "keys": "f<ci<Z<Esc>",
+      "expect": {
+        "text": [
+          "a<Z>e"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "bcd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "v_iw_change",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "viwcZ<Esc>",
+      "expect": {
+        "text": [
+          "Z bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "v_aw_delete",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wvawd",
+      "expect": {
+        "text": [
+          "foo baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "V_line_yank_paste",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "Vyp",
+      "expect": {
+        "text": [
+          "one",
+          "one",
+          "two"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "one\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "v_gU_upcase",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "vllgU",
+      "expect": {
+        "text": [
+          "FOO bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "v_tilde_toggle",
+      "lines": [
+        "FooBar"
+      ],
+      "keys": "vlll~",
+      "expect": {
+        "text": [
+          "fOObar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "v_ip_paragraph",
+      "lines": [
+        "a",
+        "b",
+        "",
+        "c"
+      ],
+      "keys": "vipd",
+      "expect": {
+        "text": [
+          "",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "v_swap_ends_o",
+      "lines": [
+        "hello"
+      ],
+      "keys": "lvllohd",
+      "expect": {
+        "text": [
+          "o"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hell",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_insert_I",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "<C-v>jjIX<Esc>",
+      "expect": {
+        "text": [
+          "Xab",
+          "Xcd",
+          "Xef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_append_A",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "<C-v>jj$AX<Esc>",
+      "expect": {
+        "text": [
+          "abX",
+          "cdX",
+          "efX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_repeats_ciw",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "ciwX<Esc>w.",
+      "expect": {
+        "text": [
+          "X X baz"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_repeats_A_append",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "A!<Esc>j.",
+      "expect": {
+        "text": [
+          "a!",
+          "b!"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gp_moves_after",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "yygpx",
+      "expect": {
+        "text": [
+          "one",
+          "one",
+          "wo"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "t",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "one\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "numbered_reg_after_dd",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "ddjdd\"1p",
+      "expect": {
+        "text": [
+          "b",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_unicode_multibyte",
       "lines": [
         "αβγ"

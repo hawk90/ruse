@@ -307,6 +307,32 @@ FIXTURES: list[dict] = [
     {"name": "dw_on_empty_line", "lines": [""], "keys": "dw"},
     {"name": "dd_on_last_line", "lines": ["alpha", "beta"], "keys": "Gdd"},
     {"name": "j_past_last_line", "lines": ["alpha", "beta"], "keys": "Gj"},
+    #     ROUND 2 sweep — visual/text-object/count/dot-repeat corners --------------------------------
+    #     char-search with counts
+    {"name": "d2fx_count_find", "lines": ["axbxcxd"], "keys": "d2fx"},
+    #     tag + sentence + more text objects
+    {"name": "dit_tag_inner", "lines": ["<a>hi</a>"], "keys": "fhdit"},
+    {"name": "dat_tag_around", "lines": ["x<b>hi</b>y"], "keys": "fhdat"},
+    {"name": "das_sentence_around", "lines": ["One. Two. Three."], "keys": "wdas"},
+    {"name": "dis_sentence_inner", "lines": ["One. Two. Three."], "keys": "wdis"},
+    {"name": "ci_angle_inner", "lines": ["a<bcd>e"], "keys": "f<ci<Z<Esc>"},
+    #     visual-mode operators
+    {"name": "v_iw_change", "lines": ["foo bar"], "keys": "viwcZ<Esc>"},
+    {"name": "v_aw_delete", "lines": ["foo bar baz"], "keys": "wvawd"},
+    {"name": "V_line_yank_paste", "lines": ["one", "two"], "keys": "Vyp"},
+    {"name": "v_gU_upcase", "lines": ["foo bar"], "keys": "vllgU"},
+    {"name": "v_tilde_toggle", "lines": ["FooBar"], "keys": "vlll~"},
+    {"name": "v_ip_paragraph", "lines": ["a", "b", "", "c"], "keys": "vipd"},
+    {"name": "v_swap_ends_o", "lines": ["hello"], "keys": "lvllohd"},
+    #     blockwise insert / append
+    {"name": "block_insert_I", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jjIX<Esc>"},
+    {"name": "block_append_A", "lines": ["ab", "cd", "ef"], "keys": "<C-v>jj$AX<Esc>"},
+    #     dot-repeat corners
+    {"name": "dot_repeats_ciw", "lines": ["foo bar baz"], "keys": "ciwX<Esc>w."},
+    {"name": "dot_repeats_A_append", "lines": ["a", "b"], "keys": "A!<Esc>j."},
+    #     paste geometry corners
+    {"name": "gp_moves_after", "lines": ["one", "two"], "keys": "yygpx"},
+    {"name": "numbered_reg_after_dd", "lines": ["a", "b", "c"], "keys": "ddjdd\"1p"},
     #     multi-byte / unicode buffers (byte-index correctness) --------------------------------------
     {"name": "x_unicode_multibyte", "lines": ["αβγ"], "keys": "x"},
     {"name": "x_emoji", "lines": ["a😀b"], "keys": "lx"},

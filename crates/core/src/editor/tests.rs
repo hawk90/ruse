@@ -742,6 +742,37 @@ mod visual_swap_tests {
     }
 
     #[test]
+    fn visual_inner_paragraph_is_linewise() {
+        // `vip` selects the paragraph and switches the selection to LINEWISE (Vim), so `vipd` yields a
+        // linewise register — verified against nvim v0.12.4 (oracle fixture v_ip_paragraph).
+        let st = run(
+            "a\nb\n\nc",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::InnerParagraph),
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "\nc");
+        assert!(st.register().is_linewise(), "vip delete is linewise");
+        assert_eq!(st.register().text(), b"a\nb\n");
+        // A charwise object (`iw`) in Visual stays charwise (regression guard).
+        let st = run(
+            "foo bar",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::InnerWord),
+                Command::DeleteSelection,
+            ],
+        );
+        assert!(!st.register().is_linewise(), "viw stays charwise");
+    }
+
+    #[test]
     fn gv_without_a_prior_selection_is_a_noop() {
         let st = run("abc", &[Command::ReselectVisual]);
         assert_eq!(text(&st), "abc");

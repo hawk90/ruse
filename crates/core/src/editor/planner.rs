@@ -1258,10 +1258,25 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 if s >= e {
                     return nop(cur, st.view.mode);
                 }
+                // `ip`/`ap` are LINEWISE objects: selecting one in Visual switches the selection to
+                // linewise (Vim), so a following `d`/`y` gets linewise register geometry. Other objects
+                // (`iw`, `i(`, `is`, …) keep the current visual kind.
+                let obj_mode = if matches!(m, Motion::InnerParagraph | Motion::AParagraph) {
+                    match st.view.mode {
+                        Mode::Select { .. } => Mode::Select {
+                            kind: SelectKind::Linewise,
+                        },
+                        _ => Mode::Visual {
+                            kind: SelectKind::Linewise,
+                        },
+                    }
+                } else {
+                    st.view.mode
+                };
                 return Plan {
                     action: Action::Nop,
                     cursor: prev_boundary(b, e),
-                    mode: st.view.mode,
+                    mode: obj_mode,
                     is_edit: false,
                     effects: Vec::new(),
                     set_register: None,
