@@ -95,6 +95,15 @@ mod tests {
     }
 
     #[test]
+    fn context_mark_jumps_backtick_and_quote() {
+        // `` `` `` → exact context mark; `''` → linewise. Both accept the reversed second key too.
+        assert_eq!(feed("``"), Feed::Cmd(Command::GotoContextMark));
+        assert_eq!(feed("`'"), Feed::Cmd(Command::GotoContextMark));
+        assert_eq!(feed("''"), Feed::Cmd(Command::GotoContextMarkLine));
+        assert_eq!(feed("'`"), Feed::Cmd(Command::GotoContextMarkLine));
+    }
+
+    #[test]
     fn goto_byte_motion() {
         // `[count]go` — go to the count-th byte; bare `go` = byte 1; operator-aware `dgo`.
         assert_eq!(feed("go"), Feed::Cmd(Command::Move(1, Motion::GotoByte)));

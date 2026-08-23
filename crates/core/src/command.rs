@@ -203,6 +203,12 @@ pub enum Command {
     GotoLastChange,
     /// `'.` — jump LINEWISE to the first non-blank of the last change's line (Vim). No-op before any edit.
     GotoLastChangeLine,
+    /// `` `` `` — jump to the position before the latest jump (Vim's automatic `` ` ``/`'` context mark).
+    /// Reads the newest jumplist entry; being itself a jump, it records where it left, so repeating toggles
+    /// between the two positions. A no-op before any jump has happened.
+    GotoContextMark,
+    /// `''` — jump LINEWISE to the first non-blank of the context mark's line (Vim). No-op before any jump.
+    GotoContextMarkLine,
     /// `g;` — jump to the next OLDER position in the change list (Vim). A no-op at the oldest change.
     GotoOlderChange,
     /// `g,` — jump to the next NEWER position in the change list (Vim). A no-op at the newest change.
@@ -794,6 +800,8 @@ impl Command {
             }
             Command::GotoLastChange => "goto_last_change".into(),
             Command::GotoLastChangeLine => "goto_last_change_line".into(),
+            Command::GotoContextMark => "goto_context_mark".into(),
+            Command::GotoContextMarkLine => "goto_context_mark_line".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
             Command::GotoNewerChange => "goto_newer_change".into(),
             Command::GotoOlderJump => "goto_older_jump".into(),
@@ -1119,6 +1127,8 @@ impl Command {
             }
             "goto_last_change" => Command::GotoLastChange,
             "goto_last_change_line" => Command::GotoLastChangeLine,
+            "goto_context_mark" => Command::GotoContextMark,
+            "goto_context_mark_line" => Command::GotoContextMarkLine,
             "goto_older_change" => Command::GotoOlderChange,
             "goto_newer_change" => Command::GotoNewerChange,
             "goto_older_jump" => Command::GotoOlderJump,
@@ -1506,6 +1516,8 @@ mod tests {
             },
             Command::GotoLastChange,
             Command::GotoLastChangeLine,
+            Command::GotoContextMark,
+            Command::GotoContextMarkLine,
             Command::GotoNamedMarkLine('a'),
             Command::GotoNamedMarkLine('z'),
             Command::GotoOlderChange,

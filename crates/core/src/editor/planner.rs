@@ -1197,6 +1197,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
             None => nop(cur, st.view.mode),
         },
+        // `` `` `` — jump to the context mark (position before the latest jump). No-op before any jump. It is
+        // itself a jump (`apply_command` records the leave position AFTER commit), so a repeat toggles.
+        Command::GotoContextMark => match st.view.context_mark() {
+            Some(pos) => nop(motion::snap(b, pos), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
+        // `''` — LINEWISE to the first non-blank of the context mark's line. No-op before any jump.
+        Command::GotoContextMarkLine => match st.view.context_mark() {
+            Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
         // `g;`/`g,` — step the change list. The cursor here is a placeholder; `commit` steps `change_idx`
         // (a mutation the pure planner cannot make) and overrides it with the resolved change position.
         Command::GotoOlderChange => moved(Action::JumpChange { older: true }, cur, st.view.mode),
