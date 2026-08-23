@@ -1898,6 +1898,51 @@ mod insert_entry_tests {
     }
 
     #[test]
+    fn autoindent_cleanup_removes_indent_on_esc_when_nothing_typed() {
+        // `o<Esc>` with auto-indent and no text typed: the indent is removed (no trailing whitespace).
+        let st = run(
+            "ab\ncd",
+            &[
+                Command::OpenLineIndent {
+                    kind: OpenKind::Below,
+                    level: 1,
+                },
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "ab\n\ncd", "the auto-inserted '    ' is gone");
+    }
+
+    #[test]
+    fn autoindent_cleanup_keeps_indent_when_content_typed() {
+        // Typing a non-blank clears the pending flag, so the indent survives `<Esc>`.
+        let st = run(
+            "ab\ncd",
+            &[
+                Command::OpenLineIndent {
+                    kind: OpenKind::Below,
+                    level: 1,
+                },
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "ab\n    X\ncd", "typed content keeps its indent");
+    }
+
+    #[test]
+    fn autoindent_cleanup_never_strips_a_pre_existing_blank_line() {
+        // Entering/leaving Insert on an ALREADY-blank line must not delete it (the flag is only set by an
+        // auto-indent open, never by plain `i`). Guards against data loss.
+        let st = run("    \nab", &[Command::EnterInsert, Command::EnterNormal]);
+        assert_eq!(
+            text(&st),
+            "    \nab",
+            "a pre-existing whitespace line is preserved"
+        );
+    }
+
+    #[test]
     fn open_line_indent_above_seeds_before_the_line() {
         // `O` (Above) on line 2 opens an indented blank line before it.
         let st = run(

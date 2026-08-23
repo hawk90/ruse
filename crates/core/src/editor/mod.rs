@@ -190,6 +190,12 @@ pub struct View {
     /// and consumed by the next `<Esc>` ([`Command::EnterNormal`]). `None` outside such a session; cleared
     /// on any exit from Insert. See [`BlockInsert`].
     block_insert: Option<BlockInsert>,
+    /// Whether the current Insert session opened a line with AUTO-INDENT and nothing non-blank has been
+    /// typed on it since (Vim). While true, leaving Insert (`<Esc>`) on an all-whitespace line removes the
+    /// auto-inserted indent so `o<Esc>` never leaves trailing whitespace. Set/cleared in [`apply_command`]
+    /// (which sees the `Command`); read by the `EnterNormal` planner arm. Cleared on any non-blank insert
+    /// and on every Insert entry/exit, so it never survives to a later line.
+    auto_indent_pending: bool,
     /// The indent config (`editor.tab_width` + `editor.indent_style`).
     indent: IndentConfig,
     /// `'textwidth'` (`tw`): the column `gq`/`gw` wrap to; `0` = use the 79-column fallback (Vim).
@@ -261,6 +267,7 @@ impl View {
             last_visual: None,
             replace_stack: Vec::new(),
             block_insert: None,
+            auto_indent_pending: false,
             indent: IndentConfig {
                 tab_width: 4,
                 style: IndentStyle::Space,
@@ -1568,6 +1575,21 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     let effects = commit(st, p);
     if let Some(from) = jump_from {
         st.view.push_jump(from);
+    }
+    // Maintain the auto-indent-pending flag (read by `EnterNormal` for `<Esc>` autoindent cleanup): a
+    // tree-suggested open sets it; typing a non-blank clears it; any Insert entry/exit resets it so it
+    // never leaks to a later line. Done here (not in the pure planner) because it depends on the Command.
+    match cmd {
+        Command::OpenLineIndent { level, .. } => st.view.auto_indent_pending = *level > 0,
+        Command::InsertChar(c) if *c != ' ' && *c != '\t' => st.view.auto_indent_pending = false,
+        Command::EnterNormal
+        | Command::EnterInsert
+        | Command::EnterInsertAfter
+        | Command::InsertLineStart
+        | Command::AppendLineEnd
+        | Command::OpenBelow
+        | Command::OpenAbove => st.view.auto_indent_pending = false,
+        _ => {}
     }
     update_curswant(st, cmd);
     effects
