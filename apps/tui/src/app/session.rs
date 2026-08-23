@@ -207,6 +207,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // EditorState. With one Window this is byte-identical to the pre-Workspace path; `:split`/
     // `:vsplit` open more Windows onto the same buffer with independent cursors and scroll.
     let mut ws = Workspace::new(initial.clone());
+    // ruse's shipped default: search is case-insensitive with smartcase (the most widely recommended vimrc
+    // pair). Vim/Neovim default both OFF for script backwards-compat — a constraint ruse has no legacy of —
+    // so the interactive default is the better one. Set at the Workspace level so it reaches every buffer;
+    // the engine/oracle default stays vanilla-off. Runtime-overridable via `:set noic`/`:set noscs`.
+    ws.set_default_search_case(true, true);
     // The initial buffer owns the session file (`path`/`fmt`): name it, and remember its id so `:w` on any
     // OTHER buffer (`:enew` scratch) declines rather than clobbering the file (F-007 multi-buffer).
     let file_buf = ws.focused_buffer();

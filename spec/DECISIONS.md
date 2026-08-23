@@ -792,3 +792,27 @@ related:
   format/contract decision); or if a non-keystroke frontend (GUI, F-018) needs to record macros without a
   `KeyEvent` stream, at which point the recording unit is re-examined at the command/intent layer.
 - Refs: [../docs/design/macros.md](../docs/design/macros.md), [../docs/rfc/proposed/RFC-0004-input-profiles.md](../docs/rfc/proposed/RFC-0004-input-profiles.md), D-025, D-026, F-003, F-029, CAP-VIM-PROFILE.
+
+## D-056 — ruse ships better-than-Vim interactive defaults at the frontend/Workspace layer; the engine keeps the Vim factory default · decided
+- **Decision:** Where a Vim default persists only for backwards-compatibility that ruse has no legacy of
+  (no `.vimrc` ecosystem, no script corpus to protect), ruse may ship the better interactive default —
+  BUT the change lives in the **frontend / Workspace layer**, never in the engine (`EditorState::new` /
+  `View::fresh`). The engine keeps the Vim factory value so the differential parity oracle, which drives
+  `EditorState` directly (`apps/tui/tests/parity_compare.rs`), keeps measuring true Vim parity. First
+  applied: `editor.ignorecase` + `editor.smartcase` ship ON (the most widely recommended vimrc pair),
+  installed by the frontend via `Workspace::set_default_search_case`, which also propagates to every buffer
+  created afterward (`:e`/`:split`/reload), not just the first. Runtime-overridable (`:set noic`/`:set
+  noscs`). The config-schema `default:` field records the SHIPPED default (true); the engine default (false)
+  is the oracle baseline.
+- **Reason:** The 2026-08-23 "better-than-vanilla" audit found several Vim defaults whose original rationale
+  (slow-terminal redraws, script/`&`-flag compatibility, first-vi least-surprise) is obsolete for a new
+  editor with no compatibility debt. Adopting the better default is a real UX win, but flipping the ENGINE
+  default would make the parity oracle measure ruse-vs-ruse instead of ruse-vs-Vim, destroying the evidence
+  that the Vim profile is faithful. Splitting "engine = provable Vim baseline" from "shipped profile = the
+  defaults a human gets" preserves both: the oracle stays honest, the user gets the good defaults. The
+  Workspace-level seam (not per-buffer `:set` at startup) is what makes the default hold across new buffers.
+- **Re-evaluate if:** a config-file loader lands (then the shipped defaults move into the default profile it
+  reads, and this becomes "the profile layer sets them" rather than a hardcoded frontend call); or if a
+  divergence is proposed whose vanilla rationale still applies (muscle-memory / current script compat), in
+  which case it does NOT qualify under this decision and stays at the Vim default.
+- Refs: [../docs/rfc/proposed/RFC-0017-better-than-vanilla-defaults.md](../docs/rfc/proposed/RFC-0017-better-than-vanilla-defaults.md), D-043, D-049, F-009, C-CONFIG.

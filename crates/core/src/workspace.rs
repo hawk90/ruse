@@ -107,6 +107,13 @@ pub struct Workspace {
     /// The alternate buffer (Vim `#`): the buffer focus last left, so `:b#` toggles back. `None` until
     /// the first switch.
     alt: Option<DocumentId>,
+    /// The workspace's DEFAULT search-case (`'ignorecase'`/`'smartcase'`), applied to every View it creates
+    /// so a shipped-profile default (which the app turns ON) reaches new buffers and splits, not just the
+    /// first one. The engine/`EditorState::new` default stays vanilla-off (the differential parity oracle
+    /// drives `EditorState` directly), so this Workspace-level seam is where ruse's better-than-Vim default
+    /// lives without the oracle ever seeing it. `(false, false)` = Vim factory until the frontend sets it.
+    default_ignore_case: bool,
+    default_smart_case: bool,
 }
 
 impl Workspace {
@@ -126,7 +133,36 @@ impl Workspace {
             names: vec![None],
             buffer_order: vec![id],
             alt: None,
+            default_ignore_case: false,
+            default_smart_case: false,
         }
+    }
+
+    /// Set the workspace default search-case and apply it to EVERY live view (existing and, via
+    /// [`Self::apply_default_search_case`], any created afterward). The frontend calls this once at startup
+    /// to install ruse's shipped default (ignorecase + smartcase ON) so it holds across `:e`/`:split`/reload
+    /// — without touching `EditorState::new`, which the parity oracle drives at the Vim factory default.
+    pub fn set_default_search_case(&mut self, ignore_case: bool, smart_case: bool) {
+        self.default_ignore_case = ignore_case;
+        self.default_smart_case = smart_case;
+        for vid in 0..self.views.len() {
+            if self.views[vid].is_some() {
+                self.apply_default_search_case(ViewId(vid));
+            }
+        }
+    }
+
+    /// Apply the stored default search-case to one view (the [`EditorState::from_parts`] round-trip the other
+    /// per-view mutations use). Called for every newly created view so the default propagates to new buffers.
+    fn apply_default_search_case(&mut self, vid: ViewId) {
+        let view = self.views[vid.0].take().expect("view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("doc live");
+        let mut st = EditorState::from_parts(doc, view);
+        st.set_search_case(self.default_ignore_case, self.default_smart_case);
+        let (doc, view) = st.into_parts();
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
     }
 
     /// The arena slot index for a `DocumentId` (ids are 1-based, assigned monotonically, never reused).
@@ -688,6 +724,7 @@ impl Workspace {
         self.docs.push(Some(doc));
         self.names.push(name);
         self.views.push(Some(View::fresh(id)));
+        self.apply_default_search_case(ViewId(self.views.len() - 1));
         self.buffer_order.push(id);
         id
     }
@@ -712,6 +749,7 @@ impl Workspace {
         reusable.unwrap_or_else(|| {
             let vid = ViewId(self.views.len());
             self.views.push(Some(View::fresh(id)));
+            self.apply_default_search_case(vid);
             vid
         })
     }
@@ -811,6 +849,7 @@ impl Workspace {
             if self.views[vid.0].as_ref().map(View::doc) == Some(id) {
                 let nv = ViewId(self.views.len());
                 self.views.push(Some(View::fresh(replacement)));
+                self.apply_default_search_case(nv);
                 self.windows[i].view = nv;
             }
         }
@@ -1276,6 +1315,37 @@ mod tests {
             .expect("valid regex");
         assert_eq!(out.replacements, 1);
         assert_eq!(w.focused().doc.bytes(), b"X\n");
+    }
+
+    /// `set_default_search_case` applies to the initial buffer AND propagates to buffers created afterward,
+    /// so the shipped ignorecase+smartcase default holds across `:e` (not just the first buffer).
+    #[test]
+    fn default_search_case_propagates_to_new_buffers() {
+        let mut w = Workspace::new(b"Foo\n".to_vec());
+        w.set_default_search_case(true, true); // ruse's shipped default
+                                               // The initial buffer is now case-insensitive.
+        let out = w
+            .substitute(SubRange::CurrentLine, "foo", "X", SubFlags::default())
+            .expect("valid regex");
+        assert_eq!(out.replacements, 1, "initial buffer honors the default");
+        // A buffer opened AFTER the default was set also gets it.
+        let b2 = w.add_buffer(b"Bar\n".to_vec(), Some("b2".to_string()));
+        w.focus_buffer(b2);
+        let out = w
+            .substitute(SubRange::CurrentLine, "bar", "Y", SubFlags::default())
+            .expect("valid regex");
+        assert_eq!(out.replacements, 1, "new buffer inherits the default");
+        // smartcase: an uppercase char in the pattern forces case-sensitivity even with ignorecase on.
+        let b3 = w.add_buffer(b"baz Baz\n".to_vec(), Some("b3".to_string()));
+        w.focus_buffer(b3);
+        let out = w
+            .substitute(SubRange::CurrentLine, "Baz", "Z", SubFlags::default())
+            .expect("valid regex");
+        assert_eq!(
+            out.replacements, 1,
+            "smartcase: 'Baz' matches only the capitalized one"
+        );
+        assert_eq!(w.focused().doc.bytes(), b"baz Z\n");
     }
 
     /// `:bd` retires a buffer and repoints the window to the alternate; deleting the last buffer opens a
