@@ -80,6 +80,16 @@ impl Document {
         &self.text
     }
 
+    /// A cheap, owned handle to the current buffer: an `Arc` clone (refcount bump, no copy). Since a
+    /// committed edit MOVES a freshly-built `Vec` into a new `Arc` (see [`Document::text`]), a held snapshot
+    /// keeps pointing at the bytes it captured — so callers that need the buffer to outlive a later
+    /// `&mut Document` borrow (e.g. the per-frame render snapshot) can hold this instead of copying with
+    /// `bytes().to_vec()`. Deref-coerces to `&[u8]` at every use site.
+    #[must_use]
+    pub fn text_arc(&self) -> Arc<Vec<u8>> {
+        Arc::clone(&self.text)
+    }
+
     /// The document as UTF-8 text, or `None` if not valid UTF-8.
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
@@ -262,5 +272,38 @@ impl Document {
     /// Refresh the frozen anchor index after any change (rebuild-on-commit, query-and-snapshot §2).
     fn rebuild_index(&mut self) {
         self.anchor_index = Arc::new(AnchorIndex::from_entries(self.anchors.resolved()));
+    }
+}
+
+#[cfg(test)]
+mod text_arc_tests {
+    use super::*;
+    use crate::edit::{Edit, EditList};
+    use crate::transaction::{Transaction, TransactionOrigin};
+
+    #[test]
+    fn text_arc_is_a_cheap_shared_handle() {
+        let d = Document::new(DocumentId(1), b"abc".to_vec());
+        // Two handles point at the SAME allocation (a refcount bump, not a copy).
+        let a = d.text_arc();
+        let b = d.text_arc();
+        assert!(Arc::ptr_eq(&a, &b), "text_arc clones share the buffer");
+        assert_eq!(&**a, b"abc");
+    }
+
+    #[test]
+    fn a_held_snapshot_survives_a_later_edit() {
+        // The whole point: a snapshot taken before an edit keeps the OLD bytes, because a committed edit
+        // builds a fresh Arc rather than mutating the shared one in place.
+        let mut d = Document::new(DocumentId(1), b"abc".to_vec());
+        let snapshot = d.text_arc();
+        d.apply(Transaction::new(
+            d.revision(),
+            EditList::new(vec![Edit::insert(3, b"d".to_vec())]).unwrap(),
+            TransactionOrigin::UserInput,
+        ))
+        .unwrap();
+        assert_eq!(&**snapshot, b"abc", "the held snapshot is unchanged");
+        assert_eq!(d.bytes(), b"abcd", "the live document advanced");
     }
 }

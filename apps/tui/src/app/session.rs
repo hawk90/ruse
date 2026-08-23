@@ -189,14 +189,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
-        // once for the panic-rescue mirror, the recovery journal, and the highlight parse.
+        // once for the panic-rescue mirror, the recovery journal, and the highlight parse. `text_arc()` is
+        // an Arc refcount bump (not an O(buffer) copy): a committed edit builds a fresh Arc, so this handle
+        // keeps pointing at the bytes captured here even after the later `&mut ws` borrows edit the doc.
         let (revision, modified, snapshot) = {
             let f = ws.focused();
-            (
-                f.doc.revision(),
-                f.doc.is_modified(),
-                f.doc.bytes().to_vec(),
-            )
+            (f.doc.revision(), f.doc.is_modified(), f.doc.text_arc())
         };
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
