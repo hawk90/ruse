@@ -228,6 +228,15 @@ pub enum Command {
     GotoNamedMark(char),
     /// `'{a-z}` — jump LINEWISE to the first non-blank of named mark `char`'s line (Vim). No-op if unset.
     GotoNamedMarkLine(char),
+    /// `` d`{a-z} `` / `d'{a-z}` (and `c`/`y`) — an operator whose motion is a named mark. `linewise` is the
+    /// `'` form (whole lines from the cursor's line to the mark's line); `` ` `` is exclusive charwise from
+    /// the cursor to the mark. A no-op if the mark is unset. The mark lives in the View, so — unlike a pure
+    /// motion — this resolves in the planner, not `motion::target`.
+    OpToMark {
+        op: OpKind,
+        name: char,
+        linewise: bool,
+    },
     /// `CTRL-G u` in Insert — break the undo sequence: the NEXT edit starts a fresh undo group, so a
     /// later `u` stops here instead of undoing the whole insert session. A nop that only clears the
     /// edit-continuation state (Vim `i_CTRL-G_u`). Undo-of-a-session is not observable via the parity
@@ -816,6 +825,12 @@ impl Command {
             Command::SetNamedMark(c) => format!("set_named_mark {}", *c as u32),
             Command::GotoNamedMark(c) => format!("goto_named_mark {}", *c as u32),
             Command::GotoNamedMarkLine(c) => format!("goto_named_mark_line {}", *c as u32),
+            Command::OpToMark { op, name, linewise } => format!(
+                "op_to_mark {} {} {}",
+                op_kind_token(*op),
+                *name as u32,
+                if *linewise { "linewise" } else { "charwise" }
+            ),
             Command::BreakUndo => "break_undo".into(),
             Command::ShiftRight(n) => format!("shift_right {n}"),
             Command::ShiftLeft(n) => format!("shift_left {n}"),
@@ -1157,6 +1172,25 @@ impl Command {
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::GotoNamedMarkLine(c)
+            }
+            "op_to_mark" => {
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let op = it
+                    .next()
+                    .and_then(op_kind_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let name = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .and_then(char::from_u32)
+                    .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
+                let linewise = match it.next() {
+                    Some("linewise") => true,
+                    Some("charwise") => false,
+                    _ => return Err(CommandParseError::BadArgument(a.to_string())),
+                };
+                Command::OpToMark { op, name, linewise }
             }
             "break_undo" => Command::BreakUndo,
             "shift_right" => {
@@ -1537,6 +1571,16 @@ mod tests {
             Command::SetNamedMark('z'),
             Command::GotoNamedMark('a'),
             Command::GotoNamedMark('z'),
+            Command::OpToMark {
+                op: OpKind::Delete,
+                name: 'a',
+                linewise: false,
+            },
+            Command::OpToMark {
+                op: OpKind::Yank,
+                name: 'z',
+                linewise: true,
+            },
             Command::BreakUndo,
             Command::ShiftRight(1),
             Command::ShiftRight(3),

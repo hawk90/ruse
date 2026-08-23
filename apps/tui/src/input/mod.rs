@@ -643,6 +643,24 @@ impl InputEngine {
         Feed::Cmd(cmd)
     }
 
+    /// A named-mark key after `` ` ``/`'`: with a `d`/`c`/`y` operator pending it OPERATES to the mark
+    /// (`` d`a ``/`d'a`); otherwise it JUMPS (`` `a ``/`'a`). `linewise` is the `'` form. Other pending
+    /// operators (case/shift) fall back to the bare jump — operating to a mark with those is not wired.
+    fn mark_op(&mut self, name: char, linewise: bool) -> Feed {
+        let op = self.normal.op.and_then(|p| match p.op {
+            Op::Delete => Some(OpKind::Delete),
+            Op::Change => Some(OpKind::Change),
+            Op::Yank => Some(OpKind::Yank),
+            _ => None,
+        });
+        let cmd = match op {
+            Some(op) => Command::OpToMark { op, name, linewise },
+            None if linewise => Command::GotoNamedMarkLine(name),
+            None => Command::GotoNamedMark(name),
+        };
+        self.action(cmd)
+    }
+
     /// Emit `gn`/`gN` — the search-match text object. Reads the last search pattern and folds in any pending
     /// operator (`dgn`/`cgn`/`ygn`); the bare form ([`SearchOp::Move`]) selects the match in Visual. With no
     /// prior search there is nothing to match, so the pending construct aborts (leaking no state). Emitted as
@@ -1753,8 +1771,8 @@ impl InputEngine {
                     KeyCode::Char('`') | KeyCode::Char('\'') => {
                         self.action(Command::GotoContextMark)
                     }
-                    // `` `{a-z} `` — jump to a named mark.
-                    KeyCode::Char(c @ 'a'..='z') => self.action(Command::GotoNamedMark(c)),
+                    // `` `{a-z} `` — jump to a named mark, or `` d`a ``/`` y`a `` with an operator pending.
+                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, false),
                     // Any other mark name is not wired — abort the pending construct.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
@@ -1777,8 +1795,8 @@ impl InputEngine {
                     KeyCode::Char('\'') | KeyCode::Char('`') => {
                         self.action(Command::GotoContextMarkLine)
                     }
-                    // `'{a-z}` — linewise to a named mark's line.
-                    KeyCode::Char(c @ 'a'..='z') => self.action(Command::GotoNamedMarkLine(c)),
+                    // `'{a-z}` — linewise to a named mark's line, or `d'a`/`y'a` with an operator pending.
+                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, true),
                     // Any other mark name is not wired — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };

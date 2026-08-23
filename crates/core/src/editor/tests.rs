@@ -1327,6 +1327,50 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn operator_to_mark() {
+        use crate::command::OpKind;
+        // `` d`a ``: exclusive charwise from cursor to mark. Set mark a at 0, move to byte 4, delete back
+        // to a → removes [0,4). Verified vs nvim v0.12.4 (fixture d_backtick_mark_charwise).
+        let st = run(
+            "abc def ghi",
+            &[
+                Command::SetNamedMark('a'),
+                Command::Move(4, Motion::Right),
+                Command::OpToMark {
+                    op: OpKind::Delete,
+                    name: 'a',
+                    linewise: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "def ghi", "d`a deletes cursor..mark charwise");
+        // `d'a`: linewise over the line range. Mark on line 1, cursor on line 3 → delete lines 1..=3.
+        let st = run(
+            "one\ntwo\nthree\nfour",
+            &[
+                Command::SetNamedMark('a'),
+                Command::Move(3, Motion::GotoLine),
+                Command::OpToMark {
+                    op: OpKind::Delete,
+                    name: 'a',
+                    linewise: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "four", "d'a deletes whole lines mark..cursor");
+        // Unset mark → no-op.
+        let st = run(
+            "abc",
+            &[Command::OpToMark {
+                op: OpKind::Delete,
+                name: 'z',
+                linewise: false,
+            }],
+        );
+        assert_eq!(text(&st), "abc");
+    }
+
+    #[test]
     fn apostrophe_mark_jumps_linewise_to_first_non_blank() {
         // Line 2 is "  xy" (2-space indent). Set mark a on the 'y' (byte 7), leave to line 1, then
         // `'a` lands on the FIRST NON-BLANK of line 2 (byte 5, the 'x'), not the exact mark column.

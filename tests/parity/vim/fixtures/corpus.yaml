@@ -2369,6 +2369,81 @@
       }
     },
     {
+      "name": "d_backtick_mark_charwise",
+      "lines": [
+        "abc def ghi"
+      ],
+      "keys": "wmawd`a",
+      "expect": {
+        "text": [
+          "abc ghi"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "def ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_quote_mark_linewise",
+      "lines": [
+        "one",
+        "two",
+        "three",
+        "four"
+      ],
+      "keys": "majjd'a",
+      "expect": {
+        "text": [
+          "four"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\ntwo\nthree\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "c_backtick_mark_change",
+      "lines": [
+        "abc def ghi"
+      ],
+      "keys": "wmawc`aZ<Esc>",
+      "expect": {
+        "text": [
+          "abc Zghi"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "def ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "count_3J_join",
       "lines": [
         "a",

@@ -1263,6 +1263,42 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
             None => nop(cur, st.view.mode),
         },
+        // `` d`{a-z} `` / `d'{a-z}` (and `c`/`y`): operate from the cursor to a named mark. `` ` `` is
+        // exclusive charwise; `'` is linewise over the line range. No-op if the mark is unset.
+        Command::OpToMark { op, name, linewise } => {
+            let Some(mark) = st.view.named_mark(*name) else {
+                return nop(cur, st.view.mode);
+            };
+            let mark = mark.min(b.len());
+            let (s, e) = if *linewise {
+                let start = line_start(b, cur.min(mark));
+                let le = line_end(b, cur.max(mark));
+                (start, if le < b.len() { le + 1 } else { le })
+            } else {
+                (cur.min(mark), cur.max(mark))
+            };
+            let reg = captured(b, s, e, *linewise);
+            match op {
+                OpKind::Yank => Plan {
+                    action: Action::Nop,
+                    cursor: s,
+                    mode: Mode::Normal,
+                    is_edit: false,
+                    effects: Vec::new(),
+                    set_register: Some(RegWrite::Yank(reg)),
+                    set_anchor: None,
+                    set_mark: None,
+                },
+                OpKind::Delete if s < e => {
+                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
+                }
+                OpKind::Change if s < e => {
+                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+                }
+                OpKind::Change => nop(s, Mode::Insert),
+                OpKind::Delete => nop(s, Mode::Normal),
+            }
+        }
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
         // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
         // group starts here mid-insert-session (Vim `i_CTRL-G_u`). Cursor and mode are untouched.
