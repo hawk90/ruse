@@ -2570,6 +2570,124 @@
       }
     },
     {
+      "name": "percent_jump_50",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "50%x",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "percent_jump_100",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "100%x",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          ""
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "percent_jump_25",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "25%x",
+      "expect": {
+        "text": [
+          "",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_percent_jump_linewise",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "d50%",
+      "expect": {
+        "text": [
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_unicode_multibyte",
       "lines": [
         "αβγ"
