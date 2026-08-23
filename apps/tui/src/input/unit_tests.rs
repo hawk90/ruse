@@ -796,6 +796,50 @@ mod tests {
     }
 
     #[test]
+    fn visual_ctrl_a_ctrl_x_increment_the_selection() {
+        let vis = Mode::Visual {
+            kind: SelectKind::Linewise,
+        };
+        // Plain Visual `CTRL-A`/`CTRL-X` — bump every selected line by ±count.
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(ctrl('a'), vis),
+            Feed::Cmd(Command::IncrementSelection {
+                delta: 1,
+                sequential: false,
+            })
+        );
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('3'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('x'), vis),
+            Feed::Cmd(Command::IncrementSelection {
+                delta: -3,
+                sequential: false,
+            })
+        );
+        // `g CTRL-A`/`g CTRL-X` — the sequential form (turn a column into a run).
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('g'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('a'), vis),
+            Feed::Cmd(Command::IncrementSelection {
+                delta: 1,
+                sequential: true,
+            })
+        );
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('g'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('x'), vis),
+            Feed::Cmd(Command::IncrementSelection {
+                delta: -1,
+                sequential: true,
+            })
+        );
+    }
+
+    #[test]
     fn emacs_profile_is_non_modal() {
         // F-012 seam: the Emacs profile resolves global-map C- motions to commands and self-inserts a
         // printable key — regardless of the (Vim) mode passed, and without the modal grammar.

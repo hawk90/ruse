@@ -185,6 +185,15 @@ pub enum Command {
     /// current line (`CTRL-A` = +count, `CTRL-X` = −count). No-op if the line has no number after the
     /// cursor. Decimal only; the cursor lands on the last digit of the result (Vim).
     IncrementNumber(i64),
+    /// Visual `CTRL-A`/`CTRL-X` (`delta` = ±count) over the selection: add `delta` to the first number on
+    /// EACH selected line. `sequential` (the `g CTRL-A`/`g CTRL-X` form) instead adds `delta`, `2·delta`,
+    /// `3·delta`… to successive numbered lines — turning a column of equal numbers into an ascending run.
+    /// Lines without a number are skipped and do not advance the sequence. Returns to Normal, caret on the
+    /// first changed line. Charwise/linewise selections; blockwise geometry is deferred.
+    IncrementSelection {
+        delta: i64,
+        sequential: bool,
+    },
     /// `` `. `` — jump the cursor to the position of the most recent change (Vim's automatic `.` mark).
     /// A no-op before the first edit. Operator-pending (`` d`. ``) and named marks are deferred.
     GotoLastChange,
@@ -766,6 +775,9 @@ impl Command {
             Command::JoinLines => "join_lines".into(),
             Command::JoinLinesNoSpace => "join_lines_no_space".into(),
             Command::IncrementNumber(d) => format!("increment_number {d}"),
+            Command::IncrementSelection { delta, sequential } => {
+                format!("increment_selection {delta} {sequential}")
+            }
             Command::GotoLastChange => "goto_last_change".into(),
             Command::GotoLastChangeLine => "goto_last_change_line".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
@@ -1076,6 +1088,19 @@ impl Command {
                     .and_then(|a| a.trim().parse().ok())
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::IncrementNumber(d)
+            }
+            "increment_selection" => {
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let delta: i64 = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let sequential: bool = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::IncrementSelection { delta, sequential }
             }
             "goto_last_change" => Command::GotoLastChange,
             "goto_last_change_line" => Command::GotoLastChangeLine,
@@ -1456,6 +1481,14 @@ mod tests {
             Command::JoinLinesNoSpace,
             Command::IncrementNumber(1),
             Command::IncrementNumber(-3),
+            Command::IncrementSelection {
+                delta: 1,
+                sequential: false,
+            },
+            Command::IncrementSelection {
+                delta: -2,
+                sequential: true,
+            },
             Command::GotoLastChange,
             Command::GotoLastChangeLine,
             Command::GotoNamedMarkLine('a'),

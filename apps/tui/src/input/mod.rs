@@ -1215,6 +1215,20 @@ impl InputEngine {
                 KeyCode::Char('c') | KeyCode::Char('s') if is_block => {
                     return self.action(Command::BlockInsert(BlockInsertKind::Change))
                 }
+                // Visual `CTRL-A`/`CTRL-X` — add ±count to the first number on EVERY selected line. Guarded
+                // by `ctrl` and placed BEFORE the plain `x` delete arm so the ctrl-modified key wins.
+                KeyCode::Char('a') if ctrl => {
+                    return self.action(Command::IncrementSelection {
+                        delta: i64::from(self.mcount()),
+                        sequential: false,
+                    })
+                }
+                KeyCode::Char('x') if ctrl => {
+                    return self.action(Command::IncrementSelection {
+                        delta: -i64::from(self.mcount()),
+                        sequential: false,
+                    })
+                }
                 KeyCode::Char('d') | KeyCode::Char('x') => {
                     return self.action(Command::DeleteSelection)
                 }
@@ -1590,6 +1604,7 @@ impl InputEngine {
             }
             Awaiting::GSecond => {
                 self.normal.awaiting = Awaiting::Nothing;
+                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 return match key.code {
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
                     // `ge` / `gE` — backward to the end of the previous word / WORD (operator-aware via
@@ -1620,6 +1635,18 @@ impl InputEngine {
                     KeyCode::Char('?') if matches!(mode, Mode::Visual { .. }) => {
                         self.action(Command::CaseSelection(WordCase::Rot13))
                     }
+                    // Visual `g CTRL-A` / `g CTRL-X` — increment the selected lines as a SEQUENCE: the first
+                    // numbered line gets ±count, the next ±2·count, and so on (make a column of 1s into 1,2,3…).
+                    KeyCode::Char('a') if ctrl && matches!(mode, Mode::Visual { .. }) => self
+                        .action(Command::IncrementSelection {
+                            delta: i64::from(self.mcount()),
+                            sequential: true,
+                        }),
+                    KeyCode::Char('x') if ctrl && matches!(mode, Mode::Visual { .. }) => self
+                        .action(Command::IncrementSelection {
+                            delta: -i64::from(self.mcount()),
+                            sequential: true,
+                        }),
                     // `gu` / `gU` / `g~` / `g?` — arm a case operator (lower / upper / toggle / ROT13) over
                     // the next motion. Only from Normal (no operator already pending): `dgu` is not Vim.
                     KeyCode::Char('u') if self.normal.op.is_none() => {
