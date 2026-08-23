@@ -942,49 +942,70 @@ mod single_key_edit_tests {
 
     #[test]
     fn join_lines_uses_one_space_and_drops_indent() {
-        let st = run("foo\n   bar", &[Command::JoinLines]);
+        let st = run("foo\n   bar", &[Command::JoinLines(1)]);
         assert_eq!(text(&st), "foo bar");
         assert_eq!(st.cursor(), 3, "cursor lands on the joined space");
     }
 
     #[test]
     fn join_on_last_line_is_noop() {
-        let st = run("only", &[Command::JoinLines]);
+        let st = run("only", &[Command::JoinLines(1)]);
         assert_eq!(text(&st), "only");
+    }
+
+    #[test]
+    fn count_join_joins_count_lines() {
+        // `{count}J` joins count lines (count-1 seams), cursor on the last join. Expects from nvim v0.12.4.
+        let st = run("a\nb\nc\nd", &[Command::JoinLines(3)]);
+        assert_eq!(text(&st), "a b c\nd", "3J joins three lines");
+        assert_eq!(
+            st.cursor(),
+            3,
+            "cursor on the last join (the space before 'c')"
+        );
+        // `J`/`2J` both do a single join.
+        let st = run("a\nb\nc", &[Command::JoinLines(2)]);
+        assert_eq!(text(&st), "a b\nc");
+        // A count past the end joins what it can, then stops.
+        let st = run("a\nb", &[Command::JoinLines(9)]);
+        assert_eq!(text(&st), "a b");
+        // `{count}gJ` joins without spaces, keeping leading whitespace.
+        let st = run("a\n  b\n  c", &[Command::JoinLinesNoSpace(3)]);
+        assert_eq!(text(&st), "a  b  c", "3gJ removes only the newlines");
     }
 
     #[test]
     fn join_suppresses_space_before_close_paren() {
         // Vim inserts no space when the next line's first non-blank is ')'.
-        let st = run("foo(\n   )", &[Command::JoinLines]);
+        let st = run("foo(\n   )", &[Command::JoinLines(1)]);
         assert_eq!(text(&st), "foo()");
     }
 
     #[test]
     fn join_does_not_double_a_trailing_space() {
         // The current line already ends in whitespace → no extra space is added.
-        let st = run("foo \n   bar", &[Command::JoinLines]);
+        let st = run("foo \n   bar", &[Command::JoinLines(1)]);
         assert_eq!(text(&st), "foo bar");
     }
 
     #[test]
     fn join_empty_line_adds_no_leading_space() {
         // Joining an empty line onto the next inserts no space.
-        let st = run("\n   bar", &[Command::JoinLines]);
+        let st = run("\n   bar", &[Command::JoinLines(1)]);
         assert_eq!(text(&st), "bar");
     }
 
     #[test]
     fn join_no_space_keeps_indent_and_inserts_nothing() {
         // gJ removes only the newline: the next line's leading whitespace is preserved, no space added.
-        let st = run("foo\n   bar", &[Command::JoinLinesNoSpace]);
+        let st = run("foo\n   bar", &[Command::JoinLinesNoSpace(1)]);
         assert_eq!(text(&st), "foo   bar");
         assert_eq!(st.cursor(), 3, "cursor rests at the join seam");
     }
 
     #[test]
     fn join_no_space_on_last_line_is_noop() {
-        let st = run("only", &[Command::JoinLinesNoSpace]);
+        let st = run("only", &[Command::JoinLinesNoSpace(1)]);
         assert_eq!(text(&st), "only");
     }
 

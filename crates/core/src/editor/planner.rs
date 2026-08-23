@@ -649,6 +649,58 @@ fn recase_span(b: &[u8], s: usize, e: usize, case: WordCase) -> Option<Vec<u8>> 
         .map(|span| recase(span, case).into_bytes())
 }
 
+/// Plan a `[count]J` / `[count]gJ` join. `count` joins `count-1` seams (Vim: `J`/`2J` = one join, `3J` =
+/// two), leaving the cursor on the LAST join. `J` inserts one space per seam (suppressed before `)`, after
+/// trailing whitespace, or on an empty line) and strips the next line's leading blanks; `gJ` removes only
+/// the newline, keeping leading whitespace. The seams are disjoint in original coordinates, so they apply as
+/// one `EditList`; `removed` maps each seam's original offset to its post-edit position for the cursor.
+fn plan_join(
+    b: &[u8],
+    cur: usize,
+    count: u32,
+    mode: Mode,
+    hint: GroupHint,
+    no_space: bool,
+) -> Plan {
+    let joins = count.max(2) - 1;
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut cursor = cur;
+    let mut removed = 0usize;
+    let mut le = line_end(b, cur);
+    for _ in 0..joins {
+        if le >= b.len() {
+            break; // no next line to join
+        }
+        let (del_start, del_len, sep): (usize, usize, Vec<u8>) = if no_space {
+            (le, 1, Vec::new()) // gJ: remove only the newline, keep the next line's leading whitespace
+        } else {
+            let ws_end = hspace_end(b, le + 1);
+            let next_is_close = ws_end < b.len() && b[ws_end] == b')';
+            let cur_ends_ws = le > line_start(b, le) && is_hspace(b[le - 1]);
+            let cur_empty = le == line_start(b, le);
+            let sep = if next_is_close || cur_ends_ws || cur_empty {
+                Vec::new()
+            } else {
+                b" ".to_vec()
+            };
+            (le, ws_end - le, sep)
+        };
+        cursor = del_start - removed; // Vim rests the cursor on the join seam
+        removed += del_len - sep.len();
+        edits.push(Edit::replace(del_start, del_len, sep));
+        le = line_end(b, del_start + del_len); // end of the next line to join (original coords)
+    }
+    if edits.is_empty() {
+        return nop(cur, mode);
+    }
+    edit(
+        EditList::new(edits).expect("join seams are disjoint and ordered"),
+        cursor,
+        mode,
+        hint,
+    )
+}
+
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     let b = st.bytes();
     let cur = st.view.cursor;
@@ -1085,43 +1137,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 }
             }
         }
-        Command::JoinLines => {
-            // Join the current line with the next on a single space (Vim `J`). No-op on the last line.
-            let le = line_end(b, cur);
-            if le >= b.len() {
-                nop(cur, st.view.mode)
-            } else {
-                // Delete the newline plus the next line's leading blanks, then insert ONE space — EXCEPT
-                // Vim suppresses the space when the next line's first non-blank is `)`, or the current line
-                // already ends in whitespace, or the current line is empty. (`joinspaces` two-space form is
-                // deferred; Neovim defaults it off.)
-                let ws_end = hspace_end(b, le + 1);
-                let next_is_close = ws_end < b.len() && b[ws_end] == b')';
-                let cur_ends_ws = le > line_start(b, le) && is_hspace(b[le - 1]);
-                let cur_empty = le == line_start(b, le);
-                let sep: &[u8] = if next_is_close || cur_ends_ws || cur_empty {
-                    b""
-                } else {
-                    b" "
-                };
-                edit(
-                    one(Edit::replace(le, ws_end - le, sep.to_vec())),
-                    le,
-                    st.view.mode,
-                    hint,
-                )
-            }
-        }
-        Command::JoinLinesNoSpace => {
-            // Join WITHOUT a space: delete only the newline, keeping the next line's leading whitespace
-            // (Vim `gJ`). No-op on the last line. The cursor rests at the join seam.
-            let le = line_end(b, cur);
-            if le >= b.len() {
-                nop(cur, st.view.mode)
-            } else {
-                edit(one(Edit::delete(le, 1)), le, st.view.mode, hint)
-            }
-        }
+        Command::JoinLines(count) => plan_join(b, cur, *count, st.view.mode, hint, false),
+        Command::JoinLinesNoSpace(count) => plan_join(b, cur, *count, st.view.mode, hint, true),
         Command::IncrementNumber(delta) => {
             // `CTRL-A`/`CTRL-X`: adjust the number at or after the cursor on the current line. A `0x`-prefixed
             // hex literal increments in hex (`0x1f`→`0x20`); otherwise a decimal (with optional `-` sign).
