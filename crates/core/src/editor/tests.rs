@@ -1066,6 +1066,63 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn blockwise_increment_targets_the_block_column_not_the_first_number() {
+        // The footgun case: each line has a number BEFORE the block. A blockwise CTRL-A over the SECOND
+        // number's column must increment that column (5→6, 6→7), leaving the leading 1/2 untouched.
+        let st = run(
+            "foo 1 bar 5\nfoo 2 bar 6",
+            &[
+                Command::Move(10, Motion::Right), // onto the '5' (column 10)
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::Move(1, Motion::Down), // block spans the '5'/'6' column, rows 0..1
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "foo 1 bar 6\nfoo 2 bar 7");
+        assert_eq!(st.mode(), Mode::Normal);
+        // A block on the middle digit still increments the WHOLE number it belongs to.
+        let st = run(
+            "15\n29",
+            &[
+                Command::Move(1, Motion::Right), // onto the '5' / '9' (column 1)
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::Move(1, Motion::Down),
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "16\n30");
+    }
+
+    #[test]
+    fn charwise_increment_targets_the_selection_not_the_first_number() {
+        // `v` selecting only the '5' (with a '1' earlier on the line) increments the 5, not the 1.
+        let st = run(
+            "1 and 5",
+            &[
+                Command::Move(6, Motion::Right), // onto the '5'
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "1 and 6");
+    }
+
+    #[test]
     fn goto_last_change_jumps_to_the_last_edit() {
         // Edit on line 2, move away to the top, then `` `. `` returns to the change.
         let st = run(
