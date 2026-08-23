@@ -596,6 +596,30 @@ FIXTURES: list[dict] = [
     # PROBE — `2/pat<CR>` (count before search = go to the Nth match in Vim): ruse resets the count on
     # `/`, so it lands on the FIRST match. Documented divergence.
     {"name": "search_count_prefix", "lines": ["foo bar foo bar foo"], "keys": "2/foo<CR>"},
+    # --- SECTION motions (feat/section-motions): `]]`/`[[` seek a `{` (or form-feed) in column 0; `][`/`[]`
+    #     seek a `}` (or form-feed). Exclusive motions → operators are linewise via the exclusive-linewise
+    #     rule (shared with `d}`). Bare moves rest on the target line's first non-blank; clamp to the
+    #     last/first line at the buffer edges. Every `expect` is oracle-captured from nvim v0.12.4.
+    #     (Two nvim EOF quirks are DELIBERATELY not fixtured — a section-FORWARD operator running off the end
+    #     of the file makes nvim's delete linewise-through-EOF but its yank charwise; ruse uses one span for
+    #     d/y so both stop at the last line. Documented divergence in the change record.)
+    {"name": "section_fwd_bare", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "]]"},
+    {"name": "section_fwd_count_clamps", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "2]]"},
+    {"name": "section_end_fwd_bare", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "]["},
+    {"name": "section_back_bare", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "G[["},
+    {"name": "section_end_back_bare", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "G[]"},
+    {"name": "section_fwd_eof_first_non_blank", "lines": ["{", "  a", "    xy"], "keys": "]]"},
+    {"name": "section_fwd_form_feed", "lines": ["aaa", "\x0c", "bbb"], "keys": "]]"},
+    {"name": "section_end_fwd_form_feed", "lines": ["aaa", "\x0c", "bbb"], "keys": "]["},
+    {"name": "section_fwd_skips_indented_brace", "lines": ["a", " {", "b", "{", "c"], "keys": "]]"},
+    {"name": "d_section_fwd_linewise", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "d]]"},
+    {"name": "d_section_end_fwd_linewise", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "d]["},
+    {"name": "y_section_fwd_linewise", "lines": ["{", "  a", "  b", "}", "{", "  c", "}"], "keys": "y]]"},
+    {"name": "d_section_back_linewise", "lines": ["x", "{", "a", "}", "{", "b", "}"], "keys": "5Gd[["},
+    {"name": "d_section_end_back_linewise", "lines": ["x", "{", "a", "}", "{", "b", "}"], "keys": "6Gd[]"},
+    {"name": "y_section_back", "lines": ["x", "{", "a", "}", "{", "b", "}"], "keys": "6Gy[["},
+    {"name": "d_section_back_bof_noop", "lines": ["x", "{", "a", "}"], "keys": "d[["},
+    {"name": "section_fwd_from_mid", "lines": ["{", "a", "}", "{", "b", "}"], "keys": "jd]]"},
 ]
 
 

@@ -6558,6 +6558,568 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "section_fwd_bare",
+      "lines": [
+        "{",
+        "  a",
+        "  b",
+        "}",
+        "{",
+        "  c",
+        "}"
+      ],
+      "keys": "]]",
+      "expect": {
+        "text": [
+          "{",
+          "  a",
+          "  b",
+          "}",
+          "{",
+          "  c",
+          "}"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_fwd_count_clamps",
+      "lines": [
+        "{",
+        "  a",
+        "  b",
+        "}",
+        "{",
+        "  c",
+        "}"
+      ],
+      "keys": "2]]",
+      "expect": {
+        "text": [
+          "{",
+          "  a",
+          "  b",
+          "}",
+          "{",
+          "  c",
+          "}"
+        ],
+        "cursor": [
+          7,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_end_fwd_bare",
+      "lines": [
+        "{",
+        "  a",
+        "  b",
+        "}",
+        "{",
+        "  c",
+        "}"
+      ],
+      "keys": "][",
+      "expect": {
+        "text": [
+          "{",
+          "  a",
+          "  b",
+          "}",
+          "{",
+          "  c",
+          "}"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_back_bare",
+      "lines": [
+        "{",
+        "  a",
+        "  b",
+        "}",
+        "{",
+        "  c",
+        "}"
+      ],
+      "keys": "G[[",
+      "expect": {
+        "text": [
+          "{",
+          "  a",
+          "  b",
+          "}",
+          "{",
+          "  c",
+          "}"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_end_back_bare",
+      "lines": [
+        "{",
+        "  a",
+        "  b",
+        "}",
+        "{",
+        "  c",
+        "}"
+      ],
+      "keys": "G[]",
+      "expect": {
+        "text": [
+          "{",
+          "  a",
+          "  b",
+          "}",
+          "{",
+          "  c",
+          "}"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_fwd_eof_first_non_blank",
+      "lines": [
+        "{",
+        "  a",
+        "    xy"
+      ],
+      "keys": "]]",
+      "expect": {
+        "text": [
+          "{",
+          "  a",
+          "    xy"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_fwd_form_feed",
+      "lines": [
+        "aaa",
+        "\f",
+        "bbb"
+      ],
+      "keys": "]]",
+      "expect": {
+        "text": [
+          "aaa",
+          "\f",
+          "bbb"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_end_fwd_form_feed",
+      "lines": [
+        "aaa",
+        "\f",
+        "bbb"
+      ],
+      "keys": "][",
+      "expect": {
+        "text": [
+          "aaa",
+          "\f",
+          "bbb"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_fwd_skips_indented_brace",
+      "lines": [
+        "a",
+        " {",
+        "b",
+        "{",
+        "c"
+      ],
+      "keys": "]]",
+      "expect": {
+        "text": [
+          "a",
+          " {",
+          "b",
+          "{",
+          "c"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_section_fwd_linewise",
+      "lines": [
+        "{",
+        "  a",
+        "  b",
+        "}",
+        "{",
+        "  c",
+        "}"
+      ],
+      "keys": "d]]",
+      "expect": {
+        "text": [
+          "{",
+          "  c",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "{\n  a\n  b\n}\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_section_end_fwd_linewise",
+      "lines": [
+        "{",
+        "  a",
+        "  b",
+        "}",
+        "{",
+        "  c",
+        "}"
+      ],
+      "keys": "d][",
+      "expect": {
+        "text": [
+          "}",
+          "{",
+          "  c",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "{\n  a\n  b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "y_section_fwd_linewise",
+      "lines": [
+        "{",
+        "  a",
+        "  b",
+        "}",
+        "{",
+        "  c",
+        "}"
+      ],
+      "keys": "y]]",
+      "expect": {
+        "text": [
+          "{",
+          "  a",
+          "  b",
+          "}",
+          "{",
+          "  c",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "{\n  a\n  b\n}\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "{\n  a\n  b\n}\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "d_section_back_linewise",
+      "lines": [
+        "x",
+        "{",
+        "a",
+        "}",
+        "{",
+        "b",
+        "}"
+      ],
+      "keys": "5Gd[[",
+      "expect": {
+        "text": [
+          "x",
+          "{",
+          "b",
+          "}"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "{\na\n}\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_section_end_back_linewise",
+      "lines": [
+        "x",
+        "{",
+        "a",
+        "}",
+        "{",
+        "b",
+        "}"
+      ],
+      "keys": "6Gd[]",
+      "expect": {
+        "text": [
+          "x",
+          "{",
+          "a",
+          "b",
+          "}"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "}\n{\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "y_section_back",
+      "lines": [
+        "x",
+        "{",
+        "a",
+        "}",
+        "{",
+        "b",
+        "}"
+      ],
+      "keys": "6Gy[[",
+      "expect": {
+        "text": [
+          "x",
+          "{",
+          "a",
+          "}",
+          "{",
+          "b",
+          "}"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "{\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "{\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "d_section_back_bof_noop",
+      "lines": [
+        "x",
+        "{",
+        "a",
+        "}"
+      ],
+      "keys": "d[[",
+      "expect": {
+        "text": [
+          "x",
+          "{",
+          "a",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "section_fwd_from_mid",
+      "lines": [
+        "{",
+        "a",
+        "}",
+        "{",
+        "b",
+        "}"
+      ],
+      "keys": "jd]]",
+      "expect": {
+        "text": [
+          "{",
+          "{",
+          "b",
+          "}"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n}\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

@@ -543,6 +543,10 @@ fn motion_token(m: Motion) -> String {
         Motion::ParagraphBack => "paragraph_back",
         Motion::SentenceFwd => "sentence_fwd",
         Motion::SentenceBack => "sentence_back",
+        Motion::SectionFwd => "section_fwd",
+        Motion::SectionBack => "section_back",
+        Motion::SectionEndFwd => "section_end_fwd",
+        Motion::SectionEndBack => "section_end_back",
         // A single whitespace-free token so the `<count> <motion>` split still works: the char is its decimal
         // scalar value; `f`/`t` and forward/back are flags. e.g. `find_char:120:1:0` = `fx`.
         Motion::FindChar { ch, forward, till } => {
@@ -641,6 +645,10 @@ fn motion_from_token(s: &str) -> Option<Motion> {
         "paragraph_back" => Motion::ParagraphBack,
         "sentence_fwd" => Motion::SentenceFwd,
         "sentence_back" => Motion::SentenceBack,
+        "section_fwd" => Motion::SectionFwd,
+        "section_back" => Motion::SectionBack,
+        "section_end_fwd" => Motion::SectionEndFwd,
+        "section_end_back" => Motion::SectionEndBack,
         _ => return None,
     })
 }
@@ -1762,6 +1770,11 @@ mod tests {
             Command::Move(2, Motion::ParagraphBack),
             Command::Delete(1, Motion::ParagraphFwd),
             Command::Yank(1, Motion::ParagraphBack),
+            Command::Move(1, Motion::SectionFwd),
+            Command::Move(2, Motion::SectionBack),
+            Command::Delete(1, Motion::SectionEndFwd),
+            Command::Yank(3, Motion::SectionEndBack),
+            Command::Change(1, Motion::SectionFwd),
             Command::Yank(1, Motion::Line),
             Command::Yank(2, Motion::WordFwd),
             Command::Paste {
