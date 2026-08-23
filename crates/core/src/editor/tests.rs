@@ -5098,3 +5098,164 @@ mod caret_gravity_tests {
         assert_eq!(st.caret_gravity(), CaretGravity::OnChar);
     }
 }
+
+#[cfg(test)]
+mod section_motion_tests {
+    //! Vim section motions `]]` / `[[` / `][` / `[]` — forward/backward to a `{`/`}` (or form-feed) in
+    //! column 0. Every `assert` here is pinned to nvim v0.12.4 (see the `section_*` oracle fixtures in
+    //! tests/parity/vim/fixtures/corpus.yaml).
+    use crate::editor::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    // Buffer with two brace sections: line starts 0,2,6,10,12,16,18.
+    // "{\n  a\n  b\n}\n{\n  c\n}"  (lines: {, "  a", "  b", }, {, "  c", })
+    const B: &str = "{\n  a\n  b\n}\n{\n  c\n}";
+
+    #[test]
+    fn forward_section_start_lands_on_next_brace() {
+        // `]]` from line 1 (`{`) skips itself → the next `{` in column 0 (line 5, byte 12).
+        let st = run(B, &[Command::Move(1, Motion::SectionFwd)]);
+        assert_eq!(st.cursor(), 12);
+        // `2]]` runs out of sections after line 5 → clamps to the last content line (`}`, byte 18).
+        let st = run(B, &[Command::Move(2, Motion::SectionFwd)]);
+        assert_eq!(st.cursor(), 18);
+    }
+
+    #[test]
+    fn forward_section_end_lands_on_next_close_brace() {
+        // `][` from line 1 → the next `}` in column 0 (line 4, byte 10).
+        let st = run(B, &[Command::Move(1, Motion::SectionEndFwd)]);
+        assert_eq!(st.cursor(), 10);
+    }
+
+    #[test]
+    fn backward_section_motions_skip_the_current_line() {
+        // From the last line (`}`, byte 18): `[[` → previous `{` (line 5, byte 12); `[]` → previous `}`
+        // (line 4, byte 10) — strictly before the cursor, so it does not stop on the `}` under the cursor.
+        let st = run(B, &[Command::Move(1, Motion::LastLine)]);
+        assert_eq!(st.cursor(), 18, "G lands on the last close brace");
+        let st = run(
+            B,
+            &[
+                Command::Move(1, Motion::LastLine),
+                Command::Move(1, Motion::SectionBack),
+            ],
+        );
+        assert_eq!(st.cursor(), 12);
+        let st = run(
+            B,
+            &[
+                Command::Move(1, Motion::LastLine),
+                Command::Move(1, Motion::SectionEndBack),
+            ],
+        );
+        assert_eq!(st.cursor(), 10);
+    }
+
+    #[test]
+    fn eof_and_bof_clamp_to_first_non_blank() {
+        // `]]` with no further `{` clamps to the last line's first non-blank ("    xy" → byte at 'x').
+        let st = run("{\n  a\n    xy", &[Command::Move(1, Motion::SectionFwd)]);
+        assert_eq!(st.cursor(), 10, "'    xy' first non-blank");
+        // `[[`/`[]` with nothing before clamp to the first line (byte 0 here).
+        let st = run(
+            "{\n  a\n    xy",
+            &[
+                Command::Move(1, Motion::LastLine),
+                Command::Move(1, Motion::SectionEndBack),
+            ],
+        );
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn form_feed_is_a_boundary_for_both_directions() {
+        // A form-feed (\x0C) in column 0 is a section boundary for `]]` AND `][`.
+        let st = run("aaa\n\x0C\nbbb", &[Command::Move(1, Motion::SectionFwd)]);
+        assert_eq!(st.cursor(), 4, "]] stops at the form-feed line");
+        let st = run("aaa\n\x0C\nbbb", &[Command::Move(1, Motion::SectionEndFwd)]);
+        assert_eq!(st.cursor(), 4, "][ stops at the form-feed line");
+    }
+
+    #[test]
+    fn indented_brace_is_not_a_boundary() {
+        // Only a brace in COLUMN 0 counts; an indented ` {` is skipped.
+        // Line starts: "a"@0, " {"@2, "b"@5, "{"@7, "c"@9.
+        let st = run("a\n {\nb\n{\nc", &[Command::Move(1, Motion::SectionFwd)]);
+        assert_eq!(
+            st.cursor(),
+            7,
+            "skips the indented brace, stops at the col-0 brace (byte 7)"
+        );
+    }
+
+    #[test]
+    fn d_forward_section_is_linewise_and_excludes_the_target_line() {
+        // `d]]` from line 1 deletes whole lines 1-4 (linewise), leaving the second section.
+        let st = run(B, &[Command::Delete(1, Motion::SectionFwd)]);
+        assert_eq!(text(&st), "{\n  c\n}");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"{\n  a\n  b\n}\n");
+        assert_eq!(st.cursor(), 0);
+        // `d][` from line 1 deletes lines 1-3 (up to but not including the `}` at line 4).
+        let st = run(B, &[Command::Delete(1, Motion::SectionEndFwd)]);
+        assert_eq!(text(&st), "}\n{\n  c\n}");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"{\n  a\n  b\n");
+    }
+
+    #[test]
+    fn y_forward_section_yanks_linewise_without_moving_text() {
+        let st = run(B, &[Command::Yank(1, Motion::SectionFwd)]);
+        assert_eq!(text(&st), B, "yank leaves the buffer unchanged");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"{\n  a\n  b\n}\n");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn d_backward_section_deletes_from_target_up_to_the_cursor_line() {
+        // Buffer "x\n{\na\n}\n{\nb\n}" line starts 0,2,4,6,8,10,12.
+        // From line 5 (`{`, byte 8), `d[[` deletes lines 2-4 (previous `{` at line 2 through the line above).
+        let d = "x\n{\na\n}\n{\nb\n}";
+        let st = run(
+            d,
+            &[
+                Command::Move(5, Motion::GotoLine),
+                Command::Delete(1, Motion::SectionBack),
+            ],
+        );
+        assert_eq!(text(&st), "x\n{\nb\n}");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"{\na\n}\n");
+        // `d[]` from line 6 (`b`, byte 10) deletes lines 4-5 (previous `}` at line 4 through line 5).
+        let st = run(
+            d,
+            &[
+                Command::Move(6, Motion::GotoLine),
+                Command::Delete(1, Motion::SectionEndBack),
+            ],
+        );
+        assert_eq!(text(&st), "x\n{\na\nb\n}");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"}\n{\n");
+    }
+
+    #[test]
+    fn backward_section_at_bof_is_a_noop_operator() {
+        // `d[[` on the first line with no previous `{` moves nothing → nothing is deleted (Vim fails the op).
+        let st = run("x\n{\na\n}", &[Command::Delete(1, Motion::SectionBack)]);
+        assert_eq!(text(&st), "x\n{\na\n}");
+        assert!(st.register().is_empty());
+    }
+}

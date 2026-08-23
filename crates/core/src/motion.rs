@@ -129,6 +129,20 @@ pub enum Motion {
     SentenceFwd,
     /// Sentence motion backward (`(`): to the start of the current/previous sentence (exclusive charwise).
     SentenceBack,
+    /// Vim `]]` — forward to the start of the NEXT section: the next line whose first column is `{` (or a
+    /// form-feed `\x0C`). Lands on that line's first non-blank (which, for a `{`/form-feed line, is column 0).
+    /// With no further section it clamps to the last content line. Exclusive; under an operator Vim's
+    /// exclusive-linewise rule makes `d]]`/`y]]` linewise (shared with `ParagraphFwd` in `editor::op_span`).
+    SectionFwd,
+    /// Vim `[[` — backward to the start of the PREVIOUS section (a `{`/form-feed line in column 0). Clamps to
+    /// the first line. Exclusive; backward span is `[target, cursor)`.
+    SectionBack,
+    /// Vim `][` — forward to the NEXT section END: the next line whose first column is `}` (or a form-feed).
+    /// Same wise handling as [`Motion::SectionFwd`].
+    SectionEndFwd,
+    /// Vim `[]` — backward to the PREVIOUS section end (a `}`/form-feed line in column 0). Clamps to the first
+    /// line. Backward span is `[target, cursor)`.
+    SectionEndBack,
 }
 
 // --- shared byte / char-boundary / line helpers (one home; editor.rs reuses these) ---
@@ -632,6 +646,72 @@ fn prev_para_boundary(b: &[u8], pos: usize) -> usize {
         ls = prev_ls;
     }
     0
+}
+
+/// Whether the line starting at `ls` is a SECTION boundary line. A form-feed (`\x0C`) in column 0 is a
+/// boundary for both the start (`]]`/`[[`) and end (`][`/`[]`) motions; otherwise the first byte must be the
+/// brace for the direction — `{` for section starts, `}` for section ends. (Vim's default: `{`/`}` in the
+/// first column plus form-feed; the nroff `sections` macros are a documented follow-up.)
+fn is_section_line(b: &[u8], ls: usize, ends: bool) -> bool {
+    match b.get(ls) {
+        Some(&0x0C) => true,
+        Some(&c) => c == if ends { b'}' } else { b'{' },
+        None => false,
+    }
+}
+
+/// The line start of the NEXT section boundary strictly after `ls`, or `None` when the run reaches the last
+/// content line without finding one (the caller clamps to the last line, matching nvim's EOF landing).
+fn scan_section_fwd(b: &[u8], ls: usize, ends: bool) -> Option<usize> {
+    let mut cur = ls;
+    loop {
+        let le = line_end(b, cur);
+        if le >= content_end(b) {
+            return None; // `cur` is the last content line — no next line to test
+        }
+        cur = le + 1;
+        if is_section_line(b, cur, ends) {
+            return Some(cur);
+        }
+    }
+}
+
+/// The line start of the PREVIOUS section boundary strictly before `ls`, or `None` when none exists (the
+/// caller clamps to the first line).
+fn scan_section_back(b: &[u8], ls: usize, ends: bool) -> Option<usize> {
+    let mut cur = ls;
+    while cur > 0 {
+        cur = line_start(b, cur - 1);
+        if is_section_line(b, cur, ends) {
+            return Some(cur);
+        }
+    }
+    None
+}
+
+/// The `count`-th section boundary line-start forward (`]]`/`][`), clamping to the last content line when the
+/// sections run out (nvim rests the cursor on the last line at that point).
+fn next_section_line(b: &[u8], pos: usize, count: u32, ends: bool) -> usize {
+    let mut ls = line_start(b, pos);
+    for _ in 0..count.max(1) {
+        match scan_section_fwd(b, ls, ends) {
+            Some(f) => ls = f,
+            None => return last_line_start(b),
+        }
+    }
+    ls
+}
+
+/// The `count`-th section boundary line-start backward (`[[`/`[]`), clamping to the first line.
+fn prev_section_line(b: &[u8], pos: usize, count: u32, ends: bool) -> usize {
+    let mut ls = line_start(b, pos);
+    for _ in 0..count.max(1) {
+        match scan_section_back(b, ls, ends) {
+            Some(f) => ls = f,
+            None => return 0,
+        }
+    }
+    ls
 }
 
 fn is_space_or_tab(c: u8) -> bool {
@@ -1213,6 +1293,20 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
         }
         return first_non_blank(b, ls);
     }
+    // Section motions (`]]`/`[[`/`][`/`[]`): jump `count` section boundaries and rest on the target line's
+    // first non-blank (column 0 for a brace/form-feed line). The count is a repeat, resolved by the scanner.
+    if matches!(
+        m,
+        Motion::SectionFwd | Motion::SectionBack | Motion::SectionEndFwd | Motion::SectionEndBack
+    ) {
+        let ls = match m {
+            Motion::SectionFwd => next_section_line(b, cur0, n, false),
+            Motion::SectionEndFwd => next_section_line(b, cur0, n, true),
+            Motion::SectionBack => prev_section_line(b, cur0, n, false),
+            _ => prev_section_line(b, cur0, n, true), // SectionEndBack
+        };
+        return first_non_blank(b, ls);
+    }
     // `{count}|`: the count is the 1-based display column of the current line (not a repeat).
     if m == Motion::Column {
         return at_col(b, line_start(b, cur0), (n - 1) as usize);
@@ -1274,6 +1368,10 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             | Motion::AParagraph
             | Motion::InnerSentence
             | Motion::ASentence
+            | Motion::SectionFwd
+            | Motion::SectionBack
+            | Motion::SectionEndFwd
+            | Motion::SectionEndBack
             | Motion::Pair { .. }
             | Motion::Quote { .. }
             | Motion::Tag { .. }
@@ -1311,6 +1409,11 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // Sentence motions are exclusive charwise: forward → [cursor, next), backward → [prev, cursor).
         Motion::SentenceFwd => (cur, target(b, cur, m, n)),
         Motion::SentenceBack => (target(b, cur, m, n), cur),
+        // Section motions as a charwise span (`c]]` / a Visual `]]` extend): forward → [cursor, target),
+        // backward → [target, cursor). The operator's exclusive-linewise reshaping lives in `editor::op_span`
+        // (shared with the paragraph motions), so `d]]`/`d[[` come out linewise exactly like `d}`/`d{`.
+        Motion::SectionFwd | Motion::SectionEndFwd => (cur, target(b, cur, m, n)),
+        Motion::SectionBack | Motion::SectionEndBack => (target(b, cur, m, n), cur),
         // inclusive end-of-word (Vim `de` / `dE`).
         Motion::WordEnd | Motion::BigWordEnd => {
             let big = m == Motion::BigWordEnd;

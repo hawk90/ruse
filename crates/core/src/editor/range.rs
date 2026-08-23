@@ -81,9 +81,18 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
             let (s, e) = motion::char_span(b, cur, m, count);
             (s, e, true)
         }
-        // Paragraph motions (`d}`/`d{`) are exclusive charwise, but Vim's exclusive-linewise rule can turn
-        // them linewise — shared with forced-charwise on a linewise motion (see `exclusive_linewise`).
-        Motion::ParagraphFwd | Motion::ParagraphBack => {
+        // Paragraph motions (`d}`/`d{`) and section motions (`d]]`/`d[[`/`d][`/`d[]`) are exclusive charwise,
+        // but Vim's exclusive-linewise rule can turn them linewise — shared with forced-charwise on a linewise
+        // motion (see `exclusive_linewise`). (nvim quirk NOT reproduced: a section-FORWARD operator that runs
+        // OFF the end of the file — `d]]` with no further `{` — makes delete linewise-through-EOF but yank
+        // charwise; ruse uses one span for d/y, so both stop at the last line's start here. Deliberate v0
+        // divergence, documented in the change record.)
+        Motion::ParagraphFwd
+        | Motion::ParagraphBack
+        | Motion::SectionFwd
+        | Motion::SectionBack
+        | Motion::SectionEndFwd
+        | Motion::SectionEndBack => {
             let t = motion::target(b, cur, m, count);
             exclusive_linewise(b, cur.min(t), cur.max(t))
         }

@@ -1842,6 +1842,13 @@ impl InputEngine {
                         after: false,
                         count,
                     }),
+                    // Section motions — count/operator-aware via `self.motion` (which reads the preserved
+                    // count and composes any armed `d`/`c`/`y`). `]]`/`[[` seek a `{` (or form-feed) in
+                    // column 0; `][`/`[]` seek a `}` (or form-feed). The starting bracket picks the axis.
+                    KeyCode::Char(']') if !open_bracket => self.motion(Motion::SectionFwd),
+                    KeyCode::Char('[') if !open_bracket => self.motion(Motion::SectionEndFwd),
+                    KeyCode::Char('[') if open_bracket => self.motion(Motion::SectionBack),
+                    KeyCode::Char(']') if open_bracket => self.motion(Motion::SectionEndBack),
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
