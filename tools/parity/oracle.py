@@ -254,6 +254,13 @@ FIXTURES: list[dict] = [
     {"name": "dw_on_punct", "lines": ["foo.bar baz"], "keys": "dw"},
     {"name": "de_on_dotted", "lines": ["a.b.c"], "keys": "de"},
     {"name": "dw_last_word", "lines": ["hello world"], "keys": "wdw"},
+    #     dw/dW at end-of-line: Vim does NOT let the operator cross the newline (the end of the last word
+    #     on the line becomes the end of the operated text), so `dw` on the last word must not join lines.
+    {"name": "dw_last_word_joins_next", "lines": ["foo", "bar"], "keys": "dw"},
+    {"name": "dw_last_word_trailing_ws", "lines": ["foo   ", "bar"], "keys": "dw"},
+    {"name": "dw_midline_last_word_trailing_ws", "lines": ["ab cd  ", "ef"], "keys": "wdw"},
+    {"name": "dW_last_word_at_eol", "lines": ["foo.bar", "baz"], "keys": "dW"},
+    {"name": "count_dw_crosses_eol", "lines": ["a b", "c d"], "keys": "2dw"},
     #     operators on empty / single-char / last line ------------------------------------------------
     {"name": "x_on_empty_line", "lines": [""], "keys": "x"},
     {"name": "dw_on_empty_line", "lines": [""], "keys": "dw"},
