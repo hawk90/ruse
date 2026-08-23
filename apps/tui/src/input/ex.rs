@@ -60,6 +60,11 @@ pub enum Ex {
     Global(GlobalSpec),
     /// `:noh` / `:nohlsearch` — clear the search highlight (F-009 #1).
     NoHighlight,
+    /// `:set (no)hlsearch` — toggle persistent search-match highlighting (frontend render preference; ON by
+    /// default). Distinct from `:noh`, which is a one-shot clear that leaves the option on.
+    SetHlSearch(bool),
+    /// `:set (no)incsearch` — toggle incremental highlight while typing `/`…`?` (frontend; ON by default).
+    SetIncSearch(bool),
     /// `:lmap {lhs} {rhs}` — install a Lang-Arg (`lmap`) mapping (F-027). Single-char lhs/rhs for MVP.
     Lmap {
         lhs: char,
@@ -157,6 +162,14 @@ fn parse_set(line: &str) -> Option<Ex> {
         .strip_prefix("set ")
         .or_else(|| line.strip_prefix("se "))?
         .trim();
+    // hlsearch/incsearch are frontend render preferences, not core options — return their own Ex variants.
+    match opt {
+        "hlsearch" | "hls" => return Some(Ex::SetHlSearch(true)),
+        "nohlsearch" | "nohls" => return Some(Ex::SetHlSearch(false)),
+        "incsearch" | "is" => return Some(Ex::SetIncSearch(true)),
+        "noincsearch" | "nois" => return Some(Ex::SetIncSearch(false)),
+        _ => {}
+    }
     let ex = match opt {
         "ignorecase" | "ic" => EditorOption::IgnoreCase(true),
         "noignorecase" | "noic" => EditorOption::IgnoreCase(false),
@@ -643,5 +656,21 @@ mod reuse_last_search_tests {
         let mut ex = sub("");
         reuse_last_search(&mut ex, None);
         assert_eq!(pattern_of(&ex), "");
+    }
+}
+
+#[cfg(test)]
+mod set_hlsearch_incsearch_tests {
+    use super::*;
+
+    #[test]
+    fn parses_hlsearch_and_incsearch_toggles() {
+        assert_eq!(parse_ex("set hlsearch"), Ex::SetHlSearch(true));
+        assert_eq!(parse_ex("set nohls"), Ex::SetHlSearch(false));
+        assert_eq!(parse_ex("set incsearch"), Ex::SetIncSearch(true));
+        assert_eq!(parse_ex("set nois"), Ex::SetIncSearch(false));
+        // The abbreviations still resolve, and unrelated options are untouched.
+        assert_eq!(parse_ex("set hls"), Ex::SetHlSearch(true));
+        assert_eq!(parse_ex("set ic"), Ex::Set(EditorOption::IgnoreCase(true)));
     }
 }

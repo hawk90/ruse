@@ -280,7 +280,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut macros = crate::keys::MacroState::new();
     let mut confirm: Option<Confirm> = None; // a `:s///c` interactive confirm loop, when active (F-009)
     let mut search_hl: Option<String> = None; // the hlsearch pattern (last `/`-search), until `:noh`
-                                              // The last `:s` (pattern, replacement, flags) — recorded on every substitute so `&` can repeat it (F-009).
+                                              // hlsearch/incsearch render preferences (`:set (no)hlsearch/incsearch`); ON by default (better-than-Vim,
+                                              // which defaults hlsearch off — a slow-terminal-era default; matches are viewport-cached here).
+    let mut hlsearch_on = true;
+    let mut incsearch_on = true;
+    // The last `:s` (pattern, replacement, flags) — recorded on every substitute so `&` can repeat it (F-009).
     let mut last_substitute: Option<(String, String, ruse_core::SubFlags)> = None;
     // The three modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads:
     // command palette (`C-p`), buffer-line jump (`C-l`), buffer switch (`C-b`). At most one is open.
@@ -408,10 +412,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 .unwrap_or_default()
         } else {
             let active = match engine.cmdline() {
-                Some(('/', buf, _)) | Some(('?', buf, _)) if !buf.is_empty() => {
+                // Incsearch: the pattern being typed, only when `incsearch` is on.
+                Some(('/', buf, _)) | Some(('?', buf, _)) if incsearch_on && !buf.is_empty() => {
                     Some(buf.to_string())
                 }
-                _ => search_hl.clone(),
+                // Hlsearch: the last completed search, only when `hlsearch` is on.
+                _ if hlsearch_on => search_hl.clone(),
+                _ => None,
             };
             active
                 .map(|p| {
@@ -1088,6 +1095,18 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Feed::ExecuteEx(text) => {
                 match parse_ex(&text) {
                     Ex::NoHighlight => search_hl = None, // `:noh` clears the search highlight (F-009 #1)
+                    // `:set (no)hlsearch/incsearch` — frontend render toggles (behavior stays on by default).
+                    Ex::SetHlSearch(on) => {
+                        hlsearch_on = on;
+                        if !on {
+                            search_hl = None; // turning hlsearch off also clears any live highlight (Vim)
+                        }
+                        status = format!("hlsearch {}", if on { "on" } else { "off" });
+                    }
+                    Ex::SetIncSearch(on) => {
+                        incsearch_on = on;
+                        status = format!("incsearch {}", if on { "on" } else { "off" });
+                    }
                     // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
                     // the request; the response is dispatched + applied (or opens a picker) on a later frame.
                     ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
