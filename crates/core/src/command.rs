@@ -298,7 +298,8 @@ pub enum Command {
     /// `"x` — select the register `x` (`a`–`z`, or `A`–`Z` to append) for the FOLLOWING yank/delete/
     /// change/paste. `None` selects the unnamed register (the default). Emitted by the input engine on the
     /// register name key; the editor holds it as a one-shot pending register the next such command reads,
-    /// then clears (D-026's named-slot expansion). Numbered/other register names are not modelled yet.
+    /// then clears (D-026's named-slot expansion). The numbered ring `"1`-`"9`, small-delete `"-`, and
+    /// black-hole `"_` ARE modelled (see `register.rs`); expression `"=` and clipboard `"+`/`"*` are not.
     SetRegister(Option<char>),
     // visual mode: enter a selection (charwise `v` / linewise `V` / blockwise `CTRL-V`); operate on it
     EnterVisual {
