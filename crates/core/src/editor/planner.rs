@@ -356,6 +356,16 @@ fn nop_mark(cursor: usize, mode: Mode, mark: usize) -> Plan {
     }
 }
 
+/// A non-editing plan carrying an arbitrary `action` — the jumplist / changelist / named-mark steps whose
+/// resolution happens in `commit` (the planner supplies a placeholder cursor the action then overrides).
+/// Same field shape as [`nop`] but the action is not forced to `Action::Nop`.
+fn moved(action: Action, cursor: usize, mode: Mode) -> Plan {
+    Plan {
+        action,
+        ..nop(cursor, mode)
+    }
+}
+
 fn edit(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint) -> Plan {
     Plan {
         action: Action::Txn { edits, hint },
@@ -477,6 +487,21 @@ fn incr_number(
     let bytes = new_text.into_bytes();
     let cursor = num_start + bytes.len().saturating_sub(1); // land on the last digit (Vim)
     Some((num_start, end - num_start, bytes, cursor))
+}
+
+/// Resolve the current Visual/Select selection into a NON-EMPTY byte span `(s, e)` plus its linewise flag
+/// (charwise/linewise; blockwise is handled separately by its callers). Shared by the in-place selection
+/// operators (`CaseSelection`, `ReplaceSelectionChar`, `PasteSelection`) whose only difference is what they
+/// do with the span. On failure it returns the cursor those arms should drop back to Normal at — `cur` when
+/// there is no anchor, `s` on an empty span (the collapse point) — matching each arm's prior inline `nop`.
+fn visual_span(st: &EditorState, b: &[u8], cur: usize) -> Result<(usize, usize, bool), usize> {
+    let anchor = st.view.anchor.ok_or(cur)?;
+    let line = st.view.mode.selection() == Some(SelectKind::Linewise);
+    let (s, e) = selection_range(b, anchor, cur, line);
+    if s >= e {
+        return Err(s);
+    }
+    Ok((s, e, line))
 }
 
 /// Like [`edit_yank`] but routes the captured span through [`RegWrite::KillAppend`] — an Emacs kill that
@@ -1095,16 +1120,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::GotoLastChange => {
             // `` `. `` — move to the last change position (snapped into range). No-op before any edit.
             match st.view.last_change() {
-                Some(pos) => Plan {
-                    action: Action::Nop,
-                    cursor: motion::snap(b, pos),
-                    mode: st.view.mode,
-                    is_edit: false,
-                    effects: Vec::new(),
-                    set_register: None,
-                    set_anchor: None,
-                    set_mark: None,
-                },
+                Some(pos) => nop(motion::snap(b, pos), st.view.mode),
                 None => nop(cur, st.view.mode),
             }
         }
@@ -1115,71 +1131,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         },
         // `g;`/`g,` — step the change list. The cursor here is a placeholder; `commit` steps `change_idx`
         // (a mutation the pure planner cannot make) and overrides it with the resolved change position.
-        Command::GotoOlderChange => Plan {
-            action: Action::JumpChange { older: true },
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
-        },
-        Command::GotoNewerChange => Plan {
-            action: Action::JumpChange { older: false },
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
-        },
+        Command::GotoOlderChange => moved(Action::JumpChange { older: true }, cur, st.view.mode),
+        Command::GotoNewerChange => moved(Action::JumpChange { older: false }, cur, st.view.mode),
         // `CTRL-O`/`CTRL-I` — step the jumplist. `commit` mutates it (the planner is pure); the placeholder
         // cursor is overridden with the resolved jump position.
-        Command::GotoOlderJump => Plan {
-            action: Action::JumpList { older: true },
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
-        },
-        Command::GotoNewerJump => Plan {
-            action: Action::JumpList { older: false },
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
-        },
+        Command::GotoOlderJump => moved(Action::JumpList { older: true }, cur, st.view.mode),
+        Command::GotoNewerJump => moved(Action::JumpList { older: false }, cur, st.view.mode),
         // `m{a-z}` — install a named mark at the cursor. The cursor stays; `commit` writes the mark table.
-        Command::SetNamedMark(ch) => Plan {
-            action: Action::SetNamedMark { ch: *ch },
-            cursor: cur,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: None,
-            set_anchor: None,
-            set_mark: None,
-        },
+        Command::SetNamedMark(ch) => moved(Action::SetNamedMark { ch: *ch }, cur, st.view.mode),
         // `` `{a-z} `` — jump to a named mark (snapped). No-op if unset.
         Command::GotoNamedMark(ch) => match st.view.named_mark(*ch) {
-            Some(pos) => Plan {
-                action: Action::Nop,
-                cursor: motion::snap(b, pos),
-                mode: st.view.mode,
-                is_edit: false,
-                effects: Vec::new(),
-                set_register: None,
-                set_anchor: None,
-                set_mark: None,
-            },
+            Some(pos) => nop(motion::snap(b, pos), st.view.mode),
             None => nop(cur, st.view.mode),
         },
         // `'{a-z}` — LINEWISE to the first non-blank of a named mark's line. No-op if unset.
@@ -1510,14 +1472,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // Outside a selection (no anchor) it is a clean no-op.
             match (st.view.mode.selection(), st.view.anchor) {
                 (Some(_), Some(anchor)) => Plan {
-                    action: Action::Nop,
-                    cursor: anchor,
-                    mode: st.view.mode,
-                    is_edit: false,
-                    effects: Vec::new(),
-                    set_register: None,
                     set_anchor: Some(cur),
-                    set_mark: None,
+                    ..nop(anchor, st.view.mode)
                 },
                 _ => nop(cur, st.view.mode),
             }
@@ -1564,21 +1520,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         // Visual `u`/`U`/`~` — recase the selection in place, cursor at its start, back to Normal.
         Command::CaseSelection(case) => {
-            let Some(anchor) = st.view.anchor else {
-                return nop(cur, Mode::Normal);
+            let (s, e, _line) = match visual_span(st, b, cur) {
+                Ok(v) => v,
+                Err(c) => return nop(c, Mode::Normal),
             };
-            let line = matches!(
-                st.view.mode,
-                Mode::Visual {
-                    kind: SelectKind::Linewise
-                } | Mode::Select {
-                    kind: SelectKind::Linewise
-                }
-            );
-            let (s, e) = selection_range(b, anchor, cur, line);
-            if s >= e {
-                return nop(s, Mode::Normal);
-            }
             match std::str::from_utf8(&b[s..e]) {
                 Ok(text) => {
                     let new = recase(text, *case).into_bytes();
@@ -1590,21 +1535,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // Visual `r{char}` — overwrite every non-newline char in the selection with `c`, keeping line
         // breaks and the byte length's char count; cursor to the span start, back to Normal.
         Command::ReplaceSelectionChar(c) => {
-            let Some(anchor) = st.view.anchor else {
-                return nop(cur, Mode::Normal);
+            let (s, e, _line) = match visual_span(st, b, cur) {
+                Ok(v) => v,
+                Err(c) => return nop(c, Mode::Normal),
             };
-            let line = matches!(
-                st.view.mode,
-                Mode::Visual {
-                    kind: SelectKind::Linewise
-                } | Mode::Select {
-                    kind: SelectKind::Linewise
-                }
-            );
-            let (s, e) = selection_range(b, anchor, cur, line);
-            if s >= e {
-                return nop(s, Mode::Normal);
-            }
             match std::str::from_utf8(&b[s..e]) {
                 Ok(text) => {
                     let new: String = text
@@ -1624,21 +1558,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // Visual `p`/`P` — replace the selection with the register; `swap` puts the deleted text into the
         // unnamed register (Vim `p`), `P` preserves the register (so it can overwrite successive selections).
         Command::PasteSelection { swap } => {
-            let Some(anchor) = st.view.anchor else {
-                return nop(cur, Mode::Normal);
+            let (s, e, line) = match visual_span(st, b, cur) {
+                Ok(v) => v,
+                Err(c) => return nop(c, Mode::Normal),
             };
-            let line = matches!(
-                st.view.mode,
-                Mode::Visual {
-                    kind: SelectKind::Linewise
-                } | Mode::Select {
-                    kind: SelectKind::Linewise
-                }
-            );
-            let (s, e) = selection_range(b, anchor, cur, line);
-            if s >= e {
-                return nop(s, Mode::Normal);
-            }
             let deleted = captured(b, s, e, line);
             let reg = st.view.registers.get(st.view.pending_register).clone();
             let repl = reg.text().to_vec();
