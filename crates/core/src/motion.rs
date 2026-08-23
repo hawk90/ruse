@@ -465,6 +465,56 @@ pub(crate) fn word_under_cursor(b: &[u8], cur: usize) -> Option<(usize, usize)> 
 }
 
 /// The word plus its trailing whitespace (or leading, if there is no trailing) — Vim `aw` / `aW`.
+/// `{count}iw`: the inner-word span extended forward over `count` alternating class runs (Vim). Each unit is
+/// a maximal run of one class (a word-class run or a whitespace run), so `2iw` = word + following whitespace,
+/// `3iw` = word + ws + word. `count <= 1` is the plain `iw` span.
+fn inner_word_span_n(b: &[u8], cur: usize, big: bool, count: u32) -> (usize, usize) {
+    // An `iw` unit is a maximal run of ONE class — a word-class run OR a whitespace run — so extension must
+    // group whitespace too (unlike `same_group`, which is word-only). For `iW` a word-and-punct run is one.
+    let same_unit = |c: Class, x: Class| {
+        if c == Class::Space {
+            x == Class::Space
+        } else if big {
+            x != Class::Space
+        } else {
+            x == c
+        }
+    };
+    let (s, mut e) = inner_word_span(b, cur, big);
+    for _ in 1..count.max(1) {
+        if e >= b.len() {
+            break;
+        }
+        let c = class(b[e]);
+        while e < b.len() && same_unit(c, class(b[e])) {
+            e += 1;
+        }
+    }
+    (s, e)
+}
+
+/// `{count}aw`: `count` words, each including its trailing whitespace (Vim). `count <= 1` is the plain `aw`
+/// span (which already carries the trailing — or, absent that, leading — whitespace).
+fn a_word_span_n(b: &[u8], cur: usize, big: bool, count: u32) -> (usize, usize) {
+    let (s, mut e) = a_word_span(b, cur, big);
+    for _ in 1..count.max(1) {
+        while e < b.len() && is_ws(b[e]) {
+            e += 1;
+        }
+        if e >= b.len() {
+            break;
+        }
+        let c = class(b[e]);
+        while e < b.len() && same_group(c, class(b[e]), big) {
+            e += 1; // the next word
+        }
+        while e < b.len() && is_ws(b[e]) {
+            e += 1; // its trailing whitespace
+        }
+    }
+    (s, e)
+}
+
 fn a_word_span(b: &[u8], cur: usize, big: bool) -> (usize, usize) {
     let (s, e) = inner_word_span(b, cur, big);
     let mut e2 = e;
@@ -1324,10 +1374,10 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             _ => (cur, cur),
         },
         // text objects: a range around the cursor (count ignored in v0)
-        Motion::InnerWord => inner_word_span(b, cur, false),
-        Motion::AWord => a_word_span(b, cur, false),
-        Motion::InnerBigWord => inner_word_span(b, cur, true),
-        Motion::ABigWord => a_word_span(b, cur, true),
+        Motion::InnerWord => inner_word_span_n(b, cur, false, n),
+        Motion::AWord => a_word_span_n(b, cur, false, n),
+        Motion::InnerBigWord => inner_word_span_n(b, cur, true, n),
+        Motion::ABigWord => a_word_span_n(b, cur, true, n),
         Motion::InnerParagraph => paragraph_span(b, cur, false),
         Motion::AParagraph => paragraph_span(b, cur, true),
         Motion::InnerSentence => sentence_span(b, cur, false),

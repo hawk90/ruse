@@ -3131,6 +3131,35 @@ mod text_object_tests {
         String::from_utf8(st.bytes().to_vec()).expect("utf8")
     }
 
+    #[test]
+    fn counted_word_objects() {
+        // Verified vs nvim v0.12.4. `aw` count = N words+trailing-ws; `iw` count = N alternating class runs.
+        let st = run("foo bar baz qux", &[Command::Delete(2, Motion::AWord)]);
+        assert_eq!(
+            text(&st),
+            "baz qux",
+            "d2aw deletes two words with trailing ws"
+        );
+        let st = run("foo bar baz", &[Command::Delete(2, Motion::InnerWord)]);
+        assert_eq!(
+            text(&st),
+            "bar baz",
+            "d2iw = word + following whitespace run"
+        );
+        let st = run("foo bar baz", &[Command::Delete(3, Motion::InnerWord)]);
+        assert_eq!(text(&st), " baz", "d3iw = word + ws + word");
+        let st = run("foo.bar baz qux", &[Command::Delete(2, Motion::ABigWord)]);
+        assert_eq!(
+            text(&st),
+            "qux",
+            "d2aW spans two WHITESPACE-delimited words"
+        );
+        // Change variant collapses correctly.
+        let st = run("foo bar baz", &[Command::Change(2, Motion::InnerWord)]);
+        assert_eq!(text(&st), "bar baz", "c2iw removes 'foo ' then inserts");
+        assert_eq!(st.mode(), Mode::Insert);
+    }
+
     fn pair(open: char, close: char, around: bool) -> Motion {
         Motion::Pair {
             open,

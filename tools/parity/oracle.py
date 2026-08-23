@@ -349,6 +349,13 @@ FIXTURES: list[dict] = [
     {"name": "ddp_swap_lines", "lines": ["one", "two"], "keys": "ddp"},
     {"name": "xp_transpose_chars", "lines": ["ab"], "keys": "xp"},
     #     percentage jump + count %
+    #     counted text objects
+    {"name": "d2aw_count_object", "lines": ["foo bar baz qux"], "keys": "d2aw"},
+    {"name": "count_2daw", "lines": ["foo bar baz qux"], "keys": "2daw"},
+    {"name": "d2iw_count_inner", "lines": ["foo bar baz"], "keys": "d2iw"},
+    {"name": "d3iw_count_inner", "lines": ["foo bar baz"], "keys": "d3iw"},
+    {"name": "d2aW_count_big", "lines": ["foo.bar baz qux"], "keys": "d2aW"},
+    {"name": "c2iw_count_change", "lines": ["foo bar baz"], "keys": "c2iwZ<Esc>"},
     #     {count}% percentage jump
     {"name": "percent_jump_50", "lines": ["a", "b", "c", "d"], "keys": "50%x"},
     {"name": "percent_jump_100", "lines": ["a", "b", "c", "d"], "keys": "100%x"},

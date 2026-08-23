@@ -2570,6 +2570,150 @@
       }
     },
     {
+      "name": "d2aw_count_object",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "d2aw",
+      "expect": {
+        "text": [
+          "baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_2daw",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "2daw",
+      "expect": {
+        "text": [
+          "baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d2iw_count_inner",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "d2iw",
+      "expect": {
+        "text": [
+          "bar baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d3iw_count_inner",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "d3iw",
+      "expect": {
+        "text": [
+          " baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d2aW_count_big",
+      "lines": [
+        "foo.bar baz qux"
+      ],
+      "keys": "d2aW",
+      "expect": {
+        "text": [
+          "qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo.bar baz ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "c2iw_count_change",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "c2iwZ<Esc>",
+      "expect": {
+        "text": [
+          "Zbar baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "percent_jump_50",
       "lines": [
         "a",
