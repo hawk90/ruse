@@ -334,6 +334,10 @@ FIXTURES: list[dict] = [
     {"name": "gp_moves_after", "lines": ["one", "two"], "keys": "yygpx"},
     {"name": "numbered_reg_after_dd", "lines": ["a", "b", "c"], "keys": "ddjdd\"1p"},
     #     ROUND 3 sweep — counts, marks, line-case, idioms ------------------------------------------
+    #     operator to a named mark (charwise ` / linewise ')
+    {"name": "d_backtick_mark_charwise", "lines": ["abc def ghi"], "keys": "wmawd`a"},
+    {"name": "d_quote_mark_linewise", "lines": ["one", "two", "three", "four"], "keys": "majjd'a"},
+    {"name": "c_backtick_mark_change", "lines": ["abc def ghi"], "keys": "wmawc`aZ<Esc>"},
     #     counted text objects
     #     counted actions
     {"name": "count_3J_join", "lines": ["a", "b", "c", "d"], "keys": "3J"},
