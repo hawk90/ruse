@@ -977,6 +977,95 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn visual_increment_bumps_every_selected_line() {
+        // Linewise-select all three lines, `CTRL-X`-style +1 to the first number on each.
+        let st = run(
+            "1\n5\n9",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(2, Motion::Down),
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "2\n6\n10");
+        assert_eq!(st.mode(), Mode::Normal, "returns to Normal");
+        assert_eq!(st.cursor(), 0, "caret on the first changed line");
+        // Lines without a number are skipped, not errored; the first number on a line is the target.
+        let st = run(
+            "a 3 b\nnope\nx 10",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(2, Motion::Down),
+                Command::IncrementSelection {
+                    delta: -1,
+                    sequential: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "a 2 b\nnope\nx 9");
+    }
+
+    #[test]
+    fn visual_sequential_increment_makes_a_run() {
+        // `g CTRL-A` over a column of 1s → 1,2,3 (adds delta, 2·delta, 3·delta to successive numbered lines).
+        let st = run(
+            "1\n1\n1",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(2, Motion::Down),
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "2\n3\n4");
+        // A blank (numberless) line does NOT advance the sequence multiplier.
+        let st = run(
+            "0\n\n0\n0",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(3, Motion::Down),
+                Command::IncrementSelection {
+                    delta: 10,
+                    sequential: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "10\n\n20\n30");
+    }
+
+    #[test]
+    fn visual_increment_without_a_number_is_a_noop() {
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(1, Motion::Down),
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "abc\ndef");
+        assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
     fn goto_last_change_jumps_to_the_last_edit() {
         // Edit on line 2, move away to the top, then `` `. `` returns to the change.
         let st = run(
