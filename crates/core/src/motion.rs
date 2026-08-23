@@ -137,13 +137,19 @@ pub(crate) fn next_boundary(b: &[u8], pos: usize) -> usize {
 /// wide CJK glyph — not a single `char`, so the cursor never desyncs from the logical text (UAX#29).
 /// Falls back to the char boundary if the buffer is not valid UTF-8 (a binary file has no graphemes).
 pub(crate) fn next_grapheme(b: &[u8], pos: usize) -> usize {
-    match std::str::from_utf8(b) {
+    // A grapheme cluster never crosses a line break — UAX#29 always breaks around LF — so segmenting just
+    // the CURRENT LINE is exactly equivalent to segmenting the whole buffer, but O(line) instead of O(buffer)
+    // on the most frequently pressed motion. At/past the line end (window exhausted) the next boundary is the
+    // newline byte itself, handled by the char-boundary fallback (LF is 1 byte, so char == grapheme there).
+    let ls = line_start(b, pos);
+    let le = line_end(b, pos);
+    match std::str::from_utf8(&b[ls..le]) {
         Ok(s) => {
-            let mut gc = GraphemeCursor::new(pos.min(s.len()), s.len(), true);
-            gc.next_boundary(s, 0)
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| next_boundary(b, pos))
+            let mut gc = GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
+            match gc.next_boundary(s, 0).ok().flatten() {
+                Some(rel) => ls + rel,
+                None => next_boundary(b, pos), // window exhausted: cross the newline
+            }
         }
         Err(_) => next_boundary(b, pos),
     }
@@ -151,13 +157,17 @@ pub(crate) fn next_grapheme(b: &[u8], pos: usize) -> usize {
 
 /// The byte offset of the previous grapheme-cluster boundary before `pos` (the `h`/`MoveLeft` step).
 pub(crate) fn prev_grapheme(b: &[u8], pos: usize) -> usize {
-    match std::str::from_utf8(b) {
+    // Windowed to the current line, for the same reason as [`next_grapheme`]. At the line start the previous
+    // boundary is the preceding newline, handled by the char-boundary fallback.
+    let ls = line_start(b, pos);
+    let le = line_end(b, pos);
+    match std::str::from_utf8(&b[ls..le]) {
         Ok(s) => {
-            let mut gc = GraphemeCursor::new(pos.min(s.len()), s.len(), true);
-            gc.prev_boundary(s, 0)
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| prev_boundary(b, pos))
+            let mut gc = GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
+            match gc.prev_boundary(s, 0).ok().flatten() {
+                Some(rel) => ls + rel,
+                None => prev_boundary(b, pos), // window exhausted: cross back over the newline
+            }
         }
         Err(_) => prev_boundary(b, pos),
     }
@@ -1344,5 +1354,83 @@ mod sentence_motion_tests {
             char_span(b"Hello. World! Foo?", 0, Motion::SentenceFwd, 1),
             (0, 7)
         );
+    }
+}
+
+#[cfg(test)]
+mod windowed_grapheme_tests {
+    //! The line-windowed `next_grapheme`/`prev_grapheme` must be byte-for-byte equivalent to segmenting the
+    //! WHOLE buffer (the previous implementation), including across line breaks and over multi-byte clusters.
+    use super::{next_boundary, next_grapheme, prev_boundary, prev_grapheme};
+    use unicode_segmentation::GraphemeCursor;
+
+    // The pre-refactor whole-buffer implementations, kept here as the oracle.
+    fn next_whole(b: &[u8], pos: usize) -> usize {
+        match std::str::from_utf8(b) {
+            Ok(s) => {
+                let mut gc = GraphemeCursor::new(pos.min(s.len()), s.len(), true);
+                gc.next_boundary(s, 0)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| next_boundary(b, pos))
+            }
+            Err(_) => next_boundary(b, pos),
+        }
+    }
+    fn prev_whole(b: &[u8], pos: usize) -> usize {
+        match std::str::from_utf8(b) {
+            Ok(s) => {
+                let mut gc = GraphemeCursor::new(pos.min(s.len()), s.len(), true);
+                gc.prev_boundary(s, 0)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| prev_boundary(b, pos))
+            }
+            Err(_) => prev_boundary(b, pos),
+        }
+    }
+
+    fn assert_equivalent(text: &str) {
+        let b = text.as_bytes();
+        // Real callers only ever pass a char boundary (the cursor is always snapped), which is what
+        // `GraphemeCursor` requires — so sweep those positions plus the end.
+        let boundaries = text
+            .char_indices()
+            .map(|(i, _)| i)
+            .chain(std::iter::once(b.len()));
+        for pos in boundaries {
+            assert_eq!(
+                next_grapheme(b, pos),
+                next_whole(b, pos),
+                "next_grapheme mismatch at pos {pos} in {text:?}"
+            );
+            assert_eq!(
+                prev_grapheme(b, pos),
+                prev_whole(b, pos),
+                "prev_grapheme mismatch at pos {pos} in {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn windowed_matches_whole_buffer_across_lines_and_clusters() {
+        assert_equivalent("abc\ndef\nghi"); // plain ASCII, multiple lines
+        assert_equivalent("a👨‍👩‍👧b\ncd"); // ZWJ emoji family mid-line, then a line break
+        assert_equivalent("é\ncafé\n"); // combining/precomposed + trailing newline
+        assert_equivalent("한\n글자\nx"); // multi-byte CJK on several lines
+        assert_equivalent(""); // empty buffer
+        assert_equivalent("\n\n"); // blank lines only
+        assert_equivalent("e\u{0301}x\ny"); // base + combining acute (a real 2-codepoint cluster)
+    }
+
+    #[test]
+    fn crossing_a_newline_still_steps_one_cluster() {
+        // `l` at the last char of a line lands on the newline; a further `l` crosses to the next line start.
+        let b = b"ab\ncd";
+        assert_eq!(next_grapheme(b, 1), 2, "b → the newline position");
+        assert_eq!(next_grapheme(b, 2), 3, "newline → next line start");
+        // `h` at a line start crosses back over the newline.
+        assert_eq!(prev_grapheme(b, 3), 2, "line start → the newline");
+        assert_eq!(prev_grapheme(b, 2), 1, "newline → prev line's last char");
     }
 }
