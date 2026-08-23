@@ -84,11 +84,18 @@ fn plan_block_insert(
 /// `c{motion}` / `cc`: delete the change span, capture it to a register, and enter Insert. `cc`/`S` is
 /// the linewise case that preserves the leading indent (Vim autoindent-like).
 fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) -> Plan {
-    if *m == Motion::Line {
-        // `cc` / `{count}cc` / `S`: a LINEWISE change. Vim keeps the leading indent of the first line
-        // (the existing indent TEXT is preserved), deletes the rest of the line content down through
-        // `count` lines, keeps the trailing newline, and enters Insert at the end of the kept indent.
-        let (ls, content_end) = change_range(b, cur, *m, count);
+    // A change is LINEWISE for `cc`/`S` (Motion::Line) and for an inner block whose braces sit on their own
+    // lines (`ci(`/`ci{` — Vim's linewise inner block). Both keep the first line's indent, collapse the rest
+    // to one empty line, keep the trailing newline, and enter Insert after the indent — identical machinery,
+    // differing only in which line range they act on.
+    let linewise_range = if *m == Motion::Line {
+        Some(change_range(b, cur, *m, count))
+    } else {
+        crate::editor::range::linewise_inner_block(b, cur, *m).map(|(s, e)| (s + 1, e - 1))
+    };
+    if let Some((ls, content_end)) = linewise_range {
+        // Vim keeps the leading indent of the first line (the existing indent TEXT is preserved), deletes
+        // the rest of the content, keeps the trailing newline, and enters Insert at the end of the indent.
         let indent_end = motion::first_non_blank(b, ls).min(content_end);
         // Register span: whole lines including the terminating newline where one is present.
         let reg_end = if content_end < b.len() && b[content_end] == b'\n' {
