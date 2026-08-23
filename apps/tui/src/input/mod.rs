@@ -1757,6 +1757,12 @@ impl InputEngine {
                         self.action(Command::ReplaceSelectionChar(c))
                     }
                     KeyCode::Char(c) => self.action(Command::ReplaceChar(self.mcount(), c)),
+                    // `r<CR>` replaces the char(s) with a line break (Vim splits the line). Enter is a
+                    // distinct KeyCode, so map it to a `\n` replacement here.
+                    KeyCode::Enter if matches!(mode, Mode::Visual { .. } | Mode::Select { .. }) => {
+                        self.action(Command::ReplaceSelectionChar('\n'))
+                    }
+                    KeyCode::Enter => self.action(Command::ReplaceChar(self.mcount(), '\n')),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),

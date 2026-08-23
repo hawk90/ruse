@@ -3679,6 +3679,261 @@
       }
     },
     {
+      "name": "shift_right_motion_2lines",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ">j",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a",
+          "    b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "shift_left_dedents",
+      "lines": [
+        "    ab"
+      ],
+      "keys": "<<",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "shift_right_paragraph",
+      "lines": [
+        "a",
+        "b",
+        "",
+        "c"
+      ],
+      "keys": ">ip",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a",
+          "    b",
+          "",
+          "c"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gq_reflow_paragraph_79",
+      "lines": [
+        "word word word word word word word word word word word word word word word word word word word word"
+      ],
+      "keys": "gqip",
+      "expect": {
+        "text": [
+          "word word word word word word word word word word word word word word word word",
+          "word word word word"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "replace_char_with_newline",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "llr<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "def"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ci_squote_adjacent",
+      "lines": [
+        "'a' 'b'"
+      ],
+      "keys": "ci'Z<Esc>",
+      "expect": {
+        "text": [
+          "'Z' 'b'"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cit_tag_inner",
+      "lines": [
+        "<p>hi</p>"
+      ],
+      "keys": "fhcitZ<Esc>",
+      "expect": {
+        "text": [
+          "<p>Z</p>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "hi",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_backtick_quote",
+      "lines": [
+        "x `code` y"
+      ],
+      "keys": "fcdi`",
+      "expect": {
+        "text": [
+          "x `` y"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "code",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "da_squote_around",
+      "lines": [
+        "say 'hi' ok"
+      ],
+      "keys": "fhda'",
+      "expect": {
+        "text": [
+          "say ok"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "'hi' ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "daw_before_punct",
+      "lines": [
+        "foo, bar"
+      ],
+      "keys": "daw",
+      "expect": {
+        "text": [
+          ", bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_unicode_multibyte",
       "lines": [
         "αβγ"

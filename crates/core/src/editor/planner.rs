@@ -1090,6 +1090,15 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let (end, reached) = advance_n_checked(b, cur, *count, le);
             if !reached {
                 nop(cur, st.view.mode)
+            } else if *c == '\n' {
+                // `{count}r<CR>`: replace the count chars with a SINGLE line break (Vim splits the line),
+                // leaving the cursor on the first char of the new line — never `count` newlines.
+                edit(
+                    one(Edit::replace(cur, end - cur, b"\n".to_vec())),
+                    cur + 1,
+                    st.view.mode,
+                    hint,
+                )
             } else {
                 let mut buf = [0u8; 4];
                 let one_ch = c.encode_utf8(&mut buf).as_bytes();

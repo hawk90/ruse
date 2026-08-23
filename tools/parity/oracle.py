@@ -409,6 +409,20 @@ FIXTURES: list[dict] = [
     #     blockwise $A on ragged lines
     {"name": "block_append_ragged", "lines": ["a", "abc", "ab"], "keys": "<C-v>jj$AX<Esc>"},
     {"name": "block_change_column", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjcX<Esc>"},
+    #     ROUND 6 — indent/shift/format (config-dependent), replace-with-newline, quote/tag corners
+    {"name": "shift_right_motion_2lines", "lines": ["a", "b", "c"], "keys": ">j", "setup": "set shiftwidth=4 expandtab startofline"},
+    {"name": "shift_left_dedents", "lines": ["    ab"], "keys": "<<", "setup": "set shiftwidth=4 expandtab startofline"},
+    {"name": "shift_right_paragraph", "lines": ["a", "b", "", "c"], "keys": ">ip", "setup": "set shiftwidth=4 expandtab startofline"},
+    {"name": "gq_reflow_paragraph_79", "lines": ["word word word word word word word word word word word word word word word word word word word word"], "keys": "gqip"},
+    #     replace char with a newline (splits the line)
+    {"name": "replace_char_with_newline", "lines": ["abcdef"], "keys": "llr<CR>"},
+    #     quote / tag object corners
+    {"name": "ci_squote_adjacent", "lines": ["'a' 'b'"], "keys": "ci'Z<Esc>"},
+    {"name": "cit_tag_inner", "lines": ["<p>hi</p>"], "keys": "fhcitZ<Esc>"},
+    {"name": "di_backtick_quote", "lines": ["x `code` y"], "keys": "fcdi`"},
+    {"name": "da_squote_around", "lines": ["say 'hi' ok"], "keys": "fhda'"},
+    #     daw on trailing punctuation
+    {"name": "daw_before_punct", "lines": ["foo, bar"], "keys": "daw"},
     #     multi-byte / unicode buffers (byte-index correctness) --------------------------------------
     {"name": "x_unicode_multibyte", "lines": ["αβγ"], "keys": "x"},
     {"name": "x_emoji", "lines": ["a😀b"], "keys": "lx"},

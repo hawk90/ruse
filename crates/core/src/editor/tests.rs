@@ -904,6 +904,33 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn replace_char_with_newline_splits_the_line() {
+        // `r<CR>` replaces the char with a line break (Vim splits the line), cursor on the new line's start.
+        // Verified vs nvim v0.12.4 (fixture replace_char_with_newline).
+        let st = run(
+            "abcdef",
+            &[
+                Command::Move(2, Motion::Right),
+                Command::ReplaceChar(1, '\n'),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "ab\ndef",
+            "replacing 'c' with a newline splits after 'ab'"
+        );
+        assert_eq!(st.cursor(), 3, "cursor on 'd' (start of the new line)");
+        // `{count}r<CR>` replaces count chars with a SINGLE newline, not count newlines.
+        let st = run("abcdef", &[Command::ReplaceChar(3, '\n')]);
+        assert_eq!(
+            text(&st),
+            "\ndef",
+            "3r<CR> removes 'abc', inserts one line break"
+        );
+        assert_eq!(st.cursor(), 1);
+    }
+
+    #[test]
     fn delete_under_with_count() {
         // `3x` deletes three chars into the unnamed register (charwise); clamps at EOL.
         let st = run("abcdef", &[Command::DeleteUnder(3)]);
