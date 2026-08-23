@@ -196,6 +196,23 @@ pub(crate) fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usiz
         let start = line_start(b, cur.min(t));
         return (start, line_end(b, cur.max(t)));
     }
+    // `cw`/`cW` special case (Vim): when the cursor is on a non-blank, change up to the END OF THE WORD,
+    // NOT the start of the next word (so no trailing whitespace is eaten) — and, unlike `ce`, changing the
+    // LAST char of a word changes only that char rather than jumping into the next word. On a blank cursor
+    // the special case does not apply and the ordinary word span is used.
+    if matches!(m, Motion::WordFwd | Motion::BigWordFwd) {
+        let big = m == Motion::BigWordFwd;
+        let end = motion::current_word_end_excl(b, cur, big);
+        if end > cur {
+            // Extend through `count-1` further word-ends (Vim `c{n}w`).
+            let mut e = end;
+            for _ in 1..count.max(1) {
+                e = motion::word_end_excl(b, e.saturating_sub(1), big);
+            }
+            return (cur, e);
+        }
+        // Cursor on blank → fall through to the ordinary span below.
+    }
     if m != Motion::Line {
         return motion::char_span(b, cur, m, count);
     }

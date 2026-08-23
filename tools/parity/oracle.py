@@ -261,6 +261,37 @@ FIXTURES: list[dict] = [
     {"name": "dw_midline_last_word_trailing_ws", "lines": ["ab cd  ", "ef"], "keys": "wdw"},
     {"name": "dW_last_word_at_eol", "lines": ["foo.bar", "baz"], "keys": "dW"},
     {"name": "count_dw_crosses_eol", "lines": ["a b", "c d"], "keys": "2dw"},
+    #     char-search operators + repeat (f/t/F/T/;/,) ------------------------------------------------
+    {"name": "dfx_find_inclusive", "lines": ["abcxdef"], "keys": "dfx"},
+    {"name": "dtx_till", "lines": ["abcxdef"], "keys": "dtx"},
+    {"name": "dTx_till_back", "lines": ["abcxdef"], "keys": "$dTx"},
+    {"name": "dFx_find_back", "lines": ["abcxdef"], "keys": "$dFx"},
+    {"name": "semicolon_repeats_find", "lines": ["a.b.c.d"], "keys": "f.;x"},
+    {"name": "comma_repeats_find_reverse", "lines": ["a.b.c.d"], "keys": "f.$,x"},
+    #     ge/gE backward word-end under operator ------------------------------------------------------
+    {"name": "dge_backward_word_end", "lines": ["foo bar"], "keys": "$dge"},
+    #     cw special cases (on-blank behaves like cw, not ce) -----------------------------------------
+    {"name": "cw_on_blank", "lines": ["foo  bar"], "keys": "llcwZ<Esc>"},
+    {"name": "ciw_inner_word", "lines": ["foo bar"], "keys": "ciwZ<Esc>"},
+    #     case operators over motion / line ----------------------------------------------------------
+    {"name": "gU_word", "lines": ["foo bar"], "keys": "gUw"},
+    {"name": "guu_line_lowercase", "lines": ["FOO BAR"], "keys": "guu"},
+    {"name": "g_tilde_word", "lines": ["FooBar"], "keys": "g~w"},
+    #     line-operator synonyms (D/C/S) -------------------------------------------------------------
+    {"name": "cap_D_to_eol", "lines": ["hello world"], "keys": "wD"},
+    {"name": "cap_C_change_eol", "lines": ["hello world"], "keys": "wCbye<Esc>"},
+    {"name": "cap_S_change_line", "lines": ["hello", "next"], "keys": "Sbye<Esc>"},
+    #     % match under operator + inclusive ---------------------------------------------------------
+    {"name": "d_percent_paren", "lines": ["a(bcd)e"], "keys": "f(d%"},
+    #     dot-repeat -----------------------------------------------------------------------------------
+    {"name": "dot_repeats_dw", "lines": ["a b c d"], "keys": "dw."},
+    {"name": "dot_repeats_x", "lines": ["abcdef"], "keys": "x.."},
+    #     named registers --------------------------------------------------------------------------
+    {"name": "named_reg_yank_paste", "lines": ["one", "two"], "keys": '"ayyj"ap'},
+    #     visual-mode operators ----------------------------------------------------------------------
+    {"name": "visual_iw_delete", "lines": ["foo bar"], "keys": "viwd"},
+    {"name": "visual_line_delete", "lines": ["a", "b", "c"], "keys": "Vjd"},
+    {"name": "visual_block_delete", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjld"},
     #     operators on empty / single-char / last line ------------------------------------------------
     {"name": "x_on_empty_line", "lines": [""], "keys": "x"},
     {"name": "dw_on_empty_line", "lines": [""], "keys": "dw"},

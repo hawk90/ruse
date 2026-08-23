@@ -2129,6 +2129,34 @@ mod word_class_tests {
     }
 
     #[test]
+    fn cw_changes_to_current_word_end_not_next_word() {
+        // Vim cw special case: on a non-blank, change up to the END OF THE WORD (no trailing space), and on
+        // a word's LAST char change only that char — unlike `ce`, which would jump into the next word.
+        // Expects captured from nvim v0.12.4 (oracle fixture cw_on_blank).
+        let st = run(
+            "foo  bar",
+            &[
+                Command::Move(2, Motion::Right),
+                Command::Change(1, Motion::WordFwd),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "fo  bar",
+            "cw on the last 'o' changes only it (then Insert)"
+        );
+        // Mid-word cw changes to the word end (== ce here).
+        let st = run("foo bar", &[Command::Change(1, Motion::WordFwd)]);
+        assert_eq!(text(&st), " bar", "cw on 'f' changes 'foo', not 'foo '");
+        // On punctuation-adjacent: cw stops at the class boundary.
+        let st = run("foo.bar", &[Command::Change(1, Motion::WordFwd)]);
+        assert_eq!(text(&st), ".bar", "cw stops at the '.' class boundary");
+        // 2cw changes through the second word's end.
+        let st = run("a b c", &[Command::Change(2, Motion::WordFwd)]);
+        assert_eq!(text(&st), " c", "2cw changes 'a b'");
+    }
+
+    #[test]
     fn dw_on_last_word_does_not_join_the_next_line() {
         // Vim: an `w` operator never crosses the newline — `dw` on the last word empties the line instead
         // of joining it. Expects captured from nvim v0.12.4 (oracle fixtures dw_last_word_*).

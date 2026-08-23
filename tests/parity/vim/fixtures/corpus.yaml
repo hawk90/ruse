@@ -1037,6 +1037,545 @@
       }
     },
     {
+      "name": "dfx_find_inclusive",
+      "lines": [
+        "abcxdef"
+      ],
+      "keys": "dfx",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dtx_till",
+      "lines": [
+        "abcxdef"
+      ],
+      "keys": "dtx",
+      "expect": {
+        "text": [
+          "xdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dTx_till_back",
+      "lines": [
+        "abcxdef"
+      ],
+      "keys": "$dTx",
+      "expect": {
+        "text": [
+          "abcxf"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "de",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dFx_find_back",
+      "lines": [
+        "abcxdef"
+      ],
+      "keys": "$dFx",
+      "expect": {
+        "text": [
+          "abcf"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "xde",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "semicolon_repeats_find",
+      "lines": [
+        "a.b.c.d"
+      ],
+      "keys": "f.;x",
+      "expect": {
+        "text": [
+          "a.bc.d"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": ".",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "comma_repeats_find_reverse",
+      "lines": [
+        "a.b.c.d"
+      ],
+      "keys": "f.$,x",
+      "expect": {
+        "text": [
+          "a.b.cd"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": ".",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dge_backward_word_end",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "$dge",
+      "expect": {
+        "text": [
+          "fo"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "o bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cw_on_blank",
+      "lines": [
+        "foo  bar"
+      ],
+      "keys": "llcwZ<Esc>",
+      "expect": {
+        "text": [
+          "foZ  bar"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "o",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ciw_inner_word",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "ciwZ<Esc>",
+      "expect": {
+        "text": [
+          "Z bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gU_word",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "gUw",
+      "expect": {
+        "text": [
+          "FOO bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "guu_line_lowercase",
+      "lines": [
+        "FOO BAR"
+      ],
+      "keys": "guu",
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "g_tilde_word",
+      "lines": [
+        "FooBar"
+      ],
+      "keys": "g~w",
+      "expect": {
+        "text": [
+          "fOObAR"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cap_D_to_eol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "wD",
+      "expect": {
+        "text": [
+          "hello "
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "world",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cap_C_change_eol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "wCbye<Esc>",
+      "expect": {
+        "text": [
+          "hello bye"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "world",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cap_S_change_line",
+      "lines": [
+        "hello",
+        "next"
+      ],
+      "keys": "Sbye<Esc>",
+      "expect": {
+        "text": [
+          "bye",
+          "next"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "hello\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_percent_paren",
+      "lines": [
+        "a(bcd)e"
+      ],
+      "keys": "f(d%",
+      "expect": {
+        "text": [
+          "ae"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "(bcd)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_repeats_dw",
+      "lines": [
+        "a b c d"
+      ],
+      "keys": "dw.",
+      "expect": {
+        "text": [
+          "c d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dot_repeats_x",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "x..",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "named_reg_yank_paste",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "\"ayyj\"ap",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "one"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_iw_delete",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "viwd",
+      "expect": {
+        "text": [
+          " bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_line_delete",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "Vjd",
+      "expect": {
+        "text": [
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_block_delete",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "<C-v>jjld",
+      "expect": {
+        "text": [
+          "c",
+          "f",
+          "i"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab\nde\ngh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_on_empty_line",
       "lines": [
         ""

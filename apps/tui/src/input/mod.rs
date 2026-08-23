@@ -611,15 +611,11 @@ impl InputEngine {
                 } else {
                     match op {
                         Op::Delete => Command::Delete(total, m),
-                        // Vim `cw`/`cW` behave like `ce`/`cE` (do not eat the trailing space).
-                        Op::Change => Command::Change(
-                            total,
-                            match m {
-                                Motion::WordFwd => Motion::WordEnd,
-                                Motion::BigWordFwd => Motion::BigWordEnd,
-                                other => other,
-                            },
-                        ),
+                        // Vim `cw`/`cW` do not eat the trailing space and, unlike `ce`, changing a word's
+                        // LAST char changes only that char. The core's `change_range` applies that special
+                        // case for `WordFwd`/`BigWordFwd`, so pass the motion through unchanged (rewriting to
+                        // `WordEnd` here would wrongly jump into the next word from a word-final cursor).
+                        Op::Change => Command::Change(total, m),
                         Op::Yank => Command::Yank(total, m),
                         // Case ops are handled by the `op.case()` branch above.
                         Op::CaseLower
