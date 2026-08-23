@@ -1463,6 +1463,330 @@
         "mark": 4,
         "kill": null
       }
+    },
+    {
+      "name": "beginning_of_line_on_empty_line",
+      "text": "foo\n\nbar",
+      "ops": [
+        "move-beginning-of-line"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "foo",
+          "",
+          "bar"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "end_of_line_on_empty_line",
+      "text": "foo\n\nbar",
+      "ops": [
+        "move-end-of-line"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "foo",
+          "",
+          "bar"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "end_of_line_from_bol",
+      "text": "hello",
+      "ops": [
+        "move-end-of-line"
+      ],
+      "expect": {
+        "text": [
+          "hello"
+        ],
+        "point": 5,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "back_to_indentation_all_blank",
+      "text": "   ",
+      "ops": [
+        "back-to-indentation"
+      ],
+      "expect": {
+        "text": [
+          "   "
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "back_to_indentation_from_mid_indent",
+      "text": "    foo",
+      "ops": [
+        "back-to-indentation"
+      ],
+      "point": 6,
+      "expect": {
+        "text": [
+          "    foo"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "back_to_indentation_tabs",
+      "text": "\t\tfoo",
+      "ops": [
+        "back-to-indentation"
+      ],
+      "point": 5,
+      "expect": {
+        "text": [
+          "\t\tfoo"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "back_to_indentation_no_indent",
+      "text": "foo",
+      "ops": [
+        "back-to-indentation"
+      ],
+      "point": 2,
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "upcase_word_mid_word",
+      "text": "foobar",
+      "ops": [
+        "upcase-word"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "fooBAR"
+        ],
+        "point": 6,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "downcase_word_mid_word",
+      "text": "FOOBAR",
+      "ops": [
+        "downcase-word"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "FOObar"
+        ],
+        "point": 6,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "capitalize_word_mid_word",
+      "text": "foobar",
+      "ops": [
+        "capitalize-word"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "fooBar"
+        ],
+        "point": 6,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "transpose_chars_at_eob",
+      "text": "abc",
+      "ops": [
+        "transpose-chars"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "acb"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "kill_line_at_eol_join_indent",
+      "text": "foo\n   bar",
+      "ops": [
+        "kill-line"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo   bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": "\n"
+      }
+    },
+    {
+      "name": "kill_whole_line_last_line",
+      "text": "foo\nbar",
+      "ops": [
+        "kill-whole-line"
+      ],
+      "point": 5,
+      "expect": {
+        "text": [
+          "foo",
+          ""
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": "bar"
+      }
+    },
+    {
+      "name": "kill_whole_line_middle",
+      "text": "aa\nbb\ncc",
+      "ops": [
+        "kill-whole-line"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "aa",
+          "cc"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": "bb\n"
+      }
+    },
+    {
+      "name": "open_line_at_bol",
+      "text": "foo",
+      "ops": [
+        "open-line"
+      ],
+      "expect": {
+        "text": [
+          "",
+          "foo"
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "just_one_space_tabs",
+      "text": "foo\t\tbar",
+      "ops": [
+        "just-one-space"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "delete_horizontal_space_mixed",
+      "text": "foo \t bar",
+      "ops": [
+        "delete-horizontal-space"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "foobar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "delete_indentation_no_trailing",
+      "text": "foo\nbar",
+      "ops": [
+        "delete-indentation"
+      ],
+      "point": 4,
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "backward_kill_word_trailing_punct",
+      "text": "foo...",
+      "ops": [
+        "backward-kill-word"
+      ],
+      "point": 6,
+      "expect": {
+        "text": [
+          ""
+        ],
+        "point": 0,
+        "mark": null,
+        "kill": "foo..."
+      }
+    },
+    {
+      "name": "mark_word_at_eob",
+      "text": "foo",
+      "ops": [
+        "mark-word"
+      ],
+      "point": 3,
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "point": 3,
+        "mark": 3,
+        "kill": null
+      }
     }
   ]
 }
