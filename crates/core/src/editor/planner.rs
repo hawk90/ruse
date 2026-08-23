@@ -17,6 +17,9 @@ fn plan_block_insert(
     let (rows, col_lo, col_hi) = block_rows(b, anchor, cur);
     let append = matches!(kind, BlockInsertKind::Append);
     let change = matches!(kind, BlockInsertKind::Change);
+    // `$A` (`` <C-v>$A ``): `$` set curswant to MAXCOL, so the block is ragged — append at EACH row's own
+    // line-end, not a fixed column. (curswant is still MAXCOL here; `update_curswant` runs after commit.)
+    let to_eol = append && st.view.curswant == crate::editor::range::MAXCOL;
     let target_col = if append { col_hi + 1 } else { col_lo };
     let top_start = rows.first().map_or(cur, |&(s, _)| s);
     let top_ls = line_start(b, top_start);
@@ -48,6 +51,8 @@ fn plan_block_insert(
     let toplen = col_of(b, top_ls, top_le);
     let insert_start = if change {
         top_start
+    } else if to_eol {
+        top_le // `$A`: append at the top row's own end (ragged), no padding
     } else if append && toplen < target_col {
         edits.push(Edit::insert(top_le, vec![b' '; target_col - toplen]));
         top_le + (target_col - toplen)
@@ -62,6 +67,7 @@ fn plan_block_insert(
         target_col,
         rows_below,
         append,
+        to_eol,
     };
     let list = EditList::new(edits).expect("block-insert enter edits are disjoint (one per line)");
     let is_edit = !list.is_empty();
@@ -2645,7 +2651,10 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) 
         rs = le + 1;
         let row_le = line_end(b, rs);
         let rowlen = col_of(b, rs, row_le);
-        if session.append {
+        if session.to_eol {
+            // `$A`: append at THIS row's own end (ragged), never a fixed column.
+            edits.push(Edit::insert(row_le, typed.to_vec()));
+        } else if session.append {
             if rowlen < session.target_col {
                 let mut ins = vec![b' '; session.target_col - rowlen];
                 ins.extend_from_slice(typed);

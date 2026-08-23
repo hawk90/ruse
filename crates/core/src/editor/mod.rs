@@ -540,6 +540,9 @@ struct BlockInsert {
     /// `A`/append semantics: pad rows shorter than `target_col` with spaces. `false` (`I`/`c`) skips a row
     /// that does not reach `target_col`.
     append: bool,
+    /// `$`-ragged append (`` <C-v>$A ``): insert at EACH row's own line-end rather than a fixed `target_col`,
+    /// so trailing text aligns to variable line lengths (Vim). Only meaningful with `append`.
+    to_eol: bool,
 }
 
 /// How a committed command should route its captured text into the register store. A `Yank` additionally
