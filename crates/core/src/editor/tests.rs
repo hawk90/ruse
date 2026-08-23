@@ -5259,3 +5259,194 @@ mod section_motion_tests {
         assert!(st.register().is_empty());
     }
 }
+
+#[cfg(test)]
+mod unmatched_bracket_motion_tests {
+    //! Vim `[(` / `])` / `[{` / `]}` — jump to the enclosing UNMATCHED paren/brace. Every `assert` is pinned
+    //! to nvim v0.12.4 (see the `unmatched_*` oracle fixtures in tests/parity/vim/fixtures/corpus.yaml).
+    use crate::editor::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    // "(abcdef)": ( a b c d e f )  = bytes 0 1 2 3 4 5 6 7. Cursor placed on 'c' (byte 3) via 3 x MoveRight.
+    fn on_c(brackets: &str) -> Vec<Command> {
+        let _ = brackets;
+        vec![Command::MoveRight; 3]
+    }
+
+    #[test]
+    fn bare_moves_reach_the_enclosing_bracket() {
+        // `[(` goes to the enclosing open paren; `])` to the enclosing close paren.
+        let mut cmds = on_c("(abcdef)");
+        cmds.push(Command::Move(1, Motion::UnmatchedParenBack));
+        assert_eq!(run("(abcdef)", &cmds).cursor(), 0);
+
+        let mut cmds = on_c("(abcdef)");
+        cmds.push(Command::Move(1, Motion::UnmatchedParenFwd));
+        assert_eq!(run("(abcdef)", &cmds).cursor(), 7);
+
+        // Braces behave identically.
+        let mut cmds = on_c("{abcdef}");
+        cmds.push(Command::Move(1, Motion::UnmatchedBraceBack));
+        assert_eq!(run("{abcdef}", &cmds).cursor(), 0);
+        let mut cmds = on_c("{abcdef}");
+        cmds.push(Command::Move(1, Motion::UnmatchedBraceFwd));
+        assert_eq!(run("{abcdef}", &cmds).cursor(), 7);
+    }
+
+    #[test]
+    fn nesting_is_respected_and_count_steps_out_levels() {
+        // "(a(b)c)": ( a ( b ) c )  = 0 1 2 3 4 5 6. Cursor on 'b' (byte 3).
+        let one = run(
+            "(a(b)c)",
+            &[
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::Move(1, Motion::UnmatchedParenBack),
+            ],
+        );
+        assert_eq!(one.cursor(), 2, "[( → the INNER open paren");
+        let two = run(
+            "(a(b)c)",
+            &[
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::Move(2, Motion::UnmatchedParenBack),
+            ],
+        );
+        assert_eq!(two.cursor(), 0, "2[( → out two levels to the OUTER open");
+
+        // Forward mirror on braces: "{a{b}c}" cursor on 'b' (byte 3).
+        let one = run(
+            "{a{b}c}",
+            &[
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::Move(1, Motion::UnmatchedBraceFwd),
+            ],
+        );
+        assert_eq!(one.cursor(), 4, "]}} → the inner close brace");
+        let two = run(
+            "{a{b}c}",
+            &[
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::Move(2, Motion::UnmatchedBraceFwd),
+            ],
+        );
+        assert_eq!(two.cursor(), 6, "2]}} → out two levels to the outer close");
+    }
+
+    #[test]
+    fn no_enclosing_bracket_is_a_noop_move() {
+        // No paren at all → the cursor does not move.
+        let st = run(
+            "abcdef",
+            &[
+                Command::MoveRight,
+                Command::Move(1, Motion::UnmatchedParenBack),
+            ],
+        );
+        assert_eq!(st.cursor(), 1);
+        // Cursor ON the open paren: `[(` scans strictly left, finds nothing → no-op (nvim: stays put).
+        let st = run("(abc)", &[Command::Move(1, Motion::UnmatchedParenBack)]);
+        assert_eq!(st.cursor(), 0);
+        // Cursor ON the close paren: `])` scans strictly right → no-op.
+        let st = run(
+            "(abc)",
+            &[
+                Command::Move(1, Motion::LineEnd),
+                Command::Move(1, Motion::UnmatchedParenFwd),
+            ],
+        );
+        assert_eq!(st.cursor(), 4);
+    }
+
+    #[test]
+    fn operator_is_exclusive_charwise() {
+        // `d[(` from 'c' (byte 3) deletes [open, cursor) = "(ab" (the cursor char 'c' and the close paren stay).
+        let mut cmds = on_c("(abcdef)");
+        cmds.push(Command::Delete(1, Motion::UnmatchedParenBack));
+        let st = run("(abcdef)", &cmds);
+        assert_eq!(text(&st), "cdef)");
+        assert!(!st.register().is_linewise());
+        assert_eq!(st.register().text(), b"(ab");
+        assert_eq!(st.cursor(), 0);
+
+        // `d])` from 'c' deletes [cursor, close) = "cdef" — the `)` is EXCLUDED (verified: not `d%`'s inclusive).
+        let mut cmds = on_c("(abcdef)");
+        cmds.push(Command::Delete(1, Motion::UnmatchedParenFwd));
+        let st = run("(abcdef)", &cmds);
+        assert_eq!(text(&st), "(ab)");
+        assert!(!st.register().is_linewise());
+        assert_eq!(st.register().text(), b"cdef");
+        assert_eq!(st.cursor(), 3);
+    }
+
+    #[test]
+    fn yank_and_change_use_the_same_span() {
+        // `y])` captures "cdef" charwise without moving text; cursor rests at the span start.
+        let mut cmds = on_c("(abcdef)");
+        cmds.push(Command::Yank(1, Motion::UnmatchedParenFwd));
+        let st = run("(abcdef)", &cmds);
+        assert_eq!(text(&st), "(abcdef)");
+        assert_eq!(st.register().text(), b"cdef");
+        assert_eq!(st.cursor(), 3);
+
+        // `c]}` on braces deletes the inner span and enters insert; typing replaces it.
+        let st = run(
+            "{abcdef}",
+            &[
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::MoveRight,
+                Command::Change(1, Motion::UnmatchedBraceFwd),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "{abX}");
+    }
+
+    #[test]
+    fn operator_off_column_zero_target_becomes_linewise() {
+        // "foo(\nbar\n)baz": the `)` starts line 3 (column 0). `d])` from 'b' of "bar" is exclusive charwise
+        // ending at column 0, so Vim's exclusive-linewise rule deletes the whole "bar" line (nvim-verified).
+        let st = run(
+            "foo(\nbar\n)baz",
+            &[
+                Command::Move(2, Motion::GotoLine), // to line 2, first non-blank ('b')
+                Command::Delete(1, Motion::UnmatchedParenFwd),
+            ],
+        );
+        assert_eq!(text(&st), "foo(\n)baz");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"bar\n");
+    }
+
+    #[test]
+    fn operator_with_no_bracket_deletes_nothing() {
+        let st = run(
+            "abcdef",
+            &[
+                Command::MoveRight,
+                Command::Delete(1, Motion::UnmatchedParenFwd),
+            ],
+        );
+        assert_eq!(text(&st), "abcdef");
+        assert!(st.register().is_empty());
+    }
+}

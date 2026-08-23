@@ -620,6 +620,40 @@ FIXTURES: list[dict] = [
     {"name": "y_section_back", "lines": ["x", "{", "a", "}", "{", "b", "}"], "keys": "6Gy[["},
     {"name": "d_section_back_bof_noop", "lines": ["x", "{", "a", "}"], "keys": "d[["},
     {"name": "section_fwd_from_mid", "lines": ["{", "a", "}", "{", "b", "}"], "keys": "jd]]"},
+    # --- UNMATCHED-PAREN/BRACE motions (feat/unmatched-paren-motions): `[(`/`])` jump to the enclosing
+    #     unmatched `(`/`)`; `[{`/`]}` to the enclosing unmatched `{`/`}`. Count steps out nesting levels.
+    #     All four are EXCLUSIVE charwise (verified: `d])` does NOT eat the `)`, unlike `d%`), and take Vim's
+    #     exclusive-linewise reduction when the target sits in column 0. Every `expect` is oracle-captured.
+    #     bare moves ---------------------------------------------------------------------------------------
+    {"name": "unmatched_paren_back_bare", "lines": ["(abcdef)"], "keys": "3l[("},
+    {"name": "unmatched_paren_fwd_bare", "lines": ["(abcdef)"], "keys": "3l])"},
+    {"name": "unmatched_brace_back_bare", "lines": ["{abcdef}"], "keys": "3l[{"},
+    {"name": "unmatched_brace_fwd_bare", "lines": ["{abcdef}"], "keys": "3l]}"},
+    #     nesting + count ----------------------------------------------------------------------------------
+    {"name": "unmatched_paren_back_nested_inner", "lines": ["(a(b)c)"], "keys": "3l[("},
+    {"name": "unmatched_paren_back_count_out_two", "lines": ["(a(b)c)"], "keys": "3l2[("},
+    {"name": "unmatched_brace_fwd_nested_inner", "lines": ["{a{b}c}"], "keys": "3l]}"},
+    {"name": "unmatched_brace_fwd_count_out_two", "lines": ["{a{b}c}"], "keys": "3l2]}"},
+    #     cursor on the bracket itself → no-op; no enclosing bracket → no-op --------------------------------
+    {"name": "unmatched_paren_back_on_open_noop", "lines": ["(abc)"], "keys": "[("},
+    {"name": "unmatched_paren_fwd_on_close_noop", "lines": ["(abc)"], "keys": "$])"},
+    {"name": "unmatched_paren_back_none_noop", "lines": ["abcdef"], "keys": "3l[("},
+    #     multiline ----------------------------------------------------------------------------------------
+    {"name": "unmatched_paren_back_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "2G0[("},
+    {"name": "unmatched_paren_fwd_multiline", "lines": ["foo(", "bar", ")baz"], "keys": "2G0])"},
+    #     operators — exclusive charwise -------------------------------------------------------------------
+    {"name": "d_unmatched_paren_back", "lines": ["(abcdef)"], "keys": "3ld[("},
+    {"name": "d_unmatched_paren_fwd", "lines": ["(abcdef)"], "keys": "3ld])"},
+    {"name": "y_unmatched_paren_fwd", "lines": ["(abcdef)"], "keys": "3ly])"},
+    {"name": "c_unmatched_brace_fwd", "lines": ["{abcdef}"], "keys": "3lc]}X<Esc>"},
+    {"name": "d_unmatched_brace_back", "lines": ["{abcdef}"], "keys": "3ld[{"},
+    #     operator exclusive-linewise reduction at a column-0 target ----------------------------------------
+    {"name": "d_unmatched_paren_fwd_linewise", "lines": ["foo(", "bar", ")baz"], "keys": "2G0d])"},
+    #     operator no-op (no enclosing bracket) ------------------------------------------------------------
+    {"name": "d_unmatched_paren_fwd_noop", "lines": ["abcdef"], "keys": "3ld])"},
+    #     visual mode — selection is inclusive of both ends ------------------------------------------------
+    {"name": "visual_unmatched_paren_fwd_delete", "lines": ["(abcdef)"], "keys": "3lv])d"},
+    {"name": "visual_unmatched_paren_back_delete", "lines": ["(abcdef)"], "keys": "3lv[(d"},
 ]
 
 
