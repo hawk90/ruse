@@ -2783,23 +2783,33 @@ fn paste(
         // `gp`/`gP` (move_after) leave the cursor on the line AFTER the pasted block instead of on it.
         let text = repeat(reg.text());
         let tlen = text.len();
+        // Vim rests the cursor on the FIRST NON-BLANK of the first pasted line (not column 0). The leading
+        // whitespace never contains a newline, so counting spaces/tabs stays within that first line.
+        let fnb = text
+            .iter()
+            .take_while(|&&c| c == b' ' || c == b'\t')
+            .count();
         if after {
             let le = line_end(b, cur);
             if le < b.len() {
                 // Insert after the current line's newline: the stored "...\n" becomes a fresh line below.
-                let c = if move_after { le + 1 + tlen } else { le + 1 };
+                let c = if move_after {
+                    le + 1 + tlen
+                } else {
+                    le + 1 + fnb
+                };
                 mk(le + 1, text, c)
             } else {
                 // Last line has no trailing newline: prepend one and drop the stored trailing newline so no
-                // dangling blank line is created. Cursor lands at the start of the pasted line.
+                // dangling blank line is created. Cursor lands on the first non-blank of the pasted line.
                 let mut bytes = vec![b'\n'];
                 bytes.extend_from_slice(text.strip_suffix(b"\n").unwrap_or(&text));
                 let end = le + bytes.len();
-                mk(le, bytes, if move_after { end } else { le + 1 })
+                mk(le, bytes, if move_after { end } else { le + 1 + fnb })
             }
         } else {
             let ls = line_start(b, cur);
-            mk(ls, text, if move_after { ls + tlen } else { ls })
+            mk(ls, text, if move_after { ls + tlen } else { ls + fnb })
         }
     } else {
         // `{count}p` inserts that many copies inline. Vim's charwise-paste cursor rule splits on whether the
