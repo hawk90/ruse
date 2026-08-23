@@ -815,4 +815,4 @@ related:
   reads, and this becomes "the profile layer sets them" rather than a hardcoded frontend call); or if a
   divergence is proposed whose vanilla rationale still applies (muscle-memory / current script compat), in
   which case it does NOT qualify under this decision and stays at the Vim default.
-- Refs: D-043, D-049, F-009, C-CONFIG.
+- Refs: [../docs/rfc/proposed/RFC-0017-better-than-vanilla-defaults.md](../docs/rfc/proposed/RFC-0017-better-than-vanilla-defaults.md), D-043, D-049, F-009, C-CONFIG.
