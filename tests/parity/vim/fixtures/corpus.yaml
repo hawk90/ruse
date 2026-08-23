@@ -7120,6 +7120,545 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "unmatched_paren_back_bare",
+      "lines": [
+        "(abcdef)"
+      ],
+      "keys": "3l[(",
+      "expect": {
+        "text": [
+          "(abcdef)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_paren_fwd_bare",
+      "lines": [
+        "(abcdef)"
+      ],
+      "keys": "3l])",
+      "expect": {
+        "text": [
+          "(abcdef)"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_brace_back_bare",
+      "lines": [
+        "{abcdef}"
+      ],
+      "keys": "3l[{",
+      "expect": {
+        "text": [
+          "{abcdef}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_brace_fwd_bare",
+      "lines": [
+        "{abcdef}"
+      ],
+      "keys": "3l]}",
+      "expect": {
+        "text": [
+          "{abcdef}"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_paren_back_nested_inner",
+      "lines": [
+        "(a(b)c)"
+      ],
+      "keys": "3l[(",
+      "expect": {
+        "text": [
+          "(a(b)c)"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_paren_back_count_out_two",
+      "lines": [
+        "(a(b)c)"
+      ],
+      "keys": "3l2[(",
+      "expect": {
+        "text": [
+          "(a(b)c)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_brace_fwd_nested_inner",
+      "lines": [
+        "{a{b}c}"
+      ],
+      "keys": "3l]}",
+      "expect": {
+        "text": [
+          "{a{b}c}"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_brace_fwd_count_out_two",
+      "lines": [
+        "{a{b}c}"
+      ],
+      "keys": "3l2]}",
+      "expect": {
+        "text": [
+          "{a{b}c}"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_paren_back_on_open_noop",
+      "lines": [
+        "(abc)"
+      ],
+      "keys": "[(",
+      "expect": {
+        "text": [
+          "(abc)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_paren_fwd_on_close_noop",
+      "lines": [
+        "(abc)"
+      ],
+      "keys": "$])",
+      "expect": {
+        "text": [
+          "(abc)"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_paren_back_none_noop",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "3l[(",
+      "expect": {
+        "text": [
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_paren_back_multiline",
+      "lines": [
+        "foo(",
+        "bar",
+        ")baz"
+      ],
+      "keys": "2G0[(",
+      "expect": {
+        "text": [
+          "foo(",
+          "bar",
+          ")baz"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "unmatched_paren_fwd_multiline",
+      "lines": [
+        "foo(",
+        "bar",
+        ")baz"
+      ],
+      "keys": "2G0])",
+      "expect": {
+        "text": [
+          "foo(",
+          "bar",
+          ")baz"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_unmatched_paren_back",
+      "lines": [
+        "(abcdef)"
+      ],
+      "keys": "3ld[(",
+      "expect": {
+        "text": [
+          "cdef)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "(ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_unmatched_paren_fwd",
+      "lines": [
+        "(abcdef)"
+      ],
+      "keys": "3ld])",
+      "expect": {
+        "text": [
+          "(ab)"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "y_unmatched_paren_fwd",
+      "lines": [
+        "(abcdef)"
+      ],
+      "keys": "3ly])",
+      "expect": {
+        "text": [
+          "(abcdef)"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "cdef",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "c_unmatched_brace_fwd",
+      "lines": [
+        "{abcdef}"
+      ],
+      "keys": "3lc]}X<Esc>",
+      "expect": {
+        "text": [
+          "{abX}"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "cdef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_unmatched_brace_back",
+      "lines": [
+        "{abcdef}"
+      ],
+      "keys": "3ld[{",
+      "expect": {
+        "text": [
+          "cdef}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "{ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_unmatched_paren_fwd_linewise",
+      "lines": [
+        "foo(",
+        "bar",
+        ")baz"
+      ],
+      "keys": "2G0d])",
+      "expect": {
+        "text": [
+          "foo(",
+          ")baz"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "bar\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_unmatched_paren_fwd_noop",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "3ld])",
+      "expect": {
+        "text": [
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_unmatched_paren_fwd_delete",
+      "lines": [
+        "(abcdef)"
+      ],
+      "keys": "3lv])d",
+      "expect": {
+        "text": [
+          "(ab"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "cdef)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_unmatched_paren_back_delete",
+      "lines": [
+        "(abcdef)"
+      ],
+      "keys": "3lv[(d",
+      "expect": {
+        "text": [
+          "def)"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "(abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

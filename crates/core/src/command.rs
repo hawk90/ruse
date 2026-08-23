@@ -547,6 +547,10 @@ fn motion_token(m: Motion) -> String {
         Motion::SectionBack => "section_back",
         Motion::SectionEndFwd => "section_end_fwd",
         Motion::SectionEndBack => "section_end_back",
+        Motion::UnmatchedParenBack => "unmatched_paren_back",
+        Motion::UnmatchedParenFwd => "unmatched_paren_fwd",
+        Motion::UnmatchedBraceBack => "unmatched_brace_back",
+        Motion::UnmatchedBraceFwd => "unmatched_brace_fwd",
         // A single whitespace-free token so the `<count> <motion>` split still works: the char is its decimal
         // scalar value; `f`/`t` and forward/back are flags. e.g. `find_char:120:1:0` = `fx`.
         Motion::FindChar { ch, forward, till } => {
@@ -649,6 +653,10 @@ fn motion_from_token(s: &str) -> Option<Motion> {
         "section_back" => Motion::SectionBack,
         "section_end_fwd" => Motion::SectionEndFwd,
         "section_end_back" => Motion::SectionEndBack,
+        "unmatched_paren_back" => Motion::UnmatchedParenBack,
+        "unmatched_paren_fwd" => Motion::UnmatchedParenFwd,
+        "unmatched_brace_back" => Motion::UnmatchedBraceBack,
+        "unmatched_brace_fwd" => Motion::UnmatchedBraceFwd,
         _ => return None,
     })
 }
@@ -1775,6 +1783,12 @@ mod tests {
             Command::Delete(1, Motion::SectionEndFwd),
             Command::Yank(3, Motion::SectionEndBack),
             Command::Change(1, Motion::SectionFwd),
+            Command::Move(1, Motion::UnmatchedParenBack),
+            Command::Move(2, Motion::UnmatchedParenFwd),
+            Command::Delete(1, Motion::UnmatchedParenBack),
+            Command::Yank(1, Motion::UnmatchedParenFwd),
+            Command::Change(2, Motion::UnmatchedBraceBack),
+            Command::Delete(1, Motion::UnmatchedBraceFwd),
             Command::Yank(1, Motion::Line),
             Command::Yank(2, Motion::WordFwd),
             Command::Paste {
