@@ -4568,6 +4568,67 @@ mod mark_tests {
         assert_eq!(b.view.cursor, 11);
     }
 
+    // Emacs `forward-word` / `backward-word` (M-f / M-b) use a TWO-class syntax split (word constituent vs
+    // non-word), where a punctuation run is NOT its own word (as it is under Vim `e`/`b`) and `_` is a
+    // NON-word char in fundamental-mode. All values below are pinned to GNU Emacs 30.2 via the parity oracle
+    // (tests/parity/emacs/fixtures/corpus.yaml); this hard-asserts the emacs-matching bytes/point so a
+    // regression back to the Vim word helpers fails the build, not just the (non-gating) parity tally.
+    #[test]
+    fn emacs_word_motions_are_two_class_over_punct_and_underscore() {
+        // forward-word skips a leading punctuation run then moves over the word: "...foo" -> point 6.
+        let mut fw = EditorState::new(b"...foo".to_vec());
+        fw.set_caret_gravity(CaretGravity::BetweenChar);
+        fw.set_cursor(0);
+        apply_command(&mut fw, &Command::Move(1, Motion::EmacsWordFwd));
+        assert_eq!(fw.view.cursor, 6);
+
+        // `_` is non-word: forward-word on "foo_bar" stops after "foo" (point 3).
+        let mut us = EditorState::new(b"foo_bar".to_vec());
+        us.set_caret_gravity(CaretGravity::BetweenChar);
+        us.set_cursor(0);
+        apply_command(&mut us, &Command::Move(1, Motion::EmacsWordFwd));
+        assert_eq!(us.view.cursor, 3);
+
+        // backward-word skips a trailing punctuation run then moves over the word: from inside "bar" of
+        // "foo.bar" it lands at the start of "foo" (point 0), NOT at the "." where Vim `b` would stop.
+        let mut bw = EditorState::new(b"foo.bar".to_vec());
+        bw.set_caret_gravity(CaretGravity::BetweenChar);
+        bw.set_cursor(4);
+        apply_command(&mut bw, &Command::Move(1, Motion::EmacsWordBack));
+        assert_eq!(bw.view.cursor, 0);
+
+        // kill-word inherits the two-class span: on "foo_bar" it kills just "foo" (stops at `_`).
+        let mut kw = EditorState::new(b"foo_bar".to_vec());
+        kw.set_caret_gravity(CaretGravity::BetweenChar);
+        kw.set_cursor(0);
+        apply_command(&mut kw, &Command::EmacsKillWord { count: 1 });
+        assert_eq!(text(&kw), "_bar");
+        assert_eq!(kw.register().text(), b"foo");
+
+        // upcase-word too: recases only "foo" of "foo_bar", leaving "_bar" untouched, point after "foo".
+        let mut up = EditorState::new(b"foo_bar".to_vec());
+        up.set_caret_gravity(CaretGravity::BetweenChar);
+        up.set_cursor(0);
+        apply_command(
+            &mut up,
+            &Command::EmacsCaseWord {
+                case: WordCase::Upcase,
+            },
+        );
+        assert_eq!(text(&up), "FOO_bar");
+        assert_eq!(up.view.cursor, 3);
+
+        // backward-kill-word crossing a punctuation run: from inside "bar" of "foo.bar" it kills "foo."
+        // (back to the start of "foo"), leaving "bar".
+        let mut bkw = EditorState::new(b"foo.bar".to_vec());
+        bkw.set_caret_gravity(CaretGravity::BetweenChar);
+        bkw.set_cursor(4);
+        apply_command(&mut bkw, &Command::EmacsBackwardKillWord { count: 1 });
+        assert_eq!(text(&bkw), "bar");
+        assert_eq!(bkw.view.cursor, 0);
+        assert_eq!(bkw.register().text(), b"foo.");
+    }
+
     // Emacs mark-word (M-@) (D-051): set the mark at the end of the next word, point unchanged.
     #[test]
     fn emacs_mark_word_sets_mark_at_word_end() {

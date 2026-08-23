@@ -1919,7 +1919,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         // the register. A BACKWARD kill, so on a kill run it PREPENDS onto the current entry (via
         // `RegWrite::KillPrepend`). Distinct from Vim `db` (no accumulation).
         Command::EmacsBackwardKillWord { count } => {
-            let target = motion::target(b, cur, Motion::WordBack, *count);
+            let target = motion::target(b, cur, Motion::EmacsWordBack, *count);
             if target >= cur {
                 nop(cur, st.view.mode)
             } else {
@@ -1975,10 +1975,10 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         // for `forward-word`: `start1` = backward-word, `end1` = forward-word from there, `end2` =
         // forward-word again, `start2` = backward-word from there. Inert without a real pair. No kill write.
         Command::EmacsTransposeWords => {
-            let start1 = motion::target(b, cur, Motion::WordBack, 1);
+            let start1 = motion::target(b, cur, Motion::EmacsWordBack, 1);
             let end1 = motion::target(b, start1, Motion::EmacsWordFwd, 1);
             let end2 = motion::target(b, end1, Motion::EmacsWordFwd, 1);
-            let start2 = motion::target(b, end2, Motion::WordBack, 1);
+            let start2 = motion::target(b, end2, Motion::EmacsWordBack, 1);
             if start1 < end1 && end1 <= start2 && start2 < end2 {
                 let mut new = Vec::with_capacity(end2 - start1);
                 new.extend_from_slice(&b[start2..end2]); // second word moves to the front

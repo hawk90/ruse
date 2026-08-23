@@ -356,6 +356,67 @@ FIXTURES: list[dict] = [
         "ops": ["set-mark-command", "forward-word", "capitalize-region"],
     },
     {"name": "newline_ret", "text": "foobar", "ops": ["newline"], "point": 3},
+    # === EXPANSION 5 (edge-case sweep): word boundaries at PUNCTUATION — the place Emacs `forward-word`/
+    #     `backward-word` (syntax-word runs, skipping non-word chars) can diverge from a Vim word motion
+    #     (which treats a punctuation run as its own word). These are the sweep's prime bug candidates. -----
+    {"name": "forward_word_over_punct", "text": "foo.bar", "ops": ["forward-word"]},
+    {"name": "forward_word_leading_punct", "text": "...foo", "ops": ["forward-word"]},
+    {"name": "forward_word_at_eob", "text": "foo", "ops": ["forward-word"], "point": 3},
+    {"name": "backward_word_over_punct", "text": "foo.bar", "ops": ["backward-word"], "point": 4},
+    {"name": "backward_word_from_end_punct", "text": "foo.bar", "ops": ["backward-word"], "point": 7},
+    {"name": "backward_word_at_bob", "text": "foo bar", "ops": ["backward-word"]},
+    # --- kill-word / backward-kill-word across leading whitespace and punctuation runs. ------------------
+    {"name": "kill_word_leading_space", "text": "  foo", "ops": ["kill-word"]},
+    {"name": "kill_word_over_punct", "text": "foo.bar", "ops": ["kill-word"], "point": 3},
+    {"name": "backward_kill_word_over_punct", "text": "foo.bar", "ops": ["backward-kill-word"], "point": 7},
+    {"name": "backward_kill_word_trailing_space", "text": "foo bar ", "ops": ["backward-kill-word"], "point": 8},
+    # --- transpose-chars in mid-word (advances past the pair) and at end of a NON-last line (no advance). --
+    {"name": "transpose_chars_mid", "text": "abcde", "ops": ["transpose-chars"], "point": 2},
+    {"name": "transpose_chars_at_eol_multiline", "text": "ab\ncd", "ops": ["transpose-chars"], "point": 2},
+    # --- transpose-words with point INSIDE the separator/second word (Emacs transpose-subr geometry). -----
+    {"name": "transpose_words_mid", "text": "foo bar baz", "ops": ["transpose-words"], "point": 4},
+    # --- case-word: leading whitespace in the span, mixed-case capitalize/downcase, no-op at end-of-buffer. -
+    {"name": "upcase_word_leading_space", "text": "  foo", "ops": ["upcase-word"]},
+    {"name": "capitalize_word_mixed_case", "text": "fOO bar", "ops": ["capitalize-word"]},
+    {"name": "downcase_word_over_punct", "text": "FOO.BAR", "ops": ["downcase-word"]},
+    {"name": "upcase_word_at_eob", "text": "foo", "ops": ["upcase-word"], "point": 3},
+    # --- open-line at end-of-line (opens a trailing blank) and just-one-space with NO surrounding space. ---
+    {"name": "open_line_at_eol", "text": "foo", "ops": ["open-line"], "point": 3},
+    {"name": "just_one_space_none", "text": "foobar", "ops": ["just-one-space"], "point": 3},
+    {"name": "just_one_space_leading", "text": "   foo", "ops": ["just-one-space"]},
+    {"name": "delete_horizontal_space_leading", "text": "   foo", "ops": ["delete-horizontal-space"]},
+    # --- delete-indentation onto an EMPTY previous line (fixup collapses to no space, lands at bol). -------
+    {"name": "delete_indentation_empty_prev", "text": "\n   bar", "ops": ["delete-indentation"], "point": 4},
+    # --- kill-line on an empty line kills just the newline (joins up). -----------------------------------
+    {"name": "kill_line_on_empty_line", "text": "\nfoo", "ops": ["kill-line"]},
+    # --- composites: kill ACCUMULATION feeding a yank; kill-line then yank in place; copy then recase. ----
+    {
+        "name": "kill_two_words_then_yank",
+        "text": "foo bar baz",
+        "ops": ["kill-word", "kill-word", "move-end-of-line", "yank"],
+    },
+    {"name": "kill_line_mid_then_yank", "text": "hello world", "ops": ["kill-line", "yank"], "point": 6},
+    {
+        "name": "copy_region_then_upcase_region",
+        "text": "foo bar",
+        "ops": ["set-mark-command", "forward-word", "kill-ring-save", "upcase-region"],
+    },
+    {
+        "name": "exchange_point_and_mark_twice",
+        "text": "abcdef",
+        "ops": ["set-mark-command", "forward-char", "forward-char", "forward-char", "exchange-point-and-mark", "exchange-point-and-mark"],
+    },
+    # --- `_` is a NON-word char in Emacs fundamental-mode (symbol syntax), so `foo_bar` is two words. These
+    #     lock in the two-class Emacs word semantics for the family that spans EmacsWordFwd/EmacsWordBack. ---
+    {"name": "forward_word_stops_at_underscore", "text": "foo_bar", "ops": ["forward-word"]},
+    {"name": "backward_word_stops_at_underscore", "text": "foo_bar", "ops": ["backward-word"], "point": 7},
+    {"name": "kill_word_stops_at_underscore", "text": "foo_bar", "ops": ["kill-word"]},
+    {"name": "upcase_word_stops_at_underscore", "text": "foo_bar", "ops": ["upcase-word"]},
+    # --- backward-kill-word crossing a punctuation run (backward-word skips `.` then over `foo`). ----------
+    {"name": "backward_kill_word_cross_punct", "text": "foo.bar", "ops": ["backward-kill-word"], "point": 4},
+    # --- transpose-words / mark-word with punctuation between the words (Emacs two-class geometry). --------
+    {"name": "transpose_words_over_punct", "text": "foo.bar", "ops": ["transpose-words"], "point": 3},
+    {"name": "mark_word_over_leading_punct", "text": ".foo", "ops": ["mark-word"]},
 ]
 
 

@@ -358,7 +358,7 @@ impl EmacsProfile {
         )
         .bind(
             EmacsKey::alt('b'),
-            EmacsBinding::Counted(CountedCmd::Move(Motion::WordBack)),
+            EmacsBinding::Counted(CountedCmd::Move(Motion::EmacsWordBack)),
         )
         .bind(
             EmacsKey::alt('d'),
@@ -459,7 +459,7 @@ pub fn emacs_command_by_name(name: &str) -> Option<Command> {
         "beginning-of-buffer" => Command::EmacsBufferEdge { start: true },
         "end-of-buffer" => Command::EmacsBufferEdge { start: false },
         "forward-word" => Command::Move(1, Motion::EmacsWordFwd),
-        "backward-word" => Command::Move(1, Motion::WordBack),
+        "backward-word" => Command::Move(1, Motion::EmacsWordBack),
         "delete-char" => Command::DeleteForward(1),
         "kill-line" => Command::EmacsKillLine,
         "transpose-chars" => Command::EmacsTransposeChars,
