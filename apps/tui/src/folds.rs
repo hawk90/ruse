@@ -9,6 +9,8 @@
 //! here is pure over `&[Fold]`, so it is unit-tested directly; the session owns the `Vec<Fold>` per view and
 //! the render/viewport passes consult these helpers.
 
+use ruse_core::Motion;
+
 /// One manual fold: the inclusive buffer line range `[start, end]` and whether it is currently collapsed.
 /// Slice 1 keeps folds non-overlapping (nesting is deferred).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -119,6 +121,77 @@ pub fn shift(folds: &mut Vec<Fold>, at_line: usize, delta: isize) {
             f.end = (f.end as isize + delta).max(0) as usize;
         }
     }
+}
+
+/// Insert a CLOSED fold over the inclusive 0-based line range `[start, end]`, keeping the slice-1
+/// non-overlapping invariant: any existing fold that overlaps the new range is dropped first (nesting is
+/// deferred — a `zf` over an existing fold REPLACES it rather than nesting). A degenerate `end < start`
+/// range is ignored. Used by both Normal `zf{motion}` and Visual `zf`.
+pub fn insert_closed_fold(folds: &mut Vec<Fold>, start: usize, end: usize) {
+    if end < start {
+        return;
+    }
+    // Drop every fold that overlaps [start, end] (two ranges overlap iff neither is fully before the other).
+    folds.retain(|f| f.end < start || f.start > end);
+    folds.push(Fold {
+        start,
+        end,
+        closed: true,
+    });
+}
+
+/// The parse result of feeding the keys typed after `zf` (Normal-mode fold-over-motion): the buffered
+/// key string (e.g. `"3j"`, `"gg"`, `"ip"`) resolves to a linewise [`Motion`] + count for the
+/// `reindent_range` seam, needs another key, or is not a supported fold motion.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FoldMotionParse {
+    /// A complete `{count}{motion}` — feed to `Workspace::reindent_range` to get the fold's line range.
+    Ready { motion: Motion, count: u32 },
+    /// A prefix so far (a partial count, or a multi-key motion lead like `g`/`i`/`a`) — await more keys.
+    More,
+    /// Not a fold motion — abandon the pending `zf`.
+    Cancel,
+}
+
+/// Parse the accumulated `zf{motion}` key string into a linewise motion + count for the reindent seam.
+/// Recognizes the fold-relevant motions (`:help zf` over the common set): `j`/`k` (line down/up), `G`
+/// (to EOF, or `{count}G` to a line), `gg` (to a line), `}`/`{` (paragraph fwd/back), `ip`/`ap`
+/// (inner/around paragraph). A leading `1`-`9` run is the count; a bare/partial prefix returns `More`.
+#[must_use]
+pub fn parse_fold_motion(keys: &str) -> FoldMotionParse {
+    // A leading `1`-`9`… run is the count (a leading `0` is NOT a count — it is the column-0 motion, which
+    // is not a supported fold motion, so it falls through to `Cancel`).
+    let digit_len = if keys.starts_with(|c: char| ('1'..='9').contains(&c)) {
+        keys.chars().take_while(char::is_ascii_digit).count()
+    } else {
+        0
+    };
+    let count = keys[..digit_len].parse::<u32>().unwrap_or(1).max(1);
+    let rest = &keys[digit_len..];
+    if rest.is_empty() {
+        return FoldMotionParse::More; // still typing the count
+    }
+    let motion = match rest {
+        "j" => Motion::Down,
+        "k" => Motion::Up,
+        // `{count}G` targets a line (`GotoLine`); bare `G` is to the last line.
+        "G" => {
+            if digit_len > 0 {
+                Motion::GotoLine
+            } else {
+                Motion::LastLine
+            }
+        }
+        "}" => Motion::ParagraphFwd,
+        "{" => Motion::ParagraphBack,
+        // Multi-key leads: await the second key.
+        "g" | "i" | "a" => return FoldMotionParse::More,
+        "gg" => Motion::GotoLine,
+        "ip" => Motion::InnerParagraph,
+        "ap" => Motion::AParagraph,
+        _ => return FoldMotionParse::Cancel,
+    };
+    FoldMotionParse::Ready { motion, count }
 }
 
 /// The one-line summary a closed fold paints on its start row: `▸ {N} lines: {first-line text}` (trimmed).
@@ -257,6 +330,134 @@ mod tests {
         assert_eq!((c, d), (8, 4), "2zk from line 9 lands on fold A's end");
         // Over-count: the second hop past the last fold returns None, so the caller keeps the last landing.
         assert_eq!(next_fold_start(&folds, b), None);
+    }
+
+    #[test]
+    fn insert_closed_fold_is_closed_and_replaces_overlaps() {
+        // A fresh fold is inserted closed over the inclusive range.
+        let mut folds = Vec::new();
+        insert_closed_fold(&mut folds, 2, 5);
+        assert_eq!(folds, vec![f(2, 5, true)]);
+
+        // A non-overlapping fold coexists (slice-1 non-overlapping set).
+        insert_closed_fold(&mut folds, 7, 9);
+        assert_eq!(folds, vec![f(2, 5, true), f(7, 9, true)]);
+
+        // A new fold overlapping the FIRST replaces it (nesting deferred); the disjoint one survives.
+        insert_closed_fold(&mut folds, 1, 3);
+        assert_eq!(folds, vec![f(7, 9, true), f(1, 3, true)]);
+
+        // A new fold spanning BOTH remaining folds replaces both.
+        insert_closed_fold(&mut folds, 0, 10);
+        assert_eq!(folds, vec![f(0, 10, true)]);
+
+        // A degenerate reversed range is ignored (the caller also guards `end > start`).
+        let before = folds.clone();
+        insert_closed_fold(&mut folds, 5, 4);
+        assert_eq!(folds, before);
+    }
+
+    #[test]
+    fn parse_fold_motion_resolves_the_common_motions() {
+        use FoldMotionParse::Ready;
+        // Single-key linewise motions, no count.
+        assert_eq!(
+            parse_fold_motion("j"),
+            Ready {
+                motion: Motion::Down,
+                count: 1
+            }
+        );
+        assert_eq!(
+            parse_fold_motion("k"),
+            Ready {
+                motion: Motion::Up,
+                count: 1
+            }
+        );
+        // Bare `G` → last line; `{count}G` → GotoLine with the count.
+        assert_eq!(
+            parse_fold_motion("G"),
+            Ready {
+                motion: Motion::LastLine,
+                count: 1
+            }
+        );
+        assert_eq!(
+            parse_fold_motion("5G"),
+            Ready {
+                motion: Motion::GotoLine,
+                count: 5
+            }
+        );
+        // A count then a line motion (`zf3j`).
+        assert_eq!(
+            parse_fold_motion("3j"),
+            Ready {
+                motion: Motion::Down,
+                count: 3
+            }
+        );
+        // Paragraph motions.
+        assert_eq!(
+            parse_fold_motion("}"),
+            Ready {
+                motion: Motion::ParagraphFwd,
+                count: 1
+            }
+        );
+        assert_eq!(
+            parse_fold_motion("{"),
+            Ready {
+                motion: Motion::ParagraphBack,
+                count: 1
+            }
+        );
+    }
+
+    #[test]
+    fn parse_fold_motion_awaits_multi_key_and_counts() {
+        use FoldMotionParse::{More, Ready};
+        // Multi-key leads await the second key.
+        assert_eq!(parse_fold_motion("g"), More);
+        assert_eq!(
+            parse_fold_motion("gg"),
+            Ready {
+                motion: Motion::GotoLine,
+                count: 1
+            }
+        );
+        assert_eq!(parse_fold_motion("i"), More);
+        assert_eq!(
+            parse_fold_motion("ip"),
+            Ready {
+                motion: Motion::InnerParagraph,
+                count: 1
+            }
+        );
+        assert_eq!(parse_fold_motion("a"), More);
+        assert_eq!(
+            parse_fold_motion("ap"),
+            Ready {
+                motion: Motion::AParagraph,
+                count: 1
+            }
+        );
+        // A partial count alone awaits its motion.
+        assert_eq!(parse_fold_motion("3"), More);
+        assert_eq!(parse_fold_motion("12"), More);
+    }
+
+    #[test]
+    fn parse_fold_motion_cancels_unsupported() {
+        use FoldMotionParse::Cancel;
+        // A leading `0` is the column-0 motion, not a count — unsupported for folds.
+        assert_eq!(parse_fold_motion("0"), Cancel);
+        // Unknown / non-fold motions abandon the pending zf.
+        assert_eq!(parse_fold_motion("x"), Cancel);
+        assert_eq!(parse_fold_motion("w"), Cancel);
+        assert_eq!(parse_fold_motion("gx"), Cancel);
+        assert_eq!(parse_fold_motion("ix"), Cancel);
     }
 
     #[test]

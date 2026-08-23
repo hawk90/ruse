@@ -275,8 +275,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut resident: HashSet<graphics::ImageId> = HashSet::new();
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
     let mut pending_z = false; // a `z` scroll/fold prefix awaits its second key (`zz`/`zt`/`zb`/`zf`/`zo`…)
-                               // A `[`/`]` prefix (Some(open)) awaits its second key; only `[z`/`]z` (fold nav) are handled here — every
-                               // other bracket command (`]p`/`[p`, …) is still armed in the engine, so this observes without shadowing it.
+                               // `zf` in Normal mode awaits a {motion}: this buffers the keys typed after `zf`
+                               // (an optional count + a linewise motion, e.g. `3j`/`gg`/`ip`) until they parse to
+                               // a range for the reindent seam. `Some("")` = just after `zf`, no motion key yet.
+    let mut pending_zf: Option<String> = None;
+    // A `[`/`]` prefix (Some(open)) awaits its second key; only `[z`/`]z` (fold nav) are handled here — every
+    // other bracket command (`]p`/`[p`, …) is still armed in the engine, so this observes without shadowing it.
     let mut pending_bracket: Option<bool> = None;
     // Manual folds, keyed by buffer (slice 1: per-buffer, not per-window). Closed folds collapse in
     // render; the cursor/scroll skip them; edits shift/drop them.
@@ -870,6 +874,45 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         let focused_h = rects
             .get(ws.focus())
             .map_or(text_rows as usize, |r| r.h as usize);
+        // `zf{motion}` (Normal mode): keep buffering keys after `zf` until they resolve to a linewise
+        // motion, then create a CLOSED fold over the line range the motion covers — sourced from the same
+        // `reindent_range` seam `=` uses, so `zf` folds exactly the lines `=`/`d` would touch. The cursor
+        // lands on the fold's first line (matches nvim). This is folds "slice 2" — the Normal-mode
+        // counterpart of the Visual `zf` below.
+        if let Some(mut buf) = pending_zf.take() {
+            // A char key extends the motion; Esc or any non-char key abandons the pending `zf`.
+            let ch = match key.code {
+                KeyCode::Char(c)
+                    if (key.modifiers - crossterm::event::KeyModifiers::SHIFT).is_empty() =>
+                {
+                    Some(c)
+                }
+                _ => None,
+            };
+            let Some(c) = ch else {
+                continue; // cancelled — `pending_zf` already taken
+            };
+            buf.push(c);
+            match crate::folds::parse_fold_motion(&buf) {
+                crate::folds::FoldMotionParse::More => {
+                    pending_zf = Some(buf); // still accumulating (a count or a multi-key motion)
+                }
+                crate::folds::FoldMotionParse::Cancel => {} // not a fold motion — drop it
+                crate::folds::FoldMotionParse::Ready { motion, count } => {
+                    // A closed fold needs ≥ 2 lines: `end > start` (nvim declines a single-line `zf`).
+                    if let Some((start, end)) = ws.reindent_range(motion, count) {
+                        if end > start {
+                            let buf_id = ws.focused_buffer();
+                            let fv = folds.entry(buf_id).or_default();
+                            crate::folds::insert_closed_fold(fv, start, end);
+                            ws.place_focused_cursor(line_idx.nth_line_start(start));
+                            status = format!("folded {} lines", end - start + 1);
+                        }
+                    }
+                }
+            }
+            continue;
+        }
         // `z` scroll prefix: the second key recenters the view on the cursor line (`zz`/`z.` center,
         // `zt`/`z<CR>` top, `zb`/`z-` bottom). Only `top` moves; the per-frame scroll pass then applies
         // `scrolloff`, so `zt`/`zb` land the line `scrolloff` rows inside the edge, as in Vim.
@@ -892,17 +935,15 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             let cur_line = line_idx.line_of(ws.focused().view.cursor());
             let fv = folds.entry(buf).or_default();
             match key.code {
-                // `zf` — create a CLOSED fold over the Visual selection's lines (Normal zf{motion} is slice 2).
+                // `zf` — create a CLOSED fold. From a Visual selection: fold the selection's lines. From
+                // Normal mode: arm the `zf{motion}` sub-state (handled at the top of the loop), which folds
+                // the range the following motion covers (slice 2).
                 KeyCode::Char('f') => {
                     if let Some((s, e)) = ws.focused().view.selection_span(&snapshot) {
                         let (a, b) = (line_idx.line_of(s), line_idx.line_of(e.saturating_sub(1)));
                         let (start, end) = (a.min(b), a.max(b));
                         if end > start {
-                            fv.push(crate::folds::Fold {
-                                start,
-                                end,
-                                closed: true,
-                            });
+                            crate::folds::insert_closed_fold(fv, start, end);
                             run_cmd(
                                 Command::EnterNormal,
                                 &mut ws,
@@ -915,7 +956,14 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             status = format!("folded {} lines", end - start + 1);
                         }
                     } else {
-                        status = "zf needs a Visual selection (zf{motion} is coming)".to_string();
+                        // Normal mode: begin `zf{motion}`. Seed the buffer with any count typed before `z`
+                        // (e.g. `3zfj`); further count digits typed after `f` are appended by the handler.
+                        let seed = engine.take_count();
+                        pending_zf = Some(if seed > 0 {
+                            seed.to_string()
+                        } else {
+                            String::new()
+                        });
                     }
                 }
                 // `zo`/`zc`/`za` — open / close / toggle the fold containing the cursor line.
