@@ -886,6 +886,27 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn join_suppresses_space_before_close_paren() {
+        // Vim inserts no space when the next line's first non-blank is ')'.
+        let st = run("foo(\n   )", &[Command::JoinLines]);
+        assert_eq!(text(&st), "foo()");
+    }
+
+    #[test]
+    fn join_does_not_double_a_trailing_space() {
+        // The current line already ends in whitespace → no extra space is added.
+        let st = run("foo \n   bar", &[Command::JoinLines]);
+        assert_eq!(text(&st), "foo bar");
+    }
+
+    #[test]
+    fn join_empty_line_adds_no_leading_space() {
+        // Joining an empty line onto the next inserts no space.
+        let st = run("\n   bar", &[Command::JoinLines]);
+        assert_eq!(text(&st), "bar");
+    }
+
+    #[test]
     fn join_no_space_keeps_indent_and_inserts_nothing() {
         // gJ removes only the newline: the next line's leading whitespace is preserved, no space added.
         let st = run("foo\n   bar", &[Command::JoinLinesNoSpace]);
