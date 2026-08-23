@@ -1453,7 +1453,7 @@ impl InputEngine {
             }
             KeyCode::Char('R') => self.action(Command::EnterReplace),
             KeyCode::Char('~') => self.action(Command::ToggleCase(self.mcount())),
-            KeyCode::Char('J') => self.action(Command::JoinLines),
+            KeyCode::Char('J') => self.action(Command::JoinLines(self.mcount())),
             KeyCode::Char('n') => match self.last_search.clone() {
                 Some(p) => self.action(Command::SearchNext(p)),
                 None => self.unmatched(Ns::Normal, key),
@@ -1683,7 +1683,7 @@ impl InputEngine {
                     KeyCode::Char('n') => self.search_object(false),
                     KeyCode::Char('N') => self.search_object(true),
                     // `gJ` — join with the next line WITHOUT inserting a space (Vim `gJ`).
-                    KeyCode::Char('J') => self.action(Command::JoinLinesNoSpace),
+                    KeyCode::Char('J') => self.action(Command::JoinLinesNoSpace(self.mcount())),
                     // `g;` / `g,` — walk the change list to older / newer change positions (Vim).
                     KeyCode::Char(';') => self.action(Command::GotoOlderChange),
                     KeyCode::Char(',') => self.action(Command::GotoNewerChange),

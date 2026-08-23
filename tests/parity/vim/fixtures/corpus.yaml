@@ -2369,6 +2369,207 @@
       }
     },
     {
+      "name": "count_3J_join",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "3J",
+      "expect": {
+        "text": [
+          "a b c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_2cc_change",
+      "lines": [
+        "one",
+        "two",
+        "three"
+      ],
+      "keys": "2ccX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "three"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\ntwo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gUU_line_upcase",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "FOO BAR"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "g_tilde_tilde_line",
+      "lines": [
+        "FooBar"
+      ],
+      "keys": "g~~",
+      "expect": {
+        "text": [
+          "fOObAR"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ci_dquote_empty",
+      "lines": [
+        "say \"\" now"
+      ],
+      "keys": "f\"ci\"Z<Esc>",
+      "expect": {
+        "text": [
+          "say \"Z\" now"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "di_dquote_before",
+      "lines": [
+        "x \"hi\" y"
+      ],
+      "keys": "di\"",
+      "expect": {
+        "text": [
+          "x \"\" y"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "hi",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ddp_swap_lines",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "ddp",
+      "expect": {
+        "text": [
+          "two",
+          "one"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "xp_transpose_chars",
+      "lines": [
+        "ab"
+      ],
+      "keys": "xp",
+      "expect": {
+        "text": [
+          "ba"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_unicode_multibyte",
       "lines": [
         "αβγ"

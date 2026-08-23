@@ -186,7 +186,7 @@ pub fn registry() -> Vec<CommandSpec> {
             "Join Lines",
             Editing,
             When::NormalFamily,
-            Command::JoinLines,
+            Command::JoinLines(1),
         ),
         spec(
             "editor.newline",

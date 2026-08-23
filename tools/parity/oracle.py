@@ -333,6 +333,22 @@ FIXTURES: list[dict] = [
     #     paste geometry corners
     {"name": "gp_moves_after", "lines": ["one", "two"], "keys": "yygpx"},
     {"name": "numbered_reg_after_dd", "lines": ["a", "b", "c"], "keys": "ddjdd\"1p"},
+    #     ROUND 3 sweep — counts, marks, line-case, idioms ------------------------------------------
+    #     counted text objects
+    #     counted actions
+    {"name": "count_3J_join", "lines": ["a", "b", "c", "d"], "keys": "3J"},
+    {"name": "count_2cc_change", "lines": ["one", "two", "three"], "keys": "2ccX<Esc>"},
+    #     operator to a mark (linewise ' vs charwise `)
+    #     line-case operators
+    {"name": "gUU_line_upcase", "lines": ["foo bar"], "keys": "gUU"},
+    {"name": "g_tilde_tilde_line", "lines": ["FooBar"], "keys": "g~~"},
+    #     quote-object corners
+    {"name": "ci_dquote_empty", "lines": ['say "" now'], "keys": 'f"ci"Z<Esc>'},
+    {"name": "di_dquote_before", "lines": ['x "hi" y'], "keys": 'di"'},
+    #     classic idioms
+    {"name": "ddp_swap_lines", "lines": ["one", "two"], "keys": "ddp"},
+    {"name": "xp_transpose_chars", "lines": ["ab"], "keys": "xp"},
+    #     percentage jump + count %
     #     multi-byte / unicode buffers (byte-index correctness) --------------------------------------
     {"name": "x_unicode_multibyte", "lines": ["αβγ"], "keys": "x"},
     {"name": "x_emoji", "lines": ["a😀b"], "keys": "lx"},

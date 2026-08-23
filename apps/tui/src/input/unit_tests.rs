@@ -1688,8 +1688,9 @@ mod tests {
         );
         assert_eq!(feed("x"), Feed::Cmd(Command::DeleteUnder(1)));
         assert_eq!(feed("~"), Feed::Cmd(Command::ToggleCase(1)));
-        assert_eq!(feed("J"), Feed::Cmd(Command::JoinLines));
-        assert_eq!(feed("gJ"), Feed::Cmd(Command::JoinLinesNoSpace));
+        assert_eq!(feed("J"), Feed::Cmd(Command::JoinLines(1)));
+        assert_eq!(feed("3J"), Feed::Cmd(Command::JoinLines(3)));
+        assert_eq!(feed("gJ"), Feed::Cmd(Command::JoinLinesNoSpace(1)));
         assert_eq!(feed("g&"), Feed::Cmd(Command::RepeatSubstituteGlobal));
         assert_eq!(feed("`."), Feed::Cmd(Command::GotoLastChange));
         assert_eq!(feed("g;"), Feed::Cmd(Command::GotoOlderChange));

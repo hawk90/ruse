@@ -180,11 +180,13 @@ pub enum Command {
     /// Visual `u`/`U`/`~` — recase the whole selection (lower / upper / toggle), leaving the cursor at the
     /// selection start and returning to Normal. A no-op outside a selection.
     CaseSelection(WordCase),
-    /// `J` — join the current line with the next on a single space.
-    JoinLines,
-    /// `gJ` — join the current line with the next WITHOUT inserting a space or stripping the next
-    /// line's leading whitespace: only the newline is removed (Vim `gJ`).
-    JoinLinesNoSpace,
+    /// `[count]J` — join lines on a single space. `count` joins `count-1` seams (Vim: `J`/`2J` = one join,
+    /// `3J` = two), leaving the cursor on the last join. The space is suppressed before `)`, after trailing
+    /// whitespace, or on an empty line.
+    JoinLines(u32),
+    /// `[count]gJ` — like [`Command::JoinLines`] but WITHOUT inserting a space or stripping the next line's
+    /// leading whitespace: only the newlines are removed (Vim `gJ`).
+    JoinLinesNoSpace(u32),
     /// `CTRL-A` / `CTRL-X` — add the signed `i64` to the decimal number at or after the cursor on the
     /// current line (`CTRL-A` = +count, `CTRL-X` = −count). No-op if the line has no number after the
     /// cursor. Decimal only; the cursor lands on the last digit of the result (Vim).
@@ -794,8 +796,8 @@ impl Command {
             Command::ReplaceChar(n, c) => format!("replace_char {n} {}", *c as u32),
             Command::ReplaceSelectionChar(c) => format!("replace_selection_char {}", *c as u32),
             Command::ToggleCase(n) => format!("toggle_case {n}"),
-            Command::JoinLines => "join_lines".into(),
-            Command::JoinLinesNoSpace => "join_lines_no_space".into(),
+            Command::JoinLines(n) => format!("join_lines {n}"),
+            Command::JoinLinesNoSpace(n) => format!("join_lines_no_space {n}"),
             Command::IncrementNumber(d) => format!("increment_number {d}"),
             Command::IncrementSelection { delta, sequential } => {
                 format!("increment_selection {delta} {sequential}")
@@ -1106,8 +1108,8 @@ impl Command {
                 let n = arg_u32(arg, line)?;
                 Command::ToggleCase(n)
             }
-            "join_lines" => Command::JoinLines,
-            "join_lines_no_space" => Command::JoinLinesNoSpace,
+            "join_lines" => Command::JoinLines(arg_u32(arg, line)?),
+            "join_lines_no_space" => Command::JoinLinesNoSpace(arg_u32(arg, line)?),
             "increment_number" => {
                 let d: i64 = arg
                     .and_then(|a| a.trim().parse().ok())
@@ -1504,8 +1506,9 @@ mod tests {
                 motion: Motion::AParagraph,
                 case: WordCase::Rot13,
             },
-            Command::JoinLines,
-            Command::JoinLinesNoSpace,
+            Command::JoinLines(1),
+            Command::JoinLines(3),
+            Command::JoinLinesNoSpace(2),
             Command::IncrementNumber(1),
             Command::IncrementNumber(-3),
             Command::IncrementSelection {
