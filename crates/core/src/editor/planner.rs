@@ -1081,35 +1081,65 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 None => nop(cur, st.view.mode), // no number on the rest of the line
             }
         }
-        // Visual `CTRL-A`/`CTRL-X` (and `g CTRL-A`/`g CTRL-X`): increment the FIRST number on each selected
-        // line. Plain form adds `delta` to every line; `sequential` (the `g` form) adds `delta`, `2·delta`,
-        // `3·delta`… to successive lines that hold a number — the classic "turn a column of 1s into 1,2,3…".
+        // Visual `CTRL-A`/`CTRL-X` (and `g CTRL-A`/`g CTRL-X`): increment the first number per selected line.
+        // Plain form adds `delta` to every line; `sequential` (the `g` form) adds `delta`, `2·delta`, `3·delta`…
+        // to successive numbered lines — the classic "turn a column of 1s into 1,2,3…".
+        //
+        // The unifying rule across all three shapes: on each line, search from the SELECTION'S LEFT EDGE
+        // (`incr_number` finds the first number at/after it, expanding to the whole number). This makes a
+        // column of numbers that are NOT the first on their line increment correctly — the whole point of the
+        // feature — for both `CTRL-V` (block left column) and `v` (the start column on the first line):
+        //   - BLOCKWISE (`CTRL-V`): each row's left-column byte offset (`block_rows`).
+        //   - LINEWISE (`V`): the line start (whole lines).
+        //   - CHARWISE (`v`): the selection start on the first line, the line start on continuation lines.
+        // (Charwise does not yet CLIP a number sitting past the selection end on the last line — a rare edge,
+        // noted as a follow-up.)
         Command::IncrementSelection { delta, sequential } => {
             let Some(anchor) = st.view.anchor else {
                 return nop(cur, Mode::Normal);
             };
-            let (s, e) = selection_range(b, anchor, cur, true); // per-line: always take whole lines
-            let mut ls = crate::pos::line_start(b, s.min(b.len())); // start of the first selected line
+            // Per selected line: (line_start, search_from).
+            let lines: Vec<(usize, usize)> = match st.view.mode.selection() {
+                Some(SelectKind::Blockwise) => block_rows(b, anchor, cur)
+                    .0
+                    .into_iter()
+                    .map(|(from, _end)| (line_start(b, from), from))
+                    .collect(),
+                kind => {
+                    let linewise = kind == Some(SelectKind::Linewise);
+                    let (s, e) = selection_range(b, anchor, cur, linewise);
+                    let mut ls = line_start(b, s.min(b.len()));
+                    let mut out = Vec::new();
+                    // Charwise starts its FIRST line at the selection start `s`; every other line (and every
+                    // linewise line) starts at its own line start.
+                    let mut from = if linewise { ls } else { s.max(ls) };
+                    while ls < e && ls <= b.len() {
+                        out.push((ls, from));
+                        let le = line_end(b, ls);
+                        if le >= b.len() {
+                            break;
+                        }
+                        ls = le + 1;
+                        from = ls;
+                    }
+                    out
+                }
+            };
             let mut edits: Vec<Edit> = Vec::new();
-            let mut caret = ls; // Vim leaves the caret on the first selected line
-            let mut steps: i64 = 0; // how many numbered lines seen (the sequence multiplier)
-                                    // Walk each line whose start is within the selection span `[s, e)`.
-            while ls < e && ls <= b.len() {
+            let mut caret = lines.first().map_or(cur, |&(ls, _)| ls); // caret on the first selected line
+            let mut steps: i64 = 0; // numbered lines seen so far (the sequence multiplier)
+            for (ls, from) in lines {
                 let le = line_end(b, ls);
                 steps += 1;
                 let this = if *sequential { delta * steps } else { *delta };
-                if let Some((start, old_len, bytes, cursor)) = incr_number(b, ls, le, ls, this) {
+                if let Some((start, old_len, bytes, cursor)) = incr_number(b, ls, le, from, this) {
                     if edits.is_empty() {
-                        caret = cursor; // caret lands on the first line's changed number
+                        caret = cursor; // caret lands on the first changed number
                     }
                     edits.push(Edit::replace(start, old_len, bytes));
                 } else {
                     steps -= 1; // a line with no number does not advance the sequence
                 }
-                if le >= b.len() {
-                    break; // last line, no trailing newline to step past
-                }
-                ls = le + 1; // start of the next line
             }
             if edits.is_empty() {
                 return nop(caret, Mode::Normal);
