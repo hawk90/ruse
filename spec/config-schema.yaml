@@ -69,28 +69,37 @@ settings:
   # ---- editor ----
   editor.tab_width:     { type: int,    default: 4,      scope: workspace, merge: replace,   security_locked: false, min: 1, max: 16, derives_from: [], desc: Number of columns a tab renders/indents as. }
   editor.indent_style:  { type: enum,   default: space,  scope: workspace, merge: replace,   security_locked: false, enum: [space, tab], derives_from: [], desc: Whether indentation uses spaces or tabs. }
-  editor.line_endings:  { type: enum,   default: auto,   scope: workspace, merge: replace,   security_locked: false, enum: [lf, crlf, auto], derives_from: [F-008], desc: Line-ending policy on save (auto = preserve/detect per file). }
+  editor.line_endings:  { type: enum,   default: auto,   scope: workspace, merge: replace,   security_locked: false, enum: [lf, crlf, auto], derives_from: [F-008], desc: "Line-ending policy on save (auto = preserve/detect per file). Only `auto` is wired today (F-008 detects+preserves per file); the `lf`/`crlf` force values have no consumer yet." }
   editor.scrolloff:     { type: int,    default: 3,      scope: user,      merge: replace,   security_locked: false, min: 0, max: 99, derives_from: [], desc: "Minimum lines of context kept above/below the cursor when scrolling (Vim scrolloff). Derived from the shipped viewport behavior; not yet runtime-wired." }
   editor.textwidth:     { type: int,    default: 0,      scope: workspace, merge: replace,   security_locked: false, min: 0, max: 999, derives_from: [F-023], desc: "Maximum line width the gq/gw reformat operators wrap to (Vim textwidth); 0 means use the fallback of 79 columns. Runtime-set via :set textwidth/tw." }
+  # Search-case (F-009). Runtime-set via `:set ignorecase/ic` and `:set smartcase/scs`; the persistent
+  # config keys are declared here for completeness — like keymap.*, no config-file loader reads them yet.
+  editor.ignorecase:    { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, derives_from: [F-009], desc: "Case-insensitive search (Vim ignorecase/ic). Runtime-set via :set ic; no config-file loader yet." }
+  editor.smartcase:     { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, derives_from: [F-009], desc: "With ignorecase, a pattern containing an uppercase char searches case-sensitively (Vim smartcase/scs). Runtime-set via :set scs; no config-file loader yet." }
+
+  # ---- render (in-buffer rendering; F-031) ----
+  render.conceal:       { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: false, derives_from: [F-031], desc: "Conceal marked-up byte ranges (e.g. Markdown heading prefixes), revealed on the caret line. Overridable at runtime by RUSE_CONCEAL=off; the config-file key has no loader yet." }
 
   # ---- files ----
-  files.watcher:        { type: enum,   default: native, scope: workspace, merge: replace,   security_locked: false, enum: [native, poll, off], derives_from: [], desc: File-watch backend (native OS events, polling fallback, or disabled). }
-  files.exclude:        { type: list,   default: [".git", "node_modules", "target"], scope: workspace, merge: append, security_locked: false, derives_from: [], desc: "Glob patterns hidden from tree/search/watch; layers append (use !pattern to remove)." }
+  # NOTE: files.* keys are declared but NOT yet runtime-wired — no config loader reads them, and the tree/
+  # picker exclusion currently uses .gitignore rather than files.exclude. Wiring is a follow-up.
+  files.watcher:        { type: enum,   default: native, scope: workspace, merge: replace,   security_locked: false, enum: [native, poll, off], derives_from: [], desc: "File-watch backend (native OS events, polling fallback, or disabled). Not yet runtime-wired: no watcher backend exists yet." }
+  files.exclude:        { type: list,   default: [".git", "node_modules", "target"], scope: workspace, merge: append, security_locked: false, derives_from: [], desc: "Glob patterns hidden from tree/search/watch; layers append (use !pattern to remove). Not yet runtime-wired: exclusion currently reads .gitignore, not this key." }
 
   # ---- ui ----
-  ui.theme:             { type: string, default: default, scope: user,     merge: replace,   security_locked: false, derives_from: [], desc: Active color theme name. }
+  ui.theme:             { type: string, default: default, scope: user,     merge: replace,   security_locked: false, derives_from: [], desc: "Active color theme name. Not yet runtime-wired: no theme loader exists yet." }
 
   # ---- update ----
-  update.channel:       { type: enum,   default: stable, scope: user,      merge: replace,   security_locked: false, enum: [stable, beta, nightly], derives_from: [], desc: Release channel used for self-update checks. }
+  update.channel:       { type: enum,   default: stable, scope: user,      merge: replace,   security_locked: false, enum: [stable, beta, nightly], derives_from: [], desc: "Release channel used for self-update checks. Not yet runtime-wired: no self-update mechanism exists yet." }
 
   # ---- remote (security-sensitive: trust) ----
-  remote.trust_prompt:  { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: true,  derives_from: [F-017], desc: Prompt before trusting a remote runtime/workspace. Workspace can NEVER override (INV-TRUST-1). }
+  remote.trust_prompt:  { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: true,  derives_from: [F-017], desc: "Prompt before trusting a remote runtime/workspace. Workspace can NEVER override (INV-TRUST-1). Not yet runtime-wired (F-017 remote runtime still planned)." }
 
   # ---- plugins (security-sensitive: executables/trust) ----
-  plugins.allow_unsigned: { type: bool, default: false,  scope: machine,   merge: replace,   security_locked: true,  derives_from: [F-016], desc: Allow loading unsigned/unverified plugins. Admin-only; workspace can NEVER override (INV-TRUST-1). }
+  plugins.allow_unsigned: { type: bool, default: false,  scope: machine,   merge: replace,   security_locked: true,  derives_from: [F-016], desc: "Allow loading unsigned/unverified plugins. Admin-only; workspace can NEVER override (INV-TRUST-1). Not yet runtime-wired (F-016 plugin loader still planned)." }
 
   # ---- telemetry ----
-  telemetry.enabled:    { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, derives_from: [], desc: Opt-in anonymous telemetry (off by default). }
+  telemetry.enabled:    { type: bool,   default: false,  scope: user,      merge: replace,   security_locked: false, derives_from: [], desc: "Opt-in anonymous telemetry (off by default). Not yet runtime-wired: no telemetry pipeline exists yet." }
 
 # Per-plugin settings are NOT listed here: a plugin declares its own schema (same field set) namespaced under
 # `plugin.<plugin-id>.*` in its manifest (architecture #4.5 / config-model.md CFG-PLUGIN). A plugin may only
