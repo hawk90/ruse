@@ -783,6 +783,20 @@ mod tests {
     }
 
     #[test]
+    fn insert_tab_emits_insert_tab_not_ignored() {
+        // Regression: `<Tab>` in Insert used to fall through to the unmatched-Insert policy (which only
+        // emits for `Char` keys) and silently do nothing. It must produce `InsertTab`.
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+                Mode::Insert
+            ),
+            Feed::Cmd(Command::InsertTab)
+        );
+    }
+
+    #[test]
     fn insert_ctrl_r_inserts_the_named_register() {
         let mut e = InputEngine::new();
         // `<C-r>` arms the prefix (pending), then the register name completes it.

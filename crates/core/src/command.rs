@@ -135,6 +135,10 @@ pub enum Command {
     InsertIndent,
     /// `i_CTRL-D` — dedent the current line by one shiftwidth (see [`Command::InsertIndent`]).
     InsertDedent,
+    /// `<Tab>` in Insert mode: insert whitespace at the caret to reach the next tabstop. With `expandtab`
+    /// (space style) this is `tab_width - (vcol % tab_width)` spaces; otherwise a single `\t`. Distinct from
+    /// `InsertIndent` (`i_CTRL-T`), which shifts the whole line from its start regardless of caret column.
+    InsertTab,
     InsertNewline,
     /// `o`/`O`/`<CR>` seeded with a tree-suggested indent (F-015 Phase 2): open a line (per `kind`) whose
     /// leading whitespace is `level × shiftwidth`, leaving the cursor after it in Insert. The frontend owns
@@ -765,6 +769,7 @@ impl Command {
             Command::InsertDeleteToLineStart => "insert_delete_to_line_start".into(),
             Command::InsertIndent => "insert_indent".into(),
             Command::InsertDedent => "insert_dedent".into(),
+            Command::InsertTab => "insert_tab".into(),
             Command::InsertNewline => "insert_newline".into(),
             Command::OpenLineIndent { kind, level } => {
                 let k = match kind {
@@ -1034,6 +1039,7 @@ impl Command {
             "insert_delete_to_line_start" => Command::InsertDeleteToLineStart,
             "insert_indent" => Command::InsertIndent,
             "insert_dedent" => Command::InsertDedent,
+            "insert_tab" => Command::InsertTab,
             "insert_newline" => Command::InsertNewline,
             "open_line_indent" => {
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
@@ -1551,6 +1557,7 @@ mod tests {
             Command::InsertDeleteToLineStart,
             Command::InsertIndent,
             Command::InsertDedent,
+            Command::InsertTab,
             Command::InsertNewline,
             Command::OpenLineIndent {
                 kind: OpenKind::Below,
