@@ -417,6 +417,41 @@ FIXTURES: list[dict] = [
     # --- transpose-words / mark-word with punctuation between the words (Emacs two-class geometry). --------
     {"name": "transpose_words_over_punct", "text": "foo.bar", "ops": ["transpose-words"], "point": 3},
     {"name": "mark_word_over_leading_punct", "text": ".foo", "ops": ["mark-word"]},
+    # === ROUND 2 (edge-case sweep): line/indent motion, mid-word case, transpose at buffer end, whole-line
+    #     and horizontal-space collapse at boundaries. Prime candidate: transpose-words at end-of-buffer. ---
+    # --- move-beginning/end-of-line on an EMPTY line and at bol/eol (non-modal, no boundary surprises). ----
+    {"name": "beginning_of_line_on_empty_line", "text": "foo\n\nbar", "ops": ["move-beginning-of-line"], "point": 4},
+    {"name": "end_of_line_on_empty_line", "text": "foo\n\nbar", "ops": ["move-end-of-line"], "point": 4},
+    {"name": "end_of_line_from_bol", "text": "hello", "ops": ["move-end-of-line"]},
+    # --- back-to-indentation (M-m): all-blank line (lands at end of indent), mid-indent, tabs, no indent. --
+    {"name": "back_to_indentation_all_blank", "text": "   ", "ops": ["back-to-indentation"]},
+    {"name": "back_to_indentation_from_mid_indent", "text": "    foo", "ops": ["back-to-indentation"], "point": 6},
+    {"name": "back_to_indentation_tabs", "text": "\t\tfoo", "ops": ["back-to-indentation"], "point": 5},
+    {"name": "back_to_indentation_no_indent", "text": "foo", "ops": ["back-to-indentation"], "point": 2},
+    # --- case-word from MID-WORD: Emacs recases POINT..word-end, NOT the whole word (the flagged subtlety). -
+    {"name": "upcase_word_mid_word", "text": "foobar", "ops": ["upcase-word"], "point": 3},
+    {"name": "downcase_word_mid_word", "text": "FOOBAR", "ops": ["downcase-word"], "point": 3},
+    {"name": "capitalize_word_mid_word", "text": "foobar", "ops": ["capitalize-word"], "point": 3},
+    # --- transpose-chars at END-OF-BUFFER: swaps the last two chars, point stays at eob. -------------------
+    {"name": "transpose_chars_at_eob", "text": "abc", "ops": ["transpose-chars"], "point": 3},
+    # (transpose-words at end-of-buffer is NOT fixtured: Emacs signals "Don't have two things to transpose"
+    #  when there is no following word, which aborts batch capture — an error the corpus can't encode.)
+    # --- kill-line at EOL joining a line whose indentation is preserved (only the newline is killed). ------
+    {"name": "kill_line_at_eol_join_indent", "text": "foo\n   bar", "ops": ["kill-line"], "point": 3},
+    # --- kill-whole-line: on the LAST line (no trailing newline) and a MIDDLE line (takes the newline). ----
+    {"name": "kill_whole_line_last_line", "text": "foo\nbar", "ops": ["kill-whole-line"], "point": 5},
+    {"name": "kill_whole_line_middle", "text": "aa\nbb\ncc", "ops": ["kill-whole-line"], "point": 4},
+    # --- open-line (C-o) at beginning-of-line: inserts a newline, point stays before it. ------------------
+    {"name": "open_line_at_bol", "text": "foo", "ops": ["open-line"]},
+    # --- just-one-space / delete-horizontal-space over TABS and mixed space+tab runs. --------------------
+    {"name": "just_one_space_tabs", "text": "foo\t\tbar", "ops": ["just-one-space"], "point": 4},
+    {"name": "delete_horizontal_space_mixed", "text": "foo \t bar", "ops": ["delete-horizontal-space"], "point": 4},
+    # --- delete-indentation with NO trailing whitespace on the prev line (still collapses to one space). ---
+    {"name": "delete_indentation_no_trailing", "text": "foo\nbar", "ops": ["delete-indentation"], "point": 4},
+    # --- backward-kill-word from END over a TRAILING punctuation run then the word (two-class backward). ---
+    {"name": "backward_kill_word_trailing_punct", "text": "foo...", "ops": ["backward-kill-word"], "point": 6},
+    # --- mark-word at end-of-buffer: forward-word cannot advance, mark lands at point (degenerate region). -
+    {"name": "mark_word_at_eob", "text": "foo", "ops": ["mark-word"], "point": 3},
 ]
 
 
