@@ -821,9 +821,23 @@ fn up(b: &[u8], cur: usize) -> usize {
     }
 }
 
+/// The byte offset just past the last line that holds content. A buffer ending in `\n` has that newline as
+/// the last line's TERMINATOR, not the start of a new empty line (Vim's model), so the trailing (phantom)
+/// slot at `b.len()` is excluded. Vertical / `G` / `+`-family motions never step past this — `G` on
+/// `"abc\n"` lands on `abc`, not on a blank line below it. Equals `b.len()` when there is no trailing `\n`.
+pub(crate) fn content_end(b: &[u8]) -> usize {
+    if b.last() == Some(&b'\n') {
+        b.len() - 1
+    } else {
+        b.len()
+    }
+}
+
 fn down(b: &[u8], cur: usize) -> usize {
     let le = line_end(b, cur);
-    if le >= b.len() {
+    // Stop at the last content line: `le >= content_end` covers both a no-newline last line (`le == len`)
+    // and a trailing-newline last line (`le == len-1`), so `j` never lands on the phantom empty slot.
+    if le >= content_end(b) {
         cur
     } else {
         at_col(b, le + 1, col_of(b, line_start(b, cur), cur))
@@ -840,8 +854,8 @@ pub(crate) fn vmove(b: &[u8], cursor: usize, count: u32, down: bool, want: usize
     for _ in 0..count.max(1) {
         if down {
             let le = line_end(b, c);
-            if le >= b.len() {
-                break;
+            if le >= content_end(b) {
+                break; // don't descend onto the phantom line after a trailing '\n'
             }
             c = at_col(b, le + 1, want);
         } else {
@@ -927,8 +941,8 @@ pub(crate) fn nth_line_start(b: &[u8], n: u32) -> usize {
     let mut ls = 0usize;
     while seen < target {
         let le = line_end(b, ls);
-        if le >= b.len() {
-            break; // no more lines; clamp to the last one
+        if le >= content_end(b) {
+            break; // no more content lines; clamp to the last real one (never the trailing phantom)
         }
         ls = le + 1;
         seen += 1;
@@ -936,9 +950,9 @@ pub(crate) fn nth_line_start(b: &[u8], n: u32) -> usize {
     ls
 }
 
-/// Byte start of the last line.
+/// Byte start of the last content line (the trailing phantom slot after a final `\n` is not a line).
 pub(crate) fn last_line_start(b: &[u8]) -> usize {
-    line_start(b, b.len())
+    line_start(b, content_end(b))
 }
 
 /// The bracket pairs `%` matches (v0: the three ASCII pairs; `matchpairs` config is deferred).
@@ -1051,8 +1065,8 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
         if delta >= 0 {
             for _ in 0..delta {
                 let le = line_end(b, ls);
-                if le >= b.len() {
-                    break;
+                if le >= content_end(b) {
+                    break; // clamp at the last content line, not the trailing phantom
                 }
                 ls = le + 1;
             }
@@ -1367,12 +1381,12 @@ mod line_first_non_blank_motion_tests {
             10,
             "2+ -> line 2 'd'"
         );
-        // Past the last line clamps to the final (empty) line after the last newline — consistent with
-        // how `G`/`j` treat a buffer ending in `\n` in this editor's line model.
+        // Past the last line clamps to the last CONTENT line ('ef' at byte 12). The trailing '\n' is a
+        // terminator, not a navigable empty line (Vim), so `+` never lands on the phantom slot at byte 15.
         assert_eq!(
             target(B, 0, Motion::DownFirstNonBlank, 99),
-            15,
-            "clamp at last line"
+            12,
+            "clamp at last content line"
         );
     }
 
