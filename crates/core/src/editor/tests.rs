@@ -3144,6 +3144,31 @@ mod blockwise_tests {
     }
 
     #[test]
+    fn block_append_dollar_is_ragged_to_each_line_end() {
+        // `` <C-v>jj$A `` appends at EACH line's own end (ragged), not a fixed column. `$` sets curswant to
+        // MAXCOL, which the block-append detects. Verified vs nvim v0.12.4 (fixture block_append_ragged).
+        let st = run(
+            "a\nabc\nab",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::MoveDown,
+                Command::Move(1, Motion::LineEnd), // `$` → ragged block, curswant = MAXCOL
+                Command::BlockInsert(BlockInsertKind::Append),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "aX\nabcX\nabX",
+            "X appended at each line's own end"
+        );
+    }
+
+    #[test]
     fn block_insert_with_no_typed_text_is_inert() {
         let st = run(
             "abc\ndef",

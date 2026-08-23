@@ -3551,6 +3551,134 @@
       }
     },
     {
+      "name": "d_search_motion",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "d/baz<CR>",
+      "expect": {
+        "text": [
+          "baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "y_search_then_paste",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "y/bar<CR>P",
+      "expect": {
+        "text": [
+          "foo foo bar baz"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "foo ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "foo ",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "c_search_motion",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "c/baz<CR>Z<Esc>",
+      "expect": {
+        "text": [
+          "Zbaz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_append_ragged",
+      "lines": [
+        "a",
+        "abc",
+        "ab"
+      ],
+      "keys": "<C-v>jj$AX<Esc>",
+      "expect": {
+        "text": [
+          "aX",
+          "abcX",
+          "abX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_change_column",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "<C-v>jjcX<Esc>",
+      "expect": {
+        "text": [
+          "Xbc",
+          "Xef",
+          "Xhi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nd\ng",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_unicode_multibyte",
       "lines": [
         "αβγ"

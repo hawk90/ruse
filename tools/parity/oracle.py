@@ -402,6 +402,13 @@ FIXTURES: list[dict] = [
     {"name": "dab_brace_alias", "lines": ["x{abc}y"], "keys": "fadaB"},
     {"name": "cip_inner_paragraph", "lines": ["one", "two", "", "three"], "keys": "cipZ<Esc>"},
     {"name": "register_append_uppercase", "lines": ["one", "two"], "keys": "\"ayyj\"Ayyk\"ap"},
+    #     operator + search motion (d/c/y followed by /pat<CR>) — already implemented; confirm parity
+    {"name": "d_search_motion", "lines": ["foo bar baz"], "keys": "d/baz<CR>"},
+    {"name": "y_search_then_paste", "lines": ["foo bar baz"], "keys": "y/bar<CR>P"},
+    {"name": "c_search_motion", "lines": ["foo bar baz"], "keys": "c/baz<CR>Z<Esc>"},
+    #     blockwise $A on ragged lines
+    {"name": "block_append_ragged", "lines": ["a", "abc", "ab"], "keys": "<C-v>jj$AX<Esc>"},
+    {"name": "block_change_column", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjcX<Esc>"},
     #     multi-byte / unicode buffers (byte-index correctness) --------------------------------------
     {"name": "x_unicode_multibyte", "lines": ["αβγ"], "keys": "x"},
     {"name": "x_emoji", "lines": ["a😀b"], "keys": "lx"},
