@@ -979,14 +979,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             pending_z = true;
             continue;
         }
-        // `&` repeats the last `:s` on the CURRENT line WITHOUT its flags (Vim `&`). No-op before any `:s`.
+        // `&` repeats the last `:s` on the CURRENT line. Vim drops the previous flags here — a widely
+        // cited wart (it silently reverts `g` to first-match-only), which is exactly why Vim itself later
+        // added `:&&`/`g&` to KEEP them. ruse keeps the flags (i.e. `&` == `:&&`), the behavior almost
+        // everyone actually wants; the flag-dropping rationale is historical only. No-op before any `:s`.
         if normal && key.code == KeyCode::Char('&') && key.modifiers.is_empty() {
             status = match &last_substitute {
-                Some((pat, rep, _flags)) => match ws.substitute(
+                Some((pat, rep, flags)) => match ws.substitute(
                     ruse_core::SubRange::CurrentLine,
                     pat,
                     rep,
-                    ruse_core::SubFlags::default(), // `&` drops the previous flags (Vim)
+                    *flags, // ruse keeps the previous flags (unlike Vim's `&`, like `:&&`)
                 ) {
                     Ok(out) if out.replacements == 0 => format!("E486: pattern not found: {pat}"),
                     Ok(out) => format!("{} substitutions on {} lines", out.replacements, out.lines),
