@@ -455,6 +455,7 @@ pub(crate) fn render(
     graphics_on: bool,
     image_dims: &std::collections::HashMap<String, (u32, u32)>,
     folds: &[crate::folds::Fold],
+    line_idx: &crate::line_index::LineIndex,
 ) -> io::Result<Vec<(String, graphics::Placement)>> {
     use crossterm::style::Color;
 
@@ -473,11 +474,21 @@ pub(crate) fn render(
     let focus = ws.focused();
     let focus_doc = focus.view.doc();
     let fbytes = focus.doc.bytes();
-    let mut byte_style = vec![screen::CellStyle::default(); fbytes.len()];
+    // Size the per-byte face array to the LAST styled byte, not the whole buffer: the highlighter clips
+    // `spans` to the viewport, so this is ~O(viewport) instead of an O(buffer) alloc+zero every frame.
+    // paint_pane reads any unstyled index (`byte_style.get(i)`) as the default face, so an array that stops
+    // at the last span is byte-for-byte identical to a whole-buffer one — just without the below-viewport tail.
+    let style_len = spans
+        .iter()
+        .map(|s| s.end)
+        .max()
+        .unwrap_or(0)
+        .min(fbytes.len());
+    let mut byte_style = vec![screen::CellStyle::default(); style_len];
     for s in spans {
         for slot in byte_style
             .iter_mut()
-            .take(s.end.min(fbytes.len()))
+            .take(s.end.min(style_len))
             .skip(s.start)
         {
             *slot = s.style;
@@ -496,10 +507,9 @@ pub(crate) fn render(
     } else {
         Vec::new()
     };
-    let caret_line = fbytes[..focus.view.cursor().min(fbytes.len())]
-        .iter()
-        .filter(|&&c| c == b'\n')
-        .count();
+    // The focused caret's buffer row — from the revision-cached line index (O(log n)) rather than an
+    // O(cursor-offset) newline scan every frame. `line_idx` is refreshed on this same focused buffer.
+    let caret_line = line_idx.line_of(focus.view.cursor().min(fbytes.len()));
 
     // Paint every window into its sub-rectangle; the focused view owns the terminal cursor below.
     for (i, &rect) in rects.iter().enumerate().take(ws.window_count()) {
@@ -606,6 +616,7 @@ pub(crate) fn render(
                 focus.view.top(),
                 virt_lines,
                 folds,
+                line_idx,
             );
             let frect = rects.get(ws.focus()).copied().unwrap_or(Rect {
                 x: 0,
@@ -740,6 +751,7 @@ pub(crate) fn render(
             focus.view.top(),
             virt_lines,
             folds,
+            line_idx,
         );
         let screen_row = (frect.y + row).min(rows.saturating_sub(1));
         let screen_col = (frect.x + col).min(cols.saturating_sub(1));
@@ -837,15 +849,15 @@ pub(crate) fn cursor_cell(
     top: usize,
     virt: &[highlight::VirtLine],
     folds: &[crate::folds::Fold],
+    line_idx: &crate::line_index::LineIndex,
 ) -> (u16, u16) {
     let pos = pos.min(bytes.len());
-    let buf_row = bytes[..pos].iter().filter(|&&c| c == b'\n').count();
+    // Row + line-start from the revision-cached index (O(log n)) rather than O(pos) newline scans; this runs
+    // up to twice per frame. `line_idx` indexes the same (focused) buffer these offsets address.
+    let buf_row = line_idx.line_of(pos);
     // A caret inside a closed fold displays on the fold's summary (start) row.
     let disp_row = crate::folds::snap_out(folds, buf_row);
-    let line_start = bytes[..pos]
-        .iter()
-        .rposition(|&c| c == b'\n')
-        .map_or(0, |i| i + 1);
+    let line_start = line_idx.nth_line_start(buf_row);
     // `line` runs from its start up to `pos`, so the caret column is the full display width of that
     // slice — computed by the SHARED column rule, not a private re-derivation (F-031 slice 0).
     let line = std::str::from_utf8(&bytes[line_start..pos]).unwrap_or("");
@@ -870,6 +882,14 @@ mod render_tests {
     use crate::ui::layout::window_rects;
     use crossterm::style::Color;
     use proptest::prelude::*;
+
+    /// A `LineIndex` over `bytes` for the `cursor_cell` tests (it now takes the cached index instead of
+    /// scanning newlines itself).
+    fn li(bytes: &[u8]) -> crate::line_index::LineIndex {
+        let mut idx = crate::line_index::LineIndex::default();
+        idx.refresh(ruse_core::Revision(0), bytes);
+        idx
+    }
 
     // ---- F-031 slice 0: the display-coordinate layout seam (P1/P2/P6) + faces ----
 
@@ -910,7 +930,7 @@ mod render_tests {
             ("e\u{0301}z", 3, 1), // 'e' + combining acute = one cluster, width 1
         ];
         for &(s, pos, want) in cases {
-            let (_row, col) = cursor_cell(s.as_bytes(), pos, 0, &[], &[]);
+            let (_row, col) = cursor_cell(s.as_bytes(), pos, 0, &[], &[], &li(s.as_bytes()));
             assert_eq!(col, want, "caret column for {s:?} at byte {pos}");
         }
     }
@@ -1123,9 +1143,9 @@ mod render_tests {
             path: None,
         }];
         // Caret on line 2 ('c' at byte 4): row 2 + 2 virtual rows above = screen row 4.
-        assert_eq!(cursor_cell(bytes, 4, 0, &virt, &[]).0, 4);
+        assert_eq!(cursor_cell(bytes, 4, 0, &virt, &[], &li(bytes)).0, 4);
         // Caret on line 0 ('a' at byte 0): nothing above, row 0.
-        assert_eq!(cursor_cell(bytes, 0, 0, &virt, &[]).0, 0);
+        assert_eq!(cursor_cell(bytes, 0, 0, &virt, &[], &li(bytes)).0, 0);
     }
 
     /// Manual folds: a closed fold collapses its interior lines — its START row shows the summary and the
