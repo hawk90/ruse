@@ -2281,10 +2281,42 @@ mod line_jump_tests {
     }
 
     #[test]
+    fn no_phantom_line_after_a_trailing_newline() {
+        // `G` on a buffer ending in '\n' lands on the last CONTENT line, not a blank line below it.
+        let st = run("one\ntwo\n", &[Command::Move(0, Motion::LastLine)]);
+        assert_eq!(
+            st.cursor(),
+            4,
+            "G lands on 'two', not the phantom line at byte 8"
+        );
+        // `j` from the last content line does not descend onto the phantom.
+        let st = run(
+            "one\ntwo\n",
+            &[Command::Move(0, Motion::LastLine), Command::MoveDown],
+        );
+        assert_eq!(
+            st.cursor(),
+            4,
+            "j on the last line is a no-op (no phantom below)"
+        );
+        // A genuinely empty last line (before the final '\n') is still reachable.
+        let st = run("a\n\n", &[Command::Move(0, Motion::LastLine)]);
+        assert_eq!(
+            st.cursor(),
+            2,
+            "the real empty line at byte 2 is the last line"
+        );
+        // `dG` still deletes through the last content line (incl. its newline).
+        let st = run("one\ntwo\n", &[Command::Delete(1, Motion::LastLine)]);
+        assert_eq!(text(&st), "", "dG deletes every line including the last");
+    }
+
+    #[test]
     fn count_beyond_end_clamps_to_last_line() {
         let st = run("a\nb\n", &[Command::Move(99, Motion::GotoLine)]);
-        // line 99 doesn't exist → clamp to the last line (the empty line after the final newline).
-        assert_eq!(st.cursor(), 4);
+        // line 99 doesn't exist → clamp to the last CONTENT line ('b' at byte 2). The trailing '\n' is a
+        // terminator, not a new empty line (Vim), so the cursor never lands on the phantom slot at byte 4.
+        assert_eq!(st.cursor(), 2);
     }
 
     #[test]
