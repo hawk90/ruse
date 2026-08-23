@@ -92,7 +92,14 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
         | Motion::SectionFwd
         | Motion::SectionBack
         | Motion::SectionEndFwd
-        | Motion::SectionEndBack => {
+        | Motion::SectionEndBack
+        // Unmatched-bracket motions (`d[(`/`d])`/`d[{`/`d]}`) are exclusive charwise and take the same
+        // exclusive-linewise reduction (verified against nvim: `d])` landing on a `)` at column 0 deletes
+        // whole lines; a mid-line landing stays charwise). A no-op target collapses to an empty span.
+        | Motion::UnmatchedParenBack
+        | Motion::UnmatchedParenFwd
+        | Motion::UnmatchedBraceBack
+        | Motion::UnmatchedBraceFwd => {
             let t = motion::target(b, cur, m, count);
             exclusive_linewise(b, cur.min(t), cur.max(t))
         }

@@ -1849,6 +1849,13 @@ impl InputEngine {
                     KeyCode::Char('[') if !open_bracket => self.motion(Motion::SectionEndFwd),
                     KeyCode::Char('[') if open_bracket => self.motion(Motion::SectionBack),
                     KeyCode::Char(']') if open_bracket => self.motion(Motion::SectionEndBack),
+                    // Unmatched-paren/brace motions — count/operator-aware via `self.motion`. `[(`/`[{` go to
+                    // the previous unmatched `(`/`{`; `])`/`]}` go to the next unmatched `)`/`}`. The starting
+                    // bracket (`[` vs `]`) fixes the direction; the pressed char picks paren vs brace.
+                    KeyCode::Char('(') if open_bracket => self.motion(Motion::UnmatchedParenBack),
+                    KeyCode::Char('{') if open_bracket => self.motion(Motion::UnmatchedBraceBack),
+                    KeyCode::Char(')') if !open_bracket => self.motion(Motion::UnmatchedParenFwd),
+                    KeyCode::Char('}') if !open_bracket => self.motion(Motion::UnmatchedBraceFwd),
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }

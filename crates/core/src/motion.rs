@@ -143,6 +143,20 @@ pub enum Motion {
     /// Vim `[]` — backward to the PREVIOUS section end (a `}`/form-feed line in column 0). Clamps to the first
     /// line. Backward span is `[target, cursor)`.
     SectionEndBack,
+    /// Vim `[(` — go to the `count`-th previous UNMATCHED `(` (the open paren enclosing the cursor; `count`
+    /// steps out `count` nesting levels). Nesting-aware: balanced `()` pairs are skipped while scanning left,
+    /// other bracket types are ignored. EXCLUSIVE charwise under an operator — backward span `[target, cursor)`,
+    /// which then takes Vim's exclusive-linewise reduction (shared with `d}`/`d[[`). No-op when the cursor is
+    /// not inside a `(`.
+    UnmatchedParenBack,
+    /// Vim `])` — go to the `count`-th next UNMATCHED `)` (the close paren enclosing the cursor). The forward
+    /// mirror of [`Motion::UnmatchedParenBack`]: EXCLUSIVE charwise forward span `[cursor, target)`, also
+    /// subject to the exclusive-linewise reduction. No-op when the cursor is not inside a `)`.
+    UnmatchedParenFwd,
+    /// Vim `[{` — go to the `count`-th previous unmatched `{`. As [`Motion::UnmatchedParenBack`] but for braces.
+    UnmatchedBraceBack,
+    /// Vim `]}` — go to the `count`-th next unmatched `}`. As [`Motion::UnmatchedParenFwd`] but for braces.
+    UnmatchedBraceFwd,
 }
 
 // --- shared byte / char-boundary / line helpers (one home; editor.rs reuses these) ---
@@ -1205,6 +1219,72 @@ fn match_bracket(b: &[u8], cursor: usize) -> Option<usize> {
     }
 }
 
+/// The `count`-th UNMATCHED bracket of one type from the cursor — Vim `[(`/`])` (parens) and `[{`/`]}`
+/// (braces). `forward` scans right from `cursor+1` for an unmatched CLOSE (`])`/`]}`); otherwise it scans
+/// left from `cursor-1` for an unmatched OPEN (`[(`/`[{`). Nesting is same-type: a balanced pair is skipped
+/// (a `)` seen while scanning left raises the depth so its matching `(` is not counted), and other bracket
+/// types are ignored — exactly as Vim's `[(` skips `{}`/`[]`. Returns `cursor` (a no-op) when there is no
+/// such unmatched bracket. Brackets are ASCII → the result is always a char boundary.
+fn unmatched_bracket(
+    b: &[u8],
+    cursor: usize,
+    open: u8,
+    close: u8,
+    forward: bool,
+    count: u32,
+) -> usize {
+    let mut remaining = count.max(1);
+    let mut depth = 0u32;
+    if forward {
+        let mut i = cursor.saturating_add(1); // strictly after the cursor (an on-cursor close does not count)
+        while i < b.len() {
+            if b[i] == open {
+                depth += 1;
+            } else if b[i] == close {
+                if depth == 0 {
+                    remaining -= 1;
+                    if remaining == 0 {
+                        return i;
+                    }
+                } else {
+                    depth -= 1;
+                }
+            }
+            i += 1;
+        }
+        cursor
+    } else {
+        let mut i = cursor.min(b.len()); // decremented before each read → starts strictly before the cursor
+        while i > 0 {
+            i -= 1;
+            if b[i] == close {
+                depth += 1;
+            } else if b[i] == open {
+                if depth == 0 {
+                    remaining -= 1;
+                    if remaining == 0 {
+                        return i;
+                    }
+                } else {
+                    depth -= 1;
+                }
+            }
+        }
+        cursor
+    }
+}
+
+/// The (open, close, forward) triple for an unmatched-bracket motion, or `None` for any other motion.
+fn unmatched_spec(m: Motion) -> Option<(u8, u8, bool)> {
+    match m {
+        Motion::UnmatchedParenBack => Some((b'(', b')', false)),
+        Motion::UnmatchedParenFwd => Some((b'(', b')', true)),
+        Motion::UnmatchedBraceBack => Some((b'{', b'}', false)),
+        Motion::UnmatchedBraceFwd => Some((b'{', b'}', true)),
+        _ => None,
+    }
+}
+
 /// The cursor target for a bare move (`w`, `3l`, `k`, …), applying `count`.
 #[must_use]
 pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
@@ -1307,6 +1387,11 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
         };
         return first_non_blank(b, ls);
     }
+    // Unmatched-bracket motions (`[(`/`])`/`[{`/`]}`): the count is a repeat (levels to step out); the scanner
+    // resolves it directly to a single target (or `cur0` when there is no enclosing unmatched bracket).
+    if let Some((open, close, forward)) = unmatched_spec(m) {
+        return unmatched_bracket(b, cur0, open, close, forward, n);
+    }
     // `{count}|`: the count is the 1-based display column of the current line (not a repeat).
     if m == Motion::Column {
         return at_col(b, line_start(b, cur0), (n - 1) as usize);
@@ -1372,6 +1457,10 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             | Motion::SectionBack
             | Motion::SectionEndFwd
             | Motion::SectionEndBack
+            | Motion::UnmatchedParenBack
+            | Motion::UnmatchedParenFwd
+            | Motion::UnmatchedBraceBack
+            | Motion::UnmatchedBraceFwd
             | Motion::Pair { .. }
             | Motion::Quote { .. }
             | Motion::Tag { .. }
@@ -1414,6 +1503,12 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // (shared with the paragraph motions), so `d]]`/`d[[` come out linewise exactly like `d}`/`d{`.
         Motion::SectionFwd | Motion::SectionEndFwd => (cur, target(b, cur, m, n)),
         Motion::SectionBack | Motion::SectionEndBack => (target(b, cur, m, n), cur),
+        // Unmatched-bracket motions are EXCLUSIVE charwise (Vim): forward (`])`/`]}`) → [cursor, target),
+        // backward (`[(`/`[{`) → [target, cursor). The exclusive-linewise reduction that can make them
+        // whole-line (a target at column 0) lives in `editor::op_span`, shared with the paragraph/section
+        // motions. A no-op target (== cursor) collapses to an empty range there.
+        Motion::UnmatchedParenFwd | Motion::UnmatchedBraceFwd => (cur, target(b, cur, m, n)),
+        Motion::UnmatchedParenBack | Motion::UnmatchedBraceBack => (target(b, cur, m, n), cur),
         // inclusive end-of-word (Vim `de` / `dE`).
         Motion::WordEnd | Motion::BigWordEnd => {
             let big = m == Motion::BigWordEnd;
