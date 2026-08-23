@@ -382,6 +382,43 @@ mod register_tests {
     }
 
     #[test]
+    fn linewise_paste_rests_cursor_on_first_non_blank() {
+        // Yank an indented line, paste it below: the cursor lands on the first non-blank ('f'), not col 0.
+        let st = run(
+            "    foo\nbar",
+            &[
+                Command::Yank(1, Motion::Line),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "    foo\n    foo\nbar");
+        assert_eq!(
+            st.cursor(),
+            12,
+            "on the 'f' of the pasted line, past its indent"
+        );
+
+        // `P` (above) with indent lands on the first non-blank of the pasted line at the top.
+        let st = run(
+            "    foo\nbar",
+            &[
+                Command::Yank(1, Motion::Line),
+                Command::Paste {
+                    after: false,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "    foo\n    foo\nbar");
+        assert_eq!(st.cursor(), 4, "on the 'f' of the pasted-above line");
+    }
+
+    #[test]
     fn paste_from_empty_register_is_a_noop() {
         let st = run(
             "hello",
