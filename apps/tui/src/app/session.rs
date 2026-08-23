@@ -270,7 +270,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut resident: HashSet<graphics::ImageId> = HashSet::new();
     let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
     let mut pending_z = false; // a `z` scroll/fold prefix awaits its second key (`zz`/`zt`/`zb`/`zf`/`zo`…)
-                               // F-003 manual folds, keyed by buffer (slice 1: per-buffer, not per-window). Closed folds collapse in
+                               // Manual folds, keyed by buffer (slice 1: per-buffer, not per-window). Closed folds collapse in
                                // render; the cursor/scroll skip them; edits shift/drop them.
     let mut folds: HashMap<DocumentId, Vec<crate::folds::Fold>> = HashMap::new();
     // Per-buffer line count from the previous frame, to detect edit-driven line shifts for the fold ranges.
@@ -322,7 +322,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
         line_idx.refresh(revision, &snapshot);
-        // F-003 fold reconcile (per frame): (a) shift/drop folds when the buffer's line count changed since
+        // Fold reconcile (per frame): (a) shift/drop folds when the buffer's line count changed since
         // last frame — approximating the edit point as the cursor line; (b) snap the cursor OUT of any closed
         // fold onto its summary (start) line, so it never rests on a hidden row.
         {
@@ -868,7 +868,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 ws.set_top(ws.focus(), viewport::recenter(row, focused_h, to));
                 continue;
             }
-            // Fold verbs (F-003). `zf` folds the Visual selection; the rest act on the fold at the cursor.
+            // Fold verbs (manual folds; F-007 carve-out). `zf` folds the Visual selection; the rest act on the fold at the cursor.
             let buf = ws.focused_buffer();
             let cur_line = line_idx.line_of(ws.focused().view.cursor());
             let fv = folds.entry(buf).or_default();

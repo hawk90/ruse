@@ -138,7 +138,7 @@ pub(crate) fn paint_pane(
     // subsequent buffer line paints that many rows lower (F-031 slice 3a row-coordinate model).
     let mut virt_before: u16 = 0;
     // Display rows REMOVED by closed folds on lines above the current one — the negative-space twin of
-    // `virt_before` (F-003 folds). `disp = (line-top) + virt_before − folded_before`.
+    // `virt_before` (manual folds). `disp = (line-top) + virt_before − folded_before`.
     let mut folded_before: u16 = 0;
     // The display row for the current buffer `line` given the running virt/fold offsets.
     let disp_of = |line: usize, virt_before: u16, folded_before: u16| -> u16 {
@@ -535,7 +535,7 @@ pub(crate) fn render(
         } else {
             &[]
         };
-        // Folds are per-view; slice 1 collapses only the FOCUSED pane's folds (F-003).
+        // Folds are per-view; slice 1 collapses only the FOCUSED pane's folds (no dedicated F-*; F-007 carve-out).
         let pane_folds: &[crate::folds::Fold] = if i == ws.focus() { folds } else { &[] };
         // F-014: underline the focused buffer's diagnostic ranges.
         let underline: Vec<(usize, usize)> = if i == ws.focus() {
@@ -851,7 +851,7 @@ pub(crate) fn cursor_cell(
     let line = std::str::from_utf8(&bytes[line_start..pos]).unwrap_or("");
     let col = line_display_col(line, line.len());
     // Virtual rows inserted for lines in `[top, disp_row)` push the caret down (F-031 slice 3a); rows
-    // collapsed by closed folds above it pull the caret up (F-003 folds).
+    // collapsed by closed folds above it pull the caret up (manual folds).
     let virt_above: u16 = virt
         .iter()
         .filter(|v| v.after_line >= top && v.after_line < disp_row)
@@ -1128,7 +1128,7 @@ mod render_tests {
         assert_eq!(cursor_cell(bytes, 0, 0, &virt, &[]).0, 0);
     }
 
-    /// F-003 folds: a closed fold collapses its interior lines — its START row shows the summary and the
+    /// Manual folds: a closed fold collapses its interior lines — its START row shows the summary and the
     /// line below the fold paints on the very next display row.
     #[test]
     fn paint_pane_collapses_a_closed_fold() {
