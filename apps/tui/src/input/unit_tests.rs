@@ -634,8 +634,10 @@ mod tests {
     }
 
     #[test]
-    fn cw_is_ce() {
-        assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordEnd)));
+    fn cw_passes_wordfwd_for_the_core_special_case() {
+        // `cw` now emits Change(WordFwd); the core's change_range applies Vim's cw-word-end rule (which
+        // differs from `ce`/WordEnd at a word's last char). Rewriting to WordEnd here was the old bug.
+        assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordFwd)));
     }
 
     fn ctrl(c: char) -> KeyEvent {
@@ -1822,11 +1824,11 @@ mod tests {
             feed("dE"),
             Feed::Cmd(Command::Delete(1, Motion::BigWordEnd))
         );
-        // `cw`/`cW` behave like `ce`/`cE`.
-        assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordEnd)));
+        // `cw`/`cW` pass WordFwd/BigWordFwd through; the core applies the cw-word-end special case.
+        assert_eq!(feed("cw"), Feed::Cmd(Command::Change(1, Motion::WordFwd)));
         assert_eq!(
             feed("cW"),
-            Feed::Cmd(Command::Change(1, Motion::BigWordEnd))
+            Feed::Cmd(Command::Change(1, Motion::BigWordFwd))
         );
     }
 

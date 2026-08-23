@@ -303,7 +303,7 @@ fn prev_word_start(b: &[u8], pos: usize, big: bool) -> usize {
 }
 
 /// One past the last byte of the current/next word / WORD (the exclusive end for `de` / `dE`).
-fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
+pub(crate) fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
     let mut i = (pos + 1).min(b.len());
     while i < b.len() && class(b[i]) == Class::Space {
         i += 1;
@@ -312,6 +312,26 @@ fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
         return b.len();
     }
     let cw = class(b[i]);
+    while i < b.len() && same_group(cw, class(b[i]), big) {
+        i += 1;
+    }
+    i
+}
+
+/// The exclusive end of the word the cursor is ON (Vim `cw`'s target when the cursor is on a non-blank).
+/// Unlike [`word_end_excl`] / the `e` motion — which, from a word's LAST char, skips forward to the NEXT
+/// word's end — this consumes only the current run of same-class chars from `pos`, so `cw` on the last char
+/// of a word changes just that char (Vim: "cw changes up to the end of the word"). Returns `pos` unchanged
+/// (caller treats it as no-op / falls back) when `pos` is on whitespace or past the buffer.
+pub(crate) fn current_word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
+    if pos >= b.len() {
+        return b.len();
+    }
+    let cw = class(b[pos]);
+    if cw == Class::Space {
+        return pos; // on blank: not the cw special case — caller uses the ordinary word span
+    }
+    let mut i = pos;
     while i < b.len() && same_group(cw, class(b[i]), big) {
         i += 1;
     }

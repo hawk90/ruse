@@ -253,7 +253,9 @@ fn change_deletes_and_enters_insert() {
     apply_command(&mut st, &Command::Change(1, Motion::WordFwd));
     assert_eq!(st.mode(), Mode::Insert);
     apply_command(&mut st, &Command::InsertChar('X'));
-    assert_eq!(st.as_str(), Some("Xbar"));
+    // `cw` changes to the end of the word WITHOUT eating the trailing space (Vim's cw special case), so
+    // "foo bar" → "X bar", not "Xbar". (This differs from `dw`, which does take the trailing space.)
+    assert_eq!(st.as_str(), Some("X bar"));
 }
 
 #[test]
