@@ -1073,10 +1073,21 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             if le >= b.len() {
                 nop(cur, st.view.mode)
             } else {
-                // Delete the newline plus the next line's leading blanks, insert one space.
+                // Delete the newline plus the next line's leading blanks, then insert ONE space — EXCEPT
+                // Vim suppresses the space when the next line's first non-blank is `)`, or the current line
+                // already ends in whitespace, or the current line is empty. (`joinspaces` two-space form is
+                // deferred; Neovim defaults it off.)
                 let ws_end = hspace_end(b, le + 1);
+                let next_is_close = ws_end < b.len() && b[ws_end] == b')';
+                let cur_ends_ws = le > line_start(b, le) && is_hspace(b[le - 1]);
+                let cur_empty = le == line_start(b, le);
+                let sep: &[u8] = if next_is_close || cur_ends_ws || cur_empty {
+                    b""
+                } else {
+                    b" "
+                };
                 edit(
-                    one(Edit::replace(le, ws_end - le, b" ".to_vec())),
+                    one(Edit::replace(le, ws_end - le, sep.to_vec())),
                     le,
                     st.view.mode,
                     hint,
