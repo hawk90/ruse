@@ -520,6 +520,13 @@ impl InputEngine {
         self.last_search = Some(pattern);
     }
 
+    /// The last search pattern (`/`, `?`, `*`, `#`), or `None` if nothing has been searched yet. The
+    /// frontend reads it to resolve an empty `:s//repl/` pattern, which Vim fills from the last search.
+    #[must_use]
+    pub fn last_search(&self) -> Option<&str> {
+        self.last_search.as_deref()
+    }
+
     /// End the current Normal-grammar sequence: the Normal-family layer drops its OWN transient state
     /// (count / operator / awaiting / forced-wise) at a command boundary. This is the layer resetting
     /// itself, not the engine reaching into a foreign layer (KL-OBL-4) — sticky repeat state survives.
@@ -1835,6 +1842,7 @@ mod repeat;
 use repeat::{change_kind, ChangeIntent, ChangeKind};
 
 mod ex;
+pub(crate) use ex::reuse_last_search;
 pub use ex::{parse_ex, BufTarget, Ex};
 #[cfg(test)]
 pub(crate) use ex::{parse_substitute, GlobalSpec, SubSpec};

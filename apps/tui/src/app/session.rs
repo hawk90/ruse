@@ -1265,9 +1265,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             status = format!("buffer {} deleted", id.0);
                         }
                     }
-                    ex => {
-                        // Record a `:s` so `&` can repeat it (Vim). A non-empty pattern only — an empty
-                        // pattern reuses the last search, which is not modelled here.
+                    mut ex => {
+                        // An empty `:s` pattern reuses the last search (`/`/`*`), exactly as Vim does.
+                        crate::input::reuse_last_search(&mut ex, engine.last_search());
+                        // Record a `:s` so `&` can repeat it (Vim). Only a non-empty pattern is worth
+                        // remembering (an empty one that could not be filled has nothing to repeat).
                         if let Ex::Substitute(spec) = &ex {
                             if !spec.pattern.is_empty() {
                                 last_substitute = Some((
