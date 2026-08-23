@@ -1558,6 +1558,7 @@ fn is_jump(cmd: &Command) -> bool {
             M::GotoLine
                 | M::LastLine
                 | M::MatchBracket
+                | M::GotoPercent
                 | M::ParagraphFwd
                 | M::ParagraphBack
                 | M::SentenceFwd

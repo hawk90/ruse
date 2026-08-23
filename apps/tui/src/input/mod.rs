@@ -1149,7 +1149,14 @@ impl InputEngine {
                     self.motion(Motion::LastLine)
                 };
             }
-            KeyCode::Char('%') => return self.motion(Motion::MatchBracket),
+            // Bare `%` matches the bracket; `{count}%` is Vim's percentage jump (go to count% of the file).
+            KeyCode::Char('%') => {
+                return if self.normal.count > 0 {
+                    self.motion(Motion::GotoPercent)
+                } else {
+                    self.motion(Motion::MatchBracket)
+                };
+            }
             // `]` / `[` — arm a bracket-command prefix; the next key selects the command. Only the indent-
             // adjusting pastes `]p`/`]P`/`[p`/`[P` are wired. The count (`3]p`) is preserved for it.
             KeyCode::Char(']') => {

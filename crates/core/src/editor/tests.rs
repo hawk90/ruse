@@ -2480,6 +2480,21 @@ mod line_jump_tests {
     }
 
     #[test]
+    fn count_percent_jumps_to_percentage_of_file() {
+        // `{count}%` → line (count*line_count+99)/100, first non-blank. Verified vs nvim v0.12.4.
+        // 4 lines: 50% → line 2, 25% → line 1, 100% → line 4.
+        let st = run("a\nb\nc\nd", &[Command::Move(50, Motion::GotoPercent)]);
+        assert_eq!(st.cursor(), 2, "50% of 4 lines → line 2 ('b')");
+        let st = run("a\nb\nc\nd", &[Command::Move(25, Motion::GotoPercent)]);
+        assert_eq!(st.cursor(), 0, "25% → line 1 ('a')");
+        let st = run("a\nb\nc\nd", &[Command::Move(100, Motion::GotoPercent)]);
+        assert_eq!(st.cursor(), 6, "100% → line 4 ('d')");
+        // `d{count}%` is linewise.
+        let st = run("a\nb\nc\nd", &[Command::Delete(50, Motion::GotoPercent)]);
+        assert_eq!(text(&st), "c\nd", "d50% deletes lines 1-2 linewise");
+    }
+
+    #[test]
     fn goto_byte_moves_to_the_nth_byte() {
         // `{count}go` — count is a 1-based byte offset. "abc\ndef": 'a'=1,'b'=2,'c'=3,'\n'=4,'d'=5...
         let st = run("abc\ndef", &[Command::Move(5, Motion::GotoByte)]);

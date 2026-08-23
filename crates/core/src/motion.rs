@@ -116,6 +116,10 @@ pub enum Motion {
     /// Jump to the matching bracket of `()`, `[]`, or `{}` (`%`). Nesting-aware; the match may be on another
     /// line. If the cursor is not on a bracket, the first bracket forward on the line is matched instead.
     MatchBracket,
+    /// Vim `{count}%` — jump to `count` PERCENT of the file: line `(count * line_count + 99) / 100`
+    /// (1-based), landing on its first non-blank. Linewise under an operator. `count` is the percentage
+    /// (not a repeat); bare `%` with no count is [`Motion::MatchBracket`], resolved by the input engine.
+    GotoPercent,
     /// Paragraph motion forward (`}`): to the start of the next blank line (or end of buffer). Exclusive
     /// charwise as a bare move; under an operator Vim's exclusive-linewise rule can make it linewise (`d}`).
     ParagraphFwd,
@@ -1101,6 +1105,22 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     if m == Motion::MatchBracket {
         return match_bracket(b, cur0).unwrap_or(cur0);
     }
+    // `{count}%`: the count is a PERCENTAGE — go to line `(count*line_count + 99)/100` (Vim), first
+    // non-blank. `line_count` follows the terminator model (a trailing `\n` is not a new line).
+    if m == Motion::GotoPercent {
+        let nl = b.iter().filter(|&&c| c == b'\n').count();
+        let line_count = if b.is_empty() {
+            1
+        } else if b.last() == Some(&b'\n') {
+            nl
+        } else {
+            nl + 1
+        };
+        let line = ((n as usize) * line_count)
+            .div_ceil(100)
+            .clamp(1, line_count) as u32;
+        return first_non_blank(b, nth_line_start(b, line));
+    }
     // `{count}g_`: the count is `count-1` lines down, then the last non-blank char (not a repeat).
     if m == Motion::LineLastNonBlank {
         let mut ls = line_start(b, cur0);
@@ -1193,6 +1213,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             | Motion::LineUnderscore
             | Motion::GotoByte
             | Motion::MatchBracket
+            | Motion::GotoPercent
             | Motion::LineLastNonBlank
             | Motion::Column
             | Motion::InnerWord
@@ -1341,7 +1362,8 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         | Motion::LastLine
         | Motion::DownFirstNonBlank
         | Motion::UpFirstNonBlank
-        | Motion::LineUnderscore => (cur, cur),
+        | Motion::LineUnderscore
+        | Motion::GotoPercent => (cur, cur),
     }
 }
 

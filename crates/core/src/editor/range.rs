@@ -49,7 +49,8 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
         | Motion::LastLine
         | Motion::DownFirstNonBlank
         | Motion::UpFirstNonBlank
-        | Motion::LineUnderscore => whole_lines(motion::target(b, cur, m, count)),
+        | Motion::LineUnderscore
+        | Motion::GotoPercent => whole_lines(motion::target(b, cur, m, count)),
         // Vertical motions under an operator are linewise (`dj` deletes this line and the next). A motion
         // that cannot move a line (`dj` on the last line) fails the operator entirely (Vim) — a no-op range.
         Motion::Up | Motion::Down => {
@@ -228,6 +229,7 @@ pub(crate) fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usiz
             | Motion::DownFirstNonBlank
             | Motion::UpFirstNonBlank
             | Motion::LineUnderscore
+            | Motion::GotoPercent
     ) {
         let t = motion::target(b, cur, m, count);
         let start = line_start(b, cur.min(t));
