@@ -21,8 +21,9 @@ use crate::ui::picker::{PickOutcome, Picker};
 use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{
-    action_picker, buffer_picker, diag_picker, file_picker, layout::window_rects, line_picker,
-    marks_picker, palette, pos_picker, ref_picker, register_picker,
+    action_picker, buffer_picker, diag_picker, file_picker,
+    layout::{window_rects, Rect},
+    line_picker, marks_picker, palette, pos_picker, ref_picker, register_picker,
 };
 use crate::{graphics, health, highlight, indent, line_index, persist, recover, screen, viewport};
 #[cfg(unix)]
@@ -43,6 +44,128 @@ const TERM_TICK_MS: u64 = 33;
 /// F-014: with only a language server live (no terminal), poll more slowly — diagnostics arrive infrequently,
 /// so a ~10fps tick keeps them prompt without spinning.
 const LSP_TICK_MS: u64 = 100;
+
+/// The union of the byte ranges visible in every pane showing the FOCUSED doc — the window syntax
+/// highlighting is bounded to, so a per-keystroke reparse stays O(viewport). Falls back to the whole buffer
+/// when no pane matches. Pure over the layout + revision-cached line index (lifted out of the `run` loop).
+fn visible_byte_range(
+    ws: &Workspace,
+    rects: &[Rect],
+    line_idx: &line_index::LineIndex,
+    buf_len: usize,
+) -> std::ops::Range<usize> {
+    let focus_doc = ws.focused().view.doc();
+    let (mut vis_start, mut vis_end) = (usize::MAX, 0usize);
+    for (i, rect) in rects.iter().enumerate() {
+        let p = ws.pane(i);
+        if p.view.doc() != focus_doc {
+            continue;
+        }
+        vis_start = vis_start.min(line_idx.nth_line_start(p.view.top()));
+        vis_end = vis_end.max(line_idx.nth_line_start(p.view.top() + rect.h as usize + 1));
+    }
+    if vis_start <= vis_end {
+        vis_start..vis_end
+    } else {
+        0..buf_len
+    }
+}
+
+/// Read each on-screen virtual image's pixel dimensions from its PNG IHDR (the 24-byte header only), so the
+/// renderer can size it to its natural aspect. Cheap and only when the terminal is graphics-capable; a
+/// missing/invalid file is silently skipped. Pure over the virt-line set (lifted out of the `run` loop).
+fn read_image_dims(
+    has_graphics: bool,
+    virt_lines: &[highlight::VirtLine],
+) -> HashMap<String, (u32, u32)> {
+    if !has_graphics {
+        return HashMap::new();
+    }
+    use std::io::Read;
+    virt_lines
+        .iter()
+        .filter_map(|v| {
+            let p = v.path.as_ref()?;
+            let mut hdr = [0u8; 24];
+            std::fs::File::open(p).ok()?.read_exact(&mut hdr).ok()?;
+            graphics::png_dimensions(&hdr).map(|d| (p.clone(), d))
+        })
+        .collect()
+}
+
+/// Rewrite a command into its tree-aware variant when the focused buffer has a live syntax tree (F-015).
+/// Three independent rewrites, each a no-op without a tree so plain-text editing is untouched:
+/// - `Reindent` (`=`) → `SetIndents` with tree-computed levels (else the core bracket-depth fallback).
+/// - `OpenBelow`/`OpenAbove`/`InsertNewline` (`o`/`O`/`<CR>`) → `OpenLineIndent` seeded with the suggested
+///   indent for the newly opened line.
+/// - `InsertChar` of a closer `}`/`)`/`]` → `InsertCloser`, which auto-dedents to the matching opener.
+///
+/// Pure `Command -> Command` over the workspace + highlighter cache (lifted out of the `run` loop).
+fn resolve_tree_aware(
+    cmd: Command,
+    ws: &Workspace,
+    highlighters: &HashMap<DocumentId, highlight::CachedHighlight>,
+    line_idx: &line_index::LineIndex,
+    snapshot: &[u8],
+) -> Command {
+    let tree_of = |ws: &Workspace| {
+        highlighters
+            .get(&ws.focused_buffer())
+            .and_then(highlight::CachedHighlight::tree)
+    };
+    // `=` — resolve the reindent range + levels from the tree, else fall through to the core `=`.
+    let cmd = if let Command::Reindent { count, motion } = cmd {
+        match (ws.reindent_range(motion, count), tree_of(ws)) {
+            (Some((first_line, last_line)), Some(tree)) => Command::SetIndents {
+                first_line,
+                last_line,
+                levels: indent::indent_levels(tree, snapshot, first_line, last_line),
+            },
+            _ => Command::Reindent { count, motion },
+        }
+    } else {
+        cmd
+    };
+    // `o`/`O`/`<CR>` — seed the opened line with the tree-suggested indent. Dot-repeat replays the plain
+    // open (column-0), so a stale recorded level is never re-applied at a new location.
+    let cmd = if matches!(
+        cmd,
+        Command::OpenBelow | Command::OpenAbove | Command::InsertNewline
+    ) {
+        match tree_of(ws) {
+            Some(tree) => {
+                let cur = ws.focused().view.cursor();
+                let row = line_idx.line_of(cur);
+                let (kind, at, new_row) = match cmd {
+                    Command::OpenBelow => {
+                        let next = line_idx.nth_line_start(row + 1);
+                        let le = if next > 0 && snapshot.get(next - 1) == Some(&b'\n') {
+                            next - 1
+                        } else {
+                            snapshot.len()
+                        };
+                        (OpenKind::Below, le, row + 1)
+                    }
+                    Command::OpenAbove => (OpenKind::Above, line_idx.nth_line_start(row), row),
+                    _ => (OpenKind::Split, cur, row + 1),
+                };
+                let level = indent::suggest_indent(tree, at, new_row);
+                Command::OpenLineIndent { kind, level }
+            }
+            None => cmd,
+        }
+    } else {
+        cmd
+    };
+    // `}`/`)`/`]` — realign to the matching opener in a tree-backed buffer (the core bracket-match decides
+    // whether to actually move). Dot-repeat replays the plain `InsertChar` (column unchanged).
+    match cmd {
+        Command::InsertChar(c @ ('}' | ')' | ']')) if tree_of(ws).is_some() => {
+            Command::InsertCloser { ch: c }
+        }
+        other => other,
+    }
+}
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
@@ -262,21 +385,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // Highlight only the VISIBLE byte range of the focused buffer (F-015 #3): the union of the
         // viewports of every pane showing it. The tree is reparsed incrementally on edit (keyed on
         // revision); the viewport-bounded query keeps the per-keystroke cost O(viewport), not O(buffer).
-        let focus_doc = ws.focused().view.doc();
-        let (mut vis_start, mut vis_end) = (usize::MAX, 0usize);
-        for (i, rect) in rects.iter().enumerate() {
-            let p = ws.pane(i);
-            if p.view.doc() != focus_doc {
-                continue;
-            }
-            vis_start = vis_start.min(line_idx.nth_line_start(p.view.top()));
-            vis_end = vis_end.max(line_idx.nth_line_start(p.view.top() + rect.h as usize + 1));
-        }
-        let visible = if vis_start <= vis_end {
-            vis_start..vis_end
-        } else {
-            0..snapshot.len()
-        };
+        let visible = visible_byte_range(&ws, &rects, &line_idx, snapshot.len());
         // Syntax highlighting is the FOCUSED buffer's own grammar (F-007): each file buffer has its own
         // highlighter in the registry; a scratch/no-file buffer has none, so it paints unhighlighted.
         let focused_id = ws.focused_buffer();
@@ -393,20 +502,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         let focus_diags = lsp.diagnostics_for(ws.focused_buffer());
         // F-031 3b-2c: read each visible image's pixel dimensions (IHDR only) so render can size it to its
         // natural aspect and centre it. Cheap — only the 24-byte header, only when graphics are on.
-        let image_dims: HashMap<String, (u32, u32)> = if has_graphics {
-            use std::io::Read;
-            virt_lines
-                .iter()
-                .filter_map(|v| {
-                    let p = v.path.as_ref()?;
-                    let mut hdr = [0u8; 24];
-                    std::fs::File::open(p).ok()?.read_exact(&mut hdr).ok()?;
-                    graphics::png_dimensions(&hdr).map(|d| (p.clone(), d))
-                })
-                .collect()
-        } else {
-            HashMap::new()
-        };
+        let image_dims = read_image_dims(has_graphics, virt_lines);
         let images = render(
             &mut out,
             &ws,
@@ -1251,83 +1347,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     cmd
                 };
                 // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
-                // range and compute the levels from the tree, then rewrite to a concrete `SetIndents` (the
-                // trace replays it exactly). Without a tree it falls through to the core bracket-depth `=`.
-                let cmd = if let Command::Reindent { count, motion } = cmd {
-                    let id = ws.focused_buffer();
-                    match (
-                        ws.reindent_range(motion, count),
-                        highlighters
-                            .get(&id)
-                            .and_then(highlight::CachedHighlight::tree),
-                    ) {
-                        (Some((first_line, last_line)), Some(tree)) => Command::SetIndents {
-                            first_line,
-                            last_line,
-                            levels: indent::indent_levels(tree, &snapshot, first_line, last_line),
-                        },
-                        _ => Command::Reindent { count, motion },
-                    }
-                } else {
-                    cmd
-                };
-                // Auto-indent on newline (F-015 Phase 2): when the focused buffer has a live syntax tree,
-                // seed the line opened by `o`/`O`/`<CR>` with the tree-suggested indent, rewriting to
-                // `OpenLineIndent`. The core recomputes the insertion point from the cursor — here we only
-                // supply the level (the tree query offset mirrors where the newline lands). No tree ⇒ the
-                // plain open (column-0), unchanged. Dot-repeat (`.`) replays the plain open via `Feed::Replay`
-                // (below), so it degrades to column-0 — mirroring Phase 1's `=`, and avoiding replaying a
-                // stale recorded level at a new location.
-                let cmd = if matches!(
-                    cmd,
-                    Command::OpenBelow | Command::OpenAbove | Command::InsertNewline
-                ) {
-                    let id = ws.focused_buffer();
-                    match highlighters
-                        .get(&id)
-                        .and_then(highlight::CachedHighlight::tree)
-                    {
-                        Some(tree) => {
-                            let cur = ws.focused().view.cursor();
-                            let row = line_idx.line_of(cur);
-                            let (kind, at, new_row) = match cmd {
-                                Command::OpenBelow => {
-                                    let next = line_idx.nth_line_start(row + 1);
-                                    let le = if next > 0 && snapshot.get(next - 1) == Some(&b'\n') {
-                                        next - 1
-                                    } else {
-                                        snapshot.len()
-                                    };
-                                    (OpenKind::Below, le, row + 1)
-                                }
-                                Command::OpenAbove => {
-                                    (OpenKind::Above, line_idx.nth_line_start(row), row)
-                                }
-                                _ => (OpenKind::Split, cur, row + 1),
-                            };
-                            let level = indent::suggest_indent(tree, at, new_row);
-                            Command::OpenLineIndent { kind, level }
-                        }
-                        None => cmd,
-                    }
-                } else {
-                    cmd
-                };
-                // Closer auto-dedent (F-015 Phase 3a): a `}`/`)`/`]` typed in a tree-backed (code) buffer
-                // realigns the line to its matching opener. Gated on a live tree so plain-text editing is
-                // untouched; the core's bytes bracket-match decides whether to realign. Dot-repeat replays
-                // the plain `InsertChar` (column unchanged), like Phase 2.
-                let cmd = match cmd {
-                    Command::InsertChar(c @ ('}' | ')' | ']'))
-                        if highlighters
-                            .get(&ws.focused_buffer())
-                            .and_then(highlight::CachedHighlight::tree)
-                            .is_some() =>
-                    {
-                        Command::InsertCloser { ch: c }
-                    }
-                    other => other,
-                };
+                let cmd = resolve_tree_aware(cmd, &ws, &highlighters, &line_idx, &snapshot);
                 // A completed search turns on hlsearch for that pattern (F-009 #1).
                 if let Some(p) = search_pattern(&cmd) {
                     search_hl = Some(p);
