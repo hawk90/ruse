@@ -3294,4 +3294,123 @@ mod binding_label_tests {
         assert_eq!(e.binding_label(&Command::Undo), None);
         assert_eq!(e.binding_label(&Command::Save), None);
     }
+
+    /// Arm an operator prefix, then resolve a viewport screen-motion (`H`/`M`/`L`) to the ABSOLUTE `line`
+    /// the frontend computed — exercises `screen_op`, the operator-composition seam for `dH`/`yL`/`>H`/… .
+    fn op_to_line(prefix: &str, line: u32) -> Feed {
+        let mut e = InputEngine::new();
+        for c in prefix.chars() {
+            e.feed(
+                KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE),
+                Mode::Normal,
+            );
+        }
+        e.screen_op(line)
+    }
+
+    /// The OPERATOR forms of `H`/`M`/`L` (`:help H`): any pending operator composes with the viewport-resolved
+    /// target line over `GotoLine` (LINEWISE in core). Ground truth verified against nvim v0.12.4: e.g. `dH`
+    /// from a mid-screen line deletes up THROUGH the top visible line inclusive. The frontend hands the
+    /// resolved line in; here we assert the command `screen_op` builds for each operator.
+    #[test]
+    fn screen_motions_compose_with_operators() {
+        // No operator armed: plain `H`/`M`/`L` stays a bare cursor move (preserved behavior).
+        assert_eq!(
+            op_to_line("", 4),
+            Feed::Cmd(Command::Move(4, Motion::GotoLine))
+        );
+        // `dH` / `cM` / `yL` — delete/change/yank LINEWISE through the resolved line. Direction is handled by
+        // the core `GotoLine` operator range (`[min,max]` of cursor and target), so the same command serves
+        // cursor-above-target and cursor-below-target.
+        assert_eq!(
+            op_to_line("d", 4),
+            Feed::Cmd(Command::Delete(4, Motion::GotoLine))
+        );
+        assert_eq!(
+            op_to_line("c", 5),
+            Feed::Cmd(Command::Change(5, Motion::GotoLine))
+        );
+        assert_eq!(
+            op_to_line("y", 1),
+            Feed::Cmd(Command::Yank(1, Motion::GotoLine))
+        );
+        // `>H` / `<L` / `=M` — shift and reindent compose too (always linewise).
+        assert_eq!(
+            op_to_line(">", 3),
+            Feed::Cmd(Command::ShiftMotion {
+                left: false,
+                count: 3,
+                motion: Motion::GotoLine,
+            })
+        );
+        assert_eq!(
+            op_to_line("<", 8),
+            Feed::Cmd(Command::ShiftMotion {
+                left: true,
+                count: 8,
+                motion: Motion::GotoLine,
+            })
+        );
+        assert_eq!(
+            op_to_line("=", 7),
+            Feed::Cmd(Command::Reindent {
+                count: 7,
+                motion: Motion::GotoLine,
+            })
+        );
+        // `gUH` / `guL` / `g~M` — the case operators compose as well.
+        assert_eq!(
+            op_to_line("gU", 2),
+            Feed::Cmd(Command::CaseMotion {
+                count: 2,
+                motion: Motion::GotoLine,
+                case: WordCase::Upcase,
+            })
+        );
+        assert_eq!(
+            op_to_line("gu", 2),
+            Feed::Cmd(Command::CaseMotion {
+                count: 2,
+                motion: Motion::GotoLine,
+                case: WordCase::Downcase,
+            })
+        );
+        assert_eq!(
+            op_to_line("g~", 6),
+            Feed::Cmd(Command::CaseMotion {
+                count: 6,
+                motion: Motion::GotoLine,
+                case: WordCase::Toggle,
+            })
+        );
+    }
+
+    /// The effective count the frontend uses to resolve the `H`/`M`/`L` TARGET LINE from the viewport, and
+    /// the pending-operator flag it uses to drop 'scrolloff' under an operator. Count multiplication matches
+    /// nvim: `2H` = 2, `3d2H` = 6 (op-count times motion-count), `3dH` = 3, bare `H`/`dH` = 0/1.
+    #[test]
+    fn screen_count_and_has_op_track_pending_state() {
+        fn state(prefix: &str) -> (u32, bool) {
+            let mut e = InputEngine::new();
+            for c in prefix.chars() {
+                e.feed(
+                    KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE),
+                    Mode::Normal,
+                );
+            }
+            (e.screen_count(), e.has_op())
+        }
+        // No count, no operator: raw count 0 (viewport resolver treats it as line 1), no op → scrolloff kept.
+        assert_eq!(state(""), (0, false));
+        // Bare count (plain `2H`): count 2, no op.
+        assert_eq!(state("2"), (2, false));
+        // Operator only (`dH`): effective count 1, op armed → scrolloff dropped.
+        assert_eq!(state("d"), (1, true));
+        // Count after the operator (`d2H`): 2.
+        assert_eq!(state("d2"), (2, true));
+        // Count before the operator (`3dH`): 3.
+        assert_eq!(state("3d"), (3, true));
+        // Both multiply (`3d2H` = 6H): 6.
+        assert_eq!(state("3d2"), (6, true));
+    }
 }

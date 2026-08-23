@@ -132,6 +132,28 @@ mod tests {
         assert_eq!(screen_line(0, 20, 3, ScreenTo::Low, 1, 5), 5);
     }
 
+    /// Under an OPERATOR, `H`/`L` IGNORE 'scrolloff' and target the TRUE top/bottom visible line, while the
+    /// bare cursor-motion keeps the scrolloff margin — so the frontend resolves the operator target with
+    /// `scrolloff = 0`. All targets here are ground truth captured from nvim v0.12.4 (`set lines`, `zt`).
+    #[test]
+    fn operator_screen_targets_ignore_scrolloff() {
+        // nvim: 12-line buffer, window rows 1..=10 at the buffer top (0-based top=0, last_line=11).
+        // Operator (scrolloff=0): dH -> line 1 (row 0), dL -> line 10 (row 9), dM -> line 5 (row 4).
+        assert_eq!(screen_line(0, 10, 0, ScreenTo::High, 1, 11), 0);
+        assert_eq!(screen_line(0, 10, 0, ScreenTo::Low, 1, 11), 9);
+        assert_eq!(screen_line(0, 10, 0, ScreenTo::Middle, 1, 11), 4);
+        // Counts still count from the edge: d2H -> line 2 (row 1), d2L -> line 9 (row 8).
+        assert_eq!(screen_line(0, 10, 0, ScreenTo::High, 2, 11), 1);
+        assert_eq!(screen_line(0, 10, 0, ScreenTo::Low, 2, 11), 8);
+        // nvim: 40-line buffer scrolled so window rows 19..=28 (0-based top=18, last_line=39).
+        // Operator ignores scrolloff: dH -> line 19 (row 18), dL -> line 28 (row 27).
+        assert_eq!(screen_line(18, 10, 0, ScreenTo::High, 1, 39), 18);
+        assert_eq!(screen_line(18, 10, 0, ScreenTo::Low, 1, 39), 27);
+        // The bare cursor-motion (scrolloff=3) DOES keep the margin: H -> line 22 (row 21), L -> line 25 (24).
+        assert_eq!(screen_line(18, 10, 3, ScreenTo::High, 1, 39), 21);
+        assert_eq!(screen_line(18, 10, 3, ScreenTo::Low, 1, 39), 24);
+    }
+
     #[test]
     fn scroll_lines_moves_view_and_keeps_cursor_in_band() {
         // C-e by 1 from top=0, cursor at row 0 (top edge): view moves to 1, cursor pulled to margin.
