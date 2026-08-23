@@ -483,7 +483,19 @@ fn incr_number(
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    let new_text = (val + i128::from(delta)).to_string();
+    let result = val + i128::from(delta);
+    // Vim preserves a leading-zero field WIDTH: `007`→`008`, `099`→`100` (grows only on carry), `-007`→
+    // `-006`. Only when the original magnitude (digits, excluding sign) had a leading zero — a plain `42`
+    // is never padded. The width is measured on the magnitude and re-applied after sign handling.
+    let orig_mag_width = end - start;
+    let had_leading_zero = orig_mag_width > 1 && b[start] == b'0';
+    let mag = result.unsigned_abs().to_string();
+    let mag = if had_leading_zero && mag.len() < orig_mag_width {
+        format!("{mag:0>orig_mag_width$}")
+    } else {
+        mag
+    };
+    let new_text = if result < 0 { format!("-{mag}") } else { mag };
     let bytes = new_text.into_bytes();
     let cursor = num_start + bytes.len().saturating_sub(1); // land on the last digit (Vim)
     Some((num_start, end - num_start, bytes, cursor))

@@ -931,6 +931,28 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn increment_preserves_leading_zero_width() {
+        // Zero-padded fields keep their width (Vim): 007 -> 008.
+        let st = run("007", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "008");
+        // Width grows only on carry: 099 -> 100.
+        let st = run("099", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "100");
+        // Negative padded field keeps the magnitude width: -007 -> -006.
+        let st = run("-007", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "-006");
+        // Decrementing into more digits pads: 008 - 9 -> -001.
+        let st = run("008", &[Command::IncrementNumber(-9)]);
+        assert_eq!(text(&st), "-001");
+        // No leading zero => no padding: 42 -> 43.
+        let st = run("42", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "43");
+        // A bare single zero is not a padded field: 0 -> 1 (not 01).
+        let st = run("0", &[Command::IncrementNumber(1)]);
+        assert_eq!(text(&st), "1");
+    }
+
+    #[test]
     fn increment_hex_literal_stays_hex() {
         // 0x1f + 1 → 0x20 (prefix preserved, lowercase output).
         let st = run("0x1f", &[Command::IncrementNumber(1)]);
