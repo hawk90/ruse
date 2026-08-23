@@ -1613,6 +1613,8 @@ impl InputEngine {
                     KeyCode::Char('E') => self.motion(Motion::BigWordEndBack),
                     // `g_` — to the last non-blank char of the line (`{count}g_` = count-1 lines down).
                     KeyCode::Char('_') => self.motion(Motion::LineLastNonBlank),
+                    // `[count]go` — go to the count-th byte of the buffer (operator-aware: `dgo`).
+                    KeyCode::Char('o') => self.motion(Motion::GotoByte),
                     // `g*` / `g#` — like `*`/`#` but match the word ANYWHERE (no `\<…\>` boundaries).
                     KeyCode::Char('*') => self.action(Command::SearchWordUnder {
                         forward: true,

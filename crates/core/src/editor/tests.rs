@@ -2091,6 +2091,35 @@ mod line_jump_tests {
         // line 99 doesn't exist → clamp to the last line (the empty line after the final newline).
         assert_eq!(st.cursor(), 4);
     }
+
+    #[test]
+    fn goto_byte_moves_to_the_nth_byte() {
+        // `{count}go` — count is a 1-based byte offset. "abc\ndef": 'a'=1,'b'=2,'c'=3,'\n'=4,'d'=5...
+        let st = run("abc\ndef", &[Command::Move(5, Motion::GotoByte)]);
+        assert_eq!(st.cursor(), 4, "byte 5 (1-based) = offset 4 = 'd'");
+        // Bare `go` (count 1) → the first byte.
+        let st = run("abc\ndef", &[Command::Move(1, Motion::GotoByte)]);
+        assert_eq!(st.cursor(), 0);
+        // A count past the end clamps into range (Normal-mode clamp keeps it off the newline/EOF).
+        let st = run("abc", &[Command::Move(99, Motion::GotoByte)]);
+        assert_eq!(st.cursor(), 2, "clamped to the last char");
+    }
+
+    #[test]
+    fn goto_byte_is_an_exclusive_operator_motion() {
+        // `dgo` from byte 5 back to byte 1 deletes the exclusive span [offset 0, offset 4) = "abc\n".
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::Move(5, Motion::GotoByte),
+                Command::Delete(1, Motion::GotoByte),
+            ],
+        );
+        assert_eq!(text(&st), "def");
+        // Forward `d3go` from the start deletes [0, 2) = "ab".
+        let st = run("abcdef", &[Command::Delete(3, Motion::GotoByte)]);
+        assert_eq!(text(&st), "cdef");
+    }
 }
 
 #[cfg(test)]

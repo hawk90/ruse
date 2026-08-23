@@ -49,6 +49,17 @@ mod tests {
     }
 
     #[test]
+    fn goto_byte_motion() {
+        // `[count]go` — go to the count-th byte; bare `go` = byte 1; operator-aware `dgo`.
+        assert_eq!(feed("go"), Feed::Cmd(Command::Move(1, Motion::GotoByte)));
+        assert_eq!(feed("12go"), Feed::Cmd(Command::Move(12, Motion::GotoByte)));
+        assert_eq!(
+            feed("d5go"),
+            Feed::Cmd(Command::Delete(5, Motion::GotoByte))
+        );
+    }
+
+    #[test]
     fn tag_text_objects() {
         assert_eq!(
             feed("dit"),
