@@ -225,6 +225,8 @@ pub(crate) fn run_ex(
         }
         // `:noh` is handled in the run loop (it clears the frontend's search highlight); never reaches here.
         Ex::NoHighlight => {}
+        // `:set (no)hlsearch/incsearch` are handled in the run loop (frontend render flags); never here.
+        Ex::SetHlSearch(_) | Ex::SetIncSearch(_) => {}
         // `:registers` is handled in the run loop (it opens the frontend-owned register-viewer picker).
         Ex::Registers => {}
         // `:marks` is handled in the run loop (it opens the frontend-owned marks-viewer picker).
