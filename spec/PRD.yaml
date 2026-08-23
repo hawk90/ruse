@@ -175,11 +175,13 @@ features:
     # done: operator x count x motion composition (d/c/y + aliases x/X/D/C/Y/s/S, `<<`), the core motions
     # (h l j k 0 $ w W b B e E f F t T ; , G % { }), count multiplication (2d3w), dd/yy doubling->linewise,
     # exclusive->inclusive->linewise promotion, the three operator_pending force keys (v/V/CTRL-V), and
-    # dot-repeat (full change incl. inserted text) are all implemented + oracle/unit tested. Carve-outs (NOT
-    # F-023 acceptance criteria): the extended g/z operators (gu/gU/g~/gq/g?/g@/zf) and un-implemented
-    # `={motion}`/`!`filter/`~{motion}`tildeop/`<{motion}` live on other census sub-surfaces and stay
-    # unclassified; search motions belong to F-009; the C-INPUT LANG-ARG re-dispatch and the full C-POSHIST
-    # position history (marks/jumplist) are pending-concept carve-outs (READY-WITH-SCOPE), like F-025.
+    # dot-repeat (full change incl. inserted text) are all implemented + oracle/unit tested. Also SHIPPED
+    # since (implemented + unit-tested; census-tracing/formal acceptance is a follow-up): the extended
+    # operators gu/gU/g~/g? (case/rot13), gq/gw (reflow), `={motion}` reindent, and zf manual folds
+    # (frontend fold state; see F-007/F-015). Still un-implemented carve-outs: g@ operatorfunc, `!`{motion}
+    # filter, `~{motion}` tildeop live on other census sub-surfaces and stay unclassified; search motions
+    # belong to F-009; the C-INPUT LANG-ARG re-dispatch and the full C-POSHIST position history
+    # (marks/jumplist) are pending-concept carve-outs (READY-WITH-SCOPE), like F-025.
     # Census gap logged: `>>`/`>{motion}` have no upstream-extracted row (only `<<`/`<{motion}` present).
     status: done
     depends_on: [C-INPUT, C-EDITLANG, C-POSHIST]
@@ -229,8 +231,9 @@ features:
     # that survives round-trip (dd then p opens a line; blockwise paste per #81) — oracle/unit tested.
     # Census home decided: registers have no dedicated surface, so F-029 anchors on the `"{register}`
     # selection key + p/P within mode_key.normal (the operators that WRITE registers stay under F-023).
-    # Carve-outs (NOT F-029 acceptance): numbered ring `"1`-`"9`, small-delete `"-`, black-hole `"_`,
-    # expression `"=`, clipboard `"+`/`"*` are not modelled yet; `:registers` awaits the F-026 command engine.
+    # NOW IMPLEMENTED (register.rs; unit-tested — census-tracing/formal acceptance is a follow-up): the
+    # numbered ring `"1`-`"9`, small-delete `"-`, and black-hole `"_` registers, plus `:registers`/`:reg`
+    # (F-026 command engine + a picker). Still carve-outs (NOT modelled): expression `"=`, clipboard `"+`/`"*`.
     # MACROS (q record / @ replay) are DESIGNED as D-055: recording captures RAW KEYSTROKES and stores them as
     # bytes in these same a-z registers, replayed by re-feeding the input engine (so `"ap` shows a macro and
     # yanked text runs as one). This is a distinct mechanism from dot-repeat/trace (which record resolved
@@ -743,9 +746,11 @@ features:
     # grammar's injections query and re-parses @injection.content regions with the injected language,
     # mapping spans back into parent coordinates (viewport-bounded, cached, depth-1). Rust (macro
     # token_tree -> Rust) and JavaScript (template literals / embedded) ship injections queries today; a
-    # grammar without one is a no-op. Stays `planned`: FOLDS/INDENT (the rest of #4) are unbuilt — NO bundled
-    # grammar ships a folds/indents query, and both need downstream editor features (folding UI,
-    # auto-indent) that do not exist yet; the parity chain (legacy NVIM-TS-*) is also not yet repointed.
+    # grammar without one is a no-op. Stays `planned`: the QUERY-DRIVEN folds/indents (the rest of #4) are
+    # unbuilt — NO bundled grammar ships a folds.scm/indents.scm query. (The downstream editor features DO
+    # exist: manual folds in apps/tui/src/folds.rs and node-depth auto-indent in apps/tui/src/indent.rs are
+    # built, wired, and unit-tested — they are just not yet DRIVEN by tree-sitter queries.) The parity chain
+    # (legacy NVIM-TS-*) is also not yet repointed.
     status: planned
     depends_on: [C-DOCUMENT, C-RENDER, C-SCHEDULER]
     summary: Incremental structural highlighting from snapshots; injections; TS folds/indent.
