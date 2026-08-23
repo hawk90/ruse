@@ -2200,6 +2200,25 @@ mod word_class_tests {
     }
 
     #[test]
+    fn word_fwd_at_eol_rests_on_last_char() {
+        // Bare `w`/`W` with no next word moves to end-of-line but Normal mode rests ON the last char, not
+        // past it. Verified vs nvim v0.12.4 (fixtures w_last_word_rests_on_last_char etc.).
+        let st = run("abc def", &[Command::Move(2, Motion::WordFwd)]);
+        assert_eq!(
+            st.cursor(),
+            6,
+            "second w rests on 'f' (last char), not past it"
+        );
+        let st = run("abc", &[Command::Move(1, Motion::WordFwd)]);
+        assert_eq!(st.cursor(), 2, "w on the only word rests on 'c'");
+        let st = run("foo.bar baz", &[Command::Move(2, Motion::BigWordFwd)]);
+        assert_eq!(st.cursor(), 10, "W rests on the last char 'z'");
+        // Mid-buffer w still lands on the next word start (clamp is a no-op there).
+        let st = run("abc def ghi", &[Command::Move(2, Motion::WordFwd)]);
+        assert_eq!(st.cursor(), 8, "w to a real next word is unaffected");
+    }
+
+    #[test]
     fn small_word_back_treats_punct_as_a_word() {
         // cursor on 'b' of bar (4); b → the '.' word at 3.
         let st = run(

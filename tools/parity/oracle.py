@@ -365,6 +365,10 @@ FIXTURES: list[dict] = [
     {"name": "percent_jump_100", "lines": ["a", "b", "c", "d"], "keys": "100%x"},
     {"name": "percent_jump_25", "lines": ["a", "b", "c", "d"], "keys": "25%x"},
     {"name": "d_percent_jump_linewise", "lines": ["a", "b", "c", "d"], "keys": "d50%"},
+    #     bare w/W at end-of-line: no next word -> rest ON the last char (Normal can't rest past it)
+    {"name": "w_last_word_rests_on_last_char", "lines": ["abc def"], "keys": "wwx"},
+    {"name": "w_single_word_rests_on_last_char", "lines": ["abc"], "keys": "wx"},
+    {"name": "bigw_last_word_rests_on_last_char", "lines": ["foo.bar baz"], "keys": "WWx"},
     #     multi-byte / unicode buffers (byte-index correctness) --------------------------------------
     {"name": "x_unicode_multibyte", "lines": ["αβγ"], "keys": "x"},
     {"name": "x_emoji", "lines": ["a😀b"], "keys": "lx"},
