@@ -1344,21 +1344,26 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant),
                 _ => motion::target(b, cur, *m, *count),
             };
-            // Normal mode never rests on a non-empty line's trailing newline: when the wanted column
-            // overshoots a short target line (or `$`'s MAXCOL), pull back onto its last char. Insert/Visual
-            // keep the past-end column (append position / block right edge), so this is Normal-only.
-            let target =
-                if matches!(m, Motion::Up | Motion::Down) && matches!(st.view.mode, Mode::Normal) {
-                    let ls = line_start(b, target);
-                    let le = line_end(b, target);
-                    if target == le && le > ls {
-                        prev_boundary(b, le)
-                    } else {
-                        target
-                    }
+            // Normal mode never rests on a non-empty line's trailing newline: `j`/`k` overshooting a short
+            // line (or `$`'s MAXCOL), AND `w`/`W` past the last word (which move to end-of-line when there
+            // is no next word), pull back onto the last char. Restricted to these motions — `^` on an
+            // all-blank line legitimately rests at the line end, and the Emacs word motions are separate
+            // variants (`EmacsWord*`) with between-char gravity. Insert/Visual keep the past-end column.
+            let target = if matches!(
+                m,
+                Motion::Up | Motion::Down | Motion::WordFwd | Motion::BigWordFwd
+            ) && matches!(st.view.mode, Mode::Normal)
+            {
+                let ls = line_start(b, target);
+                let le = line_end(b, target);
+                if target == le && le > ls {
+                    prev_boundary(b, le)
                 } else {
                     target
-                };
+                }
+            } else {
+                target
+            };
             nop(target, st.view.mode)
         }
         Command::Delete(count, m) => {

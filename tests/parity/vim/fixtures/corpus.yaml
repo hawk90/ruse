@@ -2907,6 +2907,78 @@
       }
     },
     {
+      "name": "w_last_word_rests_on_last_char",
+      "lines": [
+        "abc def"
+      ],
+      "keys": "wwx",
+      "expect": {
+        "text": [
+          "abc de"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "w_single_word_rests_on_last_char",
+      "lines": [
+        "abc"
+      ],
+      "keys": "wx",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "bigw_last_word_rests_on_last_char",
+      "lines": [
+        "foo.bar baz"
+      ],
+      "keys": "WWx",
+      "expect": {
+        "text": [
+          "foo.bar ba"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "z",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_unicode_multibyte",
       "lines": [
         "αβγ"
