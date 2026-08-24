@@ -4015,6 +4015,140 @@ mod blockwise_tests {
         assert!(st.register().is_blockwise());
         assert_eq!(st.register().text(), b"a\nd");
     }
+
+    // `c<C-v>{motion}` — operator-forced blockwise CHANGE — deletes the block column then replicates the
+    // typed text down every row, exactly like Visual-block `c`. Bytes below are captured from nvim v0.12.4
+    // (`c<C-v>2jX<Esc>` on abc/def/ghi → Xbc/Xef/Xhi; deleted block "a\nd\ng" blockwise).
+    fn forced_change_blockwise(count: u32) -> Command {
+        Command::OpForced {
+            op: OpKind::Change,
+            count,
+            motion: Motion::Down,
+            wise: ForcedWise::Blockwise,
+        }
+    }
+
+    #[test]
+    fn forced_blockwise_change_replicates_typed_text_down_all_rows() {
+        let st = run(
+            "abc\ndef\nghi",
+            &[
+                forced_change_blockwise(2), // block col 0, rows 0..2
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "Xbc\nXef\nXhi");
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.cursor(), 0, "cursor returns to the block top-left");
+        assert!(
+            st.register().is_blockwise(),
+            "the deleted block is captured blockwise"
+        );
+        assert_eq!(st.register().text(), b"a\nd\ng");
+    }
+
+    #[test]
+    fn forced_blockwise_change_replicates_over_a_short_row() {
+        // nvim: `c<C-v>2jX<Esc>` on abc/d/ghi → Xbc/X/Xhi (col 0 exists on every row, so all replicate).
+        let st = run(
+            "abc\nd\nghi",
+            &[
+                forced_change_blockwise(2),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "Xbc\nX\nXhi");
+        assert_eq!(st.register().text(), b"a\nd\ng");
+    }
+
+    #[test]
+    fn forced_blockwise_change_replicates_multichar_text() {
+        // nvim: `c<C-v>2jXY<Esc>` on abc/def/ghi → XYbc/XYef/XYhi, cursor at [1,1] — a block CHANGE rests
+        // one char left of the typed text (normal Insert-exit), NOT snapped to the top-left like `I`/`A`.
+        let st = run(
+            "abc\ndef\nghi",
+            &[
+                forced_change_blockwise(2),
+                Command::InsertChar('X'),
+                Command::InsertChar('Y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "XYbc\nXYef\nXYhi");
+        assert_eq!(
+            st.cursor(),
+            1,
+            "block change rests one char left of the typed run"
+        );
+    }
+
+    #[test]
+    fn visual_block_change_multichar_cursor_rests_left_of_typed_text() {
+        // The SAME cursor rule via the Visual-block `c` path (shared `block_replicate`): nvim leaves the
+        // caret at [1,1] after `<C-v>2jcXY<Esc>` on abc/def/ghi, while `I`/`A` snap back to col 0.
+        let st = run(
+            "abc\ndef\nghi",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown,
+                Command::MoveDown,
+                Command::BlockInsert(BlockInsertKind::Change),
+                Command::InsertChar('X'),
+                Command::InsertChar('Y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "XYbc\nXYef\nXYhi");
+        assert_eq!(
+            st.cursor(),
+            1,
+            "Visual-block change also rests left of the typed run"
+        );
+    }
+
+    #[test]
+    fn forced_blockwise_change_over_a_wide_single_row() {
+        // nvim: `c<C-v>2lX<Esc>` on abcd/efgh → Xd/efgh (cols 0..2 on the top row only; register "abc").
+        let st = run(
+            "abcd\nefgh",
+            &[
+                Command::OpForced {
+                    op: OpKind::Change,
+                    count: 2,
+                    motion: Motion::Right,
+                    wise: ForcedWise::Blockwise,
+                },
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "Xd\nefgh");
+        assert!(st.register().is_blockwise());
+        assert_eq!(st.register().text(), b"abc");
+    }
+
+    #[test]
+    fn forced_blockwise_change_is_a_single_undo_unit() {
+        // nvim: the whole block-delete + replicate is ONE change; a single `u` restores the buffer.
+        let st = run(
+            "abc\ndef\nghi",
+            &[
+                forced_change_blockwise(2),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+                Command::Undo,
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "abc\ndef\nghi",
+            "a single undo reverts the delete AND the replicate"
+        );
+    }
 }
 
 #[cfg(test)]

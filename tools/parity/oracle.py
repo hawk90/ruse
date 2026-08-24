@@ -313,6 +313,12 @@ FIXTURES: list[dict] = [
     {"name": "visual_iw_delete", "lines": ["foo bar"], "keys": "viwd"},
     {"name": "visual_line_delete", "lines": ["a", "b", "c"], "keys": "Vjd"},
     {"name": "visual_block_delete", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjld"},
+    #     operator-forced blockwise CHANGE (`c<C-v>{motion}{text}<Esc>`): delete the block column then
+    #     replicate the typed text down every row — same semantics as Visual-block `c`. -----------------
+    {"name": "c_forced_block_replicate", "lines": ["abc", "def", "ghi"], "keys": "c<C-v>2jX<Esc>"},
+    {"name": "c_forced_block_short_row", "lines": ["abc", "d", "ghi"], "keys": "c<C-v>2jX<Esc>"},
+    {"name": "c_forced_block_multichar", "lines": ["abc", "def", "ghi"], "keys": "c<C-v>2jXY<Esc>"},
+    {"name": "c_forced_block_wide_1row", "lines": ["abcd", "efgh"], "keys": "c<C-v>2lX<Esc>"},
     #     operators on empty / single-char / last line ------------------------------------------------
     {"name": "x_on_empty_line", "lines": [""], "keys": "x"},
     {"name": "dw_on_empty_line", "lines": [""], "keys": "dw"},

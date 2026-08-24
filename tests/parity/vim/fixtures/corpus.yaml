@@ -1915,6 +1915,116 @@
       }
     },
     {
+      "name": "c_forced_block_replicate",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "c<C-v>2jX<Esc>",
+      "expect": {
+        "text": [
+          "Xbc",
+          "Xef",
+          "Xhi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nd\ng",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "c_forced_block_short_row",
+      "lines": [
+        "abc",
+        "d",
+        "ghi"
+      ],
+      "keys": "c<C-v>2jX<Esc>",
+      "expect": {
+        "text": [
+          "Xbc",
+          "X",
+          "Xhi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nd\ng",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "c_forced_block_multichar",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "c<C-v>2jXY<Esc>",
+      "expect": {
+        "text": [
+          "XYbc",
+          "XYef",
+          "XYhi"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\nd\ng",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "c_forced_block_wide_1row",
+      "lines": [
+        "abcd",
+        "efgh"
+      ],
+      "keys": "c<C-v>2lX<Esc>",
+      "expect": {
+        "text": [
+          "Xd",
+          "efgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "x_on_empty_line",
       "lines": [
         ""
