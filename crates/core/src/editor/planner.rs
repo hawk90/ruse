@@ -212,7 +212,7 @@ fn plan_search(
                 mode: st.view.mode,
                 is_edit: false,
                 effects: Vec::new(),
-                set_register: Some(RegWrite::Yank(reg)),
+                set_register: Some(RegWrite::Yank(reg, (cur, pos))),
                 set_anchor: None,
                 set_mark: None,
             }
@@ -288,7 +288,7 @@ fn plan_search_object(
                 mode: st.view.mode,
                 is_edit: false,
                 effects: Vec::new(),
-                set_register: Some(RegWrite::Yank(reg)),
+                set_register: Some(RegWrite::Yank(reg, (s, e))),
                 set_anchor: None,
                 set_mark: None,
             }
@@ -640,6 +640,21 @@ fn hspace_end(b: &[u8], from: usize) -> usize {
 fn mark_line_target(b: &[u8], pos: usize) -> usize {
     let p = pos.min(b.len());
     motion::first_non_blank(b, crate::pos::line_start(b, p))
+}
+
+/// A charwise mark jump target: snap `pos` to a char boundary, then apply Vim's Normal-mode end-of-line
+/// clamp — a mark that lands on (or past) the line's newline pulls back onto the line's last char. This is
+/// what makes `` `] `` land on the last inserted/changed char even when the stored mark is the exclusive
+/// insert end-caret or the trailing '\n' of a linewise span (matching Neovim's on-jump clamp).
+fn mark_char_target(b: &[u8], pos: usize) -> usize {
+    let p = motion::snap(b, pos.min(b.len()));
+    let le = line_end(b, p);
+    let ls = line_start(b, p);
+    if p >= le && ls < le {
+        prev_boundary(b, le)
+    } else {
+        p
+    }
 }
 
 /// The active Emacs region as an ordered `[s, e)` byte span, or `None` when no mark is set or the mark
@@ -1255,6 +1270,26 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
             None => nop(cur, st.view.mode),
         },
+        // `` `[ `` — to the FIRST char of the last changed/yanked text. No-op before any change/yank.
+        Command::GotoChangeMarkStart => match st.view.change_mark_start() {
+            Some(pos) => nop(mark_char_target(b, pos), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
+        // `` `] `` — to the LAST char of the last changed/yanked text (EOL-clamped). No-op if unset.
+        Command::GotoChangeMarkEnd => match st.view.change_mark_end() {
+            Some(pos) => nop(mark_char_target(b, pos), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
+        // `'[` — LINEWISE to the first non-blank of the `[` mark's line. No-op if unset.
+        Command::GotoChangeMarkStartLine => match st.view.change_mark_start() {
+            Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
+        // `']` — LINEWISE to the first non-blank of the `]` mark's line. No-op if unset.
+        Command::GotoChangeMarkEndLine => match st.view.change_mark_end() {
+            Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
         // `` `` `` — jump to the context mark (position before the latest jump). No-op before any jump. It is
         // itself a jump (`apply_command` records the leave position AFTER commit), so a repeat toggles.
         Command::GotoContextMark => match st.view.context_mark() {
@@ -1308,7 +1343,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     mode: Mode::Normal,
                     is_edit: false,
                     effects: Vec::new(),
-                    set_register: Some(RegWrite::Yank(reg)),
+                    set_register: Some(RegWrite::Yank(reg, (s, e))),
                     set_anchor: None,
                     set_mark: None,
                 },
@@ -1430,7 +1465,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     mode: st.view.mode,
                     is_edit: false,
                     effects: Vec::new(),
-                    set_register: Some(RegWrite::Yank(reg)),
+                    set_register: Some(RegWrite::Yank(reg, (s, e))),
                     set_anchor: None,
                     set_mark: None,
                 }
@@ -1484,7 +1519,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                         mode: st.view.mode,
                         is_edit: false,
                         effects: Vec::new(),
-                        set_register: Some(RegWrite::Yank(reg)),
+                        set_register: Some(RegWrite::Yank(reg, (s, e))),
                         set_anchor: None,
                         set_mark: None,
                     }
@@ -1696,7 +1731,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     mode: Mode::Normal,
                     is_edit: false,
                     effects: Vec::new(),
-                    set_register: Some(RegWrite::Yank(reg)),
+                    set_register: Some(RegWrite::Yank(reg, (s, e))),
                     set_anchor: None,
                     set_mark: None,
                 },
@@ -1911,7 +1946,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                     mode: st.view.mode,
                     is_edit: false,
                     effects: Vec::new(),
-                    set_register: Some(RegWrite::Yank(reg)),
+                    set_register: Some(RegWrite::Yank(reg, (s, e))),
                     set_anchor: None,
                     set_mark: None,
                 }
@@ -2577,6 +2612,9 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
         text.extend_from_slice(&b[s..e]);
     }
     let reg = Register::blockwise(text);
+    // The `[`/`]` change-mark span for a blockwise yank: top-left corner → bottom-right corner (the end of
+    // the last row's slice). An approximation of Vim's rectangular bracketing, adequate for the mark jump.
+    let block_span = (top_left, rows.last().map_or(top_left, |&(_, e)| e));
     let nop = |mode: Mode| Plan {
         action: Action::Nop,
         cursor: top_left,
@@ -2590,7 +2628,7 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
     match op {
         // Yank leaves the buffer unchanged, cursor at the block's top-left, back to Normal.
         OpKind::Yank => Plan {
-            set_register: Some(RegWrite::Yank(reg)),
+            set_register: Some(RegWrite::Yank(reg, block_span)),
             ..nop(Mode::Normal)
         },
         OpKind::Delete | OpKind::Change => {

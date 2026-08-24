@@ -1572,6 +1572,161 @@ mod single_key_edit_tests {
         crate::editor::apply_command(&mut st, &Command::GotoOlderChange);
         assert_eq!(st.cursor(), at_edit, "g; lands on the single change");
     }
+
+    // --- Vim `[`/`]` change/yank marks (`` `[ `` / `` `] `` / `'[` / `']`) --------------------------
+
+    #[test]
+    fn yank_sets_change_marks_around_the_word() {
+        // "foo bar baz": onto "bar" (byte 4), yiw, then jump the marks.
+        let start = run(
+            "foo bar baz",
+            &[
+                Command::Move(4, Motion::Right),
+                Command::Yank(1, Motion::InnerWord),
+                Command::Move(3, Motion::Right), // move away first
+                Command::GotoChangeMarkStart,
+            ],
+        )
+        .cursor();
+        assert_eq!(start, 4, "`[ lands on the first char of the yanked word");
+        let end = run(
+            "foo bar baz",
+            &[
+                Command::Move(4, Motion::Right),
+                Command::Yank(1, Motion::InnerWord),
+                Command::GotoChangeMarkEnd,
+            ],
+        )
+        .cursor();
+        assert_eq!(end, 6, "`] lands on the last char of the yanked word");
+    }
+
+    #[test]
+    fn insert_sets_change_marks_around_the_typed_run() {
+        // `ihello<Esc>` over "abc" → "helloabc"; `[ = the 'h' (byte 0), `] = the insert end-caret (byte 5,
+        // one past the last inserted char — Neovim's convention), which is interior here so it is not clamped.
+        let typed = [
+            Command::EnterInsert,
+            Command::InsertChar('h'),
+            Command::InsertChar('e'),
+            Command::InsertChar('l'),
+            Command::InsertChar('l'),
+            Command::InsertChar('o'),
+            Command::EnterNormal,
+        ];
+        let start = {
+            let mut cmds = typed.to_vec();
+            cmds.push(Command::GotoChangeMarkStart);
+            run("abc", &cmds).cursor()
+        };
+        assert_eq!(start, 0, "`[ is the first inserted char");
+        let end = {
+            let mut cmds = typed.to_vec();
+            cmds.push(Command::GotoChangeMarkEnd);
+            run("abc", &cmds).cursor()
+        };
+        assert_eq!(
+            end, 5,
+            "`] is the insert end-caret (one past the last inserted char)"
+        );
+    }
+
+    #[test]
+    fn delete_collapses_change_marks_to_the_deletion_point() {
+        // Delete 'c' from "abcdef" → "abdef"; both marks collapse onto the deletion point (byte 2).
+        let start = run(
+            "abcdef",
+            &[
+                Command::Move(2, Motion::Right),
+                Command::DeleteUnder(1),
+                Command::Move(2, Motion::Right), // move away
+                Command::GotoChangeMarkStart,
+            ],
+        )
+        .cursor();
+        assert_eq!(start, 2, "`[ is the deletion point");
+        let end = run(
+            "abcdef",
+            &[
+                Command::Move(2, Motion::Right),
+                Command::DeleteUnder(1),
+                Command::Move(2, Motion::Right),
+                Command::GotoChangeMarkEnd,
+            ],
+        )
+        .cursor();
+        assert_eq!(
+            end, 2,
+            "`] is the deletion point too (a pure delete collapses the marks)"
+        );
+    }
+
+    #[test]
+    fn linewise_put_sets_change_marks_around_the_pasted_line() {
+        // `yyp` over "one\ntwo" → "one\none\ntwo"; the marks bracket the PUT line (2nd "one", bytes 4..7).
+        let base = [
+            Command::Yank(1, Motion::Line),
+            Command::Paste {
+                after: true,
+                count: 1,
+                move_after: false,
+            },
+        ];
+        let start = {
+            let mut cmds = base.to_vec();
+            cmds.push(Command::GotoChangeMarkStart);
+            run("one\ntwo", &cmds).cursor()
+        };
+        assert_eq!(start, 4, "`[ is the first char of the put line");
+        let end = {
+            let mut cmds = base.to_vec();
+            cmds.push(Command::GotoChangeMarkEnd);
+            run("one\ntwo", &cmds).cursor()
+        };
+        assert_eq!(
+            end, 6,
+            "`] is the last char of the put line (trailing '\\n' skipped by the EOL clamp)"
+        );
+    }
+
+    #[test]
+    fn linewise_change_marks_land_on_first_non_blank_of_first_and_last_line() {
+        // `2yy` over "  aa\n  bb\ncc" yanks lines 1-2; `'[` / `']` go to the first non-blank of each.
+        let start = run(
+            "  aa\n  bb\ncc",
+            &[
+                Command::Yank(2, Motion::Line),
+                Command::Move(2, Motion::Down), // move away to line 3
+                Command::GotoChangeMarkStartLine,
+            ],
+        )
+        .cursor();
+        assert_eq!(
+            start, 2,
+            "'[ is the first non-blank of the first yanked line"
+        );
+        let end = run(
+            "  aa\n  bb\ncc",
+            &[
+                Command::Yank(2, Motion::Line),
+                Command::GotoChangeMarkEndLine,
+            ],
+        )
+        .cursor();
+        assert_eq!(end, 7, "'] is the first non-blank of the last yanked line");
+    }
+
+    #[test]
+    fn change_marks_are_noop_before_any_change() {
+        let st = run(
+            "abc",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::GotoChangeMarkStart,
+            ],
+        );
+        assert_eq!(st.cursor(), 1, "no change/yank yet → `[ does not move");
+    }
 }
 
 #[cfg(test)]

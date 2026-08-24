@@ -205,6 +205,17 @@ pub enum Command {
     GotoLastChange,
     /// `'.` — jump LINEWISE to the first non-blank of the last change's line (Vim). No-op before any edit.
     GotoLastChangeLine,
+    /// `` `[ `` — jump to the FIRST char of the previously changed or yanked text (Vim's `[` mark). The mark
+    /// is set automatically after every change (insert/delete/replace/put) and every yank. No-op if unset.
+    GotoChangeMarkStart,
+    /// `` `] `` — jump to the LAST char of the previously changed or yanked text (Vim's `]` mark). For a
+    /// delete/replace/put/yank this is the last char inclusive; for an Insert session it is the insert
+    /// end-caret (Neovim), clamped onto the line's last char when jumping. No-op if unset.
+    GotoChangeMarkEnd,
+    /// `'[` — jump LINEWISE to the first non-blank of the `[` mark's line (first affected line). No-op if unset.
+    GotoChangeMarkStartLine,
+    /// `']` — jump LINEWISE to the first non-blank of the `]` mark's line (last affected line). No-op if unset.
+    GotoChangeMarkEndLine,
     /// `` `` `` — jump to the position before the latest jump (Vim's automatic `` ` ``/`'` context mark).
     /// Reads the newest jumplist entry; being itself a jump, it records where it left, so repeating toggles
     /// between the two positions. A no-op before any jump has happened.
@@ -831,6 +842,10 @@ impl Command {
             }
             Command::GotoLastChange => "goto_last_change".into(),
             Command::GotoLastChangeLine => "goto_last_change_line".into(),
+            Command::GotoChangeMarkStart => "goto_change_mark_start".into(),
+            Command::GotoChangeMarkEnd => "goto_change_mark_end".into(),
+            Command::GotoChangeMarkStartLine => "goto_change_mark_start_line".into(),
+            Command::GotoChangeMarkEndLine => "goto_change_mark_end_line".into(),
             Command::GotoContextMark => "goto_context_mark".into(),
             Command::GotoContextMarkLine => "goto_context_mark_line".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
@@ -1164,6 +1179,10 @@ impl Command {
             }
             "goto_last_change" => Command::GotoLastChange,
             "goto_last_change_line" => Command::GotoLastChangeLine,
+            "goto_change_mark_start" => Command::GotoChangeMarkStart,
+            "goto_change_mark_end" => Command::GotoChangeMarkEnd,
+            "goto_change_mark_start_line" => Command::GotoChangeMarkStartLine,
+            "goto_change_mark_end_line" => Command::GotoChangeMarkEndLine,
             "goto_context_mark" => Command::GotoContextMark,
             "goto_context_mark_line" => Command::GotoContextMarkLine,
             "goto_older_change" => Command::GotoOlderChange,
@@ -1573,6 +1592,10 @@ mod tests {
             },
             Command::GotoLastChange,
             Command::GotoLastChangeLine,
+            Command::GotoChangeMarkStart,
+            Command::GotoChangeMarkEnd,
+            Command::GotoChangeMarkStartLine,
+            Command::GotoChangeMarkEndLine,
             Command::GotoContextMark,
             Command::GotoContextMarkLine,
             Command::GotoNamedMarkLine('a'),

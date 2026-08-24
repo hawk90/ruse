@@ -7659,6 +7659,440 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "yank_word_mark_start",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wyiw$`[",
+      "expect": {
+        "text": [
+          "foo bar baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bar",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "yank_word_mark_end",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wyiw0`]",
+      "expect": {
+        "text": [
+          "foo bar baz"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bar",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "insert_mark_start",
+      "lines": [
+        "abc"
+      ],
+      "keys": "ihello<Esc>0`[",
+      "expect": {
+        "text": [
+          "helloabc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "insert_mark_end",
+      "lines": [
+        "abc"
+      ],
+      "keys": "ihello<Esc>0`]",
+      "expect": {
+        "text": [
+          "helloabc"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "insert_mid_mark_end",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "lliXY<Esc>0`]",
+      "expect": {
+        "text": [
+          "abXYcdef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "put_line_mark_start",
+      "lines": [
+        "one",
+        "two",
+        "three"
+      ],
+      "keys": "ddp`[",
+      "expect": {
+        "text": [
+          "two",
+          "one",
+          "three"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "put_line_mark_end",
+      "lines": [
+        "one",
+        "two",
+        "three"
+      ],
+      "keys": "ddp`]",
+      "expect": {
+        "text": [
+          "two",
+          "one",
+          "three"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "delete_char_mark_start",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "llx`[",
+      "expect": {
+        "text": [
+          "abdef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "delete_char_mark_end",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "llx`]",
+      "expect": {
+        "text": [
+          "abdef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "replace_char_mark_end",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "llrZ`]",
+      "expect": {
+        "text": [
+          "abZdef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "quote_mark_start_line",
+      "lines": [
+        "  aa",
+        "  bb",
+        "cc"
+      ],
+      "keys": "ggVjy'[",
+      "expect": {
+        "text": [
+          "  aa",
+          "  bb",
+          "cc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "  aa\n  bb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "  aa\n  bb\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "quote_mark_end_line",
+      "lines": [
+        "  aa",
+        "  bb",
+        "cc"
+      ],
+      "keys": "ggVjy']",
+      "expect": {
+        "text": [
+          "  aa",
+          "  bb",
+          "cc"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "  aa\n  bb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "  aa\n  bb\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "multiline_change_mark_start",
+      "lines": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "keys": "2ccabc<Esc>`[",
+      "expect": {
+        "text": [
+          "abc",
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "alpha\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "multiline_change_mark_end",
+      "lines": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "keys": "2ccabc<Esc>`]",
+      "expect": {
+        "text": [
+          "abc",
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "alpha\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "linewise_yank_mark_end",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "yy`]",
+      "expect": {
+        "text": [
+          "one",
+          "two"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "one\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "one\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "open_line_mark_start",
+      "lines": [
+        "abc"
+      ],
+      "keys": "ohi<Esc>`[",
+      "expect": {
+        "text": [
+          "abc",
+          "hi"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "open_line_mark_end",
+      "lines": [
+        "abc"
+      ],
+      "keys": "ohi<Esc>`]",
+      "expect": {
+        "text": [
+          "abc",
+          "hi"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }
