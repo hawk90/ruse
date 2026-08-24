@@ -2969,6 +2969,20 @@ impl InputEngine {
                     KeyCode::Char('m') if open_bracket => self.motion(Motion::MethodStartBack),
                     KeyCode::Char('M') if !open_bracket => self.motion(Motion::MethodEndFwd),
                     KeyCode::Char('M') if open_bracket => self.motion(Motion::MethodEndBack),
+                    // Keyword-line lookup (`:help [i`) — DISPLAY the line(s) containing the keyword under
+                    // the cursor (current buffer). `[i`/`]i` echo the count'th match (`[` from the top of
+                    // the file, `]` below the cursor); `[I`/`]I` list all matches. The frontend resolves
+                    // the keyword and scans the lines (the engine has no buffer), like `*`/`gd`.
+                    KeyCode::Char('i') => self.action(Command::ShowKeywordLines {
+                        above: open_bracket,
+                        list: false,
+                        count,
+                    }),
+                    KeyCode::Char('I') => self.action(Command::ShowKeywordLines {
+                        above: open_bracket,
+                        list: true,
+                        count,
+                    }),
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }

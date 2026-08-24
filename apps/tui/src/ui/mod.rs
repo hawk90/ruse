@@ -6,6 +6,7 @@ pub(crate) mod buffer_picker;
 pub(crate) mod diag_picker;
 pub(crate) mod digraph_picker;
 pub(crate) mod file_picker;
+pub(crate) mod keyword_lines_picker;
 pub(crate) mod layout;
 pub(crate) mod line_picker;
 pub(crate) mod marks_picker;

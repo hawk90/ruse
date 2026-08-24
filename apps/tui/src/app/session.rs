@@ -324,6 +324,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut reg_picker: Option<Picker<char>> = None;
     // `:digraphs` listing — payload is the glyph; view-only (Enter just closes), like `reg_picker`.
     let mut digraph_picker: Option<Picker<char>> = None;
+    // `[I`/`]I` keyword-line listing — payload is the match's 1-based line number; view-only (Enter closes).
+    let mut keyword_lines_picker: Option<Picker<usize>> = None;
     // F-003: the `:marks` viewer — payload is the mark's byte offset; Enter jumps the cursor there.
     let mut marks_picker: Option<Picker<usize>> = None;
     // F-003: the shared `:jumps` / `:changes` position viewer — payload is a byte offset; Enter jumps.
@@ -472,6 +474,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = digraph_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = keyword_lines_picker.as_ref() {
+            p.rows()
         } else if let Some(p) = marks_picker.as_ref() {
             p.rows()
         } else if let Some(p) = pos_picker.as_ref() {
@@ -504,6 +508,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('"', p.query.as_str())) // registers-viewer prompt (" = registers)
         } else if let Some(p) = digraph_picker.as_ref() {
             Some(('§', p.query.as_str())) // digraph-listing prompt (§ = digraphs)
+        } else if let Some(p) = keyword_lines_picker.as_ref() {
+            Some(('i', p.query.as_str())) // keyword-line listing prompt (i = [I/]I identifiers)
         } else if let Some(p) = marks_picker.as_ref() {
             Some(('\'', p.query.as_str())) // marks-viewer prompt (' = marks)
         } else if let Some(p) = pos_picker.as_ref() {
@@ -831,6 +837,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if let Some(outcome) = digraph_picker.as_mut().map(|p| p.on_key(key)) {
             if !matches!(outcome, PickOutcome::Continue) {
                 digraph_picker = None;
+            }
+            continue;
+        }
+        // The `[I`/`]I` keyword-line listing is view-only (Vim only displays) — any non-Continue closes it.
+        if let Some(outcome) = keyword_lines_picker.as_mut().map(|p| p.on_key(key)) {
+            if !matches!(outcome, PickOutcome::Continue) {
+                keyword_lines_picker = None;
             }
             continue;
         }
@@ -1781,6 +1794,50 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 // buffer's bytes + cursor here and formats the message via the pure `ruse_core::info` helpers.
                 if let Some(msg) = info_status(&cmd, &ws) {
                     status = msg;
+                    continue;
+                }
+                // `[i`/`]i`/`[I`/`]I` (keyword under cursor): the engine has no buffer, so resolve the
+                // keyword here and scan the buffer lines. `[i`/`]i` echo the count'th match on the status
+                // line; `[I`/`]I` open a view-only listing overlay. Purely a display command (never planned).
+                // No keyword under the cursor → `E349` (like nvim; note `*`/`gd` use `E348`, a different code).
+                if let Command::ShowKeywordLines { above, list, count } = cmd {
+                    match ws.word_under_cursor() {
+                        Some(keyword) => {
+                            let pane = ws.focused();
+                            let bytes = pane.doc.bytes();
+                            let cursor_line =
+                                ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
+                            let matches = ruse_core::keyword_line_numbers(bytes, &keyword);
+                            if list {
+                                let rows: Vec<(usize, String)> =
+                                    ruse_core::keyword_list(&matches, cursor_line, above)
+                                        .into_iter()
+                                        .map(|l| (l, ruse_core::line_text(bytes, l)))
+                                        .collect();
+                                status = format!("{} line(s) matching \"{keyword}\"", rows.len());
+                                keyword_lines_picker =
+                                    Some(crate::ui::keyword_lines_picker::open(&rows));
+                            } else {
+                                status = match ruse_core::keyword_echo(
+                                    &matches,
+                                    cursor_line,
+                                    above,
+                                    count as usize,
+                                ) {
+                                    ruse_core::KeywordEcho::Line(l) => {
+                                        ruse_core::line_text(bytes, l)
+                                    }
+                                    ruse_core::KeywordEcho::CurrentLine => {
+                                        "E387: Match is on current line".into()
+                                    }
+                                    ruse_core::KeywordEcho::NotFound => {
+                                        "E389: Couldn't find pattern".into()
+                                    }
+                                };
+                            }
+                        }
+                        None => status = "E349: No identifier under cursor".into(),
+                    }
                     continue;
                 }
                 // `*`/`#` (word under cursor): the engine has no buffer, so resolve the keyword here, then

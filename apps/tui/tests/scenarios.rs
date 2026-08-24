@@ -1876,3 +1876,70 @@ fn q_with_no_recording_is_a_noop_end_to_end() {
         "Q before any recording does nothing"
     );
 }
+
+/// Mirror session.rs's `[i`/`]i` resolution: resolve the keyword under the cursor and echo the count'th
+/// matching line's text (or the E387/E389/E349 status), exactly as the run loop does for the single forms.
+fn keyword_echo_status(ws: &Workspace, above: bool, count: u32) -> String {
+    match ws.word_under_cursor() {
+        Some(keyword) => {
+            let pane = ws.focused();
+            let bytes = pane.doc.bytes();
+            let cursor_line = ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
+            let matches = ruse_core::keyword_line_numbers(bytes, &keyword);
+            match ruse_core::keyword_echo(&matches, cursor_line, above, count as usize) {
+                ruse_core::KeywordEcho::Line(l) => ruse_core::line_text(bytes, l),
+                ruse_core::KeywordEcho::CurrentLine => "E387: Match is on current line".into(),
+                ruse_core::KeywordEcho::NotFound => "E389: Couldn't find pattern".into(),
+            }
+        }
+        None => "E349: No identifier under cursor".into(),
+    }
+}
+
+#[test]
+fn keyword_line_lookup_end_to_end_echo_and_list() {
+    let (mut e, mut ws) = session(
+        "alpha foo beta\n    indented foo here\nfoo epsilon\nzeta eta\ntheta foo iota\nfoobar notmatch\n",
+    );
+    // Move to line 3 (`foo epsilon`), cursor on `foo`.
+    feed_str(&mut e, &mut ws, "2j");
+    // Drive `[i` through the real engine and confirm the emitted command (the binding).
+    let mode = ws.focused().view.mode();
+    e.feed(KeyEvent::new(KeyCode::Char('['), KeyModifiers::NONE), mode);
+    let f = e.feed(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE), mode);
+    assert_eq!(
+        f,
+        Feed::Cmd(Command::ShowKeywordLines {
+            above: true,
+            list: false,
+            count: 1,
+        })
+    );
+    // `[i` from line 3 → first whole-word match from the TOP = line 1 (`foobar` on line 6 is excluded).
+    assert_eq!(keyword_echo_status(&ws, true, 1), "alpha foo beta");
+    // `]i` from line 3 → first match strictly BELOW = line 5.
+    assert_eq!(keyword_echo_status(&ws, false, 1), "theta foo iota");
+    // `2[i` → second match from the top = line 2, with its indentation preserved verbatim.
+    assert_eq!(keyword_echo_status(&ws, true, 2), "    indented foo here");
+    // The list forms (`[I`/`]I`) feed a picker from `keyword_list` + `line_text`.
+    let pane = ws.focused();
+    let bytes = pane.doc.bytes();
+    let cursor_line = ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
+    let m = ruse_core::keyword_line_numbers(bytes, &ws.word_under_cursor().unwrap());
+    assert_eq!(
+        ruse_core::keyword_list(&m, cursor_line, true),
+        vec![1, 2, 3, 5]
+    );
+    assert_eq!(ruse_core::keyword_list(&m, cursor_line, false), vec![5]);
+}
+
+#[test]
+fn keyword_line_lookup_reports_e349_off_a_keyword() {
+    let (mut e, mut ws) = session("foo\n\nbar\n");
+    // Cursor starts on line 1 (`foo`); move onto the empty line 2, which has no keyword.
+    feed_str(&mut e, &mut ws, "j");
+    assert_eq!(
+        keyword_echo_status(&ws, true, 1),
+        "E349: No identifier under cursor"
+    );
+}

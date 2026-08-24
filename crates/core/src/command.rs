@@ -600,6 +600,20 @@ pub enum Command {
     /// char. No match keeps the cursor (Vim rings the bell). A JUMP — records the leaving position so
     /// `CTRL-O` returns. The pattern is carried so traces replay deterministically (like [`SearchNext`]).
     GotoFirstMatch(String),
+    /// `[i` / `]i` / `[I` / `]I` — DISPLAY the line(s) in the CURRENT buffer containing the keyword under
+    /// the cursor (`:help [i`). `above` = the `[` forms (scan from the TOP of the file); `!above` = the
+    /// `]` forms (below the cursor line). `list` = the uppercase `[I`/`]I` list-ALL forms; `!list` = the
+    /// lowercase single-line echo. `count` selects the N-th match for the single forms (ignored by the
+    /// list forms). Purely a display command (no buffer mutation): the input engine has no buffer, so the
+    /// FRONTEND resolves the keyword and scans the lines (like [`SearchWordUnder`]/[`GotoDeclaration`])
+    /// and never plans it. The `#include`-following forms (`:checkpath`, searching included files) are
+    /// OUT (cross-file); ruse has no `iskeyword`, so word boundaries follow the Word class (alnum/`_`/
+    /// non-ASCII) — a documented divergence. Formats verified against nvim v0.12.4.
+    ShowKeywordLines {
+        above: bool,
+        list: bool,
+        count: u32,
+    },
     /// `{count}/{pattern}<CR>` (forward) or `{count}?{pattern}<CR>` (backward) as a MOTION: bare it moves
     /// to the `count`-th match in `backward`'s direction; under an operator (`op`) it folds into a charwise-
     /// EXCLUSIVE edit over `[cursor, match)` forward, or `[match, cursor)` backward (`d/pat`, `c?pat`,
@@ -1291,6 +1305,11 @@ impl Command {
             }
             // Pattern is LAST so it may contain spaces (like search_next).
             Command::GotoFirstMatch(p) => format!("goto_first_match {p}"),
+            Command::ShowKeywordLines { above, list, count } => format!(
+                "show_keyword_lines {} {} {count}",
+                if *above { "above" } else { "below" },
+                if *list { "list" } else { "echo" }
+            ),
             // Direction + offset before the pattern (pattern is LAST so it may contain spaces, like
             // search_next). The offset token is whitespace-free so it never collides with the pattern.
             Command::Search {
@@ -1805,6 +1824,13 @@ impl Command {
                 global: matches!(raw.split_whitespace().next(), Some("global")),
             },
             "goto_first_match" => Command::GotoFirstMatch(raw.to_string()),
+            "show_keyword_lines" => {
+                let mut it = raw.split_whitespace();
+                let above = !matches!(it.next(), Some("below"));
+                let list = matches!(it.next(), Some("list"));
+                let count = it.next().and_then(|c| c.parse().ok()).unwrap_or(1);
+                Command::ShowKeywordLines { above, list, count }
+            }
             "search" => {
                 // `search {op} {count} {fwd|bwd} {offset} {pattern...}` — pattern is the untrimmed
                 // remainder (may contain spaces); the offset token is whitespace-free.
@@ -1988,6 +2014,26 @@ mod tests {
             Command::GotoDeclaration { global: true },
             Command::GotoFirstMatch("\\<foo\\>".into()),
             Command::GotoFirstMatch("bar baz".into()),
+            Command::ShowKeywordLines {
+                above: true,
+                list: false,
+                count: 1,
+            },
+            Command::ShowKeywordLines {
+                above: false,
+                list: false,
+                count: 3,
+            },
+            Command::ShowKeywordLines {
+                above: true,
+                list: true,
+                count: 1,
+            },
+            Command::ShowKeywordLines {
+                above: false,
+                list: true,
+                count: 1,
+            },
             Command::InsertAtLastInsert,
             Command::AsciiInfo,
             Command::FileInfo,
