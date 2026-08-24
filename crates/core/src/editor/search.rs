@@ -42,6 +42,54 @@ pub(crate) fn match_spans(b: &[u8], pattern: &str, opts: pattern::Options) -> Ve
         .collect()
 }
 
+/// The last landable cursor byte in `b` — the last char of the last line (Vim never rests the Normal
+/// cursor past it, nor on a line-terminating `\n`). `0` for an empty buffer. The clamp target when a
+/// rightward character offset (`/pat/e+N`) runs off the end of the buffer.
+fn last_landable(b: &[u8]) -> usize {
+    let mut p = b.len();
+    while p > 0 {
+        let pp = crate::motion::prev_boundary(b, p);
+        if b[pp] != b'\n' {
+            return pp;
+        }
+        p = pp;
+    }
+    0
+}
+
+/// Move `n` CHARACTERS from `pos` (right if `n > 0`, left if `n < 0`), crossing line boundaries the way
+/// Vim's `e`/`s`/`b` search offsets do (`:help search-offset`): one step right off a line's last char
+/// lands on the NEXT line's first column, and a line-terminating `\n` is never itself a landing spot.
+/// Clamps to the buffer — running off the end stops on the last landable char, off the front stops at 0.
+/// (Empty lines are a documented corner: a char offset stepping ACROSS a truly empty line skips over it.)
+pub(crate) fn step_char(b: &[u8], pos: usize, n: i32) -> usize {
+    let mut p = pos.min(b.len());
+    if n >= 0 {
+        for _ in 0..n {
+            let mut np = crate::motion::next_boundary(b, p);
+            while np < b.len() && b[np] == b'\n' {
+                np = crate::motion::next_boundary(b, np);
+            }
+            if np >= b.len() {
+                return last_landable(b);
+            }
+            p = np;
+        }
+    } else {
+        for _ in 0..n.unsigned_abs() {
+            if p == 0 {
+                return 0;
+            }
+            let mut pp = crate::motion::prev_boundary(b, p);
+            while pp > 0 && b[pp] == b'\n' {
+                pp = crate::motion::prev_boundary(b, pp);
+            }
+            p = pp;
+        }
+    }
+    p
+}
+
 /// The byte offset of the previous match starting strictly before `before`, wrapping to the last match.
 pub(crate) fn search_bwd(
     b: &[u8],

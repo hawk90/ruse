@@ -6,7 +6,8 @@
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
 use crate::command::{
-    BlockInsertKind, Command, ForcedWise, MarkOp, OpKind, OpenKind, SearchOp, SelectKind, WordCase,
+    BlockInsertKind, Command, ForcedWise, MarkOp, OpKind, OpenKind, SearchOffset, SearchOp,
+    SelectKind, WordCase,
 };
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
@@ -1534,7 +1535,7 @@ mod range;
 pub(crate) use range::*;
 
 mod search;
-use search::{match_spans, search_bwd, search_fwd};
+use search::{match_spans, search_bwd, search_fwd, step_char};
 
 mod substitute;
 /// The options a `:sort` carries (parsed by the frontend from `[!][i][n][r][u] [/pattern/]`). Grouped into

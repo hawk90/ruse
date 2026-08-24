@@ -42,8 +42,8 @@ pub mod workspace;
 pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
 pub use clipboard::{Clipboard, MemClipboard, NoClipboard};
 pub use command::{
-    BlockInsertKind, Command, CommandParseError, ForcedWise, MarkOp, OpKind, OpenKind, SearchOp,
-    SelectKind, WordCase,
+    BlockInsertKind, Command, CommandParseError, ForcedWise, MarkOp, OpKind, OpenKind,
+    SearchOffset, SearchOp, SelectKind, WordCase,
 };
 pub use document::{Document, DocumentId, TxnError};
 pub use edit::{Edit, EditError, EditList};

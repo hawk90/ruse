@@ -8,7 +8,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Resolved, UnmatchedKey};
 use ruse_core::{
     BlockInsertKind, Command, EditorOption, ForcedWise, GlobalCmd, LineAddr, MarkOp, Mode, Motion,
-    OpKind, SearchOp, SelectKind, SubFlags, SubRange, WordCase,
+    OpKind, SearchOffset, SearchOp, SelectKind, SubFlags, SubRange, WordCase,
 };
 
 /// The outcome of feeding one key to the engine.
@@ -261,10 +261,12 @@ pub struct InputEngine {
     normal: NormalState,
     /// Sticky (survives command completion): the last char-search `(ch, forward, till)`, for `;`/`,`.
     last_find: Option<(char, bool, bool)>,
-    /// Sticky: the last search `(pattern, forward)`, for `n`/`N`. `forward` records the DIRECTION the
-    /// search was issued in (`/` = true, `?` = false) so `n` repeats in the SAME direction and `N` in the
-    /// OPPOSITE — the frontend maps them onto [`Command::SearchNext`]/[`Command::SearchPrev`] accordingly.
-    last_search: Option<(String, bool)>,
+    /// Sticky: the last search `(pattern, forward, offset)`, for `n`/`N`. `forward` records the DIRECTION
+    /// the search was issued in (`/` = true, `?` = false) so `n` repeats in the SAME direction and `N` in
+    /// the OPPOSITE. `offset` is the [`SearchOffset`] the search carried (`:help search-offset`); `n`/`N`
+    /// reapply it by re-issuing a [`Command::Search`] with the stored offset rather than a plain
+    /// [`Command::SearchNext`]/[`Command::SearchPrev`], so `/foo/e` then `n` lands on the next match's end.
+    last_search: Option<(String, bool, SearchOffset)>,
     /// Sticky: the last completed change, replayed by `.` (dot-repeat). `None` until the first change, so
     /// a bare `.` before any edit is a clean no-op.
     last_change: Option<ChangeIntent>,
@@ -794,40 +796,68 @@ impl InputEngine {
     /// `d?pat`/`c?pat`/`y?pat` operates over the exclusive span between cursor and match. Records
     /// `(pattern, direction)` for `n`/`N`. An EMPTY pattern reuses the last search pattern in the CURRENT
     /// direction (Vim's `?<CR>` / `/<CR>`); with no prior search it aborts, dropping the armed operator.
-    pub fn submit_search(&mut self, pattern: String, backward: bool) -> Feed {
+    pub fn submit_search(&mut self, line: String, backward: bool) -> Feed {
         self.cmdline = None; // completing a search closes the command-line namespace (F-026)
         let (op, count) = self.pending_search.take().unwrap_or((SearchOp::Move, 1));
-        // Empty pattern → reuse the last search's PATTERN, but adopt THIS line's direction (Vim: `?<CR>`
-        // repeats the last pattern backward even if it was last searched forward).
-        let pattern = if pattern.is_empty() {
+        // Split the raw line into `{pattern}` + `{offset}` on the LAST unescaped delimiter (`/` forward,
+        // `?` backward) — a `\/` in the pattern is literal (`:help search-offset`). `off` is `None` when
+        // no offset part is present (`/foo`, `/foo/`), which distinguishes "reuse the last offset" from
+        // "explicitly no offset" for the empty-pattern repeat below.
+        let delim = if backward { '?' } else { '/' };
+        let (raw_pattern, off) = split_search_offset(&line, delim);
+        // Empty pattern → reuse the last search's PATTERN (Vim: `/<CR>` / `?<CR>` repeat it), adopting THIS
+        // line's direction. A new offset on the empty line replaces the stored one; no offset part reuses
+        // it (so `//e` re-searches the last pattern with `e`, and `//` repeats pattern AND offset).
+        let (pattern, offset) = if raw_pattern.is_empty() {
             match &self.last_search {
-                Some((p, _)) => p.clone(),
+                Some((p, _, last_off)) => (p.clone(), off.unwrap_or(*last_off)),
                 None => return Feed::Ignored,
             }
         } else {
-            pattern
+            (raw_pattern, off.unwrap_or(SearchOffset::None))
         };
-        self.last_search = Some((pattern.clone(), !backward));
+        self.last_search = Some((pattern.clone(), !backward, offset));
         Feed::Cmd(Command::Search {
             op,
             count,
             pattern,
             backward,
+            offset,
         })
+    }
+
+    /// `n` (`opposite = false`) / `N` (`opposite = true`): repeat the last search, REAPPLYING its offset.
+    /// `n` keeps the stored direction, `N` flips it. Routed through [`Command::Search`] (carrying the
+    /// offset) so the offset-aware match rule advances correctly even when the offset landed the cursor
+    /// before the match. No prior search → the key is unmatched (falls through to the outer namespace).
+    fn repeat_search(&mut self, opposite: bool, key: KeyEvent) -> Feed {
+        match self.last_search.clone() {
+            Some((pattern, forward, offset)) => {
+                let backward = if opposite { forward } else { !forward };
+                self.action(Command::Search {
+                    op: SearchOp::Move,
+                    count: 1,
+                    pattern,
+                    backward,
+                    offset,
+                })
+            }
+            None => self.unmatched(Ns::Normal, key),
+        }
     }
 
     /// Record `pattern` as the last search (with its `forward` direction) so `n`/`N` repeat it. Used by the
     /// frontend after it resolves a `*`/`#` (word-under-cursor) search, whose pattern is known only once the
-    /// buffer is read: `*` is forward, `#` backward.
+    /// buffer is read: `*` is forward, `#` backward. These carry no offset ([`SearchOffset::None`]).
     pub fn set_last_search(&mut self, pattern: String, forward: bool) {
-        self.last_search = Some((pattern, forward));
+        self.last_search = Some((pattern, forward, SearchOffset::None));
     }
 
     /// The last search pattern (`/`, `?`, `*`, `#`), or `None` if nothing has been searched yet. The
     /// frontend reads it to resolve an empty `:s//repl/` pattern, which Vim fills from the last search.
     #[must_use]
     pub fn last_search(&self) -> Option<&str> {
-        self.last_search.as_ref().map(|(p, _)| p.as_str())
+        self.last_search.as_ref().map(|(p, _, _)| p.as_str())
     }
 
     /// End the current Normal-grammar sequence: the Normal-family layer drops its OWN transient state
@@ -1064,7 +1094,7 @@ impl InputEngine {
     /// prior search there is nothing to match, so the pending construct aborts (leaking no state). Emitted as
     /// a single [`Command::SearchObject`] with the pattern baked in, so `.` can replay `cgn`.
     fn search_object(&mut self, backward: bool) -> Feed {
-        let Some((pattern, _)) = self.last_search.clone() else {
+        let Some((pattern, _, _)) = self.last_search.clone() else {
             // No prior search — nothing to match; abort the pending construct, leaking no state.
             self.reset();
             return Feed::Ignored;
@@ -2131,18 +2161,13 @@ impl InputEngine {
             // (`RepeatSubstituteGlobal`, in the `g` tier). Frontend-resolved against the last-`:s` state.
             KeyCode::Char('&') => self.action(Command::RepeatSubstituteLine),
             // `n` repeats the last search in the SAME direction it was issued; `N` in the OPPOSITE. So
-            // after `?foo`, `n` continues BACKWARD (`SearchPrev`) and `N` goes forward (`SearchNext`);
-            // after `/foo` they stay forward-relative. Direction comes from the stored last-search flag.
-            KeyCode::Char('n') => match self.last_search.clone() {
-                Some((p, true)) => self.action(Command::SearchNext(p)),
-                Some((p, false)) => self.action(Command::SearchPrev(p)),
-                None => self.unmatched(Ns::Normal, key),
-            },
-            KeyCode::Char('N') => match self.last_search.clone() {
-                Some((p, true)) => self.action(Command::SearchPrev(p)),
-                Some((p, false)) => self.action(Command::SearchNext(p)),
-                None => self.unmatched(Ns::Normal, key),
-            },
+            // after `?foo`, `n` continues BACKWARD and `N` goes forward; after `/foo` they stay
+            // forward-relative. Direction comes from the stored last-search flag. Both REAPPLY the stored
+            // offset (`:help search-offset`), so they route through [`Command::Search`] (which carries the
+            // offset) rather than the plain `SearchNext`/`SearchPrev`; the offset-aware match rule advances
+            // past the current match even when the offset landed the cursor before it (`s-1`).
+            KeyCode::Char('n') => self.repeat_search(false, key),
+            KeyCode::Char('N') => self.repeat_search(true, key),
             // `*`/`#` — search the whole keyword under the cursor forward / backward. The frontend reads
             // the word from the buffer and rewrites this to a concrete search (the engine has no buffer).
             KeyCode::Char('*') => self.action(Command::SearchWordUnder {
@@ -2583,6 +2608,40 @@ pub(crate) use ex::reuse_last_search;
 pub use ex::{parse_ex, BufTarget, Ex, GlobalPayload};
 #[cfg(test)]
 pub(crate) use ex::{parse_substitute, GlobalSpec, SubSpec};
+
+/// Split a raw search line into `(pattern, offset)` on the LAST unescaped `delim` (`/` for a forward
+/// search, `?` for a backward one) — Vim's `/{pattern}/{offset}` grammar (`:help search-offset`). A
+/// delimiter preceded by an odd run of backslashes is escaped (part of the pattern), so `foo\/bar/e`
+/// splits into `("foo\/bar", Some(e))`. A present-but-unrecognized offset parses to [`SearchOffset::None`].
+///
+/// The returned offset is `None` ONLY when NO delimiter is present (`foo`); a delimiter with an empty
+/// offset part (`foo/`, or the `//` repeat) yields `Some(SearchOffset::None)`. This distinction matters
+/// for the empty-pattern repeat: a bare `/<CR>` (no delimiter) reuses the last offset, whereas `//<CR>`
+/// (a typed delimiter, empty offset) explicitly resets to NO offset — matching nvim (`/foo/e` then `//`
+/// lands on the match start, but then `/<CR>` reuses `e`).
+fn split_search_offset(line: &str, delim: char) -> (String, Option<SearchOffset>) {
+    let bytes = line.as_bytes();
+    let dl = delim as u8; // both `/` and `?` are single ASCII bytes
+    let mut last: Option<usize> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            i += 2; // skip the escaped char (a `\/` is a literal delimiter in the pattern)
+            continue;
+        }
+        if bytes[i] == dl {
+            last = Some(i);
+        }
+        i += 1;
+    }
+    match last {
+        Some(idx) => (
+            line[..idx].to_string(),
+            Some(SearchOffset::parse(&line[idx + 1..])),
+        ),
+        None => (line.to_string(), None),
+    }
+}
 
 #[cfg(test)]
 mod unit_tests;

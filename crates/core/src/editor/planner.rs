@@ -184,6 +184,125 @@ fn plan_search(
     count: u32,
     pattern: &str,
     backward: bool,
+    offset: SearchOffset,
+    hint: GroupHint,
+) -> Plan {
+    match offset {
+        // A LINE offset (`/pat/+1`) reshapes the whole motion into a linewise one; the others (none /
+        // `s` / `e`) stay charwise. Split so each keeps its own, simpler geometry.
+        SearchOffset::Line(n) => {
+            plan_search_line(st, b, cur, op, count, pattern, backward, n, hint)
+        }
+        _ => plan_search_char(st, b, cur, op, count, pattern, backward, offset, hint),
+    }
+}
+
+/// A charwise search motion with no offset or an `s`/`e`/`b` character offset (`:help search-offset`).
+///
+/// The landing is the offset-applied position of the count-th match found in the search direction. The
+/// match is picked by comparing OFFSET-APPLIED positions against the cursor (`> cursor` forward,
+/// `< cursor` backward, wrapping): this single rule reproduces every nvim case — fresh searches, `n`/`N`,
+/// and retyping — because after any offset search the cursor already sits at the previous landing, so the
+/// same comparison advances past it (even when the offset, e.g. `s-1`, lands the cursor *before* the
+/// match). Under an operator the span is `[cursor, target)` EXCLUSIVE, except an `e` (End) offset makes it
+/// INCLUSIVE through the offset char (Vim: only `e` turns the motion inclusive).
+#[allow(clippy::too_many_arguments)]
+fn plan_search_char(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    op: &SearchOp,
+    count: u32,
+    pattern: &str,
+    backward: bool,
+    offset: SearchOffset,
+    hint: GroupHint,
+) -> Plan {
+    let spans = match_spans(b, pattern, st.view.search_options());
+    if spans.is_empty() {
+        return nop(cur, st.view.mode);
+    }
+    // The offset-applied cursor landing for a match `[s, e)`.
+    let landing = |(s, e): (usize, usize)| -> usize {
+        match offset {
+            SearchOffset::None | SearchOffset::Start(0) => s,
+            SearchOffset::Start(k) => step_char(b, s, k),
+            // `e` is relative to the match's LAST char (`e` = end-exclusive `e`, so back up one boundary).
+            SearchOffset::End(k) => step_char(b, prev_boundary(b, e), k),
+            SearchOffset::Line(_) => unreachable!("line offsets take plan_search_line"),
+        }
+    };
+    let mut pos = cur;
+    let mut landed: Option<usize> = None;
+    for _ in 0..count.max(1) {
+        let next = if backward {
+            (spans.iter().map(|&sp| landing(sp)).filter(|&lp| lp < pos))
+                .max()
+                .or_else(|| spans.iter().map(|&sp| landing(sp)).max())
+        } else {
+            (spans.iter().map(|&sp| landing(sp)).filter(|&lp| lp > pos))
+                .min()
+                .or_else(|| spans.iter().map(|&sp| landing(sp)).min())
+        };
+        match next {
+            Some(lp) => {
+                pos = lp;
+                landed = Some(lp);
+            }
+            None => break,
+        }
+    }
+    let Some(target) = landed else {
+        return nop(cur, st.view.mode);
+    };
+    if matches!(op, SearchOp::Move) {
+        return nop(target, st.view.mode);
+    }
+    // Operator span `[lo, hi)`; `e` extends the high end by one char (inclusive through the offset char).
+    let (lo, mut hi) = if backward {
+        (target, cur)
+    } else {
+        (cur, target)
+    };
+    if matches!(offset, SearchOffset::End(_)) {
+        hi = next_boundary(b, hi);
+    }
+    if hi <= lo {
+        return nop(cur, st.view.mode);
+    }
+    let reg = captured(b, lo, hi, false);
+    match op {
+        SearchOp::Delete => edit_yank(one(Edit::delete(lo, hi - lo)), lo, st.view.mode, hint, reg),
+        SearchOp::Change => edit_yank(one(Edit::delete(lo, hi - lo)), lo, Mode::Insert, hint, reg),
+        SearchOp::Yank => Plan {
+            action: Action::Nop,
+            cursor: lo,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: Some(RegWrite::Yank(reg, (lo, hi))),
+            set_anchor: None,
+            set_mark: None,
+        },
+        SearchOp::Move => unreachable!("Move handled above"),
+    }
+}
+
+/// A search motion with a LINE offset (`/pat/+N`, `/pat/-N`, `/pat/N`). The match is found by the plain
+/// rule (count-th match with start beyond the cursor in the search direction, wrapping) — the line offset
+/// only reshapes the RESULT. As a bare motion (`Move`) the cursor lands on COLUMN 0 of the target line
+/// (Vim "column 1" — NOT the first non-blank; verified against nvim v0.12.4). Under an operator the motion
+/// is LINEWISE over the lines between the cursor's line and the target line.
+#[allow(clippy::too_many_arguments)]
+fn plan_search_line(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    op: &SearchOp,
+    count: u32,
+    pattern: &str,
+    backward: bool,
+    n: i32,
     hint: GroupHint,
 ) -> Plan {
     let opts = st.view.search_options();
@@ -196,38 +315,69 @@ fn plan_search(
         };
         match step {
             Some(m) => pos = m,
-            None => break,
+            None => return nop(cur, st.view.mode),
         }
     }
-    // The operator span is always `[lo, hi)` with `lo < hi`; the direction only decides which end the
-    // match is. Bare `Move` just relocates the cursor to the match.
-    let (lo, hi) = if backward { (pos, cur) } else { (cur, pos) };
+    let last_line = crate::pos::line_of(b, b.len());
+    let match_line = crate::pos::line_of(b, pos);
+    let target_line = (match_line as i64 + i64::from(n)).clamp(0, last_line as i64) as usize;
+    if matches!(op, SearchOp::Move) {
+        // Column 0 of the target line (snapped/clamped in `commit`).
+        return nop(crate::pos::nth_line_start(b, target_line), st.view.mode);
+    }
+    // Linewise over the cursor's line .. target line (inclusive), regardless of search direction.
+    let cur_line = crate::pos::line_of(b, cur);
+    let (first, last) = (cur_line.min(target_line), cur_line.max(target_line));
+    let first_ls = crate::pos::nth_line_start(b, first);
+    let last_content_end = line_end(b, crate::pos::nth_line_start(b, last));
+    if matches!(op, SearchOp::Change) {
+        return plan_linewise_change(b, first_ls, last_content_end, hint);
+    }
+    // Delete / Yank: the whole-line span including the terminating newline (or, when it is the buffer's
+    // final line with no trailing newline, splice away the PREVIOUS line's newline so the line is removed
+    // outright rather than blanked — mirroring the linewise `d{motion}` branch).
+    let reg = captured(b, first_ls, whole_line_span_end(b, last_content_end), true);
+    let (del_start, del_end) =
+        if last_content_end == b.len() && first_ls > 0 && b[last_content_end - 1] != b'\n' {
+            (first_ls - 1, b.len())
+        } else {
+            (first_ls, whole_line_span_end(b, last_content_end))
+        };
     match op {
-        SearchOp::Move => nop(pos, st.view.mode),
-        // No match on the operative side of the cursor (forward: match not past cursor; backward: match
-        // not before cursor) — abort cleanly rather than emit a reversed/empty edit.
-        _ if hi <= lo => nop(cur, st.view.mode),
         SearchOp::Delete => {
-            let reg = captured(b, lo, hi, false);
-            edit_yank(one(Edit::delete(lo, hi - lo)), lo, st.view.mode, hint, reg)
+            let cursor = line_start(b, del_start);
+            edit_yank(
+                one(Edit::delete(del_start, del_end - del_start)),
+                cursor,
+                st.view.mode,
+                hint,
+                reg,
+            )
         }
-        SearchOp::Change => {
-            let reg = captured(b, lo, hi, false);
-            edit_yank(one(Edit::delete(lo, hi - lo)), lo, Mode::Insert, hint, reg)
-        }
-        SearchOp::Yank => {
-            let reg = captured(b, lo, hi, false);
-            Plan {
-                action: Action::Nop,
-                cursor: lo,
-                mode: st.view.mode,
-                is_edit: false,
-                effects: Vec::new(),
-                set_register: Some(RegWrite::Yank(reg, (lo, hi))),
-                set_anchor: None,
-                set_mark: None,
-            }
-        }
+        SearchOp::Yank => Plan {
+            action: Action::Nop,
+            cursor: first_ls,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: Some(RegWrite::Yank(
+                reg,
+                (first_ls, whole_line_span_end(b, last_content_end)),
+            )),
+            set_anchor: None,
+            set_mark: None,
+        },
+        SearchOp::Move | SearchOp::Change => unreachable!("handled above"),
+    }
+}
+
+/// The end of a whole-LINE span: the content end plus its terminating newline where one is present (so a
+/// linewise register/delete carries the trailing `\n`), or the content end at end-of-buffer.
+fn whole_line_span_end(b: &[u8], content_end: usize) -> usize {
+    if content_end < b.len() && b[content_end] == b'\n' {
+        content_end + 1
+    } else {
+        content_end
     }
 }
 
@@ -1958,7 +2108,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             count,
             pattern,
             backward,
-        } => plan_search(st, b, cur, op, *count, pattern, *backward, hint),
+            offset,
+        } => plan_search(st, b, cur, op, *count, pattern, *backward, *offset, hint),
         Command::SearchObject {
             op,
             count,

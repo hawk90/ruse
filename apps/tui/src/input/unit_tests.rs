@@ -3249,16 +3249,30 @@ mod search_tests {
                 count: 1,
                 pattern: "foo".into(),
                 backward: false,
+                offset: SearchOffset::None,
             })
         );
-        // After a FORWARD search, `n` repeats forward and `N` reverses to backward.
+        // After a FORWARD search, `n` repeats forward and `N` reverses to backward. Both re-issue a
+        // `Command::Search` (so they can REAPPLY the offset), not the bare `SearchNext`/`SearchPrev`.
         assert_eq!(
             e.feed(k('n'), Mode::Normal),
-            Feed::Cmd(Command::SearchNext("foo".into()))
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: false,
+                offset: SearchOffset::None,
+            })
         );
         assert_eq!(
             e.feed(k('N'), Mode::Normal),
-            Feed::Cmd(Command::SearchPrev("foo".into()))
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: true,
+                offset: SearchOffset::None,
+            })
         );
     }
 
@@ -3275,16 +3289,29 @@ mod search_tests {
                 count: 1,
                 pattern: "foo".into(),
                 backward: true,
+                offset: SearchOffset::None,
             })
         );
-        // After a BACKWARD search, `n` continues BACKWARD (SearchPrev) and `N` reverses to forward.
+        // After a BACKWARD search, `n` continues BACKWARD and `N` reverses to forward.
         assert_eq!(
             e.feed(k('n'), Mode::Normal),
-            Feed::Cmd(Command::SearchPrev("foo".into()))
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: true,
+                offset: SearchOffset::None,
+            })
         );
         assert_eq!(
             e.feed(k('N'), Mode::Normal),
-            Feed::Cmd(Command::SearchNext("foo".into()))
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: false,
+                offset: SearchOffset::None,
+            })
         );
     }
 
@@ -3301,6 +3328,7 @@ mod search_tests {
                 count: 1,
                 pattern: "bar".into(),
                 backward: true,
+                offset: SearchOffset::None,
             })
         );
     }
@@ -3317,6 +3345,7 @@ mod search_tests {
                 count: 2,
                 pattern: "foo".into(),
                 backward: true,
+                offset: SearchOffset::None,
             })
         );
     }
@@ -3335,11 +3364,18 @@ mod search_tests {
                 count: 1,
                 pattern: "foo".into(),
                 backward: true,
+                offset: SearchOffset::None,
             })
         );
         assert_eq!(
             e.feed(k('n'), Mode::Normal),
-            Feed::Cmd(Command::SearchPrev("foo".into())),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: true,
+                offset: SearchOffset::None,
+            }),
             "empty `?<CR>` reuse flips direction to backward for n"
         );
     }
@@ -3431,6 +3467,7 @@ mod search_tests {
                 count: 1,
                 pattern: "bar".into(),
                 backward: false,
+                offset: SearchOffset::None,
             })
         );
     }
@@ -3447,7 +3484,136 @@ mod search_tests {
                 count: 2,
                 pattern: "foo".into(),
                 backward: false,
+                offset: SearchOffset::None,
             })
+        );
+    }
+
+    // --- search offsets (#475): the `/pat/{offset}` suffix is split off and parsed at submit. ---
+
+    fn move_search(pattern: &str, backward: bool, offset: SearchOffset) -> Feed {
+        Feed::Cmd(Command::Search {
+            op: SearchOp::Move,
+            count: 1,
+            pattern: pattern.into(),
+            backward,
+            offset,
+        })
+    }
+
+    #[test]
+    fn split_search_offset_grammar() {
+        use crate::input::split_search_offset;
+        // Forward delimiter `/`.
+        assert_eq!(
+            split_search_offset("foo/e", '/'),
+            ("foo".into(), Some(SearchOffset::End(0)))
+        );
+        assert_eq!(
+            split_search_offset("foo/s+2", '/'),
+            ("foo".into(), Some(SearchOffset::Start(2)))
+        );
+        assert_eq!(
+            split_search_offset("foo/+1", '/'),
+            ("foo".into(), Some(SearchOffset::Line(1)))
+        );
+        // No delimiter at all -> `None` (offset absent, so an empty-pattern repeat reuses the last one).
+        assert_eq!(split_search_offset("foo", '/'), ("foo".into(), None));
+        // A delimiter with an empty part -> `Some(None)`: an EXPLICIT no-offset (resets the last offset).
+        assert_eq!(
+            split_search_offset("foo/", '/'),
+            ("foo".into(), Some(SearchOffset::None))
+        );
+        // An escaped delimiter stays in the pattern; the split is the LAST unescaped one.
+        assert_eq!(
+            split_search_offset("ab\\/cd/e", '/'),
+            ("ab\\/cd".into(), Some(SearchOffset::End(0)))
+        );
+        // Backward delimiter `?` (a `/` in the pattern is then literal).
+        assert_eq!(
+            split_search_offset("foo?e", '?'),
+            ("foo".into(), Some(SearchOffset::End(0)))
+        );
+        // Empty pattern with an offset (`//e`): pattern empty, offset present.
+        assert_eq!(
+            split_search_offset("/e", '/'),
+            (String::new(), Some(SearchOffset::End(0)))
+        );
+    }
+
+    #[test]
+    fn submit_search_parses_the_offset_suffix() {
+        let mut e = InputEngine::new();
+        e.feed(k('/'), Mode::Normal);
+        assert_eq!(
+            e.submit_search("foo/e".into(), false),
+            move_search("foo", false, SearchOffset::End(0))
+        );
+        e.feed(k('/'), Mode::Normal);
+        assert_eq!(
+            e.submit_search("bar/s-1".into(), false),
+            move_search("bar", false, SearchOffset::Start(-1))
+        );
+        e.feed(k('/'), Mode::Normal);
+        assert_eq!(
+            e.submit_search("baz/+2".into(), false),
+            move_search("baz", false, SearchOffset::Line(2))
+        );
+        // Backward: the `?` is the delimiter.
+        e.feed(k('?'), Mode::Normal);
+        assert_eq!(
+            e.submit_search("qux?e".into(), true),
+            move_search("qux", true, SearchOffset::End(0))
+        );
+    }
+
+    #[test]
+    fn n_reapplies_the_offset() {
+        // `/foo/e<CR>` records offset `e`; `n` re-issues a Search carrying the SAME offset.
+        let mut e = InputEngine::new();
+        e.feed(k('/'), Mode::Normal);
+        assert_eq!(
+            e.submit_search("foo/e".into(), false),
+            move_search("foo", false, SearchOffset::End(0))
+        );
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            move_search("foo", false, SearchOffset::End(0)),
+            "n reapplies the stored offset"
+        );
+        assert_eq!(
+            e.feed(k('N'), Mode::Normal),
+            move_search("foo", true, SearchOffset::End(0)),
+            "N reapplies the offset, flipped direction"
+        );
+    }
+
+    #[test]
+    fn empty_pattern_reuses_or_replaces_the_offset() {
+        // `/foo/e` then a BARE `/<CR>` (no delimiter typed) reuses BOTH the pattern and the offset (nvim).
+        let mut e = InputEngine::new();
+        e.feed(k('/'), Mode::Normal);
+        e.submit_search("foo/e".into(), false);
+        e.feed(k('/'), Mode::Normal);
+        assert_eq!(
+            e.submit_search(String::new(), false),
+            move_search("foo", false, SearchOffset::End(0)),
+            "bare `/<CR>` reuses pattern AND offset"
+        );
+        // `//<CR>` (a typed delimiter, empty offset) reuses the pattern but EXPLICITLY resets the offset
+        // to none — nvim: `/foo/e` then `//` lands on the match start, not its end.
+        e.feed(k('/'), Mode::Normal);
+        assert_eq!(
+            e.submit_search("/".into(), false),
+            move_search("foo", false, SearchOffset::None),
+            "`//` reuses pattern, resets offset"
+        );
+        // `//s` (empty pattern, NEW offset) reuses the pattern but REPLACES the offset.
+        e.feed(k('/'), Mode::Normal);
+        assert_eq!(
+            e.submit_search("/s".into(), false),
+            move_search("foo", false, SearchOffset::Start(0)),
+            "`//s` reuses pattern, replaces offset"
         );
     }
 }
@@ -3597,6 +3763,7 @@ mod cmdline_tests {
                 count: 1,
                 pattern: "foo".into(),
                 backward: false,
+                offset: SearchOffset::None,
             })
         );
         assert_eq!(e.cmdline(), None);
@@ -3613,6 +3780,7 @@ mod cmdline_tests {
                 count: 1,
                 pattern: "bar".into(),
                 backward: false,
+                offset: SearchOffset::None,
             })
         );
     }
@@ -4423,6 +4591,7 @@ mod binding_label_tests {
                 count: 1,
                 pattern: "foo".into(),
                 backward: false,
+                offset: SearchOffset::None,
             }),
             "q/ + <CR> runs the chosen pattern as a forward search"
         );
@@ -4444,6 +4613,7 @@ mod binding_label_tests {
                 count: 1,
                 pattern: "bar".into(),
                 backward: true,
+                offset: SearchOffset::None,
             })
         );
     }
