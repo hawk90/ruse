@@ -1209,6 +1209,22 @@ impl Workspace {
         (base, cands)
     }
 
+    /// Insert-mode WHOLE-LINE completion source for `i_CTRL-X CTRL-L` (F-003, current-buffer only).
+    /// Returns `(base, candidates)` for the focused view: `base` is the caret line's post-indent text up to
+    /// the caret (the text being completed), and `candidates` are the OTHER buffer lines' post-indent text
+    /// that START WITH `base`, in Vim's backward-from-caret-with-wrap scan order, deduped by post-indent
+    /// content (see [`crate::motion::line_completions`]). Leading indent is ignored on both sides. The
+    /// engine has no buffer, so the frontend calls this and hands both to the input engine, which cycles the
+    /// selection exactly as for [`keyword_completion`](Self::keyword_completion). An EMPTY candidate list
+    /// means "no match" (a Vim no-op / bell).
+    #[must_use]
+    pub fn line_completion(&self) -> (String, Vec<String>) {
+        let pane = self.focused();
+        let b = pane.doc.bytes();
+        let cur = pane.view.cursor();
+        crate::motion::line_completions(b, cur)
+    }
+
     /// Set one `:set` option on the focused view (swap-trick, like [`Workspace::set_indent`]).
     pub fn set_option(&mut self, opt: crate::editor::EditorOption) {
         let vid = self.windows[self.focus].view;
@@ -1884,6 +1900,48 @@ mod tests {
         let (base, cands) = w.keyword_completion();
         assert_eq!(base, "");
         assert_eq!(cands, vec!["foo", "bar"]);
+    }
+
+    /// `line_completion` backs `i_CTRL-X CTRL-L`: the post-indent prefix before the caret plus the other
+    /// buffer lines' post-indent content that start with it, in Vim's backward-from-caret-with-wrap order,
+    /// deduped by content (indent ignored). Cases captured from nvim v0.12.4.
+    #[test]
+    fn line_completion_base_and_candidates() {
+        // Prefix "foobar" on a fresh last line: backward scan (the two identical "foobar baz" dedupe).
+        let mut w =
+            Workspace::new(b"foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "foobar");
+        assert_eq!(cands, vec!["foobar baz", "foobar qux"]);
+
+        // Mid-buffer caret: backward to the top, then wrap from the bottom upward; the caret line excluded.
+        let mut w = Workspace::new(b"foo A\nfoo B\nfoo\nfoo C\nfoo D".to_vec());
+        w.place_focused_cursor(15); // end of the bare "foo" on line 3 (0-based row 2)
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "foo");
+        assert_eq!(cands, vec!["foo B", "foo A", "foo D", "foo C"]);
+
+        // Indent is ignored for matching and dedup: "foo bar" and "    foo bar" collapse to one candidate.
+        let mut w = Workspace::new(b"foo bar\n    foo bar\nfoo baz\nfoo".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "foo");
+        assert_eq!(cands, vec!["foo baz", "foo bar"]);
+
+        // The prefix's own indent is stripped from `base` (its length is what the completion deletes).
+        let mut w = Workspace::new(b"    indented alpha\nplain beta\n  in".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "in");
+        assert_eq!(cands, vec!["indented alpha"]);
+
+        // No matching line → empty candidate list (a Vim no-op / bell).
+        let mut w = Workspace::new(b"foo bar\nbaz\nzz".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "zz");
+        assert!(cands.is_empty());
     }
 
     /// `adjacent_line_char` backs `i_CTRL-E`/`i_CTRL-Y`: the char below/above the caret at its column, or

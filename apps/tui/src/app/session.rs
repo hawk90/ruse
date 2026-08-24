@@ -1276,6 +1276,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // `i_CTRL-X CTRL-L` (Insert mode) — whole-line completion from the CURRENT buffer (F-003). `CTRL-X`
+        // armed the submode in the engine (`insert_ctrl_x_pending`); this `CTRL-L` resolves the candidate
+        // lines here (the engine has no buffer — the same split as `i_CTRL-N`) and starts the cycle. A bare
+        // `CTRL-L` while a cycle is already active steps it FORWARD (nvim's whole-line continuation key);
+        // `CTRL-N`/`CTRL-P` cycle it too (the block above). Deferred: `CTRL-X CTRL-N/CTRL-P` (local keyword)
+        // and `CTRL-X CTRL-F` (filename) sources, and the popup menu — all out of scope for this slice.
+        if matches!(ws.focused().view.mode(), Mode::Insert) && is_ctrl(key, 'l') {
+            if engine.insert_ctrl_x_pending() {
+                let (base, cands) = ws.line_completion();
+                if let Feed::Cmd(cmd) = engine.complete_line_start(base, cands) {
+                    run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
+                }
+                continue;
+            }
+            if engine.completion_active() && engine.insert_plain_text_ctx() {
+                if let Feed::Cmd(cmd) = engine.complete_cycle(true) {
+                    run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
+                }
+                continue;
+            }
+            // Otherwise a lone `CTRL-L` in Insert with no active completion — fall through (unbound, no-op).
+        }
         // `H` / `M` / `L` — the top / middle / bottom visible line (first non-blank via GotoLine). These are
         // viewport-dependent, so they stay a FRONTEND intercept: the session resolves the target buffer line
         // from the current viewport, then hands it to the engine, which composes it with any PENDING OPERATOR
