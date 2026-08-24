@@ -54,6 +54,12 @@ impl CmdHistory {
         &self.entries
     }
 
+    /// The ring's entries (oldest first, most-recent last) — the content the command-line window mirrors
+    /// (`:help cmdwin`). Read-only; the window never mutates the ring except via the normal accept path.
+    pub(crate) fn entries_ref(&self) -> &[String] {
+        &self.entries
+    }
+
     /// Push an ACCEPTED line onto the ring (`<CR>`). Empty lines are not stored. An identical existing
     /// entry is removed first, so a re-entered line moves to the most-recent slot (Vim de-dup). Evicts the
     /// oldest entry when over `cap`.

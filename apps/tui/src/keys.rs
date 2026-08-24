@@ -58,6 +58,9 @@ pub enum Step {
     Store(char, Vec<u8>),
     /// `@{char}` — the caller reads register `char`'s bytes and passes them to [`MacroState::replay`].
     Replay(char),
+    /// `q:` / `q/` / `q?` — NOT a macro recording: the `q`-prefixed `:`/`/`/`?` opens the command-line window
+    /// (`:help cmdwin`) for that history ring. The caller calls `engine.open_cmdwin(char)`.
+    OpenCmdWin(char),
 }
 
 fn is_bare(key: KeyEvent, c: char) -> bool {
@@ -123,6 +126,12 @@ impl MacroState {
             if let KeyCode::Char(c) = key.code {
                 if c.is_ascii_alphabetic() {
                     self.recording = Some((c, Vec::new()));
+                    return Step::Consumed;
+                }
+                // `q:` / `q/` / `q?` are Vim's command-line window, NOT a macro register (`:`/`/`/`?` are not
+                // valid register names). Branch to the cmdwin instead of silently aborting the `q`.
+                if matches!(c, ':' | '/' | '?') {
+                    return Step::OpenCmdWin(c);
                 }
             }
             return Step::Consumed;
@@ -631,5 +640,30 @@ mod tests {
         assert_eq!(budget, 0, "budget exhausted");
         // The 3 taken keys were appended after the sentinel.
         assert_eq!(q.len(), 1 + 3);
+    }
+
+    #[test]
+    fn q_colon_slash_question_open_the_cmdwin_not_a_recording() {
+        // `q:` / `q/` / `q?` are Vim's command-line window, NOT a macro register. Each routes to OpenCmdWin
+        // and leaves NO recording armed (the caller opens the window in the engine).
+        for kind in [':', '/', '?'] {
+            let mut m = MacroState::new();
+            assert_eq!(m.step(ch('q'), false, true), Step::Consumed, "q arms");
+            assert_eq!(
+                m.step(ch(kind), false, true),
+                Step::OpenCmdWin(kind),
+                "q{kind} opens the command-line window"
+            );
+            assert!(!m.is_recording(), "no macro recording was started");
+        }
+    }
+
+    #[test]
+    fn q_still_records_into_a_letter_register() {
+        // The cmdwin branch must not regress ordinary macro recording: `qa` still starts recording.
+        let mut m = MacroState::new();
+        m.step(ch('q'), false, true);
+        assert_eq!(m.step(ch('a'), false, true), Step::Consumed);
+        assert!(m.is_recording(), "qa starts recording into register a");
     }
 }

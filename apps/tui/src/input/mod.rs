@@ -235,6 +235,11 @@ pub struct InputEngine {
     /// rather than the Normal grammar. `None` = not on the command line. This is the engine owning the
     /// line, not an ad-hoc text buffer on the UI (anti-pattern command-line P2).
     cmdline: Option<CmdLine>,
+    /// The command-line window (`:help cmdwin`, `q:`/`q/`/`q?`): `Some` while the history list-overlay owns
+    /// the keystream. A NAVIGABLE read-only slice of the reduced port (in-window editing is deferred pending
+    /// a hostable secondary editable buffer); `<CR>` runs the selected line through the same ex/search
+    /// dispatch the `:`/`/` prompt uses. Mutually exclusive with `cmdline` (opened only from clean Normal).
+    cmdwin: Option<CmdWin>,
     /// The `:` (ex) command-line history ring (`:help cmdline-history`): accepted ex lines, most-recent
     /// last, recalled by `<Up>`/`<C-p>` in the prompt. Session-scoped frontend state — SEPARATE from the
     /// search ring (Vim keeps `:` and `/` histories apart), and never in `crates/core`.
@@ -317,6 +322,7 @@ impl InputEngine {
             insert: InsertState::default(),
             activations: Vec::new(),
             cmdline: None,
+            cmdwin: None,
             ex_history: CmdHistory::new(history::DEFAULT_CAP),
             search_history: CmdHistory::new(history::DEFAULT_CAP),
             lang_map: HashMap::new(),
@@ -389,6 +395,89 @@ impl InputEngine {
             expr: None,
             walk: history::HistWalk::default(),
         });
+    }
+
+    /// Open the command-line window (`:help cmdwin`) for `kind` — `:` mirrors the ex ring, `/`/`?` the
+    /// shared search ring. The frontend calls this when `q:`/`q/`/`q?` is recognised (the macro layer routes
+    /// the `q`-prefixed `:`/`/`/`?` here instead of arming a macro recording). No-op if already open.
+    pub fn open_cmdwin(&mut self, kind: char) {
+        let ring = if kind == '/' || kind == '?' {
+            &self.search_history
+        } else {
+            &self.ex_history
+        };
+        self.cmdwin = Some(CmdWin::open(kind, ring.entries_ref()));
+    }
+
+    /// The open command-line window's kind glyph (`:`/`/`/`?`), or `None` when closed. The frontend reads it
+    /// for the prompt glyph and to route keys / suppress Normal-mode intercepts while the overlay owns them.
+    #[must_use]
+    pub fn cmdwin(&self) -> Option<char> {
+        self.cmdwin.as_ref().map(|c| c.kind)
+    }
+
+    /// The command-line window's visible list rows `(text, is_selected)` for the overlay paint slot, or an
+    /// empty vec when closed. The frontend paints these in the same slot the pickers use.
+    #[must_use]
+    pub fn cmdwin_rows(&self) -> Vec<(String, bool)> {
+        self.cmdwin.as_ref().map(CmdWin::rows).unwrap_or_default()
+    }
+
+    /// Route one key into the open command-line window (`:help cmdwin`). `j`/`<Down>` and `k`/`<Up>` move the
+    /// selection; `<CR>` runs the selected line — an ex line becomes [`Feed::ExecuteEx`], a search folds
+    /// through [`Self::submit_search`] — and closes the window (an empty line runs nothing); `<Esc>`/`<C-c>`
+    /// closes without running. Any other key is swallowed (the overlay is modal). Accepting a line records it
+    /// in the matching ring, exactly as the `:`/`/` prompt does on `<CR>`.
+    fn feed_cmdwin(&mut self, key: KeyEvent) -> Feed {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let Some(cw) = self.cmdwin.as_mut() else {
+            return Feed::Ignored;
+        };
+        match key.code {
+            KeyCode::Char('c') if ctrl => {
+                self.cmdwin = None;
+                Feed::Ignored
+            }
+            KeyCode::Esc => {
+                self.cmdwin = None;
+                Feed::Ignored
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                cw.down();
+                Feed::Pending
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                cw.up();
+                Feed::Pending
+            }
+            KeyCode::Char('G') => {
+                // Jump to the empty last line (Vim `G`); the list is short, so no count handling.
+                while {
+                    let before = cw.selected_line().to_string();
+                    cw.down();
+                    before != cw.selected_line()
+                } {}
+                Feed::Pending
+            }
+            KeyCode::Enter => {
+                let kind = cw.kind;
+                let text = cw.selected_line().to_string();
+                self.cmdwin = None;
+                if text.is_empty() {
+                    return Feed::Ignored; // `<CR>` on the empty line just closes (nothing to run)
+                }
+                // Run the chosen line through the SAME accept path the `:`/`/` prompt uses on `<CR>`: push it
+                // onto the matching ring, then execute (`/`+`?` share the search ring; `:` the ex ring).
+                if kind == '/' || kind == '?' {
+                    self.search_history.push(&text);
+                    self.submit_search(text, kind == '?')
+                } else {
+                    self.ex_history.push(&text);
+                    Feed::ExecuteEx(text)
+                }
+            }
+            _ => Feed::Pending, // modal: swallow everything else
+        }
     }
 
     /// Open the Emacs `M-x` minibuffer (F-012): the same command-line namespace, reading a command NAME.
@@ -1018,6 +1107,11 @@ impl InputEngine {
         // (leader/which-key, transient maps) — landing in later slices — will branch above it.
         if self.input_profile == InputProfile::Emacs {
             return self.feed_emacs(key);
+        }
+        // The command-line window owns the keystream while open (`:help cmdwin`, `q:`/`q/`/`q?`): it is a
+        // navigation overlay, not a dot-repeatable change, so it bypasses the recorder like the cmdline.
+        if self.cmdwin.is_some() {
+            return self.feed_cmdwin(key);
         }
         // The command-line namespace owns the keystream while open (F-026); its typing is not a
         // dot-repeatable change, so it bypasses the recorder.
@@ -2120,8 +2214,10 @@ pub use emacs::emacs_command_by_name;
 use emacs::{emacs_repeat, fold_emacs_count, EmacsArg, EmacsBinding, EmacsKey, EmacsProfile, Step};
 
 mod cmdline;
+mod cmdwin;
 mod history;
 use cmdline::{CmdLine, ExprTarget};
+use cmdwin::CmdWin;
 use history::CmdHistory;
 
 mod repeat;
