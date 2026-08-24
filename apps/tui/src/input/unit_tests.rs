@@ -883,6 +883,77 @@ mod tests {
     }
 
     #[test]
+    fn insert_ctrl_k_inserts_a_digraph() {
+        // `i_CTRL-K {c1}{c2}`: arm (Pending), first code char (Pending), second char resolves the glyph.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('k'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('a'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k(':'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('ä'))
+        );
+        // A symbol digraph resolves the same way.
+        e.feed(ctrl('k'), Mode::Insert);
+        e.feed(k('O'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('K'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('✓'))
+        );
+        // After a completed digraph the engine is back to plain Insert (no lingering prefix state).
+        assert_eq!(
+            e.feed(k('x'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('x'))
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_k_unknown_pair_falls_back_to_second_char() {
+        // Vim's fallback for an unknown code: insert the SECOND char literally.
+        let mut e = InputEngine::new();
+        e.feed(ctrl('k'), Mode::Insert);
+        e.feed(k('z'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('q'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('q'))
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_k_esc_mid_sequence_aborts_cleanly() {
+        // A non-printable key mid-digraph cancels the pending state without inserting; Insert then resumes.
+        let mut e = InputEngine::new();
+        e.feed(ctrl('k'), Mode::Insert);
+        e.feed(k('a'), Mode::Insert); // first code char collected
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                Mode::Insert
+            ),
+            Feed::Ignored
+        );
+        // The abort left no residue: the next key inserts literally.
+        assert_eq!(
+            e.feed(k('b'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('b'))
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_k_code_chars_are_not_lang_mapped() {
+        // The two digraph-code chars are literal selectors, so an active Lang-Arg map must NOT rewrite
+        // them (else `a:` under a map `a->б` would look up the wrong code).
+        let mut e = InputEngine::new();
+        e.lang_map.insert('a', 'б');
+        e.lang_active = true;
+        e.feed(ctrl('k'), Mode::Insert);
+        e.feed(k('a'), Mode::Insert);
+        assert_eq!(
+            e.feed(k(':'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('ä'))
+        );
+    }
+
+    #[test]
     fn normal_quote_equals_opens_the_expression_prompt_for_paste() {
         // `"=` opens the expression prompt; `<CR>` yields `SetExprRegister`, which arms the `"=` register so
         // the FOLLOWING p/P pastes the result (`:help quote=`).
