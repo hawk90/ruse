@@ -2118,6 +2118,16 @@ mod tests {
             e.feed(k('_'), Mode::Normal),
             Feed::Cmd(Command::SetRegister(Some('_')))
         );
+        // The system-clipboard registers `"+` and `"*` parse as register names (`:help quoteplus`).
+        for name in ['+', '*'] {
+            let mut e = InputEngine::new();
+            e.feed(k('"'), Mode::Normal);
+            assert_eq!(
+                e.feed(k(name), Mode::Normal),
+                Feed::Cmd(Command::SetRegister(Some(name))),
+                "\"{name} selects the system clipboard register"
+            );
+        }
     }
 
     #[test]

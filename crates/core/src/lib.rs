@@ -20,6 +20,7 @@
 #![deny(clippy::unwrap_used, clippy::disallowed_methods)]
 
 pub mod anchor;
+pub mod clipboard;
 pub mod command;
 pub mod document;
 pub mod edit;
@@ -38,6 +39,7 @@ pub mod undo;
 pub mod workspace;
 
 pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
+pub use clipboard::{Clipboard, MemClipboard, NoClipboard};
 pub use command::{
     BlockInsertKind, Command, CommandParseError, ForcedWise, OpKind, OpenKind, SearchOp,
     SelectKind, WordCase,
