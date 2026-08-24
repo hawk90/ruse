@@ -1778,7 +1778,11 @@ fn update_curswant(st: &mut EditorState, cmd: &Command) {
         | Command::OpenBelow
         | Command::OpenAbove
         | Command::EnterReplace
-        | Command::EnterVirtualReplace => {
+        | Command::EnterVirtualReplace
+        // A `/`/`?` search is a definite motion/edit: it establishes the match column (and, for `c?`,
+        // the deletion point where Insert begins). It must never preserve a stale `$`/`A` append intent
+        // — `$c?pat` inserts at the match, not at the line end.
+        | Command::Search { .. } => {
             let b = st.doc.bytes();
             st.view.curswant = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
         }

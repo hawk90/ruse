@@ -673,6 +673,21 @@ FIXTURES: list[dict] = [
     {"name": "linewise_yank_mark_end", "lines": ["one", "two"], "keys": "yy`]"},
     {"name": "open_line_mark_start", "lines": ["abc"], "keys": "ohi<Esc>`["},
     {"name": "open_line_mark_end", "lines": ["abc"], "keys": "ohi<Esc>`]"},
+    #     BACKWARD SEARCH `?` (issue #431) — `?pat` lands on the match BEFORE the cursor (wrapping to end
+    #     of buffer); `n`/`N` repeat RELATIVE to the last search's direction; `?` is an EXCLUSIVE motion
+    #     under an operator. The `/foo` cases are forward-`n`/`N` REGRESSION guards. Cursor homes to {1,0},
+    #     so each fixture first moves (`$`) to set up a match to the LEFT of the cursor.
+    {"name": "back_search_prev_match", "lines": ["foo bar foo baz"], "keys": "$?foo<CR>"},
+    {"name": "back_search_wraps_to_end", "lines": ["bar foo baz"], "keys": "?foo<CR>"},
+    {"name": "back_search_then_n_backward", "lines": ["foo x foo x foo"], "keys": "$?foo<CR>n"},
+    {"name": "back_search_then_N_forward", "lines": ["foo x foo x foo"], "keys": "$?foo<CR>N"},
+    {"name": "fwd_search_then_n_forward", "lines": ["foo x foo x foo"], "keys": "/foo<CR>n"},
+    {"name": "fwd_search_then_N_backward", "lines": ["foo x foo x foo"], "keys": "/foo<CR>N"},
+    {"name": "back_search_count", "lines": ["foo x foo x foo x end"], "keys": "$2?foo<CR>"},
+    {"name": "d_back_search_exclusive", "lines": ["foo bar baz qux"], "keys": "$d?bar<CR>"},
+    {"name": "c_back_search_exclusive", "lines": ["foo bar baz qux"], "keys": "$c?bar<CR>Z<Esc>"},
+    {"name": "y_back_search_then_paste", "lines": ["foo bar baz qux"], "keys": "$y?bar<CR>P"},
+    {"name": "empty_back_search_reuses_pattern", "lines": ["foo bar foo baz"], "keys": "/bar<CR>$?<CR>"},
 ]
 
 

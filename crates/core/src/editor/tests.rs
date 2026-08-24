@@ -4162,6 +4162,22 @@ mod search_tests {
             op: SearchOp::Move,
             count: 1,
             pattern: pattern.to_string(),
+            backward: false,
+        }
+    }
+
+    /// `$` — rest on the last char of the line (the start position for the backward-search tests).
+    fn eol() -> Command {
+        Command::Move(1, Motion::LineEnd)
+    }
+
+    /// `[count]?pat` — a backward search motion (`SearchOp::Move`).
+    fn search_back(count: u32, pattern: &str) -> Command {
+        Command::Search {
+            op: SearchOp::Move,
+            count,
+            pattern: pattern.to_string(),
+            backward: true,
         }
     }
 
@@ -4223,9 +4239,127 @@ mod search_tests {
                 op: SearchOp::Delete,
                 count: 1,
                 pattern: "XYZ".into(),
+                backward: false,
             }],
         );
         assert_eq!(st.as_str().unwrap(), "XYZdef");
+    }
+
+    /// F-009: `?pat` lands the cursor on the match STRICTLY BEFORE the cursor. "foo" is at 0 and 8;
+    /// from EOL the backward search stops on 8. Verified against nvim v0.12.4.
+    #[test]
+    fn backward_search_lands_on_previous_match() {
+        let st = run("foo bar foo baz", &[eol(), search_back(1, "foo")]);
+        assert_eq!(st.cursor(), 8);
+    }
+
+    /// F-009: `?pat` wraps to the LAST match when none starts before the cursor (cursor at BOL).
+    #[test]
+    fn backward_search_wraps_to_last_match() {
+        let st = run("bar foo baz", &[search_back(1, "foo")]);
+        assert_eq!(st.cursor(), 4);
+    }
+
+    /// F-009: `[count]?pat` jumps to the count-th previous match. "foo" at 0/6/12; from EOL, `2?foo`
+    /// steps back over 12 to 6.
+    #[test]
+    fn backward_search_honours_count() {
+        let st = run("foo x foo x foo x end", &[eol(), search_back(2, "foo")]);
+        assert_eq!(st.cursor(), 6);
+    }
+
+    /// F-009: `n`/`N` are direction-RELATIVE. After a backward search, `SearchPrev` (what `n` maps to)
+    /// continues backward and `SearchNext` (what `N` maps to) reverses to forward. The frontend chooses
+    /// which primitive to emit from the stored direction; here we assert the primitives themselves.
+    #[test]
+    fn direction_relative_repeat_after_backward_search() {
+        // "foo" at 0/6/12. From EOL, `?foo` -> 12, then backward-repeat -> 6.
+        let st = run(
+            "foo x foo x foo",
+            &[
+                eol(),
+                search_back(1, "foo"),
+                Command::SearchPrev("foo".into()),
+            ],
+        );
+        assert_eq!(st.cursor(), 6, "n after ? continues backward");
+        // `?foo` -> 12, then forward-repeat (N reverses) wraps past EOL to 0.
+        let st = run(
+            "foo x foo x foo",
+            &[
+                eol(),
+                search_back(1, "foo"),
+                Command::SearchNext("foo".into()),
+            ],
+        );
+        assert_eq!(st.cursor(), 0, "N after ? reverses to forward (wraps)");
+    }
+
+    /// F-009: `d?pat` is an EXCLUSIVE charwise motion over `[match, cursor)` — the char under the cursor
+    /// is NOT removed. "foo bar baz qux", cursor at EOL (the 'x'), `d?bar` deletes indices 4..14
+    /// ("bar baz qu"), leaving "foo x". Geometry verified against nvim v0.12.4.
+    #[test]
+    fn delete_backward_search_is_exclusive() {
+        let st = run(
+            "foo bar baz qux",
+            &[
+                eol(),
+                Command::Search {
+                    op: SearchOp::Delete,
+                    count: 1,
+                    pattern: "bar".into(),
+                    backward: true,
+                },
+            ],
+        );
+        assert_eq!(st.as_str().unwrap(), "foo x");
+        assert_eq!(st.cursor(), 4);
+    }
+
+    /// F-009: `c?pat` deletes `[match, cursor)` and enters Insert AT the match — it must not inherit the
+    /// `$` append intent (curswant=MAXCOL) and park the caret at the line end. Regression for that bug.
+    #[test]
+    fn change_backward_search_inserts_at_match() {
+        let mut st = EditorState::new(b"foo bar baz qux".to_vec());
+        apply_command(&mut st, &eol());
+        apply_command(
+            &mut st,
+            &Command::Search {
+                op: SearchOp::Change,
+                count: 1,
+                pattern: "bar".into(),
+                backward: true,
+            },
+        );
+        assert_eq!(st.as_str().unwrap(), "foo x");
+        assert_eq!(
+            st.cursor(),
+            4,
+            "Insert caret at the match, not the line end"
+        );
+        apply_command(&mut st, &Command::InsertChar('Z'));
+        assert_eq!(st.as_str().unwrap(), "foo Zx");
+    }
+
+    /// F-009: `y?pat` yanks `[match, cursor)` charwise and leaves the cursor at the low end (the match).
+    #[test]
+    fn yank_backward_search_charwise() {
+        let st = run(
+            "foo bar baz qux",
+            &[
+                eol(),
+                Command::Search {
+                    op: SearchOp::Yank,
+                    count: 1,
+                    pattern: "bar".into(),
+                    backward: true,
+                },
+            ],
+        );
+        assert_eq!(st.as_str().unwrap(), "foo bar baz qux");
+        assert_eq!(st.cursor(), 4);
+        assert_eq!(st.register().text(), b"bar baz qu");
+        assert!(!st.register().is_linewise());
     }
 
     fn gn(op: SearchOp, count: u32, pattern: &str, backward: bool) -> Command {

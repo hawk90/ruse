@@ -374,15 +374,18 @@ pub enum Command {
     /// history, so the FRONTEND resolves this against its last-substitute state (like [`SearchWordUnder`]);
     /// the planner treats it as a no-op.
     RepeatSubstituteGlobal,
-    /// `{count}/{pattern}<CR>` as a MOTION: bare it moves to the `count`-th forward match; under an
-    /// operator (`op`) it folds into a charwise-exclusive edit over `[cursor, match)` (`d/pat`, `c/pat`,
-    /// `y/pat`). The pattern is literal (v0; C-REGEX later) and carried so traces replay deterministically.
-    /// Backward search (`?`) is not wired yet, so this is forward-only. `n`/`N` still repeat via
-    /// [`Command::SearchNext`]/[`Command::SearchPrev`].
+    /// `{count}/{pattern}<CR>` (forward) or `{count}?{pattern}<CR>` (backward) as a MOTION: bare it moves
+    /// to the `count`-th match in `backward`'s direction; under an operator (`op`) it folds into a charwise-
+    /// EXCLUSIVE edit over `[cursor, match)` forward, or `[match, cursor)` backward (`d/pat`, `c?pat`,
+    /// `y?pat`). The pattern is literal (v0; C-REGEX later) and carried so traces replay deterministically.
+    /// `n`/`N` repeat RELATIVE to the last search's direction via [`Command::SearchNext`]/
+    /// [`Command::SearchPrev`] (the frontend picks which based on the stored direction).
     Search {
         op: SearchOp,
         count: u32,
         pattern: String,
+        /// `?` search (match strictly before the cursor, wrapping to end of buffer); `false` for `/`.
+        backward: bool,
     },
     /// `gn` / `gN` — the search-match text object (Vim `:help gn`). Unlike [`Command::Search`] (which spans
     /// `[cursor, match)`), this operates on the WHOLE match: the one under the cursor, or — if the cursor is
@@ -987,10 +990,17 @@ impl Command {
                 if *whole_word { "whole" } else { "any" }
             ),
             Command::RepeatSubstituteGlobal => "repeat_substitute_global".into(),
-            // Pattern LAST so it may contain spaces (parsed as the untrimmed remainder, like search_next).
-            Command::Search { op, count, pattern } => {
-                format!("search {} {count} {pattern}", search_op_token(*op))
-            }
+            // Direction before the pattern (pattern is LAST so it may contain spaces, like search_next).
+            Command::Search {
+                op,
+                count,
+                pattern,
+                backward,
+            } => format!(
+                "search {} {count} {} {pattern}",
+                search_op_token(*op),
+                if *backward { "bwd" } else { "fwd" }
+            ),
             // Direction before the pattern (pattern is LAST so it may contain spaces).
             Command::SearchObject {
                 op,
@@ -1448,8 +1458,8 @@ impl Command {
             }
             "repeat_substitute_global" => Command::RepeatSubstituteGlobal,
             "search" => {
-                // `search {op} {count} {pattern...}` — pattern is the untrimmed remainder (may hold spaces).
-                let mut parts = raw.splitn(3, ' ');
+                // `search {op} {count} {fwd|bwd} {pattern...}` — pattern is the untrimmed remainder.
+                let mut parts = raw.splitn(4, ' ');
                 let op = parts
                     .next()
                     .and_then(search_op_from_token)
@@ -1458,8 +1468,14 @@ impl Command {
                     .next()
                     .and_then(|s| s.parse().ok())
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let backward = matches!(parts.next(), Some("bwd"));
                 let pattern = parts.next().unwrap_or("").to_string();
-                Command::Search { op, count, pattern }
+                Command::Search {
+                    op,
+                    count,
+                    pattern,
+                    backward,
+                }
             }
             "search_object" => {
                 // `search_object {op} {count} {fwd|bwd} {pattern...}` — pattern is the untrimmed remainder.
@@ -1882,21 +1898,31 @@ mod tests {
                 op: SearchOp::Move,
                 count: 2,
                 pattern: "foo".into(),
+                backward: false,
             },
             Command::Search {
                 op: SearchOp::Delete,
                 count: 1,
                 pattern: "world foo".into(),
+                backward: false,
             },
             Command::Search {
                 op: SearchOp::Change,
                 count: 1,
                 pattern: "x".into(),
+                backward: true,
             },
             Command::Search {
                 op: SearchOp::Yank,
                 count: 3,
                 pattern: "a b".into(),
+                backward: true,
+            },
+            Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "back words".into(),
+                backward: true,
             },
             Command::SearchObject {
                 op: SearchOp::Move,

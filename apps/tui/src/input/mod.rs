@@ -206,8 +206,10 @@ pub struct InputEngine {
     normal: NormalState,
     /// Sticky (survives command completion): the last char-search `(ch, forward, till)`, for `;`/`,`.
     last_find: Option<(char, bool, bool)>,
-    /// Sticky: the last search pattern, for `n`/`N`.
-    last_search: Option<String>,
+    /// Sticky: the last search `(pattern, forward)`, for `n`/`N`. `forward` records the DIRECTION the
+    /// search was issued in (`/` = true, `?` = false) so `n` repeats in the SAME direction and `N` in the
+    /// OPPOSITE — the frontend maps them onto [`Command::SearchNext`]/[`Command::SearchPrev`] accordingly.
+    last_search: Option<(String, bool)>,
     /// Sticky: the last completed change, replayed by `.` (dot-repeat). `None` until the first change, so
     /// a bare `.` before any edit is a clean no-op.
     last_change: Option<ChangeIntent>,
@@ -437,8 +439,8 @@ impl InputEngine {
                     return Feed::ExecuteEx(text);
                 }
                 self.cmdline = None;
-                if prefix == '/' {
-                    self.submit_search(text)
+                if prefix == '/' || prefix == '?' {
+                    self.submit_search(text, prefix == '?')
                 } else {
                     Feed::ExecuteEx(text)
                 }
@@ -499,32 +501,79 @@ impl InputEngine {
         }
     }
 
-    /// Complete a `/pattern` line (called by the command-line namespace on `<CR>`). Folds the pattern
-    /// into the operator/count captured when `/` was pressed and yields the finished [`Command::Search`]:
-    /// bare (`/pat`, `2/pat`) moves, or `d/pat`/`c/pat`/`y/pat` deletes/changes/yanks `[cursor, match)`.
-    /// Also records the pattern for `n`/`N`. An empty pattern aborts (Vim's `<CR>` on an empty line is a
-    /// no-op / reuse-last, which v0 treats as inert) — the armed operator is dropped, nothing is emitted.
-    pub fn submit_search(&mut self, pattern: String) -> Feed {
-        self.cmdline = None; // completing a search closes the command-line namespace (F-026)
-        let (op, count) = self.pending_search.take().unwrap_or((SearchOp::Move, 1));
-        if pattern.is_empty() {
-            return Feed::Ignored;
-        }
-        self.last_search = Some(pattern.clone());
-        Feed::Cmd(Command::Search { op, count, pattern })
+    /// Open the search command-line for `/` (forward) or `?` (backward). Search is a MOTION, so an armed
+    /// operator/count must survive the minibuffer (`d/pat`, `2?pat`): capture them (op-count × pending
+    /// count, as `motion()` folds) BEFORE `reset()` clears the axes, then hand off to the command-line
+    /// namespace, which collects the pattern and calls [`Self::submit_search`] to build the command.
+    fn enter_search(&mut self, backward: bool) -> Feed {
+        let op = match self.normal.op {
+            Some(OpPending { op, .. }) => match op {
+                Op::Delete => SearchOp::Delete,
+                Op::Change => SearchOp::Change,
+                Op::Yank => SearchOp::Yank,
+                // Recase-/shift-to-search (`gu/pat`, `>/pat`) are not modeled; degrade to a plain motion.
+                Op::CaseLower
+                | Op::CaseUpper
+                | Op::CaseToggle
+                | Op::Rot13
+                | Op::ShiftRight
+                | Op::ShiftLeft
+                | Op::Reindent
+                | Op::Format
+                | Op::FormatKeep => SearchOp::Move,
+            },
+            None => SearchOp::Move,
+        };
+        let count = match self.normal.op {
+            Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+            None => self.mcount(),
+        };
+        self.pending_search = Some((op, count));
+        self.reset();
+        self.open_cmdline(if backward { '?' } else { '/' }, false);
+        Feed::Pending
     }
 
-    /// Record `pattern` as the last search so `n`/`N` repeat it. Used by the frontend after it resolves a
-    /// `*`/`#` (word-under-cursor) search, whose pattern is only known once the buffer is read.
-    pub fn set_last_search(&mut self, pattern: String) {
-        self.last_search = Some(pattern);
+    /// Complete a `/pattern` (forward) or `?pattern` (backward) line, called by the command-line namespace
+    /// on `<CR>` with `backward` from the prefix. Folds the pattern into the operator/count captured when
+    /// `/`/`?` was pressed and yields the finished [`Command::Search`]: bare (`?pat`, `2?pat`) moves, or
+    /// `d?pat`/`c?pat`/`y?pat` operates over the exclusive span between cursor and match. Records
+    /// `(pattern, direction)` for `n`/`N`. An EMPTY pattern reuses the last search pattern in the CURRENT
+    /// direction (Vim's `?<CR>` / `/<CR>`); with no prior search it aborts, dropping the armed operator.
+    pub fn submit_search(&mut self, pattern: String, backward: bool) -> Feed {
+        self.cmdline = None; // completing a search closes the command-line namespace (F-026)
+        let (op, count) = self.pending_search.take().unwrap_or((SearchOp::Move, 1));
+        // Empty pattern → reuse the last search's PATTERN, but adopt THIS line's direction (Vim: `?<CR>`
+        // repeats the last pattern backward even if it was last searched forward).
+        let pattern = if pattern.is_empty() {
+            match &self.last_search {
+                Some((p, _)) => p.clone(),
+                None => return Feed::Ignored,
+            }
+        } else {
+            pattern
+        };
+        self.last_search = Some((pattern.clone(), !backward));
+        Feed::Cmd(Command::Search {
+            op,
+            count,
+            pattern,
+            backward,
+        })
+    }
+
+    /// Record `pattern` as the last search (with its `forward` direction) so `n`/`N` repeat it. Used by the
+    /// frontend after it resolves a `*`/`#` (word-under-cursor) search, whose pattern is known only once the
+    /// buffer is read: `*` is forward, `#` backward.
+    pub fn set_last_search(&mut self, pattern: String, forward: bool) {
+        self.last_search = Some((pattern, forward));
     }
 
     /// The last search pattern (`/`, `?`, `*`, `#`), or `None` if nothing has been searched yet. The
     /// frontend reads it to resolve an empty `:s//repl/` pattern, which Vim fills from the last search.
     #[must_use]
     pub fn last_search(&self) -> Option<&str> {
-        self.last_search.as_deref()
+        self.last_search.as_ref().map(|(p, _)| p.as_str())
     }
 
     /// End the current Normal-grammar sequence: the Normal-family layer drops its OWN transient state
@@ -712,7 +761,7 @@ impl InputEngine {
     /// prior search there is nothing to match, so the pending construct aborts (leaking no state). Emitted as
     /// a single [`Command::SearchObject`] with the pattern baked in, so `.` can replay `cgn`.
     fn search_object(&mut self, backward: bool) -> Feed {
-        let Some(pattern) = self.last_search.clone() else {
+        let Some((pattern, _)) = self.last_search.clone() else {
             // No prior search — nothing to match; abort the pending construct, leaking no state.
             self.reset();
             return Feed::Ignored;
@@ -1525,12 +1574,17 @@ impl InputEngine {
             KeyCode::Char('R') => self.action(Command::EnterReplace),
             KeyCode::Char('~') => self.action(Command::ToggleCase(self.mcount())),
             KeyCode::Char('J') => self.action(Command::JoinLines(self.mcount())),
+            // `n` repeats the last search in the SAME direction it was issued; `N` in the OPPOSITE. So
+            // after `?foo`, `n` continues BACKWARD (`SearchPrev`) and `N` goes forward (`SearchNext`);
+            // after `/foo` they stay forward-relative. Direction comes from the stored last-search flag.
             KeyCode::Char('n') => match self.last_search.clone() {
-                Some(p) => self.action(Command::SearchNext(p)),
+                Some((p, true)) => self.action(Command::SearchNext(p)),
+                Some((p, false)) => self.action(Command::SearchPrev(p)),
                 None => self.unmatched(Ns::Normal, key),
             },
             KeyCode::Char('N') => match self.last_search.clone() {
-                Some(p) => self.action(Command::SearchPrev(p)),
+                Some((p, true)) => self.action(Command::SearchPrev(p)),
+                Some((p, false)) => self.action(Command::SearchNext(p)),
                 None => self.unmatched(Ns::Normal, key),
             },
             // `*`/`#` — search the whole keyword under the cursor forward / backward. The frontend reads
@@ -1556,39 +1610,11 @@ impl InputEngine {
                     self.unmatched(Ns::Normal, key)
                 }
             }
-            KeyCode::Char('/') => {
-                // `/` is a MOTION, so an armed operator/count must survive the minibuffer (`d/pat`,
-                // `2/pat`). Capture them (folded like `motion()` does: op-count × pending count) BEFORE
-                // `reset()` clears the axes, then hand off to the frontend, which collects the pattern and
-                // calls `submit_search` to build the finished command.
-                let op = match self.normal.op {
-                    Some(OpPending { op, .. }) => match op {
-                        Op::Delete => SearchOp::Delete,
-                        Op::Change => SearchOp::Change,
-                        Op::Yank => SearchOp::Yank,
-                        // Recase-/shift-to-search (`gu/pat`, `>/pat`) are not modeled; degrade to a plain
-                        // search motion.
-                        Op::CaseLower
-                        | Op::CaseUpper
-                        | Op::CaseToggle
-                        | Op::Rot13
-                        | Op::ShiftRight
-                        | Op::ShiftLeft
-                        | Op::Reindent
-                        | Op::Format
-                        | Op::FormatKeep => SearchOp::Move,
-                    },
-                    None => SearchOp::Move,
-                };
-                let count = match self.normal.op {
-                    Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
-                    None => self.mcount(),
-                };
-                self.pending_search = Some((op, count));
-                self.reset();
-                self.open_cmdline('/', false);
-                Feed::Pending
-            }
+            KeyCode::Char('/') => self.enter_search(false),
+            // `?` — open the BACKWARD search line. Reachable here only when no ROT13 operator is pending
+            // (the guarded `g??` arm above wins that case); an armed d/c/y operator is captured so `d?pat`
+            // works, exactly like `d/pat`.
+            KeyCode::Char('?') => self.enter_search(true),
             KeyCode::Char(':') => {
                 self.reset();
                 self.open_cmdline(':', false);
