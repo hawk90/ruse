@@ -31,6 +31,7 @@ use crate::editor::{
 };
 use crate::effect::Effect;
 use crate::pattern::RegexError;
+use crate::register::RegKind;
 use crate::transaction::TransactionOrigin;
 
 /// A handle to a [`View`] in the workspace arena (INV-HANDLE). Distinct from [`DocumentId`] (a buffer)
@@ -345,9 +346,10 @@ impl Workspace {
         bytes
     }
 
-    /// A snapshot of the FOCUSED view's NON-EMPTY registers as `(name, bytes)` — the unnamed slot (`"`), the
-    /// yank register (`0`), and the named `a`-`z` — for `:registers` (the swap-trick). Order: `"`, `0`, a..z.
-    pub fn register_snapshot(&mut self) -> Vec<(char, Vec<u8>)> {
+    /// A snapshot of the FOCUSED view's NON-EMPTY registers as `(name, kind, bytes)` — the unnamed slot
+    /// (`"`), the yank register (`0`), and the named `a`-`z` — for `:registers` (the swap-trick). Order: `"`,
+    /// `0`, a..z. The [`RegKind`] drives the frontend's Type column (`c`/`l`/`b`, per Vim's `:reg` layout).
+    pub fn register_snapshot(&mut self) -> Vec<(char, RegKind, Vec<u8>)> {
         let vid = self.windows[self.focus].view;
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
@@ -365,7 +367,7 @@ impl Workspace {
             .chain(('a'..='z').map(|c| (c, regs.get(Some(c)))))
         {
             if !r.is_empty() {
-                out.push((name, r.text().to_vec()));
+                out.push((name, r.kind(), r.text().to_vec()));
             }
         }
         let (doc, view) = st.into_parts();
@@ -1951,8 +1953,11 @@ mod tests {
         let snap = w.register_snapshot();
         assert_eq!(
             snap,
-            vec![('a', b"iZ\x1b".to_vec()), ('b', b"dd".to_vec())],
-            "a before b; empty slots omitted",
+            vec![
+                ('a', RegKind::Charwise, b"iZ\x1b".to_vec()),
+                ('b', RegKind::Charwise, b"dd".to_vec()),
+            ],
+            "a before b; empty slots omitted; raw-set registers are charwise",
         );
     }
 
