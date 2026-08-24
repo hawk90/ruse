@@ -1234,6 +1234,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // `i_CTRL-N` / `i_CTRL-P` (Insert mode) — keyword completion from the CURRENT buffer (F-003). The
+        // engine has no buffer, so on the FIRST key the frontend resolves the base + candidate set (nvim
+        // scan order) and hands them to the engine, which caches them and cycles the selection; subsequent
+        // keys just step the cached cycle. The engine emits (and dot-records) a `CompleteWord` swapping the
+        // completion region. Guarded by `insert_plain_text_ctx` (a pending Insert prefix still owns its key).
+        // Other completion sources / the popup menu are out of scope for this slice (deferred).
+        if matches!(ws.focused().view.mode(), Mode::Insert)
+            && (is_ctrl(key, 'n') || is_ctrl(key, 'p'))
+            && engine.insert_plain_text_ctx()
+        {
+            let forward = is_ctrl(key, 'n');
+            let feed = if engine.completion_active() {
+                engine.complete_cycle(forward)
+            } else {
+                let (base, cands) = ws.keyword_completion();
+                engine.complete_start(base, cands, forward)
+            };
+            if let Feed::Cmd(cmd) = feed {
+                run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
+            }
+            continue;
+        }
         // `H` / `M` / `L` — the top / middle / bottom visible line (first non-blank via GotoLine). These are
         // viewport-dependent, so they stay a FRONTEND intercept: the session resolves the target buffer line
         // from the current viewport, then hands it to the engine, which composes it with any PENDING OPERATOR

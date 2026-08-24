@@ -29,6 +29,25 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
         }
         return;
     }
+    // Mirror session.rs's `i_CTRL-N` / `i_CTRL-P` keyword-completion intercept: on the first key resolve the
+    // base + candidate set from the buffer, on the rest just cycle the engine's cached selection.
+    if matches!(mode, ruse_core::Mode::Insert)
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(key.code, KeyCode::Char('n' | 'p'))
+        && e.insert_plain_text_ctx()
+    {
+        let forward = matches!(key.code, KeyCode::Char('n'));
+        let feed = if e.completion_active() {
+            e.complete_cycle(forward)
+        } else {
+            let (base, cands) = ws.keyword_completion();
+            e.complete_start(base, cands, forward)
+        };
+        if let Feed::Cmd(cmd) = feed {
+            ws.apply(&cmd);
+        }
+        return;
+    }
     match e.feed(key, mode) {
         Feed::Cmd(cmd) => {
             sync_special(e, ws);
@@ -1104,6 +1123,156 @@ fn insert_ctrl_y_dot_repeats_the_literal_char() {
         buf(&ws),
         "ax\naby\nacz",
         "`.` repeats the copied char literally"
+    );
+}
+
+// --- i_CTRL-N / i_CTRL-P: current-buffer keyword completion (verified vs nvim v0.12.4, issue #502) ---
+
+/// `i_CTRL-N` completes the word before the caret to the first buffer keyword that starts with it, and
+/// repeated `C-N` cycles forward through the candidate set, then the ORIGINAL typed text, then wraps.
+/// nvim ground truth for base "fo" on a fresh last line: foo, food, foobar, <orig "fo">, foo (the two
+/// "foo" occurrences dedupe to one). Candidate order = forward-from-cursor then wrap-from-top.
+#[test]
+fn insert_ctrl_n_completes_and_cycles_forward() {
+    let (mut e, mut ws) = session("foo food\nfoobar\nfoo");
+    feed_str(&mut e, &mut ws, "Gofo"); // open a fresh last line, type the base "fo"
+    assert_eq!(buf(&ws), "foo food\nfoobar\nfoo\nfo");
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(buf(&ws), "foo food\nfoobar\nfoo\nfoo", "first C-N → 'foo'");
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(buf(&ws), "foo food\nfoobar\nfoo\nfood", "next C-N → 'food'");
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(
+        buf(&ws),
+        "foo food\nfoobar\nfoo\nfoobar",
+        "next C-N → 'foobar'"
+    );
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(
+        buf(&ws),
+        "foo food\nfoobar\nfoo\nfo",
+        "next C-N → back to original"
+    );
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(
+        buf(&ws),
+        "foo food\nfoobar\nfoo\nfoo",
+        "next C-N wraps → 'foo'"
+    );
+}
+
+/// `i_CTRL-P` walks the SAME candidate list backward: from the original the first `C-P` selects the LAST
+/// candidate. nvim: base "fo" → C-P → foobar, food, foo, <orig "fo">, foobar (wrap).
+#[test]
+fn insert_ctrl_p_cycles_backward() {
+    let (mut e, mut ws) = session("foo food\nfoobar\nfoo");
+    feed_str(&mut e, &mut ws, "Gofo");
+    feed_str(&mut e, &mut ws, "<C-p>");
+    assert_eq!(
+        buf(&ws),
+        "foo food\nfoobar\nfoo\nfoobar",
+        "first C-P → last candidate"
+    );
+    feed_str(&mut e, &mut ws, "<C-p>");
+    assert_eq!(buf(&ws), "foo food\nfoobar\nfoo\nfood", "next C-P → 'food'");
+    feed_str(&mut e, &mut ws, "<C-p>");
+    assert_eq!(buf(&ws), "foo food\nfoobar\nfoo\nfoo", "next C-P → 'foo'");
+    feed_str(&mut e, &mut ws, "<C-p>");
+    assert_eq!(
+        buf(&ws),
+        "foo food\nfoobar\nfoo\nfo",
+        "next C-P → back to original"
+    );
+}
+
+/// The candidate SCAN ORDER from a mid-buffer caret: forward to end-of-buffer, then wrap from the top —
+/// and the word under construction is excluded. nvim for base "aa" on the middle line: aa4, aa5, aa6,
+/// aa1, aa2, aa3 (the middle line's own "aa" is not a candidate).
+#[test]
+fn insert_ctrl_n_scan_order_forward_then_wrap() {
+    let (mut e, mut ws) = session("aa1 aa2\naa3\nXXX\naa4 aa5\naa6");
+    feed_str(&mut e, &mut ws, "jjccaa"); // line 3: change line, type base "aa"
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(
+        buf(&ws),
+        "aa1 aa2\naa3\naa4\naa4 aa5\naa6",
+        "first C-N → 'aa4' (forward)"
+    );
+    feed_str(&mut e, &mut ws, "<C-n><C-n>"); // aa5, aa6
+    assert_eq!(
+        buf(&ws),
+        "aa1 aa2\naa3\naa6\naa4 aa5\naa6",
+        "third C-N → 'aa6' (end of forward)"
+    );
+    feed_str(&mut e, &mut ws, "<C-n>"); // wrap to top → aa1
+    assert_eq!(
+        buf(&ws),
+        "aa1 aa2\naa3\naa1\naa4 aa5\naa6",
+        "fourth C-N wraps → 'aa1'"
+    );
+}
+
+/// A base with no matching keyword is a no-op (Vim bells; the buffer is untouched and the caret stays).
+#[test]
+fn insert_ctrl_n_no_match_is_noop() {
+    let (mut e, mut ws) = session("foo bar\nbaz");
+    feed_str(&mut e, &mut ws, "Gozz"); // base "zz" — no keyword starts with it
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(
+        buf(&ws),
+        "foo bar\nbaz\nzz",
+        "no candidate → nothing changes"
+    );
+    feed_str(&mut e, &mut ws, "x<Esc>"); // still in Insert: typing continues normally
+    assert_eq!(
+        buf(&ws),
+        "foo bar\nbaz\nzzx",
+        "completion was inert, insert continues"
+    );
+}
+
+/// The EXACT-match base is itself a candidate (distinct from the ORIGINAL cycle stop): base "foo" with a
+/// longer "foobar" present cycles foo → foobar (nvim: "match 1 of 2" then "match 2 of 2").
+#[test]
+fn insert_ctrl_n_includes_exact_match() {
+    let (mut e, mut ws) = session("foo foobar");
+    feed_str(&mut e, &mut ws, "ofoo"); // new line, base "foo"
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(
+        buf(&ws),
+        "foo foobar\nfoo",
+        "first C-N → 'foo' (exact match candidate)"
+    );
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(buf(&ws), "foo foobar\nfoobar", "next C-N → 'foobar'");
+}
+
+/// Any other key ACCEPTS the current candidate and ends completion; the accepted text stays and typing
+/// resumes normally. nvim: `fo` + C-N → "foobar", then "!" → "foobar!".
+#[test]
+fn insert_ctrl_n_accept_on_other_key() {
+    let (mut e, mut ws) = session("foobar foobaz");
+    feed_str(&mut e, &mut ws, "ofo"); // base "fo"
+    feed_str(&mut e, &mut ws, "<C-n>!<Esc>"); // complete → foobar, then '!' accepts + appends
+    assert_eq!(
+        buf(&ws),
+        "foobar foobaz\nfoobar!",
+        "other key accepts the candidate"
+    );
+}
+
+/// Dot-repeat replays the LITERAL accepted text (matches nvim): `fo` + C-N accepts "foobar"; `.` on a
+/// fresh line re-inserts "foobar", NOT a re-resolution against the new context.
+#[test]
+fn insert_ctrl_n_dot_repeats_literal_text() {
+    let (mut e, mut ws) = session("foobar foobaz");
+    feed_str(&mut e, &mut ws, "ofo<C-n><Esc>"); // line 2 -> "foobar" (last change = open+type+complete)
+    assert_eq!(buf(&ws), "foobar foobaz\nfoobar");
+    feed_str(&mut e, &mut ws, "."); // repeat: open a line, type "fo", apply the recorded completion
+    assert_eq!(
+        buf(&ws),
+        "foobar foobaz\nfoobar\nfoobar",
+        "`.` replays the accepted completion text literally"
     );
 }
 

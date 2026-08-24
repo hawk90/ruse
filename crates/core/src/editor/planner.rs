@@ -1134,6 +1134,28 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 hint,
             )
         }
+        // `i_CTRL-N` / `i_CTRL-P` — one keyword-completion cycle step: replace the `back` CHARACTERS before
+        // the caret (the current completion region) with the candidate `text`, staying in Insert with the
+        // caret after it. `back` walks char boundaries so multibyte keywords delete cleanly; it is clamped
+        // at the buffer start. Applying repeated steps in one session chains cleanly (each deletes the last
+        // applied text and inserts the next), so `.` reproduces the final accepted text.
+        Command::CompleteWord { back, text } => {
+            let mut start = cur;
+            for _ in 0..*back {
+                if start == 0 {
+                    break;
+                }
+                start = prev_boundary(b, start);
+            }
+            let bytes = text.as_bytes().to_vec();
+            let n = bytes.len();
+            edit(
+                one(Edit::replace(start, cur - start, bytes)),
+                start + n,
+                Mode::Insert,
+                hint,
+            )
+        }
         // `i_CTRL-T` — indent the current line by one shiftwidth; the caret rides right with the text.
         Command::InsertIndent => {
             let ls = line_start(b, cur);
