@@ -85,6 +85,13 @@ impl ChangeIntent {
         Some(cmds)
     }
 
+    /// The typed insert body EXCLUDING the terminating `EnterNormal` — the exact commands `i_CTRL-A`
+    /// (Vim's `".` register) re-inserts. Replaying these commands (which may include `DeleteBack`,
+    /// `InsertTab`, …) reproduces the RESULTING text of the session, matching nvim's keystroke replay.
+    pub(crate) fn insert_body(&self) -> &[Command] {
+        self.body().0
+    }
+
     /// The typed insert body — the session commands EXCLUDING the terminating `EnterNormal` — and whether
     /// that `EnterNormal` was present. `.` and the live count-replay both re-issue this body; the split
     /// keeps the `<Esc>` left-shift as the LAST command, after all repeats.

@@ -273,6 +273,13 @@ pub struct InputEngine {
     /// An in-flight change being recorded: set when an insert-entering command fires, then extended with the
     /// insert-session commands until the terminating `<Esc>` (`EnterNormal`) closes it into `last_change`.
     recording: Option<ChangeIntent>,
+    /// The typed body of the MOST RECENT closed insert session (`i_CTRL-A` / `i_CTRL-@`; Vim's `".`
+    /// register), excluding the terminating `EnterNormal`. Kept SEPARATE from `last_change` because a
+    /// non-insert change (`x`, `dw`) overwrites `last_change` but must NOT touch the last-inserted text
+    /// (verified vs nvim). Empty until the first insert session closes, so `i_CTRL-A` before any insert is
+    /// a clean no-op. Updated whenever an insert session closes, so text re-inserted by `i_CTRL-A` itself
+    /// (captured into the in-flight recording) rolls into the next `".` (matches nvim).
+    last_inserted: Vec<Command>,
     /// The register named by the most recent `"x`, held only until the NEXT recorded change picks it up (so
     /// `.` replays it). Cleared by any intervening non-register command — a stray `"x` then a motion forgets.
     pending_record_register: Option<char>,
@@ -385,6 +392,7 @@ impl InputEngine {
             last_search: None,
             last_change: None,
             recording: None,
+            last_inserted: Vec::new(),
             pending_record_register: None,
             pending_insert_count: 0,
             pending_insert_replay: None,
@@ -1388,6 +1396,10 @@ impl InputEngine {
                     // so `feed` returns them as ONE undo-grouped `Feed::Replay` in place of this `<Esc>`.
                     if let Some(rec) = &closed {
                         self.pending_insert_replay = rec.count_replay_tail();
+                        // Remember the typed text for `i_CTRL-A` / `i_CTRL-@` (Vim's `".` register). Unlike
+                        // `last_change`, this survives a later non-insert change (`x`, `dw`) — verified vs
+                        // nvim — so it is captured here on close and never touched by an Immediate change.
+                        self.last_inserted = rec.insert_body().to_vec();
                     }
                     self.last_change = closed;
                 }
@@ -1428,6 +1440,36 @@ impl InputEngine {
     /// The Insert namespace (mode is Insert, no one-shot in flight). Two multi-key sequences resolve
     /// before the layer — `CTRL-G u` (undo-break), `i_CTRL-^` (Lang-Arg toggle), `CTRL-O` (one-shot
     /// Normal), `CTRL-G` (prefix) — then the Insert layer binds, else the `open/insert` policy applies.
+    /// `i_CTRL-A` / `i_CTRL-@` (`:help i_CTRL-A`): re-insert the text of the MOST RECENT insert session
+    /// (Vim's `".` register) at the caret. `leave` selects the `CTRL-@` variant, which is "`CTRL-A` then
+    /// `<Esc>`" — it additionally leaves Insert, and does so EVEN when there is no previous insert
+    /// (verified vs nvim). With no previous insert the stored body is empty, so plain `CTRL-A` is a clean
+    /// no-op (nvim rings the bell — "E29: No inserted text yet").
+    ///
+    /// The body commands are replayed VERBATIM: replaying them (backspaces and all) reproduces the
+    /// RESULTING text of that session, exactly as nvim's keystroke replay does. They are also folded into
+    /// any in-flight recording so the re-inserted text rolls into the SESSION's `".` and dot-repeat
+    /// (matches nvim). The multi-command [`Feed::Replay`] channel bypasses the recorder, so this fold is
+    /// done by hand — the same pattern [`feed_ctrl_v`](Self::feed_ctrl_v) uses.
+    fn insert_prev_text(&mut self, leave: bool) -> Feed {
+        self.reset();
+        if self.last_inserted.is_empty() && !leave {
+            // Nothing to insert and no mode change to make: a pure no-op.
+            return Feed::Ignored;
+        }
+        let mut cmds = self.last_inserted.clone();
+        if leave {
+            cmds.push(Command::EnterNormal);
+        }
+        // Fold each replayed command into the in-flight recording exactly as the outer `feed` would for a
+        // sequence of `Cmd`s — recording the trailing `EnterNormal` (the `CTRL-@` case) also closes the
+        // session into `last_change` / `last_inserted`, so the next `".` reflects the re-inserted text.
+        for cmd in &cmds {
+            self.record(&Feed::Cmd(cmd.clone()), Mode::Insert);
+        }
+        Feed::Replay(cmds)
+    }
+
     fn feed_insert(&mut self, key: KeyEvent) -> Feed {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         // `CTRL-R` prefix: consume the second key as the register NAME and insert its contents at the caret.
@@ -1558,6 +1600,16 @@ impl InputEngine {
         }
         if ctrl && key.code == KeyCode::Char('d') {
             return self.action(Command::InsertDedent);
+        }
+        // `i_CTRL-A` — re-insert the text of the MOST RECENT insert session at the caret (Vim's `".`
+        // register). `i_CTRL-@` does the same and then leaves Insert (`:help i_CTRL-@`). Some terminals
+        // deliver `CTRL-@` as `Ctrl+Space`; both are accepted here (Insert `Ctrl+Space` is otherwise
+        // unbound in the Vim/Native profiles).
+        if ctrl && key.code == KeyCode::Char('a') {
+            return self.insert_prev_text(false);
+        }
+        if ctrl && matches!(key.code, KeyCode::Char('@') | KeyCode::Char(' ')) {
+            return self.insert_prev_text(true);
         }
         // `<Tab>` inserts whitespace to the next tabstop (spaces under `expandtab`, else a hard tab). Without
         // this, Tab falls through to the Insert unmatched policy, which only emits for `Char` keys — so a raw
