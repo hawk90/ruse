@@ -1097,7 +1097,157 @@ fn macro_step(
                 m.replay(&bytes);
             }
         }
+        // `@:` (Ex-line repeat) is exercised by the dedicated `feed_atcolon` harness, which threads the
+        // `last_ex` string these register-only scenarios do not carry.
+        Step::RepeatEx => {}
     }
+}
+
+/// One key through the macro state machine WITH `@:` support: like [`macro_step`], but it threads the
+/// last-executed Ex line (`last_ex`) so `@:` / `[count]@:` can re-drive it, and it feeds the engine
+/// directly (rather than via [`step`]) to capture `Feed::ExecuteEx` into `last_ex` — exactly as
+/// `session.rs` records the `":` register before running the Ex line.
+fn macro_step_ex(
+    e: &mut InputEngine,
+    ws: &mut Workspace,
+    m: &mut MacroState,
+    last_ex: &mut Option<String>,
+    key: KeyEvent,
+    from_replay: bool,
+) {
+    let macro_normal = matches!(ws.focused().view.mode(), Mode::Normal);
+    match m.step(key, from_replay, macro_normal) {
+        Step::Dispatch(k) => {
+            let mode = ws.focused().view.mode();
+            match e.feed(k, mode) {
+                Feed::ExecuteEx(text) => {
+                    *last_ex = Some(text.clone()); // record for `":` / `@:`, as session.rs does
+                    if let Ex::Substitute(s) = parse_ex(&text) {
+                        let _ = ws.substitute(
+                            s.range,
+                            &s.pattern,
+                            &s.replacement,
+                            SubFlags {
+                                global: s.global,
+                                ignore_case: s.ignore_case,
+                            },
+                        );
+                    }
+                }
+                Feed::Cmd(cmd) => {
+                    ws.apply(&cmd);
+                }
+                Feed::Replay(cmds) => {
+                    for c in &cmds {
+                        ws.apply(c);
+                    }
+                }
+                Feed::Pending | Feed::Ignored => {}
+            }
+        }
+        Step::Consumed | Step::OpenCmdWin(_) => {}
+        Step::Store(reg, bytes) => ws.set_register_raw(Some(reg), bytes),
+        Step::Replay(reg) => {
+            let n = e.take_count().max(1);
+            let bytes = ws.register_bytes(Some(reg));
+            for _ in 0..n {
+                m.replay(&bytes);
+            }
+        }
+        // `[count]@:` — re-enqueue the stored Ex line (`:` + text + `<CR>`) count times, exactly as
+        // session.rs does; the queued keys re-drive the Ex pipeline above. No prior line is a no-op.
+        Step::RepeatEx => {
+            let n = e.take_count().max(1);
+            if let Some(line) = last_ex.clone() {
+                let mut bytes = vec![b':'];
+                bytes.extend_from_slice(line.as_bytes());
+                bytes.push(b'\r');
+                for _ in 0..n {
+                    m.replay(&bytes);
+                }
+            }
+        }
+    }
+}
+
+/// Feed a keystroke script through the `@:`-aware macro run loop (drains the replay queue before each
+/// typed key, exactly as `session.rs`), threading `last_ex`.
+fn feed_atcolon(
+    e: &mut InputEngine,
+    ws: &mut Workspace,
+    m: &mut MacroState,
+    last_ex: &mut Option<String>,
+    s: &str,
+) {
+    let typed = keys_of(s);
+    let mut idx = 0;
+    loop {
+        if let Some(k) = m.next_replay() {
+            macro_step_ex(e, ws, m, last_ex, k, true);
+        } else if idx < typed.len() {
+            let k = typed[idx];
+            idx += 1;
+            macro_step_ex(e, ws, m, last_ex, k, false);
+        } else {
+            break;
+        }
+    }
+}
+
+#[test]
+fn at_colon_repeats_last_ex_substitute_on_the_current_line() {
+    // `:s/a/X/` on line 1, then `@:` on line 2 re-runs the same substitute there (verified vs nvim v0.12.4).
+    let (mut e, mut ws) = session("aaa\naaa\naaa");
+    let mut m = MacroState::new();
+    let mut last_ex = None;
+    feed_atcolon(&mut e, &mut ws, &mut m, &mut last_ex, ":s/a/X/<CR>");
+    feed_atcolon(&mut e, &mut ws, &mut m, &mut last_ex, "j0@:");
+    assert_eq!(
+        buf(&ws),
+        "Xaa\nXaa\naaa",
+        "`@:` re-ran `:s/a/X/` on line 2 (first `a` only)"
+    );
+}
+
+#[test]
+fn count_at_colon_repeats_the_ex_line_n_times() {
+    // `2@:` runs the stored `:s/a/X/` twice on the current line (two matches → two X's). nvim v0.12.4.
+    let (mut e, mut ws) = session("aaa\naaaa");
+    let mut m = MacroState::new();
+    let mut last_ex = None;
+    feed_atcolon(&mut e, &mut ws, &mut m, &mut last_ex, ":s/a/X/<CR>"); // line 1: Xaa
+    feed_atcolon(&mut e, &mut ws, &mut m, &mut last_ex, "j02@:"); // line 2: two substitutes
+    assert_eq!(
+        buf(&ws),
+        "Xaa\nXXaa",
+        "`2@:` repeated the substitute twice on line 2"
+    );
+}
+
+#[test]
+fn at_at_after_at_colon_repeats_the_ex_line() {
+    // After `@:`, a bare `@@` repeats the Ex line too (not a register) — matches nvim v0.12.4.
+    let (mut e, mut ws) = session("aaa\naaa\naaa");
+    let mut m = MacroState::new();
+    let mut last_ex = None;
+    feed_atcolon(&mut e, &mut ws, &mut m, &mut last_ex, ":s/a/X/<CR>"); // line 1
+    feed_atcolon(&mut e, &mut ws, &mut m, &mut last_ex, "j0@:"); // line 2 via @:
+    feed_atcolon(&mut e, &mut ws, &mut m, &mut last_ex, "j0@@"); // line 3 via @@
+    assert_eq!(
+        buf(&ws),
+        "Xaa\nXaa\nXaa",
+        "`@@` after `@:` repeated the Ex substitute on line 3"
+    );
+}
+
+#[test]
+fn at_colon_with_no_previous_ex_line_is_a_noop() {
+    // No Ex command has run yet: `@:` changes nothing (nvim reports E30; edit-wise a no-op).
+    let (mut e, mut ws) = session("aaa\nbbb");
+    let mut m = MacroState::new();
+    let mut last_ex = None;
+    feed_atcolon(&mut e, &mut ws, &mut m, &mut last_ex, "@:");
+    assert_eq!(buf(&ws), "aaa\nbbb", "`@:` before any Ex line is a no-op");
 }
 
 /// Feed a keystroke script through the macro-aware run loop: drain the replay queue before each typed
