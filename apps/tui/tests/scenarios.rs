@@ -48,6 +48,27 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
         }
         return;
     }
+    // Mirror session.rs's `i_CTRL-X CTRL-L` whole-line-completion intercept: after `C-x` armed the submode,
+    // `C-l` resolves the candidate lines from the buffer and starts the cycle; a bare `C-l` while a cycle is
+    // active steps forward. `C-n`/`C-p` cycle via the block above.
+    if matches!(mode, ruse_core::Mode::Insert)
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(key.code, KeyCode::Char('l'))
+    {
+        if e.insert_ctrl_x_pending() {
+            let (base, cands) = ws.line_completion();
+            if let Feed::Cmd(cmd) = e.complete_line_start(base, cands) {
+                ws.apply(&cmd);
+            }
+            return;
+        }
+        if e.completion_active() && e.insert_plain_text_ctx() {
+            if let Feed::Cmd(cmd) = e.complete_cycle(true) {
+                ws.apply(&cmd);
+            }
+            return;
+        }
+    }
     match e.feed(key, mode) {
         Feed::Cmd(cmd) => {
             sync_special(e, ws);
@@ -1279,6 +1300,180 @@ fn insert_ctrl_n_dot_repeats_literal_text() {
         buf(&ws),
         "foobar foobaz\nfoobar\nfoobar",
         "`.` replays the accepted completion text literally"
+    );
+}
+
+// --- i_CTRL-X CTRL-L: current-buffer WHOLE-LINE completion (verified vs nvim v0.12.4) ---
+
+/// `i_CTRL-X CTRL-L` completes the current line to the first buffer line whose post-indent start matches
+/// the typed prefix; a bare `CTRL-L` then cycles forward to the next matching line, then back to the
+/// ORIGINAL typed text. Candidate order is Vim's backward-from-caret-with-wrap, deduped. nvim ground truth
+/// for prefix "foobar" on a fresh last line: foobar baz, foobar qux, <orig "foobar"> (the two identical
+/// "foobar baz" lines dedupe to one).
+#[test]
+fn insert_ctrl_x_ctrl_l_completes_and_cycles_lines() {
+    let (mut e, mut ws) = session("foobar baz\nfoobar qux\nfoobar baz\nhello world");
+    feed_str(&mut e, &mut ws, "Gofoobar"); // open a fresh last line, type the prefix "foobar"
+    assert_eq!(
+        buf(&ws),
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar"
+    );
+    feed_str(&mut e, &mut ws, "<C-x><C-l>");
+    assert_eq!(
+        buf(&ws),
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar baz",
+        "C-x C-l → first matching line"
+    );
+    feed_str(&mut e, &mut ws, "<C-l>");
+    assert_eq!(
+        buf(&ws),
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux",
+        "bare C-l → next matching line"
+    );
+    feed_str(&mut e, &mut ws, "<C-l>");
+    assert_eq!(
+        buf(&ws),
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar",
+        "next C-l → back to the original typed text"
+    );
+    feed_str(&mut e, &mut ws, "<C-l>");
+    assert_eq!(
+        buf(&ws),
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar baz",
+        "next C-l wraps → first line again"
+    );
+}
+
+/// `CTRL-N` / `CTRL-P` cycle an ACTIVE whole-line completion just like the keyword cycle: from the first
+/// selected line `C-N` advances and `C-P` retreats, through the same `[candidates…, ORIGINAL]` stops.
+#[test]
+fn insert_ctrl_x_ctrl_l_cycles_with_ctrl_n_and_ctrl_p() {
+    let (mut e, mut ws) = session("foobar baz\nfoobar qux\nfoobar baz\nhello world");
+    feed_str(&mut e, &mut ws, "Gofoobar<C-x><C-l>"); // → "foobar baz" (first candidate)
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(
+        buf(&ws),
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux",
+        "C-n advances to the next line"
+    );
+    feed_str(&mut e, &mut ws, "<C-n>");
+    assert_eq!(
+        buf(&ws),
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar",
+        "C-n reaches the original text"
+    );
+    feed_str(&mut e, &mut ws, "<C-p>");
+    assert_eq!(
+        buf(&ws),
+        "foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar qux",
+        "C-p retreats to the previous line"
+    );
+}
+
+/// Leading indent is IGNORED for matching AND the current line KEEPS its own indent: prefix "  in" (typed
+/// with two leading spaces) matches a 4-space-indented "    indented alpha" and the result is
+/// "  indented alpha" — the typed indent preserved, the candidate's own indent dropped (nvim v0.12.4).
+#[test]
+fn insert_ctrl_x_ctrl_l_ignores_indent_but_keeps_current() {
+    let (mut e, mut ws) = session("    indented alpha\nplain beta");
+    feed_str(&mut e, &mut ws, "Go  in"); // fresh line, two spaces + "in"
+    feed_str(&mut e, &mut ws, "<C-x><C-l>");
+    assert_eq!(
+        buf(&ws),
+        "    indented alpha\nplain beta\n  indented alpha",
+        "indent ignored for match; current line's own indent preserved"
+    );
+}
+
+/// Candidate lines are deduped by their POST-INDENT content, so lines differing only in indent collapse:
+/// "foo bar" and "    foo bar" offer ONE "foo bar" candidate. Order is backward-from-caret, so "foo baz"
+/// (just above) comes first.
+#[test]
+fn insert_ctrl_x_ctrl_l_dedupes_by_content() {
+    let (mut e, mut ws) = session("foo bar\n    foo bar\nfoo baz");
+    feed_str(&mut e, &mut ws, "Gofoo"); // new last line, prefix "foo"
+    feed_str(&mut e, &mut ws, "<C-x><C-l>");
+    assert_eq!(
+        buf(&ws),
+        "foo bar\n    foo bar\nfoo baz\nfoo baz",
+        "first candidate is the nearest line above (backward scan)"
+    );
+    feed_str(&mut e, &mut ws, "<C-l>");
+    assert_eq!(
+        buf(&ws),
+        "foo bar\n    foo bar\nfoo baz\nfoo bar",
+        "next candidate is 'foo bar' (both indented/plain copies dedupe to one)"
+    );
+    feed_str(&mut e, &mut ws, "<C-l>");
+    assert_eq!(
+        buf(&ws),
+        "foo bar\n    foo bar\nfoo baz\nfoo",
+        "only two candidates → next C-l returns to the original"
+    );
+}
+
+/// A prefix no line starts with is a no-op (Vim bells; the buffer is untouched and Insert continues).
+#[test]
+fn insert_ctrl_x_ctrl_l_no_match_is_noop() {
+    let (mut e, mut ws) = session("foo bar\nbaz");
+    feed_str(&mut e, &mut ws, "Gozz"); // prefix "zz" — no line starts with it
+    feed_str(&mut e, &mut ws, "<C-x><C-l>");
+    assert_eq!(
+        buf(&ws),
+        "foo bar\nbaz\nzz",
+        "no candidate → nothing changes"
+    );
+    feed_str(&mut e, &mut ws, "x<Esc>"); // still in Insert: typing continues normally
+    assert_eq!(
+        buf(&ws),
+        "foo bar\nbaz\nzzx",
+        "completion was inert, insert continues"
+    );
+}
+
+/// Any other key ACCEPTS the current line and ends completion; typing then resumes normally.
+#[test]
+fn insert_ctrl_x_ctrl_l_accept_on_other_key() {
+    let (mut e, mut ws) = session("hello world");
+    feed_str(&mut e, &mut ws, "ohel<C-x><C-l>!<Esc>"); // complete → "hello world", then '!' appends
+    assert_eq!(
+        buf(&ws),
+        "hello world\nhello world!",
+        "other key accepts the completed line"
+    );
+}
+
+/// A `CTRL-X` submode armed then cancelled by an out-of-scope key does NOT complete; the deferred
+/// `CTRL-X CTRL-N` (local keyword) is such a cancel here — the buffer is untouched and Insert continues.
+#[test]
+fn insert_ctrl_x_then_unhandled_key_cancels_submode() {
+    let (mut e, mut ws) = session("hello world");
+    feed_str(&mut e, &mut ws, "ohel<C-x><C-n>"); // C-x C-n is out of scope → cancels, no completion
+    assert_eq!(
+        buf(&ws),
+        "hello world\nhel",
+        "C-x C-n cancels; no whole-line completion"
+    );
+    feed_str(&mut e, &mut ws, "p<Esc>");
+    assert_eq!(
+        buf(&ws),
+        "hello world\nhelp",
+        "insert continues after the cancelled submode"
+    );
+}
+
+/// Dot-repeat replays the LITERAL completed line (matches nvim): `hel` + C-x C-l accepts "hello world";
+/// `.` on a fresh line re-inserts it, NOT a re-resolution against the new context.
+#[test]
+fn insert_ctrl_x_ctrl_l_dot_repeats_literal_line() {
+    let (mut e, mut ws) = session("hello world");
+    feed_str(&mut e, &mut ws, "ohel<C-x><C-l><Esc>");
+    assert_eq!(buf(&ws), "hello world\nhello world");
+    feed_str(&mut e, &mut ws, ".");
+    assert_eq!(
+        buf(&ws),
+        "hello world\nhello world\nhello world",
+        "`.` replays the accepted completion line literally"
     );
 }
 

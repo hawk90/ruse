@@ -205,6 +205,12 @@ struct InsertState {
     /// (that key ACCEPTS the current candidate, Vim's behavior) and, like the rest of `InsertState`, when
     /// the Insert layer dies. Local to Insert.
     completion: Option<Completion>,
+    /// Insert-mode `CTRL-X` completion submode (`i_CTRL-X`): the next key selects a completion SOURCE. Only
+    /// `CTRL-L` (whole-line, current buffer) is in scope this slice — the frontend intercepts it before
+    /// `feed_insert` (it needs the buffer) and resolves the candidate lines. Any other key reaching the
+    /// engine cancels the submode. A one-key expectation local to Insert; ALWAYS separate from the Emacs
+    /// profile's `C-x` prefix (`emacs_prefix`), which lives on the non-modal `feed` path.
+    ctrl_x: bool,
 }
 
 /// One in-flight insert-mode keyword-completion session (`i_CTRL-N` / `i_CTRL-P`). The candidate list is
@@ -1179,9 +1185,18 @@ impl InputEngine {
     pub fn insert_plain_text_ctx(&self) -> bool {
         !self.insert.ctrl_g
             && !self.insert.ctrl_r
+            && !self.insert.ctrl_x
             && self.insert.digraph.is_none()
             && self.insert.literal.is_none()
             && !self.in_one_shot()
+    }
+
+    /// Whether the Insert `CTRL-X` completion submode (`i_CTRL-X`) is armed — the previous key was `CTRL-X`
+    /// and the engine awaits the source selector. The frontend checks this so `i_CTRL-X CTRL-L` (whole-line
+    /// completion) is resolved against the buffer here rather than reaching `feed_insert`.
+    #[must_use]
+    pub fn insert_ctrl_x_pending(&self) -> bool {
+        self.insert.ctrl_x
     }
 
     /// `i_CTRL-E` / `i_CTRL-Y`: insert the frontend-resolved character directly below / above the caret.
@@ -1230,6 +1245,18 @@ impl InputEngine {
             applied,
         });
         self.complete_cycle(forward)
+    }
+
+    /// Start an insert-mode WHOLE-LINE completion cycle (`i_CTRL-X CTRL-L`) and take the first step. Consumes
+    /// the `CTRL-X` submode ([`insert_ctrl_x_pending`](Self::insert_ctrl_x_pending)) and reuses the same
+    /// [`Completion`] cycle machinery as [`complete_start`](Self::complete_start) — the ONLY difference is
+    /// the SOURCE: `base` and `cands` are whole-line (post-indent) text resolved by the frontend via
+    /// [`Workspace::line_completion`](ruse_core::Workspace::line_completion). Always steps FORWARD onto the
+    /// first matching line (Vim's `CTRL-X CTRL-L`); a bare `CTRL-L` (or `CTRL-N`/`CTRL-P`) then continues the
+    /// cycle. With NO candidates this is a no-op ([`Feed::Ignored`]) and no cycle is armed (Vim bells).
+    pub fn complete_line_start(&mut self, base: String, cands: Vec<String>) -> Feed {
+        self.insert.ctrl_x = false; // the submode's job is done — the cycle owns continuation from here
+        self.complete_start(base, cands, true)
     }
 
     /// Advance (`CTRL-N`) or retreat (`CTRL-P`) the active keyword-completion cycle by one stop and emit the
@@ -1676,6 +1703,19 @@ impl InputEngine {
         // accepted text already sits in the buffer; dropping the state is all that is needed.
         self.insert.completion = None;
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // `i_CTRL-X` submode: the in-scope second key `CTRL-L` (whole-line completion) is intercepted by the
+        // frontend BEFORE `feed_insert` (it needs the buffer), so any key that REACHES here cancels the
+        // submode. A CONTROL-modified key is a would-be submode selector we do not support (the deferred
+        // `CTRL-N`/`CTRL-P` local-keyword, `CTRL-F` filename sources): SWALLOW it as a clean cancel rather
+        // than inserting a stray char. A non-ctrl key falls through and is processed as normal Insert input
+        // (so `CTRL-X` then `<Esc>` still leaves Insert, `CTRL-X` then a letter inserts it).
+        if self.insert.ctrl_x {
+            self.insert.ctrl_x = false;
+            if ctrl {
+                self.reset();
+                return Feed::Ignored;
+            }
+        }
         // `CTRL-R` prefix: consume the second key as the register NAME and insert its contents at the caret.
         // Accepts the same names the paste path reads (`"`, `0`–`9`, `-`, `a`–`z`/`A`–`Z`); any other key
         // aborts without inserting. Checked before the layer so the register key never reaches text insertion.
@@ -1792,6 +1832,15 @@ impl InputEngine {
         if ctrl && key.code == KeyCode::Char('r') {
             self.reset();
             self.insert.ctrl_r = true;
+            return Feed::Pending;
+        }
+        // `i_CTRL-X` — arm the completion submode; the next key selects the source. Only `CTRL-L` (whole-line,
+        // current buffer) is in scope this slice, resolved by the frontend (see the run loop). The Emacs
+        // profile's `C-x` prefix is a SEPARATE non-modal path (`emacs_prefix`); this fires only in Vim/Native
+        // Insert, which is the only profile set that reaches `feed_insert`.
+        if ctrl && key.code == KeyCode::Char('x') {
+            self.reset();
+            self.insert.ctrl_x = true;
             return Feed::Pending;
         }
         // `i_CTRL-K` — arm the digraph prefix; the next TWO printable keys select the digraph.
