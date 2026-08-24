@@ -360,6 +360,16 @@ pub(crate) fn run_ex(
                 format!("{n} lines yanked")
             };
         }
+        // `:[range]j[oin][!]` — join the range's lines into one, reusing the core `J`/`gJ` join (no range =
+        // the current line, which joins with the next). `bang` is the raw `gJ` form.
+        Ex::Join { range, bang } => {
+            let n = ws.join_lines(*range, *bang);
+            *status = if n <= 1 {
+                String::new()
+            } else {
+                format!("{n} lines joined")
+            };
+        }
         // `:[range]m {addr}` — move the range's lines to after the destination line.
         Ex::Move(range, dest) => {
             *status = match ws.move_lines(*range, *dest) {
@@ -848,5 +858,52 @@ mod dispatch_tests {
             !needs_final_newline(b"", true),
             "empty buffer stays empty (Vim writes no newline into one)"
         );
+    }
+
+    /// Drive the ex executor END TO END for `:[range]j[oin][!]`: parse the raw line with `parse_ex` and run
+    /// it through `run_ex` exactly as the run loop does. `parity_compare` cannot drive ex commands, so each
+    /// expectation is the buffer nvim v0.12.4 produces for the SAME line (`nvim -u NONE`, confirmed by hand).
+    fn run_ex_oracle(buf: &str, cursor0: usize, line: &str) -> (String, usize) {
+        let mut ws = Workspace::new(buf.as_bytes().to_vec());
+        ws.place_focused_cursor(cursor0);
+        let files = Files::new();
+        let recorded: Vec<Command> = Vec::new();
+        let mut status = String::new();
+        let mut quit = false;
+        let mut confirm = None;
+        let ex = crate::input::parse_ex(line);
+        run_ex(
+            &ex,
+            &mut ws,
+            &files,
+            buf.as_bytes(),
+            &recorded,
+            &mut status,
+            &mut quit,
+            &mut confirm,
+            false,
+        );
+        let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
+        (bytes, ws.focused().view.cursor())
+    }
+
+    #[test]
+    fn ex_join_drives_end_to_end_like_nvim() {
+        // `:j` joins the current line + next on a single space; cursor rests on the join seam.
+        let (bytes, cur) = run_ex_oracle("foo\nbar\nbaz\n", 0, "j");
+        assert_eq!(bytes, "foo bar\nbaz\n");
+        assert_eq!(cur, 3);
+        // `:j!` raw-concatenates (like `gJ`).
+        let (bytes, _) = run_ex_oracle("foo\nbar\nbaz\n", 0, "j!");
+        assert_eq!(bytes, "foobar\nbaz\n");
+        // `:2,4j` collapses the three-line range into one.
+        let (bytes, _) = run_ex_oracle("a\nb\nc\nd\ne\n", 0, "2,4j");
+        assert_eq!(bytes, "a\nb c d\ne\n");
+        // No space before a leading `)`.
+        let (bytes, _) = run_ex_oracle("foo\n)bar\n", 0, "join");
+        assert_eq!(bytes, "foo)bar\n");
+        // A single-line range joins that line with the NEXT (Vim: a join needs two lines).
+        let (bytes, _) = run_ex_oracle("a\nb\nc\nd\n", 0, "2j");
+        assert_eq!(bytes, "a\nb c\nd\n");
     }
 }

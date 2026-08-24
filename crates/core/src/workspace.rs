@@ -592,6 +592,24 @@ impl Workspace {
         n
     }
 
+    /// Run `:[range]j[oin][!]` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): join
+    /// the range's lines, reusing the same core join `J`/`gJ` emit. `no_space` is the `!` (raw `gJ`) form.
+    /// Returns the number of lines joined.
+    pub fn join_lines(&mut self, range: SubRange, no_space: bool) -> usize {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.join_lines(range, no_space);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
     /// Run `:[range]m {addr}` against the FOCUSED window (swap-trick): move the range's lines to after the
     /// destination. Returns the lines moved, or `None` if the destination is inside the source.
     pub fn move_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
@@ -1240,6 +1258,51 @@ mod tests {
             move_after: false,
         });
         assert_eq!(w.focused().doc.bytes(), b"a\nb\nb");
+    }
+
+    /// `:[range]j[oin][!]` joins the range's lines, reusing the `J`/`gJ` core join. Ground truth captured
+    /// from nvim v0.12.4 (`nvim -u NONE`).
+    #[test]
+    fn join_lines_matches_vim() {
+        // `:j` (no range) joins the current line with the next on a single space, as one undo group.
+        let mut w = Workspace::new(b"foo\nbar\nbaz\n".to_vec());
+        assert_eq!(w.join_lines(SubRange::CurrentLine, false), 2);
+        assert_eq!(w.focused().doc.bytes(), b"foo bar\nbaz\n");
+        // The cursor rests on the join seam (the inserted space), exactly like normal `J`.
+        assert_eq!(w.focused().view.cursor(), 3);
+        // One undo restores both lines (single group).
+        w.apply(&Command::Undo);
+        assert_eq!(w.focused().doc.bytes(), b"foo\nbar\nbaz\n");
+
+        // `:j!` (bang) raw-concatenates without adjusting whitespace, like `gJ`.
+        let mut w = Workspace::new(b"foo\nbar\nbaz\n".to_vec());
+        assert_eq!(w.join_lines(SubRange::CurrentLine, true), 2);
+        assert_eq!(w.focused().doc.bytes(), b"foobar\nbaz\n");
+
+        // `:2,4j` collapses the three-line range into one, single spaces between.
+        let mut w = Workspace::new(b"a\nb\nc\nd\ne\n".to_vec());
+        assert_eq!(w.join_lines(SubRange::Lines(2, 4), false), 3);
+        assert_eq!(w.focused().doc.bytes(), b"a\nb c d\ne\n");
+
+        // No space is inserted before a `)` that opens the next line.
+        let mut w = Workspace::new(b"foo\n)bar\n".to_vec());
+        w.join_lines(SubRange::CurrentLine, false);
+        assert_eq!(w.focused().doc.bytes(), b"foo)bar\n");
+
+        // The next line's leading whitespace is stripped and collapsed to the single separating space.
+        let mut w = Workspace::new(b"foo\n    bar\n".to_vec());
+        w.join_lines(SubRange::CurrentLine, false);
+        assert_eq!(w.focused().doc.bytes(), b"foo bar\n");
+
+        // A first line ALREADY ending in whitespace keeps it and adds no extra space (Vim `J`).
+        let mut w = Workspace::new(b"foo   \nbar\n".to_vec());
+        w.join_lines(SubRange::CurrentLine, false);
+        assert_eq!(w.focused().doc.bytes(), b"foo   bar\n");
+
+        // A single-line range joins that line with the NEXT one (Vim: a join needs two lines).
+        let mut w = Workspace::new(b"a\nb\nc\nd\n".to_vec());
+        assert_eq!(w.join_lines(SubRange::Lines(2, 2), false), 2);
+        assert_eq!(w.focused().doc.bytes(), b"a\nb c\nd\n");
     }
 
     /// `:[range]m {addr}` moves whole lines to after the destination as one undo group; a destination
