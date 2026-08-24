@@ -2522,6 +2522,43 @@ mod tests {
     }
 
     #[test]
+    fn info_commands_emit_frontend_resolved_actions() {
+        let cg = || KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL);
+        // `ga` — ascii info (the `:ascii`/`:as` ex synonym resolves to the same message downstream).
+        assert_eq!(feed("ga"), Feed::Cmd(Command::AsciiInfo));
+        // Plain `CTRL-G` in Normal is file info (previously an inert stub).
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(cg(), Mode::Normal), Feed::Cmd(Command::FileInfo));
+        // `g CTRL-G` is cursor position/counts. It must NOT be mistaken for `gg` (which ignores the
+        // modifier) nor consumed by the top-level `CTRL-G` handler (that only fires with no `g` pending).
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(cg(), Mode::Normal), Feed::Cmd(Command::CursorInfo));
+        // Regression guard: bare `gg` is still GotoLine, and `ga`'s `!ctrl` guard leaves the Visual
+        // `g CTRL-A` sequence-increment intact.
+        assert_eq!(feed("gg"), Feed::Cmd(Command::Move(1, Motion::GotoLine)));
+        // `CTRL-G` in a selection still toggles Visual<->Select (unchanged behaviour).
+        assert_eq!(
+            e.feed(
+                cg(),
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            ),
+            Feed::Cmd(Command::EnterSelect {
+                kind: SelectKind::Charwise
+            })
+        );
+    }
+
+    #[test]
+    fn ascii_ex_command_parses() {
+        use crate::input::ex::{parse_ex, Ex};
+        assert_eq!(parse_ex("ascii"), Ex::Ascii);
+        assert_eq!(parse_ex("as"), Ex::Ascii);
+    }
+
+    #[test]
     fn shift_operators_doubled_and_counted() {
         // `>>` / `<<` are the doubled linewise forms; the count before them is the line count.
         assert_eq!(feed(">>"), Feed::Cmd(Command::ShiftRight(1)));
@@ -2911,8 +2948,8 @@ mod tests {
                 kind: SelectKind::Linewise
             })
         );
-        // CTRL-G is inert in Normal (no selection to toggle); it is NOT the start of `gg`.
-        assert_eq!(e.feed(ctrl_g(), Mode::Normal), Feed::Ignored);
+        // In Normal (no selection to toggle) CTRL-G is Vim's file-info command — NOT the start of `gg`.
+        assert_eq!(e.feed(ctrl_g(), Mode::Normal), Feed::Cmd(Command::FileInfo));
     }
 
     #[test]

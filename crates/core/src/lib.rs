@@ -27,6 +27,7 @@ pub mod edit;
 pub mod editor;
 pub mod effect;
 pub mod expr;
+pub mod info;
 pub mod keymap;
 pub mod motion;
 pub mod pattern;
@@ -53,6 +54,7 @@ pub use editor::{
 };
 pub use effect::Effect;
 pub use expr::{eval as eval_expr, eval_or_empty as eval_expr_or_empty, ExprError};
+pub use info::{ascii_info, cursor_pos_info, file_info};
 pub use motion::Motion;
 pub use pattern::{Magic, Match, Options as RegexOptions, Regex, RegexError};
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};

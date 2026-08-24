@@ -329,7 +329,17 @@ pub(crate) fn run_ex(
                 global: spec.global,
                 ignore_case: spec.ignore_case,
             };
-            if spec.confirm {
+            if spec.count_only {
+                // `n`: REPORT ONLY — count the matches and echo the tally, editing nothing (Vim `:s///n`).
+                // Overrides `c` (like Vim). `substitute_count` borrows `&`, so no edit / undo / cursor move.
+                *status = match ws.substitute_count(spec.range, &spec.pattern, flags) {
+                    Ok(out) if out.replacements == 0 => {
+                        format!("E486: pattern not found: {}", spec.pattern)
+                    }
+                    Ok(out) => match_count_message(out.replacements, out.lines),
+                    Err(e) => regex_error_msg(&e),
+                };
+            } else if spec.confirm {
                 // `c`: compute the matches and hand control to the interactive confirm loop (F-009 #2).
                 match ws.substitute_preview(spec.range, &spec.pattern, &spec.replacement, flags) {
                     Ok(subs) if subs.is_empty() => {
@@ -456,10 +466,14 @@ pub(crate) fn run_ex(
         Ex::SetFixEol(_) => {}
         // `:registers` is handled in the run loop (it opens the frontend-owned register-viewer picker).
         Ex::Registers => {}
+        // `:digraphs` is handled in the run loop (it opens the frontend-owned digraph-listing picker).
+        Ex::Digraphs => {}
         // `:marks` is handled in the run loop (it opens the frontend-owned marks-viewer picker).
         Ex::Marks => {}
         // `:jumps` / `:changes` are handled in the run loop (frontend-owned position-viewer picker).
         Ex::Jumps | Ex::Changes => {}
+        // `:ascii`/`:as` is handled in the run loop (it reads the focused buffer + cursor and sets status).
+        Ex::Ascii => {}
         // `:lmap`/`:lunmap` are handled in the run loop (they mutate engine-owned Lang-Arg state — the
         // `engine` this fn does not borrow); never reach here.
         Ex::Lmap { .. } | Ex::Lunmap { .. } => {}
@@ -545,6 +559,15 @@ pub(crate) fn buffer_list_line(ws: &Workspace) -> String {
         })
         .collect::<Vec<_>>()
         .join("  ")
+}
+
+/// The `:s///n` report-only status line. Wording + per-noun pluralization verified vs nvim v0.12.4:
+/// `6 matches on 3 lines`, `2 matches on 1 line`, `1 match on 1 line` (each noun pluralizes on its own
+/// count). The no-match case is reported separately (E486) by the caller, never here.
+pub(crate) fn match_count_message(matches: usize, lines: usize) -> String {
+    let m = if matches == 1 { "match" } else { "matches" };
+    let l = if lines == 1 { "line" } else { "lines" };
+    format!("{matches} {m} on {lines} {l}")
 }
 
 /// Human-readable status for a regex compile error (F-009).
@@ -943,6 +966,77 @@ mod dispatch_tests {
         // A single-line range joins that line with the NEXT (Vim: a join needs two lines).
         let (bytes, _) = run_ex_oracle("a\nb\nc\nd\n", 0, "2j");
         assert_eq!(bytes, "a\nb c\nd\n");
+    }
+
+    #[test]
+    fn match_count_message_matches_nvim_pluralization() {
+        // Verified vs nvim v0.12.4 headless (`:%s/foo//gn` and friends).
+        assert_eq!(match_count_message(6, 3), "6 matches on 3 lines");
+        assert_eq!(match_count_message(2, 1), "2 matches on 1 line");
+        assert_eq!(match_count_message(1, 1), "1 match on 1 line");
+    }
+
+    /// F-009: `:s///n` drives the executor END TO END — it must echo nvim's tally, and must NOT edit the
+    /// buffer, move the cursor, dirty the file, or add an undo entry. The counts are what nvim v0.12.4
+    /// reports for the identical `:%s/foo//gn` (`nvim -u NONE`, confirmed by hand).
+    #[test]
+    fn ex_substitute_count_only_reports_without_mutating() {
+        let src = "foo bar foo\nfoo baz\nno match here\nfoo foo foo\n";
+        let mut ws = Workspace::new(src.as_bytes().to_vec());
+        ws.place_focused_cursor(5); // must not move
+        let files = Files::new();
+        let recorded: Vec<Command> = Vec::new();
+        let mut status = String::new();
+        let mut quit = false;
+        let mut confirm = None;
+        let ex = crate::input::parse_ex("%s/foo//gn");
+        run_ex(
+            &ex,
+            &mut ws,
+            &files,
+            src.as_bytes(),
+            &recorded,
+            &mut status,
+            &mut quit,
+            &mut confirm,
+            false,
+        );
+        assert_eq!(status, "6 matches on 3 lines", "nvim wording");
+        assert!(
+            confirm.is_none(),
+            "`n` overrides `c` — no confirm loop opens"
+        );
+        assert_eq!(ws.focused().doc.bytes(), src.as_bytes(), "buffer unchanged");
+        assert_eq!(ws.focused().view.cursor(), 5, "cursor did not move");
+        assert!(!ws.focused().doc.is_modified(), "buffer not dirtied");
+        // No undo entry was created: an undo is a genuine no-op.
+        ws.apply(&Command::Undo);
+        assert_eq!(
+            ws.focused().doc.bytes(),
+            src.as_bytes(),
+            "no undo entry from :s///n"
+        );
+
+        // No-match reports E486 (nvim), still without editing.
+        let mut status = String::new();
+        let ex = crate::input::parse_ex("%s/zzz//gn");
+        run_ex(
+            &ex,
+            &mut ws,
+            &files,
+            src.as_bytes(),
+            &recorded,
+            &mut status,
+            &mut quit,
+            &mut confirm,
+            false,
+        );
+        assert_eq!(status, "E486: pattern not found: zzz");
+        assert_eq!(
+            ws.focused().doc.bytes(),
+            src.as_bytes(),
+            "no edit on a no-match count"
+        );
     }
 
     /// Whether `program` resolves on PATH — skip a shell-dependent filter test when the tool is absent.

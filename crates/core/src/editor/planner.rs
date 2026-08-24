@@ -2164,6 +2164,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let m = search_fwd(b, pat, 0, st.view.search_options()).unwrap_or(cur);
             nop(m, st.view.mode)
         }
+        // `ga`/`:ascii`, `CTRL-G`, `g CTRL-G` — INFO commands resolved by the frontend (it reads the buffer
+        // bytes + cursor and sets the status line); the pure core never mutates for them.
+        Command::AsciiInfo | Command::FileInfo | Command::CursorInfo => nop(cur, st.view.mode),
         // `g&` — resolved in the frontend against its last-substitute state; a no-op in the pure core.
         Command::RepeatSubstituteGlobal => nop(cur, st.view.mode),
         // `&` — resolved in the frontend (current-line, flagless repeat); a no-op in the pure core.

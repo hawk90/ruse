@@ -806,6 +806,35 @@ impl EditorState {
         Ok(out)
     }
 
+    /// Count — WITHOUT editing — the matches `:[range]s/pat//n` (the `n` "report only" flag) would act on
+    /// (F-009 #2). Returns the same [`SubOutcome`] shape as [`EditorState::substitute`] (total matches +
+    /// distinct lines), but the buffer is UNCHANGED, no [`Transaction`] is created, no undo entry is added,
+    /// and the cursor does not move — this borrows `&self`, so mutation is impossible by construction. The
+    /// `g` flag counts every match on each line; without it, one match per line. Verified vs nvim v0.12.4:
+    /// the frontend echoes `N matches on M lines`.
+    ///
+    /// # Errors
+    /// [`RegexError`] if the pattern is unrepresentable/malformed or the buffer is not UTF-8.
+    pub fn substitute_count(
+        &self,
+        range: SubRange,
+        pattern: &str,
+        flags: SubFlags,
+    ) -> Result<SubOutcome, RegexError> {
+        // Reuse the exact match-finding of `substitute_preview` (with an empty replacement, never applied),
+        // so the count is guaranteed consistent with what a real `:s` would replace.
+        let subs = self.substitute_preview(range, pattern, "", flags)?;
+        let lines = subs
+            .iter()
+            .map(|s| s.line)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        Ok(SubOutcome {
+            replacements: subs.len(),
+            lines,
+        })
+    }
+
     /// Apply a set of pending [`Substitution`]s as ONE undo group (a single [`Transaction`]) and move the
     /// cursor to the start of the last changed line (Vim). The subs must be disjoint and in document
     /// order (as [`EditorState::substitute_preview`] returns them, or an accepted subset of it).
