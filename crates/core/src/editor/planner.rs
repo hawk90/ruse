@@ -1303,6 +1303,44 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
             None => nop(cur, st.view.mode),
         },
+        // `` `< `` — to the START of the last visual selection. Charwise/blockwise: the byte-min end (the
+        // block's top corner is that end). Linewise: column 0 of the first selected line (Vim). No-op if
+        // no visual selection has ended. Verified against nvim v0.12.4 (parity fixtures).
+        Command::GotoVisualMarkStart => match st.view.last_visual_bounds() {
+            Some((s, _e, kind)) => {
+                let pos = if kind == SelectKind::Linewise {
+                    line_start(b, s)
+                } else {
+                    s
+                };
+                nop(mark_char_target(b, pos), st.view.mode)
+            }
+            None => nop(cur, st.view.mode),
+        },
+        // `` `> `` — to the END of the last visual selection. Charwise/blockwise: the byte-max end. Linewise:
+        // the last char of the last selected line (Vim clamps its MAXCOL `>` mark onto the last char). No-op
+        // if unset. Verified against nvim v0.12.4.
+        Command::GotoVisualMarkEnd => match st.view.last_visual_bounds() {
+            Some((_s, e, kind)) => {
+                let pos = if kind == SelectKind::Linewise {
+                    line_end(b, e)
+                } else {
+                    e
+                };
+                nop(mark_char_target(b, pos), st.view.mode)
+            }
+            None => nop(cur, st.view.mode),
+        },
+        // `'<` — LINEWISE to the first non-blank of the FIRST selected line. No-op if unset.
+        Command::GotoVisualMarkStartLine => match st.view.last_visual_bounds() {
+            Some((s, _e, _kind)) => nop(mark_line_target(b, s), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
+        // `'>` — LINEWISE to the first non-blank of the LAST selected line. No-op if unset.
+        Command::GotoVisualMarkEndLine => match st.view.last_visual_bounds() {
+            Some((_s, e, _kind)) => nop(mark_line_target(b, e), st.view.mode),
+            None => nop(cur, st.view.mode),
+        },
         // `` `` `` — jump to the context mark (position before the latest jump). No-op before any jump. It is
         // itself a jump (`apply_command` records the leave position AFTER commit), so a repeat toggles.
         Command::GotoContextMark => match st.view.context_mark() {

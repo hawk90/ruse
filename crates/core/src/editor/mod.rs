@@ -342,6 +342,15 @@ impl View {
         self.change_end
     }
 
+    /// The last visual selection's bounds `(start, end, kind)` — the byte-min and byte-max of the remembered
+    /// selection's two ends, in its kind. This is the store behind Vim's `<`/`>` marks (`` `< ``/`` `> ``/
+    /// `'<`/`'>`) and `gv`, all reading the one depth-1 `last_visual` (set on every Visual/Select exit). `None`
+    /// before any visual selection has ended. The planner turns `(start, end, kind)` into the per-mark target.
+    pub fn last_visual_bounds(&self) -> Option<(usize, usize, SelectKind)> {
+        let (a, e, kind) = self.last_visual?;
+        Some((a.min(e), a.max(e), kind))
+    }
+
     /// The context mark (Vim `` ` ``/`'`): the position before the latest jump — the newest jumplist entry.
     /// `None` before any jump. Read by `` `` ``/`''`; the jump they perform then records a fresh entry, so
     /// repeating toggles between the two positions.
@@ -1587,6 +1596,16 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // The last-insert position (`gi`) snaps the same way.
     if let Some(li) = st.view.last_insert {
         st.view.last_insert = Some(snap(st.doc.bytes(), li.min(len)));
+    }
+    // The last-visual store (behind `gv` and the `<`/`>` marks) snaps both ends into range so an edit that
+    // shrank the buffer under a remembered selection can never make a later `gv`/`` `< ``/`` `> `` slice out
+    // of bounds. (Vim keeps the raw columns; snapping only clamps out-of-buffer offsets, never in-range ones.)
+    if let Some((a, e, kind)) = st.view.last_visual {
+        st.view.last_visual = Some((
+            snap(st.doc.bytes(), a.min(len)),
+            snap(st.doc.bytes(), e.min(len)),
+            kind,
+        ));
     }
     // The `[`/`]` change marks (and an in-flight Insert-session start) snap into range too.
     for p in [

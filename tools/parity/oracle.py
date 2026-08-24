@@ -740,6 +740,28 @@ FIXTURES: list[dict] = [
     {"name": "linewise_yank_mark_end", "lines": ["one", "two"], "keys": "yy`]"},
     {"name": "open_line_mark_start", "lines": ["abc"], "keys": "ohi<Esc>`["},
     {"name": "open_line_mark_end", "lines": ["abc"], "keys": "ohi<Esc>`]"},
+    #     VISUAL-SELECTION marks `< `> '< '> (issue #451) — set when Visual/Select is LEFT (Esc AND
+    #     operator-completion), backed by the SAME depth-1 store as `gv`. Backtick = charwise (start/end
+    #     char of the selection); quote = linewise (first non-blank of the first/last selected line).
+    #     Charwise selection: `< = word start, `> = word end.
+    {"name": "visual_mark_start_charwise", "lines": ["foo bar baz"], "keys": "wviw<Esc>`<"},
+    {"name": "visual_mark_end_charwise", "lines": ["foo bar baz"], "keys": "wviw<Esc>`>"},
+    #     Linewise selection: `< = col 0 of first line, `> = last char of last line; '<//'> = first non-blank.
+    {"name": "visual_mark_start_line_linewise", "lines": ["  alpha", "beta", "  gamma"], "keys": "Vj<Esc>'<"},
+    {"name": "visual_mark_end_line_linewise", "lines": ["  alpha", "beta", "  gamma"], "keys": "Vj<Esc>'>"},
+    {"name": "visual_mark_start_backtick_linewise", "lines": ["  alpha", "beta", "  gamma"], "keys": "Vj<Esc>`<"},
+    {"name": "visual_mark_end_backtick_linewise", "lines": ["  alpha", "beta", "  gamma"], "keys": "Vj<Esc>`>"},
+    #     Marks reflect the selection AFTER an operator too (`viwd` sets `<`/`>` around the deleted region).
+    {"name": "visual_mark_start_after_operator", "lines": ["foo bar baz"], "keys": "wviwd`<"},
+    {"name": "visual_mark_end_after_operator", "lines": ["foo bar baz"], "keys": "wviwd`>"},
+    #     Blockwise selection: `< = top corner, `> = bottom corner (byte-min/max of the two ends).
+    {"name": "visual_mark_start_blockwise", "lines": ["abcde", "fghij", "klmno"], "keys": "l<C-v>jl<Esc>`<"},
+    {"name": "visual_mark_end_blockwise", "lines": ["abcde", "fghij", "klmno"], "keys": "l<C-v>jl<Esc>`>"},
+    #     gv restores the last selection AND its kind: linewise `gvd` deletes whole lines; block `gvd` deletes
+    #     the block; a mark jump before `gv` does not disturb the store (`< then gvd still deletes the word).
+    {"name": "gv_reselect_linewise", "lines": ["one", "two", "three"], "keys": "Vjygvd"},
+    {"name": "gv_reselect_blockwise", "lines": ["abcde", "fghij", "klmno"], "keys": "l<C-v>jl<Esc>gvd"},
+    {"name": "gv_after_mark_jump", "lines": ["foo bar baz"], "keys": "wviw<Esc>`<gvd"},
     #     BACKWARD SEARCH `?` (issue #431) — `?pat` lands on the match BEFORE the cursor (wrapping to end
     #     of buffer); `n`/`N` repeat RELATIVE to the last search's direction; `?` is an EXCLUSIVE motion
     #     under an operator. The `/foo` cases are forward-`n`/`N` REGRESSION guards. Cursor homes to {1,0},

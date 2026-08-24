@@ -870,6 +870,151 @@ mod visual_swap_tests {
         assert_eq!(st.cursor(), 0);
     }
 
+    // Build the last-visual store by making a selection and leaving it (Esc = EnterNormal). Shared setup.
+    fn select_then_normal(initial: &str, sel: &[Command]) -> EditorState {
+        let mut cmds: Vec<Command> = sel.to_vec();
+        cmds.push(Command::EnterNormal);
+        run(initial, &cmds)
+    }
+
+    #[test]
+    fn visual_marks_charwise_land_on_word_start_and_end() {
+        // `viw` on the second word of "foo bar baz" selects "bar" (bytes 4..=6); after Esc, `` `< `` lands on
+        // 'b' (4) and `` `> `` on 'r' (6). Verified against nvim v0.12.4 (visual_mark_*_charwise fixtures).
+        let sel = [
+            Command::Move(1, Motion::WordFwd),
+            Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            },
+            Command::Move(1, Motion::InnerWord),
+        ];
+        let mut st = select_then_normal("foo bar baz", &sel);
+        apply_command(&mut st, &Command::GotoVisualMarkStart);
+        assert_eq!(st.cursor(), 4, "`< on word start");
+        apply_command(&mut st, &Command::GotoVisualMarkEnd);
+        assert_eq!(st.cursor(), 6, "`> on word end (inclusive last char)");
+    }
+
+    #[test]
+    fn visual_marks_linewise_columns_and_lines() {
+        // `Vj` on "  alpha\nbeta\n  gamma" selects lines 1..2. After Esc:
+        //   `'<` = first non-blank of line 1 ('a' at 2), `'>` = first non-blank of line 2 ('b' at 8),
+        //   `` `< `` = col 0 of line 1 (0), `` `> `` = last char of line 2 ('a' at 11). (nvim v0.12.4.)
+        let sel = [
+            Command::EnterVisual {
+                kind: SelectKind::Linewise,
+            },
+            Command::Move(1, Motion::Down),
+        ];
+        let text = "  alpha\nbeta\n  gamma";
+        let mut st = select_then_normal(text, &sel);
+        apply_command(&mut st, &Command::GotoVisualMarkStartLine);
+        assert_eq!(st.cursor(), 2, "'< first non-blank of first line");
+        apply_command(&mut st, &Command::GotoVisualMarkEndLine);
+        assert_eq!(st.cursor(), 8, "'> first non-blank of last line");
+        apply_command(&mut st, &Command::GotoVisualMarkStart);
+        assert_eq!(st.cursor(), 0, "`< col 0 of first line (linewise)");
+        apply_command(&mut st, &Command::GotoVisualMarkEnd);
+        assert_eq!(st.cursor(), 11, "`> last char of last line (linewise)");
+    }
+
+    #[test]
+    fn visual_marks_set_after_an_operator() {
+        // `viwd` deletes "bar" from "foo bar baz" -> "foo  baz" and leaves Visual by COMPLETING the operator.
+        // The `<`/`>` marks still reflect the just-deleted region's columns (4 and 6), matching nvim exactly.
+        let st_setup = [
+            Command::Move(1, Motion::WordFwd),
+            Command::EnterVisual {
+                kind: SelectKind::Charwise,
+            },
+            Command::Move(1, Motion::InnerWord),
+            Command::DeleteSelection,
+        ];
+        let mut st = run("foo bar baz", &st_setup);
+        assert_eq!(text(&st), "foo  baz");
+        apply_command(&mut st, &Command::GotoVisualMarkStart);
+        assert_eq!(st.cursor(), 4, "`< around the deleted region");
+        apply_command(&mut st, &Command::GotoVisualMarkEnd);
+        assert_eq!(st.cursor(), 6, "`> around the deleted region");
+    }
+
+    #[test]
+    fn visual_marks_blockwise_are_the_two_corners() {
+        // A block from (row0,col1) to (row1,col2) over "abcde\nfghij\nklmno": `< = top corner (byte 1),
+        // `> = bottom corner (byte 8 = 'h'). Byte-min/max of the two ends, as nvim reports the corners.
+        let sel = [
+            Command::Move(1, Motion::Right),
+            Command::EnterVisual {
+                kind: SelectKind::Blockwise,
+            },
+            Command::Move(1, Motion::Down),
+            Command::Move(1, Motion::Right),
+        ];
+        let mut st = select_then_normal("abcde\nfghij\nklmno", &sel);
+        apply_command(&mut st, &Command::GotoVisualMarkStart);
+        assert_eq!(st.cursor(), 1, "`< top corner");
+        apply_command(&mut st, &Command::GotoVisualMarkEnd);
+        assert_eq!(st.cursor(), 8, "`> bottom corner");
+    }
+
+    #[test]
+    fn visual_marks_are_unset_before_any_selection() {
+        // Every visual-mark jump is a clean no-op before the first Visual exit (cursor stays put).
+        for cmd in [
+            Command::GotoVisualMarkStart,
+            Command::GotoVisualMarkEnd,
+            Command::GotoVisualMarkStartLine,
+            Command::GotoVisualMarkEndLine,
+        ] {
+            let mut st = run("hello", &[Command::Move(1, Motion::Right)]);
+            let before = st.cursor();
+            apply_command(&mut st, &cmd);
+            assert_eq!(st.cursor(), before, "no-op before any visual selection");
+            assert_eq!(text(&st), "hello");
+        }
+    }
+
+    #[test]
+    fn gv_restores_linewise_kind() {
+        // `gv` restores the selection's KIND: after a linewise `Vj` selection (yanked, leaving Visual),
+        // `gv` re-enters LINEWISE Visual so `gvd` deletes whole lines. Guards kind round-trip (nvim parity).
+        let st = run(
+            "one\ntwo\nthree",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(1, Motion::Down),
+                Command::YankSelection,
+                Command::ReselectVisual,
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "three");
+        assert!(st.register().is_linewise(), "gv kept the linewise kind");
+    }
+
+    #[test]
+    fn visual_mark_jump_does_not_disturb_the_gv_store() {
+        // A `` `< `` jump before `gv` reads the SAME store `gv` restores from, and leaves it intact: after
+        // `viw<Esc>`<`, a following `gvd` still deletes the original word (nvim gv_after_mark_jump fixture).
+        let st = run(
+            "foo bar baz",
+            &[
+                Command::Move(1, Motion::WordFwd),
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::InnerWord),
+                Command::EnterNormal,
+                Command::GotoVisualMarkStart,
+                Command::ReselectVisual,
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "foo  baz");
+    }
+
     #[test]
     fn swap_is_involutive() {
         // `oo` restores the original selection span (both ends back where they were).

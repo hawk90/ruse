@@ -242,6 +242,21 @@ pub enum Command {
     GotoChangeMarkStartLine,
     /// `']` — jump LINEWISE to the first non-blank of the `]` mark's line (last affected line). No-op if unset.
     GotoChangeMarkEndLine,
+    /// `` `< `` — jump to the FIRST char (start) of the LAST visual/select selection (Vim's `<` mark).
+    /// Charwise: the byte-min of the selection's two ends; linewise: column 0 of the first selected line;
+    /// blockwise: the top corner. Backed by the same depth-1 store as `gv` ([`Command::ReselectVisual`]),
+    /// set on every Visual exit (Esc AND operator-completion). No-op before any visual selection has ended.
+    GotoVisualMarkStart,
+    /// `` `> `` — jump to the LAST char (end) of the last visual/select selection (Vim's `>` mark). Charwise:
+    /// the byte-max of the two ends; linewise: the last char of the last selected line; blockwise: the bottom
+    /// corner. Same store as `` `< ``. No-op before any visual selection has ended.
+    GotoVisualMarkEnd,
+    /// `'<` — jump LINEWISE to the first non-blank of the FIRST selected line (Vim's `<` mark, line form).
+    /// No-op before any visual selection has ended.
+    GotoVisualMarkStartLine,
+    /// `'>` — jump LINEWISE to the first non-blank of the LAST selected line (Vim's `>` mark, line form).
+    /// No-op before any visual selection has ended.
+    GotoVisualMarkEndLine,
     /// `` `` `` — jump to the position before the latest jump (Vim's automatic `` ` ``/`'` context mark).
     /// Reads the newest jumplist entry; being itself a jump, it records where it left, so repeating toggles
     /// between the two positions. A no-op before any jump has happened.
@@ -913,6 +928,10 @@ impl Command {
             Command::GotoChangeMarkEnd => "goto_change_mark_end".into(),
             Command::GotoChangeMarkStartLine => "goto_change_mark_start_line".into(),
             Command::GotoChangeMarkEndLine => "goto_change_mark_end_line".into(),
+            Command::GotoVisualMarkStart => "goto_visual_mark_start".into(),
+            Command::GotoVisualMarkEnd => "goto_visual_mark_end".into(),
+            Command::GotoVisualMarkStartLine => "goto_visual_mark_start_line".into(),
+            Command::GotoVisualMarkEndLine => "goto_visual_mark_end_line".into(),
             Command::GotoContextMark => "goto_context_mark".into(),
             Command::GotoContextMarkLine => "goto_context_mark_line".into(),
             Command::GotoOlderChange => "goto_older_change".into(),
@@ -1257,6 +1276,10 @@ impl Command {
             "goto_change_mark_end" => Command::GotoChangeMarkEnd,
             "goto_change_mark_start_line" => Command::GotoChangeMarkStartLine,
             "goto_change_mark_end_line" => Command::GotoChangeMarkEndLine,
+            "goto_visual_mark_start" => Command::GotoVisualMarkStart,
+            "goto_visual_mark_end" => Command::GotoVisualMarkEnd,
+            "goto_visual_mark_start_line" => Command::GotoVisualMarkStartLine,
+            "goto_visual_mark_end_line" => Command::GotoVisualMarkEndLine,
             "goto_context_mark" => Command::GotoContextMark,
             "goto_context_mark_line" => Command::GotoContextMarkLine,
             "goto_older_change" => Command::GotoOlderChange,
@@ -1676,6 +1699,10 @@ mod tests {
             Command::GotoChangeMarkEnd,
             Command::GotoChangeMarkStartLine,
             Command::GotoChangeMarkEndLine,
+            Command::GotoVisualMarkStart,
+            Command::GotoVisualMarkEnd,
+            Command::GotoVisualMarkStartLine,
+            Command::GotoVisualMarkEndLine,
             Command::GotoContextMark,
             Command::GotoContextMarkLine,
             Command::GotoNamedMarkLine('a'),
