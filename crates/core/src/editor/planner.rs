@@ -1968,6 +1968,15 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // `*`/`#` are resolved by the frontend (it reads the word under the cursor from the buffer and
         // rewrites this to a concrete `SearchNext`/`SearchPrev`), so the pure core never acts on it.
         Command::SearchWordUnder { .. } => nop(cur, st.view.mode),
+        // `gd`/`gD` are resolved by the frontend (it reads the keyword under the cursor from the buffer and
+        // rewrites this to a concrete `GotoFirstMatch`), so the pure core never acts on it directly.
+        Command::GotoDeclaration { .. } => nop(cur, st.view.mode),
+        // The resolved `gd`/`gD` jump: land on the FIRST whole-word match scanning from the TOP of the file
+        // (offset 0 — matching nvim v0.12.4's `gd`/`gD`), else keep the cursor. `is_jump` records the leave.
+        Command::GotoFirstMatch(pat) => {
+            let m = search_fwd(b, pat, 0, st.view.search_options()).unwrap_or(cur);
+            nop(m, st.view.mode)
+        }
         // `g&` — resolved in the frontend against its last-substitute state; a no-op in the pure core.
         Command::RepeatSubstituteGlobal => nop(cur, st.view.mode),
         Command::Undo => Plan {

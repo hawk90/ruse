@@ -433,6 +433,21 @@ pub enum Command {
     /// history, so the FRONTEND resolves this against its last-substitute state (like [`SearchWordUnder`]);
     /// the planner treats it as a no-op.
     RepeatSubstituteGlobal,
+    /// `gd` / `gD` — go to the (local / global) declaration of the keyword under the cursor using Vim's pure
+    /// TEXT heuristic (NOT LSP; ruse has a separate LSP goto). The frontend reads the word from the buffer
+    /// (the input engine has no buffer) and rewrites this to a concrete [`Command::GotoFirstMatch`] with the
+    /// whole-word pattern, so traces record the deterministic jump. `global` distinguishes `gd` (`false`)
+    /// from `gD` (`true`); both currently resolve identically — the first WHOLE-WORD match from the top of
+    /// the file — which is exactly what nvim v0.12.4 does for both (verified). The `gd` local-scope
+    /// refinement (limit to the enclosing `{`-block) is a documented follow-up and reads this flag.
+    GotoDeclaration {
+        global: bool,
+    },
+    /// The concrete jump `gd`/`gD` resolve to (via [`Command::GotoDeclaration`]): move to the FIRST match of
+    /// the whole-word pattern scanning from the TOP of the file (offset 0), landing on the match's first
+    /// char. No match keeps the cursor (Vim rings the bell). A JUMP — records the leaving position so
+    /// `CTRL-O` returns. The pattern is carried so traces replay deterministically (like [`SearchNext`]).
+    GotoFirstMatch(String),
     /// `{count}/{pattern}<CR>` (forward) or `{count}?{pattern}<CR>` (backward) as a MOTION: bare it moves
     /// to the `count`-th match in `backward`'s direction; under an operator (`op`) it folds into a charwise-
     /// EXCLUSIVE edit over `[cursor, match)` forward, or `[match, cursor)` backward (`d/pat`, `c?pat`,
@@ -1093,6 +1108,14 @@ impl Command {
                 if *whole_word { "whole" } else { "any" }
             ),
             Command::RepeatSubstituteGlobal => "repeat_substitute_global".into(),
+            Command::GotoDeclaration { global } => {
+                format!(
+                    "goto_declaration {}",
+                    if *global { "global" } else { "local" }
+                )
+            }
+            // Pattern is LAST so it may contain spaces (like search_next).
+            Command::GotoFirstMatch(p) => format!("goto_first_match {p}"),
             // Direction before the pattern (pattern is LAST so it may contain spaces, like search_next).
             Command::Search {
                 op,
@@ -1568,6 +1591,10 @@ impl Command {
                 }
             }
             "repeat_substitute_global" => Command::RepeatSubstituteGlobal,
+            "goto_declaration" => Command::GotoDeclaration {
+                global: matches!(raw.split_whitespace().next(), Some("global")),
+            },
+            "goto_first_match" => Command::GotoFirstMatch(raw.to_string()),
             "search" => {
                 // `search {op} {count} {fwd|bwd} {pattern...}` — pattern is the untrimmed remainder.
                 let mut parts = raw.splitn(4, ' ');
@@ -1736,6 +1763,10 @@ mod tests {
             Command::GotoOlderJump,
             Command::GotoNewerJump,
             Command::RepeatSubstituteGlobal,
+            Command::GotoDeclaration { global: false },
+            Command::GotoDeclaration { global: true },
+            Command::GotoFirstMatch("\\<foo\\>".into()),
+            Command::GotoFirstMatch("bar baz".into()),
             Command::InsertAtLastInsert,
             Command::SetNamedMark('a'),
             Command::SetNamedMark('z'),

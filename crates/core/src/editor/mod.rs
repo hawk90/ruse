@@ -1808,6 +1808,8 @@ fn is_jump(cmd: &Command) -> bool {
     use crate::motion::Motion as M;
     match cmd {
         Command::SearchNext(_) | Command::SearchPrev(_) | Command::SearchWordUnder { .. } => true,
+        // `gd`/`gD` (and the `GotoFirstMatch` they resolve to) are jumps — `CTRL-O` returns.
+        Command::GotoDeclaration { .. } | Command::GotoFirstMatch(_) => true,
         Command::GotoLastChange
         | Command::GotoLastChangeLine
         | Command::GotoChangeMarkStart

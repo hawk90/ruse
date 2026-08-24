@@ -1601,6 +1601,69 @@ mod tests {
         );
     }
 
+    /// `gd`/`gD` (go-to-declaration, TEXT heuristic): the frontend reads the keyword under the cursor and
+    /// rewrites to `GotoFirstMatch("\<word\>")`, which lands on the FIRST whole-word match from the TOP of
+    /// the file (matching nvim v0.12.4 for both `gd` and `gD`, verified against nvim). It is a JUMP, so the
+    /// leaving position is recorded and `CTRL-O` returns. No match keeps the cursor.
+    #[test]
+    fn goto_declaration_first_match_from_top_and_jumplist() {
+        // Buffer: `int foo;` then two uses of `foo`. Cursor on the LAST `foo` (line 3, "int baz = foo;").
+        let src = b"int foo;\nvoid bar() { foo = 1; }\nint baz = foo;\n".to_vec();
+        let decl = src
+            .windows(3)
+            .position(|w| w == b"foo")
+            .expect("foo present"); // byte offset of the first `foo` (in `int foo;`)
+        let last_foo = src
+            .windows(3)
+            .enumerate()
+            .rfind(|(_, w)| *w == b"foo")
+            .expect("foo present")
+            .0;
+
+        let mut w = Workspace::new(src.clone());
+        w.place_focused_cursor(last_foo);
+        // Mirror the frontend rewrite (session.rs): keyword under cursor → whole-word first-match jump.
+        let word = w.word_under_cursor().expect("on a keyword");
+        assert_eq!(word, "foo");
+        w.apply(&Command::GotoFirstMatch(format!("\\<{word}\\>")));
+        assert_eq!(
+            w.focused().view.cursor(),
+            decl,
+            "gd/gD lands on the first whole-word match from the top of the file"
+        );
+        // It was a JUMP: the leaving position (last `foo`) is on the jumplist and `CTRL-O` returns there.
+        assert!(
+            w.jumps_snapshot().contains(&last_foo),
+            "the jump records the position it left"
+        );
+        w.apply(&Command::GotoOlderJump); // CTRL-O
+        assert_eq!(
+            w.focused().view.cursor(),
+            last_foo,
+            "CTRL-O returns to where gd/gD jumped from"
+        );
+
+        // No match → the cursor stays put (Vim rings the bell).
+        let mut w = Workspace::new(src);
+        w.place_focused_cursor(last_foo);
+        w.apply(&Command::GotoFirstMatch("\\<nope\\>".to_string()));
+        assert_eq!(
+            w.focused().view.cursor(),
+            last_foo,
+            "no match leaves the cursor put"
+        );
+
+        // The whole-word pattern skips substrings: `foobar` is not a match for `\<foo\>`.
+        let mut w = Workspace::new(b"foobar\nfoo\n".to_vec());
+        w.place_focused_cursor(7); // on the standalone `foo` (line 2)
+        w.apply(&Command::GotoFirstMatch("\\<foo\\>".to_string()));
+        assert_eq!(
+            w.focused().view.cursor(),
+            7,
+            "the first WHOLE-word match is the standalone foo, not the foobar substring"
+        );
+    }
+
     /// A pathological `{count}p` (a digit-spam count that saturates to `u32::MAX`) must not request a
     /// multi-gigabyte allocation: the paste is clamped to a bounded number of bytes and completes.
     #[test]

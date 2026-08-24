@@ -429,6 +429,8 @@ pub(crate) fn search_pattern(cmd: &Command) -> Option<String> {
     match cmd {
         Command::Search { pattern, .. } => Some(pattern.clone()),
         Command::SearchNext(p) | Command::SearchPrev(p) => Some(p.clone()),
+        // `gd`/`gD` resolve to this; like `*`, the landing turns on hlsearch for the whole-word pattern.
+        Command::GotoFirstMatch(p) => Some(p.clone()),
         _ => None,
     }
 }
