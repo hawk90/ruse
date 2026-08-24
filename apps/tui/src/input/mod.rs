@@ -197,6 +197,38 @@ struct InsertState {
     /// `Some(LiteralEntry::AwaitFirst)` = `CTRL-V` seen, the next key picks a numeric form or is inserted
     /// literally; `Some(LiteralEntry::Collecting{..})` = mid numeric collection. Local to Insert.
     literal: Option<LiteralEntry>,
+    /// Insert-mode keyword completion (`i_CTRL-N` / `i_CTRL-P`): the in-flight cycle across successive
+    /// `CTRL-N`/`CTRL-P` keys. `None` = no active completion. Cleared when ANY other key is fed in Insert
+    /// (that key ACCEPTS the current candidate, Vim's behavior) and, like the rest of `InsertState`, when
+    /// the Insert layer dies. Local to Insert.
+    completion: Option<Completion>,
+}
+
+/// One in-flight insert-mode keyword-completion session (`i_CTRL-N` / `i_CTRL-P`). The candidate list is
+/// buffer-derived (resolved once by the frontend when the cycle starts) and cached here across keys; the
+/// engine owns only the CYCLING (the index), mirroring how `i_CTRL-E` splits buffer-read (frontend) from
+/// command-emission (engine). The cycle has `cands.len() + 1` stops: the candidates in scan order, then
+/// the ORIGINAL typed text (Vim's "Back at original"). `C-N` advances the index, `C-P` retreats it, both
+/// modulo the cycle length. `applied` is the char length of the text currently occupying the completion
+/// region in the buffer (the base, or the last applied candidate) — the `back` count the next step deletes.
+struct Completion {
+    /// The keyword text before the caret when the cycle started (the "original" cycle stop / base).
+    base: String,
+    /// Candidates in nvim scan order (forward-from-caret then wrap, deduped) — see `keyword_completions`.
+    cands: Vec<String>,
+    /// Current cycle position: `0..cands.len()` selects a candidate; `cands.len()` is the ORIGINAL text.
+    idx: usize,
+    /// Char length of the text currently in the buffer's completion region (what the next step deletes).
+    applied: u32,
+}
+
+impl Completion {
+    /// The text at cycle position `idx`: a candidate, or the original base at the wrap-around stop.
+    fn text_at(&self, idx: usize) -> &str {
+        self.cands
+            .get(idx)
+            .map_or(self.base.as_str(), String::as_str)
+    }
 }
 
 /// The `i_CTRL-K` digraph collector's position within its two-char sequence (see [`InsertState::digraph`]).
@@ -1166,6 +1198,60 @@ impl InputEngine {
         }
     }
 
+    /// Whether an insert-mode keyword completion cycle (`i_CTRL-N` / `i_CTRL-P`) is currently active. The
+    /// frontend checks this to decide whether a fresh `CTRL-N`/`CTRL-P` STARTS a cycle (resolve the base +
+    /// candidates from the buffer) or CONTINUES one (just step the index).
+    #[must_use]
+    pub fn completion_active(&self) -> bool {
+        self.insert.completion.is_some()
+    }
+
+    /// Start an insert-mode keyword completion cycle (`i_CTRL-N` / `i_CTRL-P`) and take the first step.
+    /// The frontend resolves `base` (the keyword before the caret) and `cands` (the buffer keywords that
+    /// start with it, in nvim scan order — see [`Workspace::keyword_completion`](ruse_core::Workspace::keyword_completion));
+    /// the engine owns the cycling. With NO candidates this is a no-op (Vim bells; [`Feed::Ignored`]) and
+    /// no cycle is armed. Otherwise the cycle stops are `[cands…, ORIGINAL]`; `forward` (`CTRL-N`) selects
+    /// the first candidate, `!forward` (`CTRL-P`) the last. Returns the [`Command::CompleteWord`] applying
+    /// the step, recorded into the insert session so `.` replays it.
+    pub fn complete_start(&mut self, base: String, cands: Vec<String>, forward: bool) -> Feed {
+        if cands.is_empty() {
+            return Feed::Ignored;
+        }
+        let applied = base.chars().count() as u32;
+        // Start parked on the ORIGINAL stop (`idx == cands.len()`); the first `complete_cycle` moves off it
+        // to the first (`CTRL-N`) or last (`CTRL-P`) candidate.
+        self.insert.completion = Some(Completion {
+            idx: cands.len(),
+            base,
+            cands,
+            applied,
+        });
+        self.complete_cycle(forward)
+    }
+
+    /// Advance (`CTRL-N`) or retreat (`CTRL-P`) the active keyword-completion cycle by one stop and emit the
+    /// [`Command::CompleteWord`] that swaps the buffer's completion region to the newly selected text. A
+    /// no-op ([`Feed::Ignored`]) if no cycle is active. The step is recorded into the in-flight insert
+    /// session (like [`insert_copy_char`](Self::insert_copy_char)), so dot-repeat replays the chain and
+    /// reproduces the accepted text literally (matches nvim v0.12.4).
+    pub fn complete_cycle(&mut self, forward: bool) -> Feed {
+        let Some(c) = self.insert.completion.as_mut() else {
+            return Feed::Ignored;
+        };
+        let len = c.cands.len() + 1; // candidates + the ORIGINAL-text stop
+        c.idx = if forward {
+            (c.idx + 1) % len
+        } else {
+            (c.idx + len - 1) % len
+        };
+        let text = c.text_at(c.idx).to_string();
+        let back = c.applied;
+        c.applied = text.chars().count() as u32;
+        let out = Feed::Cmd(Command::CompleteWord { back, text });
+        self.record(&out, Mode::Insert);
+        out
+    }
+
     fn action(&mut self, cmd: Command) -> Feed {
         self.reset();
         Feed::Cmd(cmd)
@@ -1582,6 +1668,10 @@ impl InputEngine {
     }
 
     fn feed_insert(&mut self, key: KeyEvent) -> Feed {
+        // Any key reaching `feed_insert` is NOT a completion-cycle key (`CTRL-N`/`CTRL-P` are intercepted by
+        // the frontend before `feed`), so it ACCEPTS the current candidate and ends the cycle (Vim). The
+        // accepted text already sits in the buffer; dropping the state is all that is needed.
+        self.insert.completion = None;
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         // `CTRL-R` prefix: consume the second key as the register NAME and insert its contents at the caret.
         // Accepts the same names the paste path reads (`"`, `0`–`9`, `-`, `a`–`z`/`A`–`Z`); any other key
