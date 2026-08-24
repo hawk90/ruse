@@ -130,6 +130,12 @@ pub struct RegisterStore {
     /// with through its injected [`Clipboard`](crate::clipboard::Clipboard). For v0 `+` and `*` are the SAME
     /// slot (correct on macOS/Windows; on X11 `*` is really the PRIMARY selection — an accepted v0 divergence).
     clipboard: Register,
+    /// The expression register `"=` (`:help quote=`): unlike every other slot its contents are not yanked or
+    /// deleted text but the (already-evaluated) result of an expression. The frontend collects the
+    /// expression string via a prompt, the editor evaluates it (`crate::expr`) and stores the formatted
+    /// result here with [`RegisterStore::set_expr`]; a following paste/insert reads it via `get(Some('='))`.
+    /// Always charwise (a computed value has no line geometry). Empty when evaluation failed (Vim's degrade).
+    expr: Register,
 }
 
 impl Default for RegisterStore {
@@ -142,6 +148,7 @@ impl Default for RegisterStore {
             small_delete: Register::default(),
             blackhole: Register::default(),
             clipboard: Register::default(),
+            expr: Register::default(),
         }
     }
 }
@@ -202,6 +209,19 @@ impl RegisterStore {
         &self.yank0
     }
 
+    /// The expression register `"=` (`:help quote=`) — the last evaluated expression result.
+    #[must_use]
+    pub fn expr(&self) -> &Register {
+        &self.expr
+    }
+
+    /// Store an evaluated expression result into the `"=` register (always charwise). `result` is the
+    /// already-formatted output of [`crate::expr::eval`] — an EMPTY string when evaluation failed, so a
+    /// following paste/insert does nothing (Vim's degrade). This never touches any other slot.
+    pub fn set_expr(&mut self, result: String) {
+        self.expr = Register::charwise(result.into_bytes());
+    }
+
     /// Read a register for a paste. `None` → unnamed; `'0'` → the yank register; `'1'`–`'9'` → the numbered
     /// delete-ring; `'-'` → the small-delete register; a named letter (case-insensitive) → its slot; any
     /// unsupported name falls back to the unnamed register rather than inventing an empty one.
@@ -213,6 +233,7 @@ impl RegisterStore {
             Some('-') => &self.small_delete,
             Some('_') => &self.blackhole,
             Some('+') | Some('*') => &self.clipboard,
+            Some('=') => &self.expr,
             Some(c) => match Self::index(c) {
                 Some(i) => &self.named[i],
                 None => &self.unnamed,

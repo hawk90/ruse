@@ -546,6 +546,11 @@ enum Action {
     /// Install the one-shot pending register (`"x`). Distinct from `Nop` so [`commit`] knows NOT to clear
     /// the pending register it just set — every other action clears it once its command has consumed it.
     SetPending(Option<char>),
+    /// Store an evaluated expression result into the `"=` register and arm `=` as the one-shot pending
+    /// register (`"=<expr><CR>`). The carried string is the already-formatted result (EMPTY on an
+    /// evaluation error); [`commit`] writes it into the slot and sets the pending register, then returns
+    /// early exactly like [`Action::SetPending`] so the following `p`/`P` reads it.
+    SetExprPending(String),
     /// Arm a blockwise insert-replicate session (`CTRL-V` then `I`/`A`/`c`): apply `edits` (the block
     /// delete for `c`, and/or top-row padding for `A`), then install `session` so the following `<Esc>`
     /// replicates the text typed on the top row down every other block row (see [`BlockInsert`]).
@@ -1457,6 +1462,14 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         st.view.pending_register = name;
         return plan.effects;
     }
+    // `"=<expr><CR>`: store the evaluated result into the `"=` slot and arm `=` as the pending register, so
+    // the NEXT paste reads it. Returns early like `SetPending` — it must not fall into the tail that clears
+    // the pending register (that clear is what consumes the selection on the FOLLOWING command).
+    if let Action::SetExprPending(result) = plan.action {
+        st.view.registers.set_expr(result);
+        st.view.pending_register = Some('=');
+        return plan.effects;
+    }
     let entry_selection = st.view.mode.selection();
     let was_selection = entry_selection.is_some();
     let entry_cursor = st.view.cursor;
@@ -1530,8 +1543,11 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             st.view.block_insert = Some(session);
         }
         Action::Nop => {}
-        // Handled by the early return above; the buffer-mutating tail never runs for it.
+        // Handled by the early return above; the buffer-mutating tail never runs for them.
         Action::SetPending(_) => unreachable!("SetPending is handled before the action match"),
+        Action::SetExprPending(_) => {
+            unreachable!("SetExprPending is handled before the action match")
+        }
     }
     // The cursor the plan computed is valid for the post-action buffer, except undo/redo which resize the
     // text unpredictably — clamp and snap to a char boundary either way.
