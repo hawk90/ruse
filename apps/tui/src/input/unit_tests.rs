@@ -49,6 +49,34 @@ mod tests {
     }
 
     #[test]
+    fn g_prefixed_display_line_motions_alias_plain_motions() {
+        // ruse does not soft-wrap (one buffer line == one display row), so Vim's display-line motions
+        // `gj`/`gk`/`g0`/`g$`/`g^` equal `j`/`k`/`0`/`$`/`^` — exactly as Vim itself under `nowrap`.
+        assert_eq!(feed("gj"), Feed::Cmd(Command::Move(1, Motion::Down)));
+        assert_eq!(feed("gk"), Feed::Cmd(Command::Move(1, Motion::Up)));
+        assert_eq!(feed("g0"), Feed::Cmd(Command::Move(1, Motion::LineStart)));
+        assert_eq!(feed("g$"), Feed::Cmd(Command::Move(1, Motion::LineEnd)));
+        assert_eq!(
+            feed("g^"),
+            Feed::Cmd(Command::Move(1, Motion::LineFirstNonBlank))
+        );
+        // Count-aware: the count accumulated before `g` carries through (`3gj` == `3j`).
+        assert_eq!(feed("3gj"), Feed::Cmd(Command::Move(3, Motion::Down)));
+        assert_eq!(feed("2gk"), Feed::Cmd(Command::Move(2, Motion::Up)));
+        // Operator-composable. The horizontal forms match nvim exactly (`dg$` == `d$`, `dg^` == `d^`).
+        assert_eq!(feed("g$"), feed("$"));
+        assert_eq!(feed("dg$"), feed("d$"));
+        assert_eq!(feed("dg^"), feed("d^"));
+        assert_eq!(feed("dg0"), feed("d0"));
+        // DELIBERATE DIVERGENCE (operator over the VERTICAL forms): `dgj`/`dgk` alias `dj`/`dk` (linewise).
+        // nvim treats `gj`/`gk` as characterwise-exclusive (subject to exclusive-linewise promotion), so
+        // nvim's `dgj` deletes ONE line, not two — see the note in input/mod.rs's GSecond arms.
+        assert_eq!(feed("dgj"), Feed::Cmd(Command::Delete(1, Motion::Down)));
+        assert_eq!(feed("ygk"), Feed::Cmd(Command::Yank(1, Motion::Up)));
+        assert_eq!(feed("d2gj"), Feed::Cmd(Command::Delete(2, Motion::Down)));
+    }
+
+    #[test]
     fn plus_minus_underscore_line_motions() {
         // `+` / `-` / `_` — first-non-blank line motions, operator-aware and linewise.
         assert_eq!(

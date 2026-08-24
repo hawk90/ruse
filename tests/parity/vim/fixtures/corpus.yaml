@@ -589,6 +589,130 @@
       }
     },
     {
+      "name": "gj_display_down",
+      "lines": [
+        "alpha",
+        "beta"
+      ],
+      "keys": "gj",
+      "expect": {
+        "text": [
+          "alpha",
+          "beta"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gk_display_up",
+      "lines": [
+        "alpha",
+        "beta"
+      ],
+      "keys": "jgk",
+      "expect": {
+        "text": [
+          "alpha",
+          "beta"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "g0_display_bol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "$g0",
+      "expect": {
+        "text": [
+          "hello world"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gdollar_display_eol",
+      "lines": [
+        "hello world"
+      ],
+      "keys": "g$",
+      "expect": {
+        "text": [
+          "hello world"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gcaret_display_first_non_blank",
+      "lines": [
+        "  foo bar"
+      ],
+      "keys": "$g^",
+      "expect": {
+        "text": [
+          "  foo bar"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "di_bracket_inner",
       "lines": [
         "pre[abc]post"
