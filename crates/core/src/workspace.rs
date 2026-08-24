@@ -610,6 +610,24 @@ impl Workspace {
         n
     }
 
+    /// Run `:[range]>` / `:[range]<` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]):
+    /// shift the range's lines `levels` indent levels right (`left = false`) or left (`left = true`), reusing
+    /// the core `>>`/`<<` shift. Returns the number of lines in the range.
+    pub fn shift_lines(&mut self, range: SubRange, left: bool, levels: u32) -> usize {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.shift_lines(range, left, levels);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
     /// Run `:[range]m {addr}` against the FOCUSED window (swap-trick): move the range's lines to after the
     /// destination. Returns the lines moved, or `None` if the destination is inside the source.
     pub fn move_lines(&mut self, range: SubRange, dest: LineAddr) -> Option<usize> {
@@ -1303,6 +1321,85 @@ mod tests {
         let mut w = Workspace::new(b"a\nb\nc\nd\n".to_vec());
         assert_eq!(w.join_lines(SubRange::Lines(2, 2), false), 2);
         assert_eq!(w.focused().doc.bytes(), b"a\nb c\nd\n");
+    }
+
+    /// `:[range]>` / `:[range]<` shifts the range's lines one indent level per level, reusing the core
+    /// `>>`/`<<` shift. Ground truth captured from nvim v0.12.4 (`nvim -l`, `set sw=2 et`).
+    #[test]
+    fn shift_lines_matches_vim() {
+        use crate::editor::EditorOption;
+
+        // `:>` (no range) shifts the current line right one level; the cursor lands on its first non-blank.
+        // nvim: `:>` on line 1 of "aa\n…" (sw=2 et) → "  aa", cursor {1, 2}.
+        let mut w = Workspace::new(b"aa\nbb\ncc\ndd\nee\n".to_vec());
+        w.set_option(EditorOption::ShiftWidth(2));
+        assert_eq!(w.shift_lines(SubRange::CurrentLine, false, 1), 1);
+        assert_eq!(w.focused().doc.bytes(), b"  aa\nbb\ncc\ndd\nee\n");
+        assert_eq!(w.focused().view.cursor(), 2, "first non-blank of the line");
+        // One undo restores it (single group).
+        w.apply(&Command::Undo);
+        assert_eq!(w.focused().doc.bytes(), b"aa\nbb\ncc\ndd\nee\n");
+
+        // `:2,4>` shifts the range; the cursor lands on the first non-blank of the range's LAST line.
+        // nvim: cursor {4, 2}. Line 4 ("  dd") starts at byte 13, its first non-blank is byte 15.
+        let mut w = Workspace::new(b"aa\nbb\ncc\ndd\nee\n".to_vec());
+        w.set_option(EditorOption::ShiftWidth(2));
+        assert_eq!(w.shift_lines(SubRange::Lines(2, 4), false, 1), 3);
+        assert_eq!(w.focused().doc.bytes(), b"aa\n  bb\n  cc\n  dd\nee\n");
+        assert_eq!(
+            w.focused().view.cursor(),
+            15,
+            "first non-blank of the last line"
+        );
+
+        // `:>>>` shifts three levels (Vim's repeated verb chars) as ONE undo group. nvim: "      aa".
+        let mut w = Workspace::new(b"aa\nbb\ncc\ndd\nee\n".to_vec());
+        w.set_option(EditorOption::ShiftWidth(2));
+        assert_eq!(w.shift_lines(SubRange::CurrentLine, false, 3), 1);
+        assert_eq!(w.focused().doc.bytes(), b"      aa\nbb\ncc\ndd\nee\n");
+        assert_eq!(w.focused().view.cursor(), 6);
+        // A single undo reverses all three levels — the levels merge into one group.
+        w.apply(&Command::Undo);
+        assert_eq!(
+            w.focused().doc.bytes(),
+            b"aa\nbb\ncc\ndd\nee\n",
+            "one undo group"
+        );
+
+        // `:1,2<` dedents one level; the cursor lands on the last line's first non-blank. nvim: cursor {2, 2}.
+        let mut w = Workspace::new(b"    aa\n    bb\ncc\n".to_vec());
+        w.set_option(EditorOption::ShiftWidth(2));
+        assert_eq!(w.shift_lines(SubRange::Lines(1, 2), true, 1), 2);
+        assert_eq!(w.focused().doc.bytes(), b"  aa\n  bb\ncc\n");
+        assert_eq!(
+            w.focused().view.cursor(),
+            7,
+            "line 2 '  bb' first non-blank"
+        );
+
+        // `:>` indents a whitespace-only line but leaves a truly EMPTY line untouched. nvim `:1,4>` on
+        // "aa\n\n  \nbb" → "  aa", "", "    ", "  bb".
+        let mut w = Workspace::new(b"aa\n\n  \nbb\n".to_vec());
+        w.set_option(EditorOption::ShiftWidth(2));
+        w.shift_lines(SubRange::Lines(1, 4), false, 1);
+        assert_eq!(w.focused().doc.bytes(), b"  aa\n\n    \n  bb\n");
+
+        // At the default config (shiftwidth 4, spaces) `:>` inserts four spaces.
+        let mut w = Workspace::new(b"aa\nbb\n".to_vec());
+        assert_eq!(w.shift_lines(SubRange::CurrentLine, false, 1), 1);
+        assert_eq!(w.focused().doc.bytes(), b"    aa\nbb\n");
+
+        // `expandtab` off (tab style) indents with a literal tab. nvim `:>` (noet) → "\taa".
+        let mut w = Workspace::new(b"aa\nbb\n".to_vec());
+        w.set_option(EditorOption::ExpandTab(false));
+        w.shift_lines(SubRange::CurrentLine, false, 1);
+        assert_eq!(w.focused().doc.bytes(), b"\taa\nbb\n");
+
+        // `:<` never dedents past column 0 (Vim clamps).
+        let mut w = Workspace::new(b"aa\nbb\n".to_vec());
+        w.set_option(EditorOption::ShiftWidth(2));
+        w.shift_lines(SubRange::CurrentLine, true, 1);
+        assert_eq!(w.focused().doc.bytes(), b"aa\nbb\n");
     }
 
     /// `:[range]m {addr}` moves whole lines to after the destination as one undo group; a destination

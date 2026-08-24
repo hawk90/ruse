@@ -1029,6 +1029,47 @@ impl EditorState {
         count.max(2) as usize
     }
 
+    /// `:[range]>` / `:[range]<` — shift the range's lines one indent level right (`left = false`) or left
+    /// (`left = true`), reusing the SAME core shift the normal-mode `>>`/`<<` emit (`Command::ShiftRight`/
+    /// `ShiftLeft`), so the indent unit, whitespace-only-vs-empty-line rule, and clamp-at-column-0 all stay
+    /// identical. `levels` applies the shift that many times (Vim's repeated verb chars: `:>>>` = 3). All the
+    /// levels merge into ONE undo group (the second and later applies see `last_was_edit`, so their group
+    /// hint is `Continue`). Unlike normal `>>`, the cursor lands on the first non-blank of the range's LAST
+    /// line (Vim's ex-shift behaviour — verified against nvim v0.12.4). No range = the cursor's line. Returns
+    /// the number of lines in the range.
+    pub fn shift_lines(&mut self, range: SubRange, left: bool, levels: u32) -> usize {
+        let bytes = self.doc.bytes();
+        let Ok(hay) = std::str::from_utf8(bytes) else {
+            return 0;
+        };
+        let lines = line_spans(hay);
+        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+        let count = (last - first + 1) as u32;
+        // Anchor the cursor at the FIRST line so the reused shift (which reads its start line from the
+        // cursor) covers `[first, last]`; every extra level re-shifts the same span from there.
+        self.view.cursor = lines[first].0;
+        let cmd = if left {
+            Command::ShiftLeft(count)
+        } else {
+            Command::ShiftRight(count)
+        };
+        for _ in 0..levels.max(1) {
+            apply_command(self, &cmd);
+        }
+        // Vim's `:>`/`:<` leaves the cursor on the first non-blank of the range's LAST line (normal `>>`
+        // leaves it on the FIRST). A shift never adds/removes lines, so `last` still names that line;
+        // recompute its start against the POST-shift buffer (indent changed the byte offsets).
+        let b = self.doc.bytes();
+        if let Ok(hay) = std::str::from_utf8(b) {
+            let lines = line_spans(hay);
+            if let Some(&(last_ls, _)) = lines.get(last) {
+                self.view.cursor = motion::first_non_blank(b, last_ls);
+            }
+        }
+        count as usize
+    }
+
     /// `:[range]m {addr}` — move the range's lines to after the destination line, as one undo group.
     /// Returns the number of lines moved, or `None` if the destination lies inside the source (Vim's
     /// "move lines into themselves") or the buffer is not UTF-8. No range = the cursor's line.

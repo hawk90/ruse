@@ -386,6 +386,20 @@ pub(crate) fn run_ex(
                 None => "E486: invalid copy".into(),
             };
         }
+        // `:[range]>` / `:[range]<` — shift the range's lines one indent level per repeated verb char,
+        // reusing the core `>>`/`<<` shift (no range = the current line).
+        Ex::Shift {
+            range,
+            left,
+            levels,
+        } => {
+            let n = ws.shift_lines(*range, *left, *levels);
+            *status = if n == 1 {
+                String::new()
+            } else {
+                format!("{n} lines {}ed 1 time", if *left { '<' } else { '>' })
+            };
+        }
         // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
         Ex::Sort(range, spec) => {
             let removed = ws.sort_lines(*range, spec);
