@@ -553,10 +553,24 @@ impl InputEngine {
     }
 
     /// Emit `m` — an operator command if one is armed, else a bare move — then clear the transient state.
+    /// The repeat count is the operator count times the motion count (`3d2w` = 6), or the motion count for
+    /// a bare move; the composition itself lives in [`op_over_motion`](Self::op_over_motion).
     fn motion(&mut self, m: Motion) -> Feed {
+        let total = match self.normal.op {
+            Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+            None => self.mcount(),
+        };
+        self.op_over_motion(m, total)
+    }
+
+    /// Compose the pending operator (if any) over motion `m` with an explicit `total`, then clear the
+    /// transient state. `total` is the repeat count for most motions, but the ABSOLUTE 1-based TARGET LINE
+    /// for [`Motion::GotoLine`] (whose operator range is `[min,max]` of the cursor and target lines). With
+    /// no operator armed it is the bare `Move(total, m)`. Shared by [`motion`](Self::motion) (computed
+    /// `total`) and [`screen_op`](Self::screen_op) (the frontend-resolved `H`/`M`/`L` target line).
+    fn op_over_motion(&mut self, m: Motion, total: u32) -> Feed {
         let cmd = match self.normal.op {
-            Some(OpPending { op, count }) => {
-                let total = count.max(1) * self.mcount();
+            Some(OpPending { op, .. }) => {
                 // `gu`/`gU`/`g~` recase the operator span (no forced-wise / `cw`->`ce` rewrites apply).
                 if let Some(case) = op.case() {
                     Command::CaseMotion {
@@ -632,10 +646,42 @@ impl InputEngine {
                     }
                 }
             }
-            None => Command::Move(self.mcount(), m),
+            None => Command::Move(total, m),
         };
         self.reset();
         Feed::Cmd(cmd)
+    }
+
+    /// The EFFECTIVE count for a viewport screen-motion (`H`/`M`/`L`), WITHOUT consuming any state. When an
+    /// operator is armed this is the operator count times the motion count (`3d2H` = 6H → the 6th line from
+    /// the top, verified against nvim), the SAME multiplication [`motion`](Self::motion) applies; with no
+    /// operator it is the raw pending count (0 = none, which the viewport resolver treats as 1). A frontend
+    /// intercept resolves its target line from this, then hands the line to [`screen_op`](Self::screen_op).
+    pub fn screen_count(&self) -> u32 {
+        match self.normal.op {
+            Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+            None => self.normal.count,
+        }
+    }
+
+    /// Whether an operator (`d`/`c`/`y`/`>`/`=`/`gu`…) is currently armed, WITHOUT consuming it. The `H`/`M`/
+    /// `L` frontend intercept peeks this to pick the target line's SCROLLOFF: the bare cursor-motion keeps a
+    /// `'scrolloff'` margin from the window edge, but under an operator Vim IGNORES scrolloff — `dH`/`dL`
+    /// operate through the TRUE top/bottom visible line (verified against nvim). So the intercept resolves the
+    /// line with `scrolloff = 0` when this is true, and the normal margin otherwise.
+    pub fn has_op(&self) -> bool {
+        self.normal.op.is_some()
+    }
+
+    /// The OPERATOR form of the viewport-resolved screen motions `H`/`M`/`L` (`dH`/`yL`/`c2M`/`>H`/`gUL`…):
+    /// compose the pending operator (if any) over `GotoLine` to the ABSOLUTE 1-based `line` the frontend
+    /// resolved from the viewport, then clear the transient state. These motions are LINEWISE under an
+    /// operator (`:help H`), which the core `GotoLine` operator path already gives — the range is `[min,max]`
+    /// of the cursor and target lines, so direction does not matter. With NO operator armed this is the bare
+    /// cursor move (`Move(line, GotoLine)`), preserving plain `H`/`M`/`L`. The frontend owns the viewport, so
+    /// it resolves `line` (honoring any `[count]`, read via [`peek_count`](Self::peek_count)) and passes it in.
+    pub fn screen_op(&mut self, line: u32) -> Feed {
+        self.op_over_motion(Motion::GotoLine, line)
     }
 
     fn action(&mut self, cmd: Command) -> Feed {

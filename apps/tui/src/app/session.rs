@@ -1171,8 +1171,14 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
-        // `H` / `M` / `L` — move the cursor to the top / middle / bottom visible line (first non-blank via
-        // GotoLine). Non-operator (frontend intercept); operator-compatible `dH` needs viewport in the core.
+        // `H` / `M` / `L` — the top / middle / bottom visible line (first non-blank via GotoLine). These are
+        // viewport-dependent, so they stay a FRONTEND intercept: the session resolves the target buffer line
+        // from the current viewport, then hands it to the engine, which composes it with any PENDING OPERATOR
+        // over `GotoLine` (`dH`/`yL`/`c2M`/`>H`/`gUL`…). Operator-pending is the `op` axis WITHIN Normal mode
+        // (not a distinct crossterm mode), so `normal` is still true after `d`/`c`/`y`/… and this intercept
+        // fires for the operator case too — `screen_op` returns the operator command when armed, else the bare
+        // move, preserving plain `H`/`M`/`L`. Under an operator `GotoLine` is LINEWISE in core (`:help H`), and
+        // its range is `[min,max]` of the cursor and target lines, so direction is handled for free.
         if normal
             && !key
                 .modifiers
@@ -1184,24 +1190,24 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 KeyCode::Char('M') => viewport::ScreenTo::Middle,
                 _ => viewport::ScreenTo::Low,
             };
-            let count = engine.take_count();
+            // The effective count (`2H` = 2nd line from top; `3d2H` = 6H) resolves the target line; the op
+            // itself is consumed by `screen_op`. `screen_count` applies the operator*motion multiplication.
+            let count = engine.screen_count();
             let last_line = line_idx.line_of(snapshot.len());
+            // Under an operator Vim IGNORES 'scrolloff' — `dH`/`dL` operate through the TRUE top/bottom visible
+            // line (verified against nvim), whereas the bare cursor-motion keeps the scrolloff margin.
+            let scrolloff = if engine.has_op() { 0 } else { SCROLLOFF };
             let row = viewport::screen_line(
                 ws.focused().view.top(),
                 focused_h,
-                SCROLLOFF,
+                scrolloff,
                 to,
                 count,
                 last_line,
             );
-            run_cmd(
-                Command::Move(row as u32 + 1, ruse_core::Motion::GotoLine),
-                &mut ws,
-                &files,
-                &mut recorded,
-                &mut status,
-                &mut quit,
-            );
+            if let Feed::Cmd(cmd) = engine.screen_op(row as u32 + 1) {
+                run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
+            }
             continue;
         }
         // Every other key — command-line included — goes through the engine (F-026): the command-line
