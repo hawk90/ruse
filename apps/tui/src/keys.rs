@@ -220,6 +220,70 @@ fn special_from_tag(tag: u8) -> Option<KeyCode> {
     })
 }
 
+/// Parse a `:normal` key payload into key events, understanding Vim's `<>` key-notation
+/// (`:help key-notation`) on top of literal characters. `<Esc>`/`<CR>`/`<Tab>`/`<BS>`/`<Space>`/`<lt>`/`<Bar>`
+/// and `<C-x>` (control-letter) resolve to their macro bytes; every other run of characters is literal. The
+/// notation is converted to the SAME macro-byte encoding the record/replay path uses and handed to [`decode`],
+/// so `:normal` and `@{reg}` share one byte→[`KeyEvent`] codec (no second key interpreter). An unrecognised
+/// `<…>` token is treated literally (Vim does the same for an unknown key name).
+pub fn parse_normal_keys(payload: &str) -> Vec<KeyEvent> {
+    let chars: Vec<char> = payload.chars().collect();
+    let mut bytes: Vec<u8> = Vec::new();
+    let push_char = |c: char, out: &mut Vec<u8>| {
+        let mut b = [0u8; 4];
+        out.extend_from_slice(c.encode_utf8(&mut b).as_bytes());
+    };
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '<' {
+            // A `<…>` token: find the closing `>` and try to resolve the name to macro bytes.
+            if let Some(rel) = chars[i + 1..].iter().position(|&c| c == '>') {
+                let name: String = chars[i + 1..i + 1 + rel].iter().collect();
+                if let Some(b) = key_notation_bytes(&name) {
+                    bytes.extend(b);
+                    i += rel + 2; // skip `<name>`
+                    continue;
+                }
+            }
+            // Not a recognised token — treat the `<` literally.
+            push_char('<', &mut bytes);
+            i += 1;
+        } else {
+            push_char(chars[i], &mut bytes);
+            i += 1;
+        }
+    }
+    decode(&bytes)
+}
+
+/// Resolve one `<>` key-notation name (WITHOUT the angle brackets) to its macro bytes, or `None` if it is
+/// not a name this MVP understands (the caller then treats the `<` literally). Names are case-insensitive,
+/// matching Vim. `<C-x>` maps to the control byte `decode` reads back as `Ctrl-x`.
+fn key_notation_bytes(name: &str) -> Option<Vec<u8>> {
+    let lower = name.to_ascii_lowercase();
+    // `<C-x>` / `<c-x>` — a control-modified letter. Reuse the same control-byte range `encode` produces
+    // for `Ctrl`-`a`..`z`, so `decode` reads it straight back as the modified key.
+    if let Some(rest) = lower.strip_prefix("c-") {
+        let mut cs = rest.chars();
+        let c = cs.next()?;
+        if cs.next().is_none() && c.is_ascii_alphabetic() {
+            return Some(vec![c as u8 - b'a' + 1]);
+        }
+        return None;
+    }
+    Some(match lower.as_str() {
+        "esc" => vec![0x1b],
+        "cr" | "enter" | "return" => vec![b'\r'],
+        "tab" => vec![b'\t'],
+        "bs" | "backspace" => vec![0x7f],
+        "space" => vec![b' '],
+        "lt" => vec![b'<'],
+        "bar" => vec![b'|'],
+        "bslash" => vec![b'\\'],
+        _ => return None,
+    })
+}
+
 /// Encode a whole key sequence to bytes (concatenation of [`encode`], skipping unencodable keys).
 pub fn encode_all(keys: &[KeyEvent]) -> Vec<u8> {
     let mut out = Vec::new();
@@ -380,6 +444,28 @@ mod tests {
         // A stray/trailing 0x80 with no tag decodes to nothing (no panic).
         assert_eq!(decode(&[0x80]), vec![]);
         assert_eq!(decode(&[b'x', 0x80, b'?']), vec![ch('x')]); // unknown tag skipped
+    }
+
+    #[test]
+    fn parse_normal_keys_reads_literals_and_key_notation() {
+        // Literal characters (including spaces) pass through unchanged.
+        assert_eq!(parse_normal_keys("dwx"), vec![ch('d'), ch('w'), ch('x')]);
+        assert_eq!(parse_normal_keys("A;"), vec![ch('A'), ch(';')]);
+        // `<Esc>`/`<CR>`/`<Tab>`/`<BS>` resolve to their keys (case-insensitive), so `Ihi<Esc>` reads as
+        // enter-insert, `h`, `i`, Esc.
+        assert_eq!(
+            parse_normal_keys("Ihi<Esc>"),
+            vec![ch('I'), ch('h'), ch('i'), key(KeyCode::Esc)]
+        );
+        assert_eq!(parse_normal_keys("<cr>"), vec![key(KeyCode::Enter)]);
+        // `<C-w>` is control-w; `<lt>` is a literal `<`.
+        assert_eq!(parse_normal_keys("<C-w>"), vec![ctrl('w')]);
+        assert_eq!(parse_normal_keys("<lt>x"), vec![ch('<'), ch('x')]);
+        // An unknown `<…>` name is treated literally (Vim's behaviour for an unknown key name).
+        assert_eq!(
+            parse_normal_keys("<foo>"),
+            vec![ch('<'), ch('f'), ch('o'), ch('o'), ch('>')]
+        );
     }
 
     #[test]

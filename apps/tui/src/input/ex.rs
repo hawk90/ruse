@@ -97,6 +97,16 @@ pub enum Ex {
     BufferDelete {
         force: bool,
     },
+    /// `:[range]normal[!] {keys}` — execute `{keys}` as if typed in Normal mode. With no range, once at the
+    /// cursor (column preserved); with a range, once per line with the cursor at column 0 of each line. The
+    /// `!` (ignore user mappings) parses and is accepted, but is a no-op today — this editor has no user
+    /// remaps. `keys` is the VERBATIM payload after the single delimiting space (spaces included), carrying
+    /// Vim `<>` key-notation the executor resolves.
+    Normal {
+        bang: bool,
+        range: Option<SubRange>,
+        keys: String,
+    },
     Unknown(String),
 }
 
@@ -427,6 +437,11 @@ fn parse_sub_range(s: &str) -> Option<SubRange> {
 /// Parse the text typed after `:` (without the leading colon).
 #[must_use]
 pub fn parse_ex(line: &str) -> Ex {
+    // `:[range]normal[!] {keys}` is parsed FIRST, on the RAW line: everything after the one delimiting space
+    // is the verbatim key payload, so a trailing space in the keys must survive the `line.trim()` below.
+    if let Some(ex) = parse_normal(line) {
+        return ex;
+    }
     let line = line.trim();
     match line {
         "w" => Ex::Save,
@@ -494,6 +509,40 @@ pub fn parse_ex(line: &str) -> Ex {
             }
         }
     }
+}
+
+/// Parse `:[range]normal[!] {keys}` (`:help :normal`). The verb is `norm`/`norma`/`normal` (Vim's
+/// abbreviations) after an optional `[0-9,%.$]` range prefix and an optional `!`; exactly ONE space then
+/// delimits the VERBATIM key payload (which may itself contain spaces). Runs on the RAW line so a trailing
+/// space in the keys is preserved. Returns `None` (→ falls through to the rest of `parse_ex`) unless the
+/// line is a `:normal`. A bare `:normal` with no space/keys is not a valid invocation and returns `None`.
+fn parse_normal(raw: &str) -> Option<Ex> {
+    let line = raw.trim_start();
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+    // Longest verb first so `normal` wins over `norma`/`norm`; a following char that is not `!`/space means
+    // this is not the `:normal` verb (e.g. `:normalx` is not `:normal x`).
+    let rest = ["normal", "norma", "norm"]
+        .into_iter()
+        .find_map(|v| rest.strip_prefix(v))?;
+    let (bang, rest) = match rest.strip_prefix('!') {
+        Some(r) => (true, r),
+        None => (false, rest),
+    };
+    // The single delimiting space is mandatory and consumed; the rest is the literal key payload.
+    let keys = rest.strip_prefix(' ')?;
+    let range = if range_str.is_empty() {
+        None
+    } else {
+        Some(parse_sub_range(range_str)?)
+    };
+    Some(Ex::Normal {
+        bang,
+        range,
+        keys: keys.to_string(),
+    })
 }
 
 /// Parse `:rename {new}` / `:rn {new}` (F-014) — the trimmed new name, or `None` when the verb is absent or
@@ -661,6 +710,67 @@ mod reuse_last_search_tests {
         let mut ex = sub("");
         reuse_last_search(&mut ex, None);
         assert_eq!(pattern_of(&ex), "");
+    }
+}
+
+#[cfg(test)]
+mod normal_parse_tests {
+    use super::*;
+
+    fn normal(line: &str) -> (bool, Option<SubRange>, String) {
+        match parse_ex(line) {
+            Ex::Normal { bang, range, keys } => (bang, range, keys),
+            other => panic!("expected Ex::Normal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn no_range_takes_the_whole_verbatim_payload() {
+        assert_eq!(normal("normal dwx"), (false, None, "dwx".to_string()));
+        // The abbreviations `norm`/`norma` resolve the same.
+        assert_eq!(normal("norm dwx"), (false, None, "dwx".to_string()));
+        assert_eq!(normal("norma dwx"), (false, None, "dwx".to_string()));
+        // Only the FIRST space is the delimiter; further spaces are part of the keys.
+        assert_eq!(normal("normal f x"), (false, None, "f x".to_string()));
+    }
+
+    #[test]
+    fn bang_is_parsed_and_accepted() {
+        assert_eq!(normal("normal! A;"), (true, None, "A;".to_string()));
+    }
+
+    #[test]
+    fn range_prefixes_resolve() {
+        assert_eq!(
+            normal("%normal A;"),
+            (false, Some(SubRange::WholeFile), "A;".to_string())
+        );
+        assert_eq!(
+            normal("2,3normal 0x"),
+            (false, Some(SubRange::Lines(2, 3)), "0x".to_string())
+        );
+        assert_eq!(
+            normal(".normal x"),
+            (false, Some(SubRange::CurrentLine), "x".to_string())
+        );
+    }
+
+    #[test]
+    fn key_notation_stays_verbatim_in_the_payload() {
+        // The payload is stored VERBATIM; the executor resolves `<Esc>` etc. later.
+        assert_eq!(
+            normal("normal Ihi<Esc>"),
+            (false, None, "Ihi<Esc>".to_string())
+        );
+    }
+
+    #[test]
+    fn non_normal_and_bare_normal_fall_through() {
+        // `:normalx` is not the `:normal` verb.
+        assert!(matches!(parse_ex("normalx"), Ex::Unknown(_)));
+        // A bare `:normal` (no delimiting space / keys) is not a valid invocation.
+        assert!(matches!(parse_ex("normal"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("normal!"), Ex::Unknown(_)));
     }
 }
 
