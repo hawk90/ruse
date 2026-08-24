@@ -1719,6 +1719,24 @@ impl InputEngine {
                     KeyCode::Char('E') => self.motion(Motion::BigWordEndBack),
                     // `g_` — to the last non-blank char of the line (`{count}g_` = count-1 lines down).
                     KeyCode::Char('_') => self.motion(Motion::LineLastNonBlank),
+                    // Display-line motions `gj`/`gk`/`g0`/`g$`/`g^`. ruse does NOT soft-wrap (each buffer
+                    // line is exactly one display row — `paint_pane` truncates at the right edge, the
+                    // viewport is a single vertical `top` offset with no horizontal scroll), so a buffer
+                    // line and its display line always coincide. Vim's `gj`/`gk`/`g0`/`g$`/`g^` therefore
+                    // equal `j`/`k`/`0`/`$`/`^` as BARE CURSOR MOTIONS here — the same equivalence Vim
+                    // itself gives under `nowrap` (`:help gj`). They are emitted as those motions so the
+                    // keys stop being dead: count-aware (`3gj`) and operator-composable via `motion`.
+                    //
+                    // DELIBERATE DIVERGENCE (operator forms only): `dgj`/`dgk` alias `dj`/`dk` (linewise),
+                    // whereas nvim treats `gj`/`gk` as characterwise-exclusive and applies its exclusive-
+                    // linewise promotion, so nvim's `dgj` deletes ONE line, not two. A column-preserving
+                    // charwise vertical motion (with desired-column tracking) is out of scope for wiring
+                    // these keys; the horizontal forms (`g0`/`g$`/`g^`) match nvim under operators exactly.
+                    KeyCode::Char('j') => self.motion(Motion::Down),
+                    KeyCode::Char('k') => self.motion(Motion::Up),
+                    KeyCode::Char('0') => self.motion(Motion::LineStart),
+                    KeyCode::Char('$') => self.motion(Motion::LineEnd),
+                    KeyCode::Char('^') => self.motion(Motion::LineFirstNonBlank),
                     // `[count]go` — go to the count-th byte of the buffer (operator-aware: `dgo`).
                     KeyCode::Char('o') => self.motion(Motion::GotoByte),
                     // `g*` / `g#` — like `*`/`#` but match the word ANYWHERE (no `\<…\>` boundaries).
