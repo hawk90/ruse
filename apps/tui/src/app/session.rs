@@ -659,6 +659,30 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 }
                 continue;
             }
+            // `[count]@:` — repeat the last-executed Ex command-line (`:help @:`). We re-enqueue the stored
+            // `":`-register line as `:` + text + `<CR>` into the SAME macro-replay queue `@{reg}` uses, so
+            // the keys re-drive the whole Ex pipeline (`engine.feed` → `Feed::ExecuteEx` below) exactly as
+            // if re-typed — no second Ex executor. `[count]` enqueues that many copies. No prior Ex line is
+            // Vim's E30 (a no-op edit-wise); verified vs nvim v0.12.4.
+            crate::keys::Step::RepeatEx => {
+                let n = engine.take_count().max(1);
+                match &last_ex_line {
+                    Some(line) => {
+                        let mut bytes = Vec::with_capacity(line.len() + 2);
+                        bytes.push(b':');
+                        bytes.extend_from_slice(line.as_bytes());
+                        bytes.push(b'\r');
+                        for _ in 0..n {
+                            if !macros.replay(&bytes) {
+                                status = "macro replay aborted (key limit)".to_string();
+                                break;
+                            }
+                        }
+                    }
+                    None => status = "E30: No previous command line".to_string(),
+                }
+                continue;
+            }
         };
         // F-014: any key dismisses a shown hover panel (a fresh `K` re-populates it after its response).
         lsp.clear_hover();

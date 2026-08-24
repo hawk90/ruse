@@ -59,6 +59,11 @@ pub enum Step {
     Store(char, Vec<u8>),
     /// `@{char}` — the caller reads register `char`'s bytes and passes them to [`MacroState::replay`].
     Replay(char),
+    /// `@:` — repeat the last-executed Ex command-line (`:help @:`). The caller re-drives its stored
+    /// `":`-register line (`:` + text + `<CR>`) through [`MacroState::replay`] `[count]` times, so the
+    /// whole Ex pipeline runs exactly as if the line were re-typed. A following `@@` repeats it too
+    /// (this arm sets `last_played` to `:`).
+    RepeatEx,
     /// `q:` / `q/` / `q?` — NOT a macro recording: the `q`-prefixed `:`/`/`/`?` opens the command-line window
     /// (`:help cmdwin`) for that history ring. The caller calls `engine.open_cmdwin(char)`.
     OpenCmdWin(char),
@@ -148,10 +153,18 @@ impl MacroState {
             self.pending_at = false;
             let target = match key.code {
                 KeyCode::Char(c) if c.is_ascii_alphabetic() => Some(c.to_ascii_lowercase()),
+                // `@:` — repeat the last-executed Ex command-line (`:help @:`). Carried as the pseudo
+                // register `:` so a following `@@` (which re-plays `last_played`) repeats it too.
+                KeyCode::Char(':') => Some(':'),
                 KeyCode::Char('@') => self.last_played, // `@@` — repeat the last-played macro
                 _ => None,
             };
             return match target {
+                // `@:` / `@@`-after-`@:`: the Ex-line repeat, distinct from a register replay.
+                Some(':') => {
+                    self.last_played = Some(':');
+                    Step::RepeatEx
+                }
                 Some(c) => {
                     self.last_played = Some(c);
                     Step::Replay(c)
@@ -554,6 +567,39 @@ mod tests {
         assert_eq!(m.next_replay(), Some(ch('x')));
         assert_eq!(m.next_replay(), Some(ch('x')));
         assert_eq!(m.next_replay(), None, "queue drained");
+    }
+
+    #[test]
+    fn at_colon_returns_repeat_ex_and_seeds_at_at() {
+        let mut m = MacroState::new();
+        // `@:` — arms on `@`, then `:` resolves to the Ex-line repeat (NOT a register replay).
+        assert_eq!(m.step(ch('@'), false, true), Step::Consumed, "@ arms");
+        assert_eq!(
+            m.step(ch(':'), false, true),
+            Step::RepeatEx,
+            "`@:` repeats the last Ex command-line"
+        );
+        // After `@:`, `@@` repeats the Ex line too (last_played was set to `:`), matching nvim.
+        assert_eq!(m.step(ch('@'), false, true), Step::Consumed, "@ arms again");
+        assert_eq!(
+            m.step(ch('@'), false, true),
+            Step::RepeatEx,
+            "`@@` after `@:` repeats the Ex line, not a register"
+        );
+    }
+
+    #[test]
+    fn at_letter_still_replays_register_after_at_colon_support() {
+        // Guard: adding `@:` must not disturb `@{a-z}` / `@@`-after-`@a`.
+        let mut m = MacroState::new();
+        m.step(ch('@'), false, true);
+        assert_eq!(m.step(ch('a'), false, true), Step::Replay('a'), "`@a`");
+        m.step(ch('@'), false, true);
+        assert_eq!(
+            m.step(ch('@'), false, true),
+            Step::Replay('a'),
+            "`@@` after `@a` still replays register a"
+        );
     }
 
     #[test]
