@@ -54,6 +54,31 @@ fn text() -> impl Strategy<Value = Vec<u8>> {
         .prop_map(|cs| cs.into_iter().collect::<String>().into_bytes())
 }
 
+/// Is `k` one of the count digits (`1`/`2`/`3`) the alphabet offers?
+fn is_count_digit(k: &KeyEvent) -> bool {
+    matches!(k.code, KeyCode::Char('1' | '2' | '3')) && k.modifiers == KeyModifiers::NONE
+}
+
+/// Bound the *count* the fuzzer can build so a single command cannot allocate gigabytes. Counts compose
+/// digit-by-digit (`saturating_mul(10)` in the engine), so a random run of digit keys — e.g. `3333333` —
+/// builds a huge count. A big count then feeds ONE atomic op (`Command::Paste { count }` multiplies the
+/// register `count` times in a single command; `N.`/`Ni…<Esc>` build a `count`-long replay `Vec<Command>`),
+/// which balloons to GB *inside that one op*, before `run_session`'s per-key buffer guard can react. This is
+/// a harness-input problem, not a product defect — large counts are legitimate Vim. Dropping every digit that
+/// immediately follows another digit collapses each run to a SINGLE digit, capping any count at 3. That still
+/// exercises counted compositions (`3w`, `2dd`, `3p`, `2.`); multi-digit count *parsing* is the input
+/// engine's own property test, not this composed-session fuzzer's job.
+fn clamp_count_runs(mut keys: Vec<KeyEvent>) -> Vec<KeyEvent> {
+    let mut prev_was_digit = false;
+    keys.retain(|k| {
+        let digit = is_count_digit(k);
+        let keep = !(digit && prev_was_digit);
+        prev_was_digit = digit;
+        keep
+    });
+    keys
+}
+
 /// Apply whatever the engine emitted, exactly as `main.rs::run` routes it (minus the frontend-only
 /// ex/window commands, which this single-window fuzzer does not drive).
 fn apply_feed(st: &mut EditorState, out: Feed) {
@@ -73,6 +98,18 @@ fn apply_feed(st: &mut EditorState, out: Feed) {
         | Feed::Ignored => {}
     }
 }
+
+/// Upper bound on the fuzzed buffer size, enforced by `run_session`. Yank-whole-buffer -> paste is
+/// legitimate, unbounded Vim behavior (`ggVGyp` / `ggyGp` doubles the buffer every repeat), so a random
+/// session that happens to compose it repeatedly grows the buffer *exponentially* — reaching multiple GB
+/// within the 140-key budget and OOMing/hanging CI on the unlucky seeds. This is a harness-input problem,
+/// not a product defect: we must NOT cripple the product's paste. Instead, once the buffer crosses this
+/// cap we stop feeding further keys for that case; the round-trip invariant is still exercised in full over
+/// every op applied so far (which is where the composition coverage lives — size adds nothing). 256 KiB is
+/// orders of magnitude above any interesting composition, yet small enough that the whole per-case
+/// undo/redo round trip stays cheap even when a doubling session runs right up to the cap — keeping the
+/// suite fast and seed-independent (a larger cap lets rare seeds spend seconds memcpying multi-MB buffers).
+const MAX_FUZZ_BUFFER_BYTES: usize = 256 * 1024;
 
 /// Drive `keys` through a fresh engine+state, asserting the per-keystroke UTF-8 / cursor-boundary
 /// invariants along the way, and return the final state (Normal mode, any insert session closed).
@@ -97,6 +134,13 @@ fn run_session(init: &[u8], keys: &[KeyEvent]) -> Result<EditorState, TestCaseEr
             "cursor {} off a char boundary after {key:?} (buffer {s:?})",
             st.cursor()
         );
+
+        // Bound exponential yank+paste growth (see `MAX_FUZZ_BUFFER_BYTES`): the invariants above have been
+        // checked for this key; once the buffer is huge we stop feeding further keys rather than let a
+        // doubling session balloon to gigabytes. The round-trip is still exercised over every applied op.
+        if st.bytes().len() > MAX_FUZZ_BUFFER_BYTES {
+            break;
+        }
     }
     // Close any open insert/visual session so a dangling change is committed to undo history.
     let esc = engine.feed(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), st.mode());
@@ -112,7 +156,8 @@ proptest! {
     #[test]
     fn random_keystroke_session_preserves_core_invariants(
         init in text(),
-        keys in prop::collection::vec(proptest::sample::select(alphabet(true)), 0..140),
+        keys in prop::collection::vec(proptest::sample::select(alphabet(true)), 0..140)
+            .prop_map(clamp_count_runs),
     ) {
         let mut st = run_session(&init, &keys)?;
 
@@ -135,7 +180,8 @@ proptest! {
     #[test]
     fn monotonic_session_undo_redo_round_trips(
         init in text(),
-        keys in prop::collection::vec(proptest::sample::select(alphabet(false)), 0..140),
+        keys in prop::collection::vec(proptest::sample::select(alphabet(false)), 0..140)
+            .prop_map(clamp_count_runs),
     ) {
         let mut st = run_session(&init, &keys)?;
         let edited = st.bytes().to_vec();

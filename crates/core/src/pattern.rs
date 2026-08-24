@@ -118,24 +118,29 @@ impl Regex {
     }
 
     /// Every non-overlapping match in `hay`, left to right (for `hlsearch` highlight and `:s///g`).
+    ///
+    /// The scan (including zero-width-match advancement) is delegated to the engine's own
+    /// `captures_iter`, which — unlike a hand-rolled `captures_at` loop — skips an empty match that
+    /// sits right where the previous match ended (`a*` on `"aax"` yields `aa` then the `x` gap, not a
+    /// spurious empty span between them) and, crucially, can never stall: a zero-width match at
+    /// `hay.len()` terminates the iterator instead of spinning forever (the bug this replaces, which
+    /// hung `hlsearch`/`:s///g` on any empty-matching pattern like `/a*` or `/$`). `report` applies any
+    /// `\zs`/`\ze` reported-span override per match.
     #[must_use]
     pub fn find_all(&self, hay: &str) -> Vec<Match> {
-        let mut out = Vec::new();
-        let mut at = 0;
-        while at <= hay.len() {
-            let Some(caps) = self.inner.captures_at(hay, at) else {
-                break;
-            };
-            let m = self.report(&caps);
-            // Advance past this match; guard against a zero-width match stalling the scan.
+        let mut out: Vec<Match> = Vec::new();
+        let mut trailing_empty_at_eol = false;
+        for caps in self.inner.captures_iter(hay) {
             let whole = caps.get(0).expect("group 0 always present");
-            at = if whole.end() > at {
-                whole.end()
-            } else {
-                // Zero-width (or boundary-only) match: step one char to make progress.
-                next_char_boundary(hay, whole.end())
-            };
-            out.push(m);
+            trailing_empty_at_eol = whole.start() == whole.end() && whole.end() == hay.len();
+            out.push(self.report(&caps));
+        }
+        // Vim quirk (verified against nvim v0.12.4): `:s///g` does NOT emit a trailing zero-width match
+        // at end-of-line for an unanchored pattern — `:s/x*/-/g` on "abc" gives "-a-b-c", not "-a-b-c-".
+        // It DOES keep a zero-width EOL match when that is the SOLE match: an empty line yields "-", and
+        // `:s/$/-/` yields "abc-". So drop the trailing empty-at-EOL match only when it follows another.
+        if out.len() > 1 && trailing_empty_at_eol {
+            out.pop();
         }
         out
     }
@@ -153,16 +158,6 @@ impl Regex {
             end: span.end(),
         }
     }
-}
-
-/// The next char boundary strictly after `i` (or `hay.len()`), so a zero-width match advances by one
-/// user-visible character rather than one byte (never splitting a UTF-8 sequence).
-fn next_char_boundary(hay: &str, i: usize) -> usize {
-    let mut j = i + 1;
-    while j < hay.len() && !hay.is_char_boundary(j) {
-        j += 1;
-    }
-    j.min(hay.len())
 }
 
 /// Lower a Vim pattern to Rust-`regex` syntax under a starting magic level, returning the lowered
@@ -499,6 +494,63 @@ mod tests {
             .map(|m| (m.start, m.end))
             .collect();
         assert_eq!(ms, vec![(0, 2), (5, 8)]);
+    }
+
+    fn all(pat: &str, hay: &str) -> Vec<(usize, usize)> {
+        Regex::compile(pat, Options::default())
+            .expect("compiles")
+            .find_all(hay)
+            .iter()
+            .map(|m| (m.start, m.end))
+            .collect()
+    }
+
+    /// Regression for the `find_all` infinite loop on a zero-width match at end-of-string (a search/
+    /// `hlsearch`/`:s///g` DoS reachable from `/a*`, `/$`, `/.*`, or empty `/`). Every one of these
+    /// patterns matches empty at `hay.len()`; the old hand-rolled scan could not advance past it and
+    /// spun forever. Each `all(...)` call below would hang, not fail, if the bug returned — so this test
+    /// IS the termination gate. The expected spans are Vim-faithful, captured from nvim v0.12.4 via
+    /// `:s/<pat>/-/g` (a dash marks each match; a trailing dash means a match at end-of-line):
+    ///   "abc" + `x*`  -> "-a-b-c"      (empty before each char, NONE at EOL)
+    ///   "aaa" + `a*`  -> "-"            (one whole-line match, no trailing empty)
+    ///   "aax" + `a*`  -> "-x"           (only "aa"; no empty adjacent to it, none at EOL)
+    ///   "abc" + `$`   -> "abc-"         (a lone anchored empty match AT EOL is kept)
+    ///   "abc" + `.*`  -> "-"            (greedy whole-line match, no trailing empty)
+    ///   ""    + `x*`  -> "-"            (the SOLE empty match on an empty line is kept)
+    ///   "foo bar" + `o*` -> "-f- -b-a-r"
+    #[test]
+    fn find_all_zero_width_at_eol_terminates_and_matches_nvim() {
+        assert_eq!(all("x*", "abc"), vec![(0, 0), (1, 1), (2, 2)]);
+        assert_eq!(all("a*", "aaa"), vec![(0, 3)]);
+        assert_eq!(all("a*", "aax"), vec![(0, 2)]);
+        assert_eq!(all("$", "abc"), vec![(3, 3)]);
+        assert_eq!(all(".*", "abc"), vec![(0, 3)]);
+        assert_eq!(all("x*", ""), vec![(0, 0)]);
+        assert_eq!(
+            all("o*", "foo bar"),
+            vec![(0, 0), (1, 3), (4, 4), (5, 5), (6, 6)]
+        );
+    }
+
+    /// A belt-and-suspenders wall-clock guard: even if the expectations above were ever loosened, a
+    /// regressed `find_all` must never hang. Run the worst zero-width-at-EOL case in a worker thread and
+    /// require it to finish well under a generous budget.
+    #[test]
+    fn find_all_zero_width_never_hangs() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let n = Regex::compile("a*", Options::default())
+                .unwrap()
+                .find_all("aaaa")
+                .len();
+            let _ = tx.send(n);
+        });
+        assert!(
+            rx.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "find_all did not terminate (zero-width-at-EOL infinite loop regressed)"
+        );
     }
 
     #[test]
