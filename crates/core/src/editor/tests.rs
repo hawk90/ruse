@@ -7240,6 +7240,195 @@ mod put_lines_tests {
     }
 }
 
+/// `:r`/`:read` line-read + `:{range}!{cmd}` filter core splicing. The frontend does the IO (fs / shell) and
+/// hands the bytes to these pure methods. Ground truth captured from nvim v0.12.4 (`nvim -u NONE` headless,
+/// `writefile(getline(1,'$'))` + `line('.')` / `col('.')`): `:r file` leaves the cursor on the FIRST inserted
+/// line, `:r !cmd` on the LAST, and a `:{range}!` filter on the first line of the replaced region.
+#[cfg(test)]
+mod read_filter_tests {
+    use crate::editor::*;
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.doc.bytes().to_vec()).unwrap()
+    }
+
+    /// The cursor's 0-based (line, column).
+    fn cursor_line_col(st: &EditorState) -> (usize, usize) {
+        let b = st.doc.bytes();
+        let c = st.cursor();
+        let line = b[..c].iter().filter(|&&x| x == b'\n').count();
+        let line_start = b[..c]
+            .iter()
+            .rposition(|&x| x == b'\n')
+            .map_or(0, |i| i + 1);
+        (line, c - line_start)
+    }
+
+    /// `:2r file` inserts the file's lines below line 2; the cursor lands on the FIRST inserted line. nvim:
+    /// main=alpha/beta/gamma, ins=X1/X2, `:2r` → alpha/beta/X1/X2/gamma, cursor (2,0) [1-based (3,1)].
+    #[test]
+    fn read_file_below_addressed_line_cursor_on_first() {
+        let mut st = EditorState::new(b"alpha\nbeta\ngamma\n".to_vec());
+        assert_eq!(st.read_lines(LineAddr::Line(2), b"X1\nX2\n", false), 2);
+        assert_eq!(text(&st), "alpha\nbeta\nX1\nX2\ngamma\n");
+        assert_eq!(
+            cursor_line_col(&st),
+            (2, 0),
+            "cursor on the first inserted line"
+        );
+    }
+
+    /// `:0r file` inserts at the very top, before line 1; the cursor lands on the new top line. nvim: `:0r`
+    /// with cursor on line 3 → X1/X2/alpha/beta/gamma, cursor (0,0) [1-based (1,1)].
+    #[test]
+    fn read_at_line_zero_inserts_at_the_top() {
+        let mut st = EditorState::new(b"alpha\nbeta\ngamma\n".to_vec());
+        st.set_cursor(12); // gamma, to prove `:0r` ignores the cursor line
+        assert_eq!(st.read_lines(LineAddr::Line(0), b"X1\nX2\n", false), 2);
+        assert_eq!(text(&st), "X1\nX2\nalpha\nbeta\ngamma\n");
+        assert_eq!(cursor_line_col(&st), (0, 0));
+    }
+
+    /// A bare `:r` (LineAddr::Current) reads below the cursor's line. nvim: cursor on line 1, `:r` → the
+    /// lines land between line 1 and line 2.
+    #[test]
+    fn bare_read_inserts_after_the_current_line() {
+        let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
+        st.set_cursor(0); // alpha
+        assert_eq!(st.read_lines(LineAddr::Current, b"X1\nX2\n", false), 2);
+        assert_eq!(text(&st), "alpha\nX1\nX2\nbeta\n");
+        assert_eq!(cursor_line_col(&st), (1, 0));
+    }
+
+    /// `:$r file` appends the file after the last line. nvim: `:$r ins` → alpha/beta/X1/X2, cursor (2,0).
+    #[test]
+    fn read_at_last_line_appends() {
+        let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
+        assert_eq!(st.read_lines(LineAddr::Last, b"X1\nX2\n", false), 2);
+        assert_eq!(text(&st), "alpha\nbeta\nX1\nX2\n");
+        assert_eq!(cursor_line_col(&st), (2, 0));
+    }
+
+    /// The cursor lands on the FIRST NON-BLANK of the first inserted line. nvim: `:r` of "  indented\nX2"
+    /// at line 1 → cursor (1,2) [1-based (2,3)].
+    #[test]
+    fn read_cursor_lands_on_first_non_blank() {
+        let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
+        st.set_cursor(0); // alpha
+        assert_eq!(
+            st.read_lines(LineAddr::Current, b"  indented\nX2\n", false),
+            2
+        );
+        assert_eq!(text(&st), "alpha\n  indented\nX2\nbeta\n");
+        assert_eq!(cursor_line_col(&st), (1, 2), "past the two leading spaces");
+    }
+
+    /// A file with NO trailing newline still reads its last line (no spurious blank). nvim: read "no_nl_a\n
+    /// no_nl_b" (noeol) below line 1 → alpha/no_nl_a/no_nl_b/beta.
+    #[test]
+    fn read_file_without_trailing_newline_keeps_its_last_line() {
+        let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
+        st.set_cursor(0);
+        assert_eq!(
+            st.read_lines(LineAddr::Current, b"no_nl_a\nno_nl_b", false),
+            2
+        );
+        assert_eq!(text(&st), "alpha\nno_nl_a\nno_nl_b\nbeta\n");
+    }
+
+    /// The COMMAND form (`:r !cmd`, `cursor_on_last = true`) leaves the cursor on the LAST inserted line — a
+    /// real nvim quirk that `:r file` does not share. nvim: `:r !printf 'C1\nC2\n'` at line 1 → cursor (2,0)
+    /// [1-based (3,1)], on C2.
+    #[test]
+    fn read_command_leaves_cursor_on_last_line() {
+        let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
+        st.set_cursor(0); // alpha
+        assert_eq!(st.read_lines(LineAddr::Current, b"C1\nC2\n", true), 2);
+        assert_eq!(text(&st), "alpha\nC1\nC2\nbeta\n");
+        assert_eq!(
+            cursor_line_col(&st),
+            (2, 0),
+            "cursor on the LAST inserted line"
+        );
+    }
+
+    /// An empty read is a no-op leaving the buffer + cursor untouched.
+    #[test]
+    fn empty_read_is_a_no_op() {
+        let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
+        st.set_cursor(6); // beta
+        assert_eq!(st.read_lines(LineAddr::Current, b"", false), 0);
+        assert_eq!(text(&st), "alpha\nbeta\n");
+        assert_eq!(cursor_line_col(&st), (1, 0));
+    }
+
+    /// A read is ONE undo group: a single undo removes every inserted line.
+    #[test]
+    fn read_is_one_undo_group() {
+        let mut st = EditorState::new(b"alpha\nbeta\n".to_vec());
+        st.read_lines(LineAddr::Line(1), b"X1\nX2\n", false);
+        assert_eq!(text(&st), "alpha\nX1\nX2\nbeta\n");
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(
+            text(&st),
+            "alpha\nbeta\n",
+            "one undo removes the whole read"
+        );
+    }
+
+    /// `range_text` returns the range's lines with trailing newlines, as fed to a filter's stdin.
+    #[test]
+    fn range_text_yields_the_range_lines_with_newlines() {
+        let mut st = EditorState::new(b"one\ntwo\nthree\nfour\n".to_vec());
+        assert_eq!(
+            st.range_text(SubRange::Lines(2, 3)).as_deref(),
+            Some("two\nthree\n")
+        );
+        assert_eq!(
+            st.range_text(SubRange::WholeFile).as_deref(),
+            Some("one\ntwo\nthree\nfour\n"),
+            "the whole-file range does not include a phantom trailing empty line"
+        );
+        st.set_cursor(0);
+        assert_eq!(
+            st.range_text(SubRange::CurrentLine).as_deref(),
+            Some("one\n")
+        );
+    }
+
+    /// `:{range}!cmd` replaces the range's lines with the filter output; the cursor lands on the first line of
+    /// the region. nvim: `:2,3!tr a-z A-Z` on one/two/three/four → one/TWO/THREE/four, cursor (1,0).
+    #[test]
+    fn filter_replaces_range_cursor_on_first_line() {
+        let mut st = EditorState::new(b"one\ntwo\nthree\nfour\n".to_vec());
+        assert_eq!(st.filter_lines(SubRange::Lines(2, 3), b"TWO\nTHREE\n"), 2);
+        assert_eq!(text(&st), "one\nTWO\nTHREE\nfour\n");
+        assert_eq!(cursor_line_col(&st), (1, 0));
+    }
+
+    /// A filter that emits FEWER lines than it consumed shortens the buffer (nvim: `:%!grep keep` drops the
+    /// non-matching line). The `input_count` return is the number of INPUT lines filtered.
+    #[test]
+    fn filter_can_shorten_the_buffer() {
+        let mut st = EditorState::new(b"keep1\ndrop\nkeep2\n".to_vec());
+        assert_eq!(
+            st.filter_lines(SubRange::WholeFile, b"keep1\nkeep2\n"),
+            3,
+            "three input lines were filtered"
+        );
+        assert_eq!(text(&st), "keep1\nkeep2\n");
+        assert_eq!(cursor_line_col(&st), (0, 0));
+    }
+
+    /// A filter that emits NOTHING deletes the range's lines (Vim: a filter producing no output).
+    #[test]
+    fn filter_to_empty_deletes_the_range() {
+        let mut st = EditorState::new(b"one\ntwo\nthree\n".to_vec());
+        assert_eq!(st.filter_lines(SubRange::Lines(2, 2), b""), 1);
+        assert_eq!(text(&st), "one\nthree\n");
+    }
+}
+
 #[cfg(test)]
 mod substitute_case_modifier_tests {
     //! `:s` replacement case modifiers `\u \l \U \L \e \E`. Each expected value is the exact output

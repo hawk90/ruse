@@ -30,6 +30,7 @@ pub mod line_index;
 pub mod org;
 pub mod persist;
 pub mod screen;
+pub mod shell;
 
 pub(crate) mod app;
 pub(crate) mod health;
