@@ -2096,6 +2096,10 @@ impl InputEngine {
             KeyCode::Char('R') => self.action(Command::EnterReplace),
             KeyCode::Char('~') => self.action(Command::ToggleCase(self.mcount())),
             KeyCode::Char('J') => self.action(Command::JoinLines(self.mcount())),
+            // Bare `&` — repeat the last `:s` on the CURRENT LINE, dropping its flags (Vim: only the first
+            // match on the cursor's line is replaced). The whole-file, flag-keeping form is `g&`
+            // (`RepeatSubstituteGlobal`, in the `g` tier). Frontend-resolved against the last-`:s` state.
+            KeyCode::Char('&') => self.action(Command::RepeatSubstituteLine),
             // `n` repeats the last search in the SAME direction it was issued; `N` in the OPPOSITE. So
             // after `?foo`, `n` continues BACKWARD (`SearchPrev`) and `N` goes forward (`SearchNext`);
             // after `/foo` they stay forward-relative. Direction comes from the stored last-search flag.

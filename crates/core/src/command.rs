@@ -433,6 +433,12 @@ pub enum Command {
     /// history, so the FRONTEND resolves this against its last-substitute state (like [`SearchWordUnder`]);
     /// the planner treats it as a no-op.
     RepeatSubstituteGlobal,
+    /// `&` — repeat the last `:s` on the CURRENT LINE, WITHOUT its flags (Vim: `&` == `:s` with no flags,
+    /// so `g`/`i`/`I` are dropped and only the first match on the cursor's line is replaced). Contrast with
+    /// [`RepeatSubstituteGlobal`] (`g&`), which keeps the flags and runs over the whole file. Like `g&`, the
+    /// core has no substitute history, so the FRONTEND resolves this against its last-substitute state; the
+    /// planner treats it as a no-op.
+    RepeatSubstituteLine,
     /// `gd` / `gD` — go to the (local / global) declaration of the keyword under the cursor using Vim's pure
     /// TEXT heuristic (NOT LSP; ruse has a separate LSP goto). The frontend reads the word from the buffer
     /// (the input engine has no buffer) and rewrites this to a concrete [`Command::GotoFirstMatch`] with the
@@ -1108,6 +1114,7 @@ impl Command {
                 if *whole_word { "whole" } else { "any" }
             ),
             Command::RepeatSubstituteGlobal => "repeat_substitute_global".into(),
+            Command::RepeatSubstituteLine => "repeat_substitute_line".into(),
             Command::GotoDeclaration { global } => {
                 format!(
                     "goto_declaration {}",
@@ -1591,6 +1598,7 @@ impl Command {
                 }
             }
             "repeat_substitute_global" => Command::RepeatSubstituteGlobal,
+            "repeat_substitute_line" => Command::RepeatSubstituteLine,
             "goto_declaration" => Command::GotoDeclaration {
                 global: matches!(raw.split_whitespace().next(), Some("global")),
             },
@@ -1763,6 +1771,7 @@ mod tests {
             Command::GotoOlderJump,
             Command::GotoNewerJump,
             Command::RepeatSubstituteGlobal,
+            Command::RepeatSubstituteLine,
             Command::GotoDeclaration { global: false },
             Command::GotoDeclaration { global: true },
             Command::GotoFirstMatch("\\<foo\\>".into()),
