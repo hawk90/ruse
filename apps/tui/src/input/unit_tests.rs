@@ -3307,7 +3307,7 @@ mod global_parse_tests {
         assert_eq!(g.range, SubRange::WholeFile);
         assert_eq!(g.pattern, "foo");
         assert!(!g.negate);
-        assert_eq!(g.cmd, GlobalCmd::Delete);
+        assert_eq!(g.cmd, GlobalPayload::Core(GlobalCmd::Delete));
     }
 
     #[test]
@@ -3323,14 +3323,14 @@ mod global_parse_tests {
         assert_eq!(g.pattern, "foo");
         assert_eq!(
             g.cmd,
-            GlobalCmd::Substitute {
+            GlobalPayload::Core(GlobalCmd::Substitute {
                 pattern: "x".into(),
                 replacement: "y".into(),
                 flags: SubFlags {
                     global: true,
                     ignore_case: None
                 },
-            }
+            })
         );
     }
 
@@ -3345,6 +3345,58 @@ mod global_parse_tests {
         // `:vsplit` must stay the window command, not be parsed as `:v`-global.
         assert_eq!(parse_ex("vsplit"), Ex::VSplit);
         assert_eq!(parse_ex("vs"), Ex::VSplit);
+    }
+
+    #[test]
+    fn global_normal_payload_parses() {
+        let g = glob("g/foo/normal A;");
+        assert_eq!(g.pattern, "foo");
+        assert!(!g.negate);
+        assert_eq!(
+            g.cmd,
+            GlobalPayload::Normal {
+                bang: false,
+                keys: "A;".into(),
+            }
+        );
+        // Only the FIRST space delimits the payload — further spaces are part of the verbatim keys.
+        assert_eq!(
+            glob("g/foo/normal f x").cmd,
+            GlobalPayload::Normal {
+                bang: false,
+                keys: "f x".into(),
+            }
+        );
+        // Vim's `norm`/`norma` abbreviations resolve the same, and `<>` key-notation stays verbatim.
+        assert_eq!(
+            glob("g/foo/norm Ihi<Esc>").cmd,
+            GlobalPayload::Normal {
+                bang: false,
+                keys: "Ihi<Esc>".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn global_normal_negation_and_bang() {
+        // `:v/` and `:g!/` mark the NON-matching lines; the payload `!` (ignore mappings) is parsed.
+        assert!(glob("v/foo/normal A;").negate);
+        assert!(glob("g!/foo/normal A;").negate);
+        assert_eq!(
+            glob("g/foo/normal! A;").cmd,
+            GlobalPayload::Normal {
+                bang: true,
+                keys: "A;".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn global_normalx_is_not_the_normal_verb() {
+        // `normalx` is not `normal x` — with no `d`/`s`/`normal` payload the whole `:g` line is Unknown.
+        assert!(matches!(parse_ex("g/foo/normalx"), Ex::Unknown(_)));
+        // A bare `normal` (no delimiting space/keys) is likewise not a valid payload.
+        assert!(matches!(parse_ex("g/foo/normal"), Ex::Unknown(_)));
     }
 }
 

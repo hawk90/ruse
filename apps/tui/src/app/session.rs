@@ -1340,6 +1340,27 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             &mut quit,
                         );
                     }
+                    // `:g/pat/normal[!] {keys}` — a `:g` whose payload replays keys per marked line, so it
+                    // needs the input `engine` (in scope here, not in `run_ex`). The `d`/`s` payloads have no
+                    // engine dependency and fall through to `run_ex`'s core two-pass below.
+                    Ex::Global(ref spec)
+                        if matches!(spec.cmd, crate::input::GlobalPayload::Normal { .. }) =>
+                    {
+                        if let crate::input::GlobalPayload::Normal { keys, .. } = &spec.cmd {
+                            crate::app::dispatch::run_global_normal(
+                                &mut engine,
+                                &mut ws,
+                                spec.range,
+                                &spec.pattern,
+                                spec.negate,
+                                keys,
+                                &files,
+                                &mut recorded,
+                                &mut status,
+                                &mut quit,
+                            );
+                        }
+                    }
                     // `:checkhealth` (F-030): gather the frontend snapshot HERE (guard/profile/highlighter
                     // are in scope, not in `run_ex`) and render the report's one-line summary into status.
                     Ex::CheckHealth => {

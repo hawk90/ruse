@@ -130,7 +130,19 @@ pub struct GlobalSpec {
     /// `:g!` / `:v` — act on NON-matching lines.
     pub negate: bool,
     /// The command to run on each marked line.
-    pub cmd: GlobalCmd,
+    pub cmd: GlobalPayload,
+}
+
+/// The command a `:g/pat/…` runs on each marked line, split by WHERE it executes. `d`/`s///` run entirely
+/// in core's two-pass ([`Workspace::global`]); `normal` drives the input engine, so it is carried here as a
+/// frontend payload and executed by the run loop (which owns the engine) rather than descending into core.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum GlobalPayload {
+    /// A core-executed payload — `:g/pat/d` or `:g/pat/s/pat2/rep/flags` — run by [`Workspace::global`].
+    Core(GlobalCmd),
+    /// `:g/pat/normal[!] {keys}` — replay `{keys}` as Normal-mode input on each marked line (frontend).
+    /// `keys` is the VERBATIM payload after the single delimiting space (internal spaces preserved).
+    Normal { bang: bool, keys: String },
 }
 
 /// A parsed `:s///` command (F-009 #2): the line range, the Vim pattern + replacement, and the flags.
@@ -393,22 +405,48 @@ fn split_first_unescaped(s: &str, delim: char) -> Option<(String, String)> {
     None
 }
 
-/// Parse the command that follows `:g/pat/`. MVP: `d`/`delete` and a `s/pat/rep/flags` substitute.
-fn parse_global_cmd(cmd: &str) -> Option<GlobalCmd> {
+/// Parse the command that follows `:g/pat/`: `normal[!] {keys}` (frontend-executed), `d`/`delete`, or a
+/// `s/pat/rep/flags` substitute (both core-executed).
+fn parse_global_cmd(cmd: &str) -> Option<GlobalPayload> {
+    // `normal[!] {keys}` is recognized BEFORE the `.trim()` below so the key payload keeps its internal
+    // spaces — only the single delimiting space after the verb is consumed (as `:normal` does).
+    if let Some(payload) = parse_global_normal(cmd) {
+        return Some(payload);
+    }
     match cmd.trim() {
-        "d" | "delete" => Some(GlobalCmd::Delete),
+        "d" | "delete" => Some(GlobalPayload::Core(GlobalCmd::Delete)),
         other => {
             let spec = parse_substitute(other, false)?;
-            Some(GlobalCmd::Substitute {
+            Some(GlobalPayload::Core(GlobalCmd::Substitute {
                 pattern: spec.pattern,
                 replacement: spec.replacement,
                 flags: SubFlags {
                     global: spec.global,
                     ignore_case: spec.ignore_case,
                 },
-            })
+            }))
         }
     }
+}
+
+/// Parse `:g/pat/normal[!] {keys}` — the `normal`/`norma`/`norm` verb (Vim's abbreviations, longest first)
+/// after optional leading whitespace and an optional `!`, then exactly ONE delimiting space, then the
+/// VERBATIM key payload. `None` (→ falls through to `d`/`s`) unless the payload is a `normal`. A bare
+/// `normal` with no space/keys is not a valid invocation. `normalx` is not the verb (no `!`/space follows).
+fn parse_global_normal(cmd: &str) -> Option<GlobalPayload> {
+    let rest = cmd.trim_start();
+    let rest = ["normal", "norma", "norm"]
+        .into_iter()
+        .find_map(|v| rest.strip_prefix(v))?;
+    let (bang, rest) = match rest.strip_prefix('!') {
+        Some(r) => (true, r),
+        None => (false, rest),
+    };
+    let keys = rest.strip_prefix(' ')?;
+    Some(GlobalPayload::Normal {
+        bang,
+        keys: keys.to_string(),
+    })
 }
 
 /// Parse a `:s` line-range prefix. MVP: empty → current line, `%` → whole file, `N` → that line,
