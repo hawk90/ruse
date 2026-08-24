@@ -1192,6 +1192,21 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // `i_CTRL-E` / `i_CTRL-Y` (Insert mode) — insert the char directly BELOW / ABOVE the caret at the
+        // same column. The engine has no buffer, so resolve the adjacent-line char here and hand it to the
+        // engine, which emits (and dot-records) a concrete `InsertChar`. `None` (short/absent adjacent
+        // line) is a Vim no-op. Guarded by `insert_plain_text_ctx` so a pending Insert prefix (e.g.
+        // `CTRL-R`'s register name) still owns the key. Normal-mode `C-e`/`C-y` scroll is handled above.
+        if matches!(ws.focused().view.mode(), Mode::Insert)
+            && (is_ctrl(key, 'e') || is_ctrl(key, 'y'))
+            && engine.insert_plain_text_ctx()
+        {
+            let ch = ws.adjacent_line_char(is_ctrl(key, 'y'));
+            if let Feed::Cmd(cmd) = engine.insert_copy_char(ch) {
+                run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
+            }
+            continue;
+        }
         // `H` / `M` / `L` — the top / middle / bottom visible line (first non-blank via GotoLine). These are
         // viewport-dependent, so they stay a FRONTEND intercept: the session resolves the target buffer line
         // from the current viewport, then hands it to the engine, which composes it with any PENDING OPERATOR
@@ -1510,6 +1525,34 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     status = match &last_substitute {
                         Some((pat, rep, flags)) => {
                             match ws.substitute(ruse_core::SubRange::WholeFile, pat, rep, *flags) {
+                                Ok(out) if out.replacements == 0 => {
+                                    format!("E486: pattern not found: {pat}")
+                                }
+                                Ok(out) => {
+                                    format!(
+                                        "{} substitutions on {} lines",
+                                        out.replacements, out.lines
+                                    )
+                                }
+                                Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                            }
+                        }
+                        None => "no previous substitute".to_string(),
+                    };
+                    continue;
+                }
+                // `&` — repeat the last `:s` on the CURRENT LINE, DROPPING its flags (Vim: no `g`/`i`/`I`,
+                // so only the first match on the cursor's line is replaced). Same frontend resolution as
+                // `g&`, but scoped to the current line and forced to default flags.
+                if matches!(cmd, Command::RepeatSubstituteLine) {
+                    status = match &last_substitute {
+                        Some((pat, rep, _flags)) => {
+                            match ws.substitute(
+                                ruse_core::SubRange::CurrentLine,
+                                pat,
+                                rep,
+                                ruse_core::SubFlags::default(),
+                            ) {
                                 Ok(out) if out.replacements == 0 => {
                                     format!("E486: pattern not found: {pat}")
                                 }

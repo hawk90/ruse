@@ -2130,6 +2130,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         // `g&` — resolved in the frontend against its last-substitute state; a no-op in the pure core.
         Command::RepeatSubstituteGlobal => nop(cur, st.view.mode),
+        // `&` — resolved in the frontend (current-line, flagless repeat); a no-op in the pure core.
+        Command::RepeatSubstituteLine => nop(cur, st.view.mode),
         Command::Undo => Plan {
             action: Action::Undo,
             cursor: cur,

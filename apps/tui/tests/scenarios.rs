@@ -7,13 +7,27 @@
 //! a readable regression guard.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{Command, SplitDir, SubFlags, Workspace};
+use ruse_core::{Command, SplitDir, SubFlags, SubRange, Workspace};
 use ruse_tui::input::{parse_ex, Ex, Feed, GlobalPayload, InputEngine};
 
 /// Route one engine outcome exactly as `main.rs::run` does: edits through the swap-trick `Workspace`,
 /// `:s`/`:g` through the substitute/global engines, everything else per its `Feed`.
 fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
     let mode = ws.focused().view.mode();
+    // Mirror session.rs's `i_CTRL-E` / `i_CTRL-Y` frontend intercept: the engine has no buffer, so the
+    // frontend resolves the char below / above the caret and hands it to the engine, which emits (and
+    // dot-records) a concrete `InsertChar`. `None` (short/absent adjacent line) is a no-op.
+    if matches!(mode, ruse_core::Mode::Insert)
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(key.code, KeyCode::Char('e' | 'y'))
+        && e.insert_plain_text_ctx()
+    {
+        let ch = ws.adjacent_line_char(matches!(key.code, KeyCode::Char('y')));
+        if let Feed::Cmd(cmd) = e.insert_copy_char(ch) {
+            ws.apply(&cmd);
+        }
+        return;
+    }
     match e.feed(key, mode) {
         Feed::Cmd(cmd) => {
             ws.apply(&cmd);
@@ -512,4 +526,219 @@ fn count_change_family_does_not_repeat_text() {
     let (mut e, mut ws) = session("aa bb cc dd");
     feed_str(&mut e, &mut ws, "3cwX<Esc>");
     assert_eq!(buf(&ws), "X dd", "`3cw` changes three words to one X");
+}
+
+/// Feed a keystroke script while threading the last-`:s` state exactly as `session.rs` does, so `&`
+/// (`RepeatSubstituteLine`) and `g&` (`RepeatSubstituteGlobal`) resolve against a real substitute history.
+/// This is the ONLY place the two frontend-resolved repeat commands can be exercised end to end (the plain
+/// `step` helper has no history), and it drives the SAME substitute executor the run loop uses.
+fn feed_str_subst(
+    e: &mut InputEngine,
+    ws: &mut Workspace,
+    last: &mut Option<(String, String, SubFlags)>,
+    s: &str,
+) {
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        let key = if c == '<' {
+            let mut tag = String::new();
+            for d in chars.by_ref() {
+                if d == '>' {
+                    break;
+                }
+                tag.push(d);
+            }
+            match tag.as_str() {
+                "Esc" => KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                "CR" => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                _ => continue,
+            }
+        } else {
+            KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+        };
+        let mode = ws.focused().view.mode();
+        match e.feed(key, mode) {
+            // `&` — current line, flags DROPPED (default flags): the crux of this feature.
+            Feed::Cmd(Command::RepeatSubstituteLine) => {
+                if let Some((pat, rep, _flags)) = last.as_ref() {
+                    let _ = ws.substitute(SubRange::CurrentLine, pat, rep, SubFlags::default());
+                }
+            }
+            // `g&` — whole file, flags KEPT: mirrored here for the contrast assertion.
+            Feed::Cmd(Command::RepeatSubstituteGlobal) => {
+                if let Some((pat, rep, flags)) = last.as_ref() {
+                    let _ = ws.substitute(SubRange::WholeFile, pat, rep, *flags);
+                }
+            }
+            Feed::Cmd(cmd) => {
+                ws.apply(&cmd);
+            }
+            Feed::Replay(cmds) => {
+                for cmd in &cmds {
+                    ws.apply(cmd);
+                }
+            }
+            Feed::ExecuteEx(text) => {
+                if let Ex::Substitute(spec) = parse_ex(&text) {
+                    if !spec.pattern.is_empty() {
+                        *last = Some((
+                            spec.pattern.clone(),
+                            spec.replacement.clone(),
+                            SubFlags {
+                                global: spec.global,
+                                ignore_case: spec.ignore_case,
+                            },
+                        ));
+                    }
+                    let _ = ws.substitute(
+                        spec.range,
+                        &spec.pattern,
+                        &spec.replacement,
+                        SubFlags {
+                            global: spec.global,
+                            ignore_case: spec.ignore_case,
+                        },
+                    );
+                }
+            }
+            Feed::Pending | Feed::Ignored => {}
+        }
+    }
+}
+
+/// Bare `&` repeats the last `:s` on the CURRENT LINE and DROPS the previous flags — verified against
+/// nvim v0.12.4: `:s/a/X/g` then `&` on a later line replaces ONLY the first `a` on that line (the `g` is
+/// gone). The flag-drop is the whole point of `&`, so this is the load-bearing assertion.
+#[test]
+fn ampersand_repeats_last_substitute_on_current_line_dropping_flags() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa\nbbb aaa aaa\nccc aaa aaa\n");
+    // A GLOBAL substitute on line 1 (all matches), then move to line 2 and press `&`.
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/a/X/g<CR>");
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0&");
+    assert_eq!(
+        buf(&ws),
+        "XXX XXX\nbbb Xaa aaa\nccc aaa aaa\n",
+        "`&` drops the stored `g`: only the FIRST `a` on line 2 is replaced"
+    );
+}
+
+/// `&` repeats a flag-less `:s` faithfully too (first match on the current line), and repeating it after
+/// moving the cursor acts on the NEW line — matching nvim.
+#[test]
+fn ampersand_repeats_flagless_substitute_on_each_current_line() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa\nbbb aaa\nccc aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/a/X/<CR>"); // line 1: first `a`
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0&"); // line 2: first `a`
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0&"); // line 3: first `a`
+    assert_eq!(
+        buf(&ws),
+        "Xaa\nbbb Xaa\nccc Xaa\n",
+        "`&` repeats the current-line, first-match substitute on each line it visits"
+    );
+}
+
+/// `&` with NO previous `:s` is a safe no-op (nvim errors E33; ruse just does nothing to the buffer).
+#[test]
+fn ampersand_with_no_previous_substitute_is_a_noop() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, "&");
+    assert_eq!(
+        buf(&ws),
+        "aaa aaa\n",
+        "no prior `:s` — the buffer is untouched"
+    );
+}
+
+/// Contrast guard: `g&` KEEPS the flags and runs over the WHOLE FILE, so the two forms stay distinct.
+#[test]
+fn g_ampersand_keeps_flags_over_the_whole_file() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa\nbbb aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/a/X/g<CR>"); // record a global `:s`
+    feed_str_subst(&mut e, &mut ws, &mut last, "g&"); // repeat globally, flags kept
+    assert_eq!(
+        buf(&ws),
+        "XXX XXX\nbbb XXX\n",
+        "`g&` keeps the `g` and covers every line"
+    );
+}
+
+// --- i_CTRL-E / i_CTRL-Y: insert the char BELOW / ABOVE the caret (verified vs nvim v0.12.4) ---
+
+/// `i_CTRL-E` at column 0 of the top line inserts the character directly below (same column).
+#[test]
+fn insert_ctrl_e_copies_char_below() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "i<C-e>");
+    assert_eq!(buf(&ws), "whello\nworld", "`C-e` inserts 'w' (below col 0)");
+}
+
+/// `i_CTRL-Y` at column 0 of the bottom line inserts the character directly above (same column).
+#[test]
+fn insert_ctrl_y_copies_char_above() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "ji<C-y>");
+    assert_eq!(buf(&ws), "hello\nhworld", "`C-y` inserts 'h' (above col 0)");
+}
+
+/// The caret advances after each insert, so a run of `C-Y` copies successive columns from the line above.
+#[test]
+fn insert_ctrl_y_run_copies_successive_columns() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "ji<C-y><C-y><C-y>");
+    assert_eq!(buf(&ws), "hello\nhelworld", "three `C-y` copy 'h','e','l'");
+}
+
+/// `i_CTRL-E` uses the caret's column, not column 0: from mid-line it copies the char below THAT column.
+#[test]
+fn insert_ctrl_e_uses_caret_column() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "lli<C-e>"); // caret at col 2 (on 'l')
+    assert_eq!(buf(&ws), "herllo\nworld", "col 2 below 'world' is 'r'");
+}
+
+/// No character at that column on the adjacent line (line too short) → a no-op (Vim's bell case).
+#[test]
+fn insert_ctrl_e_short_line_below_is_noop() {
+    let (mut e, mut ws) = session("hello\nab");
+    feed_str(&mut e, &mut ws, "$i<C-e>"); // caret at col 4 ('o'); 'ab' has no col 4
+    assert_eq!(
+        buf(&ws),
+        "hello\nab",
+        "no char below col 4 → nothing inserted"
+    );
+}
+
+/// No line below the current line → a no-op.
+#[test]
+fn insert_ctrl_e_no_line_below_is_noop() {
+    let (mut e, mut ws) = session("hello");
+    feed_str(&mut e, &mut ws, "i<C-e>");
+    assert_eq!(buf(&ws), "hello", "no line below → nothing inserted");
+}
+
+/// No line above the current line → a no-op.
+#[test]
+fn insert_ctrl_y_no_line_above_is_noop() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "i<C-y>");
+    assert_eq!(buf(&ws), "hello\nworld", "no line above → nothing inserted");
+}
+
+/// Dot-repeat replays the RESOLVED LITERAL char (matching nvim), not a re-resolution against the new line.
+/// On line 2, `C-Y` copies 'a' from line 1; `.` on line 3 inserts that same 'a', NOT line 2's 'b'.
+#[test]
+fn insert_ctrl_y_dot_repeats_the_literal_char() {
+    let (mut e, mut ws) = session("ax\nby\ncz");
+    feed_str(&mut e, &mut ws, "ji<C-y><Esc>"); // line 2 -> "aby"
+    assert_eq!(buf(&ws), "ax\naby\ncz");
+    feed_str(&mut e, &mut ws, "j0."); // line 3: `.` inserts the literal 'a', not a re-resolved 'b'
+    assert_eq!(
+        buf(&ws),
+        "ax\naby\nacz",
+        "`.` repeats the copied char literally"
+    );
 }
