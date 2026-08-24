@@ -1296,6 +1296,94 @@ mod single_key_edit_tests {
     }
 
     #[test]
+    fn visual_increment_caret_lands_on_first_selected_line_left_edge() {
+        // Vim leaves the caret on the FIRST SELECTED line at the selection's left-edge column, NOT on the
+        // number's last digit and NOT on the first line that actually changed. Verified vs nvim v0.12.4.
+        //
+        // Multi-digit result: `007`→`008` — caret at col 0 (line start), not the last digit (col 2).
+        let st = run(
+            "007\n008",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(1, Motion::Down),
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "008\n009");
+        assert_eq!(
+            st.cursor(),
+            0,
+            "caret at col 0 of the first line, not on the last digit"
+        );
+        // Negative result width: `-3`→`-2` — caret at col 0, not on the digit after the sign.
+        let st = run(
+            "-3\n-3",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(1, Motion::Down),
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "-2\n-1");
+        assert_eq!(
+            st.cursor(),
+            0,
+            "caret at col 0, not on the digit after the '-'"
+        );
+        // First selected line has NO number: the caret still homes there (col 0), not on the changed line.
+        let st = run(
+            "abc\n5\n5",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(2, Motion::Down),
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: true,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "abc\n6\n7");
+        assert_eq!(
+            st.cursor(),
+            0,
+            "caret on the first SELECTED line (numberless), not the first CHANGED"
+        );
+        // Charwise: caret at the selection's start column on the first line (here col 2, onto the number).
+        let st = run(
+            "a 07",
+            &[
+                Command::Move(2, Motion::Right), // selection starts at col 2 (the '0')
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::Right),
+                Command::IncrementSelection {
+                    delta: 1,
+                    sequential: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "a 08");
+        assert_eq!(
+            st.cursor(),
+            2,
+            "caret at the charwise selection's left edge"
+        );
+    }
+
+    #[test]
     fn visual_increment_without_a_number_is_a_noop() {
         let st = run(
             "abc\ndef",

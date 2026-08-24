@@ -4032,6 +4032,310 @@
       }
     },
     {
+      "name": "visual_increment_column",
+      "lines": [
+        "0",
+        "0",
+        "0"
+      ],
+      "keys": "VG<C-a>",
+      "expect": {
+        "text": [
+          "1",
+          "1",
+          "1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_seq_increment_run",
+      "lines": [
+        "0",
+        "0",
+        "0"
+      ],
+      "keys": "VGg<C-a>",
+      "expect": {
+        "text": [
+          "1",
+          "2",
+          "3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_seq_increment_count",
+      "lines": [
+        "0",
+        "0",
+        "0"
+      ],
+      "keys": "VG2g<C-a>",
+      "expect": {
+        "text": [
+          "2",
+          "4",
+          "6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_seq_skip_blank",
+      "lines": [
+        "0",
+        "",
+        "0",
+        "0"
+      ],
+      "keys": "VGg<C-a>",
+      "expect": {
+        "text": [
+          "1",
+          "",
+          "2",
+          "3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_seq_skip_nonumber",
+      "lines": [
+        "0",
+        "abc",
+        "0"
+      ],
+      "keys": "VGg<C-a>",
+      "expect": {
+        "text": [
+          "1",
+          "abc",
+          "2"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_increment_leading_zero",
+      "lines": [
+        "007",
+        "008"
+      ],
+      "keys": "VG<C-a>",
+      "expect": {
+        "text": [
+          "008",
+          "009"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_seq_negatives",
+      "lines": [
+        "-3",
+        "-3"
+      ],
+      "keys": "VGg<C-a>",
+      "expect": {
+        "text": [
+          "-2",
+          "-1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_seq_decrement",
+      "lines": [
+        "5",
+        "5",
+        "5"
+      ],
+      "keys": "VGg<C-x>",
+      "expect": {
+        "text": [
+          "4",
+          "3",
+          "2"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_seq_first_line_no_number",
+      "lines": [
+        "abc",
+        "5",
+        "5"
+      ],
+      "keys": "VGg<C-a>",
+      "expect": {
+        "text": [
+          "abc",
+          "6",
+          "7"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_seq_increment",
+      "lines": [
+        "x0",
+        "x0",
+        "x0"
+      ],
+      "keys": "l<C-v>jjg<C-a>",
+      "expect": {
+        "text": [
+          "x1",
+          "x2",
+          "x3"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_increment_covers_number",
+      "lines": [
+        "07",
+        "08"
+      ],
+      "keys": "<C-v>jl<C-a>",
+      "expect": {
+        "text": [
+          "08",
+          "09"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "replace_char_unicode",
       "lines": [
         "αβγ"

@@ -436,6 +436,18 @@ FIXTURES: list[dict] = [
     {"name": "increment_hex_ff", "lines": ["0xff"], "keys": "<C-a>"},
     {"name": "increment_negative_wraps", "lines": ["-1"], "keys": "<C-a>"},
     {"name": "increment_binary", "lines": ["0b101"], "keys": "<C-a>"},
+    #     Visual CTRL-A / g CTRL-A — per-line and successive (sequence) increment over a selection
+    {"name": "visual_increment_column", "lines": ["0", "0", "0"], "keys": "VG<C-a>"},
+    {"name": "visual_seq_increment_run", "lines": ["0", "0", "0"], "keys": "VGg<C-a>"},
+    {"name": "visual_seq_increment_count", "lines": ["0", "0", "0"], "keys": "VG2g<C-a>"},
+    {"name": "visual_seq_skip_blank", "lines": ["0", "", "0", "0"], "keys": "VGg<C-a>"},
+    {"name": "visual_seq_skip_nonumber", "lines": ["0", "abc", "0"], "keys": "VGg<C-a>"},
+    {"name": "visual_increment_leading_zero", "lines": ["007", "008"], "keys": "VG<C-a>"},
+    {"name": "visual_seq_negatives", "lines": ["-3", "-3"], "keys": "VGg<C-a>"},
+    {"name": "visual_seq_decrement", "lines": ["5", "5", "5"], "keys": "VGg<C-x>"},
+    {"name": "visual_seq_first_line_no_number", "lines": ["abc", "5", "5"], "keys": "VGg<C-a>"},
+    {"name": "block_seq_increment", "lines": ["x0", "x0", "x0"], "keys": "l<C-v>jjg<C-a>"},
+    {"name": "block_increment_covers_number", "lines": ["07", "08"], "keys": "<C-v>jl<C-a>"},
     #     replace char across multibyte
     {"name": "replace_char_unicode", "lines": ["αβγ"], "keys": "lrx"},
     #     ROUND 4b — search-motion operators / blockwise / object aliases / register append
