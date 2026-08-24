@@ -9278,6 +9278,348 @@
       }
     },
     {
+      "name": "visual_mark_start_charwise",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wviw<Esc>`<",
+      "expect": {
+        "text": [
+          "foo bar baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_end_charwise",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wviw<Esc>`>",
+      "expect": {
+        "text": [
+          "foo bar baz"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_start_line_linewise",
+      "lines": [
+        "  alpha",
+        "beta",
+        "  gamma"
+      ],
+      "keys": "Vj<Esc>'<",
+      "expect": {
+        "text": [
+          "  alpha",
+          "beta",
+          "  gamma"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_end_line_linewise",
+      "lines": [
+        "  alpha",
+        "beta",
+        "  gamma"
+      ],
+      "keys": "Vj<Esc>'>",
+      "expect": {
+        "text": [
+          "  alpha",
+          "beta",
+          "  gamma"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_start_backtick_linewise",
+      "lines": [
+        "  alpha",
+        "beta",
+        "  gamma"
+      ],
+      "keys": "Vj<Esc>`<",
+      "expect": {
+        "text": [
+          "  alpha",
+          "beta",
+          "  gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_end_backtick_linewise",
+      "lines": [
+        "  alpha",
+        "beta",
+        "  gamma"
+      ],
+      "keys": "Vj<Esc>`>",
+      "expect": {
+        "text": [
+          "  alpha",
+          "beta",
+          "  gamma"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_start_after_operator",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wviwd`<",
+      "expect": {
+        "text": [
+          "foo  baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_end_after_operator",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wviwd`>",
+      "expect": {
+        "text": [
+          "foo  baz"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_start_blockwise",
+      "lines": [
+        "abcde",
+        "fghij",
+        "klmno"
+      ],
+      "keys": "l<C-v>jl<Esc>`<",
+      "expect": {
+        "text": [
+          "abcde",
+          "fghij",
+          "klmno"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "visual_mark_end_blockwise",
+      "lines": [
+        "abcde",
+        "fghij",
+        "klmno"
+      ],
+      "keys": "l<C-v>jl<Esc>`>",
+      "expect": {
+        "text": [
+          "abcde",
+          "fghij",
+          "klmno"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gv_reselect_linewise",
+      "lines": [
+        "one",
+        "two",
+        "three"
+      ],
+      "keys": "Vjygvd",
+      "expect": {
+        "text": [
+          "three"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "one\ntwo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "one\ntwo\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "gv_reselect_blockwise",
+      "lines": [
+        "abcde",
+        "fghij",
+        "klmno"
+      ],
+      "keys": "l<C-v>jl<Esc>gvd",
+      "expect": {
+        "text": [
+          "ade",
+          "fij",
+          "klmno"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\ngh",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gv_after_mark_jump",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "wviw<Esc>`<gvd",
+      "expect": {
+        "text": [
+          "foo  baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "back_search_prev_match",
       "lines": [
         "foo bar foo baz"

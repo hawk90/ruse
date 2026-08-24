@@ -1921,6 +1921,9 @@ impl InputEngine {
                     // `` `[ `` / `` `] `` — jump charwise to the first/last char of the last changed/yanked text.
                     KeyCode::Char('[') => self.action(Command::GotoChangeMarkStart),
                     KeyCode::Char(']') => self.action(Command::GotoChangeMarkEnd),
+                    // `` `< `` / `` `> `` — jump charwise to the start/end of the last visual selection.
+                    KeyCode::Char('<') => self.action(Command::GotoVisualMarkStart),
+                    KeyCode::Char('>') => self.action(Command::GotoVisualMarkEnd),
                     // `` `{a-z} `` — jump to a named mark, or `` d`a ``/`` y`a `` with an operator pending.
                     KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, false),
                     // Any other mark name is not wired — abort the pending construct.
@@ -1948,6 +1951,9 @@ impl InputEngine {
                     // `'[` / `']` — linewise to the first non-blank of the first/last changed/yanked line.
                     KeyCode::Char('[') => self.action(Command::GotoChangeMarkStartLine),
                     KeyCode::Char(']') => self.action(Command::GotoChangeMarkEndLine),
+                    // `'<` / `'>` — linewise to the first non-blank of the first/last selected line.
+                    KeyCode::Char('<') => self.action(Command::GotoVisualMarkStartLine),
+                    KeyCode::Char('>') => self.action(Command::GotoVisualMarkEndLine),
                     // `'{a-z}` — linewise to a named mark's line, or `d'a`/`y'a` with an operator pending.
                     KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, true),
                     // Any other mark name is not wired — abort.
