@@ -526,6 +526,88 @@ mod tests {
     }
 
     #[test]
+    fn parse_put() {
+        use ruse_core::LineAddr;
+        // Bare `:put` / `:pu` → the unnamed register after the current line.
+        assert_eq!(
+            parse_ex("put"),
+            Ex::Put {
+                addr: LineAddr::Current,
+                reg: None
+            }
+        );
+        assert_eq!(
+            parse_ex("pu"),
+            Ex::Put {
+                addr: LineAddr::Current,
+                reg: None
+            }
+        );
+        // Addressed puts: `:2put` (after line 2), `:0put` (top), `:$put` (last line), `:.put` (current).
+        assert_eq!(
+            parse_ex("2put"),
+            Ex::Put {
+                addr: LineAddr::Line(2),
+                reg: None
+            }
+        );
+        assert_eq!(
+            parse_ex("0put"),
+            Ex::Put {
+                addr: LineAddr::Line(0),
+                reg: None
+            }
+        );
+        assert_eq!(
+            parse_ex("$put"),
+            Ex::Put {
+                addr: LineAddr::Last,
+                reg: None
+            }
+        );
+        assert_eq!(
+            parse_ex(".put"),
+            Ex::Put {
+                addr: LineAddr::Current,
+                reg: None
+            }
+        );
+        // A register argument (whitespace-separated): named, numbered, and the clipboard register.
+        assert_eq!(
+            parse_ex("put a"),
+            Ex::Put {
+                addr: LineAddr::Current,
+                reg: Some('a')
+            }
+        );
+        assert_eq!(
+            parse_ex("2put a"),
+            Ex::Put {
+                addr: LineAddr::Line(2),
+                reg: Some('a')
+            }
+        );
+        assert_eq!(
+            parse_ex("put +"),
+            Ex::Put {
+                addr: LineAddr::Current,
+                reg: Some('+')
+            }
+        );
+        assert_eq!(
+            parse_ex("pu 0"),
+            Ex::Put {
+                addr: LineAddr::Current,
+                reg: Some('0')
+            }
+        );
+        // The register must be separated by whitespace — `:puta` is not `:put a` (Vim E492) → Unknown.
+        assert!(matches!(parse_ex("puta"), Ex::Unknown(_)));
+        // A two-char register argument is not the single-char form → Unknown.
+        assert!(matches!(parse_ex("put ab"), Ex::Unknown(_)));
+    }
+
+    #[test]
     fn parse_edit_reload() {
         assert_eq!(parse_ex("e!"), Ex::EditReload);
         assert_eq!(parse_ex("edit!"), Ex::EditReload);

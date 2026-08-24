@@ -1158,6 +1158,91 @@ impl EditorState {
         Some(count)
     }
 
+    /// `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed line,
+    /// as one undo group. UNLIKE normal-mode `p`, a put is ALWAYS linewise (Vim `:help :put`): a charwise
+    /// register's text is split on `\n` and each piece inserted as its own line — this is the
+    /// linewise-FORCING rule (`:put` of a charwise `foo` opens a whole new line `foo`). The destination
+    /// [`LineAddr`] is resolved as for `:m`/`:t`: `Line(0)` inserts at the very top (before line 1),
+    /// `Line(n)` after 1-based line n, `Last` after the last line, and `Current` after the cursor's line
+    /// (the bare `:put` default). The cursor lands on the first non-blank of the LAST inserted line
+    /// (verified against nvim v0.12.4). `reg` is the register name (`None` = the unnamed register); reading
+    /// it reuses the shared [`RegisterStore`], never a new store. Returns the number of lines inserted
+    /// (0 — a no-op leaving the cursor put — if the register is empty or the buffer is not UTF-8).
+    pub fn put_lines(&mut self, addr: LineAddr, reg: Option<char>) -> usize {
+        // Reuse the shared register store: read the named slot's bytes (unnamed when `reg` is None).
+        let reg_text = self.view.registers.get(reg).text().to_vec();
+        if reg_text.is_empty() {
+            return 0;
+        }
+        let buf = self.doc.bytes();
+        let Ok(hay) = std::str::from_utf8(buf) else {
+            return 0;
+        };
+        let orig_len = buf.len();
+        let had_trailing_nl = hay.ends_with('\n');
+        // The lines to insert: split the register text on '\n'. A normalized LINEWISE register ends with a
+        // '\n', so drop the empty element it leaves after the final newline. A CHARWISE register with no
+        // trailing newline still splits into whole lines — the linewise-forcing rule.
+        let mut ins_lines: Vec<&[u8]> = reg_text.split(|&b| b == b'\n').collect();
+        if reg_text.last() == Some(&b'\n') {
+            ins_lines.pop();
+        }
+        if ins_lines.is_empty() {
+            return 0;
+        }
+        // The buffer's existing lines (each WITHOUT its trailing newline), matching `relocate_lines`.
+        let mut buf_lines: Vec<&[u8]> = if hay.is_empty() {
+            Vec::new()
+        } else {
+            let mut v: Vec<&[u8]> = buf.split(|&b| b == b'\n').collect();
+            if had_trailing_nl {
+                v.pop(); // drop the empty element after the final '\n'
+            }
+            v
+        };
+        let nlines = buf_lines.len();
+        // Destination as a 0-based insert index in `0..=nlines` (Vim `:put N` = "after line N", `:0put` =
+        // top; a bare `:put` = after the cursor's line).
+        let cursor_line = crate::pos::line_of(buf, self.view.cursor);
+        let ins = match addr {
+            LineAddr::Line(n) => n.min(nlines),
+            LineAddr::Last => nlines,
+            LineAddr::Current => (cursor_line + 1).min(nlines),
+        };
+        let count = ins_lines.len();
+        for (k, line) in ins_lines.into_iter().enumerate() {
+            buf_lines.insert(ins + k, line);
+        }
+        let mut new_bytes: Vec<u8> = Vec::with_capacity(orig_len + reg_text.len() + 1);
+        for (i, line) in buf_lines.iter().enumerate() {
+            if i > 0 {
+                new_bytes.push(b'\n');
+            }
+            new_bytes.extend_from_slice(line);
+        }
+        if had_trailing_nl && !new_bytes.is_empty() {
+            new_bytes.push(b'\n');
+        }
+        // The cursor lands on the LAST inserted line (0-based index `ins + count - 1`); compute its line
+        // start now, before `new_bytes` is moved into the edit.
+        let last_idx = ins + count - 1;
+        let line_start: usize = new_bytes
+            .split_inclusive(|&b| b == b'\n')
+            .take(last_idx)
+            .map(<[u8]>::len)
+            .sum();
+        let list = EditList::new(vec![Edit::replace(0, orig_len, new_bytes)])
+            .expect("a single whole-buffer replace is well-formed");
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc.apply(txn).expect("line put applies cleanly");
+        self.view.last_was_edit = true;
+        // Vim leaves the cursor on the first non-blank of the last inserted line.
+        let nb = self.doc.bytes();
+        self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
+        count
+    }
+
     /// `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file when the caller
     /// passes `WholeFile`) as one undo group. The sort KEY per line is, in order: the text after the first
     /// `pattern` match (or the matched text itself under `r`), else the whole line; lowercased under `i`
