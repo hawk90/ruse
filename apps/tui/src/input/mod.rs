@@ -235,6 +235,13 @@ pub struct InputEngine {
     /// rather than the Normal grammar. `None` = not on the command line. This is the engine owning the
     /// line, not an ad-hoc text buffer on the UI (anti-pattern command-line P2).
     cmdline: Option<CmdLine>,
+    /// The `:` (ex) command-line history ring (`:help cmdline-history`): accepted ex lines, most-recent
+    /// last, recalled by `<Up>`/`<C-p>` in the prompt. Session-scoped frontend state — SEPARATE from the
+    /// search ring (Vim keeps `:` and `/` histories apart), and never in `crates/core`.
+    ex_history: CmdHistory,
+    /// The `/`+`?` search-pattern history ring (`:help cmdline-history`): `/` and `?` SHARE one ring in
+    /// Vim, kept apart from the ex ring above.
+    search_history: CmdHistory,
     /// The active Lang-Arg language map (`lmap`, F-027): a char→char rewrite applied by the pre-dispatch
     /// translation stage. Populated by `:lmap` at runtime (the persistent form is `keymap.lang`; no
     /// config-file loader exists for any `keymap.*` key yet). MVP restricts both sides to a single char.
@@ -310,6 +317,8 @@ impl InputEngine {
             insert: InsertState::default(),
             activations: Vec::new(),
             cmdline: None,
+            ex_history: CmdHistory::new(history::DEFAULT_CAP),
+            search_history: CmdHistory::new(history::DEFAULT_CAP),
             lang_map: HashMap::new(),
             lang_active: false,
             emacs_arg: None,
@@ -378,6 +387,7 @@ impl InputEngine {
             ex_mode,
             mx: false,
             expr: None,
+            walk: history::HistWalk::default(),
         });
     }
 
@@ -391,6 +401,7 @@ impl InputEngine {
             ex_mode: false,
             mx: true,
             expr: None,
+            walk: history::HistWalk::default(),
         });
     }
 
@@ -405,6 +416,7 @@ impl InputEngine {
             ex_mode: false,
             mx: false,
             expr: Some(target),
+            walk: history::HistWalk::default(),
         });
     }
 
@@ -413,6 +425,20 @@ impl InputEngine {
     /// search folds through [`Self::submit_search`], an ex line becomes [`Feed::ExecuteEx`]. In `gQ` Ex
     /// mode the line re-opens after `<CR>` until `:visual`/`:vi`/an empty line exits.
     fn feed_cmdline(&mut self, key: KeyEvent) -> Feed {
+        if self.cmdline.is_none() {
+            return Feed::Ignored;
+        }
+        // History recall (`:help cmdline-history`), handled before the buffer borrow so the recall helper
+        // can re-borrow the (disjoint) history ring. nvim-VERIFIED distinction: `<Up>`/`<Down>` recall
+        // PREFIX-FILTERED by the draft typed before the walk; `<C-p>`/`<C-n>` walk the RAW ring unfiltered.
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Up => return self.cmdline_recall(true, true),
+            KeyCode::Down => return self.cmdline_recall(false, true),
+            KeyCode::Char('p') if ctrl => return self.cmdline_recall(true, false),
+            KeyCode::Char('n') if ctrl => return self.cmdline_recall(false, false),
+            _ => {}
+        }
         let Some(cl) = self.cmdline.as_mut() else {
             return Feed::Ignored;
         };
@@ -424,11 +450,15 @@ impl InputEngine {
             KeyCode::Backspace => {
                 cl.buffer.pop();
                 cl.cursor = cl.buffer.chars().count();
+                // Editing the line ends the current recall walk: the next `<Up>` re-captures the edited
+                // buffer as its draft/prefix (Vim recalls against the CURRENT line after an edit).
+                cl.walk = history::HistWalk::default();
                 Feed::Pending
             }
             KeyCode::Char(c) => {
                 cl.buffer.push(c);
                 cl.cursor = cl.buffer.chars().count();
+                cl.walk = history::HistWalk::default();
                 Feed::Pending
             }
             KeyCode::Enter => {
@@ -462,18 +492,58 @@ impl InputEngine {
                         self.cmdline = None;
                         return Feed::Ignored;
                     }
+                    // A gQ-Ex line is still an ex command: record it in the `:` history (empty ignored by
+                    // push). Re-prompting resets the walk via `open_cmdline`'s fresh `CmdLine`... but gQ
+                    // stays in the SAME CmdLine, so clear the walk explicitly for the next line.
+                    self.ex_history.push(&text);
                     cl.cursor = 0;
+                    cl.walk = history::HistWalk::default();
                     return Feed::ExecuteEx(text);
                 }
                 self.cmdline = None;
+                // Push the ACCEPTED line onto the matching ring (`:help cmdline-history`): `/`+`?` share the
+                // search ring, `:` uses the ex ring; empty lines are ignored by `push`. Kept separate.
                 if prefix == '/' || prefix == '?' {
+                    self.search_history.push(&text);
                     self.submit_search(text, prefix == '?')
                 } else {
+                    self.ex_history.push(&text);
                     Feed::ExecuteEx(text)
                 }
             }
             _ => Feed::Pending,
         }
+    }
+
+    /// Recall a history entry into the open command-line (`:help cmdline-history`). `prev` walks older
+    /// (`<Up>`/`<C-p>`), else more-recent (`<Down>`/`<C-n>`); `filter` prefix-filters by the typed draft
+    /// (`<Up>`/`<Down>`) vs the raw ring (`<C-p>`/`<C-n>`). Chooses the ex vs search ring by prefix; the
+    /// `M-x`/expression prompts have no history and pass the key through. Rewrites the buffer + cursor.
+    fn cmdline_recall(&mut self, prev: bool, filter: bool) -> Feed {
+        let Some(cl) = self.cmdline.as_mut() else {
+            return Feed::Ignored;
+        };
+        // Only the Vim `:` ex line and the `/`+`?` search line carry history. The `M-x` minibuffer and the
+        // expression-register prompt do not (their own histories are separate follow-ups) — pass through.
+        if cl.mx || cl.expr.is_some() {
+            return Feed::Pending;
+        }
+        // Disjoint borrows: `cl` borrows `self.cmdline`; the ring borrows a separate field.
+        let ring = if cl.prefix == '/' || cl.prefix == '?' {
+            &self.search_history
+        } else {
+            &self.ex_history
+        };
+        let recalled = if prev {
+            ring.recall_prev(&mut cl.walk, &cl.buffer, filter)
+        } else {
+            ring.recall_next(&mut cl.walk, &cl.buffer, filter)
+        };
+        if let Some(text) = recalled {
+            cl.buffer = text;
+            cl.cursor = cl.buffer.chars().count();
+        }
+        Feed::Pending
     }
 
     /// Apply a namespace's declared unmatched-key policy to a key nothing bound.
@@ -2050,7 +2120,9 @@ pub use emacs::emacs_command_by_name;
 use emacs::{emacs_repeat, fold_emacs_count, EmacsArg, EmacsBinding, EmacsKey, EmacsProfile, Step};
 
 mod cmdline;
+mod history;
 use cmdline::{CmdLine, ExprTarget};
+use history::CmdHistory;
 
 mod repeat;
 use repeat::{change_kind, ChangeIntent, ChangeKind};

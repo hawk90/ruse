@@ -356,9 +356,17 @@ tested) — that is the shipped stub, and it is exactly anti-pattern "command-li
 - **Precedence** stays the fixed ladder (input-mode → key-expectation tier → base keys); `Cmdline` sits at
   the input-mode level beside Insert, so it is total and testable by the same no-leak property.
 
-**Deferred (not v0):** command-line history + `q:`/`q/` windows, `wildmenu`/`wildmode` completion, `C-r`
-register insertion, and the incsearch **UX** (the regex/decoration side is [vim-regex.md](vim-regex.md)); the
-full INPUT-RESOLVE keymap/timeout/priority machinery above. v0 ships the mode + basic in-line editing only.
+**Shipped (post-#97):** command-line & search **history** (`:help cmdline-history`, #452). The engine owns
+two SEPARATE rings — `:` ex lines and `/`+`?` search patterns (Vim keeps them apart; `/` and `?` share the
+search ring) — populated on `<CR>` (empty ignored; an immediate repeat is de-duplicated by moving it to the
+most-recent slot). The prompt recalls with `<Up>`/`<Down>` (PREFIX-FILTERED by the draft typed before the
+walk) and `<C-p>`/`<C-n>` (RAW ring, unfiltered — the nvim-verified distinction); `<Down>` past the newest
+restores the typed draft. The ring + recall walk live in a pure, unit-tested `CmdHistory`/`HistWalk`
+(`apps/tui/src/input/history.rs`); this is the enabler for the `q:`/`q/` command-line window.
+
+**Deferred (not v0):** `q:`/`q/` windows, `wildmenu`/`wildmode` completion, `C-r` register insertion, and the
+incsearch **UX** (the regex/decoration side is [vim-regex.md](vim-regex.md)); the full INPUT-RESOLVE
+keymap/timeout/priority machinery above. v0 ships the mode + in-line editing + history recall only.
 
 ### How a profile plugs in (INPUT-PROFILE)
 
