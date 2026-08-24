@@ -1709,8 +1709,9 @@ impl InputEngine {
                     KeyCode::Char(ch) if text_object(ch, inner).is_some() => {
                         self.motion(text_object(ch, inner).expect("guarded by is_some"))
                     }
-                    // Not a text object (includes the deferred `t`/`T` tag objects): a pending construct is
-                    // in flight, so this is `closed/abort` — the operator-pending policy (VS-OBL-3).
+                    // Not a text-object selector (`t` IS one — `it`/`at` tag objects resolve via
+                    // `text_object` → `Motion::Tag` above): a pending construct is in flight, so this is
+                    // `closed/abort` — the operator-pending policy (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }

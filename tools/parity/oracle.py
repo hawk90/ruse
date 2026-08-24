@@ -324,6 +324,22 @@ FIXTURES: list[dict] = [
     #     tag + sentence + more text objects
     {"name": "dit_tag_inner", "lines": ["<a>hi</a>"], "keys": "fhdit"},
     {"name": "dat_tag_around", "lines": ["x<b>hi</b>y"], "keys": "fhdat"},
+    #     tag objects: nesting, count-expands-outward, attrs, cursor-on-tag, change, multiline ---------
+    {"name": "dit_tag_nested_inner", "lines": ["<a><b>x</b></a>"], "keys": "fxdit"},
+    {"name": "dat_tag_nested", "lines": ["<a><b>x</b></a>"], "keys": "fxdat"},
+    {"name": "dit_tag_count_outer", "lines": ["<a><b>x</b></a>"], "keys": "fx2dit"},
+    {"name": "dat_tag_count_outer", "lines": ["<a><b>x</b></a>"], "keys": "fx2dat"},
+    {"name": "cit_tag_inner", "lines": ["<div>hello</div>"], "keys": "fhcitZ<Esc>"},
+    {"name": "dat_tag_attrs", "lines": ['<a href="x">hi</a>'], "keys": "fhdat"},
+    {"name": "dit_tag_on_open", "lines": ["<div>hello</div>"], "keys": "ldit"},
+    {"name": "dit_tag_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jdit"},
+    {"name": "yat_tag_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jyat"},
+    # `dat` on a whole-line block is the ONE documented tag divergence: nvim DELETES linewise here
+    # (regtype V), while ruse — one span for d/y/c, matching nvim's own charwise `yat`/`cat` — is
+    # charwise. The buffer text is identical; only the register TYPE differs. Kept as an honest finding.
+    {"name": "dat_tag_multiline", "lines": ["<div>", "hello", "</div>"], "keys": "jdat"},
+    {"name": "vit_tag_delete", "lines": ["<div>hello</div>"], "keys": "fhvitd"},
+    {"name": "vat_tag_delete", "lines": ["<div>hello</div>"], "keys": "fhvatd"},
     {"name": "das_sentence_around", "lines": ["One. Two. Three."], "keys": "wdas"},
     {"name": "dis_sentence_inner", "lines": ["One. Two. Three."], "keys": "wdis"},
     {"name": "ci_angle_inner", "lines": ["a<bcd>e"], "keys": "f<ci<Z<Esc>"},
