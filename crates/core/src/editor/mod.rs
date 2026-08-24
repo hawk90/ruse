@@ -1000,6 +1000,35 @@ impl EditorState {
         last - first + 1
     }
 
+    /// `:[range]j[oin][!]` — join the range's lines into one, reusing the SAME core join the normal-mode
+    /// `J`/`gJ` emit (`Command::JoinLines`/`JoinLinesNoSpace`) so the whitespace rules stay identical: a
+    /// single separating space, suppressed before `)`, after a line already ending in whitespace, or on an
+    /// empty line; the next line's leading whitespace is stripped. `no_space` (the `!` bang) is the `gJ`
+    /// raw-concatenate form. No range = the cursor's line; like Vim, a single-line target joins it with the
+    /// NEXT line. The cursor lands on the join seam, exactly where `J` leaves it. Returns the number of
+    /// lines that were joined (0 if there was nothing to join).
+    pub fn join_lines(&mut self, range: SubRange, no_space: bool) -> usize {
+        let bytes = self.doc.bytes();
+        let Ok(hay) = std::str::from_utf8(bytes) else {
+            return 0;
+        };
+        let lines = line_spans(hay);
+        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+        // Position the cursor at the range's first line so the reused join starts there; the count is the
+        // line span, which `plan_join` clamps to `.max(2)` — so a single-line range joins the current line
+        // with the next, matching Vim.
+        self.view.cursor = lines[first].0;
+        let count = (last - first + 1) as u32;
+        let cmd = if no_space {
+            Command::JoinLinesNoSpace(count)
+        } else {
+            Command::JoinLines(count)
+        };
+        apply_command(self, &cmd);
+        count.max(2) as usize
+    }
+
     /// `:[range]m {addr}` — move the range's lines to after the destination line, as one undo group.
     /// Returns the number of lines moved, or `None` if the destination lies inside the source (Vim's
     /// "move lines into themselves") or the buffer is not UTF-8. No range = the cursor's line.

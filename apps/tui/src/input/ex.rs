@@ -42,6 +42,13 @@ pub enum Ex {
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
     Yank(SubRange),
+    /// `:[range]j[oin][!]` — join the range's lines into one (no range = the current line, which joins with
+    /// the next). `bang` is the `!` (raw `gJ`) form that concatenates without adjusting whitespace; without
+    /// it, whitespace is collapsed to a single space exactly like normal-mode `J`.
+    Join {
+        range: SubRange,
+        bang: bool,
+    },
     /// `:[range]m {addr}`/`:move` — move the range's lines to after the destination line.
     Move(SubRange, LineAddr),
     /// `:[range]t {addr}`/`:copy`/`:co` — copy the range's lines to after the destination line.
@@ -526,6 +533,8 @@ pub fn parse_ex(line: &str) -> Ex {
                 Ex::Delete(range)
             } else if let Some(range) = parse_range_verb(line, &["y", "yank"]) {
                 Ex::Yank(range)
+            } else if let Some((range, bang)) = parse_join(line) {
+                Ex::Join { range, bang }
             } else if let Some((range, dest)) = parse_range_verb_dest(line, &["move", "m"]) {
                 Ex::Move(range, dest)
             } else if let Some((range, dest)) = parse_range_verb_dest(line, &["copy", "co", "t"]) {
@@ -619,6 +628,21 @@ fn parse_line_addr(s: &str) -> Option<LineAddr> {
 
 /// Split a `:[range]<verb>` line into its parsed [`SubRange`] and the trimmed verb, if the verb (after the
 /// leading `[0-9,%.$]` range prefix) is exactly one of `verbs`. Shared by the line-range ops (`:d`/`:y`/…).
+/// Parse `:[range]j[oin][!]` into `(range, bang)`. The verb is `j`/`jo`/`joi`/`join` (Vim's abbreviations)
+/// after an optional `[0-9,%.$]` range prefix and an optional trailing `!`. A `[count]` argument (Vim's
+/// `:j 3`) is a documented follow-up — the shared range-verb parser has no count seam yet.
+fn parse_join(line: &str) -> Option<(SubRange, bool)> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, verb) = line.split_at(split);
+    let verb = verb.trim();
+    let (verb, bang) = verb.strip_suffix('!').map_or((verb, false), |v| (v, true));
+    if !matches!(verb, "j" | "jo" | "joi" | "join") {
+        return None;
+    }
+    Some((parse_sub_range(range_str)?, bang))
+}
 fn parse_range_verb(line: &str, verbs: &[&str]) -> Option<SubRange> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
@@ -791,6 +815,53 @@ mod normal_parse_tests {
             normal(".normal x"),
             (false, Some(SubRange::CurrentLine), "x".to_string())
         );
+    }
+
+    #[test]
+    fn join_parses_range_verb_and_bang() {
+        // No range → current line.
+        assert_eq!(
+            parse_ex("j"),
+            Ex::Join {
+                range: SubRange::CurrentLine,
+                bang: false
+            }
+        );
+        // The abbreviations `jo`/`joi`/`join` all resolve.
+        for v in ["jo", "joi", "join"] {
+            assert_eq!(
+                parse_ex(v),
+                Ex::Join {
+                    range: SubRange::CurrentLine,
+                    bang: false
+                }
+            );
+        }
+        // A line range.
+        assert_eq!(
+            parse_ex("2,4join"),
+            Ex::Join {
+                range: SubRange::Lines(2, 4),
+                bang: false
+            }
+        );
+        // The `!` (raw `gJ`) form.
+        assert_eq!(
+            parse_ex("j!"),
+            Ex::Join {
+                range: SubRange::CurrentLine,
+                bang: true
+            }
+        );
+        assert_eq!(
+            parse_ex("%join!"),
+            Ex::Join {
+                range: SubRange::WholeFile,
+                bang: true
+            }
+        );
+        // `:jumps` is NOT a join (its exact-match arm wins first).
+        assert_eq!(parse_ex("jumps"), Ex::Jumps);
     }
 
     #[test]
