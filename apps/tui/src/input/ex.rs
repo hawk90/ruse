@@ -55,6 +55,16 @@ pub enum Ex {
     Copy(SubRange, LineAddr),
     /// `:[range]sort[!] [n][u]` — sort the range's lines (whole file with no range).
     Sort(SubRange, ruse_core::SortOptions),
+    /// `:[range]>` / `:[range]<` — shift the range's lines one indent level right (`left = false`) or left
+    /// (`left = true`), reusing the core `>>`/`<<` shift (no range = the current line). Repeated verb chars
+    /// multiply the level count: `:>>>` is `levels = 3`, `:<<` is `levels = 2` (Vim: each extra `>`/`<` adds
+    /// one `shiftwidth`). A trailing `[count]` argument (Vim's `:> 5`) is a documented follow-up — the shared
+    /// range-verb parser has no trailing-count seam (neither do `:d`/`:y`/`:j`).
+    Shift {
+        range: SubRange,
+        left: bool,
+        levels: u32,
+    },
     /// `:set {option}` — set one editor option on the focused view (F-009 / indent config).
     Set(EditorOption),
     /// `:earlier [N]` / `:ea` — go back N changes in chronological (branch-aware) undo time (F-005 #3).
@@ -539,6 +549,12 @@ pub fn parse_ex(line: &str) -> Ex {
                 Ex::Move(range, dest)
             } else if let Some((range, dest)) = parse_range_verb_dest(line, &["copy", "co", "t"]) {
                 Ex::Copy(range, dest)
+            } else if let Some((range, left, levels)) = parse_shift(line) {
+                Ex::Shift {
+                    range,
+                    left,
+                    levels,
+                }
             } else if let Some(ex) = parse_sort(line) {
                 ex
             } else if let Some(ex) = parse_set(line) {
@@ -643,6 +659,29 @@ fn parse_join(line: &str) -> Option<(SubRange, bool)> {
     }
     Some((parse_sub_range(range_str)?, bang))
 }
+/// Parse `:[range]>` / `:[range]<` into `(range, left, levels)`. After the optional `[0-9,%.$]` range
+/// prefix the verb is a run of one-or-more IDENTICAL `>` or `<` chars; the run length is the level count
+/// (Vim `:>>>` = 3 levels). `left = true` for `<`. Returns `None` (→ falls through) unless the whole verb
+/// is such a run — a mixed run (`:><`) or trailing junk (`:> x`, the deferred trailing-count form) is not
+/// this command.
+fn parse_shift(line: &str) -> Option<(SubRange, bool, u32)> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, verb) = line.split_at(split);
+    let verb = verb.trim();
+    let first = verb.chars().next()?;
+    if first != '>' && first != '<' {
+        return None;
+    }
+    // The verb must be a run of the SAME char, and nothing else.
+    if !verb.chars().all(|c| c == first) {
+        return None;
+    }
+    let range = parse_sub_range(range_str)?;
+    Some((range, first == '<', verb.len() as u32))
+}
+
 fn parse_range_verb(line: &str, verbs: &[&str]) -> Option<SubRange> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
@@ -880,6 +919,75 @@ mod normal_parse_tests {
         // A bare `:normal` (no delimiting space / keys) is not a valid invocation.
         assert!(matches!(parse_ex("normal"), Ex::Unknown(_)));
         assert!(matches!(parse_ex("normal!"), Ex::Unknown(_)));
+    }
+}
+
+#[cfg(test)]
+mod shift_parse_tests {
+    use super::*;
+
+    #[test]
+    fn shift_parses_range_direction_and_levels() {
+        // No range → current line, one level.
+        assert_eq!(
+            parse_ex(">"),
+            Ex::Shift {
+                range: SubRange::CurrentLine,
+                left: false,
+                levels: 1
+            }
+        );
+        assert_eq!(
+            parse_ex("<"),
+            Ex::Shift {
+                range: SubRange::CurrentLine,
+                left: true,
+                levels: 1
+            }
+        );
+        // Repeated verb chars are the level count (Vim `:>>>` = 3, `:<<` = 2).
+        assert_eq!(
+            parse_ex(">>>"),
+            Ex::Shift {
+                range: SubRange::CurrentLine,
+                left: false,
+                levels: 3
+            }
+        );
+        assert_eq!(
+            parse_ex("<<"),
+            Ex::Shift {
+                range: SubRange::CurrentLine,
+                left: true,
+                levels: 2
+            }
+        );
+        // A line range and the whole-file `%`.
+        assert_eq!(
+            parse_ex("2,4>"),
+            Ex::Shift {
+                range: SubRange::Lines(2, 4),
+                left: false,
+                levels: 1
+            }
+        );
+        assert_eq!(
+            parse_ex("%<<"),
+            Ex::Shift {
+                range: SubRange::WholeFile,
+                left: true,
+                levels: 2
+            }
+        );
+    }
+
+    #[test]
+    fn mixed_run_or_trailing_junk_is_not_a_shift() {
+        // A mixed `>`/`<` run is not this command.
+        assert!(matches!(parse_ex("><"), Ex::Unknown(_)));
+        // The trailing-count form `:> 5` is deferred; with trailing junk it is not a shift.
+        assert!(matches!(parse_ex("> 5"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex(">x"), Ex::Unknown(_)));
     }
 }
 
