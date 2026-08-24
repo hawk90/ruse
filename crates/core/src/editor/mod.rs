@@ -2214,6 +2214,7 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         | Command::EnterInsert
         | Command::EnterInsertAfter
         | Command::InsertLineStart
+        | Command::InsertColumnZero
         | Command::AppendLineEnd
         | Command::OpenBelow
         | Command::OpenAbove => st.view.auto_indent_pending = false,
@@ -2257,6 +2258,7 @@ fn update_curswant(st: &mut EditorState, cmd: &Command) {
         | Command::EnterInsert
         | Command::EnterInsertAfter
         | Command::InsertLineStart
+        | Command::InsertColumnZero
         | Command::OpenBelow
         | Command::OpenAbove
         | Command::EnterReplace
