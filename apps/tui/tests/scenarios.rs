@@ -578,8 +578,8 @@ fn feed_str_subst(
                     ws.apply(cmd);
                 }
             }
-            Feed::ExecuteEx(text) => {
-                if let Ex::Substitute(spec) = parse_ex(&text) {
+            Feed::ExecuteEx(text) => match parse_ex(&text) {
+                Ex::Substitute(spec) => {
                     if !spec.pattern.is_empty() {
                         *last = Some((
                             spec.pattern.clone(),
@@ -600,7 +600,15 @@ fn feed_str_subst(
                         },
                     );
                 }
-            }
+                // Bare `:s` / `:s {flags}` / `:&` / `:&&` — resolved against `last` exactly as `session.rs`
+                // does: `flags = None` (`:&&`) keeps the stored flags, `Some(f)` replaces them.
+                Ex::RepeatSubstitute { range, flags } => {
+                    if let Some((pat, rep, stored)) = last.as_ref() {
+                        let _ = ws.substitute(range, pat, rep, flags.unwrap_or(*stored));
+                    }
+                }
+                _ => {}
+            },
             Feed::Pending | Feed::Ignored => {}
         }
     }
@@ -663,6 +671,96 @@ fn g_ampersand_keeps_flags_over_the_whole_file() {
         buf(&ws),
         "XXX XXX\nbbb XXX\n",
         "`g&` keeps the `g` and covers every line"
+    );
+}
+
+// --- Ex repeat-substitute forms: bare `:s`, `:s {flags}`, `:&`, `:&&` (verified vs nvim v0.12.4) ---
+
+/// Bare `:s` (no delimiter) repeats the last `:s` on the current line and DROPS the previous flags — like
+/// normal-mode `&`. nvim: `:s/aaa/X/g` on line 1, then bare `:s` on line 2 replaces ONLY the first `aaa`.
+#[test]
+fn ex_bare_s_repeats_last_substitute_dropping_flags() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa aaa\nbbb aaa aaa aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/aaa/X/g<CR>"); // line 1: all matches (g)
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0:s<CR>"); // line 2: bare `:s`, flags dropped
+    assert_eq!(
+        buf(&ws),
+        "X X X\nbbb X aaa aaa\n",
+        "bare `:s` drops the stored `g`: only the FIRST `aaa` on line 2 is replaced"
+    );
+}
+
+/// `:&` behaves exactly like bare `:s`: repeat on the current line, flags dropped.
+#[test]
+fn ex_ampersand_repeats_last_substitute_dropping_flags() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa aaa\nbbb aaa aaa aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/aaa/X/g<CR>");
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0:&<CR>");
+    assert_eq!(
+        buf(&ws),
+        "X X X\nbbb X aaa aaa\n",
+        "`:&` is bare `:s`: only the FIRST `aaa` on line 2 is replaced"
+    );
+}
+
+/// `:&&` KEEPS the previous flags. nvim: `:s/aaa/X/g` then `:&&` on line 2 replaces ALL `aaa` (the `g` sticks).
+#[test]
+fn ex_double_ampersand_repeats_last_substitute_keeping_flags() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa aaa\nbbb aaa aaa aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/aaa/X/g<CR>");
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0:&&<CR>");
+    assert_eq!(
+        buf(&ws),
+        "X X X\nbbb X X X\n",
+        "`:&&` keeps the `g`: EVERY `aaa` on line 2 is replaced"
+    );
+}
+
+/// `:s {flags}` (bare `s` followed by only flags) repeats with the GIVEN flags replacing the old ones. nvim:
+/// `:s/aaa/X/` (no g) then `:s g` on line 2 applies `g`, replacing every `aaa`.
+#[test]
+fn ex_s_with_only_flags_uses_the_given_flags() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa aaa\nbbb aaa aaa aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/aaa/X/<CR>"); // line 1: first match only (no g)
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0:s g<CR>"); // line 2: add g → all matches
+    assert_eq!(
+        buf(&ws),
+        "X aaa aaa\nbbb X X X\n",
+        "`:s g` applies the given `g` flag: EVERY `aaa` on line 2 is replaced"
+    );
+}
+
+/// `:[range]&&` repeats over a range, keeping flags. nvim: `:1s/aaa/X/g` then `:2,3&&` replaces all `aaa` on
+/// lines 2 and 3.
+#[test]
+fn ex_double_ampersand_over_a_range_keeps_flags() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa\nbbb aaa aaa\nccc aaa aaa\nddd aaa aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":1s/aaa/X/g<CR>");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":2,3&&<CR>");
+    assert_eq!(
+        buf(&ws),
+        "X X\nbbb X X\nccc X X\nddd aaa aaa\n",
+        "`:2,3&&` repeats over the range keeping `g`; line 4 is untouched"
+    );
+}
+
+/// A repeat form with NO previous `:s` is a safe no-op (nvim errors E33; ruse leaves the buffer untouched).
+#[test]
+fn ex_repeat_substitute_with_no_previous_substitute_is_a_noop() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s<CR>");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":&<CR>");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":&&<CR>");
+    assert_eq!(
+        buf(&ws),
+        "aaa aaa\n",
+        "no prior `:s` — every repeat form leaves the buffer untouched"
     );
 }
 
