@@ -460,6 +460,8 @@ pub(crate) fn run_ex(
         Ex::Marks => {}
         // `:jumps` / `:changes` are handled in the run loop (frontend-owned position-viewer picker).
         Ex::Jumps | Ex::Changes => {}
+        // `:ascii`/`:as` is handled in the run loop (it reads the focused buffer + cursor and sets status).
+        Ex::Ascii => {}
         // `:lmap`/`:lunmap` are handled in the run loop (they mutate engine-owned Lang-Arg state — the
         // `engine` this fn does not borrow); never reach here.
         Ex::Lmap { .. } | Ex::Lunmap { .. } => {}

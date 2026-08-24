@@ -406,6 +406,16 @@ pub enum Command {
     /// `gi` — resume Insert at the last-insert position (Vim's `` `^ ``). Enters Insert at buffer start
     /// before any Insert session has ended.
     InsertAtLastInsert,
+    /// `ga` / `:ascii` / `:as` — print the numeric value of the character under the cursor to the status
+    /// line (no buffer mutation). Frontend-resolved (the engine has no buffer): the frontend reads the
+    /// focused buffer's bytes + cursor and formats via [`crate::info::ascii_info`].
+    AsciiInfo,
+    /// `CTRL-G` (Normal) — print file info (name, modified flag, line count, cursor percentage) to the
+    /// status line. Frontend-resolved via [`crate::info::file_info`]; no buffer mutation.
+    FileInfo,
+    /// `g CTRL-G` — print cursor position and buffer counts (column/line/word/char/byte) to the status
+    /// line. Frontend-resolved via [`crate::info::cursor_pos_info`]; no buffer mutation.
+    CursorInfo,
     /// `m{a-z}` — set the named mark `char` at the cursor (Vim). Per-buffer; the cursor does not move.
     SetNamedMark(char),
     /// `` `{a-z} `` — jump the cursor to named mark `char` (Vim). A no-op if that mark is unset.
@@ -1111,6 +1121,9 @@ impl Command {
             Command::GotoOlderJump => "goto_older_jump".into(),
             Command::GotoNewerJump => "goto_newer_jump".into(),
             Command::InsertAtLastInsert => "insert_at_last_insert".into(),
+            Command::AsciiInfo => "ascii_info".into(),
+            Command::FileInfo => "file_info".into(),
+            Command::CursorInfo => "cursor_info".into(),
             Command::SetNamedMark(c) => format!("set_named_mark {}", *c as u32),
             Command::GotoNamedMark(c) => format!("goto_named_mark {}", *c as u32),
             Command::GotoNamedMarkLine(c) => format!("goto_named_mark_line {}", *c as u32),
@@ -1487,6 +1500,9 @@ impl Command {
             "goto_older_jump" => Command::GotoOlderJump,
             "goto_newer_jump" => Command::GotoNewerJump,
             "insert_at_last_insert" => Command::InsertAtLastInsert,
+            "ascii_info" => Command::AsciiInfo,
+            "file_info" => Command::FileInfo,
+            "cursor_info" => Command::CursorInfo,
             "set_named_mark" => {
                 let cp = arg_u32(arg, line)?;
                 let c = char::from_u32(cp)
@@ -1931,6 +1947,9 @@ mod tests {
             Command::GotoFirstMatch("\\<foo\\>".into()),
             Command::GotoFirstMatch("bar baz".into()),
             Command::InsertAtLastInsert,
+            Command::AsciiInfo,
+            Command::FileInfo,
+            Command::CursorInfo,
             Command::SetNamedMark('a'),
             Command::SetNamedMark('z'),
             Command::GotoNamedMark('a'),

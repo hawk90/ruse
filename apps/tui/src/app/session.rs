@@ -1357,6 +1357,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             reg_picker = Some(register_picker::open(snapshot));
                         }
                     }
+                    // `:ascii`/`:as` — the ex synonym of `ga`: print the char-under-cursor's value.
+                    Ex::Ascii => {
+                        let pane = ws.focused();
+                        status = ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor());
+                    }
                     // `:marks` (F-003): open a picker over the set marks; Enter jumps to the selected one.
                     Ex::Marks => {
                         let snapshot = ws.marks_snapshot();
@@ -1730,6 +1735,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     };
                     continue;
                 }
+                // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
+                // mutation. Like `*`/`gd`, the engine has no buffer, so the frontend reads the focused
+                // buffer's bytes + cursor here and formats the message via the pure `ruse_core::info` helpers.
+                if let Some(msg) = info_status(&cmd, &ws) {
+                    status = msg;
+                    continue;
+                }
                 // `*`/`#` (word under cursor): the engine has no buffer, so resolve the keyword here, then
                 // rewrite to a concrete search — records the deterministic pattern and drives hlsearch/`n`.
                 let cmd = if let Command::SearchWordUnder {
@@ -1818,6 +1830,42 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
+/// Resolve a Normal-mode INFO command (`ga`/`:ascii` → [`Command::AsciiInfo`], `CTRL-G` →
+/// [`Command::FileInfo`], `g CTRL-G` → [`Command::CursorInfo`]) into its status-line message against the
+/// focused buffer, or `None` for any other command. These print only — the buffer is never mutated — so the
+/// run loop just sets `status` and skips dispatch. Splitting this out keeps the whole
+/// keystroke→Command→message path unit-testable (the run loop itself needs a live terminal).
+fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
+    match cmd {
+        Command::AsciiInfo => {
+            let pane = ws.focused();
+            Some(ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor()))
+        }
+        Command::FileInfo => {
+            let id = ws.focused_buffer();
+            let name = ws.buffer_name(id);
+            let pane = ws.focused();
+            Some(ruse_core::file_info(
+                name,
+                pane.doc.is_modified(),
+                pane.doc.bytes(),
+                pane.view.cursor(),
+            ))
+        }
+        Command::CursorInfo => {
+            let pane = ws.focused();
+            // ruse renders tabs at `render::TAB_WIDTH` columns (not nvim's 8), so the `Col` vcol reflects
+            // the on-screen layout the user actually sees.
+            Some(ruse_core::cursor_pos_info(
+                pane.doc.bytes(),
+                pane.view.cursor(),
+                crate::ui::render::TAB_WIDTH as usize,
+            ))
+        }
+        _ => None,
+    }
+}
+
 /// Sync the four read-only special registers `"/ ": ". "%` of the focused view from the current frontend
 /// state (`:help quote_/`), so a `"/p` / `C-r :` / `".p` / `"%p` dispatched next reads the live values:
 /// `"/` from the search ring, `":` from the last executed Ex line, `".` from the last insert session, and
@@ -1859,5 +1907,61 @@ fn dispatch_window(key: crossterm::event::KeyEvent, ws: &mut Workspace, quit: &m
         // `C-w q`: close the focused window, or quit if it was the last one.
         KeyCode::Char('q') => *quit = !ws.close_focused(),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod info_tests {
+    use super::info_status;
+    use ruse_core::{Command, Workspace};
+
+    // End-to-end for the frontend-resolve seam: a Workspace + cursor -> the exact status message. The
+    // byte-precise format assertions live in `ruse_core::info`; here we prove the wiring reads the focused
+    // buffer's bytes, cursor, name, and modified flag and routes each Command to the right helper.
+    #[test]
+    fn ascii_info_reads_char_under_cursor() {
+        let mut ws = Workspace::new(&b"Hi"[..]);
+        ws.place_focused_cursor(1); // on 'i'
+        assert_eq!(
+            info_status(&Command::AsciiInfo, &ws).as_deref(),
+            Some("<i>  105,  Hex 69,  Octal 151")
+        );
+    }
+
+    #[test]
+    fn file_info_uses_name_and_line_count() {
+        let mut ws = Workspace::new(&b"one\ntwo\nthree\n"[..]);
+        ws.set_focused_buffer_name("f.txt");
+        ws.place_focused_cursor(0); // line 1 of 3 -> 33%
+        assert_eq!(
+            info_status(&Command::FileInfo, &ws).as_deref(),
+            Some("\"f.txt\" 3 lines --33%--")
+        );
+    }
+
+    #[test]
+    fn file_info_unnamed_buffer() {
+        let mut ws = Workspace::new(&b"x\n"[..]);
+        ws.place_focused_cursor(0);
+        assert_eq!(
+            info_status(&Command::FileInfo, &ws).as_deref(),
+            Some("\"[No Name]\" 1 line --100%--")
+        );
+    }
+
+    #[test]
+    fn cursor_info_counts_over_the_buffer() {
+        let mut ws = Workspace::new(&b"foo bar baz\n"[..]);
+        ws.place_focused_cursor(4); // on 'b' of "bar" (byte 4, word 2)
+        assert_eq!(
+            info_status(&Command::CursorInfo, &ws).as_deref(),
+            Some("Col 5 of 11; Line 1 of 1; Word 2 of 3; Byte 5 of 12")
+        );
+    }
+
+    #[test]
+    fn non_info_command_is_none() {
+        let ws = Workspace::new(&b"x\n"[..]);
+        assert!(info_status(&Command::Undo, &ws).is_none());
     }
 }

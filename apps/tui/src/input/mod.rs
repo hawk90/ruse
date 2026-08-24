@@ -2041,13 +2041,15 @@ impl InputEngine {
     /// grammar and the mode-specific keys.
     fn feed_base(&mut self, key: KeyEvent, mode: Mode) -> Feed {
         // `CTRL-G` toggles Visual<->Select over the SAME selection (Vim's documented behaviour). Handled
-        // here, before the shared `g` initiator below, so it is never mistaken for the start of `gg` — and
-        // fully consumed in every mode: outside a selection nothing is bound (Vim's file-info `CTRL-G` is
-        // not implemented), which is inert, NOT the start of `gg`.
+        // here, before the shared `g` initiator below, so it is never mistaken for the start of `gg`. In
+        // Normal it is Vim's file-info command (name / [Modified] / line count / cursor percent), resolved
+        // + status-surfaced by the frontend. In any other non-selection mode nothing is bound (inert, NOT
+        // the start of `gg`).
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('g') {
             return match mode {
                 Mode::Visual { kind } => self.action(Command::EnterSelect { kind }),
                 Mode::Select { kind } => self.action(Command::EnterVisual { kind }),
+                Mode::Normal => self.action(Command::FileInfo),
                 _ => {
                     self.reset();
                     Feed::Ignored
@@ -2588,6 +2590,13 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::Nothing;
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 return match key.code {
+                    // `g CTRL-G` — cursor position / buffer counts (Col/Line/Word/[Char]/Byte). Checked
+                    // before the bare `g` (=`gg`) arm, since that arm ignores the ctrl modifier. Frontend-
+                    // resolved + status-surfaced; no buffer mutation.
+                    KeyCode::Char('g') if ctrl => self.action(Command::CursorInfo),
+                    // `ga` — the numeric value of the character under the cursor (`:ascii`/`:as` synonym).
+                    // `!ctrl` keeps it distinct from the Visual `g CTRL-A` sequence-increment arm below.
+                    KeyCode::Char('a') if !ctrl => self.action(Command::AsciiInfo),
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
                     // `ge` / `gE` — backward to the end of the previous word / WORD (operator-aware via
                     // `motion`, so `dge` deletes back through the previous word-end).
