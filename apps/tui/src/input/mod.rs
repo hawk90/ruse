@@ -1076,7 +1076,13 @@ impl InputEngine {
         if self.insert.ctrl_r {
             self.insert.ctrl_r = false;
             return match key.code {
-                KeyCode::Char(c) if c == '"' || c == '-' || c.is_ascii_alphanumeric() => {
+                KeyCode::Char(c)
+                    if c == '"'
+                        || c == '-'
+                        || c == '+'
+                        || c == '*'
+                        || c.is_ascii_alphanumeric() =>
+                {
                     self.action(Command::InsertRegister(c))
                 }
                 _ => {
@@ -1703,8 +1709,9 @@ impl InputEngine {
                     KeyCode::Char(ch) if text_object(ch, inner).is_some() => {
                         self.motion(text_object(ch, inner).expect("guarded by is_some"))
                     }
-                    // Not a text object (includes the deferred `t`/`T` tag objects): a pending construct is
-                    // in flight, so this is `closed/abort` — the operator-pending policy (VS-OBL-3).
+                    // Not a text-object selector (`t` IS one — `it`/`at` tag objects resolve via
+                    // `text_object` → `Motion::Tag` above): a pending construct is in flight, so this is
+                    // `closed/abort` — the operator-pending policy (VS-OBL-3).
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
@@ -1915,7 +1922,10 @@ impl InputEngine {
                         if c.is_ascii_alphabetic()
                             || c.is_ascii_digit()
                             || c == '-'
-                            || c == '_' =>
+                            || c == '_'
+                            // `"+`/`"*` — the system clipboard (`:help quoteplus`).
+                            || c == '+'
+                            || c == '*' =>
                     {
                         self.action(Command::SetRegister(Some(c)))
                     }

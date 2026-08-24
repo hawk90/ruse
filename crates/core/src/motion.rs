@@ -968,14 +968,18 @@ fn tag_name(interior: &[u8]) -> &[u8] {
 
 /// The HTML/XML tag block enclosing `cur` (Vim `it`/`at`) — a nesting-aware byte scan (no syntax tree
 /// needed, like bracket matching). `around` = `at` (include the `<tag>`/`</tag>` delimiters), else `it`
-/// (the content between them). Returns `(cur, cur)` (a no-op) when the cursor is not inside any tag pair.
+/// (the content between them). `count` picks how many nesting levels to climb from the innermost enclosing
+/// pair: `1` (bare `it`/`at`) is the innermost, `2` (`2it`/`2at`) its enclosing tag, and so on (Vim's
+/// count-expands-outward semantics). Returns `(cur, cur)` (a no-op) when the cursor is not inside any tag
+/// pair, or when `count` exceeds the enclosing nesting depth (`3dit` on a 2-deep block is a no-op in Vim).
 /// The returned offsets sit at ASCII `<`/`>` boundaries, so they are always char-boundary safe.
-fn tag_span(b: &[u8], cur: usize, around: bool) -> (usize, usize) {
+fn tag_span(b: &[u8], cur: usize, around: bool, count: u32) -> (usize, usize) {
     let n = b.len();
     // Open tags awaiting their close: (name, open_start, open_end-exclusive).
     let mut stack: Vec<(&[u8], usize, usize)> = Vec::new();
-    // The innermost completed pair containing `cur`, as (open_start, open_end, close_start, close_end).
-    let mut best: Option<(usize, usize, usize, usize)> = None;
+    // Every completed pair CONTAINING `cur`, as (open_start, open_end, close_start, close_end). Collected
+    // as their closes are found; later sorted innermost-first so `count` can index outward.
+    let mut enclosing: Vec<(usize, usize, usize, usize)> = Vec::new();
     let mut i = 0;
     while i < n {
         if b[i] != b'<' {
@@ -998,10 +1002,7 @@ fn tag_span(b: &[u8], cur: usize, around: bool) -> (usize, usize) {
             while let Some((oname, os, oe)) = stack.pop() {
                 if oname == name {
                     if os <= cur && cur < end {
-                        let span = end - os;
-                        if best.is_none_or(|(bos, _, _, bce)| span < bce - bos) {
-                            best = Some((os, oe, start, end));
-                        }
+                        enclosing.push((os, oe, start, end));
                     }
                     break;
                 }
@@ -1016,9 +1017,11 @@ fn tag_span(b: &[u8], cur: usize, around: bool) -> (usize, usize) {
         }
         i = end;
     }
-    match best {
-        Some((os, _, _, ce)) if around => (os, ce),
-        Some((_, oe, cs, _)) => (oe, cs),
+    // Innermost first (smallest span). `count == 1` picks it; each extra count climbs one level out.
+    enclosing.sort_by_key(|&(os, _, _, ce)| ce - os);
+    match enclosing.get((count.max(1) - 1) as usize) {
+        Some(&(os, _, _, ce)) if around => (os, ce),
+        Some(&(_, oe, cs, _)) => (oe, cs),
         None => (cur, cur),
     }
 }
@@ -1601,7 +1604,7 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
                 (cur, cur)
             }
         }
-        Motion::Tag { around } => tag_span(b, cur, around),
+        Motion::Tag { around } => tag_span(b, cur, around, n),
         // vertical / linewise motions are not charwise — callers handle Line / line-jumps specially
         Motion::Up
         | Motion::Down
@@ -1854,6 +1857,16 @@ mod tag_object_tests {
         assert_eq!(char_span(b"plain text", 3, tag(false), 1), (3, 3));
         // A self-closing tag has no content to enclose the cursor.
         assert_eq!(char_span(b"<br/>x", 5, tag(true), 1), (5, 5));
+    }
+
+    #[test]
+    fn count_climbs_outward_one_level_per_count() {
+        let b = b"<a><b>x</b></a>"; // <a>[0,15), <b>[3,11), content 'x' at [6,7)
+        assert_eq!(char_span(b, 6, tag(false), 1), (6, 7), "1it = innermost");
+        assert_eq!(char_span(b, 6, tag(false), 2), (3, 11), "2it = <a>'s inner");
+        assert_eq!(char_span(b, 6, tag(true), 2), (0, 15), "2at = whole <a>");
+        // Count beyond the nesting depth is a no-op (Vim).
+        assert_eq!(char_span(b, 6, tag(false), 3), (6, 6));
     }
 }
 

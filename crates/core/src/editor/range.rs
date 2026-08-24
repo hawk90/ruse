@@ -28,6 +28,7 @@ pub(crate) fn is_text_object(m: Motion) -> bool {
             | Motion::ASentence
             | Motion::Pair { .. }
             | Motion::Quote { .. }
+            | Motion::Tag { .. }
     )
 }
 

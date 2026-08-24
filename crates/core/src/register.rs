@@ -124,6 +124,12 @@ pub struct RegisterStore {
     /// The blackhole register `"_`: always empty. A write/yank/delete NAMING it is discarded (nothing else,
     /// including the unnamed slot and the delete rings, is touched); a read yields nothing (Vim `:help quote_`).
     blackhole: Register,
+    /// The system-clipboard mirror for `"+` and `"*` (`:help quoteplus`). This slot carries the paste
+    /// geometry ([`RegKind`]) the way any register does, so a linewise `"+yy` still pastes as a whole line;
+    /// the actual OS clipboard is an impure side effect the [`Workspace`](crate::Workspace) syncs this slot
+    /// with through its injected [`Clipboard`](crate::clipboard::Clipboard). For v0 `+` and `*` are the SAME
+    /// slot (correct on macOS/Windows; on X11 `*` is really the PRIMARY selection — an accepted v0 divergence).
+    clipboard: Register,
 }
 
 impl Default for RegisterStore {
@@ -135,6 +141,7 @@ impl Default for RegisterStore {
             numbered: std::array::from_fn(|_| Register::default()),
             small_delete: Register::default(),
             blackhole: Register::default(),
+            clipboard: Register::default(),
         }
     }
 }
@@ -158,6 +165,37 @@ impl RegisterStore {
             .then(|| (name.to_ascii_lowercase() as u8 - b'a') as usize)
     }
 
+    /// Whether `name` selects the system clipboard (`"+` or `"*`). For v0 both map to the same slot (see
+    /// [`RegisterStore::clipboard`]).
+    #[must_use]
+    pub fn is_clipboard(name: Option<char>) -> bool {
+        matches!(name, Some('+') | Some('*'))
+    }
+
+    /// The system-clipboard mirror slot (`"+`/`"*`). The [`Workspace`](crate::Workspace) reads this after a
+    /// clipboard yank/delete to push it to the OS, and refreshes it before a clipboard paste via
+    /// [`RegisterStore::set_clipboard_from_external`].
+    #[must_use]
+    pub fn clipboard(&self) -> &Register {
+        &self.clipboard
+    }
+
+    /// Replace the clipboard mirror slot from OS-clipboard `text` (untyped bytes), inferring paste geometry:
+    /// a trailing newline reads as linewise, anything else as charwise (Vim's clipboard heuristic). When the
+    /// incoming bytes are byte-identical to the slot's current content the slot is left UNTOUCHED, preserving
+    /// the exact [`RegKind`] a just-completed in-session `"+y` recorded (so a linewise `"+yy` → `"+p` still
+    /// opens a whole line even though the OS clipboard only round-tripped the bytes).
+    pub fn set_clipboard_from_external(&mut self, text: Vec<u8>) {
+        if self.clipboard.text() == text.as_slice() {
+            return;
+        }
+        self.clipboard = if text.last() == Some(&b'\n') {
+            Register::linewise(text)
+        } else {
+            Register::charwise(text)
+        };
+    }
+
     /// The yank register `"0` (the last unregistered yank).
     #[must_use]
     pub fn yank0(&self) -> &Register {
@@ -174,6 +212,7 @@ impl RegisterStore {
             Some(c @ '1'..='9') => &self.numbered[c as usize - '1' as usize],
             Some('-') => &self.small_delete,
             Some('_') => &self.blackhole,
+            Some('+') | Some('*') => &self.clipboard,
             Some(c) => match Self::index(c) {
                 Some(i) => &self.named[i],
                 None => &self.unnamed,
@@ -203,6 +242,12 @@ impl RegisterStore {
             None => self.unnamed = reg,
             // The blackhole `"_` swallows the write — the unnamed slot and every other register are untouched.
             Some('_') => {}
+            // `"+`/`"*` write the clipboard mirror; like a named write they also mirror the unnamed slot
+            // (Vim: a yank/delete fills the unnamed register regardless of which register was named).
+            Some('+') | Some('*') => {
+                self.clipboard = reg;
+                self.unnamed = self.clipboard.clone();
+            }
             Some(c) => match Self::index(c) {
                 Some(i) => {
                     self.named[i] = if c.is_ascii_uppercase() {
@@ -508,6 +553,59 @@ mod tests {
             s.get(Some('_')).is_empty(),
             "the blackhole always reads empty"
         );
+    }
+
+    #[test]
+    fn clipboard_register_routes_plus_and_star_to_one_slot() {
+        // `"+`/`"*` share ONE slot (v0), and — like any named write — also mirror the unnamed register.
+        let mut s = RegisterStore::new();
+        s.yank(Some('+'), Register::charwise(b"clip".to_vec()));
+        assert_eq!(s.get(Some('+')).text(), b"clip");
+        assert_eq!(
+            s.get(Some('*')).text(),
+            b"clip",
+            "* reads the same slot as +"
+        );
+        assert_eq!(
+            s.unnamed().text(),
+            b"clip",
+            "a clipboard yank mirrors unnamed"
+        );
+        assert!(s.yank0().is_empty(), "a yank naming + does not touch \"0");
+    }
+
+    #[test]
+    fn clipboard_delete_spares_the_numbered_ring() {
+        // `"+dd` is a NAMED delete: it fills the clipboard slot (and unnamed) but never the delete ring.
+        let mut s = RegisterStore::new();
+        s.delete(Some('+'), Register::linewise(b"gone".to_vec()));
+        assert_eq!(s.get(Some('+')).text(), b"gone\n");
+        assert!(
+            s.get(Some('1')).is_empty(),
+            "a clipboard delete does not shift the ring"
+        );
+        assert!(s.small_delete().is_empty());
+    }
+
+    #[test]
+    fn clipboard_external_sync_infers_kind_but_preserves_in_session() {
+        let mut s = RegisterStore::new();
+        // An in-session linewise yank tags the slot linewise.
+        s.yank(Some('+'), Register::linewise(b"line".to_vec()));
+        assert!(s.get(Some('+')).is_linewise());
+        // Re-pulling the byte-identical OS content preserves that linewise flag (Vim in-session geometry).
+        s.set_clipboard_from_external(b"line\n".to_vec());
+        assert!(
+            s.get(Some('+')).is_linewise(),
+            "unchanged bytes keep the kind"
+        );
+        // A DIFFERENT external value with no trailing newline reads back charwise.
+        s.set_clipboard_from_external(b"external".to_vec());
+        assert!(!s.get(Some('+')).is_linewise());
+        assert_eq!(s.get(Some('+')).text(), b"external");
+        // A trailing newline from outside reads back linewise.
+        s.set_clipboard_from_external(b"whole\n".to_vec());
+        assert!(s.get(Some('+')).is_linewise());
     }
 
     #[test]

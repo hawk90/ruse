@@ -2086,6 +2086,302 @@
       }
     },
     {
+      "name": "dit_tag_nested_inner",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxdit",
+      "expect": {
+        "text": [
+          "<a><b></b></a>"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dat_tag_nested",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fxdat",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dit_tag_count_outer",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fx2dit",
+      "expect": {
+        "text": [
+          "<a></a>"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "<b>x</b>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dat_tag_count_outer",
+      "lines": [
+        "<a><b>x</b></a>"
+      ],
+      "keys": "fx2dat",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a><b>x</b></a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cit_tag_inner",
+      "lines": [
+        "<div>hello</div>"
+      ],
+      "keys": "fhcitZ<Esc>",
+      "expect": {
+        "text": [
+          "<div>Z</div>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dat_tag_attrs",
+      "lines": [
+        "<a href=\"x\">hi</a>"
+      ],
+      "keys": "fhdat",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<a href=\"x\">hi</a>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dit_tag_on_open",
+      "lines": [
+        "<div>hello</div>"
+      ],
+      "keys": "ldit",
+      "expect": {
+        "text": [
+          "<div></div>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dit_tag_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jdit",
+      "expect": {
+        "text": [
+          "<div></div>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "\nhello\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "yat_tag_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jyat",
+      "expect": {
+        "text": [
+          "<div>",
+          "hello",
+          "</div>"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<div>\nhello\n</div>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "<div>\nhello\n</div>",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "dat_tag_multiline",
+      "lines": [
+        "<div>",
+        "hello",
+        "</div>"
+      ],
+      "keys": "jdat",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<div>\nhello\n</div>\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vit_tag_delete",
+      "lines": [
+        "<div>hello</div>"
+      ],
+      "keys": "fhvitd",
+      "expect": {
+        "text": [
+          "<div></div>"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "hello",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vat_tag_delete",
+      "lines": [
+        "<div>hello</div>"
+      ],
+      "keys": "fhvatd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "<div>hello</div>",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "das_sentence_around",
       "lines": [
         "One. Two. Three."

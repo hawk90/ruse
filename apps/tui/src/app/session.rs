@@ -212,6 +212,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // so the interactive default is the better one. Set at the Workspace level so it reaches every buffer;
     // the engine/oracle default stays vanilla-off. Runtime-overridable via `:set noic`/`:set noscs`.
     ws.set_default_search_case(true, true);
+    // `"+`/`"*` (`:help quoteplus`): inject the real OS-clipboard provider (shell-out to pbcopy/wl-copy/
+    // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run
+    // still works — `"+p` just pastes nothing.
+    ws.set_clipboard(Box::new(crate::clipboard::SystemClipboard::detect()));
     // The initial buffer owns the session file (`path`/`fmt`): name it, and remember its id so `:w` on any
     // OTHER buffer (`:enew` scratch) declines rather than clobbering the file (F-007 multi-buffer).
     let file_buf = ws.focused_buffer();
