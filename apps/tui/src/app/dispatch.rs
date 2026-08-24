@@ -464,6 +464,9 @@ pub(crate) fn run_ex(
         // `:e {file}` / `:e!` are handled in the run loop (they read the file + mutate the buffer and the
         // `files`/highlighter registries this fn only borrows immutably); never reach here.
         Ex::Edit(_) | Ex::EditReload => {}
+        // `:r`/`:read`, the `:{range}!` filter, and `:!` are handled in the run loop: they do frontend file
+        // IO / shell-out (which `run_ex`, a pure caller over `Workspace`, must not do); never reach here.
+        Ex::Read { .. } | Ex::Filter { .. } | Ex::Shell(_) => {}
         // `:bd` is handled in the run loop (it drops the deleted buffer's `files`/highlighter entries,
         // which this fn only borrows immutably); never reaches here.
         Ex::BufferDelete { .. } => {}

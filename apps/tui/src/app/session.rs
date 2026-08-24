@@ -14,7 +14,7 @@ use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Wor
 
 use crate::app::dispatch::{is_ctrl, open_file_into_buffer, run_cmd, run_ex, BufferFile, Files};
 use crate::app::lsp_coordinator::LspCoordinator;
-use crate::input::{parse_ex, Ex, Feed, InputEngine};
+use crate::input::{parse_ex, Ex, Feed, InputEngine, ReadSource};
 use crate::terminal::guard::TermGuard;
 use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
@@ -1502,6 +1502,60 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             None => status = "E32: No file name".into(),
                         }
                     }
+                    // `:[addr]r {file}` / `:[addr]r !{cmd}` — read a file's contents (pure IO) or a shell
+                    // command's stdout below the addressed line. Done HERE (not in `run_ex`) because the read
+                    // is IMPURE (fs / process); core only splices the resulting bytes. The cursor lands on the
+                    // FIRST inserted line for a file read, the LAST for a command read (nvim v0.12.4 quirk).
+                    Ex::Read { addr, source } => match source {
+                        ReadSource::File(path) => match std::fs::read(&path) {
+                            Ok(raw) => {
+                                let n = ws.read_lines(addr, &raw, false);
+                                status = format!("\"{path}\" {n}L, {}B", raw.len());
+                            }
+                            Err(e) => status = format!("E484: can't open {path}: {e}"),
+                        },
+                        ReadSource::Command(cmd) => match crate::shell::capture(&cmd) {
+                            Ok(out) => {
+                                let n = ws.read_lines(addr, out.as_bytes(), true);
+                                status = if n == 1 {
+                                    "1 more line".to_string()
+                                } else {
+                                    format!("{n} more lines")
+                                };
+                            }
+                            Err(e) => status = e.to_string(),
+                        },
+                    },
+                    // `:{range}!{cmd}` — FILTER: pipe the range's lines through the shell command and replace
+                    // them with its stdout. Pull the range text out FIRST (read-only), shell out, then splice.
+                    Ex::Filter { range, cmd } => match ws.range_text(range) {
+                        Some(input) => match crate::shell::filter(&cmd, &input) {
+                            Ok(out) => {
+                                let n = ws.filter_lines(range, out.as_bytes());
+                                status = if n <= 1 {
+                                    String::new()
+                                } else {
+                                    format!("{n} lines filtered")
+                                };
+                            }
+                            Err(e) => status = e.to_string(),
+                        },
+                        None => status = "E749: empty buffer".to_string(),
+                    },
+                    // `:!{cmd}` — run the command and show its output on the status line; NO buffer change.
+                    // Multi-line output is collapsed to one status line (a scrolling message pane is a
+                    // follow-up); an empty result echoes the command so the user sees it ran.
+                    Ex::Shell(cmd) => match crate::shell::capture(&cmd) {
+                        Ok(out) => {
+                            let joined = out.trim_end_matches('\n').replace('\n', " | ");
+                            status = if joined.is_empty() {
+                                format!(":!{cmd}")
+                            } else {
+                                joined
+                            };
+                        }
+                        Err(e) => status = e.to_string(),
+                    },
                     // `:bd` deletes the focused buffer — done HERE so the buffer's `files`/highlighter
                     // entries are dropped (both are `&mut` in scope, not in `run_ex`). Guards unsaved
                     // changes with E89 unless `!` forces it.

@@ -1278,6 +1278,186 @@ impl EditorState {
         count
     }
 
+    /// `:[addr]r[ead] {file}` / `:[addr]r[ead] !{cmd}` — insert `text` (a file's contents or a command's
+    /// stdout, read IMPURELY by the frontend — core stays IO-free) as new whole LINE(s) below the addressed
+    /// line, as one undo group. `text` is split on `\n`; a trailing `\n` does NOT add a spurious empty line
+    /// (a file with no final newline still inserts its last line). The destination [`LineAddr`] resolves as
+    /// for `:m`/`:t`/`:put`: `Line(0)` inserts at the very top (before line 1, Vim's `:0r`), `Line(n)` after
+    /// 1-based line n, `Last` after the last line, `Current` after the cursor's line (the bare `:r` default).
+    /// The cursor lands on the FIRST non-blank of the FIRST inserted line for a file read (`cursor_on_last =
+    /// false`), and of the LAST inserted line for a command read (`cursor_on_last = true`) — a real nvim
+    /// v0.12.4 quirk (`:r file` and `:r !cmd` differ), reproduced faithfully. Returns the number of lines
+    /// inserted (0 — a no-op leaving the cursor put — for empty `text` or a non-UTF-8 buffer).
+    pub fn read_lines(&mut self, addr: LineAddr, text: &[u8], cursor_on_last: bool) -> usize {
+        if text.is_empty() {
+            return 0;
+        }
+        let buf = self.doc.bytes();
+        let Ok(hay) = std::str::from_utf8(buf) else {
+            return 0;
+        };
+        let orig_len = buf.len();
+        let had_trailing_nl = hay.ends_with('\n');
+        // The lines to insert: split on '\n', dropping the empty element after a final newline so a file that
+        // ends in '\n' does not read a spurious blank line (a file with NO final newline keeps its last line).
+        let mut ins_lines: Vec<&[u8]> = text.split(|&b| b == b'\n').collect();
+        if text.last() == Some(&b'\n') {
+            ins_lines.pop();
+        }
+        if ins_lines.is_empty() {
+            return 0;
+        }
+        // The buffer's existing lines (each WITHOUT its trailing newline), matching `put_lines`.
+        let mut buf_lines: Vec<&[u8]> = if hay.is_empty() {
+            Vec::new()
+        } else {
+            let mut v: Vec<&[u8]> = buf.split(|&b| b == b'\n').collect();
+            if had_trailing_nl {
+                v.pop();
+            }
+            v
+        };
+        let nlines = buf_lines.len();
+        let cursor_line = crate::pos::line_of(buf, self.view.cursor);
+        let ins = match addr {
+            LineAddr::Line(n) => n.min(nlines),
+            LineAddr::Last => nlines,
+            LineAddr::Current => (cursor_line + 1).min(nlines),
+        };
+        let count = ins_lines.len();
+        for (k, line) in ins_lines.into_iter().enumerate() {
+            buf_lines.insert(ins + k, line);
+        }
+        let mut new_bytes: Vec<u8> = Vec::with_capacity(orig_len + text.len() + 1);
+        for (i, line) in buf_lines.iter().enumerate() {
+            if i > 0 {
+                new_bytes.push(b'\n');
+            }
+            new_bytes.extend_from_slice(line);
+        }
+        if had_trailing_nl && !new_bytes.is_empty() {
+            new_bytes.push(b'\n');
+        }
+        // Cursor target line: the FIRST inserted line for a file read, the LAST for a command read.
+        let target_idx = if cursor_on_last { ins + count - 1 } else { ins };
+        let line_start: usize = new_bytes
+            .split_inclusive(|&b| b == b'\n')
+            .take(target_idx)
+            .map(<[u8]>::len)
+            .sum();
+        let list = EditList::new(vec![Edit::replace(0, orig_len, new_bytes)])
+            .expect("a single whole-buffer replace is well-formed");
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc.apply(txn).expect("line read applies cleanly");
+        self.view.last_was_edit = true;
+        let nb = self.doc.bytes();
+        self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
+        count
+    }
+
+    /// The text of the lines in `range` (each with a trailing `\n`), as Vim feeds a filter command's stdin
+    /// for `:{range}!{cmd}`. `None` for an empty or non-UTF-8 buffer. No range = the current line.
+    #[must_use]
+    pub fn range_text(&self, range: SubRange) -> Option<String> {
+        let bytes = self.doc.bytes();
+        let hay = std::str::from_utf8(bytes).ok()?;
+        if hay.is_empty() {
+            return None;
+        }
+        let had_trailing_nl = hay.ends_with('\n');
+        let nlines = {
+            let mut n = hay.split('\n').count();
+            if had_trailing_nl {
+                n -= 1; // the split's empty tail after the final '\n' is not a line
+            }
+            n
+        };
+        if nlines == 0 {
+            return None;
+        }
+        let spans = line_spans(hay);
+        let cursor_line = crate::pos::line_of(bytes, self.view.cursor);
+        let (first, last) = resolve_line_range(range, &spans, cursor_line);
+        let last = last.min(nlines - 1);
+        let first = first.min(last);
+        let mut out = String::new();
+        for &(s, e) in &spans[first..=last] {
+            out.push_str(&hay[s..e]);
+            out.push('\n');
+        }
+        Some(out)
+    }
+
+    /// `:{range}!{cmd}` — FILTER: replace the lines in `range` with `text` (the filter command's stdout, split
+    /// on `\n` with the trailing-newline element dropped, exactly like [`read_lines`]), as one undo group. An
+    /// empty `text` deletes the range's lines (Vim: a filter that emits nothing). The cursor lands on the
+    /// FIRST non-blank of the first line of the replaced region (verified vs nvim v0.12.4). Returns the number
+    /// of INPUT lines filtered (0 for an empty / non-UTF-8 buffer), matching Vim's "N lines filtered" report.
+    pub fn filter_lines(&mut self, range: SubRange, text: &[u8]) -> usize {
+        let buf = self.doc.bytes();
+        let Ok(hay) = std::str::from_utf8(buf) else {
+            return 0;
+        };
+        let orig_len = buf.len();
+        let had_trailing_nl = hay.ends_with('\n');
+        let mut lines: Vec<&[u8]> = if hay.is_empty() {
+            Vec::new()
+        } else {
+            let mut v: Vec<&[u8]> = buf.split(|&b| b == b'\n').collect();
+            if had_trailing_nl {
+                v.pop();
+            }
+            v
+        };
+        let nlines = lines.len();
+        if nlines == 0 {
+            return 0;
+        }
+        let spans = line_spans(hay);
+        let cursor_line = crate::pos::line_of(buf, self.view.cursor);
+        let (first, last) = resolve_line_range(range, &spans, cursor_line);
+        let last = last.min(nlines - 1);
+        let first = first.min(last);
+        let input_count = last - first + 1;
+        // The replacement lines from the filter's stdout (same split rule as `read_lines`).
+        let mut new_lines: Vec<&[u8]> = text.split(|&b| b == b'\n').collect();
+        if text.last() == Some(&b'\n') {
+            new_lines.pop();
+        }
+        if text.is_empty() {
+            new_lines.clear();
+        }
+        // Splice: lines[..first] ++ new_lines ++ lines[last+1..].
+        lines.splice(first..=last, new_lines.iter().copied());
+        let mut new_bytes: Vec<u8> = Vec::with_capacity(orig_len + text.len() + 1);
+        for (i, line) in lines.iter().enumerate() {
+            if i > 0 {
+                new_bytes.push(b'\n');
+            }
+            new_bytes.extend_from_slice(line);
+        }
+        if had_trailing_nl && !new_bytes.is_empty() {
+            new_bytes.push(b'\n');
+        }
+        // Cursor: the first line of the replaced region (clamped when the filter shortened the buffer).
+        let target_idx = first.min(lines.len().saturating_sub(1));
+        let line_start: usize = new_bytes
+            .split_inclusive(|&b| b == b'\n')
+            .take(target_idx)
+            .map(<[u8]>::len)
+            .sum();
+        let list = EditList::new(vec![Edit::replace(0, orig_len, new_bytes)])
+            .expect("a single whole-buffer replace is well-formed");
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc.apply(txn).expect("line filter applies cleanly");
+        self.view.last_was_edit = true;
+        let nb = self.doc.bytes();
+        self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
+        input_count
+    }
+
     /// `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file when the caller
     /// passes `WholeFile`) as one undo group. The sort KEY per line is, in order: the text after the first
     /// `pattern` match (or the matched text itself under `r`), else the whole line; lowercased under `i`
