@@ -1492,6 +1492,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             status = format!("buffer {} deleted", id.0);
                         }
                     }
+                    // Bare `:s` / `:s {flags}` / `:&` / `:&&` — repeat the last `:s` against the frontend's
+                    // substitute history (the core keeps none), exactly like `&`/`g&`. `flags = None` (`:&&`)
+                    // KEEPS the stored flags; `flags = Some(f)` REPLACES them (bare `:s`/`:&` = default flags,
+                    // `:s g` = the given flags). Verified vs nvim v0.12.4.
+                    Ex::RepeatSubstitute { range, flags } => {
+                        status = match &last_substitute {
+                            Some((pat, rep, stored)) => {
+                                let use_flags = flags.unwrap_or(*stored);
+                                match ws.substitute(range, pat, rep, use_flags) {
+                                    Ok(out) if out.replacements == 0 => {
+                                        format!("E486: pattern not found: {pat}")
+                                    }
+                                    Ok(out) => format!(
+                                        "{} substitutions on {} lines",
+                                        out.replacements, out.lines
+                                    ),
+                                    Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                                }
+                            }
+                            None => "no previous substitute".to_string(),
+                        };
+                    }
                     mut ex => {
                         // An empty `:s` pattern reuses the last search (`/`/`*`), exactly as Vim does.
                         crate::input::reuse_last_search(&mut ex, engine.last_search());

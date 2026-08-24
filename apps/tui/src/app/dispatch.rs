@@ -342,6 +342,9 @@ pub(crate) fn run_ex(
                 };
             }
         }
+        // Bare `:s` / `:s {flags}` / `:&` / `:&&` — repeat the last `:s`. Resolved in the run loop against the
+        // last-substitute history (like `&`/`g&`), which `run_ex` cannot see; a no-op here.
+        Ex::RepeatSubstitute { .. } => {}
         // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
         Ex::Delete(range) => {
             let n = ws.delete_lines(*range);
