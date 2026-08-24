@@ -6,7 +6,7 @@
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
 use crate::command::{
-    BlockInsertKind, Command, ForcedWise, OpKind, OpenKind, SearchOp, SelectKind, WordCase,
+    BlockInsertKind, Command, ForcedWise, MarkOp, OpKind, OpenKind, SearchOp, SelectKind, WordCase,
 };
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
