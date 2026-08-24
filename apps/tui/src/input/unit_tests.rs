@@ -210,6 +210,22 @@ mod tests {
     }
 
     #[test]
+    fn insert_copy_char_emits_insertchar_or_ignores() {
+        // `i_CTRL-E`/`i_CTRL-Y` are frontend-resolved: the engine takes the already-looked-up char and
+        // emits a concrete `InsertChar`, or `Ignored` when the adjacent line has no char at that column.
+        let mut e = InputEngine::new();
+        assert!(
+            e.insert_plain_text_ctx(),
+            "fresh engine is a plain insert-text context"
+        );
+        assert_eq!(
+            e.insert_copy_char(Some('w')),
+            Feed::Cmd(Command::InsertChar('w'))
+        );
+        assert_eq!(e.insert_copy_char(None), Feed::Ignored);
+    }
+
+    #[test]
     fn case_operators_g_prefix() {
         use ruse_core::WordCase;
         // gu/gU/g~ over a motion.

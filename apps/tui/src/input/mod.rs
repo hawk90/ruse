@@ -987,6 +987,36 @@ impl InputEngine {
         self.op_over_motion(Motion::GotoLine, line)
     }
 
+    /// Whether the Insert namespace is in a PLAIN-TEXT context right now: not mid a `CTRL-G`/`CTRL-R`
+    /// prefix, a `CTRL-K` digraph, a `CTRL-V` literal entry, nor an `i_CTRL-O` one-shot. The frontend
+    /// checks this before handling `i_CTRL-E`/`i_CTRL-Y`, so those never steal the key a pending prefix
+    /// is waiting for (e.g. a `CTRL-R` register name).
+    #[must_use]
+    pub fn insert_plain_text_ctx(&self) -> bool {
+        !self.insert.ctrl_g
+            && !self.insert.ctrl_r
+            && self.insert.digraph.is_none()
+            && self.insert.literal.is_none()
+            && !self.in_one_shot()
+    }
+
+    /// `i_CTRL-E` / `i_CTRL-Y`: insert the frontend-resolved character directly below / above the caret.
+    /// The engine has no buffer, so the frontend resolves the adjacent-line char (see
+    /// [`Workspace::adjacent_line_char`](ruse_core::Workspace::adjacent_line_char)) and passes it here;
+    /// `None` = no such char (short/absent adjacent line), a Vim no-op. The resulting `InsertChar` is
+    /// folded into the in-flight dot-repeat change so `.` replays the RESOLVED LITERAL char (matching
+    /// nvim, which repeats the character copied — not a re-resolution against the new line).
+    pub fn insert_copy_char(&mut self, ch: Option<char>) -> Feed {
+        match ch {
+            Some(c) => {
+                let out = Feed::Cmd(Command::InsertChar(c));
+                self.record(&out, Mode::Insert);
+                out
+            }
+            None => Feed::Ignored,
+        }
+    }
+
     fn action(&mut self, cmd: Command) -> Feed {
         self.reset();
         Feed::Cmd(cmd)
