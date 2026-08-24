@@ -87,6 +87,46 @@ fn plan_block_insert(
     }
 }
 
+/// The shared `cc`-style linewise-change body over a whole-line span `[ls, content_end)` where
+/// `content_end` is the CONTENT end (the trailing newline EXCLUDED). Vim keeps the first line's leading
+/// indent, deletes the rest of the content, KEEPS the trailing newline (so exactly one empty indented line
+/// remains — the separator to the following line is never eaten), captures the whole lines linewise
+/// (indent + trailing newline included), and enters Insert at the end of the kept indent. Shared by
+/// `cc`/`S`, the paragraph objects, the linewise inner block ([`plan_change`]), AND visual-linewise change
+/// (`V…c` — [`Command::ChangeSelection`] over a linewise selection), so all four agree with nvim.
+fn plan_linewise_change(b: &[u8], ls: usize, content_end: usize, hint: GroupHint) -> Plan {
+    let indent_end = motion::first_non_blank(b, ls).min(content_end);
+    // Register span: whole lines including the terminating newline where one is present.
+    let reg_end = if content_end < b.len() && b[content_end] == b'\n' {
+        content_end + 1
+    } else {
+        content_end
+    };
+    let reg = captured(b, ls, reg_end, true);
+    if indent_end >= content_end {
+        // Nothing after the indent to delete (empty/blank line): keep the buffer, but still capture the
+        // register linewise and drop into Insert at the indent end.
+        Plan {
+            action: Action::Nop,
+            cursor: indent_end,
+            mode: Mode::Insert,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: Some(RegWrite::Edit(reg)),
+            set_anchor: None,
+            set_mark: None,
+        }
+    } else {
+        edit_yank(
+            one(Edit::delete(indent_end, content_end - indent_end)),
+            indent_end,
+            Mode::Insert,
+            hint,
+            reg,
+        )
+    }
+}
+
 /// `c{motion}` / `cc`: delete the change span, capture it to a register, and enter Insert. `cc`/`S` is
 /// the linewise case that preserves the leading indent (Vim autoindent-like).
 fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) -> Plan {
@@ -108,38 +148,7 @@ fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) ->
         crate::editor::range::linewise_inner_block(b, cur, *m).map(|(s, e)| (s + 1, e - 1))
     };
     if let Some((ls, content_end)) = linewise_range {
-        // Vim keeps the leading indent of the first line (the existing indent TEXT is preserved), deletes
-        // the rest of the content, keeps the trailing newline, and enters Insert at the end of the indent.
-        let indent_end = motion::first_non_blank(b, ls).min(content_end);
-        // Register span: whole lines including the terminating newline where one is present.
-        let reg_end = if content_end < b.len() && b[content_end] == b'\n' {
-            content_end + 1
-        } else {
-            content_end
-        };
-        let reg = captured(b, ls, reg_end, true);
-        if indent_end >= content_end {
-            // Nothing after the indent to delete (empty/blank line): keep the buffer, but still capture
-            // the register linewise and drop into Insert at the indent end.
-            Plan {
-                action: Action::Nop,
-                cursor: indent_end,
-                mode: Mode::Insert,
-                is_edit: false,
-                effects: Vec::new(),
-                set_register: Some(RegWrite::Edit(reg)),
-                set_anchor: None,
-                set_mark: None,
-            }
-        } else {
-            edit_yank(
-                one(Edit::delete(indent_end, content_end - indent_end)),
-                indent_end,
-                Mode::Insert,
-                hint,
-                reg,
-            )
-        }
+        plan_linewise_change(b, ls, content_end, hint)
     } else {
         let (s, e) = change_range(b, cur, *m, count);
         if s >= e {
@@ -1724,6 +1733,16 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             let line = st.view.mode.selection() == Some(SelectKind::Linewise);
             let (s, e) = selection_range(b, anchor, cur, line);
+            // Visual-LINEWISE change (`V…c`) behaves exactly like `cc` over the selected line range:
+            // keep the first line's indent, replace the rest with ONE empty line, and — crucially — KEEP
+            // the trailing separator to the following line (never merge the next line in). Route it through
+            // the shared cc-logic; `selection_range` gives whole lines incl. the trailing '\n', so drop
+            // that one byte to get the CONTENT end the helper expects. Charwise/blockwise change stays the
+            // delete-then-Insert path below.
+            if line && matches!(cmd, Command::ChangeSelection) && s < e {
+                let content_end = if e > s && b[e - 1] == b'\n' { e - 1 } else { e };
+                return plan_linewise_change(b, s, content_end, hint);
+            }
             let reg = captured(b, s, e, line);
             match cmd {
                 // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal.

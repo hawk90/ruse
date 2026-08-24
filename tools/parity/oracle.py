@@ -449,6 +449,18 @@ FIXTURES: list[dict] = [
     #     does not implement yet. Every `expect` is still oracle-captured, never hand-written.
     #     VISUAL editing (edge cases of the implemented v/V + selection operators) -------------------
     {"name": "Vjd_visual_linewise", "lines": ["alpha", "beta", "gamma"], "keys": "Vjd"},
+    # visual-LINEWISE change (`V…c`) must behave like `cc` over the range: replace the whole selected
+    # lines with ONE empty line, KEEP the separator to the following line (never merge the next line in),
+    # and enter Insert. Regression net for the "collapses the line separator" fix (issue #435), paired
+    # with the `cc`/`2cc` linewise-change and `vjc` charwise-change probes below.
+    {"name": "Vjc_visual_linewise_change", "lines": ["abc", "beta", "gamma"], "keys": "VjcX<Esc>"},
+    {"name": "Vc_visual_linewise_change_one", "lines": ["abc", "beta", "gamma"], "keys": "VcX<Esc>"},
+    {"name": "VGc_visual_linewise_change_all", "lines": ["abc", "beta", "gamma"], "keys": "VGcX<Esc>"},
+    {"name": "Vjjc_visual_linewise_change_three", "lines": ["abc", "beta", "gamma"], "keys": "VjjcX<Esc>"},
+    {"name": "cc_linewise_change", "lines": ["abc", "beta", "gamma"], "keys": "ccX<Esc>"},
+    {"name": "count_cc_linewise_change", "lines": ["abc", "beta", "gamma"], "keys": "2ccX<Esc>"},
+    {"name": "vjc_charwise_change_no_regress", "lines": ["abc", "beta", "gamma"], "keys": "vjcX<Esc>"},
+    {"name": "Vjd_delete_no_regress", "lines": ["abc", "beta", "gamma"], "keys": "Vjd"},
     {"name": "vey_visual_yank_to_word_end", "lines": ["hello world"], "keys": "vey"},
     {"name": "v_dollar_d_visual", "lines": ["hello world"], "keys": "v$d"},
     {"name": "viwc_visual_change_text", "lines": ["foo bar baz"], "keys": "wviwcNEW<Esc>"},
