@@ -23,6 +23,118 @@ pub enum SearchOp {
     Yank,
 }
 
+/// A Vim search offset — the `{offset}` after the closing `/` (forward) or `?` (backward) of a search
+/// (`:help search-offset`). It relocates the landing away from the plain match start and, under an
+/// operator, changes the motion's wiseness. Verified against nvim v0.12.4.
+///
+/// - [`None`](Self::None) — no offset (`/pat` or a bare trailing `/pat/`): land on the match's first
+///   char; the operator motion is charwise-EXCLUSIVE (`[cursor, match_start)`).
+/// - [`Start`](Self::Start) — `/pat/s±N` (and the synonym `/pat/b±N`): land `N` characters from the
+///   match START (`s`/`b` alone = `Start(0)`, identical to [`None`] for the cursor landing). Still
+///   EXCLUSIVE under an operator (only `e` turns it inclusive).
+/// - [`End`](Self::End) — `/pat/e±N`: land `N` characters from the match's LAST char (`e` alone =
+///   `End(0)`). Under an operator the motion becomes charwise-INCLUSIVE through the offset char.
+/// - [`Line`](Self::Line) — `/pat/±N` (a bare signed/unsigned number, `+N`/`-N`/`N`): move `N` lines
+///   below (positive) / above (negative) the match's line, cursor to COLUMN 0 (Vim "column 1" — NOT
+///   the first non-blank; verified against nvim). Under an operator the motion is LINEWISE.
+///
+/// Character offsets count CHARACTERS and cross line boundaries (e.g. `/foo/e+1` at end-of-line lands
+/// on the next line's first column), clamped to the buffer. `N` without a sign is positive (`e2`==`e+2`,
+/// `s3`==`s+3`, `/foo/2`==`/foo/+2`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SearchOffset {
+    /// No offset — land on the match start; exclusive under an operator.
+    #[default]
+    None,
+    /// `s±N` / `b±N` — `N` chars from the match START. Exclusive under an operator.
+    Start(i32),
+    /// `e±N` — `N` chars from the match's LAST char. INCLUSIVE under an operator.
+    End(i32),
+    /// `±N` (bare number) — `N` lines from the match line, column 0. LINEWISE under an operator.
+    Line(i32),
+}
+
+impl SearchOffset {
+    /// Encode as a single whitespace-free token for the trace line form (so the pattern can stay LAST
+    /// and keep its spaces): `none`, `s{+N}`, `e{+N}`, `l{+N}` (the sign is always emitted).
+    #[must_use]
+    fn to_token(self) -> String {
+        match self {
+            SearchOffset::None => "none".into(),
+            SearchOffset::Start(n) => format!("s{n:+}"),
+            SearchOffset::End(n) => format!("e{n:+}"),
+            SearchOffset::Line(n) => format!("l{n:+}"),
+        }
+    }
+
+    /// Decode a [`to_token`](Self::to_token) token; `None` on a malformed token.
+    #[must_use]
+    fn from_token(s: &str) -> Option<SearchOffset> {
+        if s == "none" {
+            return Some(SearchOffset::None);
+        }
+        let (tag, num) = s.split_at(1);
+        let n: i32 = num.parse().ok()?;
+        match tag {
+            "s" => Some(SearchOffset::Start(n)),
+            "e" => Some(SearchOffset::End(n)),
+            "l" => Some(SearchOffset::Line(n)),
+            _ => None,
+        }
+    }
+
+    /// Parse the raw `{offset}` suffix a user typed after the closing delimiter (`/pat/{THIS}` or
+    /// `?pat?{THIS}`), per Vim's grammar: `[se b]?[+-]?\d*` (char offset, or start/end alone) OR
+    /// `[+-]?\d+` / bare digits (line offset). An empty string is [`None`]. Returns `None` (the type's
+    /// no-offset) for anything unrecognized rather than erroring — Vim likewise ignores a bad offset.
+    #[must_use]
+    pub fn parse(raw: &str) -> SearchOffset {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return SearchOffset::None;
+        }
+        let mut chars = raw.chars();
+        let first = raw.as_bytes()[0];
+        // Character offset: a leading `e`, `s`, or `b`.
+        if matches!(first, b'e' | b's' | b'b') {
+            chars.next();
+            let rest = chars.as_str();
+            // `e`/`s`/`b` alone → offset 0. A trailing `[+-]?\d*` is the signed count (unsigned = +).
+            let n = parse_signed_amount(rest).unwrap_or(0);
+            return if first == b'e' {
+                SearchOffset::End(n)
+            } else {
+                SearchOffset::Start(n)
+            };
+        }
+        // Line offset: `[+-]?\d+`, or a lone `+`/`-` (== 0).
+        match parse_signed_amount(raw) {
+            Some(n) => SearchOffset::Line(n),
+            None => SearchOffset::None,
+        }
+    }
+}
+
+/// Parse a Vim offset amount: an optional sign then digits. `""` → 0-with-explicit? No — an EMPTY string
+/// yields `None` (the caller decides the default), a lone `+`/`-` yields `Some(0)`, `"2"` → `Some(2)`,
+/// `"-3"` → `Some(-3)`, `"+1"` → `Some(1)`. A non-numeric tail yields `None`.
+fn parse_signed_amount(s: &str) -> Option<i32> {
+    if s.is_empty() {
+        return None;
+    }
+    let (sign, digits) = match s.as_bytes()[0] {
+        b'+' => (1, &s[1..]),
+        b'-' => (-1, &s[1..]),
+        _ => (1, s),
+    };
+    if digits.is_empty() {
+        // A lone sign (`+`/`-`) means magnitude 0.
+        return Some(0);
+    }
+    let mag: i32 = digits.parse().ok()?;
+    Some(sign * mag)
+}
+
 /// Which operator a forced-wise motion applies ([`Command::OpForced`]). The plain operator commands are
 /// [`Command::Delete`]/[`Command::Change`]/[`Command::Yank`]; this enum names the same three for the rarer
 /// forced-wise form so that form needs no parallel command per operator.
@@ -460,6 +572,10 @@ pub enum Command {
         pattern: String,
         /// `?` search (match strictly before the cursor, wrapping to end of buffer); `false` for `/`.
         backward: bool,
+        /// The `{offset}` after the closing delimiter (`/pat/e`, `?pat?s+2`, `/pat/+1`). Relocates the
+        /// landing and, under an operator, sets the motion's wiseness (`:help search-offset`). `n`/`N`
+        /// reapply this offset. See [`SearchOffset`].
+        offset: SearchOffset,
     },
     /// `gn` / `gN` — the search-match text object (Vim `:help gn`). Unlike [`Command::Search`] (which spans
     /// `[cursor, match)`), this operates on the WHOLE match: the one under the cursor, or — if the cursor is
@@ -1116,16 +1232,19 @@ impl Command {
             }
             // Pattern is LAST so it may contain spaces (like search_next).
             Command::GotoFirstMatch(p) => format!("goto_first_match {p}"),
-            // Direction before the pattern (pattern is LAST so it may contain spaces, like search_next).
+            // Direction + offset before the pattern (pattern is LAST so it may contain spaces, like
+            // search_next). The offset token is whitespace-free so it never collides with the pattern.
             Command::Search {
                 op,
                 count,
                 pattern,
                 backward,
+                offset,
             } => format!(
-                "search {} {count} {} {pattern}",
+                "search {} {count} {} {} {pattern}",
                 search_op_token(*op),
-                if *backward { "bwd" } else { "fwd" }
+                if *backward { "bwd" } else { "fwd" },
+                offset.to_token(),
             ),
             // Direction before the pattern (pattern is LAST so it may contain spaces).
             Command::SearchObject {
@@ -1596,8 +1715,9 @@ impl Command {
             },
             "goto_first_match" => Command::GotoFirstMatch(raw.to_string()),
             "search" => {
-                // `search {op} {count} {fwd|bwd} {pattern...}` — pattern is the untrimmed remainder.
-                let mut parts = raw.splitn(4, ' ');
+                // `search {op} {count} {fwd|bwd} {offset} {pattern...}` — pattern is the untrimmed
+                // remainder (may contain spaces); the offset token is whitespace-free.
+                let mut parts = raw.splitn(5, ' ');
                 let op = parts
                     .next()
                     .and_then(search_op_from_token)
@@ -1607,12 +1727,17 @@ impl Command {
                     .and_then(|s| s.parse().ok())
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 let backward = matches!(parts.next(), Some("bwd"));
+                let offset = parts
+                    .next()
+                    .and_then(SearchOffset::from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 let pattern = parts.next().unwrap_or("").to_string();
                 Command::Search {
                     op,
                     count,
                     pattern,
                     backward,
+                    offset,
                 }
             }
             "search_object" => {
@@ -2085,30 +2210,100 @@ mod tests {
                 count: 2,
                 pattern: "foo".into(),
                 backward: false,
+                offset: SearchOffset::None,
             },
             Command::Search {
                 op: SearchOp::Delete,
                 count: 1,
                 pattern: "world foo".into(),
                 backward: false,
+                offset: SearchOffset::None,
             },
             Command::Search {
                 op: SearchOp::Change,
                 count: 1,
                 pattern: "x".into(),
                 backward: true,
+                offset: SearchOffset::None,
             },
             Command::Search {
                 op: SearchOp::Yank,
                 count: 3,
                 pattern: "a b".into(),
                 backward: true,
+                offset: SearchOffset::None,
             },
             Command::Search {
                 op: SearchOp::Move,
                 count: 1,
                 pattern: "back words".into(),
                 backward: true,
+                offset: SearchOffset::None,
+            },
+            // Offset variants (search-offsets, #475) — every SearchOffset shape, both directions and
+            // signs, so the offset token survives to_line/from_line round-trip alongside the pattern.
+            Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: false,
+                offset: SearchOffset::End(0),
+            },
+            Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo bar".into(),
+                backward: false,
+                offset: SearchOffset::End(2),
+            },
+            Command::Search {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "x".into(),
+                backward: false,
+                offset: SearchOffset::End(-1),
+            },
+            Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: true,
+                offset: SearchOffset::Start(0),
+            },
+            Command::Search {
+                op: SearchOp::Yank,
+                count: 2,
+                pattern: "a b".into(),
+                backward: false,
+                offset: SearchOffset::Start(3),
+            },
+            Command::Search {
+                op: SearchOp::Change,
+                count: 1,
+                pattern: "z".into(),
+                backward: true,
+                offset: SearchOffset::Start(-2),
+            },
+            Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foobar".into(),
+                backward: false,
+                offset: SearchOffset::Line(1),
+            },
+            Command::Search {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "end".into(),
+                backward: true,
+                offset: SearchOffset::Line(-3),
+            },
+            Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "x".into(),
+                backward: false,
+                offset: SearchOffset::Line(0),
             },
             Command::SearchObject {
                 op: SearchOp::Move,
@@ -2177,6 +2372,36 @@ mod tests {
         for c in cases {
             assert_eq!(Command::from_line(&c.to_line()), Ok(c.clone()), "{c:?}");
         }
+    }
+
+    #[test]
+    fn search_offset_parses_vim_grammar() {
+        use SearchOffset::{End, Line, None as Off, Start};
+        // No offset.
+        assert_eq!(SearchOffset::parse(""), Off);
+        // End offsets: `e`, `e+N`, `e-N`, and unsigned `eN` == `e+N`.
+        assert_eq!(SearchOffset::parse("e"), End(0));
+        assert_eq!(SearchOffset::parse("e+1"), End(1));
+        assert_eq!(SearchOffset::parse("e-1"), End(-1));
+        assert_eq!(SearchOffset::parse("e2"), End(2));
+        // Start offsets: `s`, `s±N`, and the `b` (begin) synonym.
+        assert_eq!(SearchOffset::parse("s"), Start(0));
+        assert_eq!(SearchOffset::parse("s+2"), Start(2));
+        assert_eq!(SearchOffset::parse("s-1"), Start(-1));
+        assert_eq!(SearchOffset::parse("s3"), Start(3));
+        assert_eq!(SearchOffset::parse("b"), Start(0));
+        assert_eq!(SearchOffset::parse("b+1"), Start(1));
+        assert_eq!(SearchOffset::parse("b-2"), Start(-2));
+        // Line offsets: bare number (unsigned == positive), and signed.
+        assert_eq!(SearchOffset::parse("1"), Line(1));
+        assert_eq!(SearchOffset::parse("+1"), Line(1));
+        assert_eq!(SearchOffset::parse("-3"), Line(-3));
+        assert_eq!(SearchOffset::parse("0"), Line(0));
+        // A lone sign means magnitude 0 (a line offset of 0).
+        assert_eq!(SearchOffset::parse("+"), Line(0));
+        assert_eq!(SearchOffset::parse("-"), Line(0));
+        // Surrounding whitespace is trimmed.
+        assert_eq!(SearchOffset::parse("  e+1  "), End(1));
     }
 
     #[test]

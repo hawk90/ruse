@@ -4712,6 +4712,7 @@ mod search_tests {
             count: 1,
             pattern: pattern.to_string(),
             backward: false,
+            offset: SearchOffset::None,
         }
     }
 
@@ -4727,6 +4728,7 @@ mod search_tests {
             count,
             pattern: pattern.to_string(),
             backward: true,
+            offset: SearchOffset::None,
         }
     }
 
@@ -4789,6 +4791,7 @@ mod search_tests {
                 count: 1,
                 pattern: "XYZ".into(),
                 backward: false,
+                offset: SearchOffset::None,
             }],
         );
         assert_eq!(st.as_str().unwrap(), "XYZdef");
@@ -4858,6 +4861,7 @@ mod search_tests {
                     count: 1,
                     pattern: "bar".into(),
                     backward: true,
+                    offset: SearchOffset::None,
                 },
             ],
         );
@@ -4878,6 +4882,7 @@ mod search_tests {
                 count: 1,
                 pattern: "bar".into(),
                 backward: true,
+                offset: SearchOffset::None,
             },
         );
         assert_eq!(st.as_str().unwrap(), "foo x");
@@ -4902,6 +4907,7 @@ mod search_tests {
                     count: 1,
                     pattern: "bar".into(),
                     backward: true,
+                    offset: SearchOffset::None,
                 },
             ],
         );
@@ -4909,6 +4915,368 @@ mod search_tests {
         assert_eq!(st.cursor(), 4);
         assert_eq!(st.register().text(), b"bar baz qu");
         assert!(!st.register().is_linewise());
+    }
+
+    // --- search offsets (#475) — every assertion is the byte position / buffer nvim v0.12.4 produces
+    //     for the same keystrokes, captured headless with `nvim -u NONE`. ---
+    fn soff(
+        op: SearchOp,
+        count: u32,
+        pattern: &str,
+        backward: bool,
+        offset: SearchOffset,
+    ) -> Command {
+        Command::Search {
+            op,
+            count,
+            pattern: pattern.to_string(),
+            backward,
+            offset,
+        }
+    }
+
+    // A 3-line buffer whose byte layout the offset tests reference: "foo" at 12..15 on line 1, "foobar"
+    // at 39..45 on line 3. Line starts: L1=0, L2=16, L3=33.
+    const A: &str = "hello world foo\nsecond line here\nthird foobar line";
+
+    #[test]
+    fn search_offset_end_moves_to_match_last_char() {
+        // /foo/e -> last char of the match (nvim [1,14]).
+        assert_eq!(
+            run(
+                A,
+                &[soff(SearchOp::Move, 1, "foo", false, SearchOffset::End(0))]
+            )
+            .cursor(),
+            14
+        );
+        // /foo/e+1 -> one char right, CROSSING to line 2 col 0 (nvim [2,0] = byte 16).
+        assert_eq!(
+            run(
+                A,
+                &[soff(SearchOp::Move, 1, "foo", false, SearchOffset::End(1))]
+            )
+            .cursor(),
+            16
+        );
+        // /foo/e-1 -> one left of the last char (nvim [1,13]).
+        assert_eq!(
+            run(
+                A,
+                &[soff(SearchOp::Move, 1, "foo", false, SearchOffset::End(-1))]
+            )
+            .cursor(),
+            13
+        );
+    }
+
+    #[test]
+    fn search_offset_start_moves_relative_to_match_start() {
+        // /foo/s == /foo/b -> first char of the match (nvim [1,12]).
+        assert_eq!(
+            run(
+                A,
+                &[soff(
+                    SearchOp::Move,
+                    1,
+                    "foo",
+                    false,
+                    SearchOffset::Start(0)
+                )]
+            )
+            .cursor(),
+            12
+        );
+        // /foo/s+2 -> two right of start (nvim [1,14]).
+        assert_eq!(
+            run(
+                A,
+                &[soff(
+                    SearchOp::Move,
+                    1,
+                    "foo",
+                    false,
+                    SearchOffset::Start(2)
+                )]
+            )
+            .cursor(),
+            14
+        );
+        // /foo/s-1 -> one left of start (nvim [1,11]).
+        assert_eq!(
+            run(
+                A,
+                &[soff(
+                    SearchOp::Move,
+                    1,
+                    "foo",
+                    false,
+                    SearchOffset::Start(-1)
+                )]
+            )
+            .cursor(),
+            11
+        );
+    }
+
+    #[test]
+    fn search_offset_line_moves_to_column_zero_of_target_line() {
+        // /foobar/+1 -> one line below the match, clamped to the last line, COLUMN 0 (nvim [3,0]=byte 33).
+        assert_eq!(
+            run(
+                A,
+                &[soff(
+                    SearchOp::Move,
+                    1,
+                    "foobar",
+                    false,
+                    SearchOffset::Line(1)
+                )]
+            )
+            .cursor(),
+            33
+        );
+        // /foobar/-1 -> one line above (nvim [2,0]=byte 16).
+        assert_eq!(
+            run(
+                A,
+                &[soff(
+                    SearchOp::Move,
+                    1,
+                    "foobar",
+                    false,
+                    SearchOffset::Line(-1)
+                )]
+            )
+            .cursor(),
+            16
+        );
+        // /foobar/-2 -> two lines above (nvim [1,0]=byte 0).
+        assert_eq!(
+            run(
+                A,
+                &[soff(
+                    SearchOp::Move,
+                    1,
+                    "foobar",
+                    false,
+                    SearchOffset::Line(-2)
+                )]
+            )
+            .cursor(),
+            0
+        );
+    }
+
+    #[test]
+    fn delete_search_offset_end_is_inclusive() {
+        // d/foo/e -> deletes [cursor, last-char] INCLUSIVE = the whole first line's content (nvim).
+        let st = run(
+            A,
+            &[soff(
+                SearchOp::Delete,
+                1,
+                "foo",
+                false,
+                SearchOffset::End(0),
+            )],
+        );
+        assert_eq!(
+            st.as_str().unwrap(),
+            "\nsecond line here\nthird foobar line"
+        );
+        assert_eq!(st.register().text(), b"hello world foo");
+        assert!(!st.register().is_linewise());
+        // d/foo/e+1 -> inclusive THROUGH the offset char on line 2 ('s'): removes "hello world foo\ns".
+        let st = run(
+            A,
+            &[soff(
+                SearchOp::Delete,
+                1,
+                "foo",
+                false,
+                SearchOffset::End(1),
+            )],
+        );
+        assert_eq!(st.as_str().unwrap(), "econd line here\nthird foobar line");
+        // d/foo/e-1 -> through the 'o' before the last char: leaves "o" on line 1.
+        let st = run(
+            A,
+            &[soff(
+                SearchOp::Delete,
+                1,
+                "foo",
+                false,
+                SearchOffset::End(-1),
+            )],
+        );
+        assert_eq!(
+            st.as_str().unwrap(),
+            "o\nsecond line here\nthird foobar line"
+        );
+    }
+
+    #[test]
+    fn delete_search_offset_start_is_exclusive() {
+        // d/foo/s -> deletes [cursor, match_start) EXCLUSIVE = "hello world " (nvim), leaving "foo".
+        let st = run(
+            A,
+            &[soff(
+                SearchOp::Delete,
+                1,
+                "foo",
+                false,
+                SearchOffset::Start(0),
+            )],
+        );
+        assert_eq!(
+            st.as_str().unwrap(),
+            "foo\nsecond line here\nthird foobar line"
+        );
+        assert_eq!(st.register().text(), b"hello world ");
+        // d/foo/s+2 -> exclusive up to start+2, leaving "o" (nvim reg "hello world fo").
+        let st = run(
+            A,
+            &[soff(
+                SearchOp::Delete,
+                1,
+                "foo",
+                false,
+                SearchOffset::Start(2),
+            )],
+        );
+        assert_eq!(
+            st.as_str().unwrap(),
+            "o\nsecond line here\nthird foobar line"
+        );
+        assert_eq!(st.register().text(), b"hello world fo");
+    }
+
+    #[test]
+    fn delete_search_offset_line_is_linewise() {
+        // A 5-line buffer: foo on line 2. d/foo/+1 deletes lines 1..3 LINEWISE (nvim).
+        let b = "a\nb foo c\nd\ne foo f\ng";
+        let st = run(
+            b,
+            &[soff(
+                SearchOp::Delete,
+                1,
+                "foo",
+                false,
+                SearchOffset::Line(1),
+            )],
+        );
+        assert_eq!(st.as_str().unwrap(), "e foo f\ng");
+        assert_eq!(st.register().text(), b"a\nb foo c\nd\n");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn change_search_offset_line_keeps_indent() {
+        // c/foo/+0 -> linewise change of the match line, keeping its leading indent, Insert at indent end.
+        let mut st = EditorState::new(b"  ab foo cd\nnext".to_vec());
+        apply_command(
+            &mut st,
+            &soff(SearchOp::Change, 1, "foo", false, SearchOffset::Line(0)),
+        );
+        assert_eq!(
+            st.cursor(),
+            2,
+            "Insert caret at the indent end (nvim [1,2])"
+        );
+        assert_eq!(st.mode(), Mode::Insert);
+        apply_command(&mut st, &Command::InsertChar('Z'));
+        assert_eq!(st.as_str().unwrap(), "  Z\nnext");
+    }
+
+    #[test]
+    fn search_offset_reapplied_by_repeat_advances_past_current_match() {
+        // "abc foo def foo xyz" — foo at 4..7 and 12..15. Re-issuing the same offset search (what `n`
+        // does) from the landing advances to the NEXT match, then applies the offset again — matching nvim.
+        let b = "abc foo def foo xyz";
+        // /foo/e (-> 6) then n (-> 14).
+        let e = || soff(SearchOp::Move, 1, "foo", false, SearchOffset::End(0));
+        assert_eq!(run(b, &[e()]).cursor(), 6);
+        assert_eq!(run(b, &[e(), e()]).cursor(), 14);
+        // /foo/s+1 (-> 5) then n (-> 13).
+        let s1 = || soff(SearchOp::Move, 1, "foo", false, SearchOffset::Start(1));
+        assert_eq!(run(b, &[s1()]).cursor(), 5);
+        assert_eq!(run(b, &[s1(), s1()]).cursor(), 13);
+        // /foo/s-1 (-> 3, BEFORE the match) then n still advances to the next match's start-1 (-> 11).
+        // This is the case a naive cursor+1 repeat would get stuck on; the offset-position rule fixes it.
+        let sm1 = || soff(SearchOp::Move, 1, "foo", false, SearchOffset::Start(-1));
+        assert_eq!(run(b, &[sm1()]).cursor(), 3);
+        assert_eq!(run(b, &[sm1(), sm1()]).cursor(), 11);
+    }
+
+    #[test]
+    fn search_offset_count_selects_nth_match() {
+        // "fooXfooYfooZfoo" — foo starts at 0,4,8,12. 2/foo/e -> 2nd qualifying match's end (nvim [1,6]).
+        let b = "fooXfooZfooWfoo";
+        assert_eq!(
+            run(
+                b,
+                &[soff(SearchOp::Move, 2, "foo", false, SearchOffset::End(0))]
+            )
+            .cursor(),
+            6
+        );
+        // 3/foo/s -> only matches whose start > cursor(0) qualify, so #2/#3/#4 -> the 3rd is at byte 12.
+        assert_eq!(
+            run(
+                b,
+                &[soff(
+                    SearchOp::Move,
+                    3,
+                    "foo",
+                    false,
+                    SearchOffset::Start(0)
+                )]
+            )
+            .cursor(),
+            12
+        );
+    }
+
+    #[test]
+    fn backward_search_offset() {
+        // From end-of-buffer, ?foobar?e -> last char ('r', byte 44) of the match on line 3.
+        let mut st = EditorState::new(A.as_bytes().to_vec());
+        st.set_cursor(A.len() - 1);
+        apply_command(
+            &mut st,
+            &soff(SearchOp::Move, 1, "foobar", true, SearchOffset::End(0)),
+        );
+        assert_eq!(st.cursor(), 44, "?foobar?e -> last char of match");
+
+        // d?foobar?s from end -> exclusive [match_start, cursor) deletes "foobar lin" (nvim), leaving
+        // "third e" on line 3; the register is charwise.
+        let mut st = EditorState::new(A.as_bytes().to_vec());
+        st.set_cursor(A.len() - 1);
+        apply_command(
+            &mut st,
+            &soff(SearchOp::Delete, 1, "foobar", true, SearchOffset::Start(0)),
+        );
+        assert_eq!(
+            st.as_str().unwrap(),
+            "hello world foo\nsecond line here\nthird e"
+        );
+        assert_eq!(st.register().text(), b"foobar lin");
+        assert!(!st.register().is_linewise());
+
+        // d?foobar?e from end -> INCLUSIVE through the cursor char: deletes "r line" (byte 44..=49).
+        let mut st = EditorState::new(A.as_bytes().to_vec());
+        st.set_cursor(A.len() - 1);
+        apply_command(
+            &mut st,
+            &soff(SearchOp::Delete, 1, "foobar", true, SearchOffset::End(0)),
+        );
+        assert_eq!(
+            st.as_str().unwrap(),
+            "hello world foo\nsecond line here\nthird fooba"
+        );
+        assert_eq!(st.register().text(), b"r line");
     }
 
     fn gn(op: SearchOp, count: u32, pattern: &str, backward: bool) -> Command {

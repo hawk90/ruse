@@ -9882,6 +9882,548 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "so_end",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/foo/e<CR>",
+      "expect": {
+        "text": [
+          "hello world foo"
+        ],
+        "cursor": [
+          1,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_end_minus",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/foo/e-1<CR>",
+      "expect": {
+        "text": [
+          "hello world foo"
+        ],
+        "cursor": [
+          1,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_start",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/foo/s<CR>",
+      "expect": {
+        "text": [
+          "hello world foo"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_start_plus",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/foo/s+2<CR>",
+      "expect": {
+        "text": [
+          "hello world foo"
+        ],
+        "cursor": [
+          1,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_start_minus",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/foo/s-1<CR>",
+      "expect": {
+        "text": [
+          "hello world foo"
+        ],
+        "cursor": [
+          1,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_begin_synonym",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "/foo/b<CR>",
+      "expect": {
+        "text": [
+          "hello world foo"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_end_crosses_line",
+      "lines": [
+        "ab foo",
+        "cd ef"
+      ],
+      "keys": "/foo/e+1<CR>",
+      "expect": {
+        "text": [
+          "ab foo",
+          "cd ef"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_line_down",
+      "lines": [
+        "a foo b",
+        "c d",
+        "e f"
+      ],
+      "keys": "/foo/+1<CR>",
+      "expect": {
+        "text": [
+          "a foo b",
+          "c d",
+          "e f"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_line_up",
+      "lines": [
+        "a b",
+        "c foo d",
+        "e f"
+      ],
+      "keys": "/foo/-1<CR>",
+      "expect": {
+        "text": [
+          "a b",
+          "c foo d",
+          "e f"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_count_end",
+      "lines": [
+        "fooXfooZfoo"
+      ],
+      "keys": "2/foo/e<CR>",
+      "expect": {
+        "text": [
+          "fooXfooZfoo"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_n_reapplies_end",
+      "lines": [
+        "abc foo def foo"
+      ],
+      "keys": "/foo/e<CR>n",
+      "expect": {
+        "text": [
+          "abc foo def foo"
+        ],
+        "cursor": [
+          1,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_n_reapplies_start_minus",
+      "lines": [
+        "abc foo def foo xyz"
+      ],
+      "keys": "/foo/s-1<CR>n",
+      "expect": {
+        "text": [
+          "abc foo def foo xyz"
+        ],
+        "cursor": [
+          1,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_N_reapplies_end",
+      "lines": [
+        "abc foo def foo"
+      ],
+      "keys": "/foo/e<CR>N",
+      "expect": {
+        "text": [
+          "abc foo def foo"
+        ],
+        "cursor": [
+          1,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_back_end",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "$?foo?e<CR>",
+      "expect": {
+        "text": [
+          "foo bar foo baz"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_d_end_inclusive",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "d/foo/e<CR>",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello world foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_d_start_exclusive",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "d/foo/s<CR>",
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello world ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_d_line_linewise",
+      "lines": [
+        "a foo",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "d/foo/+1<CR>",
+      "expect": {
+        "text": [
+          "c",
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a foo\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_y_end_paste",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "y/foo/e<CR>P",
+      "expect": {
+        "text": [
+          "hello world foohello world foo"
+        ],
+        "cursor": [
+          1,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "hello world foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "hello world foo",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "so_c_end",
+      "lines": [
+        "hello world foo"
+      ],
+      "keys": "c/foo/e<CR>Z<Esc>",
+      "expect": {
+        "text": [
+          "Z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "hello world foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_d_back_end_inclusive",
+      "lines": [
+        "third foobar line"
+      ],
+      "keys": "$d?foobar?e<CR>",
+      "expect": {
+        "text": [
+          "third fooba"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "r line",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_empty_reuse_offset",
+      "lines": [
+        "abc foo def foo"
+      ],
+      "keys": "/foo/e<CR>//<CR>",
+      "expect": {
+        "text": [
+          "abc foo def foo"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "so_empty_new_offset",
+      "lines": [
+        "abc foo def foo"
+      ],
+      "keys": "/foo/e<CR>//s<CR>",
+      "expect": {
+        "text": [
+          "abc foo def foo"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

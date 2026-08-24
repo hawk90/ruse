@@ -777,6 +777,32 @@ FIXTURES: list[dict] = [
     {"name": "c_back_search_exclusive", "lines": ["foo bar baz qux"], "keys": "$c?bar<CR>Z<Esc>"},
     {"name": "y_back_search_then_paste", "lines": ["foo bar baz qux"], "keys": "$y?bar<CR>P"},
     {"name": "empty_back_search_reuses_pattern", "lines": ["foo bar foo baz"], "keys": "/bar<CR>$?<CR>"},
+    #     SEARCH OFFSETS (#475) — `/pat/e`, `/pat/s+N`, `/pat/+N`, `?pat?…`, `n`/`N` reapply, operator
+    #     wiseness (`e` inclusive, `s` exclusive, line offsets linewise). All verified against nvim
+    #     v0.12.4 headless; the LINE offset lands on COLUMN 0 (Vim "column 1"), NOT the first non-blank —
+    #     and nvim's `-u NONE` `nostartofline` puts a linewise-delete cursor at column 0 too, matching ruse.
+    {"name": "so_end", "lines": ["hello world foo"], "keys": "/foo/e<CR>"},
+    {"name": "so_end_minus", "lines": ["hello world foo"], "keys": "/foo/e-1<CR>"},
+    {"name": "so_start", "lines": ["hello world foo"], "keys": "/foo/s<CR>"},
+    {"name": "so_start_plus", "lines": ["hello world foo"], "keys": "/foo/s+2<CR>"},
+    {"name": "so_start_minus", "lines": ["hello world foo"], "keys": "/foo/s-1<CR>"},
+    {"name": "so_begin_synonym", "lines": ["hello world foo"], "keys": "/foo/b<CR>"},
+    {"name": "so_end_crosses_line", "lines": ["ab foo", "cd ef"], "keys": "/foo/e+1<CR>"},
+    {"name": "so_line_down", "lines": ["a foo b", "c d", "e f"], "keys": "/foo/+1<CR>"},
+    {"name": "so_line_up", "lines": ["a b", "c foo d", "e f"], "keys": "/foo/-1<CR>"},
+    {"name": "so_count_end", "lines": ["fooXfooZfoo"], "keys": "2/foo/e<CR>"},
+    {"name": "so_n_reapplies_end", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>n"},
+    {"name": "so_n_reapplies_start_minus", "lines": ["abc foo def foo xyz"], "keys": "/foo/s-1<CR>n"},
+    {"name": "so_N_reapplies_end", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>N"},
+    {"name": "so_back_end", "lines": ["foo bar foo baz"], "keys": "$?foo?e<CR>"},
+    {"name": "so_d_end_inclusive", "lines": ["hello world foo"], "keys": "d/foo/e<CR>"},
+    {"name": "so_d_start_exclusive", "lines": ["hello world foo"], "keys": "d/foo/s<CR>"},
+    {"name": "so_d_line_linewise", "lines": ["a foo", "b", "c", "d"], "keys": "d/foo/+1<CR>"},
+    {"name": "so_y_end_paste", "lines": ["hello world foo"], "keys": "y/foo/e<CR>P"},
+    {"name": "so_c_end", "lines": ["hello world foo"], "keys": "c/foo/e<CR>Z<Esc>"},
+    {"name": "so_d_back_end_inclusive", "lines": ["third foobar line"], "keys": "$d?foobar?e<CR>"},
+    {"name": "so_empty_reuse_offset", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>//<CR>"},
+    {"name": "so_empty_new_offset", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>//s<CR>"},
 ]
 
 
