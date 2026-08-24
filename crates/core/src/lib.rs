@@ -42,7 +42,7 @@ pub mod workspace;
 pub use anchor::{AnchorId, AnchorPolicy, AnchorStore, Bias, Resolved};
 pub use clipboard::{Clipboard, MemClipboard, NoClipboard};
 pub use command::{
-    BlockInsertKind, Command, CommandParseError, ForcedWise, OpKind, OpenKind, SearchOp,
+    BlockInsertKind, Command, CommandParseError, ForcedWise, MarkOp, OpKind, OpenKind, SearchOp,
     SelectKind, WordCase,
 };
 pub use document::{Document, DocumentId, TxnError};

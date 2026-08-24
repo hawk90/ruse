@@ -1849,6 +1849,89 @@ mod tests {
     }
 
     #[test]
+    fn operator_to_mark_routing() {
+        // d/c/y to a mark still route exactly as before (regression): `` ` `` charwise, `'` linewise.
+        assert_eq!(
+            feed("d`a"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Delete,
+                name: 'a',
+                linewise: false
+            })
+        );
+        assert_eq!(
+            feed("c'a"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Change,
+                name: 'a',
+                linewise: true
+            })
+        );
+        assert_eq!(
+            feed("y`b"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Yank,
+                name: 'b',
+                linewise: false
+            })
+        );
+        // Case operators to a mark (`` g~`a ``/`` gu`a ``/`` gU'a ``): backtick charwise, quote linewise.
+        assert_eq!(
+            feed("g~`a"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Case(WordCase::Toggle),
+                name: 'a',
+                linewise: false
+            })
+        );
+        assert_eq!(
+            feed("gu`a"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Case(WordCase::Downcase),
+                name: 'a',
+                linewise: false
+            })
+        );
+        assert_eq!(
+            feed("gU'a"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Case(WordCase::Upcase),
+                name: 'a',
+                linewise: true
+            })
+        );
+        // Shift and reindent to a mark; `linewise` records the `` ` ``/`'` key (the planner forces whole
+        // lines for these regardless, per Vim).
+        assert_eq!(
+            feed(">`a"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Shift { left: false },
+                name: 'a',
+                linewise: false
+            })
+        );
+        assert_eq!(
+            feed("<'a"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Shift { left: true },
+                name: 'a',
+                linewise: true
+            })
+        );
+        assert_eq!(
+            feed("=`a"),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Reindent,
+                name: 'a',
+                linewise: false
+            })
+        );
+        // A bare mark jump (no operator armed) is unaffected.
+        assert_eq!(feed("`c"), Feed::Cmd(Command::GotoNamedMark('c')));
+        assert_eq!(feed("'c"), Feed::Cmd(Command::GotoNamedMarkLine('c')));
+    }
+
+    #[test]
     fn shift_over_motion_and_re_arm() {
         // `>`/`<` are real operators now: over a motion they shift the motion's lines (always linewise).
         assert_eq!(

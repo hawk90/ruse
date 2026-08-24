@@ -1352,16 +1352,42 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 return nop(cur, st.view.mode);
             };
             let mark = mark.min(b.len());
+            let (lo, hi) = (cur.min(mark), cur.max(mark));
+            // Shift (`` >`a ``) and reindent (`` =`a ``) operate on whole LINES regardless of the `` ` ``/`'`
+            // form (Vim: `>`/`<`/`=` are linewise even over a charwise motion), so dispatch them on the line
+            // range spanning cursor..mark before the charwise/linewise span split the others share. Reuse the
+            // SAME planners `>`/`=` over a motion use — no duplicated shift math or reindent logic. The
+            // charwise (`` ` ``) form uses the EXCLUSIVE `[lo, hi)` span (`line_of(hi - 1)`), so a mark or
+            // cursor resting at column 0 of the far line does NOT pull that line in (Vim exclusive-motion
+            // rule) — exactly as `ShiftMotion`/`Reindent` reduce a charwise motion's line range. The linewise
+            // (`'`) form covers both endpoint lines outright.
+            if matches!(op, MarkOp::Shift { .. } | MarkOp::Reindent) {
+                let (first, last) = if *linewise {
+                    (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi))
+                } else if lo >= hi {
+                    return nop(cur, st.view.mode);
+                } else {
+                    (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi - 1))
+                };
+                return match op {
+                    MarkOp::Shift { left } => {
+                        let lines = (last - first + 1) as u32;
+                        plan_shift(st, line_start(b, lo), lines, !*left, hint)
+                    }
+                    MarkOp::Reindent => plan_reindent(st, first, last, hint),
+                    _ => unreachable!("guarded by matches! above"),
+                };
+            }
             let (s, e) = if *linewise {
-                let start = line_start(b, cur.min(mark));
-                let le = line_end(b, cur.max(mark));
+                let start = line_start(b, lo);
+                let le = line_end(b, hi);
                 (start, if le < b.len() { le + 1 } else { le })
             } else {
-                (cur.min(mark), cur.max(mark))
+                (lo, hi)
             };
             let reg = captured(b, s, e, *linewise);
             match op {
-                OpKind::Yank => Plan {
+                MarkOp::Yank => Plan {
                     action: Action::Nop,
                     cursor: s,
                     mode: Mode::Normal,
@@ -1371,14 +1397,30 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     set_anchor: None,
                     set_mark: None,
                 },
-                OpKind::Delete if s < e => {
+                MarkOp::Delete if s < e => {
                     edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
                 }
-                OpKind::Change if s < e => {
+                MarkOp::Change if s < e => {
                     edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
                 }
-                OpKind::Change => nop(s, Mode::Insert),
-                OpKind::Delete => nop(s, Mode::Normal),
+                MarkOp::Change => nop(s, Mode::Insert),
+                MarkOp::Delete => nop(s, Mode::Normal),
+                // `` g~`a ``/`` gu`a ``/`` gU`a `` — recase the span, reusing `CaseMotion`'s recase path.
+                // Charwise (`` ` ``) or linewise (`'`) per the flag, like `d`; an all-non-letter span is
+                // just a cursor move to the span start (Vim).
+                MarkOp::Case(case) if s < e => {
+                    let src =
+                        std::str::from_utf8(&b[s..e]).expect("operator span is on char boundaries");
+                    let recased = recase(src, *case).into_bytes();
+                    if recased == b[s..e] {
+                        nop(s, st.view.mode)
+                    } else {
+                        edit(one(Edit::replace(s, e - s, recased)), s, st.view.mode, hint)
+                    }
+                }
+                MarkOp::Case(_) => nop(s, st.view.mode),
+                // Shift/reindent returned above.
+                MarkOp::Shift { .. } | MarkOp::Reindent => unreachable!("handled above"),
             }
         }
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
