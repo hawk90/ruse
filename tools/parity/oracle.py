@@ -220,6 +220,17 @@ FIXTURES: list[dict] = [
     {"name": "count_dd", "lines": ["alpha", "beta", "gamma"], "keys": "2dd"},
     {"name": "count_x", "lines": ["abcdef"], "keys": "3x"},
     {"name": "d_paragraph_fwd", "lines": ["one", "two", "", "three"], "keys": "d}"},
+    #     display-line motions gj/gk/g0/g$/g^ — ruse does NOT soft-wrap (one buffer line == one display
+    #     row), so as BARE CURSOR MOTIONS these equal j/k/0/$/^ exactly, as Vim itself does under `nowrap`
+    #     (:help gj). Paired with the plain-motion fixtures above, they VERIFY IDENTICALLY. (The OPERATOR
+    #     forms `dgj`/`dgk` are NOT fixtured: ruse aliases them to the linewise `dj`/`dk`, whereas nvim
+    #     treats `gj`/`gk` as characterwise-exclusive — subject to exclusive-linewise promotion — so nvim's
+    #     `dgj` deletes ONE line, not two. A documented deliberate divergence, see input/mod.rs.)
+    {"name": "gj_display_down", "lines": ["alpha", "beta"], "keys": "gj"},
+    {"name": "gk_display_up", "lines": ["alpha", "beta"], "keys": "jgk"},
+    {"name": "g0_display_bol", "lines": ["hello world"], "keys": "$g0"},
+    {"name": "gdollar_display_eol", "lines": ["hello world"], "keys": "g$"},
+    {"name": "gcaret_display_first_non_blank", "lines": ["  foo bar"], "keys": "$g^"},
     #     text objects -------------------------------------------------------------------------------
     {"name": "di_bracket_inner", "lines": ["pre[abc]post"], "keys": "f[di["},
     {"name": "da_brace_around", "lines": ["pre{ab}post"], "keys": "f{da{"},
