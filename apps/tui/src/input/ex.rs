@@ -65,6 +65,16 @@ pub enum Ex {
         left: bool,
         levels: u32,
     },
+    /// `:[line]put [reg]` / `:pu` — put a register's text LINEWISE as new whole line(s) after the addressed
+    /// line (F-029). UNLIKE normal-mode `p`, a put is ALWAYS linewise: a charwise register's text is split
+    /// on newlines and each piece inserted as its own line. `addr` is the destination (`Line(0)` = the very
+    /// top, `Line(n)` = after line n, `Last` = `$` after the last line, `Current` = the bare `:put` default,
+    /// after the cursor's line). `reg` is the optional register name (`None` = the unnamed register). The
+    /// cursor lands on the first non-blank of the last inserted line.
+    Put {
+        addr: LineAddr,
+        reg: Option<char>,
+    },
     /// `:set {option}` — set one editor option on the focused view (F-009 / indent config).
     Set(EditorOption),
     /// `:earlier [N]` / `:ea` — go back N changes in chronological (branch-aware) undo time (F-005 #3).
@@ -555,6 +565,8 @@ pub fn parse_ex(line: &str) -> Ex {
                     left,
                     levels,
                 }
+            } else if let Some((addr, reg)) = parse_put(line) {
+                Ex::Put { addr, reg }
             } else if let Some(ex) = parse_sort(line) {
                 ex
             } else if let Some(ex) = parse_set(line) {
@@ -680,6 +692,42 @@ fn parse_shift(line: &str) -> Option<(SubRange, bool, u32)> {
     }
     let range = parse_sub_range(range_str)?;
     Some((range, first == '<', verb.len() as u32))
+}
+
+/// Parse `:[line]put [reg]` into `(addr, reg)`. After the optional `[0-9.$]` address prefix the verb is
+/// `put`/`pu` (longest first). A register argument, when present, is a SINGLE non-whitespace char that must
+/// be separated from the verb by whitespace (`:put a` — not `:puta`, which Vim rejects as E492). No address
+/// prefix means the bare `:put` default (after the current line → `LineAddr::Current`). Returns `None`
+/// (→ falls through) unless the line is a `:put`.
+fn parse_put(line: &str) -> Option<(LineAddr, Option<char>)> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (addr_str, rest) = line.split_at(split);
+    // Strip the verb (longest match first so `put` beats `pu`).
+    let rest = rest
+        .strip_prefix("put")
+        .or_else(|| rest.strip_prefix("pu"))?;
+    // The register arg: nothing (unnamed), or a whitespace-separated single register char. A char directly
+    // after the verb (`:puta`) is NOT the put verb — Vim errors E492, so fall through to `Unknown`.
+    let reg = if rest.is_empty() {
+        None
+    } else {
+        let arg = rest.strip_prefix(char::is_whitespace)?.trim();
+        // A trailing-whitespace-only arg (already trimmed away in `parse_ex`) reaches here empty → unnamed.
+        if arg.is_empty() {
+            None
+        } else {
+            Some(single_char(arg)?)
+        }
+    };
+    // Empty address prefix → the bare `:put` default: after the current line.
+    let addr = if addr_str.is_empty() {
+        LineAddr::Current
+    } else {
+        parse_line_addr(addr_str.trim())?
+    };
+    Some((addr, reg))
 }
 
 fn parse_range_verb(line: &str, verbs: &[&str]) -> Option<SubRange> {

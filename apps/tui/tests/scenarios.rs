@@ -56,6 +56,10 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
                     ws.apply(&cmd);
                 }
             }
+            // `:[line]put [reg]` — put a register LINEWISE after the addressed line (mirrors dispatch.rs).
+            Ex::Put { addr, reg } => {
+                ws.put_lines(addr, reg);
+            }
             _ => {}
         },
         Feed::Pending | Feed::Ignored => {}
@@ -143,6 +147,32 @@ fn named_register_yank_then_paste() {
         buf(&ws),
         "one\ntwo\none",
         "named register round-trips through paste"
+    );
+}
+
+#[test]
+fn ex_put_pastes_a_yanked_line_linewise() {
+    // Yank line 1 (charwise register content still puts as a whole line — the linewise-forcing rule is
+    // exercised in the core tests; here the whole parse→dispatch→core path is driven from keystrokes).
+    let (mut e, mut ws) = session("alpha\nbeta\ngamma\n");
+    feed_str(&mut e, &mut ws, "yy"); // yank line 1 (alpha) linewise into the unnamed register
+    feed_str(&mut e, &mut ws, ":2put<CR>"); // put after line 2 (beta)
+    assert_eq!(
+        buf(&ws),
+        "alpha\nbeta\nalpha\ngamma\n",
+        ":put opens the yanked line below the addressed line"
+    );
+}
+
+#[test]
+fn ex_zero_put_inserts_at_the_top() {
+    let (mut e, mut ws) = session("alpha\nbeta\n");
+    feed_str(&mut e, &mut ws, "yy"); // yank alpha
+    feed_str(&mut e, &mut ws, ":0put<CR>"); // put before line 1
+    assert_eq!(
+        buf(&ws),
+        "alpha\nalpha\nbeta\n",
+        ":0put lands at the very top"
     );
 }
 

@@ -400,6 +400,18 @@ pub(crate) fn run_ex(
                 format!("{n} lines {}ed 1 time", if *left { '<' } else { '>' })
             };
         }
+        // `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed
+        // line (a charwise register is still put as whole lines — the linewise-forcing rule).
+        Ex::Put { addr, reg } => {
+            let n = ws.put_lines(*addr, *reg);
+            *status = if n == 1 {
+                "1 more line".into()
+            } else if n > 1 {
+                format!("{n} more lines")
+            } else {
+                String::new()
+            };
+        }
         // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
         Ex::Sort(range, spec) => {
             let removed = ws.sort_lines(*range, spec);
