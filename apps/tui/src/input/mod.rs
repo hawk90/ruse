@@ -172,6 +172,19 @@ struct InsertState {
     /// Insert-mode `CTRL-R` prefix: the next key is the register NAME whose contents to insert at the caret
     /// ([`Command::InsertRegister`]). A one-key expectation local to Insert; a non-register key aborts it.
     ctrl_r: bool,
+    /// Insert-mode `CTRL-K` digraph prefix (`i_CTRL-K`): a TWO-key expectation. `None` = inactive;
+    /// `Some(DigraphPending::First)` = armed, awaiting the first of the two code chars;
+    /// `Some(DigraphPending::Second(c1))` = first char collected, awaiting the second. Local to Insert.
+    digraph: Option<DigraphPending>,
+}
+
+/// The `i_CTRL-K` digraph collector's position within its two-char sequence (see [`InsertState::digraph`]).
+#[derive(Clone, Copy)]
+enum DigraphPending {
+    /// Armed by `CTRL-K`; the next printable key is the first code char.
+    First,
+    /// The first code char is in hand; the next printable key completes the digraph.
+    Second(char),
 }
 
 /// The active input profile (F-012 / RFC-0014, F-013 / RFC-0016). Vim is a MODAL grammar (Normal/Insert/
@@ -1056,9 +1069,13 @@ impl InputEngine {
             return true;
         }
         // Insert namespace — but NOT mid-`CTRL-G` prefix (its second key is a command selector, not
-        // text) and NOT while an `i_CTRL-O` one-shot has borrowed the Normal grammar (that key is a
+        // text), NOT mid-`CTRL-K` digraph prefix (its two keys are literal digraph-code selectors, not
+        // text), and NOT while an `i_CTRL-O` one-shot has borrowed the Normal grammar (that key is a
         // Normal command, not inserted text).
-        mode == Mode::Insert && !self.insert.ctrl_g && !self.in_one_shot()
+        mode == Mode::Insert
+            && !self.insert.ctrl_g
+            && self.insert.digraph.is_none()
+            && !self.in_one_shot()
     }
 
     /// The Lang-Arg TRANSLATION STAGE (F-027, D-048 / RFC-0013). Rewrites a decoded key through the
@@ -1314,6 +1331,30 @@ impl InputEngine {
                 }
             };
         }
+        // `i_CTRL-K` digraph prefix: once armed, the next TWO printable keys are the digraph code
+        // (`:help i_CTRL-K`). Collected here, before the layer, so the code chars never reach text
+        // insertion. A non-`Char` key (Esc, arrows, …) mid-sequence ABORTS cleanly — the pending state is
+        // dropped and the key is ignored, staying in Insert (a minor divergence: Vim's mid-digraph <Esc>
+        // also leaves Insert; here it only cancels the digraph). On the second char the pair is looked up;
+        // an unknown pair falls back to inserting the SECOND char literally, matching Vim.
+        if let Some(pending) = self.insert.digraph {
+            let KeyCode::Char(c) = key.code else {
+                self.insert.digraph = None;
+                self.reset();
+                return Feed::Ignored;
+            };
+            match pending {
+                DigraphPending::First => {
+                    self.insert.digraph = Some(DigraphPending::Second(c));
+                    return Feed::Pending;
+                }
+                DigraphPending::Second(c1) => {
+                    self.insert.digraph = None;
+                    let ch = digraph(c1, c).unwrap_or(c);
+                    return self.action(Command::InsertChar(ch));
+                }
+            }
+        }
         // `i_CTRL-^` toggles the language map (Lang-Arg / lmap) on or off within Insert (F-027 / D-048).
         // MVP flips one boolean; the per-context iminsert/imsearch model is a follow-up. Checked before
         // the printable path so `^`/`6` under CTRL never reach text insertion.
@@ -1340,6 +1381,12 @@ impl InputEngine {
         if ctrl && key.code == KeyCode::Char('r') {
             self.reset();
             self.insert.ctrl_r = true;
+            return Feed::Pending;
+        }
+        // `i_CTRL-K` — arm the digraph prefix; the next TWO printable keys select the digraph.
+        if ctrl && key.code == KeyCode::Char('k') {
+            self.reset();
+            self.insert.digraph = Some(DigraphPending::First);
             return Feed::Pending;
         }
         // `i_CTRL-W` / `i_CTRL-U` — delete the word before the caret / everything before it on the line.
@@ -2219,6 +2266,9 @@ mod history;
 use cmdline::{CmdLine, ExprTarget};
 use cmdwin::CmdWin;
 use history::CmdHistory;
+
+mod digraph;
+use digraph::digraph;
 
 mod repeat;
 use repeat::{change_kind, ChangeIntent, ChangeKind};
