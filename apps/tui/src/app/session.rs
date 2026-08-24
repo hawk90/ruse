@@ -469,6 +469,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = pos_picker.as_ref() {
             p.rows()
+        } else if engine.cmdwin().is_some() {
+            // The command-line window (`q:`/`q/`/`q?`) lists the history ring in the same overlay slot.
+            engine.cmdwin_rows()
         } else {
             // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
             lsp.hover_overlay().unwrap_or_default()
@@ -498,6 +501,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('↕', p.query.as_str())) // jumps/changes position-viewer prompt
         } else if let Some(h) = leader_hint.as_ref() {
             Some((' ', h.as_str()))
+        } else if let Some(kind) = engine.cmdwin() {
+            // The command-line window's prompt glyph (`:`/`/`/`?`) with a short hint that `<CR>` runs the line.
+            Some((kind, "[cmdwin] <CR> run  <Esc> close"))
         } else {
             engine.cmdline().map(|(pfx, t, _)| (pfx, t))
         };
@@ -619,11 +625,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
         // Run the key through the macro state machine (capture / stop / `q`|`@` prefixes). Only a
         // `Dispatch` falls through to the normal engine + intercepts; the rest are handled here.
-        let macro_normal =
-            matches!(ws.focused().view.mode(), Mode::Normal) && engine.cmdline().is_none();
+        let macro_normal = matches!(ws.focused().view.mode(), Mode::Normal)
+            && engine.cmdline().is_none()
+            && engine.cmdwin().is_none();
         let key = match macros.step(raw_key, from_replay, macro_normal) {
             crate::keys::Step::Dispatch(k) => k,
             crate::keys::Step::Consumed => continue,
+            // `q:` / `q/` / `q?` — open the command-line window (`:help cmdwin`) over that history ring.
+            crate::keys::Step::OpenCmdWin(kind) => {
+                engine.open_cmdwin(kind);
+                continue;
+            }
             crate::keys::Step::Store(reg, bytes) => {
                 let n = bytes.len();
                 ws.set_register_raw(Some(reg), bytes);
@@ -1033,7 +1045,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             dispatch_window(key, &mut ws, &mut quit);
             continue;
         }
-        let normal = matches!(ws.focused().view.mode(), Mode::Normal) && engine.cmdline().is_none();
+        // The command-line window (`q:`/`q/`/`q?`) owns the keystream while open, like the `:` line: suppress
+        // every Normal-mode intercept below so its keys (`j`/`k`/`<CR>`/`<Esc>`/`<C-c>`) reach `engine.feed`
+        // → `feed_cmdwin` untouched.
+        let normal = matches!(ws.focused().view.mode(), Mode::Normal)
+            && engine.cmdline().is_none()
+            && engine.cmdwin().is_none();
         // A `[`/`]` prefix is in flight (armed below AND in the engine). Only the fold-nav second key `z`
         // (`[z`/`]z`) is a frontend view move; anything else falls through to the engine, which still holds
         // its `BracketPrefix` and resolves `]p`/`[p`/… normally. `[z` → the current fold's START, `]z` → its

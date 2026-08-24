@@ -3889,4 +3889,122 @@ mod binding_label_tests {
         e.feed(up(), Mode::Normal);
         assert_eq!(line(&e).as_deref(), Some("real"));
     }
+
+    // ---- Command-line window (`:help cmdwin`, q: q/ q?) -----------------------------------------------
+    // The engine side of the reduced list-overlay slice. `q:`/`q/`/`q?` are routed to `open_cmdwin` by the
+    // macro layer (keys.rs, tested there); here we open the window directly and drive its keys. Behaviour
+    // mirrors nvim v0.12.4: the list is the history ring with a trailing empty line the cursor starts on;
+    // `<CR>` runs the selected line through the SAME ex/search dispatch the `:`/`/` prompt uses; `<Esc>` /
+    // `<C-c>` close without running.
+
+    fn ctrl_c() -> KeyEvent {
+        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)
+    }
+    fn esc() -> KeyEvent {
+        KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn cmdwin_cr_executes_the_selected_ex_line_and_closes() {
+        let mut e = InputEngine::new();
+        for cmd in ["set nu", "write"] {
+            e.feed(k(':'), Mode::Normal);
+            accept_line(&mut e, cmd);
+        }
+        e.open_cmdwin(':');
+        assert_eq!(e.cmdwin(), Some(':'), "the window is open over the ex ring");
+        // The cursor starts on the empty last line; running it is a no-op close (Vim).
+        assert_eq!(e.feed(enter(), Mode::Normal), Feed::Ignored);
+        assert_eq!(e.cmdwin(), None, "<CR> on the empty line just closes");
+        // Re-open and navigate up to the newest entry, then run it.
+        e.open_cmdwin(':');
+        e.feed(k('k'), Mode::Normal); // `k` = up → "write"
+        assert_eq!(
+            e.feed(enter(), Mode::Normal),
+            Feed::ExecuteEx("write".into()),
+            "the selected historical ex line executes"
+        );
+        assert_eq!(e.cmdwin(), None, "the window closes after running");
+        // The run line was recorded in the ex ring via the same accept path a `:` prompt uses.
+        e.feed(k(':'), Mode::Normal);
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("write"));
+    }
+
+    #[test]
+    fn cmdwin_navigates_with_j_k_and_arrows() {
+        let mut e = InputEngine::new();
+        for cmd in ["one", "two", "three"] {
+            e.feed(k(':'), Mode::Normal);
+            accept_line(&mut e, cmd);
+        }
+        e.open_cmdwin(':');
+        // rows(): oldest first, then the empty selected last line (4 rows).
+        let rows = e.cmdwin_rows();
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[0].0, "one");
+        assert!(rows[3].1, "the empty last row is selected initially");
+        // `k`/<Up> move toward older; `j`/<Down> back toward the empty line.
+        e.feed(up(), Mode::Normal); // → three
+        e.feed(k('k'), Mode::Normal); // → two
+        assert_eq!(e.feed(enter(), Mode::Normal), Feed::ExecuteEx("two".into()));
+    }
+
+    #[test]
+    fn cmdwin_esc_and_ctrl_c_close_without_executing() {
+        let mut e = InputEngine::new();
+        e.feed(k(':'), Mode::Normal);
+        accept_line(&mut e, "quitcmd");
+        // <Esc> closes without running.
+        e.open_cmdwin(':');
+        e.feed(up(), Mode::Normal); // select "quitcmd"
+        assert_eq!(e.feed(esc(), Mode::Normal), Feed::Ignored);
+        assert_eq!(e.cmdwin(), None, "<Esc> closes the window");
+        // <C-c> likewise closes without running.
+        e.open_cmdwin(':');
+        e.feed(up(), Mode::Normal);
+        assert_eq!(e.feed(ctrl_c(), Mode::Normal), Feed::Ignored);
+        assert_eq!(e.cmdwin(), None, "<C-c> closes the window");
+    }
+
+    #[test]
+    fn cmdwin_search_line_runs_as_a_search() {
+        let mut e = InputEngine::new();
+        // Populate the SEARCH ring with a `/` line.
+        e.feed(k('/'), Mode::Normal);
+        accept_line(&mut e, "foo");
+        // `q/` mirrors the search ring; running the line performs the search (folds through submit_search).
+        e.open_cmdwin('/');
+        e.feed(k('k'), Mode::Normal); // select "foo"
+        assert_eq!(
+            e.feed(enter(), Mode::Normal),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: false,
+            }),
+            "q/ + <CR> runs the chosen pattern as a forward search"
+        );
+        assert_eq!(e.cmdwin(), None);
+    }
+
+    #[test]
+    fn cmdwin_q_question_searches_backward() {
+        let mut e = InputEngine::new();
+        e.feed(k('/'), Mode::Normal);
+        accept_line(&mut e, "bar");
+        // `q?` mirrors the same shared search ring but runs the line BACKWARD.
+        e.open_cmdwin('?');
+        e.feed(k('k'), Mode::Normal);
+        assert_eq!(
+            e.feed(enter(), Mode::Normal),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "bar".into(),
+                backward: true,
+            })
+        );
+    }
 }
