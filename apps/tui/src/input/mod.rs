@@ -176,6 +176,10 @@ struct InsertState {
     /// `Some(DigraphPending::First)` = armed, awaiting the first of the two code chars;
     /// `Some(DigraphPending::Second(c1))` = first char collected, awaiting the second. Local to Insert.
     digraph: Option<DigraphPending>,
+    /// Insert-mode `CTRL-V` literal / numeric-code entry (`i_CTRL-V`): `None` = inactive;
+    /// `Some(LiteralEntry::AwaitFirst)` = `CTRL-V` seen, the next key picks a numeric form or is inserted
+    /// literally; `Some(LiteralEntry::Collecting{..})` = mid numeric collection. Local to Insert.
+    literal: Option<LiteralEntry>,
 }
 
 /// The `i_CTRL-K` digraph collector's position within its two-char sequence (see [`InsertState::digraph`]).
@@ -185,6 +189,44 @@ enum DigraphPending {
     First,
     /// The first code char is in hand; the next printable key completes the digraph.
     Second(char),
+}
+
+/// The `i_CTRL-V` literal-entry collector's position (see [`InsertState::literal`]).
+#[derive(Clone, Copy)]
+enum LiteralEntry {
+    /// `CTRL-V` seen; the next key selects a numeric form (a decimal digit, or `o`/`O`/`x`/`X`/`u`/`U`)
+    /// or, being none of those, is inserted literally.
+    AwaitFirst,
+    /// Mid numeric collection in `base`: `value` accumulated so far, `remaining` digits still allowed, and
+    /// `count` digits collected. Resolves when `remaining` reaches 0 or a non-digit key terminates it.
+    Collecting {
+        base: LiteralBase,
+        value: u32,
+        remaining: u8,
+        count: u8,
+    },
+}
+
+/// The numeric base of an in-flight [`LiteralEntry::Collecting`] (`i_CTRL-V`). The per-form digit cap
+/// lives on the `remaining` budget, not here (`x`/`X`=2, `u`=4, `U`=8 all share [`LiteralBase::Hex`]).
+#[derive(Clone, Copy)]
+enum LiteralBase {
+    /// Decimal (`CTRL-V {ddd}`) — up to 3 digits, value clamped to a single byte (255).
+    Dec,
+    /// Octal (`CTRL-V o{ooo}` / `O{ooo}`) — up to 3 digits, value clamped to a single byte (255).
+    Oct,
+    /// Hex — `CTRL-V x`/`X` (≤2 digits), `u` (≤4, BMP) or `U` (≤8, full Unicode).
+    Hex,
+}
+
+impl LiteralBase {
+    fn radix(self) -> u32 {
+        match self {
+            LiteralBase::Dec => 10,
+            LiteralBase::Oct => 8,
+            LiteralBase::Hex => 16,
+        }
+    }
 }
 
 /// The active input profile (F-012 / RFC-0014, F-013 / RFC-0016). Vim is a MODAL grammar (Normal/Insert/
@@ -1070,11 +1112,13 @@ impl InputEngine {
         }
         // Insert namespace — but NOT mid-`CTRL-G` prefix (its second key is a command selector, not
         // text), NOT mid-`CTRL-K` digraph prefix (its two keys are literal digraph-code selectors, not
-        // text), and NOT while an `i_CTRL-O` one-shot has borrowed the Normal grammar (that key is a
-        // Normal command, not inserted text).
+        // text), NOT mid-`CTRL-V` literal entry (its form selector / code digits / literal key are raw,
+        // never mapped), and NOT while an `i_CTRL-O` one-shot has borrowed the Normal grammar (that key
+        // is a Normal command, not inserted text).
         mode == Mode::Insert
             && !self.insert.ctrl_g
             && self.insert.digraph.is_none()
+            && self.insert.literal.is_none()
             && !self.in_one_shot()
     }
 
@@ -1355,6 +1399,12 @@ impl InputEngine {
                 }
             }
         }
+        // `i_CTRL-V` literal / numeric-code entry: once armed, drive the collector (`:help i_CTRL-V`).
+        // Checked before the layer so the form selector / code digits / literal key never reach normal
+        // text insertion. `take()` clears the state; the collector re-arms it while still gathering.
+        if let Some(entry) = self.insert.literal.take() {
+            return self.feed_ctrl_v(entry, key);
+        }
         // `i_CTRL-^` toggles the language map (Lang-Arg / lmap) on or off within Insert (F-027 / D-048).
         // MVP flips one boolean; the per-context iminsert/imsearch model is a follow-up. Checked before
         // the printable path so `^`/`6` under CTRL never reach text insertion.
@@ -1389,6 +1439,13 @@ impl InputEngine {
             self.insert.digraph = Some(DigraphPending::First);
             return Feed::Pending;
         }
+        // `i_CTRL-V` — arm literal / numeric char entry; the next key(s) select the form and code
+        // (Normal-mode `CTRL-V` is blockwise Visual — a separate path; this only fires in Insert).
+        if ctrl && key.code == KeyCode::Char('v') {
+            self.reset();
+            self.insert.literal = Some(LiteralEntry::AwaitFirst);
+            return Feed::Pending;
+        }
         // `i_CTRL-W` / `i_CTRL-U` — delete the word before the caret / everything before it on the line.
         if ctrl && key.code == KeyCode::Char('w') {
             return self.action(Command::InsertDeleteWordBack);
@@ -1415,6 +1472,171 @@ impl InputEngine {
             return Feed::Cmd(cmd);
         }
         self.unmatched(Ns::Insert, key)
+    }
+
+    /// `i_CTRL-V` literal / numeric-code entry (`:help i_CTRL-V`). Drives the collector armed by
+    /// `CTRL-V` in Insert. The first key picks a numeric form (decimal `{ddd}`, octal `o{ooo}`, hex
+    /// `x{hh}`, BMP unicode `u{hhhh}`, full unicode `U{hhhhhhhh}`) or is inserted literally (a raw
+    /// control key, `<Tab>`/`<CR>`/`<Esc>`, or any non-form char). Subsequent keys are the code digits.
+    /// Collection resolves when the per-form digit cap is reached OR a non-matching key terminates it
+    /// early — in which case the resolved char is emitted and the terminating key is processed as normal
+    /// Insert input (re-dispatched here), matching Vim. Insert mode is implicit (the only caller).
+    fn feed_ctrl_v(&mut self, entry: LiteralEntry, key: KeyEvent) -> Feed {
+        match entry {
+            LiteralEntry::AwaitFirst => self.ctrl_v_first(key),
+            LiteralEntry::Collecting {
+                base,
+                value,
+                remaining,
+                count,
+            } => self.ctrl_v_collect(base, value, remaining, count, key),
+        }
+    }
+
+    /// The FIRST key after `CTRL-V`: arm a numeric form, or insert the key literally.
+    fn ctrl_v_first(&mut self, key: KeyEvent) -> Feed {
+        if !key.modifiers.contains(KeyModifiers::CONTROL) {
+            if let KeyCode::Char(c) = key.code {
+                if let Some(d) = c.to_digit(10) {
+                    // Decimal: this char is the first of up to three digits.
+                    self.insert.literal = Some(LiteralEntry::Collecting {
+                        base: LiteralBase::Dec,
+                        value: d,
+                        remaining: 2,
+                        count: 1,
+                    });
+                    return Feed::Pending;
+                }
+                // `o`/`O` octal (3), `x`/`X` hex byte (2), `u` BMP (4), `U` full Unicode (8).
+                let form = match c {
+                    'o' | 'O' => Some((LiteralBase::Oct, 3)),
+                    'x' | 'X' => Some((LiteralBase::Hex, 2)),
+                    'u' => Some((LiteralBase::Hex, 4)),
+                    'U' => Some((LiteralBase::Hex, 8)),
+                    _ => None,
+                };
+                if let Some((base, budget)) = form {
+                    self.insert.literal = Some(LiteralEntry::Collecting {
+                        base,
+                        value: 0,
+                        remaining: budget,
+                        count: 0,
+                    });
+                    return Feed::Pending;
+                }
+            }
+        }
+        // Not a form starter: insert the key literally.
+        self.insert_literal_key(key)
+    }
+
+    /// A key during numeric collection: extend the code if it is a valid digit for `base`, else terminate.
+    fn ctrl_v_collect(
+        &mut self,
+        base: LiteralBase,
+        value: u32,
+        remaining: u8,
+        count: u8,
+        key: KeyEvent,
+    ) -> Feed {
+        let digit = match key.code {
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                c.to_digit(base.radix())
+            }
+            _ => None,
+        };
+        if let Some(d) = digit {
+            let value = value * base.radix() + d;
+            let remaining = remaining - 1;
+            let count = count + 1;
+            if remaining == 0 {
+                // Digit cap reached: resolve now; there is no terminating key to re-process.
+                return self.resolve_literal(base, value);
+            }
+            self.insert.literal = Some(LiteralEntry::Collecting {
+                base,
+                value,
+                remaining,
+                count,
+            });
+            return Feed::Pending;
+        }
+        // A non-digit terminates collection.
+        if count == 0 {
+            // No digits were collected (only reachable for the o/x/u/U prefixes): the terminating key is
+            // inserted literally and no code char is produced (Vim: `CTRL-V x z` -> `z`, `CTRL-V o 8` -> `8`).
+            return self.insert_literal_key(key);
+        }
+        // >=1 digit: resolve the code, then process the terminating key as normal Insert input.
+        let resolved = self.resolve_char(base, value);
+        let term = self.feed_impl(key, Mode::Insert);
+        match resolved {
+            // Invalid code point (a lone surrogate via `u`/`U`, say): nothing to prepend — just the term.
+            None => term,
+            Some(c) => match term {
+                Feed::Cmd(tc) => {
+                    // Emit BOTH the resolved char and the terminator's command. `Replay` is the only
+                    // multi-command channel and it bypasses the recorder, so fold both into the dot-repeat
+                    // record by hand (exactly what the outer `feed` would do for two consecutive `Cmd`s).
+                    self.record(&Feed::Cmd(Command::InsertChar(c)), Mode::Insert);
+                    self.record(&Feed::Cmd(tc.clone()), Mode::Insert);
+                    Feed::Replay(vec![Command::InsertChar(c), tc])
+                }
+                // The terminator armed a prefix / was ignored: only the resolved char applies now. Any
+                // Insert prefix it just armed survives `action`'s reset (which clears only Normal state).
+                _ => self.action(Command::InsertChar(c)),
+            },
+        }
+    }
+
+    /// Insert `key` literally (`CTRL-V`'s literal path): a raw control key becomes its control byte,
+    /// `<Tab>`/`<CR>`/`<Esc>` their code points, any other char itself. An exotic key (arrows, F-keys)
+    /// aborts cleanly, staying in Insert.
+    fn insert_literal_key(&mut self, key: KeyEvent) -> Feed {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            if let KeyCode::Char(c) = key.code {
+                if c.is_ascii() {
+                    // `CTRL-<c>` -> its control byte (`CTRL-V` -> 0x16, `CTRL-A` -> 0x01, ...).
+                    return self.action(Command::InsertChar(((c as u8) & 0x1f) as char));
+                }
+            }
+            self.reset();
+            return Feed::Ignored;
+        }
+        match key.code {
+            KeyCode::Char(c) => self.action(Command::InsertChar(c)),
+            KeyCode::Tab => self.action(Command::InsertChar('\t')),
+            KeyCode::Enter => self.action(Command::InsertChar('\r')),
+            KeyCode::Esc => self.action(Command::InsertChar('\u{1b}')),
+            _ => {
+                self.reset();
+                Feed::Ignored
+            }
+        }
+    }
+
+    /// Resolve an accumulated numeric code to its `InsertChar` command (the cap-reached path).
+    fn resolve_literal(&mut self, base: LiteralBase, value: u32) -> Feed {
+        match self.resolve_char(base, value) {
+            Some(c) => self.action(Command::InsertChar(c)),
+            None => {
+                self.reset();
+                Feed::Ignored
+            }
+        }
+    }
+
+    /// Map an accumulated numeric code to a `char`. Decimal/octal clamp to a single byte (255, Vim's cap);
+    /// hex/unicode are validated by `char::from_u32` — a lone surrogate or an out-of-range code point
+    /// yields `None`, which the caller drops. (A documented divergence: Vim stores such raw bytes as
+    /// invalid UTF-8, which ruse's UTF-8 text buffer cannot represent via `InsertChar`. Byte values
+    /// 0-255 map to U+0000..=U+00FF and are inserted as valid UTF-8, matching Neovim's `C-v 200` -> È.)
+    fn resolve_char(&self, base: LiteralBase, value: u32) -> Option<char> {
+        let v = match base {
+            LiteralBase::Dec | LiteralBase::Oct => value.min(255),
+            LiteralBase::Hex => value,
+        };
+        char::from_u32(v)
     }
 
     /// Replace (`R`) / Virtual Replace (`gR`): the `open/overwrite` namespace. Bindings (Esc/BS/CR)
