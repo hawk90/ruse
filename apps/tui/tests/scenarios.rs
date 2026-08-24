@@ -7,8 +7,9 @@
 //! a readable regression guard.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{Command, SplitDir, SubFlags, SubRange, Workspace};
+use ruse_core::{Command, Mode, SplitDir, SubFlags, SubRange, Workspace};
 use ruse_tui::input::{parse_ex, Ex, Feed, GlobalPayload, InputEngine};
+use ruse_tui::keys::{MacroState, Step};
 
 /// Route one engine outcome exactly as `main.rs::run` does: edits through the swap-trick `Workspace`,
 /// `:s`/`:g` through the substitute/global engines, everything else per its `Feed`.
@@ -914,5 +915,142 @@ fn insert_ctrl_y_dot_repeats_the_literal_char() {
         buf(&ws),
         "ax\naby\nacz",
         "`.` repeats the copied char literally"
+    );
+}
+
+// --- Neovim `Q` = repeat the last RECORDED macro (issue: feat(vim) Q) -------------------------------
+// These drive the FULL macro stack end to end — the `keys::MacroState` record/replay machine plus the
+// input engine and `Workspace` register I/O — through the exact seam `session.rs`'s run loop uses, so a
+// real `Q` mutates a real buffer (not just the state machine). The count multiplier and register read
+// are reused verbatim from that seam, so `3Q` exercises the same path as `3@a`.
+
+/// Tokenize a Vim keystroke script (same alphabet as [`feed_str`]) into raw key events.
+fn keys_of(s: &str) -> Vec<KeyEvent> {
+    let mut out = Vec::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        let key = if c == '<' {
+            let mut tag = String::new();
+            for d in chars.by_ref() {
+                if d == '>' {
+                    break;
+                }
+                tag.push(d);
+            }
+            match tag.as_str() {
+                "Esc" => KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                "CR" => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                "BS" => KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+                _ => continue,
+            }
+        } else {
+            KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+        };
+        out.push(key);
+    }
+    out
+}
+
+/// One key through the macro state machine, mirroring `session.rs`'s run-loop arms (record / stop /
+/// `q`|`@`|`Q` prefixes → register I/O → `[count]`-honouring replay via the shared `Step::Replay` seam).
+fn macro_step(
+    e: &mut InputEngine,
+    ws: &mut Workspace,
+    m: &mut MacroState,
+    key: KeyEvent,
+    from_replay: bool,
+) {
+    let macro_normal = matches!(ws.focused().view.mode(), Mode::Normal);
+    match m.step(key, from_replay, macro_normal) {
+        Step::Dispatch(k) => step(e, ws, k),
+        Step::Consumed | Step::OpenCmdWin(_) => {}
+        Step::Store(reg, bytes) => ws.set_register_raw(Some(reg), bytes),
+        Step::Replay(reg) => {
+            let n = e.take_count().max(1); // `[count]Q` / `[count]@x`, same as the run loop
+            let bytes = ws.register_bytes(Some(reg));
+            for _ in 0..n {
+                m.replay(&bytes);
+            }
+        }
+    }
+}
+
+/// Feed a keystroke script through the macro-aware run loop: drain the replay queue before each typed
+/// key, exactly as `session.rs` does (queued keys are `from_replay`, typed keys are not).
+fn feed_macro(e: &mut InputEngine, ws: &mut Workspace, m: &mut MacroState, s: &str) {
+    let typed = keys_of(s);
+    let mut idx = 0;
+    loop {
+        if let Some(k) = m.next_replay() {
+            macro_step(e, ws, m, k, true);
+        } else if idx < typed.len() {
+            let k = typed[idx];
+            idx += 1;
+            macro_step(e, ws, m, k, false);
+        } else {
+            break;
+        }
+    }
+}
+
+#[test]
+fn q_replays_the_last_recorded_macro_end_to_end() {
+    let (mut e, mut ws) = session("aaa\nbbb\nccc\nddd");
+    let mut m = MacroState::new();
+    // Record into `a`: append '!' at EOL, then move to the next line. `qa A ! <Esc> j q`.
+    feed_macro(&mut e, &mut ws, &mut m, "qaA!<Esc>jq");
+    assert_eq!(
+        buf(&ws),
+        "aaa!\nbbb\nccc\nddd",
+        "recording `a` mutated line 1"
+    );
+    // `Q` replays register `a` on line 2, then advances to line 3.
+    feed_macro(&mut e, &mut ws, &mut m, "Q");
+    assert_eq!(
+        buf(&ws),
+        "aaa!\nbbb!\nccc\nddd",
+        "Q replayed the last recorded macro (a)"
+    );
+}
+
+#[test]
+fn count_q_replays_the_last_recorded_macro_n_times() {
+    let (mut e, mut ws) = session("a\nb\nc\nd\ne");
+    let mut m = MacroState::new();
+    feed_macro(&mut e, &mut ws, &mut m, "qzA!<Esc>jq"); // record `z`: append '!' then down; line 1 done
+    assert_eq!(buf(&ws), "a!\nb\nc\nd\ne");
+    feed_macro(&mut e, &mut ws, &mut m, "3Q"); // `3Q` runs it on lines 2,3,4
+    assert_eq!(
+        buf(&ws),
+        "a!\nb!\nc!\nd!\ne",
+        "`3Q` repeated the last recorded macro three times"
+    );
+}
+
+#[test]
+fn q_uses_the_most_recently_recorded_register() {
+    let (mut e, mut ws) = session("aaa\nbbb\nccc\nddd");
+    let mut m = MacroState::new();
+    feed_macro(&mut e, &mut ws, &mut m, "qaA1<Esc>jq"); // record `a` (append '1'); line 1 -> aaa1
+    feed_macro(&mut e, &mut ws, &mut m, "qbA2<Esc>jq"); // record `b` (append '2'); line 2 -> bbb2
+    assert_eq!(buf(&ws), "aaa1\nbbb2\nccc\nddd");
+    // Recording `b` LAST makes `Q` play `b` (append '2') on line 3, not `a`.
+    feed_macro(&mut e, &mut ws, &mut m, "Q");
+    assert_eq!(
+        buf(&ws),
+        "aaa1\nbbb2\nccc2\nddd",
+        "Q follows the most recently recorded register (b)"
+    );
+}
+
+#[test]
+fn q_with_no_recording_is_a_noop_end_to_end() {
+    let (mut e, mut ws) = session("hello\nworld");
+    let mut m = MacroState::new();
+    feed_macro(&mut e, &mut ws, &mut m, "Q"); // nothing recorded yet
+    assert_eq!(
+        buf(&ws),
+        "hello\nworld",
+        "Q before any recording does nothing"
     );
 }

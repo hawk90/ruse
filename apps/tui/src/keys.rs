@@ -43,6 +43,7 @@ pub struct MacroState {
     pending_q: bool,  // `q` armed: the next key names the register to record INTO
     pending_at: bool, // `@` armed: the next key names the register to REPLAY
     last_played: Option<char>, // the last register replayed, for `@@`
+    last_recorded: Option<char>, // the last register a recording COMPLETED into (lowercased), for `Q`
     queue: VecDeque<KeyEvent>,
     budget: u32,
 }
@@ -108,6 +109,11 @@ impl MacroState {
                     let bytes = encode_all(buf);
                     let reg = *reg;
                     self.recording = None;
+                    // `Q` (Neovim) repeats the last COMPLETED recording, so remember it here — keyed off the
+                    // lowercase slot (an UPPERCASE append into `qA` still means register `a`). Verified vs
+                    // nvim v0.12.4: recording into `qa` then `Q` replays `a`, and `Q` while a *later*
+                    // recording is in flight still targets the last one that FINISHED, never the live one.
+                    self.last_recorded = Some(reg.to_ascii_lowercase());
                     return Step::Store(reg, bytes);
                 }
             }
@@ -161,6 +167,22 @@ impl MacroState {
         if normal && is_bare(key, '@') {
             self.pending_at = true;
             return Step::Consumed;
+        }
+        // `Q` (Neovim) — repeat the most recently RECORDED macro, i.e. `@{last_recorded}`. It keys off the
+        // last register a recording COMPLETED into, NOT the last one PLAYED (that is `@@`, `last_played`).
+        // A no-op until something has been recorded this session (verified vs nvim: nothing happens, no
+        // error). Like `@`, it fires even while a recording is in flight (targeting the last COMPLETED one)
+        // and is captured into that recording. The `[count]` multiplier and register read are the session's
+        // job via the SAME `Step::Replay` seam `@`/`@@` use. NOTE: classic Vim's `Q` opens Ex mode; this
+        // editor maps Ex mode to `gQ` (see the operator-pending `Char('Q')` arm) and follows Neovim here.
+        if normal && is_bare(key, 'Q') {
+            return match self.last_recorded {
+                Some(c) => {
+                    self.last_played = Some(c); // nvim: a later `@@` then repeats what `Q` just ran.
+                    Step::Replay(c)
+                }
+                None => Step::Consumed,
+            };
         }
         Step::Dispatch(key)
     }
@@ -665,5 +687,91 @@ mod tests {
         m.step(ch('q'), false, true);
         assert_eq!(m.step(ch('a'), false, true), Step::Consumed);
         assert!(m.is_recording(), "qa starts recording into register a");
+    }
+
+    /// Record `q{reg} … q` and return the register name it completed into (drives the arm/name/stop path).
+    fn record(m: &mut MacroState, reg: char, body: &[KeyEvent]) {
+        m.step(ch('q'), false, true);
+        m.step(ch(reg), false, true);
+        for &k in body {
+            m.step(k, false, true);
+        }
+        assert!(matches!(m.step(ch('q'), false, true), Step::Store(_, _)));
+    }
+
+    #[test]
+    fn q_repeats_the_last_recorded_register_not_the_last_played() {
+        // Neovim `Q`: keys off the last RECORDED register, distinct from `@@` (last PLAYED). Verified vs
+        // nvim v0.12.4: record `qa`, record `qb`, play `@a`, then `Q` runs `b` (the last recorded), NOT `a`.
+        let mut m = MacroState::new();
+        record(&mut m, 'a', &[ch('x')]);
+        record(&mut m, 'b', &[ch('y')]);
+        // Play `@a` — this makes `a` the last PLAYED, which must NOT be what `Q` picks.
+        m.step(ch('@'), false, true);
+        assert_eq!(m.step(ch('a'), false, true), Step::Replay('a'));
+        assert_eq!(
+            m.step(ch('Q'), false, true),
+            Step::Replay('b'),
+            "Q repeats the last RECORDED register (b), not the last played (a)"
+        );
+    }
+
+    #[test]
+    fn q_before_any_recording_is_a_noop() {
+        // Verified vs nvim: `Q` with nothing ever recorded this session does nothing (no error).
+        let mut m = MacroState::new();
+        assert_eq!(
+            m.step(ch('Q'), false, true),
+            Step::Consumed,
+            "nothing recorded yet ⇒ Q is a no-op"
+        );
+    }
+
+    #[test]
+    fn q_updates_the_at_at_repeat_target() {
+        // Verified vs nvim: after `Q` runs a register, a subsequent `@@` repeats THAT register (Q counts as
+        // the last play). Record a then b, `Q` runs b, then `@@` must also run b.
+        let mut m = MacroState::new();
+        record(&mut m, 'a', &[ch('x')]);
+        record(&mut m, 'b', &[ch('y')]);
+        assert_eq!(m.step(ch('Q'), false, true), Step::Replay('b'));
+        m.step(ch('@'), false, true);
+        assert_eq!(
+            m.step(ch('@'), false, true),
+            Step::Replay('b'),
+            "@@ after Q repeats what Q ran"
+        );
+    }
+
+    #[test]
+    fn q_during_a_recording_targets_the_last_completed_register() {
+        // Verified vs nvim: while recording `qb`, pressing `Q` runs the last COMPLETED recording (a), never
+        // the in-flight one. The `Q` key is still captured into b's buffer (like a mid-record `@x`).
+        let mut m = MacroState::new();
+        record(&mut m, 'a', &[ch('x')]);
+        m.step(ch('q'), false, true);
+        m.step(ch('b'), false, true); // now recording into b; last completed is still a
+        assert!(m.is_recording());
+        assert_eq!(
+            m.step(ch('Q'), false, true),
+            Step::Replay('a'),
+            "Q targets the last COMPLETED recording, not the live one"
+        );
+        let bytes = match m.step(ch('q'), false, true) {
+            Step::Store(_, b) => b,
+            other => panic!("expected Store, got {other:?}"),
+        };
+        assert_eq!(
+            bytes, b"Q",
+            "the Q keystroke was captured into b's recording"
+        );
+    }
+
+    #[test]
+    fn q_targets_the_lowercase_slot_of_an_uppercase_recording() {
+        // An UPPERCASE record name (`qA`, append into a) still means register `a`, so `Q` replays `a`.
+        let mut m = MacroState::new();
+        record(&mut m, 'A', &[ch('x')]);
+        assert_eq!(m.step(ch('Q'), false, true), Step::Replay('a'));
     }
 }
