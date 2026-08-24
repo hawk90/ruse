@@ -1499,7 +1499,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             } else {
                                 word
                             };
-                            engine.set_last_search(pat.clone());
+                            // Record the direction too, so a following `n`/`N` repeats relative to the
+                            // `*`/`#` that set it (`#` then `n` continues backward).
+                            engine.set_last_search(pat.clone(), forward);
                             if forward {
                                 Command::SearchNext(pat)
                             } else {

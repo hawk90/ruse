@@ -2623,13 +2623,15 @@ mod search_tests {
         assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
         // Submitting the pattern yields a bare-move Search AND records it for `n`/`N`.
         assert_eq!(
-            e.submit_search("foo".into()),
+            e.submit_search("foo".into(), false),
             Feed::Cmd(Command::Search {
                 op: SearchOp::Move,
                 count: 1,
-                pattern: "foo".into()
+                pattern: "foo".into(),
+                backward: false,
             })
         );
+        // After a FORWARD search, `n` repeats forward and `N` reverses to backward.
         assert_eq!(
             e.feed(k('n'), Mode::Normal),
             Feed::Cmd(Command::SearchNext("foo".into()))
@@ -2641,13 +2643,95 @@ mod search_tests {
     }
 
     #[test]
+    fn question_opens_backward_search_and_n_repeats_backward() {
+        let mut e = InputEngine::new();
+        // `?` opens the backward search line; submitting yields a backward Search + records the direction.
+        assert_eq!(e.feed(k('?'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.cmdline().map(|c| c.0), Some('?'));
+        assert_eq!(
+            e.submit_search("foo".into(), true),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: true,
+            })
+        );
+        // After a BACKWARD search, `n` continues BACKWARD (SearchPrev) and `N` reverses to forward.
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::Cmd(Command::SearchPrev("foo".into()))
+        );
+        assert_eq!(
+            e.feed(k('N'), Mode::Normal),
+            Feed::Cmd(Command::SearchNext("foo".into()))
+        );
+    }
+
+    #[test]
+    fn operator_folds_into_backward_search() {
+        // `d?bar` — the armed operator survives the minibuffer and folds into a backward Search.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('?'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.submit_search("bar".into(), true),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Delete,
+                count: 1,
+                pattern: "bar".into(),
+                backward: true,
+            })
+        );
+    }
+
+    #[test]
+    fn count_before_question_selects_the_nth_backward_match() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('?'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.submit_search("foo".into(), true),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 2,
+                pattern: "foo".into(),
+                backward: true,
+            })
+        );
+    }
+
+    #[test]
+    fn empty_backward_search_reuses_last_pattern_backward() {
+        // `/foo<CR>` then `?<CR>` reuses "foo" but backward; a following `n` then continues backward.
+        let mut e = InputEngine::new();
+        e.feed(k('/'), Mode::Normal);
+        assert!(matches!(e.submit_search("foo".into(), false), Feed::Cmd(_)));
+        e.feed(k('?'), Mode::Normal);
+        assert_eq!(
+            e.submit_search(String::new(), true),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: "foo".into(),
+                backward: true,
+            })
+        );
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::Cmd(Command::SearchPrev("foo".into())),
+            "empty `?<CR>` reuse flips direction to backward for n"
+        );
+    }
+
+    #[test]
     fn gn_and_gn_backward_emit_the_search_object_with_the_last_pattern() {
         let mut e = InputEngine::new();
         // Before any search, `gn` finds no pattern and aborts cleanly.
         assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
         assert_eq!(e.feed(k('n'), Mode::Normal), Feed::Ignored);
         // After a search, bare `gn` = the Move (Visual-select) object; `gN` sets backward.
-        e.set_last_search("foo".into());
+        e.set_last_search("foo".into(), true);
         assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
         assert_eq!(
             e.feed(k('n'), Mode::Normal),
@@ -2673,7 +2757,7 @@ mod search_tests {
     #[test]
     fn operator_and_count_fold_into_gn() {
         let mut e = InputEngine::new();
-        e.set_last_search("foo".into());
+        e.set_last_search("foo".into(), true);
         // `2cgn` → change the object, count 2 (advance to the 2nd match), pattern baked in.
         assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending);
         assert_eq!(e.feed(k('c'), Mode::Normal), Feed::Pending);
@@ -2705,7 +2789,8 @@ mod search_tests {
     fn empty_search_pattern_is_inert() {
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
-        assert_eq!(e.submit_search(String::new()), Feed::Ignored);
+        // No prior search → empty pattern has nothing to reuse, so it aborts.
+        assert_eq!(e.submit_search(String::new(), false), Feed::Ignored);
     }
 
     #[test]
@@ -2720,11 +2805,12 @@ mod search_tests {
             e.normal.op.is_none() && e.normal.awaiting == Awaiting::Nothing && e.normal.count == 0
         );
         assert_eq!(
-            e.submit_search("bar".into()),
+            e.submit_search("bar".into(), false),
             Feed::Cmd(Command::Search {
                 op: SearchOp::Delete,
                 count: 1,
-                pattern: "bar".into()
+                pattern: "bar".into(),
+                backward: false,
             })
         );
     }
@@ -2735,11 +2821,12 @@ mod search_tests {
         assert_eq!(e.feed(k('2'), Mode::Normal), Feed::Pending);
         assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
         assert_eq!(
-            e.submit_search("foo".into()),
+            e.submit_search("foo".into(), false),
             Feed::Cmd(Command::Search {
                 op: SearchOp::Move,
                 count: 2,
-                pattern: "foo".into()
+                pattern: "foo".into(),
+                backward: false,
             })
         );
     }
@@ -2888,7 +2975,8 @@ mod cmdline_tests {
             Feed::Cmd(Command::Search {
                 op: SearchOp::Move,
                 count: 1,
-                pattern: "foo".into()
+                pattern: "foo".into(),
+                backward: false,
             })
         );
         assert_eq!(e.cmdline(), None);
@@ -2903,7 +2991,8 @@ mod cmdline_tests {
             Feed::Cmd(Command::Search {
                 op: SearchOp::Delete,
                 count: 1,
-                pattern: "bar".into()
+                pattern: "bar".into(),
+                backward: false,
             })
         );
     }
