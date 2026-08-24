@@ -23,6 +23,10 @@ pub(crate) struct CmdLine {
     /// what to do with the result — arm the `"=` register for the next paste, or insert it at the caret.
     /// `None` for the ordinary `:`/`/` line and the `M-x` minibuffer.
     pub(crate) expr: Option<ExprTarget>,
+    /// The transient history-recall cursor + saved draft for THIS open prompt (`:help cmdline-history`).
+    /// Fresh per open; the persistent rings live on the engine (`ex_history`/`search_history`). Dropped
+    /// with the prompt — KL-OBL-4 (a layer owns its state and dies with it).
+    pub(crate) walk: super::history::HistWalk,
 }
 
 /// What a completed expression-register prompt does with the evaluated result (`:help quote=`).

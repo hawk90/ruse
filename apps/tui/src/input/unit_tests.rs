@@ -3734,4 +3734,159 @@ mod binding_label_tests {
         // Both multiply (`3d2H` = 6H): 6.
         assert_eq!(state("3d2"), (6, true));
     }
+
+    // ---- Command-line & search history recall (`:help cmdline-history`) ------------------------------
+    // Integration tests driving the `:`/`/` prompt state machine through the full engine. Behaviour is
+    // matched to nvim v0.12.4 (see apps/tui/src/input/history.rs for the ground-truth probe results).
+
+    use super::tests::k;
+
+    fn ctrl(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+    fn up() -> KeyEvent {
+        KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)
+    }
+    fn down() -> KeyEvent {
+        KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)
+    }
+    fn enter() -> KeyEvent {
+        KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
+    }
+
+    /// Type `line` into an already-open prompt and accept it with `<CR>`.
+    fn accept_line(e: &mut InputEngine, line: &str) {
+        for c in line.chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        e.feed(enter(), Mode::Normal);
+    }
+
+    /// The current command-line buffer text (`None` when no prompt is open).
+    fn line(e: &InputEngine) -> Option<String> {
+        e.cmdline().map(|(_, t, _)| t.to_string())
+    }
+
+    #[test]
+    fn ex_history_up_recalls_newest_then_older() {
+        // nvim: after `:set foo<CR>` `:echo x<CR>`, open `:` and press <Up> twice → 'echo x', 'set foo'.
+        let mut e = InputEngine::new();
+        e.feed(k(':'), Mode::Normal);
+        accept_line(&mut e, "set foo");
+        e.feed(k(':'), Mode::Normal);
+        accept_line(&mut e, "echo x");
+        e.feed(k(':'), Mode::Normal);
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("echo x"));
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("set foo"));
+        // No older entry: the walk stays put.
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("set foo"));
+    }
+
+    #[test]
+    fn ex_history_up_prefix_filters() {
+        // nvim: `:e` + <Up> recalls only `:e…` entries, newest first.
+        let mut e = InputEngine::new();
+        for cmd in ["edit a", "echo y", "edit b"] {
+            e.feed(k(':'), Mode::Normal);
+            accept_line(&mut e, cmd);
+        }
+        e.feed(k(':'), Mode::Normal);
+        e.feed(k('e'), Mode::Normal);
+        e.feed(k('d'), Mode::Normal); // draft = "ed"
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("edit b"));
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("edit a")); // 'echo y' skipped by the "ed" prefix
+    }
+
+    #[test]
+    fn ctrl_p_walks_raw_history_unfiltered() {
+        // nvim-VERIFIED distinction: <C-p> ignores the typed prefix. `:e` + <C-p> → 'edit b'
+        // (raw newest), <C-p> again → 'echo y' (raw next, NOT prefix-filtered).
+        let mut e = InputEngine::new();
+        for cmd in ["edit a", "echo y", "edit b"] {
+            e.feed(k(':'), Mode::Normal);
+            accept_line(&mut e, cmd);
+        }
+        e.feed(k(':'), Mode::Normal);
+        e.feed(k('e'), Mode::Normal); // draft = "e"
+        e.feed(ctrl('p'), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("edit b"));
+        e.feed(ctrl('p'), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("echo y"));
+    }
+
+    #[test]
+    fn down_restores_typed_draft() {
+        // nvim: `:e` <Up> <Down> → 'e' (the draft returns); <C-n> mirrors <Down>.
+        let mut e = InputEngine::new();
+        e.feed(k(':'), Mode::Normal);
+        accept_line(&mut e, "edit b");
+        e.feed(k(':'), Mode::Normal);
+        e.feed(k('e'), Mode::Normal);
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("edit b"));
+        e.feed(down(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("e"));
+        e.feed(ctrl('n'), Mode::Normal); // already at draft → no-op
+        assert_eq!(line(&e).as_deref(), Some("e"));
+    }
+
+    #[test]
+    fn search_history_is_separate_from_ex() {
+        // nvim keeps `:` and `/` histories apart; `/` and `?` share the search ring.
+        let mut e = InputEngine::new();
+        e.feed(k(':'), Mode::Normal);
+        accept_line(&mut e, "foo");
+        e.feed(k('/'), Mode::Normal);
+        accept_line(&mut e, "bar");
+        // The `:` prompt recalls only ex history.
+        e.feed(k(':'), Mode::Normal);
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("foo"));
+        e.feed(enter(), Mode::Normal);
+        // The `/` prompt recalls only search history.
+        e.feed(k('/'), Mode::Normal);
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("bar"));
+        // `?` shares the same search ring.
+        e.feed(enter(), Mode::Normal);
+        e.feed(k('?'), Mode::Normal);
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("bar"));
+    }
+
+    #[test]
+    fn immediate_repeat_is_deduped_in_history() {
+        // nvim: re-entering an identical ex line moves it to the most-recent slot (single entry).
+        let mut e = InputEngine::new();
+        for cmd in ["foo", "bar", "foo"] {
+            e.feed(k(':'), Mode::Normal);
+            accept_line(&mut e, cmd);
+        }
+        e.feed(k(':'), Mode::Normal);
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("foo"));
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("bar"));
+        // Only two distinct entries remain — a third <Up> stays on the oldest.
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("bar"));
+    }
+
+    #[test]
+    fn empty_line_is_not_recorded() {
+        // An accepted empty `:` line stores nothing; a later <Up> finds an earlier real entry.
+        let mut e = InputEngine::new();
+        e.feed(k(':'), Mode::Normal);
+        accept_line(&mut e, "real");
+        e.feed(k(':'), Mode::Normal);
+        accept_line(&mut e, ""); // empty → not stored
+        e.feed(k(':'), Mode::Normal);
+        e.feed(up(), Mode::Normal);
+        assert_eq!(line(&e).as_deref(), Some("real"));
+    }
 }

@@ -323,7 +323,7 @@ features:
     acceptance:
       - "':' / '/' enter the namespace, <CR> executes and <Esc> aborts; it is engine-routed with a single mode owner, not an ad-hoc text buffer (anti-patterns command-line P2)."
       - "An unmatched printable key appends to the line buffer (open/append); the namespace owns line buffer, cursor and history index."
-      - "Ex mode is entered by `gQ` only — `Q` is not an Ex-mode key at the pinned Neovim revision (see vim-style.yaml census_corrections). History / q: / wildmenu / incsearch-UX are deferred."
+      - "Ex mode is entered by `gQ` only — `Q` is not an Ex-mode key at the pinned Neovim revision (see vim-style.yaml census_corrections). Command-line & search history shipped (#452: separate `:`/`/` rings, prefix-filtered <Up> vs raw <C-p> recall); q: / wildmenu / incsearch-UX are deferred."
 
   F-027:
     title: Lang-Arg namespace
