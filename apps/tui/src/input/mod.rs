@@ -24,6 +24,12 @@ pub enum Feed {
     /// A completed `:`-line to execute (F-026). The command-line namespace owns the buffer while it is
     /// being typed; on `<CR>` it hands the finished text to the frontend to parse+run as an ex command.
     ExecuteEx(String),
+    /// `c_CTRL-R_CTRL-W` / `c_CTRL-R_CTRL-A`: splice the `<cword>` (`big == false`) or `<cWORD>`
+    /// (`big == true`) under the BUFFER cursor into the open command line at the caret. The namespace owns
+    /// the cmdline buffer but the engine has no document, so the frontend resolves the word (via
+    /// `Workspace::cword_under_cursor` / `cbig_word_under_cursor`) and splices it back with
+    /// [`InputEngine::cmdline_splice`]. The command line stays open.
+    CmdlineInsertUnder { big: bool },
     /// The key was consumed but the command is not complete yet (a count digit, a pending operator, or a
     /// keystroke absorbed into the open command-line buffer).
     Pending,
@@ -444,6 +450,18 @@ impl InputEngine {
             .map(|c| (c.prefix, c.buffer.as_str(), c.cursor))
     }
 
+    /// Splice `text` into the open command line at the caret — the frontend's response to
+    /// [`Feed::CmdlineInsertUnder`] (`c_CTRL-R_CTRL-W`/`_CTRL-A`), after it has resolved the `<cword>` /
+    /// `<cWORD>` from the buffer. No-op when no line is open. MVP appends at the end (the cmdline caret is
+    /// end-anchored, matching the append/backspace edit model); splicing also ends any history-recall walk.
+    pub fn cmdline_splice(&mut self, text: &str) {
+        if let Some(cl) = self.cmdline.as_mut() {
+            cl.buffer.push_str(text);
+            cl.cursor = cl.buffer.chars().count();
+            cl.walk = history::HistWalk::default();
+        }
+    }
+
     /// The Native leader (which-key) discovery hint (F-013 NAT-2) as a one-line `"w:write  q:quit  …"`
     /// string for the status/command line, or `None` unless the leader tier is armed. `Some` iff
     /// `<leader>` is pending, so it doubles as the pending-state query; formatting lives here so the
@@ -471,6 +489,7 @@ impl InputEngine {
             ex_mode,
             mx: false,
             expr: None,
+            ctrl_r: false,
             walk: history::HistWalk::default(),
         });
     }
@@ -568,6 +587,7 @@ impl InputEngine {
             ex_mode: false,
             mx: true,
             expr: None,
+            ctrl_r: false,
             walk: history::HistWalk::default(),
         });
     }
@@ -583,6 +603,7 @@ impl InputEngine {
             ex_mode: false,
             mx: false,
             expr: Some(target),
+            ctrl_r: false,
             walk: history::HistWalk::default(),
         });
     }
@@ -595,10 +616,33 @@ impl InputEngine {
         if self.cmdline.is_none() {
             return Feed::Ignored;
         }
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // `c_CTRL-R` prefix armed: THIS key selects what to splice at the cmdline caret. Checked before the
+        // history-recall match below so that when armed, `C-r C-p`/etc. is consumed as the (unsupported)
+        // selector rather than triggering `<C-p>` history recall. Only the word-under-cursor variants are
+        // wired: `c_CTRL-R_CTRL-W` = `<cword>`, `c_CTRL-R_CTRL-A` = `<cWORD>`; the frontend resolves the
+        // buffer text (see [`Feed::CmdlineInsertUnder`]). Any other selector aborts the prefix cleanly
+        // (general `C-r{reg}` register insertion into the command line is deferred). :help c_CTRL-R_CTRL-W
+        if self.cmdline.as_ref().is_some_and(|cl| cl.ctrl_r) {
+            if let Some(cl) = self.cmdline.as_mut() {
+                cl.ctrl_r = false;
+            }
+            return match key.code {
+                KeyCode::Char('w') if ctrl => Feed::CmdlineInsertUnder { big: false },
+                KeyCode::Char('a') if ctrl => Feed::CmdlineInsertUnder { big: true },
+                _ => Feed::Pending, // unsupported selector: swallow, stay on the line
+            };
+        }
+        // `c_CTRL-R` — arm the prefix; the next key selects the word/register to insert.
+        if ctrl && key.code == KeyCode::Char('r') {
+            if let Some(cl) = self.cmdline.as_mut() {
+                cl.ctrl_r = true;
+            }
+            return Feed::Pending;
+        }
         // History recall (`:help cmdline-history`), handled before the buffer borrow so the recall helper
         // can re-borrow the (disjoint) history ring. nvim-VERIFIED distinction: `<Up>`/`<Down>` recall
         // PREFIX-FILTERED by the draft typed before the walk; `<C-p>`/`<C-n>` walk the RAW ring unfiltered.
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Up => return self.cmdline_recall(true, true),
             KeyCode::Down => return self.cmdline_recall(false, true),
@@ -1503,6 +1547,15 @@ impl InputEngine {
         // aborts without inserting. Checked before the layer so the register key never reaches text insertion.
         if self.insert.ctrl_r {
             self.insert.ctrl_r = false;
+            // A CONTROL-modified second key is NOT a register name. Vim's `i_CTRL-R_CTRL-W`/`_CTRL-A` insert
+            // NOTHING (the word-under-cursor inserts are COMMAND-LINE mode only — `c_CTRL-R_CTRL-W`), and the
+            // `C-r C-r`/`C-o`/`C-p` insert-literally variants are not implemented. Treat every ctrl-modified
+            // selector as a clean no-op rather than mis-reading the char as a register (previously `C-r C-w`
+            // wrongly inserted register `w`, `C-r C-a` register `a`). Verified against nvim v0.12.4.
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                self.reset();
+                return Feed::Ignored;
+            }
             // `i_CTRL-R=` — the expression register (`:help i_CTRL-R`, the MOST common use): open the
             // expression prompt; on `<CR>` the evaluated result is spliced at the caret. Handled before the
             // stored-register names below.

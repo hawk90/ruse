@@ -79,7 +79,7 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
             }
             _ => {}
         },
-        Feed::Pending | Feed::Ignored => {}
+        Feed::CmdlineInsertUnder { .. } | Feed::Pending | Feed::Ignored => {}
     }
 }
 
@@ -701,7 +701,7 @@ fn feed_str_subst(
                 }
                 _ => {}
             },
-            Feed::Pending | Feed::Ignored => {}
+            Feed::CmdlineInsertUnder { .. } | Feed::Pending | Feed::Ignored => {}
         }
     }
 }
@@ -1142,7 +1142,7 @@ fn macro_step_ex(
                         ws.apply(c);
                     }
                 }
-                Feed::Pending | Feed::Ignored => {}
+                Feed::CmdlineInsertUnder { .. } | Feed::Pending | Feed::Ignored => {}
             }
         }
         Step::Consumed | Step::OpenCmdWin(_) => {}

@@ -492,6 +492,52 @@ pub(crate) fn word_under_cursor(b: &[u8], cur: usize) -> Option<(usize, usize)> 
     Some(inner_word_span(b, i, false))
 }
 
+/// The `<cword>` (`big == false`) or `<cWORD>` (`big == true`) span under the cursor — the buffer text
+/// Vim's command-line `c_CTRL-R_CTRL-W` / `c_CTRL-R_CTRL-A` splice at the cmdline caret
+/// (`:help c_CTRL-R_CTRL-W`, `:help expand()` `<cword>`/`<cWORD>`). Distinct from [`word_under_cursor`]
+/// (Vim `*`): that returns `None` when the line has no keyword, whereas `<cword>` falls back to the
+/// non-blank (punctuation) run — so `C-r C-w` on `foo ...` at the first `.` yields `...`, where `*` bells.
+///
+/// `<cword>`: the keyword (alnum/`_`/non-ASCII run) under the cursor; if the cursor is not on a keyword,
+/// the search scans FORWARD on the line for the next keyword char (crossing blanks and punctuation). When
+/// the rest of the line has no keyword, it falls back to the non-blank run under/forward of the cursor.
+///
+/// `<cWORD>`: the whitespace-delimited WORD (maximal non-blank run) containing the cursor; if the cursor
+/// is on whitespace, the next such run forward on the line.
+///
+/// Returns `None` when the rest of the line (from the cursor) is blank. Char-boundary safe (spans are
+/// built from equal-class runs). Verified against nvim v0.12.4.
+pub(crate) fn cword_under_cursor(b: &[u8], cur: usize, big: bool) -> Option<(usize, usize)> {
+    if b.is_empty() {
+        return None;
+    }
+    let i = cur.min(b.len() - 1);
+    let le = line_end(b, i);
+    // The next non-blank position at or forward of the cursor, within the current line (`None` if the
+    // rest of the line is blank). Both variants fall back to this run when there is no keyword.
+    let first_nonblank = |from: usize| {
+        let mut k = from;
+        while k < le && class(b[k]) == Class::Space {
+            k += 1;
+        }
+        (k < le && class(b[k]) != Class::Space).then_some(k)
+    };
+    if big {
+        // `<cWORD>`: skip leading blanks, then the maximal non-blank run (word+punct merge under `big`).
+        return first_nonblank(i).map(|k| inner_word_span(b, k, true));
+    }
+    // `<cword>`: prefer the next keyword char forward on the line (crossing blanks and punctuation).
+    let mut j = i;
+    while j < le && class(b[j]) != Class::Word {
+        j += 1;
+    }
+    if j < le && class(b[j]) == Class::Word {
+        return Some(inner_word_span(b, j, false));
+    }
+    // No keyword on the rest of the line: fall back to the non-blank (punctuation) run.
+    first_nonblank(i).map(|k| inner_word_span(b, k, false))
+}
+
 /// The word plus its trailing whitespace (or leading, if there is no trailing) — Vim `aw` / `aW`.
 /// `{count}iw`: the inner-word span extended forward over `count` alternating class runs (Vim). Each unit is
 /// a maximal run of one class (a word-class run or a whitespace run), so `2iw` = word + following whitespace,

@@ -84,7 +84,10 @@ fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
             // the subsequent pattern chars and the terminating `<CR>` are fed straight through
             // `engine.feed` — the Enter yields the folded `Feed::Cmd(Search…)` (or `Feed::ExecuteEx`
             // for a `:`-line, of which the corpus has none). No manual pattern collection needed.
-            Feed::ExecuteEx(_) | Feed::Pending | Feed::Ignored => {}
+            Feed::ExecuteEx(_)
+            | Feed::CmdlineInsertUnder { .. }
+            | Feed::Pending
+            | Feed::Ignored => {}
         }
         i += 1;
     }
