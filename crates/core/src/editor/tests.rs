@@ -2973,6 +2973,27 @@ mod insert_entry_tests {
         );
         assert_eq!(text(&st), "  Xab", "I inserts before the first non-blank");
     }
+
+    #[test]
+    fn gi_column_zero_inserts_before_indentation() {
+        // `gI` inserts at byte column 0, BEFORE the leading tab — unlike `I` (first non-blank). Oracle from
+        // nvim v0.12.4: `gIX<Esc>` on `\thello` → `X\thello`.
+        let st = run(
+            "\thello",
+            &[
+                Command::Move(1, Motion::LineEnd),
+                Command::InsertColumnZero,
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "X\thello",
+            "gI inserts at column 0, before the tab"
+        );
+        assert_eq!(st.cursor(), 0, "cursor rests on the inserted X after <Esc>");
+    }
 }
 
 #[cfg(test)]
@@ -4985,6 +5006,59 @@ mod virtual_replace_tests {
             ],
         );
         assert_eq!(text(&st), "a\tb");
+    }
+
+    // `{count}gr{char}` — CLASSIC-Vim one-shot virtual replace. Byte oracles captured from nvim v0.12.4
+    // (`vim -u NONE`); see the parity corpus for the driven-through-keys equivalents.
+
+    #[test]
+    fn gr_replaces_one_char_and_returns_to_normal() {
+        // `gr` on `abcdef` with the cursor on `b` → `aXcdef`, cursor left on the replaced `X` (col 1).
+        let st = run(
+            "abcdef",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::VirtualReplaceChar(1, 'X'),
+            ],
+        );
+        assert_eq!(text(&st), "aXcdef");
+        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.view.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn count_gr_replaces_count_chars() {
+        // `3grZ` from col 0 → `ZZZdef`, cursor on the last `Z` (col 2).
+        let st = run("abcdef", &[Command::VirtualReplaceChar(3, 'Z')]);
+        assert_eq!(text(&st), "ZZZdef");
+        assert_eq!(st.cursor(), 2);
+    }
+
+    #[test]
+    fn gr_over_a_tab_preserves_the_following_column() {
+        // `grA` over a leading `<Tab>` (ts=4): the tab spans >1 virtual column, so `A` is inserted BEFORE it
+        // (the tab shrinks) rather than replacing it — `A<Tab>X` — keeping `X` at its original column.
+        let st = run("\tX", &[Command::VirtualReplaceChar(1, 'A')]);
+        assert_eq!(text(&st), "A\tX");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn count_gr_over_a_tab_inserts_then_walks_onto_it() {
+        // `2grA` over `<Tab>X`: first `A` inserts before the (still multi-column) tab, the second `A` inserts
+        // before the now-shrunk-but-still-multi-column tab → `AA<Tab>X`, cursor on the 2nd `A`.
+        let st = run("\tX", &[Command::VirtualReplaceChar(2, 'A')]);
+        assert_eq!(text(&st), "AA\tX");
+        assert_eq!(st.cursor(), 1);
+    }
+
+    #[test]
+    fn gr_past_end_of_line_appends() {
+        // `4grX` on `ab` overruns the 2-char line: it replaces `a`,`b` then APPENDS two more `X` past EOL
+        // (virtual Replace grows the line) → `XXXX`. `r` would be a no-op here — this is the gr divergence.
+        let st = run("ab", &[Command::VirtualReplaceChar(4, 'X')]);
+        assert_eq!(text(&st), "XXXX");
+        assert_eq!(st.cursor(), 3);
     }
 }
 

@@ -234,6 +234,9 @@ pub enum Command {
     EnterTerminalNormal,
     /// `I` — insert before the first non-blank char of the line.
     InsertLineStart,
+    /// `gI` — insert at column 1 (byte column 0), BEFORE all indentation, unlike `I` which stops at the
+    /// first non-blank. `{count}gI` repeats the typed text `count` times like the other insert-entries.
+    InsertColumnZero,
     /// `A` — append at the end of the line.
     AppendLineEnd,
     /// `o` — open a new line below and insert.
@@ -254,6 +257,15 @@ pub enum Command {
     /// that char is a `<Tab>` insert BEFORE it (shrinking the tab) until its last virtual column, then
     /// replace it; append at end-of-line. `<BS>` uses [`Command::ReplaceBackspace`].
     VirtualReplaceType(char),
+    /// `{count}gr{char}` — CLASSIC-Vim virtual-replace of `count` chars with `char`, then return to Normal.
+    /// The one-shot form of `gR` (like `r` is to `R`): tab-aware (over a multi-column `<Tab>` it inserts
+    /// before the tab, preserving the following text's column), and it APPENDS past end-of-line when `count`
+    /// overruns the line (Vim), unlike `r` which is a no-op there. The cursor lands on the last replaced char.
+    ///
+    /// DIVERGENCE NOTE: Neovim 0.11+ ships `gr`/`grn`/`gra`/`grr` as DEFAULT LSP *keymaps* (rename / code-
+    /// action / references), but those are keymaps, not a built-in editor command. ruse installs no such
+    /// mapping and targets the classic-Vim built-in, so `gr` here is virtual-replace-one-char.
+    VirtualReplaceChar(u32, char),
     // edit
     InsertChar(char),
     /// `i_CTRL-R{reg}` — insert the named register's contents at the caret, staying in Insert (Vim). Reads
@@ -1058,6 +1070,7 @@ impl Command {
             Command::EnterTerminal => "enter_terminal".into(),
             Command::EnterTerminalNormal => "enter_terminal_normal".into(),
             Command::InsertLineStart => "insert_line_start".into(),
+            Command::InsertColumnZero => "insert_column_zero".into(),
             Command::AppendLineEnd => "append_line_end".into(),
             Command::OpenBelow => "open_below".into(),
             Command::OpenAbove => "open_above".into(),
@@ -1066,6 +1079,7 @@ impl Command {
             Command::ReplaceBackspace => "replace_backspace".into(),
             Command::EnterVirtualReplace => "enter_virtual_replace".into(),
             Command::VirtualReplaceType(c) => format!("virtual_replace_type {}", *c as u32),
+            Command::VirtualReplaceChar(n, c) => format!("virtual_replace_char {n} {}", *c as u32),
             Command::InsertChar(c) => {
                 let mut s = String::from("insert_char ");
                 let _ = write!(s, "{}", *c as u32);
@@ -1357,6 +1371,7 @@ impl Command {
             "enter_terminal" => Command::EnterTerminal,
             "enter_terminal_normal" => Command::EnterTerminalNormal,
             "insert_line_start" => Command::InsertLineStart,
+            "insert_column_zero" => Command::InsertColumnZero,
             "append_line_end" => Command::AppendLineEnd,
             "open_below" => Command::OpenBelow,
             "open_above" => Command::OpenAbove,
@@ -1374,6 +1389,21 @@ impl Command {
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::VirtualReplaceType(c)
+            }
+            "virtual_replace_char" => {
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let n: u32 = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let cp: u32 = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::VirtualReplaceChar(n, c)
             }
             "insert_char" => {
                 let cp = arg_u32(arg, line)?;
@@ -1882,6 +1912,7 @@ mod tests {
             Command::EnterTerminal,
             Command::EnterTerminalNormal,
             Command::InsertLineStart,
+            Command::InsertColumnZero,
             Command::AppendLineEnd,
             Command::OpenBelow,
             Command::OpenAbove,
@@ -1892,6 +1923,9 @@ mod tests {
             Command::EnterVirtualReplace,
             Command::VirtualReplaceType('z'),
             Command::VirtualReplaceType('가'),
+            Command::VirtualReplaceChar(1, 'z'),
+            Command::VirtualReplaceChar(3, 'z'),
+            Command::VirtualReplaceChar(1, '가'),
             Command::InsertChar('h'),
             Command::ReplaceChar(1, 'z'),
             Command::ReplaceChar(3, 'z'),

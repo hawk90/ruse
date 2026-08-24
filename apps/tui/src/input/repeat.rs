@@ -125,6 +125,7 @@ impl ChangeIntent {
             Command::EnterInsert
                 | Command::EnterInsertAfter
                 | Command::InsertLineStart
+                | Command::InsertColumnZero
                 | Command::AppendLineEnd
                 | Command::OpenBelow
                 | Command::OpenAbove
@@ -151,6 +152,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         C::EnterInsert
         | C::EnterInsertAfter
         | C::InsertLineStart
+        | C::InsertColumnZero
         | C::AppendLineEnd
         | C::OpenBelow
         | C::OpenAbove
@@ -179,6 +181,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::DeleteForward(_)
         | C::DeleteBack
         | C::ReplaceChar(..)
+        | C::VirtualReplaceChar(..)
         | C::ReplaceSelectionChar(_)
         | C::ToggleCase(_)
         | C::CaseMotion { .. }
@@ -241,6 +244,7 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         C::DeleteUnder(_) => C::DeleteUnder(n),
         C::DeleteForward(_) => C::DeleteForward(n),
         C::ReplaceChar(_, c) => C::ReplaceChar(n, *c),
+        C::VirtualReplaceChar(_, c) => C::VirtualReplaceChar(n, *c),
         C::ToggleCase(_) => C::ToggleCase(n),
         C::CaseMotion { motion, case, .. } => C::CaseMotion {
             count: n,
