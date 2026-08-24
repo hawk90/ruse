@@ -585,6 +585,10 @@ struct BlockInsert {
     /// `$`-ragged append (`` <C-v>$A ``): insert at EACH row's own line-end rather than a fixed `target_col`,
     /// so trailing text aligns to variable line lengths (Vim). Only meaningful with `append`.
     to_eol: bool,
+    /// `c`/`s` (change) rather than `I`/`A` (insert/append). Only the cursor RESTING position differs: Vim
+    /// leaves a block CHANGE with the caret one char left of the top row's typed text (normal Insert-exit),
+    /// whereas `I`/`A` snap back to the block's top-left corner. The replicate geometry is identical.
+    change: bool,
 }
 
 /// How a committed command should route its captured text into the register store. A `Yank` additionally

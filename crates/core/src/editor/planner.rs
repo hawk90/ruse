@@ -68,6 +68,7 @@ fn plan_block_insert(
         rows_below,
         append,
         to_eol,
+        change,
     };
     let list = EditList::new(edits).expect("block-insert enter edits are disjoint (one per line)");
     let is_edit = !list.is_empty();
@@ -2883,17 +2884,19 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
     }
 }
 
-/// Build the paste plan for `p` (after) / `P` (before) from the unnamed register. Charwise pastes insert
-/// inline next to the cursor; linewise pastes open a whole new line below/above. An empty register is a
-/// no-op. This is the paste-geometry semantic D-026 pins down for v0.
 /// Blockwise (`CTRL-V`) yank/delete/change over the rectangle whose corners are the byte offsets `c1` and
-/// `c2` (the selection's anchor+cursor, or an operator's cursor+motion-target). Yank and Delete capture
-/// the per-row slices into a blockwise [`Register`]; the cursor lands at the block's top-left corner (Vim).
-/// Change deletes the block and enters Insert at the top-left — but only the SINGLE-ROW partial: block
-/// `c`/`I`/`A`'s replicate-typed-text-to-every-row behaviour is deferred to a later slice, so block change
-/// is intentionally NOT oracle-tested here.
+/// `c2` (a Visual-block selection's anchor+cursor, or an operator's cursor+motion-target — e.g.
+/// `c<C-v>{motion}`). Yank and Delete capture the per-row slices into a blockwise [`Register`]; the cursor
+/// lands at the block's top-left corner (Vim). Change ALSO replicates: it deletes the block on every row
+/// (capturing it blockwise), then ARMS a [`BlockInsert`] replicate session at the top-left exactly like
+/// [`plan_block_insert`], so the text typed before `<Esc>` is replicated down every block row by
+/// [`block_replicate`] (short rows follow the same skip rule). Visual-block `c`/`I`/`A` reach that
+/// machinery through [`plan_block_insert`] directly; this arm handles the operator-forced `c<C-v>` path,
+/// which is verified against nvim to match Visual-block change byte-for-byte. Dot-repeat of the
+/// operator-forced block change is NOT yet wired (the same open gap as Visual-block-insert dot-repeat) and
+/// is intentionally not oracle-tested; the replicate + single-undo-unit ARE.
 fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan {
-    let (rows, _col_lo, _col_hi) = block_rows(b, c1, c2);
+    let (rows, col_lo, _col_hi) = block_rows(b, c1, c2);
     let top_left = rows.first().map_or(c1.min(c2), |&(s, _)| s);
     // The blockwise register: each row's slice, joined by '\n' (ragged rows, no trailing newline).
     let mut text: Vec<u8> = Vec::new();
@@ -2923,12 +2926,7 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
             set_register: Some(RegWrite::Yank(reg, block_span)),
             ..nop(Mode::Normal)
         },
-        OpKind::Delete | OpKind::Change => {
-            let after_mode = if op == OpKind::Change {
-                Mode::Insert
-            } else {
-                Mode::Normal
-            };
+        OpKind::Delete => {
             // One delete per row (rows on different lines are inherently disjoint); empty rows contribute
             // nothing. `EditList::new` sorts + validates disjointness.
             let edits: Vec<Edit> = rows
@@ -2938,14 +2936,54 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
                 .collect();
             if edits.is_empty() {
                 // The block sits entirely past every line's end — nothing to remove.
-                return nop(after_mode);
+                return nop(Mode::Normal);
             }
             let list = EditList::new(edits).expect("block-row deletes are disjoint (one per line)");
             Plan {
                 action: Action::Txn { edits: list, hint },
                 cursor: top_left,
-                mode: after_mode,
+                mode: Mode::Normal,
                 is_edit: true,
+                effects: Vec::new(),
+                set_register: Some(RegWrite::Edit(reg)),
+                set_anchor: None,
+                set_mark: None,
+            }
+        }
+        // Operator-forced blockwise change (`c<C-v>{motion}`): delete the block on every row (captured
+        // blockwise, above), then ARM a replicate session at the top-left — the SAME machinery
+        // `plan_block_insert` uses for Visual-block `c`, so the text typed before `<Esc>` is replicated
+        // down every block row by `block_replicate`. Even when nothing is deleted (the block sits past
+        // every line's end) we still arm the session so a typed run replicates; `is_edit` tracks whether
+        // the delete transaction is non-empty. `append`/`to_eol` are false — `c` inserts at the left edge.
+        OpKind::Change => {
+            let top_ls = line_start(b, top_left);
+            let edits: Vec<Edit> = rows
+                .iter()
+                .filter(|&&(s, e)| e > s)
+                .map(|&(s, e)| Edit::delete(s, e - s))
+                .collect();
+            let session = BlockInsert {
+                insert_start: top_left,
+                top_left: at_col(b, top_ls, col_lo),
+                top_line_start: top_ls,
+                target_col: col_lo,
+                rows_below: rows.len().saturating_sub(1),
+                append: false,
+                to_eol: false,
+                change: true,
+            };
+            let list = EditList::new(edits).expect("block-row deletes are disjoint (one per line)");
+            let is_edit = !list.is_empty();
+            Plan {
+                action: Action::BlockInsertArm {
+                    edits: list,
+                    hint,
+                    session,
+                },
+                cursor: top_left,
+                mode: Mode::Insert,
+                is_edit,
                 effects: Vec::new(),
                 set_register: Some(RegWrite::Edit(reg)),
                 set_anchor: None,
@@ -2959,7 +2997,9 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
 /// on the top row since `session.insert_start` and insert it at `session.target_col` on each of the
 /// `rows_below` rows beneath the top line. `append` rows pad short lines with spaces; non-append (`I`/`c`)
 /// rows shorter than the target column are skipped (Vim). A newline typed on the top row aborts the
-/// replicate (Vim). The cursor returns to the block's top-left corner (`session.top_left`).
+/// replicate (Vim). For `I`/`A` the cursor returns to the block's top-left corner (`session.top_left`);
+/// for `c` (change) it rests one char left of the top row's typed text — the normal Insert-exit position,
+/// which Vim keeps for a block change (matters only when more than one char was typed).
 fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) -> Plan {
     let nop = |cursor: usize| Plan {
         action: Action::Nop,
@@ -2972,13 +3012,20 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) 
         set_mark: None,
     };
     let start = session.insert_start;
-    // The cursor rests at the block's top-left when the session ends (Vim), for both `I` and `A`.
+    // The cursor rests at the block's top-left when the session ends — for `I`/`A`, and for a `c` where the
+    // typed run is empty/aborted (nothing to sit after). A non-empty block CHANGE instead rests one char
+    // left of the top row's typed text (Vim's normal Insert-exit), computed once `typed` is known below.
     let end_cursor = session.top_left.min(b.len());
     // The text typed on the top row. Empty (or containing a newline) → nothing to replicate.
     if cur <= start || b[start..cur].contains(&b'\n') {
         return nop(end_cursor);
     }
     let typed = &b[start..cur];
+    let rest_cursor = if session.change {
+        motion::prev_boundary(b, cur)
+    } else {
+        end_cursor
+    };
 
     let mut edits: Vec<Edit> = Vec::new();
     let mut rs = session.top_line_start;
@@ -3013,12 +3060,12 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint) 
         // non-append + short row: skipped (Vim leaves lines shorter than the block's left edge untouched).
     }
     if edits.is_empty() {
-        return nop(end_cursor);
+        return nop(rest_cursor);
     }
     let list = EditList::new(edits).expect("block-replicate inserts are disjoint (one per line)");
     Plan {
         action: Action::Txn { edits: list, hint },
-        cursor: end_cursor,
+        cursor: rest_cursor,
         mode: Mode::Normal,
         is_edit: true,
         effects: Vec::new(),
