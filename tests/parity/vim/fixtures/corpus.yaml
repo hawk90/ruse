@@ -7160,6 +7160,276 @@
       }
     },
     {
+      "name": "block_I_dot",
+      "lines": [
+        "aaaa",
+        "bbbb",
+        "cccc",
+        "dddd"
+      ],
+      "keys": "<C-v>jIX<Esc>jj.",
+      "expect": {
+        "text": [
+          "Xaaaa",
+          "Xbbbb",
+          "Xcccc",
+          "Xdddd"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_A_dot",
+      "lines": [
+        "aaaa",
+        "bbbb",
+        "cccc",
+        "dddd"
+      ],
+      "keys": "<C-v>jllAX<Esc>jj.",
+      "expect": {
+        "text": [
+          "aaaXa",
+          "bbbXb",
+          "cccXc",
+          "dddXd"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_c_dot",
+      "lines": [
+        "aaaa",
+        "bbbb",
+        "cccc",
+        "dddd"
+      ],
+      "keys": "<C-v>jlcXY<Esc>jj.",
+      "expect": {
+        "text": [
+          "XYaa",
+          "XYbb",
+          "cXYc",
+          "dXYd"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "cc\ndd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_I_dot_at_col",
+      "lines": [
+        "aaaaaa",
+        "bbbbbb",
+        "cccccc",
+        "dddddd"
+      ],
+      "keys": "<C-v>jIX<Esc>jjll.",
+      "expect": {
+        "text": [
+          "Xaaaaaa",
+          "Xbbbbbb",
+          "ccXcccc",
+          "ddXdddd"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_c_dot_at_col",
+      "lines": [
+        "aaaaaa",
+        "bbbbbb",
+        "cccccc",
+        "dddddd",
+        "eeeeee"
+      ],
+      "keys": "<C-v>jllcZ<Esc>jjj.",
+      "expect": {
+        "text": [
+          "Zaaa",
+          "Zbbb",
+          "cccccc",
+          "Zddd",
+          "Zeee"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ddd\neee",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_A_dot_moved",
+      "lines": [
+        "aaaaaa",
+        "bbbbbb",
+        "cccccc",
+        "dddddd"
+      ],
+      "keys": "<C-v>jlAQ<Esc>jjl.",
+      "expect": {
+        "text": [
+          "aaQaaaa",
+          "bbQbbbb",
+          "cccQccc",
+          "dddQddd"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_I_dot_count_ignored",
+      "lines": [
+        "aaaa",
+        "bbbb",
+        "cccc"
+      ],
+      "keys": "<C-v>IX<Esc>j2.",
+      "expect": {
+        "text": [
+          "Xaaaa",
+          "Xbbbb",
+          "cccc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_I_dot_eof_clamp",
+      "lines": [
+        "aaaa",
+        "bbbb",
+        "cccc",
+        "dddd"
+      ],
+      "keys": "<C-v>jjIZ<Esc>Gk.",
+      "expect": {
+        "text": [
+          "Zaaaa",
+          "Zbbbb",
+          "ZZcccc",
+          "Zdddd"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "block_A_dollar_dot",
+      "lines": [
+        "aa",
+        "bbbb",
+        "c",
+        "dddd"
+      ],
+      "keys": "<C-v>j$AZ<Esc>jj.",
+      "expect": {
+        "text": [
+          "aaZ",
+          "bbbbZ",
+          "cZ",
+          "ddddZ"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "block_ragged_short_line",
       "lines": [
         "abcd",

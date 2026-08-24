@@ -607,6 +607,18 @@ FIXTURES: list[dict] = [
     {"name": "block_append_A_replicate", "lines": ["abc", "def"], "keys": "<C-v>jAX<Esc>"},
     {"name": "block_change_c_replicate", "lines": ["abc", "def"], "keys": "<C-v>jcX<Esc>"},
     {"name": "block_append_A_pads_short", "lines": ["ab", "c"], "keys": "<C-v>ljAX<Esc>"},
+    #     BLOCKWISE INSERT DOT-REPEAT: `.` rebuilds a block of the SAME width x height at the caret and
+    #     re-applies the same I/A/c with the same typed text (nvim reuses the geometry, positioned at the
+    #     cursor). Count on `.` is ignored for block insert; rows clamp at end-of-buffer. -------------------
+    {"name": "block_I_dot", "lines": ["aaaa", "bbbb", "cccc", "dddd"], "keys": "<C-v>jIX<Esc>jj."},
+    {"name": "block_A_dot", "lines": ["aaaa", "bbbb", "cccc", "dddd"], "keys": "<C-v>jllAX<Esc>jj."},
+    {"name": "block_c_dot", "lines": ["aaaa", "bbbb", "cccc", "dddd"], "keys": "<C-v>jlcXY<Esc>jj."},
+    {"name": "block_I_dot_at_col", "lines": ["aaaaaa", "bbbbbb", "cccccc", "dddddd"], "keys": "<C-v>jIX<Esc>jjll."},
+    {"name": "block_c_dot_at_col", "lines": ["aaaaaa", "bbbbbb", "cccccc", "dddddd", "eeeeee"], "keys": "<C-v>jllcZ<Esc>jjj."},
+    {"name": "block_A_dot_moved", "lines": ["aaaaaa", "bbbbbb", "cccccc", "dddddd"], "keys": "<C-v>jlAQ<Esc>jjl."},
+    {"name": "block_I_dot_count_ignored", "lines": ["aaaa", "bbbb", "cccc"], "keys": "<C-v>IX<Esc>j2."},
+    {"name": "block_I_dot_eof_clamp", "lines": ["aaaa", "bbbb", "cccc", "dddd"], "keys": "<C-v>jjIZ<Esc>Gk."},
+    {"name": "block_A_dollar_dot", "lines": ["aa", "bbbb", "c", "dddd"], "keys": "<C-v>j$AZ<Esc>jj."},
     #     CURSWANT — the sticky desired column. `j`/`k` keep the wanted column across a SHORT interior line
     #     instead of collapsing to its end; `$` sets curswant to MAXCOL so `j`/`k` ride each line's last char.
     # Blockwise over a short interior line: curswant keeps the block full-width (was a probe; now verified).
