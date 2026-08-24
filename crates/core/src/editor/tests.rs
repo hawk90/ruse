@@ -219,6 +219,80 @@ mod register_tests {
     }
 
     #[test]
+    fn insert_eval_splices_arithmetic_result_at_the_caret() {
+        // `i` then `<C-r>=1+2*3<CR>` inserts "7" at the caret, staying in Insert (`:help i_CTRL-R`).
+        let st = run(
+            "xy",
+            &[Command::EnterInsert, Command::InsertEval("1+2*3".into())],
+        );
+        assert_eq!(text(&st), "7xy");
+        assert_eq!(st.mode(), Mode::Insert, "stays in Insert after <C-r>=");
+        assert_eq!(st.cursor(), 1, "cursor lands after the inserted result");
+    }
+
+    #[test]
+    fn insert_eval_string_concat_and_empty_on_error() {
+        // A string-concat expression inserts its result; a malformed one inserts nothing (Vim's degrade).
+        let st = run(
+            "",
+            &[
+                Command::EnterInsert,
+                Command::InsertEval("'n='.5".into()),
+                Command::InsertEval("1 +".into()), // parse error → empty → no-op
+                Command::InsertEval("7 / 0".into()), // div-by-zero → empty → no-op
+            ],
+        );
+        assert_eq!(text(&st), "n=5", "only the valid expression inserted text");
+    }
+
+    #[test]
+    fn expr_register_arms_the_next_paste() {
+        // `"=3.0/2<CR>` arms the `"=` register; the following `p` pastes the evaluated "1.5".
+        let st = run(
+            "ab",
+            &[
+                Command::SetExprRegister("3.0/2".into()),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "a1.5b",
+            "the evaluated result pastes after the cursor"
+        );
+        assert_eq!(
+            st.registers().get(Some('=')).text(),
+            b"1.5",
+            "the \"= register holds the evaluated result"
+        );
+    }
+
+    #[test]
+    fn expr_register_empty_result_makes_paste_a_noop() {
+        // A malformed `"=` expression stores an empty result, so the following paste does nothing.
+        let st = run(
+            "ab",
+            &[
+                Command::SetExprRegister("bogus(".into()),
+                Command::Paste {
+                    after: true,
+                    count: 1,
+                    move_after: false,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "ab", "a broken expression pastes nothing");
+        assert!(
+            st.registers().get(Some('=')).is_empty(),
+            "the \"= register is empty after an evaluation error"
+        );
+    }
+
+    #[test]
     fn blackhole_delete_preserves_the_yank_register() {
         // `yy` into unnamed, then `"_dd` deletes a MIDDLE line WITHOUT clobbering the yank; `p` still pastes it.
         let st = run(

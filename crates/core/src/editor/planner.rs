@@ -925,6 +925,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let n = bytes.len();
             edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
         }
+        // `i_CTRL-R=<expr><CR>` — evaluate the expression (a minimal-honest arithmetic/string calculator,
+        // NOT full Vimscript) and splice the formatted result at the caret, staying in Insert. A malformed
+        // or unsupported expression evaluates to the empty string and inserts nothing (Vim's degrade).
+        Command::InsertEval(e) => {
+            let bytes = crate::expr::eval_or_empty(e).into_bytes();
+            if bytes.is_empty() {
+                return nop(cur, Mode::Insert);
+            }
+            let n = bytes.len();
+            edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
+        }
         // `i_CTRL-W` — delete the word before the caret (within the current line), staying in Insert.
         Command::InsertDeleteWordBack => {
             let ls = line_start(b, cur);
@@ -1642,6 +1653,19 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // `"x` — install the one-shot pending register. A pure state set: no edit, no cursor/mode change.
         Command::SetRegister(name) => Plan {
             action: Action::SetPending(*name),
+            cursor: cur,
+            mode: st.view.mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: None,
+            set_anchor: None,
+            set_mark: None,
+        },
+        // `"=<expr><CR>` — evaluate the expression, store the formatted result in the `"=` slot, and arm `=`
+        // as the pending register so the following `p`/`P` pastes it. An empty result (malformed/unsupported
+        // expression) makes that paste a no-op (Vim's degrade). Like `SetRegister`, a pure state set.
+        Command::SetExprRegister(e) => Plan {
+            action: Action::SetExprPending(crate::expr::eval_or_empty(e)),
             cursor: cur,
             mode: st.view.mode,
             is_edit: false,

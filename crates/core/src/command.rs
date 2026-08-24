@@ -124,6 +124,14 @@ pub enum Command {
     /// the same slots as paste (`"`, `0`–`9`, `-`, `a`–`z`). Recorded in the insert session, so `.` replays
     /// it and re-reads the register at replay time (Vim). Empty/unsupported register inserts nothing.
     InsertRegister(char),
+    /// `i_CTRL-R=` — insert the RESULT of evaluating an expression at the caret, staying in Insert (Vim's
+    /// expression register; `:help i_CTRL-R`). The frontend collects the expression string via a prompt and
+    /// passes it here; the editor evaluates it with [`crate::expr::eval_or_empty`] (a MINIMAL-HONEST
+    /// arithmetic/string calculator, NOT full Vimscript) and inserts the formatted result. A malformed or
+    /// unsupported expression evaluates to an EMPTY string and inserts nothing (Vim's degrade). The dot-repeat
+    /// recorder does not capture the expression string, so `.` does not replay the insert (a documented
+    /// divergence).
+    InsertEval(String),
     /// `i_CTRL-W` — delete the word before the caret, staying in Insert (Vim). Deletes `[word-back, caret)`
     /// on the current line (does not cross the line start). A no-op at column 0.
     InsertDeleteWordBack,
@@ -332,9 +340,17 @@ pub enum Command {
     /// `"x` — select the register `x` (`a`–`z`, or `A`–`Z` to append) for the FOLLOWING yank/delete/
     /// change/paste. `None` selects the unnamed register (the default). Emitted by the input engine on the
     /// register name key; the editor holds it as a one-shot pending register the next such command reads,
-    /// then clears (D-026's named-slot expansion). The numbered ring `"1`-`"9`, small-delete `"-`, and
-    /// black-hole `"_` ARE modelled (see `register.rs`); expression `"=` and clipboard `"+`/`"*` are not.
+    /// then clears (D-026's named-slot expansion). The numbered ring `"1`-`"9`, small-delete `"-`,
+    /// black-hole `"_`, and clipboard `"+`/`"*` ARE modelled (see `register.rs`); the expression register
+    /// `"=` is special and set via [`Command::SetExprRegister`] instead (its contents are computed).
     SetRegister(Option<char>),
+    /// `"=<expr><CR>` — set the expression register `"=` for the FOLLOWING paste (`:help quote=`). The
+    /// frontend collects the expression string via a prompt and passes it here; the editor evaluates it with
+    /// [`crate::expr::eval_or_empty`] (a MINIMAL-HONEST arithmetic/string calculator, NOT full Vimscript),
+    /// stores the formatted result in the `"=` slot, and arms `=` as the pending register so the next `p`/`P`
+    /// pastes it. A malformed/unsupported expression stores an EMPTY result, so that paste does nothing
+    /// (Vim's degrade). Like `SetRegister` it makes no edit and is not itself a dot-repeatable change.
+    SetExprRegister(String),
     // visual mode: enter a selection (charwise `v` / linewise `V` / blockwise `CTRL-V`); operate on it
     EnterVisual {
         kind: SelectKind,
@@ -818,6 +834,8 @@ impl Command {
                 s
             }
             Command::InsertRegister(c) => format!("insert_register {}", *c as u32),
+            // The expression text is the untrimmed remainder (it may contain spaces), like `search_next`.
+            Command::InsertEval(e) => format!("insert_eval {e}"),
             Command::InsertDeleteWordBack => "insert_delete_word_back".into(),
             Command::InsertDeleteToLineStart => "insert_delete_to_line_start".into(),
             Command::InsertIndent => "insert_indent".into(),
@@ -956,6 +974,8 @@ impl Command {
                 Some(c) => format!("select_register {}", *c as u32),
                 None => "select_register".into(),
             },
+            // The expression text is the untrimmed remainder (it may contain spaces), like `search_next`.
+            Command::SetExprRegister(e) => format!("set_expr_register {e}"),
             Command::EnterVisual { kind } => match kind {
                 SelectKind::Charwise => "enter_visual".into(),
                 SelectKind::Linewise => "enter_visual_line".into(),
@@ -1107,6 +1127,8 @@ impl Command {
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::InsertRegister(c)
             }
+            // The expression is the untrimmed remainder (may contain spaces), like `search_next`.
+            "insert_eval" => Command::InsertEval(raw.to_string()),
             "insert_delete_word_back" => Command::InsertDeleteWordBack,
             "insert_delete_to_line_start" => Command::InsertDeleteToLineStart,
             "insert_indent" => Command::InsertIndent,
@@ -1415,6 +1437,8 @@ impl Command {
                 };
                 Command::SetRegister(name)
             }
+            // The expression is the untrimmed remainder (may contain spaces), like `search_next`.
+            "set_expr_register" => Command::SetExprRegister(raw.to_string()),
             "enter_visual" => Command::EnterVisual {
                 kind: SelectKind::Charwise,
             },
@@ -1865,6 +1889,11 @@ mod tests {
             Command::SetRegister(None),
             Command::SetRegister(Some('a')),
             Command::SetRegister(Some('Z')),
+            Command::SetExprRegister("1+2*3".into()),
+            Command::SetExprRegister("'foo'.'bar'".into()),
+            Command::SetExprRegister(String::new()),
+            Command::InsertEval("3.0/2".into()),
+            Command::InsertEval("'n='.5".into()),
             Command::EnterVisual {
                 kind: SelectKind::Charwise,
             },

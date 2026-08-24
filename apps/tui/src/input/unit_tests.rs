@@ -861,6 +861,65 @@ mod tests {
     }
 
     #[test]
+    fn insert_ctrl_r_equals_opens_the_expression_prompt() {
+        // `<C-r>=` opens the expression-register prompt (`:help i_CTRL-R`): typing the expression is
+        // Pending, and `<CR>` yields `InsertEval` carrying the collected string for the editor to evaluate.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('r'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('='), Mode::Insert), Feed::Pending);
+        // The prompt renders with the `=` glyph and owns the typed buffer.
+        for c in "1+2".chars() {
+            assert_eq!(e.feed(k(c), Mode::Insert), Feed::Pending);
+        }
+        assert_eq!(e.cmdline(), Some(('=', "1+2", 3)));
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                Mode::Insert
+            ),
+            Feed::Cmd(Command::InsertEval("1+2".into()))
+        );
+        assert_eq!(e.cmdline(), None, "the prompt closes on <CR>");
+    }
+
+    #[test]
+    fn normal_quote_equals_opens_the_expression_prompt_for_paste() {
+        // `"=` opens the expression prompt; `<CR>` yields `SetExprRegister`, which arms the `"=` register so
+        // the FOLLOWING p/P pastes the result (`:help quote=`).
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('"'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('='), Mode::Normal), Feed::Pending);
+        for c in "'a'.'b'".chars() {
+            assert_eq!(e.feed(k(c), Mode::Normal), Feed::Pending);
+        }
+        assert_eq!(e.cmdline(), Some(('=', "'a'.'b'", 7)));
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                Mode::Normal
+            ),
+            Feed::Cmd(Command::SetExprRegister("'a'.'b'".into()))
+        );
+    }
+
+    #[test]
+    fn expression_prompt_aborts_on_escape() {
+        // `<Esc>` during the expression prompt closes it without emitting a command (Vim's cancel).
+        let mut e = InputEngine::new();
+        e.feed(k('"'), Mode::Normal);
+        e.feed(k('='), Mode::Normal);
+        e.feed(k('1'), Mode::Normal);
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                Mode::Normal
+            ),
+            Feed::Ignored
+        );
+        assert_eq!(e.cmdline(), None, "the prompt is gone after <Esc>");
+    }
+
+    #[test]
     fn ctrl_o_ctrl_i_and_tab_walk_the_jumplist() {
         let mut e = InputEngine::new();
         assert_eq!(

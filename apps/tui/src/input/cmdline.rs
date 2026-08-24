@@ -18,4 +18,20 @@ pub(crate) struct CmdLine {
     /// Emacs `M-x` minibuffer (F-012): the buffer holds a COMMAND NAME (not an ex line), resolved on `<CR>`
     /// against the command registry into a [`ruse_core::Command`]. `false` for the Vim `:`/`/` line.
     pub(crate) mx: bool,
+    /// Expression-register prompt (`:help quote=` / `:help i_CTRL-R`): when `Some`, the buffer holds an
+    /// EXPRESSION (not an ex line or search pattern), and `<CR>` hands it to the evaluator. The target says
+    /// what to do with the result — arm the `"=` register for the next paste, or insert it at the caret.
+    /// `None` for the ordinary `:`/`/` line and the `M-x` minibuffer.
+    pub(crate) expr: Option<ExprTarget>,
+}
+
+/// What a completed expression-register prompt does with the evaluated result (`:help quote=`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum ExprTarget {
+    /// Normal-mode `"=<expr><CR>`: arm the `"=` register so the FOLLOWING `p`/`P` pastes the result
+    /// ([`ruse_core::Command::SetExprRegister`]).
+    Paste,
+    /// Insert-mode `<C-r>=<expr><CR>`: splice the result at the caret right now
+    /// ([`ruse_core::Command::InsertEval`]).
+    Insert,
 }
