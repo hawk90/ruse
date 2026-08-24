@@ -83,6 +83,20 @@ pub enum Ex {
     Later(u32),
     /// `:[range]s/pat/rep/flags` — substitute (F-009 #2). Parsed into its pieces for the core engine.
     Substitute(SubSpec),
+    /// The ex repeat-substitute forms that reuse the LAST `:s` (pattern + replacement), like normal-mode
+    /// `&`/`g&` (verified vs nvim v0.12.4):
+    /// - bare `:[range]s` and `:[range]&` → repeat DROPPING the previous flags (`flags = Some(default)`),
+    ///   so only the first match per line is replaced — exactly like normal-mode `&`.
+    /// - `:[range]&&` → repeat KEEPING the previous flags (`flags = None`), like `g&` but scoped to the range.
+    /// - `:[range]s {flags}` (bare `s` followed by ONLY flag chars, e.g. `:s g`, `:sg`) → repeat with the
+    ///   GIVEN flags REPLACING the old ones (`flags = Some(parsed)`; empty flag run = default = the bare `:s`).
+    ///
+    /// No range = the current line. The core keeps no `:s` history, so — like `Command::RepeatSubstituteLine`
+    /// — the FRONTEND resolves this against its last-substitute state; `run_ex` treats it as a no-op.
+    RepeatSubstitute {
+        range: SubRange,
+        flags: Option<ruse_core::SubFlags>,
+    },
     /// `:[range]g/pat/cmd` (or `:g!`/`:v` for the inverse) — global two-pass command (F-009 #4).
     Global(GlobalSpec),
     /// `:noh` / `:nohlsearch` — clear the search highlight (F-009 #1).
@@ -365,6 +379,72 @@ pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
     })
 }
 
+/// The `:s`/`:&` repeat-substitute flag chars this MVP honors, mirroring [`parse_substitute`]: `g` (all
+/// matches), `i`/`I` (case override). `c` (confirm) is the interactive-loop form and is NOT wired through the
+/// repeat path (it needs the frontend confirm loop, and no confirm state is stored in the `:s` history).
+const REPEAT_SUB_FLAG_CHARS: &[char] = &['g', 'i', 'I'];
+
+/// Build [`ruse_core::SubFlags`] from a flag run (used for `:s {flags}`). `I` wins over `i` if both appear
+/// (last one set); `g` sets global. `gdefault` inverts `g` exactly like [`parse_substitute`].
+fn repeat_sub_flags(flags: &str, gdefault: bool) -> ruse_core::SubFlags {
+    let mut global = flags.contains('g');
+    if gdefault {
+        global = !global;
+    }
+    let ignore_case = if flags.contains('i') {
+        Some(true)
+    } else if flags.contains('I') {
+        Some(false)
+    } else {
+        None
+    };
+    ruse_core::SubFlags {
+        global,
+        ignore_case,
+    }
+}
+
+/// Parse the ex repeat-substitute forms — bare `:[range]s`, `:[range]s {flags}`, `:[range]&`, `:[range]&&` —
+/// into an [`Ex::RepeatSubstitute`], or `None` if the line is not one of them. Runs AFTER [`parse_substitute`]
+/// in the dispatch chain, so a real `:s/pat/rep/` (with a delimiter) is already consumed here. `gdefault`
+/// inverts the `g` flag for the `:s {flags}` form, matching [`parse_substitute`].
+fn parse_repeat_substitute(line: &str, gdefault: bool) -> Option<Ex> {
+    // Split the leading range prefix (chars `[0-9,%.$]`) from the verb, exactly like the other range verbs.
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+
+    // `:&` / `:&&` — the verb is a run of ONLY `&` (like `parse_shift`'s `>`/`<` run). One `&` drops the flags
+    // (like `:s`/`&`); two or more keep them (`:&&`). No collision with `:>`/`:<` (different verb char).
+    let verb = rest.trim();
+    if !verb.is_empty() && verb.chars().all(|c| c == '&') {
+        let range = parse_sub_range(range_str)?;
+        let flags = if verb.len() == 1 {
+            Some(ruse_core::SubFlags::default()) // `:&` — drop flags
+        } else {
+            None // `:&&` — keep the stored flags
+        };
+        return Some(Ex::RepeatSubstitute { range, flags });
+    }
+
+    // Bare `:s` / `:s {flags}` — the verb is `s`/`substitute` (matching `parse_substitute`) followed by ONLY
+    // flag chars (optionally space-separated: `:s g` and `:sg` both work in nvim). A real `:s/pat/…/` was
+    // already taken by `parse_substitute`; anything with a non-flag char (`:sort`, `:s 3`) falls through.
+    let after_verb = rest
+        .strip_prefix("substitute")
+        .or_else(|| rest.strip_prefix('s'))?;
+    let flag_run = after_verb.trim();
+    if !flag_run.chars().all(|c| REPEAT_SUB_FLAG_CHARS.contains(&c)) {
+        return None;
+    }
+    let range = parse_sub_range(range_str)?;
+    Some(Ex::RepeatSubstitute {
+        range,
+        flags: Some(repeat_sub_flags(flag_run, gdefault)),
+    })
+}
+
 /// Parse a `:[range]g/pat/cmd` line (or `:g!` / `:v` for the inverse) into a [`GlobalSpec`], or `None`
 /// if it is not a global command. The `:g` default range is the WHOLE FILE. MVP commands: `d` and
 /// `s/pat/rep/flags`.
@@ -576,6 +656,9 @@ pub fn parse_ex(line: &str) -> Ex {
             } else if let Some(spec) = parse_substitute(line, false) {
                 // `:[range]s/pat/rep/flags` — `'gdefault'` defaults off (Vim factory; config seam deferred).
                 Ex::Substitute(spec)
+            } else if let Some(ex) = parse_repeat_substitute(line, false) {
+                // Bare `:s` / `:s {flags}` / `:&` / `:&&` — repeat the last `:s` (resolved in the run loop).
+                ex
             } else if let Some(spec) = parse_global(line) {
                 // `:[range]g/pat/cmd` (or `:g!` / `:v`).
                 Ex::Global(spec)
@@ -1036,6 +1119,110 @@ mod shift_parse_tests {
         // The trailing-count form `:> 5` is deferred; with trailing junk it is not a shift.
         assert!(matches!(parse_ex("> 5"), Ex::Unknown(_)));
         assert!(matches!(parse_ex(">x"), Ex::Unknown(_)));
+    }
+}
+
+#[cfg(test)]
+mod repeat_substitute_parse_tests {
+    use super::*;
+
+    fn drop_flags() -> Option<ruse_core::SubFlags> {
+        Some(ruse_core::SubFlags::default())
+    }
+    fn g_flags() -> Option<ruse_core::SubFlags> {
+        Some(ruse_core::SubFlags {
+            global: true,
+            ignore_case: None,
+        })
+    }
+
+    #[test]
+    fn bare_s_and_ampersand_drop_flags_on_the_current_line() {
+        // Bare `:s` and `:&` both repeat the last `:s` on the current line WITHOUT its flags.
+        for line in ["s", "&"] {
+            assert_eq!(
+                parse_ex(line),
+                Ex::RepeatSubstitute {
+                    range: SubRange::CurrentLine,
+                    flags: drop_flags(),
+                },
+                "`:{line}` = flag-less current-line repeat"
+            );
+        }
+    }
+
+    #[test]
+    fn double_ampersand_keeps_flags() {
+        // `:&&` (a run of two or more `&`) KEEPS the stored flags (`flags = None`).
+        assert_eq!(
+            parse_ex("&&"),
+            Ex::RepeatSubstitute {
+                range: SubRange::CurrentLine,
+                flags: None,
+            }
+        );
+    }
+
+    #[test]
+    fn s_with_only_flags_uses_the_given_flags() {
+        // `:s g` and `:sg` (space optional) both mean "repeat with the given flag(s)".
+        for line in ["s g", "sg"] {
+            assert_eq!(
+                parse_ex(line),
+                Ex::RepeatSubstitute {
+                    range: SubRange::CurrentLine,
+                    flags: g_flags(),
+                },
+                "`:{line}` = repeat with `g`"
+            );
+        }
+        // `i`/`I` case flags come through too.
+        assert_eq!(
+            parse_ex("s i"),
+            Ex::RepeatSubstitute {
+                range: SubRange::CurrentLine,
+                flags: Some(ruse_core::SubFlags {
+                    global: false,
+                    ignore_case: Some(true),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn ranges_resolve_for_every_form() {
+        assert_eq!(
+            parse_ex("2,3&&"),
+            Ex::RepeatSubstitute {
+                range: SubRange::Lines(2, 3),
+                flags: None,
+            }
+        );
+        assert_eq!(
+            parse_ex("%s"),
+            Ex::RepeatSubstitute {
+                range: SubRange::WholeFile,
+                flags: drop_flags(),
+            }
+        );
+        assert_eq!(
+            parse_ex("5&"),
+            Ex::RepeatSubstitute {
+                range: SubRange::Lines(5, 5),
+                flags: drop_flags(),
+            }
+        );
+    }
+
+    #[test]
+    fn real_substitute_and_other_verbs_are_not_repeat_forms() {
+        // A real `:s/pat/rep/` stays a `Substitute`, not a repeat.
+        assert!(matches!(parse_ex("s/a/b/"), Ex::Substitute(_)));
+        // Other `s`-verbs and trailing junk fall through (they never reach the repeat parser or it rejects).
+        assert!(matches!(parse_ex("sort"), Ex::Sort(..)));
+        assert!(matches!(parse_ex("split"), Ex::Split));
+        assert!(matches!(parse_ex("s 3"), Ex::Unknown(_))); // trailing count is deferred (like `:d`/`:>`)
+        assert!(matches!(parse_ex("sx"), Ex::Unknown(_))); // `x` is not a repeat flag
     }
 }
 
