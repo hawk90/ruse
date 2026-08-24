@@ -301,3 +301,33 @@ fn earlier_later_clamp_at_undo_tree_bounds() {
     feed_str(&mut e, &mut ws, ":earlier<CR>");
     assert_eq!(buf(&ws), "cba", "bare `:earlier` steps one state back");
 }
+
+#[test]
+fn ctrl_v_numeric_char_entry_end_to_end() {
+    // `i_CTRL-V` drives the WHOLE stack (engine -> Command -> Workspace edit), not just the engine.
+    // Decimal `065` -> A.
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "i<C-v>065<Esc>");
+    assert_eq!(buf(&ws), "A");
+
+    // Hex byte, BMP unicode, and full unicode all land as the resolved UTF-8 char.
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "i<C-v>x41<C-v>u00e9<Esc>");
+    assert_eq!(buf(&ws), "Aé");
+
+    // Early terminator: `9` is a valid decimal digit, `x` is not — so char 9 (a tab) is inserted AND
+    // the `x` is processed as normal input. Both reach the Workspace via `Feed::Replay`.
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "i<C-v>9x<Esc>");
+    assert_eq!(buf(&ws), "\tx");
+}
+
+#[test]
+fn ctrl_v_resolved_char_is_dot_repeatable() {
+    // The resolved char is a plain `InsertChar`, so the insert session records it and `.` replays it.
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "i<C-v>065<Esc>"); // insert "A"
+    assert_eq!(buf(&ws), "A");
+    feed_str(&mut e, &mut ws, "."); // repeat the whole insert session
+    assert_eq!(buf(&ws), "AA", "`.` replays the CTRL-V-resolved char");
+}

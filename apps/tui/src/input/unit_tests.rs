@@ -967,6 +967,199 @@ mod tests {
         );
     }
 
+    // --- `i_CTRL-V` literal / numeric char entry (all expectations verified against nvim v0.12.4). ---
+
+    #[test]
+    fn insert_ctrl_v_decimal_octal_hex_and_unicode() {
+        let mut e = InputEngine::new();
+        // `C-v 065` -> decimal 65 -> `A` (resolves on the 3rd digit; each earlier key is Pending).
+        assert_eq!(e.feed(ctrl('v'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('0'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('6'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('5'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('A'))
+        );
+        // `C-v x41` -> hex byte 0x41 -> `A` (resolves on the 2nd hex digit).
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('x'), Mode::Insert);
+        assert_eq!(e.feed(k('4'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('1'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('A'))
+        );
+        // `C-v o101` -> octal 101 (= 65) -> `A`.
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('o'), Mode::Insert);
+        e.feed(k('1'), Mode::Insert);
+        e.feed(k('0'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('1'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('A'))
+        );
+        // `C-v u00e9` -> BMP U+00E9 -> `é` (resolves on the 4th hex digit).
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('u'), Mode::Insert);
+        e.feed(k('0'), Mode::Insert);
+        e.feed(k('0'), Mode::Insert);
+        e.feed(k('e'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('9'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('é'))
+        );
+        // `C-v U0001F600` -> full Unicode U+1F600 -> 😀 (resolves on the 8th hex digit).
+        e.feed(ctrl('v'), Mode::Insert);
+        for c in "U0001F60".chars() {
+            assert_eq!(e.feed(k(c), Mode::Insert), Feed::Pending);
+        }
+        assert_eq!(
+            e.feed(k('0'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('😀'))
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_v_decimal_clamps_to_a_single_byte() {
+        // nvim caps a decimal (and octal) `C-v` code at 255: `C-v 999` -> `ÿ` (U+00FF), `C-v 200` -> `È`.
+        let mut e = InputEngine::new();
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('9'), Mode::Insert);
+        e.feed(k('9'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('9'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('\u{ff}'))
+        );
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('2'), Mode::Insert);
+        e.feed(k('0'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('0'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('È'))
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_v_early_terminator_resolves_then_reprocesses_the_key() {
+        // `C-v 9x`: `9` alone is a valid decimal digit (Pending); `x` is not, so the code resolves to
+        // char 9 (a tab) AND `x` is then inserted as normal input. Both reach the driver via `Replay`.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('v'), Mode::Insert), Feed::Pending);
+        assert_eq!(e.feed(k('9'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('x'), Mode::Insert),
+            Feed::Replay(vec![Command::InsertChar('\t'), Command::InsertChar('x'),])
+        );
+        // A two-digit decimal then a letter terminator: `C-v 65a` -> `A` then `a`.
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('6'), Mode::Insert);
+        e.feed(k('5'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('a'), Mode::Insert),
+            Feed::Replay(vec![Command::InsertChar('A'), Command::InsertChar('a'),])
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_v_terminator_that_leaves_insert() {
+        // `C-v 65<Esc>` inserts `A` then the `<Esc>` leaves Insert (nvim behaviour), so the resolved char
+        // and `EnterNormal` both reach the driver.
+        let mut e = InputEngine::new();
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('6'), Mode::Insert);
+        e.feed(k('5'), Mode::Insert);
+        assert_eq!(
+            e.feed(esc(), Mode::Insert),
+            Feed::Replay(vec![Command::InsertChar('A'), Command::EnterNormal])
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_v_max_digits_then_next_key_is_normal_input() {
+        // After the digit cap is reached the collector is done: the following key is ordinary Insert input.
+        let mut e = InputEngine::new();
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('0'), Mode::Insert);
+        e.feed(k('6'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('5'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('A'))
+        );
+        assert_eq!(
+            e.feed(k('Z'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('Z'))
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_v_prefix_with_no_digits_inserts_the_terminator_literally() {
+        // `C-v x z`: the `x` hex prefix collects zero digits, so nvim inserts the terminator `z` and no
+        // code char. Likewise `C-v o 8` -> `8` (8 is not an octal digit).
+        let mut e = InputEngine::new();
+        e.feed(ctrl('v'), Mode::Insert);
+        assert_eq!(e.feed(k('x'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(k('z'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('z'))
+        );
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('o'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('8'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('8'))
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_v_inserts_special_keys_literally() {
+        // `C-v` then a non-form key inserts it verbatim: a real tab, a `<CR>`, the escape char, or the
+        // control byte of another `C-<key>` (`C-v C-v` -> 0x16). All verified against nvim.
+        let tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl('v'), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.feed(tab, Mode::Insert),
+            Feed::Cmd(Command::InsertChar('\t'))
+        );
+        e.feed(ctrl('v'), Mode::Insert);
+        assert_eq!(
+            e.feed(enter, Mode::Insert),
+            Feed::Cmd(Command::InsertChar('\r'))
+        );
+        e.feed(ctrl('v'), Mode::Insert);
+        assert_eq!(
+            e.feed(esc(), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('\u{1b}'))
+        );
+        e.feed(ctrl('v'), Mode::Insert);
+        assert_eq!(
+            e.feed(ctrl('v'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('\u{16}'))
+        );
+        // A plain non-form char is also literal: `C-v z` -> `z`.
+        e.feed(ctrl('v'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('z'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('z'))
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_v_code_keys_are_not_lang_mapped() {
+        // The `C-v` form selector and code digits are raw selectors, so an active Lang-Arg map must NOT
+        // rewrite them. With `0 -> 9` mapped, `C-v 065` still resolves the raw `065` (= `A`), not `965`.
+        let mut e = InputEngine::new();
+        e.lang_map.insert('0', '9');
+        e.lang_active = true;
+        e.feed(ctrl('v'), Mode::Insert);
+        e.feed(k('0'), Mode::Insert);
+        e.feed(k('6'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('5'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('A'))
+        );
+    }
+
     #[test]
     fn normal_quote_equals_opens_the_expression_prompt_for_paste() {
         // `"=` opens the expression prompt; `<CR>` yields `SetExprRegister`, which arms the `"=` register so
