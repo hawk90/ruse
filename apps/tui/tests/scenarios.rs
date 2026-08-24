@@ -14,6 +14,20 @@ use ruse_tui::input::{parse_ex, Ex, Feed, GlobalPayload, InputEngine};
 /// `:s`/`:g` through the substitute/global engines, everything else per its `Feed`.
 fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
     let mode = ws.focused().view.mode();
+    // Mirror session.rs's `i_CTRL-E` / `i_CTRL-Y` frontend intercept: the engine has no buffer, so the
+    // frontend resolves the char below / above the caret and hands it to the engine, which emits (and
+    // dot-records) a concrete `InsertChar`. `None` (short/absent adjacent line) is a no-op.
+    if matches!(mode, ruse_core::Mode::Insert)
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(key.code, KeyCode::Char('e' | 'y'))
+        && e.insert_plain_text_ctx()
+    {
+        let ch = ws.adjacent_line_char(matches!(key.code, KeyCode::Char('y')));
+        if let Feed::Cmd(cmd) = e.insert_copy_char(ch) {
+            ws.apply(&cmd);
+        }
+        return;
+    }
     match e.feed(key, mode) {
         Feed::Cmd(cmd) => {
             ws.apply(&cmd);
@@ -649,5 +663,82 @@ fn g_ampersand_keeps_flags_over_the_whole_file() {
         buf(&ws),
         "XXX XXX\nbbb XXX\n",
         "`g&` keeps the `g` and covers every line"
+    );
+}
+
+// --- i_CTRL-E / i_CTRL-Y: insert the char BELOW / ABOVE the caret (verified vs nvim v0.12.4) ---
+
+/// `i_CTRL-E` at column 0 of the top line inserts the character directly below (same column).
+#[test]
+fn insert_ctrl_e_copies_char_below() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "i<C-e>");
+    assert_eq!(buf(&ws), "whello\nworld", "`C-e` inserts 'w' (below col 0)");
+}
+
+/// `i_CTRL-Y` at column 0 of the bottom line inserts the character directly above (same column).
+#[test]
+fn insert_ctrl_y_copies_char_above() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "ji<C-y>");
+    assert_eq!(buf(&ws), "hello\nhworld", "`C-y` inserts 'h' (above col 0)");
+}
+
+/// The caret advances after each insert, so a run of `C-Y` copies successive columns from the line above.
+#[test]
+fn insert_ctrl_y_run_copies_successive_columns() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "ji<C-y><C-y><C-y>");
+    assert_eq!(buf(&ws), "hello\nhelworld", "three `C-y` copy 'h','e','l'");
+}
+
+/// `i_CTRL-E` uses the caret's column, not column 0: from mid-line it copies the char below THAT column.
+#[test]
+fn insert_ctrl_e_uses_caret_column() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "lli<C-e>"); // caret at col 2 (on 'l')
+    assert_eq!(buf(&ws), "herllo\nworld", "col 2 below 'world' is 'r'");
+}
+
+/// No character at that column on the adjacent line (line too short) → a no-op (Vim's bell case).
+#[test]
+fn insert_ctrl_e_short_line_below_is_noop() {
+    let (mut e, mut ws) = session("hello\nab");
+    feed_str(&mut e, &mut ws, "$i<C-e>"); // caret at col 4 ('o'); 'ab' has no col 4
+    assert_eq!(
+        buf(&ws),
+        "hello\nab",
+        "no char below col 4 → nothing inserted"
+    );
+}
+
+/// No line below the current line → a no-op.
+#[test]
+fn insert_ctrl_e_no_line_below_is_noop() {
+    let (mut e, mut ws) = session("hello");
+    feed_str(&mut e, &mut ws, "i<C-e>");
+    assert_eq!(buf(&ws), "hello", "no line below → nothing inserted");
+}
+
+/// No line above the current line → a no-op.
+#[test]
+fn insert_ctrl_y_no_line_above_is_noop() {
+    let (mut e, mut ws) = session("hello\nworld");
+    feed_str(&mut e, &mut ws, "i<C-y>");
+    assert_eq!(buf(&ws), "hello\nworld", "no line above → nothing inserted");
+}
+
+/// Dot-repeat replays the RESOLVED LITERAL char (matching nvim), not a re-resolution against the new line.
+/// On line 2, `C-Y` copies 'a' from line 1; `.` on line 3 inserts that same 'a', NOT line 2's 'b'.
+#[test]
+fn insert_ctrl_y_dot_repeats_the_literal_char() {
+    let (mut e, mut ws) = session("ax\nby\ncz");
+    feed_str(&mut e, &mut ws, "ji<C-y><Esc>"); // line 2 -> "aby"
+    assert_eq!(buf(&ws), "ax\naby\ncz");
+    feed_str(&mut e, &mut ws, "j0."); // line 3: `.` inserts the literal 'a', not a re-resolved 'b'
+    assert_eq!(
+        buf(&ws),
+        "ax\naby\nacz",
+        "`.` repeats the copied char literally"
     );
 }

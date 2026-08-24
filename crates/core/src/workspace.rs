@@ -1041,6 +1041,33 @@ impl Workspace {
         std::str::from_utf8(&b[s..e]).ok().map(str::to_string)
     }
 
+    /// The character on the line directly ABOVE (`above == true`) or BELOW the focused caret, at the
+    /// caret's current column — the buffer value the frontend needs to resolve `i_CTRL-Y` / `i_CTRL-E`
+    /// (the engine has no buffer). Returns `None` when there is no such line, or the adjacent line has no
+    /// character at that column (a Vim no-op / bell — verified against nvim v0.12.4).
+    ///
+    /// Column here is the count of CHARACTERS (Unicode scalar values) before the caret on the current
+    /// line. This equals Vim's display/virtual column for plain single-width, TAB-free text — the cases
+    /// this slice targets and tests. TABs and wide (2-cell) characters are NOT virtual-column-mapped yet,
+    /// so a caret past a TAB (or a wide char on the adjacent line) can diverge from Vim; that refinement
+    /// is deferred (documented caveat).
+    #[must_use]
+    pub fn adjacent_line_char(&self, above: bool) -> Option<char> {
+        let pane = self.focused();
+        let b = pane.doc.bytes();
+        let cur = pane.view.cursor();
+        // Char column of the caret on the current line.
+        let ls = crate::pos::line_start(b, cur);
+        let col = std::str::from_utf8(b.get(ls..cur)?).ok()?.chars().count();
+        // The adjacent row. `checked_sub` guards "no line above" on the first line; a row past the last
+        // line resolves to an empty slice below, which yields no char (so "no line below" also → None).
+        let row = crate::pos::line_of(b, cur);
+        let target = if above { row.checked_sub(1)? } else { row + 1 };
+        let ts = crate::pos::nth_line_start(b, target);
+        let te = crate::pos::line_end(b, ts);
+        std::str::from_utf8(b.get(ts..te)?).ok()?.chars().nth(col)
+    }
+
     /// Set one `:set` option on the focused view (swap-trick, like [`Workspace::set_indent`]).
     pub fn set_option(&mut self, opt: crate::editor::EditorOption) {
         let vid = self.windows[self.focus].view;
@@ -1626,6 +1653,27 @@ mod tests {
             11,
             "whole-word search skips foobar"
         );
+    }
+
+    /// `adjacent_line_char` backs `i_CTRL-E`/`i_CTRL-Y`: the char below/above the caret at its column, or
+    /// `None` for a short/absent adjacent line (a Vim no-op). Column = char count before the caret.
+    #[test]
+    fn adjacent_line_char_below_and_above() {
+        let mut w = Workspace::new(b"hello\nworld\n".to_vec());
+        // Caret at col 0 of line 1: below = 'w', above = None (no line above).
+        assert_eq!(w.adjacent_line_char(false), Some('w'));
+        assert_eq!(w.adjacent_line_char(true), None);
+        // Caret at col 2 of line 1 ('l'): below 'world' at col 2 = 'r'.
+        w.place_focused_cursor(2);
+        assert_eq!(w.adjacent_line_char(false), Some('r'));
+        // Caret on line 2, col 0: above 'hello' col 0 = 'h', below = None (no line below).
+        w.place_focused_cursor(6);
+        assert_eq!(w.adjacent_line_char(true), Some('h'));
+        assert_eq!(w.adjacent_line_char(false), None);
+        // Column past the end of the adjacent (shorter) line → None.
+        let mut w = Workspace::new(b"hello\nab\n".to_vec());
+        w.place_focused_cursor(4); // col 4 of "hello"; "ab" has no col 4
+        assert_eq!(w.adjacent_line_char(false), None);
     }
 
     /// `gd`/`gD` (go-to-declaration, TEXT heuristic): the frontend reads the keyword under the cursor and
