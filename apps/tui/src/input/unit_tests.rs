@@ -1075,6 +1075,42 @@ mod tests {
     }
 
     #[test]
+    fn insert_ctrl_r_ctrl_w_and_ctrl_a_are_a_no_op() {
+        // Vim insert-mode `i_CTRL-R_CTRL-W` / `_CTRL-A` insert NOTHING — the word-under-cursor inserts are
+        // COMMAND-LINE mode only (`c_CTRL-R_CTRL-W`). Previously the engine mis-read the ctrl-modified char
+        // as a register name and emitted `InsertRegister('w')`/`('a')`. Every ctrl-modified selector after
+        // insert `C-r` is now a clean no-op (the `C-r C-r`/`C-o`/`C-p` insert-literally variants are not
+        // implemented). Verified against nvim v0.12.4.
+        for sel in ['w', 'a', 'r', 'o', 'p'] {
+            let mut e = InputEngine::new();
+            assert_eq!(e.feed(ctrl('r'), Mode::Insert), Feed::Pending);
+            assert_eq!(
+                e.feed(ctrl(sel), Mode::Insert),
+                Feed::Ignored,
+                "ctrl-modified `{sel}` after insert C-r is a no-op, not a register insert"
+            );
+        }
+        // Regression guard: plain register names / special registers / the expr prompt still work.
+        for name in ['a', '"', '/', ':', '.', '%'] {
+            let mut e = InputEngine::new();
+            e.feed(ctrl('r'), Mode::Insert);
+            assert_eq!(
+                e.feed(k(name), Mode::Insert),
+                Feed::Cmd(Command::InsertRegister(name)),
+                "plain `C-r {name}` still inserts the register"
+            );
+        }
+        let mut e = InputEngine::new();
+        e.feed(ctrl('r'), Mode::Insert);
+        assert_eq!(e.feed(k('='), Mode::Insert), Feed::Pending);
+        assert_eq!(
+            e.cmdline().map(|c| c.0),
+            Some('='),
+            "`C-r =` still opens the expression prompt"
+        );
+    }
+
+    #[test]
     fn special_registers_parse_as_paste_register_names() {
         // `"/`, `":`, `".`, `"%` arm register selection so a following `p`/`P` pastes from them.
         for name in ['/', ':', '.', '%'] {
@@ -3872,6 +3908,10 @@ mod cmdline_tests {
         special(KeyCode::Enter)
     }
 
+    fn ctrl(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
     #[test]
     fn colon_opens_the_namespace_the_engine_owns_the_line_and_cr_executes() {
         // F-026 #1/#2: `:` enters the namespace; the engine (not the UI) owns the buffer; <CR> runs it.
@@ -3887,6 +3927,56 @@ mod cmdline_tests {
         );
         assert_eq!(e.feed(enter(), Mode::Normal), Feed::ExecuteEx("wq".into()));
         assert_eq!(e.cmdline(), None, "<CR> closes the one-shot command line");
+    }
+
+    #[test]
+    fn cmdline_ctrl_r_ctrl_w_and_ctrl_a_splice_the_word_under_cursor() {
+        // `c_CTRL-R_CTRL-W` (<cword>) / `c_CTRL-R_CTRL-A` (<cWORD>): the engine owns the cmdline buffer but
+        // has no document, so `C-r C-w`/`C-r C-a` emit a request; the frontend resolves the word and
+        // splices it via `cmdline_splice`. e.g. buffer word `foobar` under cursor, `:%s/` + `C-r C-w`
+        // → `:%s/foobar` (verified against nvim v0.12.4).
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k(':'), Mode::Normal), Feed::Pending);
+        for c in "%s/".chars() {
+            assert_eq!(e.feed(k(c), Mode::Normal), Feed::Pending);
+        }
+        // `C-r` arms the prefix (no register infra leaks here — just Pending); `C-w` requests the <cword>.
+        assert_eq!(e.feed(ctrl('r'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('w'), Mode::Normal),
+            Feed::CmdlineInsertUnder { big: false }
+        );
+        // The frontend's response splices the resolved word at the caret; the line stays open.
+        e.cmdline_splice("foobar");
+        assert_eq!(e.cmdline(), Some((':', "%s/foobar", 9)));
+
+        // `C-r C-a` requests the <cWORD>.
+        assert_eq!(e.feed(ctrl('r'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(ctrl('a'), Mode::Normal),
+            Feed::CmdlineInsertUnder { big: true }
+        );
+
+        // An unsupported selector after `C-r` aborts cleanly. Crucially `C-p` is consumed as the (deferred)
+        // selector WHILE armed, NOT as `<C-p>` history recall — and the buffer is untouched.
+        assert_eq!(e.feed(ctrl('r'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(ctrl('p'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.cmdline(),
+            Some((':', "%s/foobar", 9)),
+            "unsupported C-r selector leaves the line unchanged"
+        );
+
+        // It also works on a `/` search line, splicing more text at the caret.
+        let mut e = InputEngine::new();
+        e.feed(k('/'), Mode::Normal);
+        e.feed(ctrl('r'), Mode::Normal);
+        assert_eq!(
+            e.feed(ctrl('w'), Mode::Normal),
+            Feed::CmdlineInsertUnder { big: false }
+        );
+        e.cmdline_splice("needle");
+        assert_eq!(e.cmdline(), Some(('/', "needle", 6)));
     }
 
     #[test]

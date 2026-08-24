@@ -1569,6 +1569,21 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     }
                 }
             }
+            // `c_CTRL-R_CTRL-W` / `c_CTRL-R_CTRL-A`: splice the `<cword>` / `<cWORD>` under the BUFFER
+            // cursor into the open command line. The engine owns the cmdline buffer but has no document, so
+            // resolve the word here and hand it back. No string under the cursor → nothing spliced (nvim
+            // inserts nothing and stays on the line). An incsearch preview refreshes on the next redraw,
+            // which reads the updated `engine.cmdline()`.
+            Feed::CmdlineInsertUnder { big } => {
+                let word = if big {
+                    ws.cbig_word_under_cursor()
+                } else {
+                    ws.cword_under_cursor()
+                };
+                if let Some(w) = word {
+                    engine.cmdline_splice(&w);
+                }
+            }
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => {
                 // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
