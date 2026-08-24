@@ -7,7 +7,7 @@
 //! a readable regression guard.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{SplitDir, SubFlags, Workspace};
+use ruse_core::{Command, SplitDir, SubFlags, Workspace};
 use ruse_tui::input::{parse_ex, Ex, Feed, GlobalPayload, InputEngine};
 
 /// Route one engine outcome exactly as `main.rs::run` does: edits through the swap-trick `Workspace`,
@@ -40,6 +40,20 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
                 // input engine (the frontend run loop's `run_global_normal`), out of scope for this helper.
                 if let GlobalPayload::Core(cmd) = &g.cmd {
                     let _ = ws.global(g.range, &g.pattern, g.negate, cmd);
+                }
+            }
+            // `:earlier {N}` / `:later {N}` — chronological undo-time travel. Mirrors the run loop
+            // (session.rs): drive N of the `g-`/`g+` commands (`UndoOlder`/`UndoNewer`). The or-pattern
+            // binds the count but not the direction, so recover the direction from a re-parse, exactly as
+            // the run loop does.
+            Ex::Earlier(n) | Ex::Later(n) => {
+                let cmd = if matches!(parse_ex(&text), Ex::Earlier(_)) {
+                    Command::UndoOlder
+                } else {
+                    Command::UndoNewer
+                };
+                for _ in 0..n {
+                    ws.apply(&cmd);
                 }
             }
             _ => {}
@@ -194,4 +208,96 @@ fn split_windows_share_one_buffer_and_undo() {
     );
     feed_str(&mut e, &mut ws, "u");
     assert_eq!(buf(&ws), "hello", "undo restores the shared buffer");
+}
+
+/// Build a BRANCHED undo tree so chronological (`g-`/`g+`) traversal differs from a plain linear undo:
+/// three separate insert sessions grow "" → "a" → "ba" → "cba" (nodes A,B,C — each `i` leaves the cursor
+/// at column 0, so the next insert PREPENDS), then `g-g-` rewinds to "a" and a fourth insert forks a new
+/// branch "Xa" (node D). The chronological creation order is root, A, B, C, D, so from D a single `g-`
+/// lands on the chronologically-previous state "cba" — ACROSS the branch, exactly as Vim's `g-` does.
+/// Deterministic, so two calls yield identical trees.
+fn branched_history() -> (InputEngine, Workspace) {
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "ia<Esc>"); // "a"   (node A)
+    feed_str(&mut e, &mut ws, "ib<Esc>"); // "ba"  (node B — prepended)
+    feed_str(&mut e, &mut ws, "ic<Esc>"); // "cba" (node C — prepended)
+    feed_str(&mut e, &mut ws, "g-g-"); // rewind chronologically to "a"
+    assert_eq!(
+        buf(&ws),
+        "a",
+        "precondition: two g- from \"cba\" reach \"a\""
+    );
+    feed_str(&mut e, &mut ws, "iX<Esc>"); // "Xa"  (node D — forks a new branch off A)
+    assert_eq!(buf(&ws), "Xa", "precondition: the fork produced \"Xa\"");
+    (e, ws)
+}
+
+#[test]
+fn earlier_later_match_repeated_g_minus_g_plus() {
+    // `:earlier {N}` must reach the SAME buffer state as N presses of `g-`, and `:later {N}` the same as
+    // N presses of `g+` — the whole point of the ex commands. Drive both paths end-to-end through the real
+    // InputEngine + Workspace over an identical branched tree, so this asserts the parse (`earlier N`),
+    // the N-count, AND the branch-aware chronological walk all agree with the keystroke path.
+    let (mut e_ex, mut ws_ex) = branched_history();
+    let (mut e_key, mut ws_key) = branched_history();
+
+    // BACKWARD: `:earlier 3` == `g-` × 3. From "Xa": "Xa" → "cba" → "ba" → "a".
+    feed_str(&mut e_ex, &mut ws_ex, ":earlier 3<CR>");
+    feed_str(&mut e_key, &mut ws_key, "g-g-g-");
+    assert_eq!(
+        buf(&ws_ex),
+        "a",
+        "`:earlier 3` walks three chronological states back to \"a\""
+    );
+    assert_eq!(
+        buf(&ws_ex),
+        buf(&ws_key),
+        "`:earlier 3` matches three presses of `g-`"
+    );
+
+    // FORWARD: `:later 2` == `g+` × 2. From "a": "a" → "ba" → "cba".
+    feed_str(&mut e_ex, &mut ws_ex, ":later 2<CR>");
+    feed_str(&mut e_key, &mut ws_key, "g+g+");
+    assert_eq!(
+        buf(&ws_ex),
+        "cba",
+        "`:later 2` walks two chronological states forward to \"cba\""
+    );
+    assert_eq!(
+        buf(&ws_ex),
+        buf(&ws_key),
+        "`:later 2` matches two presses of `g+`"
+    );
+
+    // The `ea` / `lat` abbreviations drive the identical path.
+    let (mut e_ab, mut ws_ab) = branched_history();
+    feed_str(&mut e_ab, &mut ws_ab, ":ea 3<CR>");
+    assert_eq!(buf(&ws_ab), "a", "`:ea` is `:earlier`");
+    feed_str(&mut e_ab, &mut ws_ab, ":lat 1<CR>");
+    assert_eq!(buf(&ws_ab), "ba", "`:lat` is `:later`");
+}
+
+#[test]
+fn earlier_later_clamp_at_undo_tree_bounds() {
+    // An over-large count must clamp at the ends of the chronological history and never panic — `:earlier`
+    // past the root stops at the oldest state, `:later` past the tip stops at the newest.
+    let (mut e, mut ws) = branched_history(); // at "Xa", root + 4 states
+
+    feed_str(&mut e, &mut ws, ":earlier 999<CR>");
+    assert_eq!(
+        buf(&ws),
+        "",
+        "`:earlier` past the root clamps at the oldest state"
+    );
+
+    feed_str(&mut e, &mut ws, ":later 999<CR>");
+    assert_eq!(
+        buf(&ws),
+        "Xa",
+        "`:later` past the tip clamps at the newest state"
+    );
+
+    // A bare `:earlier` (no count) is exactly one step, matching Vim's default of 1.
+    feed_str(&mut e, &mut ws, ":earlier<CR>");
+    assert_eq!(buf(&ws), "cba", "bare `:earlier` steps one state back");
 }
