@@ -219,6 +219,89 @@ mod register_tests {
     }
 
     #[test]
+    fn special_registers_insert_and_paste_from_synced_values() {
+        // `"/ ": ". "%` resolve from the frontend-synced values (`:help quote_/`). Build a fresh state
+        // (EditorState is not Clone) with the four slots synced.
+        let synced = || {
+            let mut st = EditorState::new(b"xy".to_vec());
+            st.set_special_registers(
+                Some("pat".into()),
+                Some("wq".into()),
+                Some("hello".into()),
+                Some("src/main.rs".into()),
+            );
+            st
+        };
+        // `<C-r>/` inserts the last search pattern at the caret (charwise, staying in Insert).
+        let mut st_ins = synced();
+        apply_command(&mut st_ins, &Command::EnterInsert);
+        apply_command(&mut st_ins, &Command::InsertRegister('/'));
+        assert_eq!(
+            text(&st_ins),
+            "patxy",
+            "<C-r>/ inserts the last search pattern"
+        );
+        assert_eq!(st_ins.mode(), Mode::Insert);
+
+        // `"%p` pastes the file name after the caret (charwise). Arm `"%` then paste.
+        let mut st_pct = synced();
+        apply_command(&mut st_pct, &Command::SetRegister(Some('%')));
+        apply_command(
+            &mut st_pct,
+            &Command::Paste {
+                after: true,
+                count: 1,
+                move_after: false,
+            },
+        );
+        assert_eq!(text(&st_pct), "xsrc/main.rsy", "\"%p pastes the file name");
+
+        // `":p` reads its slot too.
+        let mut st_colon = synced();
+        apply_command(&mut st_colon, &Command::SetRegister(Some(':')));
+        apply_command(
+            &mut st_colon,
+            &Command::Paste {
+                after: true,
+                count: 1,
+                move_after: false,
+            },
+        );
+        assert_eq!(text(&st_colon), "xwqy", "\":p pastes the last Ex line");
+    }
+
+    #[test]
+    fn special_registers_are_read_only_from_yank_and_paste_back() {
+        // A yank NAMING `"/` is swallowed: the slot keeps its synced value and the unnamed register is
+        // untouched (read-only, `:help quote_/`). Then `"/p` still pastes the original pattern.
+        let mut st = EditorState::new(b"abc\n".to_vec());
+        st.set_special_registers(Some("pat".into()), None, None, None);
+        // `"/yy` — arm "/ and yank the line into it (a no-op write).
+        apply_command(&mut st, &Command::SetRegister(Some('/')));
+        apply_command(&mut st, &Command::Yank(1, Motion::Line));
+        assert_eq!(
+            st.registers().get(Some('/')).text(),
+            b"pat",
+            "yank into \"/ is swallowed"
+        );
+        assert!(
+            st.registers().unnamed().is_empty(),
+            "a read-only-register yank never touches unnamed"
+        );
+        // `"/p` pastes the still-intact pattern after the caret.
+        apply_command(&mut st, &Command::SetRegister(Some('/')));
+        apply_command(
+            &mut st,
+            &Command::Paste {
+                after: true,
+                count: 1,
+                move_after: false,
+            },
+        );
+        assert_eq!(text(&st), "apatbc\n");
+    }
+
+    #[test]
     fn insert_eval_splices_arithmetic_result_at_the_caret() {
         // `i` then `<C-r>=1+2*3<CR>` inserts "7" at the caret, staying in Insert (`:help i_CTRL-R`).
         let st = run(

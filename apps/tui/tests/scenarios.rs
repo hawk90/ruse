@@ -30,9 +30,11 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
     }
     match e.feed(key, mode) {
         Feed::Cmd(cmd) => {
+            sync_special(e, ws);
             ws.apply(&cmd);
         }
         Feed::Replay(cmds) => {
+            sync_special(e, ws);
             for c in &cmds {
                 ws.apply(c);
             }
@@ -78,6 +80,19 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
         },
         Feed::Pending | Feed::Ignored => {}
     }
+}
+
+/// Mirror session.rs's `sync_special_registers` for the two ENGINE-DERIVED read-only special registers:
+/// `"/` (last search pattern) and `".` (last inserted text). The `":`/`"%` slots need external state (the
+/// last Ex line / the focused file path) this stateless helper does not carry, so those are exercised in
+/// the core tests and in dedicated cases here that sync them explicitly.
+fn sync_special(e: &InputEngine, ws: &mut Workspace) {
+    ws.set_special_registers(
+        e.last_search().map(str::to_string),
+        None,
+        e.last_inserted_text(),
+        None,
+    );
 }
 
 /// Feed a Vim-style keystroke script: literal chars, plus `<Esc>` / `<CR>` / `<BS>` / `<C-x>` tokens.
@@ -817,4 +832,114 @@ fn insert_ctrl_y_dot_repeats_the_literal_char() {
         "ax\naby\nacz",
         "`.` repeats the copied char literally"
     );
+}
+
+// ---- Read-only special registers "/ ": ". "%  (issue #487) ----
+
+/// `"/p` pastes the last search pattern, and `C-r /` inserts it in Insert — both resolved through the
+/// frontend sync mirrored in `sync_special` (nvim: after `/bar`, `getreg("/")` == "bar").
+#[test]
+fn special_slash_register_pastes_and_inserts_last_search() {
+    let (mut e, mut ws) = session("bar baz\n");
+    feed_str(&mut e, &mut ws, "/bar<CR>"); // records "/ = "bar"
+    feed_str(&mut e, &mut ws, "gg0"); // back to line start
+    feed_str(&mut e, &mut ws, "\"/p"); // paste "/ after the caret → "bbarar baz"
+    assert_eq!(
+        buf(&ws),
+        "bbarar baz\n",
+        "\"/p pastes the last search pattern"
+    );
+
+    // `C-r /` in Insert splices the same pattern at the caret.
+    let (mut e, mut ws) = session("x\n");
+    feed_str(&mut e, &mut ws, "/foo<CR>");
+    feed_str(&mut e, &mut ws, "gg0i<C-r>/<Esc>");
+    assert_eq!(buf(&ws), "foox\n", "<C-r>/ inserts the last search pattern");
+}
+
+/// `".p` / `C-r .` reproduce the last inserted text (Vim's `".`, matching an `i_CTRL-A` replay).
+#[test]
+fn special_dot_register_repeats_last_inserted_text() {
+    let (mut e, mut ws) = session("\n");
+    feed_str(&mut e, &mut ws, "ihello<Esc>"); // ". = "hello"; caret rests on the final 'o'
+    feed_str(&mut e, &mut ws, "\".p"); // paste it after the caret → "hellohello"
+    assert_eq!(
+        buf(&ws),
+        "hellohello\n",
+        "\".p pastes the last inserted text"
+    );
+
+    let (mut e, mut ws) = session("\n");
+    feed_str(&mut e, &mut ws, "iAB<Esc>");
+    feed_str(&mut e, &mut ws, "o<C-r>.<Esc>"); // open a line, insert ". via C-r .
+    assert_eq!(
+        buf(&ws),
+        "AB\nAB\n",
+        "<C-r>. re-inserts the last inserted text"
+    );
+}
+
+/// `"/` is READ-ONLY: a yank NAMING it is swallowed, so a following `"/p` still pastes the search pattern,
+/// not the yanked line (nvim: `"/yy` leaves `@/` unchanged).
+#[test]
+fn special_slash_register_is_read_only() {
+    let (mut e, mut ws) = session("bar\nZZZ\n");
+    feed_str(&mut e, &mut ws, "/bar<CR>"); // "/ = "bar"
+    feed_str(&mut e, &mut ws, "j\"/yy"); // try to yank line 2 ("ZZZ") into "/ — a no-op
+    feed_str(&mut e, &mut ws, "gg0\"/p"); // "/p still pastes "bar"
+    assert_eq!(
+        buf(&ws),
+        "bbarar\nZZZ\n",
+        "yank into \"/ is swallowed; \"/p pastes the intact pattern"
+    );
+}
+
+/// `":` (last Ex line) and `"%` (file name) resolve from external state. This stateless harness has no
+/// Ex-line/file plumbing (and `step`'s `sync_special` only carries `"/`/`".`), so drive the reading key
+/// through the engine directly with a full sync in front — exactly the order session.rs's
+/// `sync_special_registers` runs before dispatch — then verify `C-r :` / `"%p`, and the unnamed-buffer case.
+#[test]
+fn special_colon_and_percent_registers_resolve_and_empty_when_unnamed() {
+    let ctrl = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+    let ch = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+    // Feed one key and apply its command with the full special-register set synced in front (mirrors
+    // session.rs). Only the reading key needs this; prefix keys go through the normal `step`.
+    let read = |e: &mut InputEngine,
+                ws: &mut Workspace,
+                key: KeyEvent,
+                last_ex: Option<&str>,
+                file: Option<&str>| {
+        let mode = ws.focused().view.mode();
+        if let Feed::Cmd(cmd) = e.feed(key, mode) {
+            ws.set_special_registers(
+                None,
+                last_ex.map(str::to_string),
+                None,
+                file.map(str::to_string),
+            );
+            ws.apply(&cmd);
+        }
+    };
+
+    // `C-r :` inserts the last Ex line ("wq") in Insert.
+    let (mut e, mut ws) = session("x\n");
+    feed_str(&mut e, &mut ws, "A"); // enter Insert at end of line
+    step(&mut e, &mut ws, ctrl('r')); // arm the C-r prefix (Pending)
+    read(&mut e, &mut ws, ch(':'), Some("wq"), None); // <C-r>: reads ":
+    feed_str(&mut e, &mut ws, "<Esc>");
+    assert_eq!(buf(&ws), "xwq\n", "<C-r>: inserts the last Ex line");
+
+    // `"%p` pastes the file name after the caret.
+    let (mut e, mut ws) = session("x\n");
+    step(&mut e, &mut ws, ch('"')); // arm register selection (Pending)
+    step(&mut e, &mut ws, ch('%')); // SetRegister('%') — reads nothing
+    read(&mut e, &mut ws, ch('p'), None, Some("src/main.rs")); // Paste reads "%
+    assert_eq!(buf(&ws), "xsrc/main.rs\n", "\"%p pastes the file name");
+
+    // Unnamed buffer: "% is empty, so "%p is a no-op.
+    let (mut e, mut ws) = session("x\n");
+    step(&mut e, &mut ws, ch('"'));
+    step(&mut e, &mut ws, ch('%'));
+    read(&mut e, &mut ws, ch('p'), None, None);
+    assert_eq!(buf(&ws), "x\n", "\"% is empty for an unnamed buffer");
 }

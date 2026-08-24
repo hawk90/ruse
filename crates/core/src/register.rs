@@ -136,6 +136,23 @@ pub struct RegisterStore {
     /// result here with [`RegisterStore::set_expr`]; a following paste/insert reads it via `get(Some('='))`.
     /// Always charwise (a computed value has no line geometry). Empty when evaluation failed (Vim's degrade).
     expr: Register,
+    /// The four READ-ONLY special registers (`:help quote_/`, `quote_:`, `quote_.`, `quote%`): `"/` = the
+    /// last search pattern, `":` = the last executed Ex command-line (no leading `:`), `".` = the last
+    /// inserted text, `"%` = the current file name. Their DATA lives frontend-side (the search ring, the ex
+    /// plumbing, the last-insert record, the focused buffer's path), so the [`Workspace`](crate::Workspace)
+    /// syncs it into these slots via [`RegisterStore::set_special`] before dispatching a register-reading
+    /// command; `get` then returns them. Always charwise. A yank/delete NAMING one is swallowed (read-only).
+    special: SpecialRegisters,
+}
+
+/// The four read-only special-register slots (`"/ ": ". "%`). Each carries an always-charwise [`Register`]
+/// resolved from frontend state; see [`RegisterStore::special`].
+#[derive(Clone, Debug, Default)]
+struct SpecialRegisters {
+    search: Register,
+    last_ex: Register,
+    inserted: Register,
+    file: Register,
 }
 
 impl Default for RegisterStore {
@@ -149,6 +166,7 @@ impl Default for RegisterStore {
             blackhole: Register::default(),
             clipboard: Register::default(),
             expr: Register::default(),
+            special: SpecialRegisters::default(),
         }
     }
 }
@@ -222,9 +240,43 @@ impl RegisterStore {
         self.expr = Register::charwise(result.into_bytes());
     }
 
+    /// Whether `name` selects one of the READ-ONLY special registers (`"/ ": ". "%`). Their content is
+    /// synced from the frontend via [`RegisterStore::set_special`]; a yank/delete naming one is swallowed.
+    #[must_use]
+    pub fn is_readonly_special(name: Option<char>) -> bool {
+        matches!(name, Some('/') | Some(':') | Some('.') | Some('%'))
+    }
+
+    /// Sync the four read-only special registers (`:help quote_/`, `quote_:`, `quote_.`, `quote%`) from the
+    /// frontend's current state, each as an always-charwise slot. `None` clears a slot (e.g. no search yet,
+    /// or an unnamed buffer for `"%`). The [`Workspace`](crate::Workspace) calls this before dispatching a
+    /// register-reading command so a following `"/p` / `C-r :` / `".p` / `"%p` resolves to the live value.
+    ///
+    /// - `search`  → `"/` — the last search pattern (`/`, `?`, `*`, `#`, `n`), no delimiters.
+    /// - `last_ex` → `":` — the last executed Ex command-line, WITHOUT the leading `:`.
+    /// - `inserted`→ `".` — the text of the most recent insert session.
+    /// - `file`    → `"%` — the current file name as displayed (relative path); empty when unnamed.
+    pub fn set_special(
+        &mut self,
+        search: Option<String>,
+        last_ex: Option<String>,
+        inserted: Option<String>,
+        file: Option<String>,
+    ) {
+        let charwise = |s: Option<String>| Register::charwise(s.unwrap_or_default().into_bytes());
+        self.special.search = charwise(search);
+        self.special.last_ex = charwise(last_ex);
+        self.special.inserted = charwise(inserted);
+        self.special.file = charwise(file);
+    }
+
     /// Read a register for a paste. `None` → unnamed; `'0'` → the yank register; `'1'`–`'9'` → the numbered
-    /// delete-ring; `'-'` → the small-delete register; a named letter (case-insensitive) → its slot; any
-    /// unsupported name falls back to the unnamed register rather than inventing an empty one.
+    /// delete-ring; `'-'` → the small-delete register; `'/'`/`':'`/`'.'`/`'%'` → the read-only special
+    /// registers (last search / last Ex line / last insert / file name, synced by [`set_special`]); a named
+    /// letter (case-insensitive) → its slot; any unsupported name falls back to the unnamed register rather
+    /// than inventing an empty one.
+    ///
+    /// [`set_special`]: RegisterStore::set_special
     #[must_use]
     pub fn get(&self, name: Option<char>) -> &Register {
         match name {
@@ -234,6 +286,11 @@ impl RegisterStore {
             Some('_') => &self.blackhole,
             Some('+') | Some('*') => &self.clipboard,
             Some('=') => &self.expr,
+            // The read-only special registers (`:help quote_/`), synced from the frontend by `set_special`.
+            Some('/') => &self.special.search,
+            Some(':') => &self.special.last_ex,
+            Some('.') => &self.special.inserted,
+            Some('%') => &self.special.file,
             Some(c) => match Self::index(c) {
                 Some(i) => &self.named[i],
                 None => &self.unnamed,
@@ -263,6 +320,10 @@ impl RegisterStore {
             None => self.unnamed = reg,
             // The blackhole `"_` swallows the write — the unnamed slot and every other register are untouched.
             Some('_') => {}
+            // The read-only special registers (`"/ ": ". "%`) can't be written from the edit path: a
+            // yank/delete naming one is a no-op that leaves every slot (including unnamed) untouched. Their
+            // content is owned by the frontend and refreshed via `set_special` (`:help quote_/`).
+            Some('/') | Some(':') | Some('.') | Some('%') => {}
             // `"+`/`"*` write the clipboard mirror; like a named write they also mirror the unnamed slot
             // (Vim: a yank/delete fills the unnamed register regardless of which register was named).
             Some('+') | Some('*') => {
@@ -627,6 +688,68 @@ mod tests {
         // A trailing newline from outside reads back linewise.
         s.set_clipboard_from_external(b"whole\n".to_vec());
         assert!(s.get(Some('+')).is_linewise());
+    }
+
+    #[test]
+    fn special_registers_resolve_from_set_special() {
+        // `"/ ": ". "%` read the frontend-synced values, always charwise (`:help quote_/`).
+        let mut s = RegisterStore::new();
+        s.set_special(
+            Some("pat".into()),
+            Some("wq".into()),
+            Some("typed".into()),
+            Some("src/main.rs".into()),
+        );
+        assert_eq!(s.get(Some('/')).text(), b"pat");
+        assert_eq!(s.get(Some(':')).text(), b"wq");
+        assert_eq!(s.get(Some('.')).text(), b"typed");
+        assert_eq!(s.get(Some('%')).text(), b"src/main.rs");
+        for c in ['/', ':', '.', '%'] {
+            assert!(!s.get(Some(c)).is_linewise(), "special regs are charwise");
+        }
+    }
+
+    #[test]
+    fn special_registers_default_empty_and_none_clears() {
+        let mut s = RegisterStore::new();
+        // Untouched: every special slot is empty (an unnamed buffer / no search yet).
+        for c in ['/', ':', '.', '%'] {
+            assert!(s.get(Some(c)).is_empty());
+        }
+        // A `None` field clears its slot (e.g. focusing an unnamed buffer empties `"%`).
+        s.set_special(Some("x".into()), None, None, None);
+        assert_eq!(s.get(Some('/')).text(), b"x");
+        assert!(s.get(Some('%')).is_empty(), "None clears `\"%`");
+    }
+
+    #[test]
+    fn special_registers_are_read_only_from_the_edit_path() {
+        let mut s = RegisterStore::new();
+        s.set_special(Some("pat".into()), None, None, None);
+        s.yank(None, Register::charwise(b"keep".to_vec())); // seed unnamed + "0
+                                                            // A yank/delete NAMING a special register is swallowed: the slot, unnamed, "0 and the
+                                                            // rings are all untouched (`"/ ": ". "%` are read-only, `:help quote_/`).
+        s.yank(Some('/'), Register::charwise(b"clobber".to_vec()));
+        s.delete(Some('%'), Register::linewise(b"line".to_vec()));
+        assert_eq!(
+            s.get(Some('/')).text(),
+            b"pat",
+            "\"/ unchanged by a yank into it"
+        );
+        assert!(
+            s.get(Some('%')).is_empty(),
+            "\"% unchanged by a delete into it"
+        );
+        assert_eq!(
+            s.unnamed().text(),
+            b"keep",
+            "a special-reg write never touches unnamed"
+        );
+        assert_eq!(s.get(Some('0')).text(), b"keep", "nor \"0");
+        assert!(s.get(Some('1')).is_empty(), "nor the numbered ring");
+        assert!(s.small_delete().is_empty(), "nor the small-delete register");
+        assert!(RegisterStore::is_readonly_special(Some('/')));
+        assert!(!RegisterStore::is_readonly_special(Some('a')));
     }
 
     #[test]

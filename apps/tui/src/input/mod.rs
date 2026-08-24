@@ -868,6 +868,32 @@ impl InputEngine {
         self.last_search.as_ref().map(|(p, _, _)| p.as_str())
     }
 
+    /// The text of the most recent insert session (Vim's `".` register, `:help quote_.`), reconstructed
+    /// from the recorded insert body — the same commands `i_CTRL-A` replays. `None` when nothing has been
+    /// inserted yet. The body is replayed over an empty string: `InsertChar`/`InsertNewline`/`InsertTab`
+    /// append; `DeleteBack` removes the last char (so `abX<BS>cd` yields the net `abcd`, matching what a
+    /// `i_CTRL-A` replay produces). Uncommon in-insert edits (`i_CTRL-W`/`i_CTRL-U`/`i_CTRL-R`) are not
+    /// modelled here — a documented, minor divergence from nvim's raw-keystroke capture for those cases.
+    #[must_use]
+    pub fn last_inserted_text(&self) -> Option<String> {
+        if self.last_inserted.is_empty() {
+            return None;
+        }
+        let mut out = String::new();
+        for cmd in &self.last_inserted {
+            match cmd {
+                Command::InsertChar('\r') | Command::InsertNewline => out.push('\n'),
+                Command::InsertChar(c) => out.push(*c),
+                Command::InsertTab => out.push('\t'),
+                Command::DeleteBack => {
+                    out.pop();
+                }
+                _ => {}
+            }
+        }
+        Some(out)
+    }
+
     /// End the current Normal-grammar sequence: the Normal-family layer drops its OWN transient state
     /// (count / operator / awaiting / forced-wise) at a command boundary. This is the layer resetting
     /// itself, not the engine reaching into a foreign layer (KL-OBL-4) — sticky repeat state survives.
@@ -1491,6 +1517,13 @@ impl InputEngine {
                         || c == '-'
                         || c == '+'
                         || c == '*'
+                        // The read-only special registers `"/ ": ". "%` (`:help i_CTRL-R`): `C-r /`
+                        // inserts the last search pattern, `C-r :` the last Ex line, `C-r .` the last
+                        // inserted text, `C-r %` the file name. Resolved by the frontend's `set_special`.
+                        || c == '/'
+                        || c == ':'
+                        || c == '.'
+                        || c == '%'
                         || c.is_ascii_alphanumeric() =>
                 {
                     self.action(Command::InsertRegister(c))
@@ -2575,7 +2608,14 @@ impl InputEngine {
                             || c == '_'
                             // `"+`/`"*` — the system clipboard (`:help quoteplus`).
                             || c == '+'
-                            || c == '*' =>
+                            || c == '*'
+                            // The read-only special registers `"/ ": ". "%` as a paste SOURCE (`"/p`,
+                            // `".p`, `"%p`): arm them like any slot; the following `p`/`P` reads the
+                            // frontend-synced value. A yank/delete naming one is swallowed (read-only).
+                            || c == '/'
+                            || c == ':'
+                            || c == '.'
+                            || c == '%' =>
                     {
                         self.action(Command::SetRegister(Some(c)))
                     }

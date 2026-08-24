@@ -305,6 +305,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut fixeol_on = false;
     // The last `:s` (pattern, replacement, flags) — recorded on every substitute so `&` can repeat it (F-009).
     let mut last_substitute: Option<(String, String, ruse_core::SubFlags)> = None;
+    // The last executed Ex command-line (WITHOUT the leading `:`) — Vim's `":` register (`:help quote_:`),
+    // read by `C-r :`. Recorded on every `Feed::ExecuteEx`.
+    let mut last_ex_line: Option<String> = None;
     // The three modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads:
     // command palette (`C-p`), buffer-line jump (`C-l`), buffer switch (`C-b`). At most one is open.
     let mut palette: Option<Picker<Command>> = None;
@@ -1252,6 +1255,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             // A finished `:`-line (F-026): parse + run it. `submit_search` already folded a `/`-line
             // into `Feed::Cmd` inside the engine, so the frontend only sees the ex case here.
             Feed::ExecuteEx(text) => {
+                // Record the executed command-line for Vim's `":` register (`:help quote_:`), without the
+                // leading `:` (the engine already strips it). Read by `C-r :` / `":p`.
+                last_ex_line = Some(text.clone());
                 match parse_ex(&text) {
                     Ex::NoHighlight => search_hl = None, // `:noh` clears the search highlight (F-009 #1)
                     // `:set (no)hlsearch/incsearch` — frontend render toggles (behavior stays on by default).
@@ -1627,11 +1633,15 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 if let Some(p) = search_pattern(&cmd) {
                     search_hl = Some(p);
                 }
+                // Refresh the read-only special registers `"/ ": ". "%` before dispatch so a `"/p` /
+                // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
+                sync_special_registers(&mut ws, &engine, &last_ex_line, &files);
                 run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
             }
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
+                sync_special_registers(&mut ws, &engine, &last_ex_line, &files);
                 for cmd in cmds {
                     run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
                 }
@@ -1651,6 +1661,29 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         let _ = out.flush();
     }
     Ok(())
+}
+
+/// Sync the four read-only special registers `"/ ": ". "%` of the focused view from the current frontend
+/// state (`:help quote_/`), so a `"/p` / `C-r :` / `".p` / `"%p` dispatched next reads the live values:
+/// `"/` from the search ring, `":` from the last executed Ex line, `".` from the last insert session, and
+/// `"%` from the focused buffer's on-disk path (empty for an unnamed buffer). Called before dispatch.
+fn sync_special_registers(
+    ws: &mut Workspace,
+    engine: &InputEngine,
+    last_ex_line: &Option<String>,
+    files: &Files,
+) {
+    // `"%` shows the file name as it was opened (a relative path, matching Vim's default `%`); an unnamed
+    // buffer has no `Files` entry, so the slot stays empty.
+    let file = files
+        .get(&ws.focused_buffer())
+        .map(|bf| bf.path.display().to_string());
+    ws.set_special_registers(
+        engine.last_search().map(str::to_string),
+        last_ex_line.clone(),
+        engine.last_inserted_text(),
+        file,
+    );
 }
 
 /// Dispatch the key after a `C-w` prefix (F-007 MVP window commands): `w`/`C-w` focus next, `s` split
