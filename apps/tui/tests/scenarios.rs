@@ -519,6 +519,82 @@ fn count_one_insert_is_unchanged() {
     );
 }
 
+// `i_CTRL-A` / `i_CTRL-@` (issue: insert previously-inserted text). Every expectation below was captured
+// from nvim v0.12.4 via `nvim -u NONE` + `nvim_feedkeys`, so these pin Vim-faithful behavior.
+
+#[test]
+fn insert_ctrl_a_reinserts_last_insert_text() {
+    // nvim: `ihello<Esc>A<C-a><Esc>` -> "hellohello" (C-A re-inserts the previous session's text).
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "ihello<Esc>");
+    feed_str(&mut e, &mut ws, "A<C-a><Esc>");
+    assert_eq!(buf(&ws), "hellohello");
+}
+
+#[test]
+fn insert_ctrl_a_replays_resulting_text_after_backspace() {
+    // nvim: `ihel<BS>lo<Esc>` leaves "helo" (hel, BS deletes 'l', then "lo"); `A <C-a><Esc>` then appends
+    // a space and re-inserts "helo" -> "helo helo". C-A replays the keystrokes (backspace and all).
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "ihel<BS>lo<Esc>");
+    assert_eq!(buf(&ws), "helo");
+    feed_str(&mut e, &mut ws, "A <C-a><Esc>");
+    assert_eq!(buf(&ws), "helo helo");
+}
+
+#[test]
+fn insert_ctrl_at_reinserts_then_leaves_insert() {
+    // nvim: `ihello<Esc>A<C-@>x` -> C-@ inserts "hello" ("hellohello") AND leaves Insert, so the next `x`
+    // is a Normal-mode delete of the last char -> "hellohell".
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "ihello<Esc>");
+    feed_str(&mut e, &mut ws, "A<C-@>x");
+    assert_eq!(buf(&ws), "hellohell");
+    assert_eq!(ws.focused().view.mode(), ruse_core::Mode::Normal);
+}
+
+#[test]
+fn insert_ctrl_a_survives_a_non_insert_change() {
+    // nvim: `ihello<Esc>0xA<C-a><Esc>` -> the intervening `x` (a non-insert change) does NOT clobber the
+    // last-inserted text, so C-A still re-inserts "hello": "ello" + "hello" = "ellohello".
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "ihello<Esc>");
+    feed_str(&mut e, &mut ws, "0xA<C-a><Esc>");
+    assert_eq!(buf(&ws), "ellohello");
+}
+
+#[test]
+fn insert_ctrl_a_output_rolls_into_the_session_text() {
+    // nvim: `ihello<Esc>iworld<C-a><Esc>` -> "hellworldhelloo" (world typed before 'o', then C-A inserts
+    // "hello"); the session's last-inserted text is now "worldhello", so a further `A<C-a><Esc>` appends
+    // "worldhello" -> "hellworldhellooworldhello".
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "ihello<Esc>");
+    feed_str(&mut e, &mut ws, "iworld<C-a><Esc>");
+    assert_eq!(buf(&ws), "hellworldhelloo");
+    feed_str(&mut e, &mut ws, "A<C-a><Esc>");
+    assert_eq!(buf(&ws), "hellworldhellooworldhello");
+}
+
+#[test]
+fn insert_ctrl_a_with_no_previous_insert_is_a_noop() {
+    // nvim: with no prior insert, `i<C-a>abc<Esc>` inserts only "abc" (C-A is a no-op — "E29: No inserted
+    // text yet") and stays in Insert.
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "i<C-a>abc<Esc>");
+    assert_eq!(buf(&ws), "abc");
+}
+
+#[test]
+fn insert_ctrl_at_with_no_previous_insert_still_leaves_insert() {
+    // nvim: with no prior insert, `i<C-@>xy<Esc>` leaves the buffer EMPTY: C-@ inserts nothing but still
+    // stops Insert, so `xy` runs in Normal mode (harmless on an empty line).
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "i<C-@>xy<Esc>");
+    assert_eq!(buf(&ws), "");
+    assert_eq!(ws.focused().view.mode(), ruse_core::Mode::Normal);
+}
+
 #[test]
 fn count_change_family_does_not_repeat_text() {
     // Regression: `c` count applies to the MOTION, never to text repetition. `3cwX<Esc>` changes three
