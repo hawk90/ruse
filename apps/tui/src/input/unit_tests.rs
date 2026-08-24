@@ -49,6 +49,27 @@ mod tests {
     }
 
     #[test]
+    fn gm_middle_of_line_is_a_percentage_motion() {
+        // Bare `gM` = 50% of the line (the count is a percentage, not a repeat); `{count}gM` uses the count.
+        assert_eq!(feed("gM"), Feed::Cmd(Command::Move(50, Motion::MidLine)));
+        assert_eq!(feed("25gM"), Feed::Cmd(Command::Move(25, Motion::MidLine)));
+        assert_eq!(
+            feed("100gM"),
+            Feed::Cmd(Command::Move(100, Motion::MidLine))
+        );
+        // Operator-aware: bare `dgM` deletes to the middle (50%), `d25gM` to a quarter.
+        assert_eq!(feed("dgM"), Feed::Cmd(Command::Delete(50, Motion::MidLine)));
+        assert_eq!(
+            feed("d25gM"),
+            Feed::Cmd(Command::Delete(25, Motion::MidLine))
+        );
+        assert_eq!(feed("ygM"), Feed::Cmd(Command::Yank(50, Motion::MidLine)));
+        // `gm` (screen-line middle) is DEFERRED — it needs the window width, which the engine lacks — so it
+        // aborts as operator-pending rather than aliasing `gM` (see the GSecond note).
+        assert_eq!(feed("gm"), Feed::Ignored);
+    }
+
+    #[test]
     fn g_prefixed_display_line_motions_alias_plain_motions() {
         // ruse does not soft-wrap (one buffer line == one display row), so Vim's display-line motions
         // `gj`/`gk`/`g0`/`g$`/`g^` equal `j`/`k`/`0`/`$`/`^` — exactly as Vim itself under `nowrap`.

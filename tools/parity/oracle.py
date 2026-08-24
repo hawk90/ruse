@@ -231,6 +231,16 @@ FIXTURES: list[dict] = [
     {"name": "g0_display_bol", "lines": ["hello world"], "keys": "$g0"},
     {"name": "gdollar_display_eol", "lines": ["hello world"], "keys": "g$"},
     {"name": "gcaret_display_first_non_blank", "lines": ["  foo bar"], "keys": "$g^"},
+    #     `gM` — go to `count`% of the line by char count (bare `gM` = the middle char). The trailing `x`
+    #     makes the landing observable (deletes the char under the cursor). ruse counts CHARACTERS where
+    #     nvim counts display cells, so these ASCII fixtures agree; tab/wide-char lines are a documented
+    #     divergence and deliberately not fixtured.
+    {"name": "gM_middle_char", "lines": ["abcdefghij"], "keys": "gMx"},
+    {"name": "gM_from_eol", "lines": ["abcdefghij"], "keys": "$gMx"},
+    {"name": "gM_count_25_percent", "lines": ["abcdefghij"], "keys": "25gMx"},
+    {"name": "gM_count_100_percent", "lines": ["abcdefghij"], "keys": "100gMx"},
+    {"name": "gM_odd_length", "lines": ["abcde"], "keys": "gMx"},
+    {"name": "dgM_operator_to_middle", "lines": ["abcdefghij"], "keys": "dgM"},
     #     text objects -------------------------------------------------------------------------------
     {"name": "di_bracket_inner", "lines": ["pre[abc]post"], "keys": "f[di["},
     {"name": "da_brace_around", "lines": ["pre{ab}post"], "keys": "f{da{"},

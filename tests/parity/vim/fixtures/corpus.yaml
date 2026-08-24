@@ -713,6 +713,150 @@
       }
     },
     {
+      "name": "gM_middle_char",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "gMx",
+      "expect": {
+        "text": [
+          "abcdeghij"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gM_from_eol",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "$gMx",
+      "expect": {
+        "text": [
+          "abcdeghij"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gM_count_25_percent",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "25gMx",
+      "expect": {
+        "text": [
+          "abdefghij"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gM_count_100_percent",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "100gMx",
+      "expect": {
+        "text": [
+          "abcdefghi"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "j",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gM_odd_length",
+      "lines": [
+        "abcde"
+      ],
+      "keys": "gMx",
+      "expect": {
+        "text": [
+          "abde"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "dgM_operator_to_middle",
+      "lines": [
+        "abcdefghij"
+      ],
+      "keys": "dgM",
+      "expect": {
+        "text": [
+          "fghij"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcde",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "di_bracket_inner",
       "lines": [
         "pre[abc]post"

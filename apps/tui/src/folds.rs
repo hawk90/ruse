@@ -194,6 +194,27 @@ pub fn parse_fold_motion(keys: &str) -> FoldMotionParse {
     FoldMotionParse::Ready { motion, count }
 }
 
+/// `zE` — ELIMINATE every fold in the window (Vim: "Eliminate all folds"). Non-nesting slice-1 folds are a
+/// flat per-view vector, so this simply empties it (nvim removes the folds outright, not merely opens them —
+/// verified: after `zE` `foldclosed()`/`foldlevel()` report no folds). Cursor and buffer bytes are untouched.
+pub fn eliminate_all(folds: &mut Vec<Fold>) {
+    folds.clear();
+}
+
+/// `zv` — "view cursor line": OPEN just enough folds to make `line` visible, without deleting any. For the
+/// non-nesting slice-1 model that means open the (single) fold containing `line` if it is closed; other
+/// folds keep their state (verified against nvim: `zv` on a line inside fold A opens A but leaves fold B
+/// closed). Returns whether a closed fold was opened (so the caller can skip a redundant repaint/no-op).
+pub fn open_cursor_fold(folds: &mut [Fold], line: usize) -> bool {
+    match fold_at(folds, line) {
+        Some(idx) if folds[idx].closed => {
+            folds[idx].closed = false;
+            true
+        }
+        _ => false,
+    }
+}
+
 /// The one-line summary a closed fold paints on its start row: `▸ {N} lines: {first-line text}` (trimmed).
 #[must_use]
 pub fn summary(fold: &Fold, first_line: &str) -> String {
@@ -355,6 +376,37 @@ mod tests {
         let before = folds.clone();
         insert_closed_fold(&mut folds, 5, 4);
         assert_eq!(folds, before);
+    }
+
+    #[test]
+    fn eliminate_all_clears_every_fold() {
+        // `zE` removes all folds outright (regardless of open/closed), matching nvim's "eliminate".
+        let mut folds = vec![f(2, 4, true), f(6, 8, false)];
+        eliminate_all(&mut folds);
+        assert!(folds.is_empty(), "zE eliminates every fold");
+        // No-op on an already-empty set.
+        eliminate_all(&mut folds);
+        assert!(folds.is_empty());
+    }
+
+    #[test]
+    fn open_cursor_fold_opens_only_the_containing_fold() {
+        // `zv` opens the fold under the cursor and leaves the rest closed (nvim-verified).
+        let mut folds = vec![f(2, 4, true), f(6, 8, true)];
+        assert!(open_cursor_fold(&mut folds, 3), "opened fold A");
+        assert!(!folds[0].closed, "fold A now open");
+        assert!(folds[1].closed, "fold B stays closed");
+        // The fold is OPENED, never removed — zv keeps the fold, unlike zE/zd.
+        assert_eq!(folds.len(), 2);
+        // A cursor on the fold's start row still opens it.
+        let mut folds = vec![f(2, 4, true)];
+        assert!(open_cursor_fold(&mut folds, 2));
+        // Already-open fold → no change, returns false.
+        assert!(!open_cursor_fold(&mut folds, 3));
+        // No fold at the cursor → no-op, returns false.
+        let mut folds = vec![f(2, 4, true)];
+        assert!(!open_cursor_fold(&mut folds, 6));
+        assert!(folds[0].closed, "an unrelated fold is untouched");
     }
 
     #[test]
