@@ -538,6 +538,71 @@ pub(crate) fn cword_under_cursor(b: &[u8], cur: usize, big: bool) -> Option<(usi
     first_nonblank(i).map(|k| inner_word_span(b, k, false))
 }
 
+/// The keyword (Word-class run) ending exactly AT the caret — the "base" Vim's insert-mode keyword
+/// completion (`i_CTRL-N` / `i_CTRL-P`) matches against. Returns `(start, base)`: `start` is the byte
+/// offset where the run begins, `base` its text (empty, with `start == cur`, when the char before the
+/// caret is not keyword-class or the caret is at a line/buffer start). Char-boundary safe: a multibyte
+/// keyword char is all `Word`-class bytes, so walking back to the first non-word byte lands on a boundary.
+pub(crate) fn keyword_before_cursor(b: &[u8], cur: usize) -> (usize, &str) {
+    let mut s = cur.min(b.len());
+    while s > 0 && class(b[s - 1]) == Class::Word {
+        s -= 1;
+    }
+    (
+        s,
+        std::str::from_utf8(&b[s..cur.min(b.len())]).unwrap_or(""),
+    )
+}
+
+/// The current-buffer keyword-completion candidates for `i_CTRL-N` / `i_CTRL-P` (F-003), in Vim's scan
+/// order. `base` is [`keyword_before_cursor`]'s text; the result is every keyword in the buffer that
+/// STARTS WITH `base`, ordered forward from the caret to end-of-buffer then wrapping from the buffer
+/// start back to the caret, with the word under construction (the run at the caret) excluded and later
+/// DUPLICATES removed (first occurrence in scan order wins). Matching is case-sensitive (nvim default
+/// `noignorecase`; the 'ignorecase'/'infercase' interaction is out of scope for this slice). C-P walks
+/// this same list backward — the caller cycles the index, so only one order is built. Verified against
+/// nvim v0.12.4.
+pub(crate) fn keyword_completions(b: &[u8], cur: usize, base: &str) -> Vec<String> {
+    // The run under construction begins here; it is never offered as its own candidate. Only meaningful
+    // when `base` is non-empty (an empty base sits after a non-word char, so no run starts at the caret).
+    let base_start = cur.saturating_sub(base.len());
+    // All keyword runs, as (start, text), in positional order.
+    let mut runs: Vec<(usize, &str)> = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if class(b[i]) == Class::Word {
+            let s = i;
+            while i < b.len() && class(b[i]) == Class::Word {
+                i += 1;
+            }
+            if let Ok(t) = std::str::from_utf8(&b[s..i]) {
+                runs.push((s, t));
+            }
+        } else {
+            i += 1;
+        }
+    }
+    // Forward-from-caret first (runs starting at/after the caret), then wrap from the buffer start.
+    let ordered = runs
+        .iter()
+        .filter(|(s, _)| *s >= cur)
+        .chain(runs.iter().filter(|(s, _)| *s < cur));
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for (s, t) in ordered {
+        if !base.is_empty() && *s == base_start {
+            continue; // the word being typed — never its own candidate
+        }
+        if !t.starts_with(base) {
+            continue;
+        }
+        if seen.insert(t) {
+            out.push((*t).to_string());
+        }
+    }
+    out
+}
+
 /// The word plus its trailing whitespace (or leading, if there is no trailing) — Vim `aw` / `aW`.
 /// `{count}iw`: the inner-word span extended forward over `count` alternating class runs (Vim). Each unit is
 /// a maximal run of one class (a word-class run or a whitespace run), so `2iw` = word + following whitespace,

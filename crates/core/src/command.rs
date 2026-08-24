@@ -274,6 +274,18 @@ pub enum Command {
     /// `i_CTRL-U` — delete everything before the caret on the current line, staying in Insert. Deletes back
     /// to the first non-blank; when the caret is already at/before it, deletes the leading indent too (Vim).
     InsertDeleteToLineStart,
+    /// `i_CTRL-N` / `i_CTRL-P` — apply one keyword-completion cycle step (F-003): delete `back` CHARACTERS
+    /// before the caret (the completion region currently in the buffer — the typed base, or the previously
+    /// applied candidate) and insert `text` (the newly selected candidate, or the original typed text when
+    /// cycling back), staying in Insert with the caret after the inserted text. The frontend resolves the
+    /// candidate set from the buffer (the engine has no buffer); the engine cycles the index and emits this.
+    /// Recorded in the insert session, so `.` replays the chain of steps and reproduces the accepted text
+    /// literally (matches nvim v0.12.4). `text` is a keyword (no whitespace), or empty when the original
+    /// base was empty.
+    CompleteWord {
+        back: u32,
+        text: String,
+    },
     /// `i_CTRL-T` — indent the current line by one shiftwidth, staying in Insert; the caret rides with the
     /// text. `i_CTRL-D` dedents by one shiftwidth. Independent of the caret column (Vim).
     InsertIndent,
@@ -1052,6 +1064,9 @@ impl Command {
             Command::InsertEval(e) => format!("insert_eval {e}"),
             Command::InsertDeleteWordBack => "insert_delete_word_back".into(),
             Command::InsertDeleteToLineStart => "insert_delete_to_line_start".into(),
+            // `back` then the candidate text (the untrimmed remainder, like `insert_eval`; a keyword has no
+            // spaces, and an empty text round-trips through the trailing space).
+            Command::CompleteWord { back, text } => format!("complete_word {back} {text}"),
             Command::InsertIndent => "insert_indent".into(),
             Command::InsertDedent => "insert_dedent".into(),
             Command::InsertTab => "insert_tab".into(),
@@ -1361,6 +1376,18 @@ impl Command {
             "insert_eval" => Command::InsertEval(raw.to_string()),
             "insert_delete_word_back" => Command::InsertDeleteWordBack,
             "insert_delete_to_line_start" => Command::InsertDeleteToLineStart,
+            "complete_word" => {
+                // `back` is the leading token; the candidate text is the untrimmed remainder (empty when
+                // the original base was empty, so a bare `complete_word N ` round-trips).
+                let (b, t) = raw.split_once(' ').unwrap_or((raw, ""));
+                let back = b
+                    .parse::<u32>()
+                    .map_err(|_| CommandParseError::BadArgument(line.to_string()))?;
+                Command::CompleteWord {
+                    back,
+                    text: t.to_string(),
+                }
+            }
             "insert_indent" => Command::InsertIndent,
             "insert_dedent" => Command::InsertDedent,
             "insert_tab" => Command::InsertTab,
@@ -1988,6 +2015,14 @@ mod tests {
             Command::InsertRegister('-'),
             Command::InsertDeleteWordBack,
             Command::InsertDeleteToLineStart,
+            Command::CompleteWord {
+                back: 2,
+                text: "foobar".into(),
+            },
+            Command::CompleteWord {
+                back: 6,
+                text: String::new(),
+            },
             Command::InsertIndent,
             Command::InsertDedent,
             Command::InsertTab,

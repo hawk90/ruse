@@ -1168,6 +1168,24 @@ impl Workspace {
         std::str::from_utf8(b.get(ts..te)?).ok()?.chars().nth(col)
     }
 
+    /// Insert-mode keyword completion source for `i_CTRL-N` / `i_CTRL-P` (F-003, current-buffer only).
+    /// Returns `(base, candidates)`: `base` is the keyword text immediately before the focused caret (the
+    /// text being completed, empty if none), and `candidates` are the buffer keywords that START WITH it,
+    /// in nvim's scan order — forward from the caret then wrapping, the word under construction excluded,
+    /// duplicates removed (see [`crate::motion::keyword_completions`]). The engine has no buffer, so the
+    /// frontend calls this and hands both to the input engine, which cycles the selection. An EMPTY
+    /// candidate list means "no match" (a Vim no-op / bell).
+    #[must_use]
+    pub fn keyword_completion(&self) -> (String, Vec<String>) {
+        let pane = self.focused();
+        let b = pane.doc.bytes();
+        let cur = pane.view.cursor();
+        let (_, base) = crate::motion::keyword_before_cursor(b, cur);
+        let base = base.to_string();
+        let cands = crate::motion::keyword_completions(b, cur, &base);
+        (base, cands)
+    }
+
     /// Set one `:set` option on the focused view (swap-trick, like [`Workspace::set_indent`]).
     pub fn set_option(&mut self, opt: crate::editor::EditorOption) {
         let vid = self.windows[self.focus].view;
@@ -1801,6 +1819,48 @@ mod tests {
                 String::from_utf8_lossy(line)
             );
         }
+    }
+
+    /// `keyword_completion` backs `i_CTRL-N`/`i_CTRL-P`: the base (keyword before the caret) plus the
+    /// buffer keywords that start with it, in nvim scan order (forward-from-caret then wrap, the word
+    /// under construction excluded, duplicates removed). Cases captured from nvim v0.12.4.
+    #[test]
+    fn keyword_completion_base_and_candidates() {
+        // Base "fo" on a fresh last line: forward scan finds nothing, wraps from the top; the two "foo"
+        // occurrences dedupe. (nvim: match set = foo, food, foobar.)
+        let mut w = Workspace::new(b"foo food\nfoobar\nfoo\nfo".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len()); // end of the "fo" line
+        let (base, cands) = w.keyword_completion();
+        assert_eq!(base, "fo");
+        assert_eq!(cands, vec!["foo", "food", "foobar"]);
+
+        // Mid-buffer caret: forward to end, then wrap from the top; the caret's own "aa" is excluded.
+        let mut w = Workspace::new(b"aa1 aa2\naa3\naa\naa4 aa5\naa6".to_vec());
+        w.place_focused_cursor(14); // end of the bare "aa" on line 3
+        let (base, cands) = w.keyword_completion();
+        assert_eq!(base, "aa");
+        assert_eq!(cands, vec!["aa4", "aa5", "aa6", "aa1", "aa2", "aa3"]);
+
+        // Exact match is a candidate distinct from the original text.
+        let mut w = Workspace::new(b"foo foobar\nfoo".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.keyword_completion();
+        assert_eq!(base, "foo");
+        assert_eq!(cands, vec!["foo", "foobar"]);
+
+        // No match → empty candidate list (a Vim no-op / bell).
+        let mut w = Workspace::new(b"foo bar\nzz".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.keyword_completion();
+        assert_eq!(base, "zz");
+        assert!(cands.is_empty());
+
+        // Empty base (caret after a non-word char) matches every keyword, none excluded.
+        let mut w = Workspace::new(b"foo bar\n(".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len()); // just after '('
+        let (base, cands) = w.keyword_completion();
+        assert_eq!(base, "");
+        assert_eq!(cands, vec!["foo", "bar"]);
     }
 
     /// `adjacent_line_char` backs `i_CTRL-E`/`i_CTRL-Y`: the char below/above the caret at its column, or
