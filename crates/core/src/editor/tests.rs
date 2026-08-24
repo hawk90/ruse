@@ -3983,6 +3983,84 @@ mod blockwise_tests {
     }
 
     #[test]
+    fn block_insert_replay_rebuilds_the_block_at_the_cursor() {
+        // Dot-repeat drives a bare `BlockInsert` (no live selection) — the planner rebuilds the block from
+        // the retained geometry at the caret. This asserts the CORE side of the replay: a first block `I`
+        // stores height 2, then a second bare `BlockInsert` at a moved cursor re-applies over 2 rows.
+        // Expected bytes match nvim v0.12.4 (`<C-v>jIX<Esc>jj.`).
+        let st = run(
+            "aaaa\nbbbb\ncccc\ndddd",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveDown, // 2-row block at col 0
+                Command::BlockInsert(BlockInsertKind::Insert),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+                // Simulate `jj.`: move down two rows, then the recorded replay (bare BlockInsert + text).
+                Command::MoveDown,
+                Command::MoveDown,
+                Command::BlockInsert(BlockInsertKind::Insert),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "Xaaaa\nXbbbb\nXcccc\nXdddd");
+        assert_eq!(
+            st.cursor(),
+            12,
+            "cursor rests at the rebuilt block's top-left"
+        );
+    }
+
+    #[test]
+    fn block_change_replay_preserves_width() {
+        // A bare `BlockInsert(Change)` replay deletes the stored WIDTH per row at the caret then inserts.
+        // Matches nvim `<C-v>jlcXY<Esc>jj.`.
+        let st = run(
+            "aaaa\nbbbb\ncccc\ndddd",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                },
+                Command::MoveRight,
+                Command::MoveDown, // width-2, 2-row block
+                Command::BlockInsert(BlockInsertKind::Change),
+                Command::InsertChar('X'),
+                Command::InsertChar('Y'),
+                Command::EnterNormal, // -> "XYaa\nXYbb\ncccc\ndddd", caret col 1
+                Command::MoveDown,
+                Command::MoveDown, // caret row 2 col 1
+                Command::BlockInsert(BlockInsertKind::Change),
+                Command::InsertChar('X'),
+                Command::InsertChar('Y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "XYaa\nXYbb\ncXYc\ndXYd");
+    }
+
+    #[test]
+    fn block_insert_replay_with_no_prior_geometry_is_a_plain_insert() {
+        // A bare `BlockInsert` with neither a selection nor retained geometry degrades to a plain single-row
+        // Insert (the historical early-out) — it must not panic or replicate.
+        let st = run(
+            "abc\ndef",
+            &[
+                Command::BlockInsert(BlockInsertKind::Insert),
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "Xabc\ndef",
+            "no geometry -> plain insert on one row"
+        );
+    }
+
+    #[test]
     fn block_insert_with_no_typed_text_is_inert() {
         let st = run(
             "abc\ndef",

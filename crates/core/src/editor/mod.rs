@@ -191,6 +191,13 @@ pub struct View {
     /// and consumed by the next `<Esc>` ([`Command::EnterNormal`]). `None` outside such a session; cleared
     /// on any exit from Insert. See [`BlockInsert`].
     block_insert: Option<BlockInsert>,
+    /// The geometry of the LAST committed blockwise insert-replicate — retained so dot-repeat (`.`) can
+    /// rebuild an equivalent block at the caret when there is no live selection. nvim repeats a block
+    /// `I`/`A`/`c` over the SAME width x height, positioned at the new cursor (verified vs nvim v0.12.4); the
+    /// input engine holds no buffer geometry, so it lives here and the replayed [`Command::BlockInsert`]
+    /// (issued with no anchor on `.`) reads it. `None` until the first block insert; survives leaving Insert
+    /// (unlike [`Self::block_insert`]) so it is available to a later `.`. See [`BlockGeom`].
+    last_block_geom: Option<BlockGeom>,
     /// Whether the current Insert session opened a line with AUTO-INDENT and nothing non-blank has been
     /// typed on it since (Vim). While true, leaving Insert (`<Esc>`) on an all-whitespace line removes the
     /// auto-inserted indent so `o<Esc>` never leaves trailing whitespace. Set/cleared in [`apply_command`]
@@ -282,6 +289,7 @@ impl View {
             last_visual: None,
             replace_stack: Vec::new(),
             block_insert: None,
+            last_block_geom: None,
             auto_indent_pending: false,
             indent: IndentConfig {
                 tab_width: 4,
@@ -589,6 +597,28 @@ struct BlockInsert {
     /// leaves a block CHANGE with the caret one char left of the top row's typed text (normal Insert-exit),
     /// whereas `I`/`A` snap back to the block's top-left corner. The replicate geometry is identical.
     change: bool,
+    /// The block's inclusive column span (`col_hi - col_lo + 1`, >= 1) — the number of columns `A` appends
+    /// past and `c` deletes per row. Retained (with the row count) into [`BlockGeom`] so dot-repeat can
+    /// rebuild an equivalent block at the caret. `I` ignores it (insert at the left edge), but it is stored
+    /// uniformly so the geometry round-trips for every kind.
+    width: usize,
+}
+
+/// The geometry of a committed blockwise insert-replicate (`CTRL-V I/A/c`), the minimum a dot-repeat needs
+/// to reconstruct an equivalent block at a NEW caret: nvim positions the repeat's top-left at the cursor and
+/// reuses the original `width` x `height` (verified vs nvim v0.12.4). `kind`/`to_eol` reproduce the I/A/c
+/// variant and the `$`-ragged (`$A`) append. The caret column and row come from the live cursor at `.` time,
+/// so only the SIZE and MODE are stored here — not the original position.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct BlockGeom {
+    /// Total block rows (>= 1) — how many lines the repeat replicates onto, clamped at end-of-buffer.
+    height: usize,
+    /// Inclusive column span (>= 1) — chars `A` appends past / `c` deletes per row (see [`BlockInsert::width`]).
+    width: usize,
+    /// `I` (insert at left edge) / `A` (append at right edge) / `c` (delete then insert at left edge).
+    kind: BlockInsertKind,
+    /// `$`-ragged append (`$A`): append at each row's own line-end rather than a fixed column. Only with `A`.
+    to_eol: bool,
 }
 
 /// How a committed command should route its captured text into the register store. A `Yank` additionally
@@ -1715,6 +1745,22 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                     .apply(txn)
                     .expect("planned transaction applies cleanly");
             }
+            // Retain this block's geometry so a later `.` (dot-repeat) can rebuild an equivalent block at
+            // the caret. Set on ARM (the geometry is known here) so it is available before the session's
+            // `<Esc>` closes; the dot-replay re-arms with the SAME geometry, so `..` stays idempotent.
+            let kind = if session.change {
+                BlockInsertKind::Change
+            } else if session.append {
+                BlockInsertKind::Append
+            } else {
+                BlockInsertKind::Insert
+            };
+            st.view.last_block_geom = Some(BlockGeom {
+                height: session.rows_below + 1,
+                width: session.width,
+                kind,
+                to_eol: session.to_eol,
+            });
             st.view.block_insert = Some(session);
         }
         Action::Nop => {}

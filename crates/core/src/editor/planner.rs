@@ -10,16 +10,28 @@ fn plan_block_insert(
     hint: GroupHint,
     kind: &BlockInsertKind,
 ) -> Plan {
-    let Some(anchor) = st.view.anchor else {
-        // Not in a selection — degrade to a plain Insert entry, no session.
-        return nop(cur, Mode::Insert);
-    };
-    let (rows, col_lo, col_hi) = block_rows(b, anchor, cur);
     let append = matches!(kind, BlockInsertKind::Append);
     let change = matches!(kind, BlockInsertKind::Change);
-    // `$A` (`` <C-v>$A ``): `$` set curswant to MAXCOL, so the block is ragged — append at EACH row's own
-    // line-end, not a fixed column. (curswant is still MAXCOL here; `update_curswant` runs after commit.)
-    let to_eol = append && st.view.curswant == crate::editor::range::MAXCOL;
+    let (rows, col_lo, col_hi, to_eol) = if let Some(anchor) = st.view.anchor {
+        // Live block insert from a Visual-block selection: the two corners are `anchor` and `cur`.
+        let (rows, col_lo, col_hi) = block_rows(b, anchor, cur);
+        // `$A` (`` <C-v>$A ``): `$` set curswant to MAXCOL, so the block is ragged — append at EACH row's own
+        // line-end, not a fixed column. (curswant is still MAXCOL here; `update_curswant` runs after commit.)
+        let to_eol = append && st.view.curswant == crate::editor::range::MAXCOL;
+        (rows, col_lo, col_hi, to_eol)
+    } else if let Some(geom) = st.view.last_block_geom {
+        // Dot-repeat (`.`): no live selection. Rebuild an equivalent block of the stored WIDTH x HEIGHT with
+        // its top-left at the caret — nvim positions the repeat at the cursor and reuses the original geometry
+        // (verified vs nvim v0.12.4). The recorded command carries the kind (I/A/c); `geom` carries the size
+        // and the `$`-ragged flag (only meaningful with `A`). Rows clamp at end-of-buffer like the live path.
+        let (rows, col_lo, col_hi) =
+            crate::editor::range::block_rows_at(b, cur, geom.width, geom.height);
+        (rows, col_lo, col_hi, append && geom.to_eol)
+    } else {
+        // Neither a live selection nor a prior block insert to repeat — degrade to a plain Insert entry.
+        return nop(cur, Mode::Insert);
+    };
+    let width = col_hi + 1 - col_lo;
     let target_col = if append { col_hi + 1 } else { col_lo };
     let top_start = rows.first().map_or(cur, |&(s, _)| s);
     let top_ls = line_start(b, top_start);
@@ -69,6 +81,7 @@ fn plan_block_insert(
         append,
         to_eol,
         change,
+        width,
     };
     let list = EditList::new(edits).expect("block-insert enter edits are disjoint (one per line)");
     let is_edit = !list.is_empty();
@@ -2896,7 +2909,7 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
 /// operator-forced block change is NOT yet wired (the same open gap as Visual-block-insert dot-repeat) and
 /// is intentionally not oracle-tested; the replicate + single-undo-unit ARE.
 fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan {
-    let (rows, col_lo, _col_hi) = block_rows(b, c1, c2);
+    let (rows, col_lo, col_hi) = block_rows(b, c1, c2);
     let top_left = rows.first().map_or(c1.min(c2), |&(s, _)| s);
     // The blockwise register: each row's slice, joined by '\n' (ragged rows, no trailing newline).
     let mut text: Vec<u8> = Vec::new();
@@ -2972,6 +2985,7 @@ fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan
                 append: false,
                 to_eol: false,
                 change: true,
+                width: col_hi + 1 - col_lo,
             };
             let list = EditList::new(edits).expect("block-row deletes are disjoint (one per line)");
             let is_edit = !list.is_empty();

@@ -253,6 +253,87 @@ fn blockwise_insert_replicates_and_undoes_as_one_group() {
     );
 }
 
+// Dot-repeat of a visual-block insert rebuilds the block (same width x height) at the caret and
+// re-applies the same I/A/c with the same typed text. Each end-state below is the EXACT nvim v0.12.4
+// output (headless `nvim_feedkeys`), so these pin ruse to nvim, not just to itself.
+
+#[test]
+fn dot_repeats_a_block_insert_i_with_height_preserved() {
+    let (mut e, mut ws) = session("aaaa\nbbbb\ncccc\ndddd");
+    feed_str(&mut e, &mut ws, "<C-v>jIX<Esc>"); // 2-row block, insert X at col 0
+    assert_eq!(buf(&ws), "Xaaaa\nXbbbb\ncccc\ndddd");
+    feed_str(&mut e, &mut ws, "jj."); // move 2 rows down, repeat: X on the next 2 rows
+    assert_eq!(
+        buf(&ws),
+        "Xaaaa\nXbbbb\nXcccc\nXdddd",
+        "`.` re-applies the block-X over the SAME 2 rows at the new cursor (nvim)"
+    );
+}
+
+#[test]
+fn dot_repeats_a_block_insert_at_the_cursor_column() {
+    // The rebuilt block's left edge is the CARET column, not the original block column.
+    let (mut e, mut ws) = session("aaaaaa\nbbbbbb\ncccccc\ndddddd");
+    feed_str(&mut e, &mut ws, "<C-v>jIX<Esc>");
+    feed_str(&mut e, &mut ws, "jjll."); // caret to row 2 col 2, then repeat
+    assert_eq!(buf(&ws), "Xaaaaaa\nXbbbbbb\nccXcccc\nddXdddd");
+}
+
+#[test]
+fn dot_repeats_a_block_append_with_width_preserved() {
+    // `A` appends at caret_col + width; width (3) is preserved from the original block.
+    let (mut e, mut ws) = session("aaaa\nbbbb\ncccc\ndddd");
+    feed_str(&mut e, &mut ws, "<C-v>jllAX<Esc>"); // width-3 block, append X at col 3
+    assert_eq!(buf(&ws), "aaaXa\nbbbXb\ncccc\ndddd");
+    feed_str(&mut e, &mut ws, "jj.");
+    assert_eq!(buf(&ws), "aaaXa\nbbbXb\ncccXc\ndddXd");
+}
+
+#[test]
+fn dot_repeats_a_block_change_with_width_preserved() {
+    // `c` deletes `width` chars from the caret column, then inserts the typed text.
+    let (mut e, mut ws) = session("aaaa\nbbbb\ncccc\ndddd");
+    feed_str(&mut e, &mut ws, "<C-v>jlcXY<Esc>"); // width-2 block, delete 2, insert XY
+    assert_eq!(buf(&ws), "XYaa\nXYbb\ncccc\ndddd");
+    feed_str(&mut e, &mut ws, "jj."); // caret rests at col 1 after the change; repeat there
+    assert_eq!(buf(&ws), "XYaa\nXYbb\ncXYc\ndXYd");
+}
+
+#[test]
+fn dot_repeat_of_block_insert_ignores_the_count() {
+    // nvim ignores `[count].` for a block insert: `2.` behaves exactly like `.` (one X, one row).
+    let (mut e, mut ws) = session("aaaa\nbbbb\ncccc");
+    feed_str(&mut e, &mut ws, "<C-v>IX<Esc>"); // height-1 block
+    feed_str(&mut e, &mut ws, "j2.");
+    assert_eq!(
+        buf(&ws),
+        "Xaaaa\nXbbbb\ncccc",
+        "`2.` inserts a single X on one row — the count is ignored (nvim)"
+    );
+}
+
+#[test]
+fn dot_repeat_of_block_insert_clamps_rows_at_end_of_buffer() {
+    let (mut e, mut ws) = session("aaaa\nbbbb\ncccc\ndddd");
+    feed_str(&mut e, &mut ws, "<C-v>jjIZ<Esc>"); // height-3 block
+    feed_str(&mut e, &mut ws, "Gk."); // caret to row 2 (only 2 rows remain from there)
+    assert_eq!(
+        buf(&ws),
+        "Zaaaa\nZbbbb\nZZcccc\nZdddd",
+        "the height-3 repeat clamps to the 2 available rows"
+    );
+}
+
+#[test]
+fn dot_repeats_a_ragged_dollar_block_append() {
+    // `$A` appends at each row's OWN line-end; `.` keeps that ragged behaviour.
+    let (mut e, mut ws) = session("aa\nbbbb\nc\ndddd");
+    feed_str(&mut e, &mut ws, "<C-v>j$AZ<Esc>"); // ragged append over rows 0..1
+    assert_eq!(buf(&ws), "aaZ\nbbbbZ\nc\ndddd");
+    feed_str(&mut e, &mut ws, "jj.");
+    assert_eq!(buf(&ws), "aaZ\nbbbbZ\ncZ\nddddZ");
+}
+
 #[test]
 fn split_windows_share_one_buffer_and_undo() {
     let (mut e, mut ws) = session("hello");
