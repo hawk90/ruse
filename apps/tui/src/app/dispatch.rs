@@ -7,10 +7,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{Command, DocumentId, Effect, SplitDir, Trace, Workspace};
+use ruse_core::{Command, DocumentId, Effect, Mode, SplitDir, SubRange, Trace, Workspace};
 
 use crate::highlight;
-use crate::input::{BufTarget, Ex};
+use crate::input::{BufTarget, Ex, Feed, InputEngine};
 use crate::persist;
 use crate::ui::prompts::Confirm;
 
@@ -76,6 +76,116 @@ pub(crate) fn run_cmd(
     recorded.push(cmd.clone());
     for eff in ws.apply(&cmd) {
         apply_effect(eff, ws, files, status, quit);
+    }
+}
+
+/// Execute `:[range]normal[!] {keys}` (`:help :normal`). The key payload is resolved to key events and fed
+/// through the SAME input→`Command` pipeline the macro-replay path uses (`engine.feed` → [`run_cmd`]) — this
+/// is "replay this key string once (per line)", not a second key interpreter. With no range it runs ONCE at
+/// the current cursor (column preserved); with a range it runs once per line, cursor at column 0 of each line.
+///
+/// Line iteration matches Vim exactly (verified against nvim v0.12.4): the loop runs over the ORIGINAL
+/// `[line1, line2]`, and each step targets `min(lnum, last_line)` of the CURRENT buffer — so `:%normal dd`
+/// deletes every line, and `:%normal o-` appends one line per original line (both reproduced in tests). After
+/// each line an implicit `<Esc>` terminates any open Insert/pending command, forcing Normal (Vim's rule).
+///
+/// `bang` (`:normal!`, ignore user mappings) is accepted but inert: this editor has no user remaps yet.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn run_normal(
+    engine: &mut InputEngine,
+    ws: &mut Workspace,
+    range: Option<SubRange>,
+    keys: &str,
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    let events = crate::keys::parse_normal_keys(keys);
+    match range {
+        // No range: run once at the cursor, column preserved (Vim `:normal {keys}`).
+        None => run_normal_line(engine, ws, &events, files, recorded, status, quit),
+        Some(range) => {
+            let (line1, line2) = resolve_normal_range(ws, range);
+            for lnum in line1..=line2 {
+                // Place the cursor at column 0 of the target line — clamped to the CURRENT last line, so a
+                // range that outlives shrinking edits (`:%normal dd`) keeps operating on the surviving lines.
+                let snapshot = ws.focused().doc.text_arc();
+                let last = line_count(&snapshot).max(1);
+                let target = lnum.min(last);
+                let off = ruse_core::pos::nth_line_start(&snapshot, target - 1);
+                ws.place_focused_cursor(off);
+                run_normal_line(engine, ws, &events, files, recorded, status, quit);
+            }
+        }
+    }
+}
+
+/// Resolve a `:normal` [`SubRange`] to an INCLUSIVE 1-based `(line1, line2)`. `%` = the whole file, `.`/none
+/// = the cursor line, `N,M` = the numbers clamped to the buffer. The end is clamped to the current line
+/// count; the START is not, so an out-of-range start (`line1 > line2`) simply runs zero iterations.
+fn resolve_normal_range(ws: &Workspace, range: SubRange) -> (usize, usize) {
+    let snapshot = ws.focused().doc.text_arc();
+    let total = line_count(&snapshot).max(1);
+    match range {
+        SubRange::WholeFile => (1, total),
+        SubRange::CurrentLine => {
+            let line = ruse_core::pos::line_of(&snapshot, ws.focused().view.cursor()) + 1;
+            (line, line)
+        }
+        SubRange::Lines(a, b) => (a.max(1), b.min(total)),
+    }
+}
+
+/// Run one `:normal` pass over `events` at the current cursor, then apply the implicit `<Esc>` (Vim's rule:
+/// an unterminated Insert is auto-closed and any pending command is aborted, leaving Normal mode). Each key
+/// is fed with the LIVE mode (re-read after every command, so `i`→Insert routes the next keys as text).
+fn run_normal_line(
+    engine: &mut InputEngine,
+    ws: &mut Workspace,
+    events: &[KeyEvent],
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    for &ev in events {
+        let mode = ws.focused().view.mode();
+        let feed = engine.feed(ev, mode);
+        drive_feed(feed, ws, files, recorded, status, quit);
+    }
+    // Implicit `<Esc>` — terminate insert / abort any pending command through the engine (so dot-repeat and
+    // insert sessions close exactly as a typed Esc would).
+    let mode = ws.focused().view.mode();
+    let feed = engine.feed(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), mode);
+    drive_feed(feed, ws, files, recorded, status, quit);
+    // Belt-and-suspenders: guarantee Normal even if the engine leaves a non-Insert non-Normal mode (Visual)
+    // on Esc — the per-line invariant `:normal` relies on for the next iteration's column-0 placement.
+    if ws.focused().view.mode() != Mode::Normal {
+        run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
+    }
+}
+
+/// Apply one engine outcome during a `:normal` run. A finished `Command` (or a dot-repeat `Replay` list) is
+/// applied via [`run_cmd`], exactly as the event loop does; `Pending`/`Ignored` are absorbed. A nested ex
+/// line (`:normal :…<CR>`) is NOT executed in this MVP — a rare form, deliberately left inert.
+fn drive_feed(
+    feed: Feed,
+    ws: &mut Workspace,
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    match feed {
+        Feed::Cmd(cmd) => run_cmd(cmd, ws, files, recorded, status, quit),
+        Feed::Replay(cmds) => {
+            for cmd in cmds {
+                run_cmd(cmd, ws, files, recorded, status, quit);
+            }
+        }
+        // Nested ex from `:normal` is out of scope for this slice; Pending/Ignored are absorbed.
+        Feed::ExecuteEx(_) | Feed::Pending | Feed::Ignored => {}
     }
 }
 
@@ -286,6 +396,9 @@ pub(crate) fn run_ex(
         | Ex::References
         | Ex::CodeAction
         | Ex::Diagnostics => {}
+        // `:[range]normal` is handled in the run loop (it drives the input `engine`, which this fn does not
+        // borrow, to replay the keys through the same pipeline); never reaches here.
+        Ex::Normal { .. } => {}
         Ex::Unknown(s) => *status = format!("unknown command: {s}"),
     }
 }
@@ -483,6 +596,88 @@ mod dispatch_tests {
             " [noeol]",
             "missing final newline → marker"
         );
+    }
+
+    /// Drive the `:normal` executor directly on a known buffer and return `(bytes, cursor)`. This is the
+    /// hard-oracle harness the task calls for: `parity_compare` cannot drive ex commands (it feeds raw keys),
+    /// so every expectation below is the buffer nvim v0.12.4 produces for the SAME `:normal` line, confirmed
+    /// by hand (see the change evidence). `cursor` starts at `cursor0` (byte offset) before the run.
+    fn run_normal_oracle(
+        buf: &str,
+        cursor0: usize,
+        range: Option<SubRange>,
+        keys: &str,
+    ) -> (String, usize) {
+        let mut engine = InputEngine::new();
+        let mut ws = Workspace::new(buf.as_bytes().to_vec());
+        ws.place_focused_cursor(cursor0);
+        let files = Files::new();
+        let mut recorded = Vec::new();
+        let mut status = String::new();
+        let mut quit = false;
+        run_normal(
+            &mut engine,
+            &mut ws,
+            range,
+            keys,
+            &files,
+            &mut recorded,
+            &mut status,
+            &mut quit,
+        );
+        let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
+        (bytes, ws.focused().view.cursor())
+    }
+
+    #[test]
+    fn normal_no_range_runs_once_at_cursor() {
+        // nvim: `:normal dw` with the cursor on the 3rd char of "hello world foo" → "heworld foo".
+        let (bytes, _) = run_normal_oracle("hello world foo\n", 2, None, "dw");
+        assert_eq!(bytes, "heworld foo\n");
+        // nvim: `:normal 3x` deletes three chars from the cursor.
+        let (bytes, _) = run_normal_oracle("abcdef\n", 0, None, "3x");
+        assert_eq!(bytes, "def\n");
+    }
+
+    #[test]
+    fn normal_implicit_esc_terminates_insert() {
+        // nvim: `:normal Ihi` (NO trailing <Esc>) inserts "hi" at the start and auto-terminates insert.
+        let (bytes, _) = run_normal_oracle("abc\n", 1, None, "Ihi");
+        assert_eq!(bytes, "hiabc\n");
+        // An EXPLICIT <Esc> is equivalent (the implicit one is a no-op once already in Normal).
+        let (bytes, _) = run_normal_oracle("abc\n", 1, None, "Ihi<Esc>");
+        assert_eq!(bytes, "hiabc\n");
+    }
+
+    #[test]
+    fn normal_whole_file_range_runs_per_line_at_column_zero() {
+        // nvim: `:%normal A;` appends ";" to every line (A goes to each line's end).
+        let (bytes, _) = run_normal_oracle("a\nbb\nccc\n", 0, Some(SubRange::WholeFile), "A;");
+        assert_eq!(bytes, "a;\nbb;\nccc;\n");
+        // nvim: `:2,3normal 0x` deletes the first char of lines 2 and 3 (cursor placed at column 0 each).
+        let (bytes, _) = run_normal_oracle("abc\ndef\nghi\n", 0, Some(SubRange::Lines(2, 3)), "0x");
+        assert_eq!(bytes, "abc\nef\nhi\n");
+    }
+
+    #[test]
+    fn normal_range_tracks_line_shifts_like_nvim() {
+        // nvim: `:%normal dd` over 3 lines deletes them ALL (the fixed range end + current-line clamp).
+        let (bytes, _) = run_normal_oracle("a\nb\nc\n", 0, Some(SubRange::WholeFile), "dd");
+        assert_eq!(bytes, "");
+        // nvim: `:1,2normal dd` on 4 lines leaves "b\nd\n" (2nd iter lands on the shifted-up 2nd line).
+        let (bytes, _) = run_normal_oracle("a\nb\nc\nd\n", 0, Some(SubRange::Lines(1, 2)), "dd");
+        assert_eq!(bytes, "b\nd\n");
+        // nvim: `:%normal o-` appends one "-" line per ORIGINAL line — both cluster after "a" because the
+        // fixed line numbers 1,2 both fall in the a-block as it grows.
+        let (bytes, _) = run_normal_oracle("a\nb\n", 0, Some(SubRange::WholeFile), "o-");
+        assert_eq!(bytes, "a\n-\n-\nb\n");
+    }
+
+    #[test]
+    fn normal_range_places_cursor_at_column_zero_not_first_nonblank() {
+        // nvim: `:2normal x` on "   xyz" deletes the leading space at column 0 (NOT first non-blank).
+        let (bytes, _) = run_normal_oracle("a\n   xyz\nb\n", 0, Some(SubRange::Lines(2, 2)), "x");
+        assert_eq!(bytes, "a\n  xyz\nb\n");
     }
 
     #[test]

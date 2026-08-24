@@ -1326,6 +1326,20 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // where `engine` is in scope, not in `run_ex` (which owns only workspace/file state).
                     Ex::Lmap { lhs, rhs } => engine.set_lang_mapping(lhs, rhs),
                     Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),
+                    // `:[range]normal[!] {keys}` replays the key payload through the input `engine` (in scope
+                    // here, not in `run_ex`) → the same `Command` pipeline as typed keys / macro replay.
+                    Ex::Normal { range, keys, .. } => {
+                        crate::app::dispatch::run_normal(
+                            &mut engine,
+                            &mut ws,
+                            range,
+                            &keys,
+                            &files,
+                            &mut recorded,
+                            &mut status,
+                            &mut quit,
+                        );
+                    }
                     // `:checkhealth` (F-030): gather the frontend snapshot HERE (guard/profile/highlighter
                     // are in scope, not in `run_ex`) and render the report's one-line summary into status.
                     Ex::CheckHealth => {
