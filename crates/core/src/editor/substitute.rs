@@ -113,31 +113,86 @@ pub(crate) fn line_spans(hay: &str) -> Vec<(usize, usize)> {
     out
 }
 
-/// Expand a `:s` replacement: `&` / `\0` → the whole matched text; `\n` `\t` `\r` `\\` `\&` escapes.
-/// Capture backreferences `\1`-`\9` are a documented follow-up — an unsupported `\<d>` keeps the digit
-/// literal rather than erroring.
+/// The active case transform for the replacement expander: uppercase or lowercase.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Case {
+    Upper,
+    Lower,
+}
+
+/// The case-modifier state machine driving [`expand_replacement`]. Vim's `\u`/`\l` set a ONE-CHARACTER
+/// pending case that takes priority over any region for the next emitted char, then reverts; `\U`/`\L`
+/// open a region that persists until `\e`/`\E`. Setting a region does NOT clear a pending one-char
+/// modifier (verified vs nvim: `\l\U&` on "abcd" → "aBCD"), and any emitted char — text OR a control
+/// escape like `\r` — consumes the pending modifier (`\u\rx` leaves `x` lowercase).
+#[derive(Default)]
+struct CaseState {
+    /// A one-shot `\u`/`\l` awaiting the next emitted character; wins over `region` for that char.
+    pending: Option<Case>,
+    /// A `\U`/`\L` region in effect until `\e`/`\E`.
+    region: Option<Case>,
+}
+
+impl CaseState {
+    /// Emit `s` into `out`, applying the pending one-char case to the FIRST char and the region case to
+    /// the rest. The pending modifier is consumed by the first char (if any); an empty `s` leaves it.
+    fn emit(&mut self, s: &str, out: &mut Vec<u8>) {
+        let mut buf = [0u8; 4];
+        for ch in s.chars() {
+            match self.pending.take().or(self.region) {
+                Some(Case::Upper) => {
+                    for u in ch.to_uppercase() {
+                        out.extend_from_slice(u.encode_utf8(&mut buf).as_bytes());
+                    }
+                }
+                Some(Case::Lower) => {
+                    for l in ch.to_lowercase() {
+                        out.extend_from_slice(l.encode_utf8(&mut buf).as_bytes());
+                    }
+                }
+                None => out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes()),
+            }
+        }
+    }
+}
+
+/// Expand a `:s` replacement: `&` / `\0` → the whole matched text; `\n` `\t` `\r` `\\` `\&` escapes; and
+/// the case modifiers `\u` `\l` (next char) / `\U` `\L` (region) / `\e` `\E` (end region), applied to the
+/// emitted text (including `&`/`\0` insertions) as a small state machine — see [`CaseState`].
+///
+/// Capture backreferences `\1`-`\9` are DEFERRED: `\(…\)` compiles to a real regex group, but the
+/// `pattern::Match` type surfaces only the reported `start`/`end` span, not per-group spans, and the
+/// substitute path passes only the whole matched slice here — so group text is not reachable at
+/// expansion time without threading group spans through `Match`/`find_all`/`find_at`. An unsupported
+/// `\<d>` keeps the digit literal rather than erroring.
 pub(crate) fn expand_replacement(replacement: &str, matched: &str) -> Vec<u8> {
     let mut out = Vec::new();
+    let mut st = CaseState::default();
     let mut chars = replacement.chars();
     while let Some(c) = chars.next() {
         match c {
-            '&' => out.extend_from_slice(matched.as_bytes()),
+            '&' => st.emit(matched, &mut out),
             '\\' => match chars.next() {
-                Some('0') => out.extend_from_slice(matched.as_bytes()),
-                Some('n') => out.push(b'\n'),
-                Some('t') => out.push(b'\t'),
-                Some('r') => out.push(b'\r'),
-                Some('&') => out.push(b'&'),
-                Some('\\') => out.push(b'\\'),
+                Some('0') => st.emit(matched, &mut out),
+                Some('n') => st.emit("\n", &mut out),
+                Some('t') => st.emit("\t", &mut out),
+                Some('r') => st.emit("\r", &mut out),
+                Some('&') => st.emit("&", &mut out),
+                Some('\\') => st.emit("\\", &mut out),
+                Some('u') => st.pending = Some(Case::Upper),
+                Some('l') => st.pending = Some(Case::Lower),
+                Some('U') => st.region = Some(Case::Upper),
+                Some('L') => st.region = Some(Case::Lower),
+                Some('e' | 'E') => st.region = None,
                 Some(other) => {
                     let mut buf = [0u8; 4];
-                    out.extend_from_slice(other.encode_utf8(&mut buf).as_bytes());
+                    st.emit(other.encode_utf8(&mut buf), &mut out);
                 }
-                None => out.push(b'\\'),
+                None => st.emit("\\", &mut out),
             },
             _ => {
                 let mut buf = [0u8; 4];
-                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+                st.emit(c.encode_utf8(&mut buf), &mut out);
             }
         }
     }

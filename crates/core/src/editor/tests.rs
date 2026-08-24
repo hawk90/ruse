@@ -7022,3 +7022,131 @@ mod put_lines_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod substitute_case_modifier_tests {
+    //! `:s` replacement case modifiers `\u \l \U \L \e \E`. Each expected value is the exact output
+    //! produced by nvim v0.12.4 (`nvim -u NONE` headless) for the same pattern/replacement, so these
+    //! lock parity. Capture backrefs `\1`-`\9` are deferred (see `expand_replacement` docs) — not tested.
+    use crate::editor::*;
+
+    /// Assert `expand_replacement(rep, matched)` yields exactly `want` (as bytes).
+    fn ex(rep: &str, matched: &str, want: &str) {
+        let got = expand_replacement(rep, matched);
+        assert_eq!(
+            String::from_utf8(got.clone()).unwrap_or_else(|_| format!("{got:?}")),
+            want,
+            "expand_replacement({rep:?}, {matched:?})"
+        );
+    }
+
+    /// `\u&` uppercases the first char of the inserted match; the rest is untouched.
+    /// nvim: `:s/\w\+/\u&/g` on "hello world" → "Hello World".
+    #[test]
+    fn upper_next_char_capitalizes_match() {
+        ex(r"\u&", "hello", "Hello");
+        ex(r"\u&", "world", "World");
+    }
+
+    /// `\U&` uppercases the whole inserted match (region, no `\E`). nvim: `:s/.*/\U&/` "aBcD" → "ABCD".
+    #[test]
+    fn upper_region_uppercases_whole_match() {
+        ex(r"\U&", "aBcD", "ABCD");
+        ex(r"\U&", "hello world", "HELLO WORLD");
+    }
+
+    /// `\L&` lowercases the whole inserted match. nvim: `:s/.*/\L&/` "HELLO WORLD" → "hello world".
+    #[test]
+    fn lower_region_lowercases_whole_match() {
+        ex(r"\L&", "HELLO WORLD", "hello world");
+    }
+
+    /// `\l` lowercases only the next char. nvim: `:s/.*/\l&/` "HELLO" → "hELLO".
+    #[test]
+    fn lower_next_char_only() {
+        ex(r"\l&", "HELLO", "hELLO");
+    }
+
+    /// `\u` before literal text capitalizes the literal, not the match. nvim: `:s/.*/\uabc&/` "hello"
+    /// → "Abchello" (the `A` is the uppercased literal `a`; the match is inserted as-is after).
+    #[test]
+    fn upper_next_char_applies_to_literal() {
+        ex(r"\uabc&", "hello", "Abchello");
+    }
+
+    /// A `\U…\E` region ends at `\E`; text after `\E` is emitted verbatim. nvim: `:s/.*/\Uabc\Edef&/`
+    /// "hello world" → "ABCdefhello world".
+    #[test]
+    fn upper_region_ends_at_capital_e() {
+        ex(r"\Uabc\Edef&", "hello world", "ABCdefhello world");
+        // Region with the match inside, then a literal tail after `\E`.
+        ex(r"\U&\Etail", "abcdef", "ABCDEFtail");
+    }
+
+    /// `\e` (lowercase) also ends a region. nvim: `:s/.*/\Ux\ey&/` "ab" → "Xyab".
+    #[test]
+    fn lowercase_e_ends_region() {
+        ex(r"\Ux\ey&", "ab", "Xyab");
+    }
+
+    /// The region composes with `\n`: it stays active across the inserted newline byte, so both `&`
+    /// insertions are uppercased. (This codebase maps `\n`→newline in replacements.)
+    #[test]
+    fn region_composes_with_newline_escape() {
+        ex(r"\U&\n&", "ab", "AB\nAB");
+    }
+
+    /// A pending one-char modifier wins over an active region for exactly one char, then the region
+    /// resumes. nvim: `:s/.*/\l\U&/` "abcd" → "aBCD" (pending `\l` lowers `a`, region `\U` upcases rest).
+    #[test]
+    fn pending_one_char_overrides_region_then_region_resumes() {
+        ex(r"\l\U&", "abcd", "aBCD");
+        // Symmetric: `\U\l&` on "ABCD" → "aBCD".
+        ex(r"\U\l&", "ABCD", "aBCD");
+        // `\L\u&` on "abcd" → "Abcd".
+        ex(r"\L\u&", "abcd", "Abcd");
+    }
+
+    /// A pending modifier is consumed by the next emitted char even mid-string, so only the first char
+    /// of the match is affected. nvim: `:s/.*/&\utail/` "abc" → "abcTail".
+    #[test]
+    fn pending_after_match_capitalizes_following_literal() {
+        ex(r"&\utail", "abc", "abcTail");
+    }
+
+    /// `\0` behaves like `&` and honors case modifiers.
+    #[test]
+    fn backslash_zero_is_whole_match_and_cased() {
+        ex(r"\U\0", "abc", "ABC");
+    }
+
+    /// Unsupported `\<digit>` (backrefs are deferred) keeps the digit literal, and case modifiers still
+    /// apply to it as an emitted char.
+    #[test]
+    fn deferred_backref_digit_stays_literal() {
+        ex(r"\1", "abc", "1");
+        ex(r"x\1y", "m", "x1y");
+    }
+
+    /// End-to-end through `EditorState::substitute`: `\u&` capitalizes each word with the `g` flag.
+    #[test]
+    fn end_to_end_capitalize_each_word() {
+        let mut st = EditorState::new(b"abc def".to_vec());
+        let flags = SubFlags {
+            global: true,
+            ignore_case: None,
+        };
+        st.substitute(SubRange::CurrentLine, r"\w\+", r"\u&", flags)
+            .expect("compiles");
+        assert_eq!(st.as_str().unwrap(), "Abc Def");
+    }
+
+    /// End-to-end: `\U&` uppercases the whole line match.
+    #[test]
+    fn end_to_end_upper_whole_line() {
+        let mut st = EditorState::new(b"hello world".to_vec());
+        st.substitute(SubRange::CurrentLine, r".*", r"\U&", SubFlags::default())
+            .expect("compiles");
+        assert_eq!(st.as_str().unwrap(), "HELLO WORLD");
+    }
+}
