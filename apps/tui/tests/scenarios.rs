@@ -8,7 +8,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{SplitDir, SubFlags, Workspace};
-use ruse_tui::input::{parse_ex, Ex, Feed, InputEngine};
+use ruse_tui::input::{parse_ex, Ex, Feed, GlobalPayload, InputEngine};
 
 /// Route one engine outcome exactly as `main.rs::run` does: edits through the swap-trick `Workspace`,
 /// `:s`/`:g` through the substitute/global engines, everything else per its `Feed`.
@@ -36,7 +36,11 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
                 );
             }
             Ex::Global(g) => {
-                let _ = ws.global(g.range, &g.pattern, g.negate, &g.cmd);
+                // These scenarios drive only the core `d`/`s` payloads; a `normal` payload would need the
+                // input engine (the frontend run loop's `run_global_normal`), out of scope for this helper.
+                if let GlobalPayload::Core(cmd) = &g.cmd {
+                    let _ = ws.global(g.range, &g.pattern, g.negate, cmd);
+                }
             }
             _ => {}
         },

@@ -803,6 +803,53 @@ impl EditorState {
     ///
     /// # Errors
     /// [`RegexError`] if the `:g` pattern (or a `:g/pat/s///` sub-pattern) is unrepresentable/malformed.
+    /// PASS 1 of `:g` in isolation: the 0-based indices of the lines in `range` whose text the `pattern`
+    /// matches (or does NOT match, when `negate` — `:g!` / `:v`), evaluated against the untouched buffer.
+    /// Shared by [`EditorState::global`] (the core `d`/`s` payloads) and the frontend's `:g/pat/normal`
+    /// runner, which needs the SAME mark set but replays each marked line through the input engine.
+    ///
+    /// # Errors
+    /// [`RegexError`] if the `:g` pattern is unrepresentable/malformed, or the buffer is not valid UTF-8.
+    pub fn global_marks(
+        &self,
+        range: SubRange,
+        pattern: &str,
+        negate: bool,
+    ) -> Result<Vec<usize>, RegexError> {
+        let opts = self.view.search_options();
+        let re = crate::pattern::Regex::compile(pattern, opts)?;
+        let bytes = self.doc.bytes();
+        let hay = std::str::from_utf8(bytes)
+            .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
+        let lines = line_spans(hay);
+        // `line_spans` appends a phantom empty span for the position after a final newline; Vim does not
+        // count that as a line, so exclude it (a `:g`/`:v` must never mark or act on it — visible under a
+        // `normal` payload, which would edit it). An empty or non-`\n`-terminated buffer keeps its span.
+        let count = if hay.ends_with('\n') {
+            lines.len().saturating_sub(1)
+        } else {
+            lines.len()
+        };
+        let last_idx = count.saturating_sub(1);
+        // `:g` with no range is the WHOLE FILE (unlike `:s`, whose default is the current line).
+        let (first, last) = match range {
+            SubRange::CurrentLine | SubRange::WholeFile => (0, last_idx),
+            SubRange::Lines(a, b) => (
+                a.saturating_sub(1).min(last_idx),
+                b.saturating_sub(1).min(last_idx),
+            ),
+        };
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        Ok((first..=last)
+            .filter(|&li| {
+                let (ls, le) = lines[li];
+                re.find_at(&hay[ls..le], 0).is_some() != negate
+            })
+            .collect())
+    }
+
     pub fn global(
         &mut self,
         range: SubRange,
@@ -810,30 +857,17 @@ impl EditorState {
         negate: bool,
         cmd: &GlobalCmd,
     ) -> Result<usize, RegexError> {
-        let opts = self.view.search_options();
-        let re = crate::pattern::Regex::compile(pattern, opts)?;
+        // PASS 1: mark the matching (or non-matching) lines against the untouched buffer (shared with the
+        // frontend's `:g/pat/normal` runner via [`EditorState::global_marks`]).
+        let marked = self.global_marks(range, pattern, negate)?;
+        if marked.is_empty() {
+            return Ok(0);
+        }
+        // Re-derive the untouched buffer's line spans for pass 2 (marking above did not mutate the buffer).
         let bytes = self.doc.bytes();
         let hay = std::str::from_utf8(bytes)
             .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
         let lines = line_spans(hay);
-        // `:g` with no range is the WHOLE FILE (unlike `:s`, whose default is the current line).
-        let (first, last) = match range {
-            SubRange::CurrentLine | SubRange::WholeFile => (0, lines.len().saturating_sub(1)),
-            SubRange::Lines(a, b) => (
-                a.saturating_sub(1).min(lines.len().saturating_sub(1)),
-                b.saturating_sub(1).min(lines.len().saturating_sub(1)),
-            ),
-        };
-        // PASS 1: mark the matching (or non-matching) lines against the untouched buffer.
-        let marked: Vec<usize> = (first..=last)
-            .filter(|&li| {
-                let (ls, le) = lines[li];
-                re.find_at(&hay[ls..le], 0).is_some() != negate
-            })
-            .collect();
-        if marked.is_empty() {
-            return Ok(0);
-        }
 
         // PASS 2: run the command over the marked lines.
         match cmd {
@@ -863,6 +897,7 @@ impl EditorState {
                 replacement,
                 flags,
             } => {
+                let opts = self.view.search_options();
                 let sopts = crate::pattern::Options {
                     magic: opts.magic,
                     ignore_case: flags.ignore_case.unwrap_or(opts.ignore_case),

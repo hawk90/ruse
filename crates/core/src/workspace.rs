@@ -471,6 +471,36 @@ impl Workspace {
         result
     }
 
+    /// PASS 1 of `:g` against the FOCUSED window: the 1-based line numbers the pattern marks (or, with
+    /// `negate`, does NOT mark). The frontend's `:g/pat/normal` runner needs this mark set (computed against
+    /// the untouched buffer) so it can replay the keys per marked line through the input engine — the core
+    /// `d`/`s` payloads run inside [`Workspace::global`]. Returns 1-based numbers for the frontend's cursor
+    /// placement helpers.
+    ///
+    /// # Errors
+    /// [`RegexError`] if the `:g` pattern is unrepresentable/malformed, or the buffer is not valid UTF-8.
+    pub fn global_marks(
+        &mut self,
+        range: SubRange,
+        pattern: &str,
+        negate: bool,
+    ) -> Result<Vec<usize>, RegexError> {
+        // The swap-trick (like [`Workspace::global`]): move the focused parts into an [`EditorState`] to
+        // reuse its single marking rule, then swap them back untouched (marking is read-only).
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let st = EditorState::from_parts(doc, view);
+        let result = st.global_marks(range, pattern, negate);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        Ok(result?.into_iter().map(|li| li + 1).collect())
+    }
+
     /// Run `:[range]d` against the FOCUSED window (the swap-trick, like [`Workspace::apply`]): delete the
     /// range's lines as one undo group. Returns the number of lines deleted.
     pub fn delete_lines(&mut self, range: SubRange) -> usize {

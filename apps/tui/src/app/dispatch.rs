@@ -121,6 +121,70 @@ pub(crate) fn run_normal(
     }
 }
 
+/// Execute `:g/pat/normal[!] {keys}` (`:help :g`) as a frontend two-pass. PASS 1 marks every matching (or,
+/// for `:v` / `:g!`, non-matching) line via [`Workspace::global_marks`] against the untouched buffer; PASS 2
+/// replays `{keys}` as Normal-mode input on each marked line through the SAME per-line runner `:normal` uses
+/// ([`run_normal_line`] → `engine.feed` → [`run_cmd`], cursor at column 0, implicit `<Esc>` after).
+///
+/// The marks are STABLE the way Vim's are (verified against nvim v0.12.4): as a line's `{keys}` grow or
+/// shrink the buffer, every not-yet-processed mark shifts by that line's net line-count delta — so lines a
+/// `normal` INSERTS are never re-matched (`:g/x/normal o-` drops one line under EACH match, not a cascade),
+/// and later marks still target their original text after a DELETE (`:g/pat/normal dd` equals `:g/pat/d`).
+///
+/// `bang` (`:g/pat/normal!`) is accepted but inert — this editor has no user remaps yet. Writes a Vim-style
+/// status: an E486 when the pattern marks nothing, a regex error, else "N lines changed".
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn run_global_normal(
+    engine: &mut InputEngine,
+    ws: &mut Workspace,
+    range: SubRange,
+    pattern: &str,
+    negate: bool,
+    keys: &str,
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    // PASS 1: the 1-based line numbers to act on (ascending), computed against the untouched buffer.
+    let mut marks = match ws.global_marks(range, pattern, negate) {
+        Ok(m) => m,
+        Err(e) => {
+            *status = regex_error_msg(&e);
+            return;
+        }
+    };
+    if marks.is_empty() {
+        *status = format!("E486: pattern not found: {pattern}");
+        return;
+    }
+    let acted = marks.len();
+    let events = crate::keys::parse_normal_keys(keys);
+    // PASS 2: replay the keys on each marked line, shifting the remaining marks by each line's net delta.
+    for i in 0..marks.len() {
+        let lnum = marks[i];
+        // Place the cursor at column 0 of the (shift-adjusted) target line, clamped to the CURRENT last
+        // line so a mark that outlives shrinking edits still lands on a live line.
+        let snapshot = ws.focused().doc.text_arc();
+        let before = line_count(&snapshot).max(1);
+        let target = lnum.min(before);
+        let off = ruse_core::pos::nth_line_start(&snapshot, target - 1);
+        ws.place_focused_cursor(off);
+        drop(snapshot);
+        run_normal_line(engine, ws, &events, files, recorded, status, quit);
+        // Shift every not-yet-processed mark by this line's net line-count change (Vim's stable marks):
+        // inserted lines push later marks down; deleted lines pull them up — so nothing is re-processed.
+        let after = line_count(&ws.focused().doc.text_arc()).max(1);
+        let delta = after as isize - before as isize;
+        if delta != 0 {
+            for m in marks.iter_mut().skip(i + 1) {
+                *m = (*m as isize + delta).max(1) as usize;
+            }
+        }
+    }
+    *status = format!("{acted} lines changed");
+}
+
 /// Resolve a `:normal` [`SubRange`] to an INCLUSIVE 1-based `(line1, line2)`. `%` = the whole file, `.`/none
 /// = the cursor line, `N,M` = the numbers clamped to the buffer. The end is clamped to the current line
 /// count; the START is not, so an out-of-range start (`line1 > line2`) simply runs zero iterations.
@@ -326,14 +390,19 @@ pub(crate) fn run_ex(
             ws.set_option(*opt);
             *status = format!("{opt:?}");
         }
-        // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window.
-        Ex::Global(spec) => {
-            *status = match ws.global(spec.range, &spec.pattern, spec.negate, &spec.cmd) {
-                Ok(0) => format!("E486: pattern not found: {}", spec.pattern),
-                Ok(n) => format!("{n} lines changed"),
-                Err(e) => regex_error_msg(&e),
-            };
-        }
+        // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window. The `d`/`s`
+        // payloads run in core here; a `normal` payload drives the input engine and is handled in the run
+        // loop (`run_global_normal`), never reaching here — a `.` no-op keeps the match exhaustive.
+        Ex::Global(spec) => match &spec.cmd {
+            crate::input::GlobalPayload::Core(cmd) => {
+                *status = match ws.global(spec.range, &spec.pattern, spec.negate, cmd) {
+                    Ok(0) => format!("E486: pattern not found: {}", spec.pattern),
+                    Ok(n) => format!("{n} lines changed"),
+                    Err(e) => regex_error_msg(&e),
+                };
+            }
+            crate::input::GlobalPayload::Normal { .. } => {}
+        },
         // `:noh` is handled in the run loop (it clears the frontend's search highlight); never reaches here.
         Ex::NoHighlight => {}
         // `:set (no)hlsearch/incsearch` are handled in the run loop (frontend render flags); never here.
@@ -678,6 +747,80 @@ mod dispatch_tests {
         // nvim: `:2normal x` on "   xyz" deletes the leading space at column 0 (NOT first non-blank).
         let (bytes, _) = run_normal_oracle("a\n   xyz\nb\n", 0, Some(SubRange::Lines(2, 2)), "x");
         assert_eq!(bytes, "a\n  xyz\nb\n");
+    }
+
+    /// Drive `:g/pat/normal {keys}` directly on a known buffer and return the resulting bytes. Like
+    /// [`run_normal_oracle`], every expectation is the buffer nvim v0.12.4 produces for the SAME `:g`
+    /// line, captured headlessly by hand (`parity_compare` cannot drive ex commands — it feeds raw keys).
+    fn run_global_normal_oracle(buf: &str, pattern: &str, negate: bool, keys: &str) -> String {
+        let mut engine = InputEngine::new();
+        let mut ws = Workspace::new(buf.as_bytes().to_vec());
+        let files = Files::new();
+        let mut recorded = Vec::new();
+        let mut status = String::new();
+        let mut quit = false;
+        run_global_normal(
+            &mut engine,
+            &mut ws,
+            SubRange::WholeFile,
+            pattern,
+            negate,
+            keys,
+            &files,
+            &mut recorded,
+            &mut status,
+            &mut quit,
+        );
+        String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap()
+    }
+
+    #[test]
+    fn global_normal_appends_to_matching_lines() {
+        // nvim: `:g/foo/normal A;` appends ";" to every line containing "foo".
+        let out = run_global_normal_oracle("afoo\nbar\ncfoo\n", "foo", false, "A;");
+        assert_eq!(out, "afoo;\nbar\ncfoo;\n");
+    }
+
+    #[test]
+    fn global_normal_v_and_bang_act_on_non_matching_lines() {
+        // nvim: `:v/foo/normal A;` (and the equivalent `:g!/foo/normal A;`) append to the NON-matching line.
+        let out = run_global_normal_oracle("afoo\nbar\ncfoo\n", "foo", true, "A;");
+        assert_eq!(out, "afoo\nbar;\ncfoo\n");
+    }
+
+    #[test]
+    fn global_normal_deletes_first_char_of_matching_lines() {
+        // nvim: `:g/^#/normal 0x` deletes the first char of every line starting with "#".
+        let out = run_global_normal_oracle("#one\ntwo\n#three\n", "^#", false, "0x");
+        assert_eq!(out, "one\ntwo\nthree\n");
+    }
+
+    #[test]
+    fn global_normal_stable_marks_when_line_count_grows() {
+        // nvim: `:g/x/normal o-` inserts one "-" line UNDER each match — the stable two-pass shifts the
+        // remaining marks past the inserted line, so it is not re-matched (each match gets exactly one dash).
+        let out = run_global_normal_oracle("ax\nbx\ncy\n", "x", false, "o-");
+        assert_eq!(out, "ax\n-\nbx\n-\ncy\n");
+        // Every line matches → a dash under each, still no cascade.
+        let out = run_global_normal_oracle("ax\nbx\n", "x", false, "o-");
+        assert_eq!(out, "ax\n-\nbx\n-\n");
+    }
+
+    #[test]
+    fn global_normal_dd_equals_global_delete() {
+        // nvim: `:g/foo/normal dd` deletes every matching line — identical to `:g/foo/d`.
+        let out = run_global_normal_oracle("afoo\nbar\ncfoo\n", "foo", false, "dd");
+        assert_eq!(out, "bar\n");
+        // Interleaved matches: the mark shift keeps later deletes on their ORIGINAL text (= `:g/a/d`).
+        let out = run_global_normal_oracle("a1\nb\na2\nc\n", "a", false, "dd");
+        assert_eq!(out, "b\nc\n");
+    }
+
+    #[test]
+    fn global_normal_no_match_is_a_noop() {
+        // No line matches → the buffer is untouched (nvim reports "Pattern not found").
+        let out = run_global_normal_oracle("a\nb\nc\n", "zzz", false, "A;");
+        assert_eq!(out, "a\nb\nc\n");
     }
 
     #[test]
