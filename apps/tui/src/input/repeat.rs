@@ -22,17 +22,31 @@ pub(crate) struct ChangeIntent {
     /// The register the change targeted (`"a` before it), replayed so `.` reuses the SAME register (Vim).
     /// `None` for an unregistered change; replay then omits the leading `SetRegister`.
     pub(crate) register: Option<char>,
+    /// The count typed before a PURE insert-entry (`3i`, `3o`, `3A`; VIM-CNT-INS): the number of times the
+    /// typed text is inserted on `<Esc>`. `1` for a count-less entry and for every change-family entry
+    /// (`c`/`s`/`ciw`, whose count applies to the MOTION, not to text repetition). Carried so `.` replays
+    /// with the SAME count (Vim), while a leading `N.` overrides it.
+    pub(crate) entry_count: u32,
 }
 
 impl ChangeIntent {
     /// The ordered command list `.` replays. `count` — a leading `N` on the `.` — REPLACES the lead's
     /// count (Vim `3.` repeats with count 3); `None` keeps the recorded count. Insert text is replayed
-    /// verbatim.
+    /// verbatim. For a PURE insert-entry (`3i`/`3o`/`3A`) the count is the number of TIMES the typed text
+    /// is inserted (VIM-CNT-INS): `.` re-inserts it `entry_count` times, `N.` overrides that to `N`.
     pub(crate) fn replay(&self, count: Option<u32>) -> Vec<Command> {
         let lead = match count {
             Some(n) => with_count(&self.lead, n),
             None => self.lead.clone(),
         };
+        // How many times to insert the typed body. Only a pure insert-entry repeats its text; a
+        // change-family entry's count already rode `with_count` into the motion above, so it stays 1.
+        let reps = if self.is_plain_insert_entry() {
+            count.unwrap_or(self.entry_count).max(1)
+        } else {
+            1
+        };
+        let (body, had_enter) = self.body();
         let mut cmds =
             Vec::with_capacity(1 + self.insert.len() + usize::from(self.register.is_some()));
         // Re-select the register first, so the replayed change writes to the same slot (`"ax` then `.`).
@@ -40,8 +54,74 @@ impl ChangeIntent {
             cmds.push(Command::SetRegister(self.register));
         }
         cmds.push(lead);
-        cmds.extend(self.insert.iter().cloned());
+        cmds.extend(body.iter().cloned());
+        if reps > 1 {
+            let unit = self.repeat_unit();
+            for _ in 1..reps {
+                cmds.extend(unit.iter().cloned());
+            }
+        }
+        if had_enter {
+            cmds.push(Command::EnterNormal);
+        }
         cmds
+    }
+
+    /// The LIVE count-on-insert tail (VIM-CNT-INS) emitted on the terminating `<Esc>` when a count
+    /// preceded a pure insert-entry (`3ihello<Esc>`). The lead and the FIRST typed body were already
+    /// applied as the keys were typed, so this is the `(entry_count - 1)` extra repeats followed by the
+    /// `EnterNormal` that leaves Insert (the original `<Esc>`'s `EnterNormal` is replaced by this list).
+    /// `None` when there is nothing to replicate (count <= 1, or not a pure insert-entry).
+    pub(crate) fn count_replay_tail(&self) -> Option<Vec<Command>> {
+        if self.entry_count <= 1 || !self.is_plain_insert_entry() {
+            return None;
+        }
+        let unit = self.repeat_unit();
+        let mut cmds = Vec::with_capacity(unit.len() * (self.entry_count as usize - 1) + 1);
+        for _ in 1..self.entry_count {
+            cmds.extend(unit.iter().cloned());
+        }
+        cmds.push(Command::EnterNormal);
+        Some(cmds)
+    }
+
+    /// The typed insert body — the session commands EXCLUDING the terminating `EnterNormal` — and whether
+    /// that `EnterNormal` was present. `.` and the live count-replay both re-issue this body; the split
+    /// keeps the `<Esc>` left-shift as the LAST command, after all repeats.
+    fn body(&self) -> (&[Command], bool) {
+        match self.insert.last() {
+            Some(Command::EnterNormal) => (&self.insert[..self.insert.len() - 1], true),
+            _ => (&self.insert[..], false),
+        }
+    }
+
+    /// The commands run once per EXTRA repetition of a count-prefixed insert. For the line-opening entries
+    /// (`o`/`O`) every repeat opens a NEW line and re-types the body — and Vim's `3O` repeats DOWNWARD, so
+    /// its repeats open BELOW the insertion point exactly like `3o` (verified vs nvim). For the in-place
+    /// entries (`i`/`a`/`I`/`A`) a repeat is just the typed body again at the caret.
+    fn repeat_unit(&self) -> Vec<Command> {
+        let (body, _) = self.body();
+        let mut unit = Vec::with_capacity(body.len() + 1);
+        if matches!(self.lead, Command::OpenBelow | Command::OpenAbove) {
+            unit.push(Command::OpenBelow);
+        }
+        unit.extend(body.iter().cloned());
+        unit
+    }
+
+    /// Whether the lead is a PURE insert-entry (`i`/`a`/`I`/`A`/`o`/`O`) — the only entries whose count
+    /// repeats the typed text. Change-family entries (`c`/`C`/`s`/`cc`/`ciw`, `cgn`) are excluded: their
+    /// count applies to the operator's motion, never to text repetition.
+    fn is_plain_insert_entry(&self) -> bool {
+        matches!(
+            self.lead,
+            Command::EnterInsert
+                | Command::EnterInsertAfter
+                | Command::InsertLineStart
+                | Command::AppendLineEnd
+                | Command::OpenBelow
+                | Command::OpenAbove
+        )
     }
 }
 

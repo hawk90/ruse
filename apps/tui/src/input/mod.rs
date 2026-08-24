@@ -274,6 +274,17 @@ pub struct InputEngine {
     /// The register named by the most recent `"x`, held only until the NEXT recorded change picks it up (so
     /// `.` replays it). Cleared by any intervening non-register command — a stray `"x` then a motion forgets.
     pending_record_register: Option<char>,
+    /// The count typed before a PURE insert-entry (`3i`/`3o`/`3A`; VIM-CNT-INS), captured BEFORE
+    /// [`action`](Self::action) resets the axes and handed to the [`ChangeIntent`] the next insert-entry
+    /// opens. `0` between entries; only the six pure insert-entries set it (change-family entries leave it
+    /// clear, so their count never repeats text). See [`InputEngine::insert_entry`].
+    pending_insert_count: u32,
+    /// The count-on-insert replication tail (VIM-CNT-INS) produced when a count-prefixed insert session
+    /// closes on `<Esc>`: the `(count - 1)` extra repeats of the typed text plus the `EnterNormal` that
+    /// leaves Insert. [`feed`](Self::feed) takes it and returns it as a [`Feed::Replay`] in place of the
+    /// bare `EnterNormal`, so the repeats apply as ONE undo group (consecutive edits coalesce). `None`
+    /// for a count-less insert and for every non-insert command.
+    pending_insert_replay: Option<Vec<Command>>,
     /// The operator+count armed when `/` opened the search line, held across the minibuffer's pattern entry
     /// so `submit_search` can fold them into the finished command (`d/pat`, `2/pat`). `/` captures this
     /// BEFORE `reset()` wipes the axes; `None` between searches. See [`InputEngine::submit_search`].
@@ -373,6 +384,8 @@ impl InputEngine {
             last_change: None,
             recording: None,
             pending_record_register: None,
+            pending_insert_count: 0,
+            pending_insert_replay: None,
             pending_search: None,
             insert: InsertState::default(),
             activations: Vec::new(),
@@ -979,6 +992,16 @@ impl InputEngine {
         Feed::Cmd(cmd)
     }
 
+    /// Dispatch a PURE insert-entry (`i`/`a`/`I`/`A`/`o`/`O`), capturing the leading count for
+    /// count-on-insert repetition (VIM-CNT-INS) BEFORE [`action`](Self::action) resets the axes. The
+    /// captured count is stashed in `pending_insert_count`; [`record`](Self::record) folds it into the
+    /// [`ChangeIntent`] this entry opens, and the terminating `<Esc>` replays the typed text that many
+    /// times. Change-family entries (`c`/`s`/…) do NOT come through here, so their count never repeats text.
+    fn insert_entry(&mut self, cmd: Command) -> Feed {
+        self.pending_insert_count = self.normal.count.max(1);
+        self.action(cmd)
+    }
+
     /// A named-mark key after `` ` ``/`'`: with an operator pending it OPERATES to the mark
     /// (`` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``); otherwise it JUMPS (`` `a ``/`'a`). `linewise`
     /// is the `'` form (honoured by delete/change/yank/case; shift/reindent are always linewise). `gq`/`gw`
@@ -1181,6 +1204,12 @@ impl InputEngine {
         }
         let out = self.feed_impl(key, mode);
         self.record(&out, mode);
+        // Count-on-insert (VIM-CNT-INS): a count-prefixed insert session that just closed on `<Esc>`
+        // stages its extra repeats + trailing `EnterNormal` here — return them as one `Feed::Replay` in
+        // place of the bare `EnterNormal` so the whole `3ihello` collapses into a single undo group.
+        if let Some(tail) = self.pending_insert_replay.take() {
+            return Feed::Replay(tail);
+        }
         out
     }
 
@@ -1294,7 +1323,13 @@ impl InputEngine {
                 rec.insert.push(cmd.clone());
                 // The `<Esc>` that leaves Insert (recorded here so replay leaves Insert too) closes the change.
                 if *cmd == Command::EnterNormal {
-                    self.last_change = self.recording.take();
+                    let closed = self.recording.take();
+                    // Count-on-insert (VIM-CNT-INS): if a count preceded the entry, stage the extra repeats
+                    // so `feed` returns them as ONE undo-grouped `Feed::Replay` in place of this `<Esc>`.
+                    if let Some(rec) = &closed {
+                        self.pending_insert_replay = rec.count_replay_tail();
+                    }
+                    self.last_change = closed;
                 }
             }
             return;
@@ -1310,6 +1345,9 @@ impl InputEngine {
                     lead: cmd.clone(),
                     insert: Vec::new(),
                     register: self.pending_record_register.take(),
+                    // The count a pure insert-entry captured (`3i`); `0` (→ 1) for a count-less or
+                    // change-family entry, so only `i`/`a`/`I`/`A`/`o`/`O` ever repeat their text.
+                    entry_count: std::mem::take(&mut self.pending_insert_count).max(1),
                 });
             }
             ChangeKind::Immediate => {
@@ -1318,6 +1356,7 @@ impl InputEngine {
                     lead: cmd.clone(),
                     insert: Vec::new(),
                     register: self.pending_record_register.take(),
+                    entry_count: 1,
                 });
             }
             // A non-change (motion, mode switch, yank) forgets a dangling register selection.
@@ -1998,12 +2037,12 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::TextObjectChar { inner: false };
                 Feed::Pending
             }
-            KeyCode::Char('i') => self.action(Command::EnterInsert),
-            KeyCode::Char('a') => self.action(Command::EnterInsertAfter),
-            KeyCode::Char('I') => self.action(Command::InsertLineStart),
-            KeyCode::Char('A') => self.action(Command::AppendLineEnd),
-            KeyCode::Char('o') => self.action(Command::OpenBelow),
-            KeyCode::Char('O') => self.action(Command::OpenAbove),
+            KeyCode::Char('i') => self.insert_entry(Command::EnterInsert),
+            KeyCode::Char('a') => self.insert_entry(Command::EnterInsertAfter),
+            KeyCode::Char('I') => self.insert_entry(Command::InsertLineStart),
+            KeyCode::Char('A') => self.insert_entry(Command::AppendLineEnd),
+            KeyCode::Char('o') => self.insert_entry(Command::OpenBelow),
+            KeyCode::Char('O') => self.insert_entry(Command::OpenAbove),
             KeyCode::Char('x') => self.action(Command::DeleteUnder(self.mcount())),
             // Doubled case operators (`guu` / `gUU` / `g~~`): the second key repeats the operator to make
             // it linewise. These guards must precede the plain `u`/`~` handlers.

@@ -361,3 +361,155 @@ fn ctrl_v_resolved_char_is_dot_repeatable() {
     feed_str(&mut e, &mut ws, "."); // repeat the whole insert session
     assert_eq!(buf(&ws), "AA", "`.` replays the CTRL-V-resolved char");
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Count-on-insert repetition (VIM-CNT-INS, issue #470). A count before a pure insert-entry replays the
+// typed text that many times on `<Esc>`. All expected bytes + caret offsets verified against nvim
+// v0.12.4 (`nvim -u NONE` headless).
+// ---------------------------------------------------------------------------------------------------
+
+/// The focused window's caret as a byte offset — count-on-insert must land the caret exactly where Vim
+/// leaves it (on the last inserted char after the `<Esc>` left-shift).
+fn cur(ws: &Workspace) -> usize {
+    ws.focused().view.cursor()
+}
+
+#[test]
+fn count_insert_i_repeats_typed_text() {
+    // nvim: `3ihello<Esc>` on an empty line -> "hellohellohello", caret on the last 'o' (col 14).
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "3ihello<Esc>");
+    assert_eq!(buf(&ws), "hellohellohello");
+    assert_eq!(cur(&ws), 14, "caret rests on the last inserted char");
+}
+
+#[test]
+fn count_insert_a_appends_repeats() {
+    // nvim: `3ahello<Esc>` on "abc" -> "ahellohellohellobc" (append after the char under the caret).
+    let (mut e, mut ws) = session("abc");
+    feed_str(&mut e, &mut ws, "3ahello<Esc>");
+    assert_eq!(buf(&ws), "ahellohellohellobc");
+}
+
+#[test]
+fn count_insert_cap_i_and_cap_a() {
+    // nvim: `3Ifoo<Esc>` inserts at the first non-blank; `3Afoo<Esc>` appends at end-of-line.
+    let (mut e, mut ws) = session("  abc");
+    feed_str(&mut e, &mut ws, "3Ifoo<Esc>");
+    assert_eq!(buf(&ws), "  foofoofooabc");
+
+    let (mut e, mut ws) = session("abc");
+    feed_str(&mut e, &mut ws, "3Afoo<Esc>");
+    assert_eq!(buf(&ws), "abcfoofoofoo");
+    assert_eq!(cur(&ws), 11, "caret on the last appended char");
+}
+
+#[test]
+fn count_insert_o_opens_new_lines_below() {
+    // nvim: `3ox<Esc>` opens three new lines below, each containing the typed "x"; caret on the last.
+    let (mut e, mut ws) = session("abc\ndef");
+    feed_str(&mut e, &mut ws, "3ox<Esc>");
+    assert_eq!(buf(&ws), "abc\nx\nx\nx\ndef");
+    // "abc\nx\nx\nx\n" is 10 bytes; the last 'x' (line 4) sits at offset 8.
+    assert_eq!(cur(&ws), 8, "caret on the last opened line's char");
+}
+
+#[test]
+fn count_insert_cap_o_opens_new_lines_above() {
+    // nvim: `3Ox<Esc>` opens three new lines ABOVE, top-to-bottom, caret on the third (just above "abc").
+    let (mut e, mut ws) = session("abc\ndef");
+    feed_str(&mut e, &mut ws, "3Ox<Esc>");
+    assert_eq!(buf(&ws), "x\nx\nx\nabc\ndef");
+    assert_eq!(cur(&ws), 4, "caret on the third (last-typed) opened line");
+}
+
+#[test]
+fn count_insert_replays_resulting_text_after_backspace() {
+    // nvim: `3ixy<BS>z<Esc>` on "abc" -> the RESULTING typed text is "xz" (xy, BS deletes y, then z),
+    // replayed three times -> "xzxzxz".
+    let (mut e, mut ws) = session("abc");
+    feed_str(&mut e, &mut ws, "3ixy<BS>z<Esc>");
+    assert_eq!(buf(&ws), "xzxzxzabc");
+}
+
+#[test]
+fn count_insert_is_one_undo_group() {
+    // The whole `3ihello` collapses into a SINGLE undo unit — one `u` removes all three copies.
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "3ihello<Esc>");
+    assert_eq!(buf(&ws), "hellohellohello");
+    feed_str(&mut e, &mut ws, "u");
+    assert_eq!(
+        buf(&ws),
+        "",
+        "a single `u` undoes the whole count-on-insert run"
+    );
+
+    // Same for the line-opening form: `3ox` (open + type, three times) is one undo group.
+    let (mut e, mut ws) = session("abc\ndef");
+    feed_str(&mut e, &mut ws, "3ox<Esc>");
+    assert_eq!(buf(&ws), "abc\nx\nx\nx\ndef");
+    feed_str(&mut e, &mut ws, "u");
+    assert_eq!(buf(&ws), "abc\ndef", "`3ox` undoes as one group");
+}
+
+#[test]
+fn count_insert_dot_repeats_with_same_count() {
+    // nvim: `3ix<Esc>` then `j0.` re-applies the WHOLE count-3 insert on the next line -> both "xxx…".
+    let (mut e, mut ws) = session("abc\ndef");
+    feed_str(&mut e, &mut ws, "3ix<Esc>");
+    assert_eq!(buf(&ws), "xxxabc\ndef");
+    feed_str(&mut e, &mut ws, "j0.");
+    assert_eq!(
+        buf(&ws),
+        "xxxabc\nxxxdef",
+        "`.` repeats with the recorded count 3"
+    );
+}
+
+#[test]
+fn count_insert_dot_with_new_count_overrides() {
+    // nvim: `3ix<Esc>` then `j02.` -> the leading `2.` overrides the recorded count on the next line.
+    let (mut e, mut ws) = session("abc\ndef");
+    feed_str(&mut e, &mut ws, "3ix<Esc>");
+    feed_str(&mut e, &mut ws, "j02.");
+    assert_eq!(
+        buf(&ws),
+        "xxxabc\nxxdef",
+        "`2.` overrides the recorded count"
+    );
+}
+
+#[test]
+fn count_insert_o_is_dot_repeatable() {
+    // nvim: `3ox<Esc>.` -> the dot repeats the whole `3o`, opening three MORE lines (six total).
+    let (mut e, mut ws) = session("abc\ndef");
+    feed_str(&mut e, &mut ws, "3ox<Esc>");
+    feed_str(&mut e, &mut ws, ".");
+    assert_eq!(buf(&ws), "abc\nx\nx\nx\nx\nx\nx\ndef");
+}
+
+#[test]
+fn count_one_insert_is_unchanged() {
+    // Regression: a count-less (implicit 1) insert behaves exactly as before — no replication, and the
+    // Esc still leaves a single, normally-grouped insert session that `.` repeats once.
+    let (mut e, mut ws) = session("");
+    feed_str(&mut e, &mut ws, "ihello<Esc>");
+    assert_eq!(buf(&ws), "hello");
+    assert_eq!(cur(&ws), 4);
+    feed_str(&mut e, &mut ws, ".");
+    assert_eq!(
+        buf(&ws),
+        "hellhelloo",
+        "`.` repeats the single insert once at the caret"
+    );
+}
+
+#[test]
+fn count_change_family_does_not_repeat_text() {
+    // Regression: `c` count applies to the MOTION, never to text repetition. `3cwX<Esc>` changes three
+    // words into a single "X" (nvim), NOT "XXX".
+    let (mut e, mut ws) = session("aa bb cc dd");
+    feed_str(&mut e, &mut ws, "3cwX<Esc>");
+    assert_eq!(buf(&ws), "X dd", "`3cw` changes three words to one X");
+}

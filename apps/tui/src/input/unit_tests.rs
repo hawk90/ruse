@@ -1173,6 +1173,68 @@ mod tests {
     }
 
     #[test]
+    fn count_on_insert_esc_replays_extra_repeats_then_leaves_insert() {
+        // `3ihello<Esc>` (VIM-CNT-INS): entry + first "hello" flow through as `Cmd`s; the terminating
+        // `<Esc>` returns the (count-1) EXTRA "hello"s plus `EnterNormal` as ONE `Feed::Replay`, so the
+        // whole run collapses into a single undo group at the driver.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('3'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('i'), Mode::Normal),
+            Feed::Cmd(Command::EnterInsert)
+        );
+        for c in "hello".chars() {
+            assert_eq!(
+                e.feed(k(c), Mode::Insert),
+                Feed::Cmd(Command::InsertChar(c))
+            );
+        }
+        let mut tail: Vec<Command> = Vec::new();
+        for _ in 0..2 {
+            tail.extend("hello".chars().map(Command::InsertChar));
+        }
+        tail.push(Command::EnterNormal);
+        assert_eq!(e.feed(esc(), Mode::Insert), Feed::Replay(tail));
+    }
+
+    #[test]
+    fn count_on_insert_open_below_replay_reopens_a_line_each_repeat() {
+        // `2ox<Esc>`: the extra repeat must OPEN a new line (not append to the same one), so the replay
+        // tail is `[OpenBelow, InsertChar('x'), EnterNormal]`.
+        let mut e = InputEngine::new();
+        e.feed(k('2'), Mode::Normal);
+        assert_eq!(e.feed(k('o'), Mode::Normal), Feed::Cmd(Command::OpenBelow));
+        assert_eq!(
+            e.feed(k('x'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('x'))
+        );
+        assert_eq!(
+            e.feed(esc(), Mode::Insert),
+            Feed::Replay(vec![
+                Command::OpenBelow,
+                Command::InsertChar('x'),
+                Command::EnterNormal,
+            ])
+        );
+    }
+
+    #[test]
+    fn count_one_insert_esc_is_a_plain_enter_normal() {
+        // Regression: a count-less insert must be UNCHANGED — the `<Esc>` is still a bare `Cmd(EnterNormal)`,
+        // never a `Feed::Replay`.
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(k('i'), Mode::Normal),
+            Feed::Cmd(Command::EnterInsert)
+        );
+        assert_eq!(
+            e.feed(k('x'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('x'))
+        );
+        assert_eq!(e.feed(esc(), Mode::Insert), Feed::Cmd(Command::EnterNormal));
+    }
+
+    #[test]
     fn insert_ctrl_v_prefix_with_no_digits_inserts_the_terminator_literally() {
         // `C-v x z`: the `x` hex prefix collects zero digits, so nvim inserts the terminator `z` and no
         // code char. Likewise `C-v o 8` -> `8` (8 is not an octal digit).
