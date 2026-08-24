@@ -622,6 +622,56 @@ pub(crate) fn keyword_completions(b: &[u8], cur: usize, base: &str) -> Vec<Strin
     out
 }
 
+/// The end of the leading indent (spaces/tabs) on the byte range `[start, end)` — the first offset whose
+/// byte is neither a space nor a tab, clamped to `end` when the whole range is blank. Used by whole-line
+/// completion, which IGNORES leading indent on both the typed prefix and every candidate line.
+fn indent_end(b: &[u8], start: usize, end: usize) -> usize {
+    let mut i = start;
+    while i < end && (b[i] == b' ' || b[i] == b'\t') {
+        i += 1;
+    }
+    i
+}
+
+/// Insert-mode WHOLE-LINE completion source for `i_CTRL-X CTRL-L` (F-003, current-buffer only), in Vim's
+/// scan order. Returns `(base, candidates)`: `base` is the caret line's content AFTER its leading indent,
+/// up to the caret (the text being completed); each candidate is another buffer line's content after its
+/// OWN leading indent — indent is IGNORED for both the match and the inserted text (`:help i_CTRL-X_CTRL-L`,
+/// "Indent is ignored") — that STARTS WITH `base`. The order mirrors Vim's backward search: the line just
+/// ABOVE the caret, upward to the top, then WRAPPING from the bottom line upward back to the line just
+/// below the caret; the caret's own line is never a candidate, and later DUPLICATES (by post-indent
+/// content, so lines differing only in indent collapse) are removed — first in scan order wins. Matching is
+/// case-sensitive (nvim default `noignorecase`; the 'ignorecase'/'infercase' interaction is out of scope
+/// for this slice). C-P walks the same list backward — the caller cycles the index, so only one order is
+/// built. Verified against nvim v0.12.4.
+pub(crate) fn line_completions(b: &[u8], cur: usize) -> (String, Vec<String>) {
+    // `base`: the caret line's post-indent text up to the caret (empty when the caret sits within indent).
+    let ls = crate::pos::line_start(b, cur);
+    let bi = indent_end(b, ls, cur);
+    let base = std::str::from_utf8(&b[bi..cur]).unwrap_or("").to_string();
+    // Line geometry: `n` rows total, the caret on row `cr`. Scan backward from `cr` with wraparound.
+    let n = crate::pos::line_of(b, b.len()) + 1;
+    let cr = crate::pos::line_of(b, cur);
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for i in 1..n {
+        let row = (cr + n - i) % n; // cr-1, cr-2, …, 0, n-1, …, cr+1 — every row but the caret's
+        let rs = crate::pos::nth_line_start(b, row);
+        let re = crate::pos::line_end(b, rs);
+        let ri = indent_end(b, rs, re);
+        let Ok(content) = std::str::from_utf8(&b[ri..re]) else {
+            continue;
+        };
+        if !content.starts_with(&base) {
+            continue;
+        }
+        if seen.insert(content.to_string()) {
+            out.push(content.to_string());
+        }
+    }
+    (base, out)
+}
+
 /// The word plus its trailing whitespace (or leading, if there is no trailing) — Vim `aw` / `aW`.
 /// `{count}iw`: the inner-word span extended forward over `count` alternating class runs (Vim). Each unit is
 /// a maximal run of one class (a word-class run or a whitespace run), so `2iw` = word + following whitespace,
