@@ -612,6 +612,96 @@ mod visual_swap_tests {
     }
 
     #[test]
+    fn visual_linewise_change_replaces_lines_with_one_and_keeps_the_separator() {
+        // `Vjc` over "abc\nbeta\ngamma\n": the two selected WHOLE lines collapse to ONE empty line, the
+        // separator to `gamma` is PRESERVED (never merged in), and typing `X` then leaving Insert yields
+        // "X\ngamma\n" with the caret on the new line — exactly `cc`/`2cc` over the same range (nvim
+        // v0.12.4, issue #435). Regression guard: the trailing '\n' before `gamma` must survive.
+        let st = run(
+            "abc\nbeta\ngamma\n",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::Move(1, Motion::Down),
+                Command::ChangeSelection,
+            ],
+        );
+        // After `Vjc` (before typing): both lines gone, ONE empty line remains, `gamma` intact below it.
+        assert_eq!(
+            text(&st),
+            "\ngamma\n",
+            "one empty line replaces the two; gamma kept"
+        );
+        assert_eq!(st.cursor(), 0, "caret on the new empty line");
+        assert_eq!(st.mode(), Mode::Insert, "change enters Insert");
+        assert!(
+            st.register().is_linewise(),
+            "selected lines captured linewise"
+        );
+        assert_eq!(
+            st.register().text(),
+            b"abc\nbeta\n",
+            "whole lines incl. trailing newline"
+        );
+
+        // Type `X`, leave Insert → the final "X\ngamma\n" ground truth.
+        let mut st = st;
+        apply_command(&mut st, &Command::InsertChar('X'));
+        apply_command(&mut st, &Command::EnterNormal);
+        assert_eq!(text(&st), "X\ngamma\n", "final bytes match nvim VjcX<Esc>");
+        assert_eq!(st.cursor(), 0, "caret on the changed line's only char");
+    }
+
+    #[test]
+    fn visual_linewise_change_preserves_leading_indent() {
+        // Like `cc`, visual-linewise change keeps the FIRST line's leading indent and drops Insert after it.
+        let st = run(
+            "  hello\nworld\n",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise,
+                },
+                Command::ChangeSelection,
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "  \nworld\n",
+            "leading indent survives visual-linewise change"
+        );
+        assert_eq!(st.cursor(), 2, "caret at the end of the kept indent");
+        assert_eq!(st.mode(), Mode::Insert);
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"  hello\n");
+    }
+
+    #[test]
+    fn visual_charwise_change_does_not_regress() {
+        // `vjc` (CHARWISE, not linewise) over "abc\nbeta\ngamma\n" deletes the inclusive charwise span
+        // `[cur, downtarget]` and stays a plain delete-then-Insert — it must NOT route through cc-logic.
+        // nvim: `vjcX<Esc>` → "Xeta\ngamma\n".
+        let st = run(
+            "abc\nbeta\ngamma\n",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                Command::Move(1, Motion::Down),
+                Command::ChangeSelection,
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "Xeta\ngamma\n",
+            "charwise change unchanged by the fix"
+        );
+        assert_eq!(st.mode(), Mode::Normal);
+    }
+
+    #[test]
     fn replace_mode_overwrites_appends_restores_and_undoes() {
         // Overwrite: R over "hello" typing x,y → "xyllo".
         let st = run(

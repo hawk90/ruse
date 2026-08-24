@@ -4350,6 +4350,221 @@
       }
     },
     {
+      "name": "Vjc_visual_linewise_change",
+      "lines": [
+        "abc",
+        "beta",
+        "gamma"
+      ],
+      "keys": "VjcX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "Vc_visual_linewise_change_one",
+      "lines": [
+        "abc",
+        "beta",
+        "gamma"
+      ],
+      "keys": "VcX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "beta",
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "VGc_visual_linewise_change_all",
+      "lines": [
+        "abc",
+        "beta",
+        "gamma"
+      ],
+      "keys": "VGcX<Esc>",
+      "expect": {
+        "text": [
+          "X"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nbeta\ngamma\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "Vjjc_visual_linewise_change_three",
+      "lines": [
+        "abc",
+        "beta",
+        "gamma"
+      ],
+      "keys": "VjjcX<Esc>",
+      "expect": {
+        "text": [
+          "X"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nbeta\ngamma\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cc_linewise_change",
+      "lines": [
+        "abc",
+        "beta",
+        "gamma"
+      ],
+      "keys": "ccX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "beta",
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "count_cc_linewise_change",
+      "lines": [
+        "abc",
+        "beta",
+        "gamma"
+      ],
+      "keys": "2ccX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "vjc_charwise_change_no_regress",
+      "lines": [
+        "abc",
+        "beta",
+        "gamma"
+      ],
+      "keys": "vjcX<Esc>",
+      "expect": {
+        "text": [
+          "Xeta",
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nb",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "Vjd_delete_no_regress",
+      "lines": [
+        "abc",
+        "beta",
+        "gamma"
+      ],
+      "keys": "Vjd",
+      "expect": {
+        "text": [
+          "gamma"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nbeta\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "vey_visual_yank_to_word_end",
       "lines": [
         "hello world"
