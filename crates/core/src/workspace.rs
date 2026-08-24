@@ -1119,6 +1119,28 @@ impl Workspace {
         std::str::from_utf8(&b[s..e]).ok().map(str::to_string)
     }
 
+    /// The `<cword>` under the focused caret — the keyword (or, failing that, non-blank run) Vim's
+    /// command-line `c_CTRL-R_CTRL-W` splices at the cmdline caret. `None` when the rest of the line is
+    /// blank. See [`crate::motion::cword_under_cursor`] for the exact (nvim-verified) resolution.
+    #[must_use]
+    pub fn cword_under_cursor(&self) -> Option<String> {
+        self.cword_impl(false)
+    }
+
+    /// The `<cWORD>` under the focused caret — the whitespace-delimited WORD Vim's command-line
+    /// `c_CTRL-R_CTRL-A` splices at the cmdline caret. `None` when the rest of the line is blank.
+    #[must_use]
+    pub fn cbig_word_under_cursor(&self) -> Option<String> {
+        self.cword_impl(true)
+    }
+
+    fn cword_impl(&self, big: bool) -> Option<String> {
+        let pane = self.focused();
+        let b = pane.doc.bytes();
+        let (s, e) = crate::motion::cword_under_cursor(b, pane.view.cursor(), big)?;
+        std::str::from_utf8(&b[s..e]).ok().map(str::to_string)
+    }
+
     /// The character on the line directly ABOVE (`above == true`) or BELOW the focused caret, at the
     /// caret's current column — the buffer value the frontend needs to resolve `i_CTRL-Y` / `i_CTRL-E`
     /// (the engine has no buffer). Returns `None` when there is no such line, or the adjacent line has no
@@ -1731,6 +1753,54 @@ mod tests {
             11,
             "whole-word search skips foobar"
         );
+    }
+
+    /// `<cword>` / `<cWORD>` under the caret — the text `c_CTRL-R_CTRL-W` / `c_CTRL-R_CTRL-A` splice into
+    /// the command line. Every case below was captured from nvim v0.12.4 (`expand('<cword>')` /
+    /// `expand('<cWORD>')` with the caret placed identically).
+    #[test]
+    fn cword_and_cbig_word_under_cursor() {
+        // (line, byte-cursor, expected <cword>, expected <cWORD>)
+        type Case<'a> = (&'a [u8], usize, Option<&'a str>, Option<&'a str>);
+        let cases: &[Case] = &[
+            // On / mid a plain keyword → that keyword for both.
+            (b"foobar baz\n", 0, Some("foobar"), Some("foobar")),
+            (b"foobar baz\n", 3, Some("foobar"), Some("foobar")),
+            // `foo.bar`: cword is the keyword touching the caret; cWORD is the whole non-blank run.
+            (b"foo.bar baz\n", 0, Some("foo"), Some("foo.bar")), // on 'f'
+            (b"foo.bar baz\n", 3, Some("bar"), Some("foo.bar")), // on '.', keyword forward = "bar"
+            // On leading whitespace → the next run forward on the line.
+            (b"  hello world\n", 0, Some("hello"), Some("hello")),
+            // cword crosses blanks+punct to the next keyword; cWORD stops at the run under the caret.
+            (b". foo\n", 0, Some("foo"), Some(".")),
+            // No keyword on the rest of the line: cword falls back to the non-blank (punctuation) run.
+            (b"foo ...\n", 4, Some("..."), Some("...")),
+            (b"end.\n", 3, Some("."), Some("end.")), // on the trailing '.'
+            // Rest of the line blank → nothing under the cursor for either.
+            (b"x  \n", 1, None, None),
+            (b"  \n", 0, None, None),
+            // Non-ASCII is keyword-class; `_`/digits too.
+            ("café x\n".as_bytes(), 2, Some("café"), Some("café")), // caret on the 'f'
+            (b"a1_b2 z\n", 0, Some("a1_b2"), Some("a1_b2")),
+            // Empty buffer.
+            (b"", 0, None, None),
+        ];
+        for (line, cur, cword, cbig) in cases {
+            let mut w = Workspace::new(line.to_vec());
+            w.place_focused_cursor(*cur);
+            assert_eq!(
+                w.cword_under_cursor().as_deref(),
+                *cword,
+                "<cword> for {:?} at {cur}",
+                String::from_utf8_lossy(line)
+            );
+            assert_eq!(
+                w.cbig_word_under_cursor().as_deref(),
+                *cbig,
+                "<cWORD> for {:?} at {cur}",
+                String::from_utf8_lossy(line)
+            );
+        }
     }
 
     /// `adjacent_line_char` backs `i_CTRL-E`/`i_CTRL-Y`: the char below/above the caret at its column, or

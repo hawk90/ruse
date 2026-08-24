@@ -46,7 +46,7 @@ fn step(engine: &mut InputEngine, st: &mut EditorState, key: KeyEvent) -> Feed {
             Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),
             _ => {}
         },
-        Feed::Pending | Feed::Ignored => {}
+        Feed::CmdlineInsertUnder { .. } | Feed::Pending | Feed::Ignored => {}
     }
     out
 }

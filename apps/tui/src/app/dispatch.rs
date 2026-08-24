@@ -248,8 +248,9 @@ fn drive_feed(
                 run_cmd(cmd, ws, files, recorded, status, quit);
             }
         }
-        // Nested ex from `:normal` is out of scope for this slice; Pending/Ignored are absorbed.
-        Feed::ExecuteEx(_) | Feed::Pending | Feed::Ignored => {}
+        // Nested ex from `:normal` is out of scope for this slice; Pending/Ignored are absorbed. A cmdline
+        // `c_CTRL-R` word-insert has no interactive command line in this replay context, so it is inert too.
+        Feed::ExecuteEx(_) | Feed::CmdlineInsertUnder { .. } | Feed::Pending | Feed::Ignored => {}
     }
 }
 

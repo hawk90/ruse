@@ -23,6 +23,11 @@ pub(crate) struct CmdLine {
     /// what to do with the result — arm the `"=` register for the next paste, or insert it at the caret.
     /// `None` for the ordinary `:`/`/` line and the `M-x` minibuffer.
     pub(crate) expr: Option<ExprTarget>,
+    /// `c_CTRL-R` prefix armed: the NEXT key selects what to splice at the cmdline caret. Only the
+    /// word-under-cursor variants are wired (`c_CTRL-R_CTRL-W` = `<cword>`, `c_CTRL-R_CTRL-A` = `<cWORD>`);
+    /// the frontend resolves the buffer text (the engine has no document). Reset per key. Any other
+    /// selector aborts the prefix cleanly (general `C-r{reg}` register insertion is deferred).
+    pub(crate) ctrl_r: bool,
     /// The transient history-recall cursor + saved draft for THIS open prompt (`:help cmdline-history`).
     /// Fresh per open; the persistent rings live on the engine (`ex_history`/`search_history`). Dropped
     /// with the prompt — KL-OBL-4 (a layer owns its state and dies with it).

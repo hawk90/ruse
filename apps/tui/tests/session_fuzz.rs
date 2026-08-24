@@ -66,7 +66,7 @@ fn apply_feed(st: &mut EditorState, out: Feed) {
                 apply_command(st, c);
             }
         }
-        Feed::ExecuteEx(_) | Feed::Pending | Feed::Ignored => {}
+        Feed::ExecuteEx(_) | Feed::CmdlineInsertUnder { .. } | Feed::Pending | Feed::Ignored => {}
     }
 }
 
