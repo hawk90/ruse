@@ -530,6 +530,66 @@ fn plan_virtual_replace_type(
     }
 }
 
+/// `{count}gr{char}` — CLASSIC-Vim one-shot virtual replace: overwrite `count` chars with `char` using the
+/// tab-aware [`plan_virtual_replace_type`] policy, then return to Normal (the one-shot form of `gR`, as `r`
+/// is to `R`). Because a single typed char is never `\n`, every step stays on the cursor's own line, so the
+/// whole change is one replace of `[cur, line_end)` computed by SIMULATING the `gR`-typing loop on an owned
+/// copy of the line. Over a `<Tab>` this shrinks/inserts to preserve the following text's column; when
+/// `count` overruns the line it APPENDS the surplus past end-of-line (Vim), unlike `r`. The cursor lands on
+/// the last replaced char (Vim leaves Replace with a one-boundary left nudge).
+fn plan_virtual_replace_char(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    count: u32,
+    c: char,
+    hint: GroupHint,
+) -> Plan {
+    let tabw = st.view.indent.tab_width.max(1);
+    let ls = line_start(b, cur);
+    let le = line_end(b, cur);
+    // Work on an owned copy of the whole line so tab virtual-column math sees the evolving text; positions
+    // are relative to `ls`. Only bytes from the cursor onward are ever touched.
+    let mut line: Vec<u8> = b[ls..le].to_vec();
+    let start = cur - ls; // cursor offset within `line`
+    let mut p = start;
+    let mut buf = [0u8; 4];
+    let typed = c.encode_utf8(&mut buf).as_bytes();
+    let tn = typed.len();
+    for _ in 0..count {
+        if p >= line.len() {
+            // Past end-of-line: append the surplus (virtual Replace grows the line here).
+            line.splice(p..p, typed.iter().copied());
+        } else if line[p] == b'\t' {
+            // Over a TAB spanning `w` virtual columns: insert before it (shrinking it) while more than one
+            // column remains; on its last column replace the tab itself — preserving the next char's column.
+            let vcol = motion::vcol_of(&line, 0, p, tabw);
+            let w = tabw - (vcol % tabw);
+            if w > 1 {
+                line.splice(p..p, typed.iter().copied());
+            } else {
+                line.splice(p..p + 1, typed.iter().copied());
+            }
+        } else {
+            // Over a normal char: overwrite exactly one grapheme boundary's worth.
+            let nb = next_boundary(&line, p);
+            line.splice(p..nb, typed.iter().copied());
+        }
+        p += tn;
+    }
+    // One replace of the line tail from the cursor; everything before `start` is unchanged.
+    let new_tail = line[start..].to_vec();
+    // Vim leaves Replace nudging left one boundary → the cursor rests on the LAST typed char at `ls + p - tn`
+    // (p advanced by at least one `tn` per iteration, so this never precedes the line start).
+    let cursor = ls + p - tn;
+    edit(
+        one(Edit::replace(cur, le - cur, new_tail)),
+        cursor,
+        Mode::Normal,
+        hint,
+    )
+}
+
 fn nop(cursor: usize, mode: Mode) -> Plan {
     Plan {
         action: Action::Nop,
@@ -950,6 +1010,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         Command::EnterInsertAfter => nop(next_boundary(b, cur), Mode::Insert),
         Command::InsertLineStart => nop(motion::first_non_blank(b, cur), Mode::Insert),
+        // `gI` — insert at byte column 0 (line start), BEFORE all indentation, unlike `I` (first non-blank).
+        Command::InsertColumnZero => nop(line_start(b, cur), Mode::Insert),
         Command::AppendLineEnd => nop(line_end(b, cur), Mode::Insert),
         Command::OpenBelow => {
             let le = line_end(b, cur);
@@ -1072,6 +1134,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         },
         Command::EnterVirtualReplace => nop(cur, Mode::VirtualReplace),
         Command::VirtualReplaceType(c) => plan_virtual_replace_type(st, b, cur, *c, hint),
+        Command::VirtualReplaceChar(count, c) => {
+            plan_virtual_replace_char(st, b, cur, *count, *c, hint)
+        }
         Command::InsertChar(c) => {
             let mut buf = [0u8; 4];
             let bytes = c.encode_utf8(&mut buf).as_bytes().to_vec();

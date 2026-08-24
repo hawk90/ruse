@@ -653,6 +653,21 @@ FIXTURES: list[dict] = [
     {"name": "gr_consumes_tab_fully", "lines": ["a\tb"], "keys": "lgRXYZ<Esc>", "setup": "set tabstop=4 noexpandtab"},
     {"name": "gr_over_tab_then_overwrite", "lines": ["a\tb"], "keys": "lgRXYZW<Esc>", "setup": "set tabstop=4 noexpandtab"},
     {"name": "gr_over_tab_backspace_regrows", "lines": ["a\tb"], "keys": "lgRX<BS><Esc>", "setup": "set tabstop=4 noexpandtab"},
+    #     `gI` — insert at column 1 (byte col 0), BEFORE all indentation (unlike `I` = first non-blank).
+    #     `{count}gI` repeats the typed text like the other insert-entries. `<Tab>` here is layout only; the
+    #     inserted text is plain chars, so the result is tabstop-independent (no setup needed).
+    {"name": "gI_insert_column_zero", "lines": ["\thello"], "keys": "gIX<Esc>", "setup": "set noexpandtab"},
+    {"name": "gI_before_space_indent", "lines": ["  ab"], "keys": "gIX<Esc>"},
+    {"name": "gI_count_repeats_text", "lines": ["\thello"], "keys": "3gIx<Esc>", "setup": "set noexpandtab"},
+    #     `gr{char}` — CLASSIC-Vim virtual-replace of ONE (or `{count}`) char, then back to Normal (the one-
+    #     shot of `gR`, as `r` is to `R`). NOTE: nvim 0.11+ maps `gr`/`grn`/`gra`/`grr` to LSP by default, but
+    #     under `-u NONE` those maps are absent, so bare `gr{char}` here is the classic built-in. Tab-aware:
+    #     over a multi-column <Tab> the char inserts before it, preserving the following column.
+    {"name": "grchar_one_char", "lines": ["abcdef"], "keys": "lgrX"},
+    {"name": "grchar_count", "lines": ["abcdef"], "keys": "3grZ"},
+    {"name": "grchar_past_eol_appends", "lines": ["ab"], "keys": "4grX"},
+    {"name": "grchar_over_tab", "lines": ["\tX"], "keys": "grA", "setup": "set tabstop=4 noexpandtab"},
+    {"name": "grchar_count_over_tab", "lines": ["\tX"], "keys": "2grA", "setup": "set tabstop=4 noexpandtab"},
     # (No `R`-then-`u` fixture: the oracle sets the buffer via set_lines, which is NOT an undo boundary, so
     #  `u` undoes past the initial content to empty — an oracle artifact, not Vim behavior. R+undo is covered
     #  by a core unit test instead.)

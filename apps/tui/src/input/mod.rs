@@ -116,6 +116,9 @@ enum Awaiting {
     GSecond,
     /// After `r`: the next key is the replacement char.
     ReplaceChar,
+    /// After `gr`: the next key is the CLASSIC-Vim virtual-replace char (`{count}gr{char}`, the one-shot form
+    /// of `gR`). The live count carries through so `3gr{char}` replaces three chars.
+    VirtualReplaceChar,
     /// After `` ` `` (backtick): the next key names a mark to jump to — `.` (last change) or a named mark
     /// `a`–`z`. Any other key aborts.
     MarkJump,
@@ -1421,7 +1424,7 @@ impl InputEngine {
         // (replace). Vim's Lang-Arg translates that argument regardless of how the command was reached.
         if matches!(
             self.normal.awaiting,
-            Awaiting::FindTarget { .. } | Awaiting::ReplaceChar
+            Awaiting::FindTarget { .. } | Awaiting::ReplaceChar | Awaiting::VirtualReplaceChar
         ) {
             return true;
         }
@@ -2764,6 +2767,17 @@ impl InputEngine {
                     KeyCode::Char(',') => self.action(Command::GotoNewerChange),
                     // `gi` — resume Insert at the last-insert position (Vim `` `^ ``).
                     KeyCode::Char('i') => self.action(Command::InsertAtLastInsert),
+                    // `gI` — insert at column 1 (byte column 0), BEFORE all indentation (`I` stops at the
+                    // first non-blank). Routed through `insert_entry` so `{count}gI` repeats the typed text.
+                    KeyCode::Char('I') => self.insert_entry(Command::InsertColumnZero),
+                    // `gr{char}` — CLASSIC-Vim virtual-replace of ONE (or `{count}`) char, then back to Normal
+                    // (the one-shot of `gR`). NOTE: nvim 0.11+ maps `gr`/`grn`/`gra`/`grr` to LSP actions by
+                    // default, but those are keymaps, not a built-in; ruse installs no such map and targets the
+                    // classic-Vim built-in. Arm the char expectation; the count carries through untouched.
+                    KeyCode::Char('r') => {
+                        self.normal.awaiting = Awaiting::VirtualReplaceChar;
+                        Feed::Pending
+                    }
                     // `gp` / `gP` — paste like `p`/`P` but leave the cursor JUST AFTER the pasted text.
                     KeyCode::Char('p') => self.action(Command::Paste {
                         after: true,
@@ -2815,6 +2829,17 @@ impl InputEngine {
                     KeyCode::Enter => self.action(Command::ReplaceChar(self.mcount(), '\n')),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::VirtualReplaceChar => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // `{count}gr{char}` — one-shot virtual replace (tab-aware) of `count` chars, back to
+                    // Normal. The count accumulated before `gr` is still live (the `gr` arm did not reset it).
+                    // No `<CR>` form: classic `gr<CR>` is not the line-splitting `r<CR>` — the char is taken
+                    // literally, so a bare Enter here simply aborts the pending construct.
+                    KeyCode::Char(c) => self.action(Command::VirtualReplaceChar(self.mcount(), c)),
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }

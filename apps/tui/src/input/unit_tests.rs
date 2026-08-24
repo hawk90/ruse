@@ -2499,6 +2499,9 @@ mod tests {
         assert_eq!(feed("ma"), Feed::Cmd(Command::SetNamedMark('a')));
         assert_eq!(feed("`a"), Feed::Cmd(Command::GotoNamedMark('a')));
         assert_eq!(feed("gi"), Feed::Cmd(Command::InsertAtLastInsert));
+        // `gI` — insert at column 0 (before indentation); `gr{char}` — classic virtual-replace one char.
+        assert_eq!(feed("gI"), Feed::Cmd(Command::InsertColumnZero));
+        assert_eq!(feed("grz"), Feed::Cmd(Command::VirtualReplaceChar(1, 'z')));
         assert_eq!(feed("'a"), Feed::Cmd(Command::GotoNamedMarkLine('a')));
         assert_eq!(feed("'."), Feed::Cmd(Command::GotoLastChangeLine));
         // Counts multiply the single-key actions (Vim `3x` / `3~` / `3rz`).
@@ -2510,6 +2513,15 @@ mod tests {
         assert_eq!(
             e.feed(k('z'), Mode::Normal),
             Feed::Cmd(Command::ReplaceChar(3, 'z'))
+        );
+        // `3grz` — the count carries through `g` and the `gr` char-await into a count-3 virtual replace.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('3'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('r'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('z'), Mode::Normal),
+            Feed::Cmd(Command::VirtualReplaceChar(3, 'z'))
         );
         let mut e = InputEngine::new();
         assert_eq!(
@@ -3200,6 +3212,7 @@ mod dot_repeat_tests {
                 Feed::Cmd(Command::EnterInsert)
                 | Feed::Cmd(Command::EnterInsertAfter)
                 | Feed::Cmd(Command::InsertLineStart)
+                | Feed::Cmd(Command::InsertColumnZero)
                 | Feed::Cmd(Command::AppendLineEnd)
                 | Feed::Cmd(Command::OpenBelow)
                 | Feed::Cmd(Command::OpenAbove)
