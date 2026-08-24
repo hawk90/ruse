@@ -162,8 +162,11 @@ fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) ->
     }
 }
 
-/// `[op]/pat` — search forward `count` times, then apply the pending operator (move/delete/change/yank)
-/// over `[cur, match)`. An operator with no match (or a backward match) is a no-op.
+/// `[op]/pat` (forward) or `[op]?pat` (backward) — search `count` times, then apply the pending operator
+/// (move/delete/change/yank) over the charwise-EXCLUSIVE span between the cursor and the match: `[cur, m)`
+/// forward, `[m, cur)` backward. An operator that finds no match on the correct side of the cursor is a
+/// no-op (Vim rings the bell). Matches nvim v0.12.4 (`d?pat` geometry verified via the oracle harness).
+#[allow(clippy::too_many_arguments)]
 fn plan_search(
     st: &EditorState,
     b: &[u8],
@@ -171,48 +174,47 @@ fn plan_search(
     op: &SearchOp,
     count: u32,
     pattern: &str,
+    backward: bool,
     hint: GroupHint,
 ) -> Plan {
     let opts = st.view.search_options();
     let mut pos = cur;
     for _ in 0..count.max(1) {
-        match search_fwd(b, pattern, pos + 1, opts) {
+        let step = if backward {
+            search_bwd(b, pattern, pos, opts)
+        } else {
+            search_fwd(b, pattern, pos + 1, opts)
+        };
+        match step {
             Some(m) => pos = m,
             None => break,
         }
     }
+    // The operator span is always `[lo, hi)` with `lo < hi`; the direction only decides which end the
+    // match is. Bare `Move` just relocates the cursor to the match.
+    let (lo, hi) = if backward { (pos, cur) } else { (cur, pos) };
     match op {
         SearchOp::Move => nop(pos, st.view.mode),
-        _ if pos <= cur => nop(cur, st.view.mode),
+        // No match on the operative side of the cursor (forward: match not past cursor; backward: match
+        // not before cursor) — abort cleanly rather than emit a reversed/empty edit.
+        _ if hi <= lo => nop(cur, st.view.mode),
         SearchOp::Delete => {
-            let reg = captured(b, cur, pos, false);
-            edit_yank(
-                one(Edit::delete(cur, pos - cur)),
-                cur,
-                st.view.mode,
-                hint,
-                reg,
-            )
+            let reg = captured(b, lo, hi, false);
+            edit_yank(one(Edit::delete(lo, hi - lo)), lo, st.view.mode, hint, reg)
         }
         SearchOp::Change => {
-            let reg = captured(b, cur, pos, false);
-            edit_yank(
-                one(Edit::delete(cur, pos - cur)),
-                cur,
-                Mode::Insert,
-                hint,
-                reg,
-            )
+            let reg = captured(b, lo, hi, false);
+            edit_yank(one(Edit::delete(lo, hi - lo)), lo, Mode::Insert, hint, reg)
         }
         SearchOp::Yank => {
-            let reg = captured(b, cur, pos, false);
+            let reg = captured(b, lo, hi, false);
             Plan {
                 action: Action::Nop,
-                cursor: cur,
+                cursor: lo,
                 mode: st.view.mode,
                 is_edit: false,
                 effects: Vec::new(),
-                set_register: Some(RegWrite::Yank(reg, (cur, pos))),
+                set_register: Some(RegWrite::Yank(reg, (lo, hi))),
                 set_anchor: None,
                 set_mark: None,
             }
@@ -1822,13 +1824,16 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let m = search_bwd(b, pat, cur, st.view.search_options()).unwrap_or(cur);
             nop(m, st.view.mode)
         }
-        // `/pat` as a motion: step forward to the `count`-th match (each step searches from just past the
-        // last), then either move there (`Move`) or fold `[cursor, match)` into a charwise-exclusive edit
-        // (`d/pat`/`c/pat`/`y/pat`). If no forward match lands past the cursor the operator aborts (Vim
-        // rings the bell) — a clean no-op, never a reversed/empty edit.
-        Command::Search { op, count, pattern } => {
-            plan_search(st, b, cur, op, *count, pattern, hint)
-        }
+        // `/pat` / `?pat` as a motion: step to the `count`-th match in the search direction (each step
+        // resumes from just past/before the last), then either move there (`Move`) or fold the exclusive
+        // span into an edit (`d/pat`, `c?pat`, `y?pat`). No match on the operative side aborts (a clean
+        // no-op, never a reversed/empty edit). See `plan_search` for the direction geometry.
+        Command::Search {
+            op,
+            count,
+            pattern,
+            backward,
+        } => plan_search(st, b, cur, op, *count, pattern, *backward, hint),
         Command::SearchObject {
             op,
             count,

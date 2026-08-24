@@ -8093,6 +8093,270 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "back_search_prev_match",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "$?foo<CR>",
+      "expect": {
+        "text": [
+          "foo bar foo baz"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "back_search_wraps_to_end",
+      "lines": [
+        "bar foo baz"
+      ],
+      "keys": "?foo<CR>",
+      "expect": {
+        "text": [
+          "bar foo baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "back_search_then_n_backward",
+      "lines": [
+        "foo x foo x foo"
+      ],
+      "keys": "$?foo<CR>n",
+      "expect": {
+        "text": [
+          "foo x foo x foo"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "back_search_then_N_forward",
+      "lines": [
+        "foo x foo x foo"
+      ],
+      "keys": "$?foo<CR>N",
+      "expect": {
+        "text": [
+          "foo x foo x foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "fwd_search_then_n_forward",
+      "lines": [
+        "foo x foo x foo"
+      ],
+      "keys": "/foo<CR>n",
+      "expect": {
+        "text": [
+          "foo x foo x foo"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "fwd_search_then_N_backward",
+      "lines": [
+        "foo x foo x foo"
+      ],
+      "keys": "/foo<CR>N",
+      "expect": {
+        "text": [
+          "foo x foo x foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "back_search_count",
+      "lines": [
+        "foo x foo x foo x end"
+      ],
+      "keys": "$2?foo<CR>",
+      "expect": {
+        "text": [
+          "foo x foo x foo x end"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_back_search_exclusive",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "$d?bar<CR>",
+      "expect": {
+        "text": [
+          "foo x"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar baz qu",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "c_back_search_exclusive",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "$c?bar<CR>Z<Esc>",
+      "expect": {
+        "text": [
+          "foo Zx"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar baz qu",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "y_back_search_then_paste",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "$y?bar<CR>P",
+      "expect": {
+        "text": [
+          "foo bar baz qubar baz qux"
+        ],
+        "cursor": [
+          1,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "bar baz qu",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bar baz qu",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "empty_back_search_reuses_pattern",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "/bar<CR>$?<CR>",
+      "expect": {
+        "text": [
+          "foo bar foo baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }
