@@ -1076,7 +1076,13 @@ impl InputEngine {
         if self.insert.ctrl_r {
             self.insert.ctrl_r = false;
             return match key.code {
-                KeyCode::Char(c) if c == '"' || c == '-' || c.is_ascii_alphanumeric() => {
+                KeyCode::Char(c)
+                    if c == '"'
+                        || c == '-'
+                        || c == '+'
+                        || c == '*'
+                        || c.is_ascii_alphanumeric() =>
+                {
                     self.action(Command::InsertRegister(c))
                 }
                 _ => {
@@ -1915,7 +1921,10 @@ impl InputEngine {
                         if c.is_ascii_alphabetic()
                             || c.is_ascii_digit()
                             || c == '-'
-                            || c == '_' =>
+                            || c == '_'
+                            // `"+`/`"*` — the system clipboard (`:help quoteplus`).
+                            || c == '+'
+                            || c == '*' =>
                     {
                         self.action(Command::SetRegister(Some(c)))
                     }

@@ -22,6 +22,7 @@
 //! (focus next), `C-w c` (close focused). The full recursive layout tree, tab pages, resize
 //! constraints, and the rest of the `C-w` family are deferred (docs/design/view-window-workspace.md).
 
+use crate::clipboard::{Clipboard, NoClipboard};
 use crate::command::Command;
 use crate::document::{Document, DocumentId};
 use crate::editor::{
@@ -114,6 +115,11 @@ pub struct Workspace {
     /// lives without the oracle ever seeing it. `(false, false)` = Vim factory until the frontend sets it.
     default_ignore_case: bool,
     default_smart_case: bool,
+    /// The injected OS-clipboard provider behind the `"+`/`"*` registers (`:help quoteplus`). Defaults to
+    /// [`NoClipboard`] (a no-op) so core stays pure and CI — which has no clipboard — is deterministic; the
+    /// frontend installs a real shell-out provider at startup via [`Workspace::set_clipboard`], and unit
+    /// tests inject [`MemClipboard`](crate::clipboard::MemClipboard).
+    clipboard: Box<dyn Clipboard>,
 }
 
 impl Workspace {
@@ -135,7 +141,15 @@ impl Workspace {
             alt: None,
             default_ignore_case: false,
             default_smart_case: false,
+            clipboard: Box::new(NoClipboard),
         }
+    }
+
+    /// Install the OS-clipboard provider backing `"+`/`"*` (`:help quoteplus`). The frontend calls this once
+    /// at startup with a real shell-out provider; tests inject an in-memory double. Without it the workspace
+    /// keeps the [`NoClipboard`] default, so `"+p` is a graceful no-op and `"+y` silently drops.
+    pub fn set_clipboard(&mut self, clipboard: Box<dyn Clipboard>) {
+        self.clipboard = clipboard;
     }
 
     /// Set the workspace default search-case and apply it to EVERY live view (existing and, via
@@ -265,7 +279,32 @@ impl Workspace {
         let doc = self.docs[slot].take().expect("focused doc live");
 
         let mut st = EditorState::from_parts(doc, view);
+
+        // `"+`/`"*` (`:help quoteplus`): this command touches the system clipboard when the one-shot pending
+        // register is `+`/`*` (a `"+y`/`"+p`/`"+d`), or it is an `i_CTRL-R` insert directly from `+`/`*`. The
+        // OS clipboard is an impure side effect, so it is synced HERE (the orchestration boundary), never in
+        // the pure planner: PULL the external clipboard into the mirror slot before the command so a paste
+        // reflects what another app copied, then PUSH the mirror slot out after so a yank/delete propagates.
+        let touches_clipboard = crate::register::RegisterStore::is_clipboard(st.pending_register())
+            || matches!(
+                cmd,
+                Command::InsertRegister('+') | Command::InsertRegister('*')
+            );
+        if touches_clipboard {
+            if let Some(text) = self.clipboard.get() {
+                st.sync_clipboard_in(text.into_bytes());
+            }
+        }
+
         let effects = apply_command(&mut st, cmd);
+
+        if touches_clipboard {
+            // The mirror slot now holds the yanked/deleted bytes (a paste leaves it unchanged, so the push is
+            // idempotent). `String::from_utf8_lossy` keeps a non-UTF-8 buffer from ever panicking the write.
+            let bytes = st.registers().clipboard().text().to_vec();
+            self.clipboard.set(&String::from_utf8_lossy(&bytes));
+        }
+
         let (doc, view) = st.into_parts();
 
         self.docs[slot] = Some(doc);
@@ -961,6 +1000,114 @@ mod tests {
 
     fn ws() -> Workspace {
         Workspace::new(b"hello\nworld\nfoo\nbar\n".to_vec())
+    }
+
+    use crate::clipboard::MemClipboard;
+    use crate::motion::Motion as Mo;
+
+    /// `"+yiw` yanks the word into the SYSTEM clipboard (via the injected provider), and mirrors unnamed.
+    #[test]
+    fn clipboard_yank_word_reaches_the_provider() {
+        let clip = MemClipboard::new();
+        let mut w = Workspace::new(b"hello\nworld\n".to_vec());
+        w.set_clipboard(Box::new(clip.clone()));
+        w.apply(&Command::SetRegister(Some('+')));
+        w.apply(&Command::Yank(1, Mo::InnerWord));
+        assert_eq!(
+            clip.contents().as_deref(),
+            Some("hello"),
+            "\"+yiw pushes the word to the OS clipboard"
+        );
+        assert_eq!(
+            w.register_bytes(None),
+            b"hello",
+            "a clipboard yank still mirrors unnamed (Vim)"
+        );
+    }
+
+    /// A plain (unregistered) yank must NEVER touch the clipboard provider.
+    #[test]
+    fn plain_yank_leaves_clipboard_untouched() {
+        let clip = MemClipboard::new();
+        let mut w = Workspace::new(b"hello\nworld\n".to_vec());
+        w.set_clipboard(Box::new(clip.clone()));
+        w.apply(&Command::Yank(1, Mo::InnerWord));
+        assert!(
+            clip.contents().is_none(),
+            "an unnamed yank never writes the OS clipboard"
+        );
+    }
+
+    /// `"+p` pastes FROM whatever an external app put on the clipboard (charwise, inline).
+    #[test]
+    fn clipboard_paste_reads_external_contents() {
+        let clip = MemClipboard::new();
+        clip.preload("PASTED");
+        let mut w = Workspace::new(b"xy\n".to_vec());
+        w.set_clipboard(Box::new(clip.clone()));
+        w.apply(&Command::SetRegister(Some('+')));
+        w.apply(&Command::Paste {
+            after: true,
+            count: 1,
+            move_after: false,
+        });
+        assert_eq!(
+            w.focused().doc.bytes(),
+            b"xPASTEDy\n",
+            "\"+p inserts the external clipboard text after the cursor"
+        );
+    }
+
+    /// Linewise geometry survives the clipboard round-trip: `"+yy` then `"+p` opens a whole NEW line, even
+    /// though the OS clipboard only carries bytes (the mirror slot keeps its RegKind when bytes are unchanged).
+    #[test]
+    fn clipboard_linewise_round_trip_preserves_geometry() {
+        let clip = MemClipboard::new();
+        let mut w = Workspace::new(b"alpha\nbeta\n".to_vec());
+        w.set_clipboard(Box::new(clip.clone()));
+        w.apply(&Command::SetRegister(Some('+')));
+        w.apply(&Command::Yank(1, Mo::Line)); // "+yy
+        assert_eq!(clip.contents().as_deref(), Some("alpha\n"));
+        w.apply(&Command::SetRegister(Some('+')));
+        w.apply(&Command::Paste {
+            after: true,
+            count: 1,
+            move_after: false,
+        }); // "+p
+        assert_eq!(
+            w.focused().doc.bytes(),
+            b"alpha\nalpha\nbeta\n",
+            "a linewise clipboard register pastes as a new line, not inline"
+        );
+    }
+
+    /// `"+dd` deletes into the clipboard and removes the line from the buffer.
+    #[test]
+    fn clipboard_delete_line_cuts_to_the_provider() {
+        let clip = MemClipboard::new();
+        let mut w = Workspace::new(b"alpha\nbeta\n".to_vec());
+        w.set_clipboard(Box::new(clip.clone()));
+        w.apply(&Command::SetRegister(Some('+')));
+        w.apply(&Command::Delete(1, Mo::Line)); // "+dd
+        assert_eq!(clip.contents().as_deref(), Some("alpha\n"));
+        assert_eq!(w.focused().doc.bytes(), b"beta\n", "the line is cut out");
+    }
+
+    /// Graceful degradation: with the default [`NoClipboard`], `"+p` pastes nothing and never panics.
+    #[test]
+    fn clipboard_absent_is_a_graceful_noop() {
+        let mut w = Workspace::new(b"hi\n".to_vec());
+        w.apply(&Command::SetRegister(Some('+')));
+        w.apply(&Command::Paste {
+            after: true,
+            count: 1,
+            move_after: false,
+        });
+        assert_eq!(
+            w.focused().doc.bytes(),
+            b"hi\n",
+            "no clipboard tool -> \"+p is inert, not a crash"
+        );
     }
 
     /// F-007 #1: splitting shows two Views of ONE Document with INDEPENDENT cursors and scroll.

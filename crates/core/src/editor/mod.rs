@@ -1219,6 +1219,21 @@ impl EditorState {
         &self.view.registers
     }
 
+    /// The one-shot register selected by the most recent `"x` and not yet consumed. The
+    /// [`Workspace`](crate::Workspace) reads this before applying a command to decide whether that command
+    /// touches the system clipboard (`"+`/`"*`).
+    #[must_use]
+    pub fn pending_register(&self) -> Option<char> {
+        self.view.pending_register
+    }
+
+    /// Refresh the `"+`/`"*` clipboard mirror slot from external OS-clipboard bytes ahead of a paste, so
+    /// `"+p` reflects whatever another application copied. Preserves the in-session paste geometry when the
+    /// bytes are unchanged (see [`RegisterStore::set_clipboard_from_external`]).
+    pub fn sync_clipboard_in(&mut self, bytes: Vec<u8>) {
+        self.view.registers.set_clipboard_from_external(bytes);
+    }
+
     /// Write raw bytes into a named register as a CHARWISE entry (D-055 macro recording): the frontend
     /// stores a recorded keystroke stream into `"{name}`, sharing the same a-z slots as yank/paste so a
     /// macro pastes as text and yanked text runs as a macro. `name` is `Some('a'..='z')`; the byte content
