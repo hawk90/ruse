@@ -227,6 +227,20 @@ pub struct View {
     /// [`commit`] on an Insert→Normal transition to the pre-clamp caret, and snapped like the marks. `None`
     /// until the first Insert session ends.
     last_insert: Option<usize>,
+    /// Vim's `[` mark: the byte offset of the FIRST char of the last changed OR yanked text. Set in
+    /// [`commit`] after any committing edit (delete/replace/put), on leaving an Insert session, or on a
+    /// yank; snapped every commit like the named marks. `None` before the first change/yank. Read by
+    /// `` `[ `` (charwise) and `'[` (linewise, first non-blank of its line).
+    change_start: Option<usize>,
+    /// Vim's `]` mark: the byte offset bounding the END of the last changed/yanked text. For a
+    /// delete/replace/put/yank it is the LAST char (inclusive); for an Insert session it is the insert
+    /// END-caret (one past the last inserted char, matching Neovim), which the jump clamps onto the line's
+    /// last char. Set/snapped alongside [`change_start`]. Read by `` `] `` / `']`.
+    change_end: Option<usize>,
+    /// Transient: where the CURRENT Insert-like session began (the caret when Insert/Replace was entered).
+    /// Combined with the caret when the session is left, it bounds the inserted run for `[`/`]`. `None`
+    /// outside a session. Snapped like the marks so a buffer-resizing edit under it stays valid.
+    insert_start: Option<usize>,
     /// The jumplist (Vim): the cursor positions BEFORE each jump (search / `G` / `%` / a mark / paragraph),
     /// oldest → newest, bounded to [`MAX_CHANGES`]. Navigated by `CTRL-O` (older) / `CTRL-I` (newer) through
     /// [`jump_idx`]; recorded in [`apply_command`] and snapped every commit like the marks.
@@ -283,6 +297,9 @@ impl View {
             change_idx: 0,
             named_marks: [None; 26],
             last_insert: None,
+            change_start: None,
+            change_end: None,
+            insert_start: None,
             jumps: Vec::new(),
             jump_idx: 0,
         }
@@ -313,6 +330,16 @@ impl View {
     #[must_use]
     pub fn last_change(&self) -> Option<usize> {
         self.changes.last().copied()
+    }
+
+    /// Vim's `[` mark — the first char of the last changed/yanked text, or `None` before the first change.
+    pub fn change_mark_start(&self) -> Option<usize> {
+        self.change_start
+    }
+
+    /// Vim's `]` mark — the end of the last changed/yanked text (see [`View::change_end`]), or `None`.
+    pub fn change_mark_end(&self) -> Option<usize> {
+        self.change_end
     }
 
     /// The context mark (Vim `` ` ``/`'`): the position before the latest jump — the newest jumplist entry.
@@ -550,7 +577,10 @@ struct BlockInsert {
 /// `"0` survives intervening deletes (Vim `:help quote0`).
 enum RegWrite {
     Edit(Register),
-    Yank(Register),
+    /// A yank: the captured [`Register`] plus the `(start, end)` byte span (half-open) it was taken from,
+    /// used to set the `[`/`]` change marks — a yank leaves the buffer unchanged, so the span cannot be
+    /// recovered from an [`EditList`] the way an edit's affected range can.
+    Yank(Register, (usize, usize)),
     /// An Emacs KILL (`kill-line`/`kill-word`/`kill-region`). Like `Edit` it captures on a delete, but it
     /// ACCUMULATES: when the previous command was also a kill ([`View::last_was_kill`]) the captured text is
     /// appended onto the current unnamed entry rather than overwriting it (Emacs kill-ring behaviour). A
@@ -1339,6 +1369,28 @@ mod planner;
 pub use planner::plan;
 
 /// Apply a plan to the state, returning the effects the frontend must perform.
+/// The `(start, end)` byte span (half-open, POST-edit coordinates) the `[`/`]` change marks bracket for an
+/// [`EditList`]: `start` is the first edit's position (nothing before it moved), and `end` is the end of the
+/// LAST edit's inserted text — its position shifted by the cumulative length delta of every earlier edit,
+/// plus that edit's inserted byte count. A pure delete yields `end == start` (both marks collapse onto the
+/// deletion point, as Vim does). `None` for an empty list.
+fn edit_bracket(list: &EditList) -> Option<(usize, usize)> {
+    let edits = list.edits();
+    let first = edits.first()?;
+    let last = edits.last()?;
+    let start = first.pos.0;
+    let delta_before_last: isize = edits[..edits.len() - 1].iter().map(Edit::delta).sum();
+    let post_last_start = (last.pos.0 as isize + delta_before_last).max(0) as usize;
+    Some((start, post_last_start + last.ins.len()))
+}
+
+/// Whether `mode` is one of the text-entry sessions (Insert / Replace / VirtualReplace) — used to decide how
+/// the `[`/`]` change marks are bounded (a whole typed run, tracked from session entry to exit) versus a
+/// one-shot Normal edit (bounded directly by its [`EditList`]).
+fn is_text_entry(mode: Mode) -> bool {
+    matches!(mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace)
+}
+
 pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // `"x` sets the one-shot pending register and nothing else — it must NOT be cleared by the tail below
     // (that clear is what consumes the selection on the FOLLOWING command), so it returns early.
@@ -1350,10 +1402,15 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let was_selection = entry_selection.is_some();
     let entry_cursor = st.view.cursor;
     let entry_anchor = st.view.anchor;
+    let entry_mode = st.view.mode;
+    // The `[`/`]` change-mark span for a Normal-mode edit — read off the plan's edits (post-edit coords)
+    // before they are moved into a Transaction. A yank has no edits; its span rides in `RegWrite::Yank`.
+    let mut edit_span: Option<(usize, usize)> = None;
     // `g;`/`g,` resolve their destination here (they step `change_idx`, which the pure planner cannot do).
     let mut nav_target: Option<usize> = None;
     match plan.action {
         Action::Txn { edits, hint } => {
+            edit_span = edit_bracket(&edits);
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
                 .with_hint(hint);
             // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
@@ -1367,6 +1424,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             push,
             pop,
         } => {
+            edit_span = edit_bracket(&edits);
             let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
                 .with_hint(hint);
             st.doc
@@ -1403,6 +1461,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             session,
         } => {
             if !edits.is_empty() {
+                edit_span = edit_bracket(&edits);
                 let txn = Transaction::new(st.doc.revision(), edits, TransactionOrigin::UserInput)
                     .with_hint(hint);
                 st.doc
@@ -1433,6 +1492,39 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     if plan.is_edit {
         st.view.push_change(st.view.cursor);
     }
+    // Vim `[`/`]` change marks: bound the last changed OR yanked text. A text-entry session (Insert/Replace)
+    // is ONE change bracketed from where it began to the caret at exit (so `ihello<Esc>` brackets the whole
+    // run, not just the last typed char); a one-shot Normal edit is bounded by its `EditList`; a yank by the
+    // span carried in `RegWrite::Yank`. `]` is stored as the LAST char (inclusive) for delete/replace/put/
+    // yank, but as the exclusive insert END-caret for a session — the jump's EOL clamp reconciles both to
+    // match Neovim. Individual keystrokes WITHIN a session don't touch the marks (only entry/exit do).
+    let entering_entry = !is_text_entry(entry_mode) && is_text_entry(plan.mode);
+    let leaving_entry = is_text_entry(entry_mode) && !is_text_entry(plan.mode);
+    if entering_entry {
+        st.view.insert_start = Some(st.view.cursor);
+    }
+    if leaving_entry {
+        let start = st.view.insert_start.unwrap_or(entry_cursor);
+        st.view.change_start = Some(start.min(entry_cursor));
+        st.view.change_end = Some(start.max(entry_cursor));
+        st.view.insert_start = None;
+    } else if !is_text_entry(plan.mode) {
+        // A completed Normal-mode edit, or a yank (which carries its own span since it makes no edits).
+        let yank_span = match &plan.set_register {
+            Some(RegWrite::Yank(_, span)) => Some(*span),
+            _ => None,
+        };
+        if let Some((s, e)) = edit_span.or(yank_span) {
+            let b = st.doc.bytes();
+            let s = s.min(b.len());
+            st.view.change_start = Some(s);
+            st.view.change_end = Some(if e > s {
+                prev_grapheme(b, e.min(b.len()))
+            } else {
+                s
+            });
+        }
+    }
     let len = st.doc.bytes().len();
     for c in st.view.changes.iter_mut() {
         *c = snap(st.doc.bytes(), (*c).min(len));
@@ -1445,6 +1537,17 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // The last-insert position (`gi`) snaps the same way.
     if let Some(li) = st.view.last_insert {
         st.view.last_insert = Some(snap(st.doc.bytes(), li.min(len)));
+    }
+    // The `[`/`]` change marks (and an in-flight Insert-session start) snap into range too.
+    for p in [
+        &mut st.view.change_start,
+        &mut st.view.change_end,
+        &mut st.view.insert_start,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        *p = snap(st.doc.bytes(), (*p).min(len));
     }
     // Jumplist entries snap into range too (a buffer-resizing edit under a jump keeps it valid).
     for j in st.view.jumps.iter_mut() {
@@ -1481,7 +1584,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     st.view.last_was_kill = false;
     match plan.set_register {
         Some(RegWrite::Edit(reg)) => st.view.registers.delete(st.view.pending_register, reg),
-        Some(RegWrite::Yank(reg)) => st.view.registers.yank(st.view.pending_register, reg),
+        Some(RegWrite::Yank(reg, _)) => st.view.registers.yank(st.view.pending_register, reg),
         Some(RegWrite::KillAppend(reg)) => {
             if was_kill {
                 st.view.registers.kill_append(reg);
@@ -1552,6 +1655,10 @@ fn is_jump(cmd: &Command) -> bool {
         Command::SearchNext(_) | Command::SearchPrev(_) | Command::SearchWordUnder { .. } => true,
         Command::GotoLastChange
         | Command::GotoLastChangeLine
+        | Command::GotoChangeMarkStart
+        | Command::GotoChangeMarkEnd
+        | Command::GotoChangeMarkStartLine
+        | Command::GotoChangeMarkEndLine
         | Command::GotoNamedMark(_)
         | Command::GotoNamedMarkLine(_)
         | Command::GotoContextMark

@@ -654,6 +654,25 @@ FIXTURES: list[dict] = [
     #     visual mode — selection is inclusive of both ends ------------------------------------------------
     {"name": "visual_unmatched_paren_fwd_delete", "lines": ["(abcdef)"], "keys": "3lv])d"},
     {"name": "visual_unmatched_paren_back_delete", "lines": ["(abcdef)"], "keys": "3lv[(d"},
+    #     change/yank marks `[ `] '[ '] (issue #428) — the marks bound the last changed/yanked text.
+    #     `[ / `] jump charwise to the first/last char; '[ / '] jump linewise to the first non-blank.
+    {"name": "yank_word_mark_start", "lines": ["foo bar baz"], "keys": "wyiw$`["},
+    {"name": "yank_word_mark_end", "lines": ["foo bar baz"], "keys": "wyiw0`]"},
+    {"name": "insert_mark_start", "lines": ["abc"], "keys": "ihello<Esc>0`["},
+    {"name": "insert_mark_end", "lines": ["abc"], "keys": "ihello<Esc>0`]"},
+    {"name": "insert_mid_mark_end", "lines": ["abcdef"], "keys": "lliXY<Esc>0`]"},
+    {"name": "put_line_mark_start", "lines": ["one", "two", "three"], "keys": "ddp`["},
+    {"name": "put_line_mark_end", "lines": ["one", "two", "three"], "keys": "ddp`]"},
+    {"name": "delete_char_mark_start", "lines": ["abcdef"], "keys": "llx`["},
+    {"name": "delete_char_mark_end", "lines": ["abcdef"], "keys": "llx`]"},
+    {"name": "replace_char_mark_end", "lines": ["abcdef"], "keys": "llrZ`]"},
+    {"name": "quote_mark_start_line", "lines": ["  aa", "  bb", "cc"], "keys": "ggVjy'["},
+    {"name": "quote_mark_end_line", "lines": ["  aa", "  bb", "cc"], "keys": "ggVjy']"},
+    {"name": "multiline_change_mark_start", "lines": ["alpha", "beta", "gamma"], "keys": "2ccabc<Esc>`["},
+    {"name": "multiline_change_mark_end", "lines": ["alpha", "beta", "gamma"], "keys": "2ccabc<Esc>`]"},
+    {"name": "linewise_yank_mark_end", "lines": ["one", "two"], "keys": "yy`]"},
+    {"name": "open_line_mark_start", "lines": ["abc"], "keys": "ohi<Esc>`["},
+    {"name": "open_line_mark_end", "lines": ["abc"], "keys": "ohi<Esc>`]"},
 ]
 
 
