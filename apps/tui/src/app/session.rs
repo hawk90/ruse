@@ -1060,6 +1060,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         fv.remove(idx);
                     }
                 }
+                // `zE` — eliminate ALL folds in the window (removes them, unlike `zR` which only opens).
+                KeyCode::Char('E') => crate::folds::eliminate_all(fv),
+                // `zv` — view cursor line: open just enough folds to reveal the cursor line (for the
+                // non-nesting slice-1 model, the single fold containing it). Keeps the fold, unlike `zd`.
+                KeyCode::Char('v') => {
+                    crate::folds::open_cursor_fold(fv, cur_line);
+                }
                 _ => {}
             }
             continue;

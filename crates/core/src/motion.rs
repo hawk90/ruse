@@ -26,6 +26,13 @@ pub enum Motion {
     /// Vim `|` — go to the `count`-th (1-based) display column of the current line (`5|` = column 5).
     /// Exclusive charwise under an operator.
     Column,
+    /// Vim `gM` — go to the char at `count` PERCENT of the line's CHARACTER length (bare `gM` = 50%, the
+    /// middle char; `25gM` = a quarter along). The 0-based char index is `min(count * chars / 100, chars-1)`,
+    /// counting every char on the line including leading/trailing whitespace. Char columns, like the rest of
+    /// the motion model — nvim's `gM` actually measures DISPLAY width, so a line containing `<Tab>`s or
+    /// double-width chars lands one-off from nvim (the same tab/wide-char follow-up the whole motion model
+    /// carries; see `vmove`/`Column`). Exclusive charwise under an operator (`dgM`), like `|`.
+    MidLine,
     /// Small-word motions (Vim `w`/`b`/`e`): three classes — whitespace, word (alnum + `_` + non-ASCII),
     /// punctuation — so `foo.bar` is three words.
     WordFwd,
@@ -1510,6 +1517,17 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     if m == Motion::Column {
         return at_col(b, line_start(b, cur0), (n - 1) as usize);
     }
+    // `gM` / `{count}gM`: the count is a PERCENTAGE of the line's character length (not a repeat); land on
+    // char index `min(count*chars/100, chars-1)`. The frontend passes 50 for a bare `gM`.
+    if m == Motion::MidLine {
+        let ls = line_start(b, cur0);
+        let chars = col_of(b, ls, line_end(b, cur0)); // char count of the line (excludes the newline)
+        if chars == 0 {
+            return ls; // empty line — nowhere to go
+        }
+        let idx = ((n as usize) * chars / 100).min(chars - 1);
+        return at_col(b, ls, idx);
+    }
     let mut c = cur0;
     for _ in 0..n {
         c = match m {
@@ -1559,6 +1577,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             | Motion::GotoPercent
             | Motion::LineLastNonBlank
             | Motion::Column
+            | Motion::MidLine
             | Motion::InnerWord
             | Motion::AWord
             | Motion::InnerBigWord
@@ -1657,9 +1676,9 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             }
             (e, next_boundary(b, cur))
         }
-        // `^` / `|` / `go` are exclusive and can point either way (indent / column / byte, left or right):
-        // ordered pair from the cursor to the absolute target.
-        Motion::LineFirstNonBlank | Motion::Column | Motion::GotoByte => {
+        // `^` / `|` / `go` / `gM` are exclusive and can point either way (indent / column / byte / line-%,
+        // left or right): ordered pair from the cursor to the absolute target.
+        Motion::LineFirstNonBlank | Motion::Column | Motion::GotoByte | Motion::MidLine => {
             let t = target(b, cur, m, n);
             (cur.min(t), cur.max(t))
         }
@@ -1855,6 +1874,39 @@ mod gunderscore_column_tests {
         assert_eq!(target(b, 0, Motion::Column, 99), 6);
         // `d5|` from column 1 spans the ordered pair [0, 4).
         assert_eq!(char_span(b, 0, Motion::Column, 5), (0, 4));
+    }
+
+    #[test]
+    fn gm_lands_at_the_percent_char_of_the_line() {
+        // Landings VERIFIED against nvim v0.12.4 (`gM` = 50% by char count; 0-based index = 50*L/100).
+        // "abcdefghij" (L=10): bare gM (count 50) → index 5 ('f').
+        let b = b"abcdefghij\n";
+        assert_eq!(target(b, 0, Motion::MidLine, 50), 5, "gM = middle char");
+        assert_eq!(target(b, 9, Motion::MidLine, 50), 5, "gM ignores start col");
+        // `{count}gM` as a percentage (nvim: 25gM→col3/idx2, 100gM→last/idx9, 10gM→idx1, 1gM→idx0).
+        assert_eq!(target(b, 0, Motion::MidLine, 25), 2, "25gM");
+        assert_eq!(
+            target(b, 0, Motion::MidLine, 100),
+            9,
+            "100gM clamps to last char"
+        );
+        assert_eq!(target(b, 0, Motion::MidLine, 10), 1, "10gM");
+        assert_eq!(target(b, 0, Motion::MidLine, 1), 0, "1gM");
+        // Odd length floors: "abcde" (L=5) → 50*5/100 = 2 (nvim col 3).
+        let odd = b"abcde\n";
+        assert_eq!(
+            target(odd, 0, Motion::MidLine, 50),
+            2,
+            "gM on a 5-char line"
+        );
+        // Single char / empty line: stay put at the line start.
+        assert_eq!(target(b"a\n", 0, Motion::MidLine, 50), 0);
+        assert_eq!(target(b"\n", 0, Motion::MidLine, 50), 0, "empty line");
+        // `dgM` is exclusive charwise (nvim: `0dgM` on "abcdefghij" → "fghij" = span [0,5); `$dgM` → [5,9)).
+        assert_eq!(char_span(b, 0, Motion::MidLine, 50), (0, 5));
+        assert_eq!(char_span(b, 9, Motion::MidLine, 50), (5, 9));
+        // gM counts leading whitespace too: "    abcdef" (L=10) → idx 5 (nvim col 6).
+        assert_eq!(target(b"    abcdef\n", 0, Motion::MidLine, 50), 5);
     }
 }
 

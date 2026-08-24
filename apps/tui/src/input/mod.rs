@@ -2615,6 +2615,24 @@ impl InputEngine {
                     KeyCode::Char('^') => self.motion(Motion::LineFirstNonBlank),
                     // `[count]go` — go to the count-th byte of the buffer (operator-aware: `dgo`).
                     KeyCode::Char('o') => self.motion(Motion::GotoByte),
+                    // `gM` — go to `count`% of the line by CHARACTER count (bare `gM` = the middle char,
+                    // i.e. 50%). The count is a PERCENTAGE, not a repeat, so seed it into `count` (default 50)
+                    // and let `motion` carry it through — exactly the count-as-percentage shape `{count}%`
+                    // (`GotoPercent`) uses. Operator-aware (`dgM`); `op_over_motion` clears the count after.
+                    //
+                    // `gm` (middle of the SCREEN line, i.e. the char at display column `window_width/2`) is
+                    // DEFERRED: it is a pure function of the window width (nvim goes to the last char once the
+                    // half-width column runs past the line), which the motion engine has no access to at motion
+                    // time — the frontend never threads viewport width into `Motion`. Aliasing it to `gM`
+                    // would be wrong (on a 10-char line in an 80-col window nvim's `gm` lands on the last
+                    // char, `gM` on the 6th), so `gm` is left unbound (aborts as operator-pending) until a
+                    // width-aware motion path exists.
+                    KeyCode::Char('M') => {
+                        if self.normal.count == 0 {
+                            self.normal.count = 50; // bare `gM` = 50% of the line
+                        }
+                        self.motion(Motion::MidLine)
+                    }
                     // `g*` / `g#` — like `*`/`#` but match the word ANYWHERE (no `\<…\>` boundaries).
                     KeyCode::Char('*') => self.action(Command::SearchWordUnder {
                         forward: true,
