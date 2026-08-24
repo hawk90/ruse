@@ -195,7 +195,9 @@ pub enum Command {
     /// EACH selected line. `sequential` (the `g CTRL-A`/`g CTRL-X` form) instead adds `delta`, `2·delta`,
     /// `3·delta`… to successive numbered lines — turning a column of equal numbers into an ascending run.
     /// Lines without a number are skipped and do not advance the sequence. Returns to Normal, caret on the
-    /// first changed line. Charwise/linewise selections; blockwise geometry is deferred.
+    /// FIRST SELECTED line at the selection's left-edge column (col 0 linewise / block-left blockwise /
+    /// selection-start charwise — independent of which line changed). Charwise, linewise, and blockwise
+    /// selections are all supported (blockwise targets the block's left column, not the line's first number).
     IncrementSelection {
         delta: i64,
         sequential: bool,

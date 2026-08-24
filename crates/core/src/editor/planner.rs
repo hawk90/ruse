@@ -1248,16 +1248,18 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 }
             };
             let mut edits: Vec<Edit> = Vec::new();
-            let mut caret = lines.first().map_or(cur, |&(ls, _)| ls); // caret on the first selected line
+            // Vim leaves the caret on the FIRST SELECTED line at the selection's LEFT-EDGE column — the
+            // first line's search-`from` (linewise: column 0; charwise: the selection start; blockwise: the
+            // block's left column). It is INDEPENDENT of which line changed (or whether any did) and of the
+            // number's own last digit — so a multi-digit result (`007`→`008`) or a numberless first line
+            // (`abc` above the numbers) still homes here. Verified against nvim v0.12.4 (parity fixtures).
+            let caret = lines.first().map_or(cur, |&(_ls, from)| from);
             let mut steps: i64 = 0; // numbered lines seen so far (the sequence multiplier)
             for (ls, from) in lines {
                 let le = line_end(b, ls);
                 steps += 1;
                 let this = if *sequential { delta * steps } else { *delta };
-                if let Some((start, old_len, bytes, cursor)) = incr_number(b, ls, le, from, this) {
-                    if edits.is_empty() {
-                        caret = cursor; // caret lands on the first changed number
-                    }
+                if let Some((start, old_len, bytes, _cursor)) = incr_number(b, ls, le, from, this) {
                     edits.push(Edit::replace(start, old_len, bytes));
                 } else {
                     steps -= 1; // a line with no number does not advance the sequence
