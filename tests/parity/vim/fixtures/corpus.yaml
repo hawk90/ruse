@@ -9564,6 +9564,728 @@
       }
     },
     {
+      "name": "method_start_fwd_bare",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_count2",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          2,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_count3",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "3]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          5,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_count4_class_close",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "4]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          8,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_end_fwd_bare",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "]M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_end_fwd_count2",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2]M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          5,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_back_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j[m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          2,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_end_fwd_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j]M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_end_back_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j[M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_back_count2_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j2[m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_flat_top_level",
+      "lines": [
+        "void a() {",
+        "    x;",
+        "}",
+        "void b() {",
+        "    y;",
+        "}"
+      ],
+      "keys": "]m",
+      "expect": {
+        "text": [
+          "void a() {",
+          "    x;",
+          "}",
+          "void b() {",
+          "    y;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_flat_count2_close",
+      "lines": [
+        "void a() {",
+        "    x;",
+        "}",
+        "void b() {",
+        "    y;",
+        "}"
+      ],
+      "keys": "2]m",
+      "expect": {
+        "text": [
+          "void a() {",
+          "    x;",
+          "}",
+          "void b() {",
+          "    y;",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_no_brace_noop",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "]m",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_method_start_fwd_charwise",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2jd]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "{",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "        x;\n    }\n    void b() ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_method_end_back_charwise",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2jd[M",
+      "expect": {
+        "text": [
+          "class Foo ",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "{\n    void a() {",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_method_start_fwd_count4_linewise",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "d4]m",
+      "expect": {
+        "text": [
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "class Foo {\n    void a() {\n        x;\n    }\n    void b() {\n        y;\n    }\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_method_start_fwd_flat_linewise",
+      "lines": [
+        "void a() {",
+        "    x;",
+        "}",
+        "void b() {",
+        "    y;",
+        "}"
+      ],
+      "keys": "d2]m",
+      "expect": {
+        "text": [
+          "}",
+          "void b() {",
+          "    y;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "void a() {\n    x;\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "y_method_end_fwd",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "y]M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "class Foo ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "class Foo ",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "c_method_start_fwd",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2jc]mZ<Esc>",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "Z{",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "        x;\n    }\n    void b() ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "yank_word_mark_start",
       "lines": [
         "foo bar baz"

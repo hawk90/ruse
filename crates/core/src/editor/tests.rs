@@ -7027,6 +7027,82 @@ mod unmatched_bracket_motion_tests {
 }
 
 #[cfg(test)]
+mod method_motion_tests {
+    //! Vim `]m`/`[m`/`]M`/`[M` under operators. Every expected buffer/register is pinned to nvim v0.12.4.
+    //! The motions are exclusive charwise and take the shared exclusive-linewise reduction, so a target on a
+    //! column-0 brace deletes whole lines.
+    use crate::editor::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+    // Line 3's first non-blank is `x` (byte 35), inside method a's body.
+    const CLASS: &str =
+        "class Foo {\n    void a() {\n        x;\n    }\n    void b() {\n        y;\n    }\n}\n";
+    const FLAT: &str = "void a() {\n    x;\n}\nvoid b() {\n    y;\n}\n";
+
+    #[test]
+    fn charwise_mid_line_landings() {
+        // From `x` (byte 35): `d]m` deletes to method b's `{` (byte 57) — exclusive charwise, mid-line.
+        let st = run(
+            CLASS,
+            &[
+                Command::Move(3, Motion::GotoLine),
+                Command::Delete(1, Motion::MethodStartFwd),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "class Foo {\n    void a() {\n        {\n        y;\n    }\n}\n"
+        );
+        assert!(!st.register().is_linewise());
+        assert_eq!(st.register().text(), b"x;\n    }\n    void b() ");
+
+        // `d[M` deletes back to the class `{` (byte 10) — charwise.
+        let st = run(
+            CLASS,
+            &[
+                Command::Move(3, Motion::GotoLine),
+                Command::Delete(1, Motion::MethodEndBack),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "class Foo x;\n    }\n    void b() {\n        y;\n    }\n}\n"
+        );
+        assert_eq!(st.register().text(), b"{\n    void a() {\n        ");
+    }
+
+    #[test]
+    fn column_zero_landing_becomes_linewise() {
+        // `d4]m` from the top lands on the class's closing `}` at column 0 → whole-line delete (nvim: `V`).
+        let st = run(CLASS, &[Command::Delete(4, Motion::MethodStartFwd)]);
+        assert_eq!(text(&st), "}\n");
+        assert!(st.register().is_linewise());
+
+        // FLAT `d2]m` lands on the first block's top-level `}` (column 0) → linewise over lines 1-2.
+        let st = run(FLAT, &[Command::Delete(2, Motion::MethodStartFwd)]);
+        assert_eq!(text(&st), "}\nvoid b() {\n    y;\n}\n");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"void a() {\n    x;\n");
+    }
+
+    #[test]
+    fn no_brace_operator_deletes_nothing() {
+        let st = run("abcdef\n", &[Command::Delete(1, Motion::MethodStartFwd)]);
+        assert_eq!(text(&st), "abcdef\n");
+        assert!(st.register().is_empty());
+    }
+}
+
+#[cfg(test)]
 mod tag_text_object_tests {
     //! Vim `it`/`at` — HTML/XML tag text objects (`dit`/`dat`/`cit`/`yat`/`vit`…). Every `assert` is
     //! pinned to nvim v0.12.4 (probed directly; the `dit_*`/`dat_*`/`cit_*`/`vat_*`/`nit_*` oracle

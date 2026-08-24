@@ -2913,6 +2913,13 @@ impl InputEngine {
                     KeyCode::Char('{') if open_bracket => self.motion(Motion::UnmatchedBraceBack),
                     KeyCode::Char(')') if !open_bracket => self.motion(Motion::UnmatchedParenFwd),
                     KeyCode::Char('}') if !open_bracket => self.motion(Motion::UnmatchedBraceFwd),
+                    // Method (brace-block) motions — count/operator-aware via `self.motion`. `]m`/`[m` go to
+                    // the next/previous method START (a `{`); `]M`/`[M` go to the next/previous method END (a
+                    // `}`). The starting bracket (`]` vs `[`) fixes the direction; the case picks start vs end.
+                    KeyCode::Char('m') if !open_bracket => self.motion(Motion::MethodStartFwd),
+                    KeyCode::Char('m') if open_bracket => self.motion(Motion::MethodStartBack),
+                    KeyCode::Char('M') if !open_bracket => self.motion(Motion::MethodEndFwd),
+                    KeyCode::Char('M') if open_bracket => self.motion(Motion::MethodEndBack),
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }

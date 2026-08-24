@@ -764,6 +764,35 @@ FIXTURES: list[dict] = [
     #     visual mode — selection is inclusive of both ends ------------------------------------------------
     {"name": "visual_unmatched_paren_fwd_delete", "lines": ["(abcdef)"], "keys": "3lv])d"},
     {"name": "visual_unmatched_paren_back_delete", "lines": ["(abcdef)"], "keys": "3lv[(d"},
+    # --- METHOD (brace-block) motions (feat/method-motions): `]m`/`[m` next/prev method START (a `{`);
+    #     `]M`/`[M` next/prev method END (a `}`). A faithful port of Vim's `nv_bracket_block` — pure brace
+    #     navigation (ruse has no language model). Count-aware; exclusive charwise under an operator, sharing
+    #     the exclusive-linewise reduction with the section / unmatched-brace motions (a column-0 landing
+    #     deletes whole lines). VERIFIED against nvim v0.12.4 on flat / class / nested layouts. DIVERGENCE
+    #     (documented non-goal, NO fixtures): braces inside string literals and comments are NOT skipped
+    #     (ruse has no syntax model); nvim's `findmatch` skips them.
+    #     CLASS = a two-method class; FLAT = top-level `{}` blocks.
+    {"name": "method_start_fwd_bare", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "]m"},
+    {"name": "method_start_fwd_count2", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2]m"},
+    {"name": "method_start_fwd_count3", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "3]m"},
+    {"name": "method_start_fwd_count4_class_close", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "4]m"},
+    {"name": "method_end_fwd_bare", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "]M"},
+    {"name": "method_end_fwd_count2", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2]M"},
+    {"name": "method_start_fwd_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j]m"},
+    {"name": "method_start_back_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j[m"},
+    {"name": "method_end_fwd_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j]M"},
+    {"name": "method_end_back_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j[M"},
+    {"name": "method_start_back_count2_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j2[m"},
+    {"name": "method_start_fwd_flat_top_level", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "]m"},
+    {"name": "method_start_fwd_flat_count2_close", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "2]m"},
+    {"name": "method_start_fwd_no_brace_noop", "lines": ["abc", "def"], "keys": "]m"},
+    # operators — charwise mid-line landings and column-0 linewise reductions.
+    {"name": "d_method_start_fwd_charwise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jd]m"},
+    {"name": "d_method_end_back_charwise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jd[M"},
+    {"name": "d_method_start_fwd_count4_linewise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "d4]m"},
+    {"name": "d_method_start_fwd_flat_linewise", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "d2]m"},
+    {"name": "y_method_end_fwd", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "y]M"},
+    {"name": "c_method_start_fwd", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jc]mZ<Esc>"},
     #     change/yank marks `[ `] '[ '] (issue #428) — the marks bound the last changed/yanked text.
     #     `[ / `] jump charwise to the first/last char; '[ / '] jump linewise to the first non-blank.
     {"name": "yank_word_mark_start", "lines": ["foo bar baz"], "keys": "wyiw$`["},
