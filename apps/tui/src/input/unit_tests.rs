@@ -839,6 +839,93 @@ mod tests {
         );
     }
 
+    /// Record one insert session (`i<body><Esc>`) so `last_inserted` is populated, then return the engine
+    /// ready for a fresh `i` in Normal mode. Body chars self-insert as `InsertChar`s.
+    fn engine_after_insert(body: &str) -> InputEngine {
+        let mut e = InputEngine::new();
+        e.feed(k('i'), Mode::Normal);
+        for c in body.chars() {
+            e.feed(k(c), Mode::Insert);
+        }
+        e.feed(esc(), Mode::Insert);
+        e
+    }
+
+    #[test]
+    fn insert_ctrl_a_replays_the_previous_insert_body() {
+        // `i_CTRL-A` re-emits the last insert session's typed body (no `EnterNormal` — it stays in Insert).
+        let mut e = engine_after_insert("hello");
+        e.feed(k('i'), Mode::Normal);
+        assert_eq!(
+            e.feed(ctrl('a'), Mode::Insert),
+            Feed::Replay(vec![
+                Command::InsertChar('h'),
+                Command::InsertChar('e'),
+                Command::InsertChar('l'),
+                Command::InsertChar('l'),
+                Command::InsertChar('o'),
+            ])
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_at_replays_then_leaves_insert() {
+        // `i_CTRL-@` is "`CTRL-A` then `<Esc>`": the same body plus a trailing `EnterNormal`.
+        let mut e = engine_after_insert("hi");
+        e.feed(k('i'), Mode::Normal);
+        assert_eq!(
+            e.feed(ctrl('@'), Mode::Insert),
+            Feed::Replay(vec![
+                Command::InsertChar('h'),
+                Command::InsertChar('i'),
+                Command::EnterNormal,
+            ])
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_at_via_ctrl_space_is_accepted() {
+        // Terminals that deliver `CTRL-@` as `Ctrl+Space` reach the same `i_CTRL-@` path.
+        let mut e = engine_after_insert("x");
+        e.feed(k('i'), Mode::Normal);
+        assert_eq!(
+            e.feed(ctrl(' '), Mode::Insert),
+            Feed::Replay(vec![Command::InsertChar('x'), Command::EnterNormal])
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_a_with_no_previous_insert_is_ignored() {
+        // No prior insert -> `last_inserted` is empty -> `CTRL-A` is a clean no-op that stays in Insert.
+        let mut e = InputEngine::new();
+        e.feed(k('i'), Mode::Normal);
+        assert_eq!(e.feed(ctrl('a'), Mode::Insert), Feed::Ignored);
+    }
+
+    #[test]
+    fn insert_ctrl_at_with_no_previous_insert_still_leaves_insert() {
+        // No prior insert -> `CTRL-@` inserts nothing but STILL leaves Insert (nvim-verified).
+        let mut e = InputEngine::new();
+        e.feed(k('i'), Mode::Normal);
+        assert_eq!(
+            e.feed(ctrl('@'), Mode::Insert),
+            Feed::Replay(vec![Command::EnterNormal])
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_a_survives_a_non_insert_change() {
+        // A non-insert change (`x`) overwrites dot-repeat's `last_change` but must NOT touch the
+        // last-inserted text, so a later `CTRL-A` still replays the insert body.
+        let mut e = engine_after_insert("ab");
+        e.feed(k('x'), Mode::Normal); // Immediate change — updates last_change, not last_inserted.
+        e.feed(k('i'), Mode::Normal);
+        assert_eq!(
+            e.feed(ctrl('a'), Mode::Insert),
+            Feed::Replay(vec![Command::InsertChar('a'), Command::InsertChar('b')])
+        );
+    }
+
     #[test]
     fn g_question_is_the_rot13_operator() {
         use ruse_core::WordCase;
