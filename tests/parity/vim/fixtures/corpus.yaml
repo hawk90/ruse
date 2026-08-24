@@ -2864,6 +2864,250 @@
       }
     },
     {
+      "name": "gU_backtick_mark_charwise",
+      "lines": [
+        "abc def ghi"
+      ],
+      "keys": "wmawgU`a",
+      "expect": {
+        "text": [
+          "abc DEF ghi"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gu_backtick_mark_down",
+      "lines": [
+        "ABC DEF GHI"
+      ],
+      "keys": "wwmabgu`a",
+      "expect": {
+        "text": [
+          "ABC def GHI"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "g_tilde_backtick_mark",
+      "lines": [
+        "aBcDeF"
+      ],
+      "keys": "mallg~`a",
+      "expect": {
+        "text": [
+          "AbcDeF"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gU_quote_mark_linewise",
+      "lines": [
+        "one two",
+        "three four",
+        "five six"
+      ],
+      "keys": "majjgU'a",
+      "expect": {
+        "text": [
+          "ONE TWO",
+          "THREE FOUR",
+          "FIVE SIX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gu_quote_mark_linewise",
+      "lines": [
+        "ONE",
+        "TWO",
+        "THREE"
+      ],
+      "keys": "majjgu'a",
+      "expect": {
+        "text": [
+          "one",
+          "two",
+          "three"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "shift_right_backtick_mark",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "majj>`a",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a",
+          "    b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "shift_right_quote_mark",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "majj>'a",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a",
+          "    b",
+          "    c"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "shift_left_backtick_mark",
+      "lines": [
+        "    a",
+        "    b",
+        "    c"
+      ],
+      "keys": "majj<`a",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "    c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "shift_right_mark_above",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jjmakk>`a",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a",
+          "    b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "count_3J_join",
       "lines": [
         "a",

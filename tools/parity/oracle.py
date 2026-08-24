@@ -365,6 +365,22 @@ FIXTURES: list[dict] = [
     {"name": "d_backtick_mark_charwise", "lines": ["abc def ghi"], "keys": "wmawd`a"},
     {"name": "d_quote_mark_linewise", "lines": ["one", "two", "three", "four"], "keys": "majjd'a"},
     {"name": "c_backtick_mark_change", "lines": ["abc def ghi"], "keys": "wmawc`aZ<Esc>"},
+    #     case/shift/reindent operators to a named mark (this change) — set mark `a`, move, operate.
+    #     case: charwise ` honours the [cursor,mark) span; linewise ' spans whole lines.
+    {"name": "gU_backtick_mark_charwise", "lines": ["abc def ghi"], "keys": "wmawgU`a"},
+    {"name": "gu_backtick_mark_down", "lines": ["ABC DEF GHI"], "keys": "wwmabgu`a"},
+    {"name": "g_tilde_backtick_mark", "lines": ["aBcDeF"], "keys": "mallg~`a"},
+    {"name": "gU_quote_mark_linewise", "lines": ["one two", "three four", "five six"], "keys": "majjgU'a"},
+    {"name": "gu_quote_mark_linewise", "lines": ["ONE", "TWO", "THREE"], "keys": "majjgu'a"},
+    #     shift: ALWAYS linewise regardless of `/' — spans cursor line .. mark line. Config-dependent.
+    {"name": "shift_right_backtick_mark", "lines": ["a", "b", "c"], "keys": "majj>`a", "setup": "set shiftwidth=4 expandtab startofline"},
+    {"name": "shift_right_quote_mark", "lines": ["a", "b", "c"], "keys": "majj>'a", "setup": "set shiftwidth=4 expandtab startofline"},
+    {"name": "shift_left_backtick_mark", "lines": ["    a", "    b", "    c"], "keys": "majj<`a", "setup": "set shiftwidth=4 expandtab startofline"},
+    {"name": "shift_right_mark_above", "lines": ["a", "b", "c"], "keys": "jjmakk>`a", "setup": "set shiftwidth=4 expandtab startofline"},
+    #     NOTE: `=`a` (reindent to a mark) is NOT fixtured here — ruse's `=` is a bracket-depth reindent,
+    #     while nvim's `=` under `-u NONE` (equalprg/indentexpr empty, nocindent) is plain autoindent, so
+    #     they legitimately diverge (the same reason no `=`-motion fixture exists). Verified by a core unit
+    #     test (reindent_to_mark) against ruse's own `=`-over-motion semantics instead.
     #     counted text objects
     #     counted actions
     {"name": "count_3J_join", "lines": ["a", "b", "c", "d"], "keys": "3J"},

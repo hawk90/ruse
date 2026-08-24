@@ -1445,7 +1445,7 @@ mod single_key_edit_tests {
 
     #[test]
     fn operator_to_mark() {
-        use crate::command::OpKind;
+        use crate::command::MarkOp;
         // `` d`a ``: exclusive charwise from cursor to mark. Set mark a at 0, move to byte 4, delete back
         // to a → removes [0,4). Verified vs nvim v0.12.4 (fixture d_backtick_mark_charwise).
         let st = run(
@@ -1454,7 +1454,7 @@ mod single_key_edit_tests {
                 Command::SetNamedMark('a'),
                 Command::Move(4, Motion::Right),
                 Command::OpToMark {
-                    op: OpKind::Delete,
+                    op: MarkOp::Delete,
                     name: 'a',
                     linewise: false,
                 },
@@ -1468,7 +1468,7 @@ mod single_key_edit_tests {
                 Command::SetNamedMark('a'),
                 Command::Move(3, Motion::GotoLine),
                 Command::OpToMark {
-                    op: OpKind::Delete,
+                    op: MarkOp::Delete,
                     name: 'a',
                     linewise: true,
                 },
@@ -1479,12 +1479,164 @@ mod single_key_edit_tests {
         let st = run(
             "abc",
             &[Command::OpToMark {
-                op: OpKind::Delete,
+                op: MarkOp::Delete,
                 name: 'z',
                 linewise: false,
             }],
         );
         assert_eq!(text(&st), "abc");
+    }
+
+    #[test]
+    fn case_to_mark() {
+        use crate::command::{MarkOp, WordCase};
+        // `` gU`a ``: charwise upcase [cursor, mark). Mark at byte 4, cursor to byte 8 → upcase [4,8).
+        // Verified vs nvim v0.12.4 (fixture gU_backtick_mark_charwise).
+        let st = run(
+            "abc def ghi",
+            &[
+                Command::Move(4, Motion::Right),
+                Command::SetNamedMark('a'),
+                Command::Move(4, Motion::Right),
+                Command::OpToMark {
+                    op: MarkOp::Case(WordCase::Upcase),
+                    name: 'a',
+                    linewise: false,
+                },
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "abc DEF ghi",
+            "gU`a upcases cursor..mark charwise"
+        );
+        assert_eq!(st.cursor(), 4, "cursor lands at the span start");
+        // Direction independence: mark AFTER the cursor recases the same span.
+        let st = run(
+            "ABC DEF GHI",
+            &[
+                Command::Move(8, Motion::Right),
+                Command::SetNamedMark('a'),
+                Command::Move(4, Motion::Left),
+                Command::OpToMark {
+                    op: MarkOp::Case(WordCase::Downcase),
+                    name: 'a',
+                    linewise: false,
+                },
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "ABC def GHI",
+            "gu`a lowercases min..max regardless of order"
+        );
+        // `` gU'a ``: LINEWISE upcase over the line range (mark line .. cursor line).
+        let st = run(
+            "one two\nthree four\nfive six",
+            &[
+                Command::SetNamedMark('a'),
+                Command::Move(3, Motion::GotoLine),
+                Command::OpToMark {
+                    op: MarkOp::Case(WordCase::Upcase),
+                    name: 'a',
+                    linewise: true,
+                },
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "ONE TWO\nTHREE FOUR\nFIVE SIX",
+            "gU'a upcases whole lines"
+        );
+    }
+
+    #[test]
+    fn shift_to_mark() {
+        use crate::command::MarkOp;
+        // `` >'a ``: linewise shift over lines mark..cursor (default shiftwidth 4, spaces).
+        let st = run(
+            "a\nb\nc",
+            &[
+                Command::SetNamedMark('a'),
+                Command::Move(3, Motion::GotoLine),
+                Command::OpToMark {
+                    op: MarkOp::Shift { left: false },
+                    name: 'a',
+                    linewise: true,
+                },
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "    a\n    b\n    c",
+            ">'a shifts all three lines (linewise)"
+        );
+        // `` >`a ``: the CHARWISE (backtick) form. Cursor rests at col 0 of the far line, so the
+        // exclusive-motion rule drops that line — only lines 1-2 shift. Verified vs nvim (fixture
+        // shift_right_backtick_mark).
+        let st = run(
+            "a\nb\nc",
+            &[
+                Command::SetNamedMark('a'),
+                Command::Move(3, Motion::GotoLine),
+                Command::OpToMark {
+                    op: MarkOp::Shift { left: false },
+                    name: 'a',
+                    linewise: false,
+                },
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "    a\n    b\nc",
+            ">`a excludes the col-0 far line (exclusive motion)"
+        );
+        // `` <`a ``: charwise dedent. Mark at line 1 col 0, cursor at line 3 col 0 — the exclusive span
+        // `[line1col0, line3col0)` drops line 3 (its only in-range column is 0, excluded), so lines 1-2
+        // dedent. Verified vs nvim (fixture shift_left_backtick_mark).
+        let st = run(
+            "    a\n    b\n    c",
+            &[
+                Command::SetNamedMark('a'),
+                Command::Move(3, Motion::GotoLine),
+                Command::MoveLineStart,
+                Command::OpToMark {
+                    op: MarkOp::Shift { left: true },
+                    name: 'a',
+                    linewise: false,
+                },
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "a\nb\n    c",
+            "<`a dedents lines 1-2 (far col-0 line excluded)"
+        );
+    }
+
+    #[test]
+    fn reindent_to_mark() {
+        use crate::command::MarkOp;
+        // `` =`a ``: reindent the spanned lines to bracket depth (ruse's `=` semantics; DELIBERATELY
+        // diverges from nvim `-u NONE`, whose `=` is plain autoindent — hence no oracle fixture). Mark on
+        // the opener line, cursor on the closer line; the interior lines get one indent level.
+        let st = run(
+            "{\na\nb\n}",
+            &[
+                Command::SetNamedMark('a'),
+                Command::Move(4, Motion::GotoLine),
+                Command::OpToMark {
+                    op: MarkOp::Reindent,
+                    name: 'a',
+                    linewise: true,
+                },
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "{\n    a\n    b\n}",
+            "=`a reindents to bracket depth"
+        );
     }
 
     #[test]

@@ -33,6 +33,30 @@ pub enum OpKind {
     Yank,
 }
 
+/// Which operator an [`Command::OpToMark`] applies over the cursor..mark span — a SUPERSET of [`OpKind`].
+/// Besides delete/change/yank it carries the case (`` g~`a ``/`` gu`a ``/`` gU`a ``), shift (`` >`a ``/
+/// `` <`a ``) and reindent (`` =`a ``) operators, which also take a named mark as their motion. It is a
+/// distinct enum rather than a widened [`OpKind`] because [`OpKind`]'s other users ([`Command::OpForced`],
+/// blockwise Visual) have no case/shift/reindent form — so widening would spread `unreachable!` arms there.
+///
+/// The `` ` `` (backtick) form and the `'` (quote) linewise form of `` d ``/`` c ``/`` y `` and case honour
+/// the [`Command::OpToMark`] `linewise` flag; shift and reindent are ALWAYS linewise (Vim: `>`/`<`/`=`
+/// operate on whole lines even over a charwise motion), so they ignore it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MarkOp {
+    Delete,
+    Change,
+    Yank,
+    /// `` g~`a ``/`` gu`a ``/`` gU`a `` — recase the span (toggle / lower / upper); honours `linewise`.
+    Case(WordCase),
+    /// `` >`a `` (`left: false`) / `` <`a `` (`left: true`) — shift the spanned lines one indent level.
+    Shift {
+        left: bool,
+    },
+    /// `` =`a `` — reindent the spanned lines to their bracket-depth level.
+    Reindent,
+}
+
 /// A motion's forced wise-ness (Vim `o_v` / `o_V` / `o_CTRL-V`): the operator applies the motion but
 /// overrides whether the removed span is charwise, linewise, or blockwise. `Charwise` also toggles the
 /// motion's exclusive/inclusive edge (Vim's rule for `v`). `Blockwise` treats the cursor and the motion
@@ -239,12 +263,14 @@ pub enum Command {
     GotoNamedMark(char),
     /// `'{a-z}` — jump LINEWISE to the first non-blank of named mark `char`'s line (Vim). No-op if unset.
     GotoNamedMarkLine(char),
-    /// `` d`{a-z} `` / `d'{a-z}` (and `c`/`y`) — an operator whose motion is a named mark. `linewise` is the
-    /// `'` form (whole lines from the cursor's line to the mark's line); `` ` `` is exclusive charwise from
-    /// the cursor to the mark. A no-op if the mark is unset. The mark lives in the View, so — unlike a pure
-    /// motion — this resolves in the planner, not `motion::target`.
+    /// `` d`{a-z} `` / `d'{a-z}` (and `c`/`y`/case/shift/reindent) — an operator whose motion is a named
+    /// mark. `linewise` is the `'` form (whole lines from the cursor's line to the mark's line); `` ` `` is
+    /// exclusive charwise from the cursor to the mark. A no-op if the mark is unset. The mark lives in the
+    /// View, so — unlike a pure motion — this resolves in the planner, not `motion::target`. `op` may be
+    /// delete/change/yank, a case op (`` g~`a ``), a shift (`` >`a ``) or reindent (`` =`a ``); shift and
+    /// reindent are always linewise and ignore `linewise` (Vim: they operate on whole lines).
     OpToMark {
-        op: OpKind,
+        op: MarkOp,
         name: char,
         linewise: bool,
     },
@@ -693,6 +719,42 @@ fn op_kind_from_token(s: &str) -> Option<OpKind> {
     })
 }
 
+/// The trace-codec token for a [`MarkOp`] — a single whitespace-free token so the `op_to_mark` line's
+/// `<op> <name> <wise>` split still holds. Case ops carry their [`WordCase`] as `case:<word-case>`.
+fn mark_op_token(op: MarkOp) -> String {
+    match op {
+        MarkOp::Delete => "delete".into(),
+        MarkOp::Change => "change".into(),
+        MarkOp::Yank => "yank".into(),
+        MarkOp::Case(c) => format!("case:{}", word_case_token(c)),
+        MarkOp::Shift { left: true } => "shift_left".into(),
+        MarkOp::Shift { left: false } => "shift_right".into(),
+        MarkOp::Reindent => "reindent".into(),
+    }
+}
+
+fn mark_op_from_token(s: &str) -> Option<MarkOp> {
+    if let Some(rest) = s.strip_prefix("case:") {
+        return Some(MarkOp::Case(match rest {
+            "upcase" => WordCase::Upcase,
+            "downcase" => WordCase::Downcase,
+            "capitalize" => WordCase::Capitalize,
+            "toggle" => WordCase::Toggle,
+            "rot13" => WordCase::Rot13,
+            _ => return None,
+        }));
+    }
+    Some(match s {
+        "delete" => MarkOp::Delete,
+        "change" => MarkOp::Change,
+        "yank" => MarkOp::Yank,
+        "shift_left" => MarkOp::Shift { left: true },
+        "shift_right" => MarkOp::Shift { left: false },
+        "reindent" => MarkOp::Reindent,
+        _ => return None,
+    })
+}
+
 fn forced_wise_token(w: ForcedWise) -> &'static str {
     match w {
         ForcedWise::Charwise => "charwise",
@@ -861,7 +923,7 @@ impl Command {
             Command::GotoNamedMarkLine(c) => format!("goto_named_mark_line {}", *c as u32),
             Command::OpToMark { op, name, linewise } => format!(
                 "op_to_mark {} {} {}",
-                op_kind_token(*op),
+                mark_op_token(*op),
                 *name as u32,
                 if *linewise { "linewise" } else { "charwise" }
             ),
@@ -1223,7 +1285,7 @@ impl Command {
                 let mut it = a.split_whitespace();
                 let op = it
                     .next()
-                    .and_then(op_kind_from_token)
+                    .and_then(mark_op_from_token)
                     .ok_or_else(|| CommandParseError::BadArgument(a.to_string()))?;
                 let name = it
                     .next()
@@ -1627,14 +1689,49 @@ mod tests {
             Command::GotoNamedMark('a'),
             Command::GotoNamedMark('z'),
             Command::OpToMark {
-                op: OpKind::Delete,
+                op: MarkOp::Delete,
                 name: 'a',
                 linewise: false,
             },
             Command::OpToMark {
-                op: OpKind::Yank,
+                op: MarkOp::Yank,
                 name: 'z',
                 linewise: true,
+            },
+            Command::OpToMark {
+                op: MarkOp::Change,
+                name: 'b',
+                linewise: false,
+            },
+            Command::OpToMark {
+                op: MarkOp::Case(WordCase::Toggle),
+                name: 'c',
+                linewise: false,
+            },
+            Command::OpToMark {
+                op: MarkOp::Case(WordCase::Upcase),
+                name: 'd',
+                linewise: true,
+            },
+            Command::OpToMark {
+                op: MarkOp::Case(WordCase::Rot13),
+                name: 'e',
+                linewise: false,
+            },
+            Command::OpToMark {
+                op: MarkOp::Shift { left: false },
+                name: 'f',
+                linewise: false,
+            },
+            Command::OpToMark {
+                op: MarkOp::Shift { left: true },
+                name: 'g',
+                linewise: true,
+            },
+            Command::OpToMark {
+                op: MarkOp::Reindent,
+                name: 'h',
+                linewise: false,
             },
             Command::BreakUndo,
             Command::ShiftRight(1),

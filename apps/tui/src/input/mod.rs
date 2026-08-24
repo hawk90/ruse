@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Resolved, UnmatchedKey};
 use ruse_core::{
-    BlockInsertKind, Command, EditorOption, ForcedWise, GlobalCmd, LineAddr, Mode, Motion, OpKind,
-    SearchOp, SelectKind, SubFlags, SubRange, WordCase,
+    BlockInsertKind, Command, EditorOption, ForcedWise, GlobalCmd, LineAddr, MarkOp, Mode, Motion,
+    OpKind, SearchOp, SelectKind, SubFlags, SubRange, WordCase,
 };
 
 /// The outcome of feeding one key to the engine.
@@ -738,15 +738,24 @@ impl InputEngine {
         Feed::Cmd(cmd)
     }
 
-    /// A named-mark key after `` ` ``/`'`: with a `d`/`c`/`y` operator pending it OPERATES to the mark
-    /// (`` d`a ``/`d'a`); otherwise it JUMPS (`` `a ``/`'a`). `linewise` is the `'` form. Other pending
-    /// operators (case/shift) fall back to the bare jump — operating to a mark with those is not wired.
+    /// A named-mark key after `` ` ``/`'`: with an operator pending it OPERATES to the mark
+    /// (`` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``); otherwise it JUMPS (`` `a ``/`'a`). `linewise`
+    /// is the `'` form (honoured by delete/change/yank/case; shift/reindent are always linewise). `gq`/`gw`
+    /// (Format) to a mark is not modeled — it falls back to the bare jump.
     fn mark_op(&mut self, name: char, linewise: bool) -> Feed {
         let op = self.normal.op.and_then(|p| match p.op {
-            Op::Delete => Some(OpKind::Delete),
-            Op::Change => Some(OpKind::Change),
-            Op::Yank => Some(OpKind::Yank),
-            _ => None,
+            Op::Delete => Some(MarkOp::Delete),
+            Op::Change => Some(MarkOp::Change),
+            Op::Yank => Some(MarkOp::Yank),
+            Op::CaseLower => Some(MarkOp::Case(WordCase::Downcase)),
+            Op::CaseUpper => Some(MarkOp::Case(WordCase::Upcase)),
+            Op::CaseToggle => Some(MarkOp::Case(WordCase::Toggle)),
+            Op::Rot13 => Some(MarkOp::Case(WordCase::Rot13)),
+            Op::ShiftRight => Some(MarkOp::Shift { left: false }),
+            Op::ShiftLeft => Some(MarkOp::Shift { left: true }),
+            Op::Reindent => Some(MarkOp::Reindent),
+            // `gq`/`gw` (Format) to a mark is not modeled; fall through to a bare jump.
+            Op::Format | Op::FormatKeep => None,
         });
         let cmd = match op {
             Some(op) => Command::OpToMark { op, name, linewise },
