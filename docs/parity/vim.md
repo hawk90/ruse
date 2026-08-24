@@ -105,9 +105,17 @@ _Retired to the census (D-043): VIM-TOBJ-1..5 migrated to the 34 `nvim.key.text_
 
 ## VIM-CNT — Counts
 - Count multiplies across operator and motion: `2d3w` = 6 words. Count on `G`/`gg`/`%` = line/percent.
-- **⚠️ VIM-CNT-INS**: count on Insert repeats inserted text (`3ohello<Esc>`); count on `.` overrides original.
-  This is the count grammar applied to Ins-namespace entry, not a distinct parity surface; deferred (not an
-  F-024 acceptance criterion). As of #90 it is a human annotation only — F-024 no longer cites it (D-043).
+- **✅ VIM-CNT-INS** (#470): count on Insert repeats the typed text (`3ihello<Esc>` → `hellohellohello`;
+  `3o`/`3O` open three new lines each with the typed text; `3a`/`3A`/`3I` likewise), and count on `.`
+  overrides the recorded count. Backspaces/edits during the session are part of the replayed text (the
+  RESULTING text is replayed, `3ixy<BS>z<Esc>` → `xzxzxz`), the whole run is ONE undo group, and it is the
+  `.` target with the SAME count. This is the count grammar applied to Ins-namespace entry, not a distinct
+  parity surface (F-024 no longer cites it — D-043); implemented in the frontend by capturing the entry
+  count and replaying the insert session's extra `(N-1)` repeats on the terminating `<Esc>`, which coalesce
+  via the existing `last_was_edit` seam (the same seam blockwise-insert replicate uses). Verified vs nvim
+  v0.12.4. Scoped carve-out: change-family entries (`c`/`s`/`ciw`) do NOT repeat text — their count applies
+  to the motion (Vim); and an insert session closed via an `i_CTRL-V`-numeric-`<Esc>` corner (a `Feed::Replay`,
+  not a `Cmd`) is not count-replicated (a pre-existing recorder quirk, extremely obscure).
 
 ## VIM-REG — Registers & Put
 Source: `change.txt`.
