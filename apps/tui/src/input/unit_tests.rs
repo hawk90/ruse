@@ -724,6 +724,82 @@ mod tests {
     }
 
     #[test]
+    fn filter_operator_over_motion_emits_filtermotion() {
+        // `!{motion}` is linewise-over-motion (like `=`/`gq`): the engine hands the motion + folded count to
+        // the frontend, which numbers the lines and opens the `:{range}!` cmdline. No buffer edit here.
+        assert_eq!(
+            feed("!G"),
+            Feed::FilterMotion {
+                count: 1,
+                motion: Motion::LastLine
+            },
+            "!G filters cursor→EOF"
+        );
+        assert_eq!(
+            feed("!j"),
+            Feed::FilterMotion {
+                count: 1,
+                motion: Motion::Down
+            }
+        );
+        // The count folds operator × motion exactly as every other operator (`!2j` = 2 lines down).
+        assert_eq!(
+            feed("!2j"),
+            Feed::FilterMotion {
+                count: 2,
+                motion: Motion::Down
+            }
+        );
+        // Text objects compose (`!ip` filters the inner-paragraph lines).
+        assert_eq!(
+            feed("!ip"),
+            Feed::FilterMotion {
+                count: 1,
+                motion: Motion::InnerParagraph
+            }
+        );
+    }
+
+    #[test]
+    fn doubled_filter_operator_is_the_current_line_form() {
+        // `!!` filters the current line; `{count}!!` filters `count` lines (like `>>`/`gqq`), linewise.
+        assert_eq!(
+            feed("!!"),
+            Feed::FilterMotion {
+                count: 1,
+                motion: Motion::Line
+            }
+        );
+        assert_eq!(
+            feed("3!!"),
+            Feed::FilterMotion {
+                count: 3,
+                motion: Motion::Line
+            }
+        );
+    }
+
+    #[test]
+    fn filter_cmdline_seed_then_command_runs_the_range_filter() {
+        // The frontend seeds the `:{range}!` cmdline (Vim's `:.,.+N!`); typing the command + <CR> hands the
+        // finished line to the SAME `:{range}!{cmd}` ex-filter path via `Feed::ExecuteEx`.
+        let mut e = InputEngine::new();
+        e.open_filter_cmdline("1,3!");
+        // Pre-filled with the caret at its end (4 chars: `1`,`,`,`3`,`!`).
+        assert_eq!(e.cmdline(), Some((':', "1,3!", 4)));
+        for c in "sort".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                Mode::Normal
+            ),
+            Feed::ExecuteEx("1,3!sort".into())
+        );
+    }
+
+    #[test]
     fn forced_wise_after_operator() {
         // `v`/`V` after an operator FORCE the next motion's wise (Vim o_v/o_V) → OpForced.
         assert_eq!(

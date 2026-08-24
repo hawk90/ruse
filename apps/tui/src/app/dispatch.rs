@@ -249,8 +249,13 @@ fn drive_feed(
             }
         }
         // Nested ex from `:normal` is out of scope for this slice; Pending/Ignored are absorbed. A cmdline
-        // `c_CTRL-R` word-insert has no interactive command line in this replay context, so it is inert too.
-        Feed::ExecuteEx(_) | Feed::CmdlineInsertUnder { .. } | Feed::Pending | Feed::Ignored => {}
+        // `c_CTRL-R` word-insert has no interactive command line in this replay context, so it is inert too;
+        // the `!{motion}` filter operator likewise needs the interactive `:{range}!` cmdline, so it is inert.
+        Feed::ExecuteEx(_)
+        | Feed::CmdlineInsertUnder { .. }
+        | Feed::FilterMotion { .. }
+        | Feed::Pending
+        | Feed::Ignored => {}
     }
 }
 
@@ -938,5 +943,124 @@ mod dispatch_tests {
         // A single-line range joins that line with the NEXT (Vim: a join needs two lines).
         let (bytes, _) = run_ex_oracle("a\nb\nc\nd\n", 0, "2j");
         assert_eq!(bytes, "a\nb c\nd\n");
+    }
+
+    /// Whether `program` resolves on PATH — skip a shell-dependent filter test when the tool is absent.
+    #[cfg(unix)]
+    fn has_program(program: &str) -> bool {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("command -v {program}"))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    /// Drive the Normal-mode `!` filter operator END TO END: feed the operator keys (`op_keys`, e.g. `!G` /
+    /// `!!` / `3!!`) into the input engine, take the resulting `Feed::FilterMotion`, resolve its line range
+    /// and seed the `:{range}!` cmdline (the SAME glue `session::run` performs), type `cmd` + `<CR>` to get
+    /// the finished ex line, then apply it through the SAME `:{range}!{cmd}` executor the run loop uses
+    /// (`range_text` → `shell::filter` → `filter_lines`). Returns `(bytes, cursor)`. Every expectation below
+    /// is the buffer nvim v0.12.4 produces for the identical keystrokes (verified headlessly by hand).
+    #[cfg(unix)]
+    fn run_filter_oracle(buf: &str, cursor0: usize, op_keys: &str, cmd: &str) -> (String, usize) {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use ruse_core::Mode;
+
+        let key = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+        let mut engine = InputEngine::new();
+        let mut ws = Workspace::new(buf.as_bytes().to_vec());
+        ws.place_focused_cursor(cursor0);
+
+        // 1. Operator keys → the engine hands back the linewise motion + folded count.
+        let mut feed = Feed::Ignored;
+        for c in op_keys.chars() {
+            feed = engine.feed(key(c), Mode::Normal);
+        }
+        let Feed::FilterMotion { count, motion } = feed else {
+            panic!("`{op_keys}` should arm the filter operator, got {feed:?}");
+        };
+
+        // 2. Frontend glue (mirrors `session::run`): number the motion's lines, open the seeded cmdline.
+        let (first, last) = ws
+            .reindent_range(motion, count)
+            .expect("filter motion spans at least one line");
+        engine.open_filter_cmdline(&format!("{},{}!", first + 1, last + 1));
+
+        // 3. Type the shell command, then <CR> to finish the ex line.
+        for c in cmd.chars() {
+            engine.feed(key(c), Mode::Normal);
+        }
+        let submitted = engine.feed(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            Mode::Normal,
+        );
+        let Feed::ExecuteEx(line) = submitted else {
+            panic!("submitting the filter cmdline should yield ExecuteEx, got {submitted:?}");
+        };
+
+        // 4. Run it through the SAME executor the run loop uses for `:{range}!{cmd}`.
+        let Ex::Filter { range, cmd } = crate::input::parse_ex(&line) else {
+            panic!("`{line}` should parse as Ex::Filter");
+        };
+        let input = ws.range_text(range).expect("range has text");
+        let out = crate::shell::filter(&cmd, &input).expect("shell filter runs");
+        ws.filter_lines(range, out.as_bytes());
+
+        let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
+        (bytes, ws.focused().view.cursor())
+    }
+
+    #[test]
+    #[cfg(unix)]
+    #[allow(clippy::print_stderr)] // test-only skip diagnostic when a POSIX tool is absent
+    fn filter_operator_bang_motion_drives_end_to_end_like_nvim() {
+        if !has_program("sort") {
+            eprintln!("skipping: `sort` not on PATH");
+            return;
+        }
+        // nvim: `!Gsort<CR>` from line 1 sorts the whole buffer; cursor lands on line 1 (byte 0).
+        let (bytes, cur) = run_filter_oracle("3\n1\n2\n", 0, "!G", "sort");
+        assert_eq!(bytes, "1\n2\n3\n");
+        assert_eq!(
+            cur, 0,
+            "cursor lands on the first line of the filtered region"
+        );
+
+        // nvim: `!2jsort<CR>` on 5 lines filters lines 1-3 (`!2j` = current + 2 down), leaving 4,5 alone.
+        let (bytes, cur) = run_filter_oracle("5\n4\n3\n2\n1\n", 0, "!2j", "sort");
+        assert_eq!(bytes, "3\n4\n5\n2\n1\n");
+        assert_eq!(cur, 0);
+
+        // nvim: `!ipsort<CR>` filters only the inner paragraph (the blank line + "keep" survive).
+        let (bytes, _) = run_filter_oracle("z\ny\nx\n\nkeep\n", 0, "!ip", "sort");
+        assert_eq!(bytes, "x\ny\nz\n\nkeep\n");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    #[allow(clippy::print_stderr)] // test-only skip diagnostic when a POSIX tool is absent
+    fn filter_operator_double_bang_drives_end_to_end_like_nvim() {
+        if !has_program("tr") || !has_program("cat") {
+            eprintln!("skipping: `tr`/`cat` not on PATH");
+            return;
+        }
+        // nvim: on line 2 (byte 4), `!!tr a-z A-Z<CR>` uppercases ONLY the current line; cursor stays line 2.
+        let (bytes, cur) = run_filter_oracle("aaa\nbbb\nccc\n", 4, "!!", "tr a-z A-Z");
+        assert_eq!(bytes, "aaa\nBBB\nccc\n");
+        assert_eq!(cur, 4, "cursor on the first non-blank of the filtered line");
+
+        // nvim: `3!!cat<CR>` on 4 lines is an identity filter over lines 1-3 (buffer unchanged); cursor line 1.
+        let (bytes, cur) = run_filter_oracle("d\nc\nb\na\n", 0, "3!!", "cat");
+        assert_eq!(bytes, "d\nc\nb\na\n");
+        assert_eq!(cur, 0);
+
+        // A count-CHANGING filter: `!!tr " " "\n"<CR>` splits "one two" into two lines (1 in, 2 out).
+        let (bytes, cur) = run_filter_oracle("one two\n", 0, "!!", "tr \" \" \"\\n\"");
+        assert_eq!(bytes, "one\ntwo\n");
+        assert_eq!(cur, 0);
     }
 }

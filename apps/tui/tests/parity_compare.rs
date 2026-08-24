@@ -86,6 +86,7 @@ fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
             // for a `:`-line, of which the corpus has none). No manual pattern collection needed.
             Feed::ExecuteEx(_)
             | Feed::CmdlineInsertUnder { .. }
+            | Feed::FilterMotion { .. }
             | Feed::Pending
             | Feed::Ignored => {}
         }

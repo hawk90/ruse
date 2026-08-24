@@ -1660,6 +1660,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     engine.cmdline_splice(&w);
                 }
             }
+            // `!{motion}` / `!!` (the filter operator): the engine resolved a linewise motion but has no
+            // document to number it. Resolve the op-span's first/last line here, then open the `:` cmdline
+            // pre-seeded with `{first},{last}!` (Vim's `:.,.+N!`). Typing the command and `<CR>` runs it
+            // through the SAME `:{range}!{cmd}` ex-filter path (parse_ex → Ex::Filter → shell.rs). An empty
+            // span (nothing to filter) opens nothing, matching Vim leaving Normal untouched.
+            Feed::FilterMotion { count, motion } => {
+                if let Some((first, last)) = ws.reindent_range(motion, count) {
+                    // `reindent_range` yields 0-based inclusive lines; the ex range is 1-based.
+                    engine.open_filter_cmdline(&format!("{},{}!", first + 1, last + 1));
+                }
+            }
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => {
                 // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine

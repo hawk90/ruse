@@ -30,6 +30,12 @@ pub enum Feed {
     /// `Workspace::cword_under_cursor` / `cbig_word_under_cursor`) and splices it back with
     /// [`InputEngine::cmdline_splice`]. The command line stays open.
     CmdlineInsertUnder { big: bool },
+    /// `!{motion}` / `!!` (the Normal-mode filter operator): the motion resolved to a LINE range, but the
+    /// engine has no document to number it and no shell to run. The frontend resolves the motion's first/last
+    /// line (via `Workspace::reindent_range`), then opens the `:` command-line pre-seeded with
+    /// `{first},{last}!` ([`InputEngine::open_filter_cmdline`]); typing the command and pressing `<CR>` runs
+    /// the SAME `:{range}!{cmd}` ex filter. `count` is the folded operator × motion count.
+    FilterMotion { count: u32, motion: Motion },
     /// The key was consumed but the command is not complete yet (a count digit, a pending operator, or a
     /// keystroke absorbed into the open command-line buffer).
     Pending,
@@ -56,6 +62,11 @@ enum Op {
     /// last reformatted line; `FormatKeep` (`gw`) restores it.
     Format,
     FormatKeep,
+    /// `!` — filter the operator span's LINES through a shell command (`!{motion}{cmd}<CR>`, `!!{cmd}`).
+    /// Unlike the other operators this does not resolve to a buffer edit in the engine: the completed
+    /// motion yields a [`Feed::FilterMotion`] the frontend turns into a pre-seeded `:{range}!` ex line
+    /// (reusing the `:{range}!{cmd}` executor + `shell.rs`).
+    Filter,
 }
 
 impl Op {
@@ -526,6 +537,23 @@ impl InputEngine {
         });
     }
 
+    /// Open the `:` command-line PRE-SEEDED with `seed` and the caret at its end — the landing point of the
+    /// Normal-mode `!{motion}` / `!!` filter operator. The frontend resolves the motion's line range and
+    /// seeds `"{first},{last}!"`, so typing the shell command and pressing `<CR>` runs the SAME
+    /// `:{range}!{cmd}` ex filter (reusing its executor + `shell.rs`). Vim shows this pre-filled `:.,.+N!`.
+    pub fn open_filter_cmdline(&mut self, seed: &str) {
+        self.cmdline = Some(CmdLine {
+            prefix: ':',
+            buffer: seed.to_string(),
+            cursor: seed.chars().count(),
+            ex_mode: false,
+            mx: false,
+            expr: None,
+            ctrl_r: false,
+            walk: history::HistWalk::default(),
+        });
+    }
+
     /// Open the command-line window (`:help cmdwin`) for `kind` — `:` mirrors the ex ring, `/`/`?` the
     /// shared search ring. The frontend calls this when `q:`/`q/`/`q?` is recognised (the macro layer routes
     /// the `q`-prefixed `:`/`/`/`?` here instead of arming a macro recording). No-op if already open.
@@ -860,7 +888,8 @@ impl InputEngine {
                 | Op::ShiftLeft
                 | Op::Reindent
                 | Op::Format
-                | Op::FormatKeep => SearchOp::Move,
+                | Op::FormatKeep
+                | Op::Filter => SearchOp::Move,
             },
             None => SearchOp::Move,
         };
@@ -1012,6 +1041,16 @@ impl InputEngine {
     /// no operator armed it is the bare `Move(total, m)`. Shared by [`motion`](Self::motion) (computed
     /// `total`) and [`screen_op`](Self::screen_op) (the frontend-resolved `H`/`M`/`L` target line).
     fn op_over_motion(&mut self, m: Motion, total: u32) -> Feed {
+        // `!{motion}` — the filter operator does not resolve to an edit here: it is linewise-over-motion, so
+        // hand the motion + folded count to the frontend (it numbers the lines and opens the `:{range}!`
+        // cmdline). Early-return before the edit-building match so `Op::Filter` never reaches its arms.
+        if matches!(self.normal.op, Some(OpPending { op: Op::Filter, .. })) {
+            self.reset();
+            return Feed::FilterMotion {
+                count: total,
+                motion: m,
+            };
+        }
         let cmd = match self.normal.op {
             Some(OpPending { op, .. }) => {
                 // `gu`/`gU`/`g~` recase the operator span (no forced-wise / `cw`->`ce` rewrites apply).
@@ -1055,7 +1094,8 @@ impl InputEngine {
                         | Op::ShiftLeft
                         | Op::Reindent
                         | Op::Format
-                        | Op::FormatKeep => {
+                        | Op::FormatKeep
+                        | Op::Filter => {
                             unreachable!()
                         }
                     };
@@ -1083,7 +1123,8 @@ impl InputEngine {
                         | Op::ShiftLeft
                         | Op::Reindent
                         | Op::Format
-                        | Op::FormatKeep => {
+                        | Op::FormatKeep
+                        | Op::Filter => {
                             unreachable!()
                         }
                     }
@@ -1242,8 +1283,8 @@ impl InputEngine {
             Op::ShiftRight => Some(MarkOp::Shift { left: false }),
             Op::ShiftLeft => Some(MarkOp::Shift { left: true }),
             Op::Reindent => Some(MarkOp::Reindent),
-            // `gq`/`gw` (Format) to a mark is not modeled; fall through to a bare jump.
-            Op::Format | Op::FormatKeep => None,
+            // `gq`/`gw` (Format) and `!` (Filter) to a mark are not modeled; fall through to a bare jump.
+            Op::Format | Op::FormatKeep | Op::Filter => None,
         });
         let cmd = match op {
             Some(op) => Command::OpToMark { op, name, linewise },
@@ -2283,6 +2324,31 @@ impl InputEngine {
                 count: n,
                 motion: Motion::Line,
             }),
+            // `!` — the filter operator. Doubled `!!` (and `{count}!!`) filters the current `count` lines
+            // (like `>>`/`gqq`); this guard must precede the arming arm below. The frontend numbers the lines
+            // and opens the `:{range}!` cmdline. `count` folds the operator count with the doubling key's.
+            KeyCode::Char('!')
+                if matches!(self.normal.op, Some(OpPending { op: Op::Filter, .. })) =>
+            {
+                let count = match self.normal.op {
+                    Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+                    None => unreachable!("Op::Filter is armed"),
+                };
+                self.reset();
+                Feed::FilterMotion {
+                    count,
+                    motion: Motion::Line,
+                }
+            }
+            // `!{motion}{cmd}<CR>` — arm the filter operator over the next motion (linewise, like `=`/`gq`).
+            KeyCode::Char('!') if self.normal.op.is_none() => {
+                self.normal.op = Some(OpPending {
+                    op: Op::Filter,
+                    count: self.mcount(),
+                });
+                self.normal.count = 0;
+                Feed::Pending
+            }
             KeyCode::Char('p') => self.action(Command::Paste {
                 after: true,
                 count: self.mcount(),
