@@ -329,6 +329,30 @@ impl Workspace {
         self.views[vid.0] = Some(view);
     }
 
+    /// Sync the four read-only special registers `"/ ": ". "%` of the FOCUSED view from frontend state
+    /// (the swap-trick). The frontend calls this before dispatching a register-reading command so a
+    /// following `"/p` / `C-r :` / `".p` / `"%p` resolves to the live search pattern, Ex line, inserted
+    /// text, or file name. `None` clears a slot (no search yet, or an unnamed buffer for `"%`).
+    pub fn set_special_registers(
+        &mut self,
+        search: Option<String>,
+        last_ex: Option<String>,
+        inserted: Option<String>,
+        file: Option<String>,
+    ) {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        st.set_special_registers(search, last_ex, inserted, file);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+    }
+
     /// The raw bytes of a named register of the FOCUSED view (D-055 macro replay; the swap-trick). Empty
     /// when the register is unset.
     pub fn register_bytes(&mut self, name: Option<char>) -> Vec<u8> {

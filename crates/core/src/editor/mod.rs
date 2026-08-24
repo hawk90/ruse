@@ -1404,6 +1404,21 @@ impl EditorState {
         self.view.registers.set_clipboard_from_external(bytes);
     }
 
+    /// Sync the four read-only special registers `"/ ": ". "%` from frontend state ahead of a
+    /// register-reading command, so `"/p` / `C-r :` / `".p` / `"%p` resolve to the live values (see
+    /// [`RegisterStore::set_special`](crate::register::RegisterStore::set_special)).
+    pub fn set_special_registers(
+        &mut self,
+        search: Option<String>,
+        last_ex: Option<String>,
+        inserted: Option<String>,
+        file: Option<String>,
+    ) {
+        self.view
+            .registers
+            .set_special(search, last_ex, inserted, file);
+    }
+
     /// Write raw bytes into a named register as a CHARWISE entry (D-055 macro recording): the frontend
     /// stores a recorded keystroke stream into `"{name}`, sharing the same a-z slots as yank/paste so a
     /// macro pastes as text and yanked text runs as a macro. `name` is `Some('a'..='z')`; the byte content

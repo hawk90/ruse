@@ -1060,6 +1060,60 @@ mod tests {
     }
 
     #[test]
+    fn insert_ctrl_r_accepts_the_read_only_special_registers() {
+        // `<C-r>/`, `<C-r>:`, `<C-r>.`, `<C-r>%` name the read-only special registers (`:help i_CTRL-R`);
+        // the frontend resolves their content. Each completes the prefix into an `InsertRegister`.
+        for name in ['/', ':', '.', '%'] {
+            let mut e = InputEngine::new();
+            assert_eq!(e.feed(ctrl('r'), Mode::Insert), Feed::Pending);
+            assert_eq!(
+                e.feed(k(name), Mode::Insert),
+                Feed::Cmd(Command::InsertRegister(name)),
+                "<C-r>{name} inserts the special register"
+            );
+        }
+    }
+
+    #[test]
+    fn special_registers_parse_as_paste_register_names() {
+        // `"/`, `":`, `".`, `"%` arm register selection so a following `p`/`P` pastes from them.
+        for name in ['/', ':', '.', '%'] {
+            let mut e = InputEngine::new();
+            e.feed(k('"'), Mode::Normal);
+            assert_eq!(
+                e.feed(k(name), Mode::Normal),
+                Feed::Cmd(Command::SetRegister(Some(name))),
+                "\"{name} selects the read-only special register"
+            );
+        }
+    }
+
+    #[test]
+    fn last_inserted_text_reconstructs_the_insert_body() {
+        // `".` (Vim's last-insert register): typing `abc` yields "abc".
+        let mut e = InputEngine::new();
+        assert_eq!(e.last_inserted_text(), None, "nothing inserted yet");
+        e.feed(k('i'), Mode::Normal);
+        for c in ['a', 'b', 'c'] {
+            e.feed(k(c), Mode::Insert);
+        }
+        e.feed(esc(), Mode::Insert);
+        assert_eq!(e.last_inserted_text().as_deref(), Some("abc"));
+        // A backspace mid-insert removes the last char (net text, matching an i_CTRL-A replay): `aX<BS>b`.
+        let mut e = InputEngine::new();
+        e.feed(k('i'), Mode::Normal);
+        e.feed(k('a'), Mode::Insert);
+        e.feed(k('X'), Mode::Insert);
+        e.feed(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+            Mode::Insert,
+        );
+        e.feed(k('b'), Mode::Insert);
+        e.feed(esc(), Mode::Insert);
+        assert_eq!(e.last_inserted_text().as_deref(), Some("ab"));
+    }
+
+    #[test]
     fn insert_ctrl_r_equals_opens_the_expression_prompt() {
         // `<C-r>=` opens the expression-register prompt (`:help i_CTRL-R`): typing the expression is
         // Pending, and `<CR>` yields `InsertEval` carrying the collected string for the editor to evaluate.
