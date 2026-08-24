@@ -8,7 +8,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{Command, Mode, SplitDir, SubFlags, SubRange, Workspace};
-use ruse_tui::input::{parse_ex, Ex, Feed, GlobalPayload, InputEngine};
+use ruse_tui::input::{parse_ex, Ex, Feed, GlobalPayload, InputEngine, ReadSource};
 use ruse_tui::keys::{MacroState, Step};
 
 /// Route one engine outcome exactly as `main.rs::run` does: edits through the swap-trick `Workspace`,
@@ -76,6 +76,28 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
             // `:[line]put [reg]` — put a register LINEWISE after the addressed line (mirrors dispatch.rs).
             Ex::Put { addr, reg } => {
                 ws.put_lines(addr, reg);
+            }
+            // `:r`/`:read` — read a file's contents (or a command's stdout) below the addressed line, exactly
+            // as session.rs's run loop does (file IO / shell out in the frontend, splice in core).
+            Ex::Read { addr, source } => match source {
+                ReadSource::File(path) => {
+                    if let Ok(raw) = std::fs::read(&path) {
+                        ws.read_lines(addr, &raw, false);
+                    }
+                }
+                ReadSource::Command(cmd) => {
+                    if let Ok(out) = ruse_tui::shell::capture(&cmd) {
+                        ws.read_lines(addr, out.as_bytes(), true);
+                    }
+                }
+            },
+            // `:{range}!cmd` — filter the range's lines through a shell command (mirrors session.rs).
+            Ex::Filter { range, cmd } => {
+                if let Some(input) = ws.range_text(range) {
+                    if let Ok(out) = ruse_tui::shell::filter(&cmd, &input) {
+                        ws.filter_lines(range, out.as_bytes());
+                    }
+                }
             }
             _ => {}
         },
@@ -203,6 +225,77 @@ fn ex_zero_put_inserts_at_the_top() {
         buf(&ws),
         "alpha\nalpha\nbeta\n",
         ":0put lands at the very top"
+    );
+}
+
+#[test]
+fn ex_read_file_inserts_below_addressed_line() {
+    // Write a real temp file and read it in with `:2r {path}` — the whole parse→dispatch→core path, driven
+    // from keystrokes exactly as a user types it. The cursor lands on the first inserted line (nvim quirk).
+    let path = std::env::temp_dir().join(format!("ruse_read_it_{}.txt", std::process::id()));
+    std::fs::write(&path, b"X1\nX2\n").expect("write temp file");
+
+    let (mut e, mut ws) = session("alpha\nbeta\ngamma\n");
+    feed_str(&mut e, &mut ws, &format!(":2r {}<CR>", path.display()));
+    assert_eq!(
+        buf(&ws),
+        "alpha\nbeta\nX1\nX2\ngamma\n",
+        ":2r inserts the file's lines below line 2"
+    );
+    // Cursor on the first inserted line (X1 = line index 2, byte offset 11).
+    assert_eq!(
+        ws.focused().view.cursor(),
+        11,
+        "cursor on the first inserted line"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn ex_zero_read_inserts_at_the_top() {
+    let path = std::env::temp_dir().join(format!("ruse_read0_it_{}.txt", std::process::id()));
+    std::fs::write(&path, b"top1\ntop2\n").expect("write temp file");
+
+    let (mut e, mut ws) = session("alpha\nbeta\n");
+    feed_str(&mut e, &mut ws, &format!(":0r {}<CR>", path.display()));
+    assert_eq!(
+        buf(&ws),
+        "top1\ntop2\nalpha\nbeta\n",
+        ":0r lands the file at the very top"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn ex_filter_sorts_the_whole_file() {
+    // `:%!sort` filters every line through the real `sort`. Skip gracefully if it is not on PATH.
+    if ruse_tui::shell::capture("command -v sort").map_or(true, |s| s.trim().is_empty()) {
+        eprintln!("skipping: `sort` not on PATH");
+        return;
+    }
+    let (mut e, mut ws) = session("gamma\nalpha\nbeta\n");
+    feed_str(&mut e, &mut ws, ":%!sort<CR>");
+    assert_eq!(
+        buf(&ws),
+        "alpha\nbeta\ngamma\n",
+        ":%!sort replaces the buffer with the sorted lines"
+    );
+}
+
+#[test]
+fn ex_filter_uppercases_a_line_range() {
+    if ruse_tui::shell::capture("command -v tr").map_or(true, |s| s.trim().is_empty()) {
+        eprintln!("skipping: `tr` not on PATH");
+        return;
+    }
+    let (mut e, mut ws) = session("one\ntwo\nthree\nfour\n");
+    feed_str(&mut e, &mut ws, ":2,3!tr a-z A-Z<CR>");
+    assert_eq!(
+        buf(&ws),
+        "one\nTWO\nTHREE\nfour\n",
+        ":2,3!tr filters only lines 2-3"
     );
 }
 

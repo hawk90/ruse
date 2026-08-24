@@ -148,7 +148,35 @@ pub enum Ex {
         range: Option<SubRange>,
         keys: String,
     },
+    /// `:[addr]r[ead] {file}` / `:[addr]r[ead] !{cmd}` — insert a file's contents (or a shell command's
+    /// stdout, the `!{cmd}` form) as new line(s) BELOW the addressed line. `:0r` inserts above line 1; a bare
+    /// `:r` reads below the current line. `addr` resolves as for `:m`/`:t`/`:put` (`Line(0)` = the top). The
+    /// file read is PURE IO (no shell); the command read shells out. The frontend does the read (core is
+    /// IO-free), then splices the bytes in via [`ruse_core::Workspace::read_lines`].
+    Read {
+        addr: LineAddr,
+        source: ReadSource,
+    },
+    /// `:{range}!{cmd}` (and `:%!{cmd}`) — FILTER the range's lines through a shell command: pipe them to the
+    /// command's stdin and REPLACE them with its stdout. No range = the current line. Handled in the run loop
+    /// (it shells out, then splices via [`ruse_core::Workspace::filter_lines`]); unix `sh -c` only.
+    Filter {
+        range: SubRange,
+        cmd: String,
+    },
+    /// `:!{cmd}` — run `{cmd}` through the shell and show its output on the status line; NO buffer change.
+    /// Handled in the run loop (unix `sh -c` only).
+    Shell(String),
     Unknown(String),
+}
+
+/// The source of a `:r`/`:read`: a FILE (pure IO) or a shell COMMAND's stdout (`:r !{cmd}`).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ReadSource {
+    /// `:r {file}` — read the file at this path.
+    File(String),
+    /// `:r !{cmd}` — read the stdout of running `{cmd}` through the shell.
+    Command(String),
 }
 
 /// The target of a `:b` command: a buffer NUMBER (its `DocumentId`, as shown in `:ls`) or the `#`
@@ -627,6 +655,10 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(name) = parse_rename(line) {
                 Ex::Rename(name)
+            } else if let Some(ex) = parse_read(line) {
+                ex
+            } else if let Some(ex) = parse_bang(line) {
+                ex
             } else if let Some(rest) = line.strip_prefix("trace save") {
                 Ex::SaveTrace(rest.trim().to_string())
             } else if let Some(range) = parse_range_verb(line, &["d", "delete"]) {
@@ -839,6 +871,74 @@ fn parse_edit(line: &str) -> Option<Ex> {
         return None;
     }
     Some(Ex::Edit(file.to_string()))
+}
+
+/// Parse `:[addr]r[ead] {file}` / `:[addr]r[ead] !{cmd}`. After an optional `[0-9.$]` single-line address
+/// prefix (default = the current line; `0` = the top, Vim's `:0r`) the verb is `read`/`re`/`r` (longest
+/// first), then WHITESPACE, then the argument: a leading `!` makes it a command read, otherwise a file path.
+/// Returns `None` (→ falls through) when the line is not a `:read` or has no argument. `:rename`/`:registers`
+/// are consumed earlier in the dispatch chain, so they never reach here.
+fn parse_read(line: &str) -> Option<Ex> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (addr_str, rest) = line.split_at(split);
+    // Longest verb first so `read` wins over `re`/`r`.
+    let rest = ["read", "re", "r"]
+        .into_iter()
+        .find_map(|v| rest.strip_prefix(v))?;
+    // A verb must be followed by whitespace + an argument (a bare `:r` — re-read the current file — is a
+    // documented non-goal and falls through).
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let arg = rest.trim();
+    if arg.is_empty() {
+        return None;
+    }
+    let source = match arg.strip_prefix('!') {
+        Some(cmd) => {
+            let cmd = cmd.trim_start();
+            if cmd.is_empty() {
+                return None; // `:r !` with no command is not a valid read
+            }
+            ReadSource::Command(cmd.to_string())
+        }
+        None => ReadSource::File(arg.to_string()),
+    };
+    let addr = if addr_str.is_empty() {
+        LineAddr::Current
+    } else {
+        parse_line_addr(addr_str.trim())?
+    };
+    Some(Ex::Read { addr, source })
+}
+
+/// Parse the `!` shell forms: `:!{cmd}` (run + show output, NO range) and `:{range}!{cmd}` / `:%!{cmd}`
+/// (FILTER the range's lines through `{cmd}`). After an optional `[0-9,%.$]` range prefix the verb is a
+/// single `!`, then the command (the rest of the line, VERBATIM). A range distinguishes a FILTER from a bare
+/// run: `:!ls` runs, `:.!ls` / `:%!sort` / `:2,3!sort` filter. Returns `None` unless the line is a `!` form
+/// with a non-empty command.
+fn parse_bang(line: &str) -> Option<Ex> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+    let cmd = rest.strip_prefix('!')?;
+    let cmd = cmd.trim();
+    if cmd.is_empty() {
+        return None;
+    }
+    if range_str.is_empty() {
+        // No range → `:!cmd` runs the command and shows its output (no buffer change).
+        Some(Ex::Shell(cmd.to_string()))
+    } else {
+        // A range → `:{range}!cmd` filters those lines through the command.
+        Some(Ex::Filter {
+            range: parse_sub_range(range_str)?,
+            cmd: cmd.to_string(),
+        })
+    }
 }
 
 /// Parse `:b {n}` / `:buffer {n}` (switch to buffer number `n`). `:b#` is handled as a literal in
@@ -1223,6 +1323,117 @@ mod repeat_substitute_parse_tests {
         assert!(matches!(parse_ex("split"), Ex::Split));
         assert!(matches!(parse_ex("s 3"), Ex::Unknown(_))); // trailing count is deferred (like `:d`/`:>`)
         assert!(matches!(parse_ex("sx"), Ex::Unknown(_))); // `x` is not a repeat flag
+    }
+}
+
+#[cfg(test)]
+mod read_filter_parse_tests {
+    use super::*;
+
+    #[test]
+    fn read_file_forms_parse_addr_and_path() {
+        // Bare `:r`/`:read` → below the current line.
+        assert_eq!(
+            parse_ex("r ins.txt"),
+            Ex::Read {
+                addr: LineAddr::Current,
+                source: ReadSource::File("ins.txt".into())
+            }
+        );
+        assert_eq!(
+            parse_ex("read ins.txt"),
+            Ex::Read {
+                addr: LineAddr::Current,
+                source: ReadSource::File("ins.txt".into())
+            }
+        );
+        // A line address: `:2r` below line 2, `:0r` at the top, `:$r` after the last line.
+        assert_eq!(
+            parse_ex("2r ins.txt"),
+            Ex::Read {
+                addr: LineAddr::Line(2),
+                source: ReadSource::File("ins.txt".into())
+            }
+        );
+        assert_eq!(
+            parse_ex("0r ins.txt"),
+            Ex::Read {
+                addr: LineAddr::Line(0),
+                source: ReadSource::File("ins.txt".into())
+            }
+        );
+        assert_eq!(
+            parse_ex("$r ins.txt"),
+            Ex::Read {
+                addr: LineAddr::Last,
+                source: ReadSource::File("ins.txt".into())
+            }
+        );
+    }
+
+    #[test]
+    fn read_command_form_parses_after_the_bang() {
+        assert_eq!(
+            parse_ex("r !sort"),
+            Ex::Read {
+                addr: LineAddr::Current,
+                source: ReadSource::Command("sort".into())
+            }
+        );
+        // Leading space after `!` is trimmed; the rest of the command is verbatim.
+        assert_eq!(
+            parse_ex("3r ! ls -la"),
+            Ex::Read {
+                addr: LineAddr::Line(3),
+                source: ReadSource::Command("ls -la".into())
+            }
+        );
+    }
+
+    #[test]
+    fn bang_run_vs_filter_is_decided_by_the_range() {
+        // No range → `:!cmd` runs and shows output.
+        assert_eq!(parse_ex("!ls"), Ex::Shell("ls".into()));
+        assert_eq!(parse_ex("!echo hi"), Ex::Shell("echo hi".into()));
+        // A range → `:{range}!cmd` filters.
+        assert_eq!(
+            parse_ex("%!sort"),
+            Ex::Filter {
+                range: SubRange::WholeFile,
+                cmd: "sort".into()
+            }
+        );
+        assert_eq!(
+            parse_ex("2,3!sort"),
+            Ex::Filter {
+                range: SubRange::Lines(2, 3),
+                cmd: "sort".into()
+            }
+        );
+        // An explicit `.` is a range (current line), so it filters — distinct from a bare `:!`.
+        assert_eq!(
+            parse_ex(".!tr a-z A-Z"),
+            Ex::Filter {
+                range: SubRange::CurrentLine,
+                cmd: "tr a-z A-Z".into()
+            }
+        );
+    }
+
+    #[test]
+    fn non_read_and_empty_forms_fall_through() {
+        // A bare `:r`/`:read` (no argument — re-read the current file) is a documented non-goal.
+        assert!(matches!(parse_ex("r"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("read"), Ex::Unknown(_)));
+        // `:r !` with no command is not a valid read.
+        assert!(matches!(parse_ex("r !"), Ex::Unknown(_)));
+        // A `!` with no command, and a range-only `!`, are not shell forms.
+        assert!(matches!(parse_ex("!"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("%!"), Ex::Unknown(_)));
+        // `:registers`/`:rename`/`:redo` are NOT swallowed by the `:r` verb.
+        assert_eq!(parse_ex("registers"), Ex::Registers);
+        assert_eq!(parse_ex("rename foo"), Ex::Rename("foo".into()));
+        assert!(matches!(parse_ex("redo"), Ex::Unknown(_)));
     }
 }
 

@@ -713,6 +713,60 @@ impl Workspace {
         n
     }
 
+    /// Run `:[addr]r {file}` / `:[addr]r !{cmd}` against the FOCUSED window (swap-trick): insert `text` (a
+    /// file's contents or a command's stdout, read by the frontend) as new line(s) below the addressed line.
+    /// `cursor_on_last` picks the cursor's landing line (last inserted for a command read, first otherwise —
+    /// nvim's quirk). Returns the number of lines inserted.
+    pub fn read_lines(&mut self, addr: LineAddr, text: &[u8], cursor_on_last: bool) -> usize {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.read_lines(addr, text, cursor_on_last);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
+    /// The text of the FOCUSED window's lines in `range` (each with a trailing `\n`), as the frontend feeds a
+    /// `:{range}!{cmd}` filter's stdin. `None` for an empty / non-UTF-8 buffer. Read-only in effect, but takes
+    /// `&mut self` to reuse the swap-trick that reconstitutes the [`EditorState`] (which owns the resolver).
+    pub fn range_text(&mut self, range: SubRange) -> Option<String> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let st = EditorState::from_parts(doc, view);
+        let out = st.range_text(range);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        out
+    }
+
+    /// Run `:{range}!{cmd}` against the FOCUSED window (swap-trick): replace the range's lines with `text`
+    /// (the filter command's stdout, captured by the frontend). Returns the number of input lines filtered.
+    pub fn filter_lines(&mut self, range: SubRange, text: &[u8]) -> usize {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        let n = st.filter_lines(range, text);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
     /// Run `:[range]sort` against the FOCUSED window (swap-trick): sort the range's lines as one undo
     /// group. Returns the number of lines removed by the `unique` flag.
     pub fn sort_lines(&mut self, range: SubRange, opts: &crate::SortOptions) -> usize {
