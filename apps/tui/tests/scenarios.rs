@@ -7,7 +7,7 @@
 //! a readable regression guard.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{Command, SplitDir, SubFlags, Workspace};
+use ruse_core::{Command, SplitDir, SubFlags, SubRange, Workspace};
 use ruse_tui::input::{parse_ex, Ex, Feed, GlobalPayload, InputEngine};
 
 /// Route one engine outcome exactly as `main.rs::run` does: edits through the swap-trick `Workspace`,
@@ -512,4 +512,142 @@ fn count_change_family_does_not_repeat_text() {
     let (mut e, mut ws) = session("aa bb cc dd");
     feed_str(&mut e, &mut ws, "3cwX<Esc>");
     assert_eq!(buf(&ws), "X dd", "`3cw` changes three words to one X");
+}
+
+/// Feed a keystroke script while threading the last-`:s` state exactly as `session.rs` does, so `&`
+/// (`RepeatSubstituteLine`) and `g&` (`RepeatSubstituteGlobal`) resolve against a real substitute history.
+/// This is the ONLY place the two frontend-resolved repeat commands can be exercised end to end (the plain
+/// `step` helper has no history), and it drives the SAME substitute executor the run loop uses.
+fn feed_str_subst(
+    e: &mut InputEngine,
+    ws: &mut Workspace,
+    last: &mut Option<(String, String, SubFlags)>,
+    s: &str,
+) {
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        let key = if c == '<' {
+            let mut tag = String::new();
+            for d in chars.by_ref() {
+                if d == '>' {
+                    break;
+                }
+                tag.push(d);
+            }
+            match tag.as_str() {
+                "Esc" => KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                "CR" => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                _ => continue,
+            }
+        } else {
+            KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+        };
+        let mode = ws.focused().view.mode();
+        match e.feed(key, mode) {
+            // `&` — current line, flags DROPPED (default flags): the crux of this feature.
+            Feed::Cmd(Command::RepeatSubstituteLine) => {
+                if let Some((pat, rep, _flags)) = last.as_ref() {
+                    let _ = ws.substitute(SubRange::CurrentLine, pat, rep, SubFlags::default());
+                }
+            }
+            // `g&` — whole file, flags KEPT: mirrored here for the contrast assertion.
+            Feed::Cmd(Command::RepeatSubstituteGlobal) => {
+                if let Some((pat, rep, flags)) = last.as_ref() {
+                    let _ = ws.substitute(SubRange::WholeFile, pat, rep, *flags);
+                }
+            }
+            Feed::Cmd(cmd) => {
+                ws.apply(&cmd);
+            }
+            Feed::Replay(cmds) => {
+                for cmd in &cmds {
+                    ws.apply(cmd);
+                }
+            }
+            Feed::ExecuteEx(text) => {
+                if let Ex::Substitute(spec) = parse_ex(&text) {
+                    if !spec.pattern.is_empty() {
+                        *last = Some((
+                            spec.pattern.clone(),
+                            spec.replacement.clone(),
+                            SubFlags {
+                                global: spec.global,
+                                ignore_case: spec.ignore_case,
+                            },
+                        ));
+                    }
+                    let _ = ws.substitute(
+                        spec.range,
+                        &spec.pattern,
+                        &spec.replacement,
+                        SubFlags {
+                            global: spec.global,
+                            ignore_case: spec.ignore_case,
+                        },
+                    );
+                }
+            }
+            Feed::Pending | Feed::Ignored => {}
+        }
+    }
+}
+
+/// Bare `&` repeats the last `:s` on the CURRENT LINE and DROPS the previous flags — verified against
+/// nvim v0.12.4: `:s/a/X/g` then `&` on a later line replaces ONLY the first `a` on that line (the `g` is
+/// gone). The flag-drop is the whole point of `&`, so this is the load-bearing assertion.
+#[test]
+fn ampersand_repeats_last_substitute_on_current_line_dropping_flags() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa\nbbb aaa aaa\nccc aaa aaa\n");
+    // A GLOBAL substitute on line 1 (all matches), then move to line 2 and press `&`.
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/a/X/g<CR>");
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0&");
+    assert_eq!(
+        buf(&ws),
+        "XXX XXX\nbbb Xaa aaa\nccc aaa aaa\n",
+        "`&` drops the stored `g`: only the FIRST `a` on line 2 is replaced"
+    );
+}
+
+/// `&` repeats a flag-less `:s` faithfully too (first match on the current line), and repeating it after
+/// moving the cursor acts on the NEW line — matching nvim.
+#[test]
+fn ampersand_repeats_flagless_substitute_on_each_current_line() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa\nbbb aaa\nccc aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/a/X/<CR>"); // line 1: first `a`
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0&"); // line 2: first `a`
+    feed_str_subst(&mut e, &mut ws, &mut last, "j0&"); // line 3: first `a`
+    assert_eq!(
+        buf(&ws),
+        "Xaa\nbbb Xaa\nccc Xaa\n",
+        "`&` repeats the current-line, first-match substitute on each line it visits"
+    );
+}
+
+/// `&` with NO previous `:s` is a safe no-op (nvim errors E33; ruse just does nothing to the buffer).
+#[test]
+fn ampersand_with_no_previous_substitute_is_a_noop() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, "&");
+    assert_eq!(
+        buf(&ws),
+        "aaa aaa\n",
+        "no prior `:s` — the buffer is untouched"
+    );
+}
+
+/// Contrast guard: `g&` KEEPS the flags and runs over the WHOLE FILE, so the two forms stay distinct.
+#[test]
+fn g_ampersand_keeps_flags_over_the_whole_file() {
+    let mut last = None;
+    let (mut e, mut ws) = session("aaa aaa\nbbb aaa\n");
+    feed_str_subst(&mut e, &mut ws, &mut last, ":s/a/X/g<CR>"); // record a global `:s`
+    feed_str_subst(&mut e, &mut ws, &mut last, "g&"); // repeat globally, flags kept
+    assert_eq!(
+        buf(&ws),
+        "XXX XXX\nbbb XXX\n",
+        "`g&` keeps the `g` and covers every line"
+    );
 }

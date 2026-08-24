@@ -1526,6 +1526,34 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     };
                     continue;
                 }
+                // `&` — repeat the last `:s` on the CURRENT LINE, DROPPING its flags (Vim: no `g`/`i`/`I`,
+                // so only the first match on the cursor's line is replaced). Same frontend resolution as
+                // `g&`, but scoped to the current line and forced to default flags.
+                if matches!(cmd, Command::RepeatSubstituteLine) {
+                    status = match &last_substitute {
+                        Some((pat, rep, _flags)) => {
+                            match ws.substitute(
+                                ruse_core::SubRange::CurrentLine,
+                                pat,
+                                rep,
+                                ruse_core::SubFlags::default(),
+                            ) {
+                                Ok(out) if out.replacements == 0 => {
+                                    format!("E486: pattern not found: {pat}")
+                                }
+                                Ok(out) => {
+                                    format!(
+                                        "{} substitutions on {} lines",
+                                        out.replacements, out.lines
+                                    )
+                                }
+                                Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                            }
+                        }
+                        None => "no previous substitute".to_string(),
+                    };
+                    continue;
+                }
                 // `*`/`#` (word under cursor): the engine has no buffer, so resolve the keyword here, then
                 // rewrite to a concrete search — records the deterministic pattern and drives hlsearch/`n`.
                 let cmd = if let Command::SearchWordUnder {
