@@ -3,6 +3,16 @@
 //! it is VIEW-ONLY (Vim's `:reg` does not act on a selection), so the session just closes it on Enter.
 
 use crate::ui::picker::{PickItem, Picker};
+use ruse_core::RegKind;
+
+/// Vim's `:reg` Type column: charwise `c`, linewise `l`, blockwise `b`.
+fn type_char(kind: RegKind) -> char {
+    match kind {
+        RegKind::Charwise => 'c',
+        RegKind::Linewise => 'l',
+        RegKind::Blockwise => 'b',
+    }
+}
 
 /// Render register bytes as a one-line preview: printable chars as-is, control bytes in caret notation
 /// (`Esc`→`^[`, `CR`→`^M`, `Tab`→`^I`), so a macro like `iZ<Esc>` reads `iZ^[`. The navigation-key prefix
@@ -28,15 +38,16 @@ fn preview(bytes: &[u8]) -> String {
     s
 }
 
-/// Open a register viewer over a `(name, bytes)` snapshot (see `Workspace::register_snapshot`). Each row is
-/// `"x  <preview>`; searchable by name + preview text. Empty snapshot ⇒ an empty picker (shows nothing).
-pub(crate) fn open(snapshot: Vec<(char, Vec<u8>)>) -> Picker<char> {
+/// Open a register viewer over a `(name, kind, bytes)` snapshot (see `Workspace::register_snapshot`). Each
+/// row mirrors Vim's `:reg` columns — `{type}  "{name}   {preview}` (type = `c`/`l`/`b`) — and is searchable
+/// by name + preview text. Empty snapshot ⇒ an empty picker (shows nothing).
+pub(crate) fn open(snapshot: Vec<(char, RegKind, Vec<u8>)>) -> Picker<char> {
     let items = snapshot
         .into_iter()
-        .map(|(name, bytes)| {
+        .map(|(name, kind, bytes)| {
             let body = preview(&bytes);
             PickItem {
-                display: format!("\"{name}  {body}"),
+                display: format!("{}  \"{name}   {body}", type_char(kind)),
                 search: format!("{name} {body}"),
                 payload: name,
             }
@@ -57,12 +68,23 @@ mod tests {
     }
 
     #[test]
-    fn open_lists_each_register_as_a_row() {
-        let p = open(vec![('a', b"dd".to_vec()), ('"', b"hello".to_vec())]);
+    fn open_lists_each_register_with_type_column() {
+        let p = open(vec![
+            ('a', RegKind::Charwise, b"dd".to_vec()),
+            ('"', RegKind::Linewise, b"hello\n".to_vec()),
+        ]);
         assert_eq!(p.rows().len(), 2);
-        assert!(
-            p.rows().iter().any(|(text, _)| text.contains("\"a  dd")),
-            "register a row; got {:?}",
+        // Vim `:reg` layout: `{type}  "{name}   {preview}`; newlines render as ^J.
+        assert_eq!(
+            p.rows()[0].0,
+            "c  \"a   dd",
+            "charwise register a → type `c`; got {:?}",
+            p.rows()
+        );
+        assert_eq!(
+            p.rows()[1].0,
+            "l  \"\"   hello^J",
+            "linewise unnamed register → type `l`; got {:?}",
             p.rows()
         );
     }
