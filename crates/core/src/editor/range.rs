@@ -350,6 +350,36 @@ pub(crate) fn block_rows(
     (rows, col_lo, col_hi)
 }
 
+/// Rebuild a blockwise selection of a given `width` (inclusive char columns) and `height` (rows) whose
+/// TOP-LEFT corner is the char position of `cursor` — the geometry a dot-repeat (`.`) of a block
+/// insert/append/change reconstructs at the caret (nvim reuses the original block size, positioned at the
+/// cursor). Returns the same shape as [`block_rows`]: one `[start, end)` byte range per row (clamped to that
+/// line's own length, so a short line yields an empty range at its end), plus the inclusive column bounds
+/// `(col_lo, col_hi)`. Rows stop at end-of-buffer, so fewer than `height` rows are returned near the last line.
+pub(crate) fn block_rows_at(
+    b: &[u8],
+    cursor: usize,
+    width: usize,
+    height: usize,
+) -> (Vec<(usize, usize)>, usize, usize) {
+    let ls = line_start(b, cursor);
+    let col_lo = col_of(b, ls, cursor);
+    let col_hi = col_lo + width.saturating_sub(1);
+    let mut rows = Vec::new();
+    let mut rs = ls;
+    for _ in 0..height.max(1) {
+        let s = at_col(b, rs, col_lo);
+        let e = at_col(b, rs, col_hi + 1);
+        rows.push((s, e));
+        let le = line_end(b, rs);
+        if le >= b.len() {
+            break; // no further line to extend the block onto
+        }
+        rs = le + 1;
+    }
+    (rows, col_lo, col_hi)
+}
+
 /// Walk `count` char boundaries forward from `from`, never past `limit` (typically the line end).
 /// Returns the end byte offset; fewer than `count` chars available stops at `limit` (Vim's EOL clamp).
 pub(crate) fn advance_n(b: &[u8], from: usize, count: u32, limit: usize) -> usize {

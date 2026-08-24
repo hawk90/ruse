@@ -157,6 +157,13 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::Change(..)
         | C::ChangeSelection
         | C::ReplaceSelection(_)
+        // Visual-block `I`/`A`/`c` (`CTRL-V` then the key): the change is the block-insert entry plus the
+        // text typed until `<Esc>`. On replay the block has no live selection, so the planner rebuilds an
+        // equivalent block (stored WIDTH x HEIGHT) at the caret — nvim repeats a block insert over the same
+        // geometry positioned at the new cursor (verified vs nvim v0.12.4). `[count].` is a no-op here (nvim
+        // ignores the count for block insert), which falls out naturally: `BlockInsert` is not a plain
+        // insert-entry, so `replay` neither re-times the text nor (via `with_count`) rewrites the command.
+        | C::BlockInsert(_)
         | C::OpForced {
             op: OpKind::Change, ..
         }
