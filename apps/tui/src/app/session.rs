@@ -322,6 +322,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut diag_picker: Option<Picker<usize>> = None;
     // F-029: the `:registers` viewer — payload is the register name; view-only (Enter just closes).
     let mut reg_picker: Option<Picker<char>> = None;
+    // `:digraphs` listing — payload is the glyph; view-only (Enter just closes), like `reg_picker`.
+    let mut digraph_picker: Option<Picker<char>> = None;
     // F-003: the `:marks` viewer — payload is the mark's byte offset; Enter jumps the cursor there.
     let mut marks_picker: Option<Picker<usize>> = None;
     // F-003: the shared `:jumps` / `:changes` position viewer — payload is a byte offset; Enter jumps.
@@ -468,6 +470,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = reg_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = digraph_picker.as_ref() {
+            p.rows()
         } else if let Some(p) = marks_picker.as_ref() {
             p.rows()
         } else if let Some(p) = pos_picker.as_ref() {
@@ -498,6 +502,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('✗', p.query.as_str())) // diagnostics-picker prompt
         } else if let Some(p) = reg_picker.as_ref() {
             Some(('"', p.query.as_str())) // registers-viewer prompt (" = registers)
+        } else if let Some(p) = digraph_picker.as_ref() {
+            Some(('§', p.query.as_str())) // digraph-listing prompt (§ = digraphs)
         } else if let Some(p) = marks_picker.as_ref() {
             Some(('\'', p.query.as_str())) // marks-viewer prompt (' = marks)
         } else if let Some(p) = pos_picker.as_ref() {
@@ -818,6 +824,13 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if let Some(outcome) = reg_picker.as_mut().map(|p| p.on_key(key)) {
             if !matches!(outcome, PickOutcome::Continue) {
                 reg_picker = None;
+            }
+            continue;
+        }
+        // The `:digraphs` listing is view-only — any non-Continue outcome (Enter / Esc) just closes it.
+        if let Some(outcome) = digraph_picker.as_mut().map(|p| p.on_key(key)) {
+            if !matches!(outcome, PickOutcome::Continue) {
+                digraph_picker = None;
             }
             continue;
         }
@@ -1361,6 +1374,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     Ex::Ascii => {
                         let pane = ws.focused();
                         status = ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor());
+                    }
+                    // `:digraphs` / `:dig`: open the view-only digraph-listing overlay.
+                    Ex::Digraphs => {
+                        let p = crate::ui::digraph_picker::open();
+                        status = format!("{} digraph(s)", p.rows().len());
+                        digraph_picker = Some(p);
                     }
                     // `:marks` (F-003): open a picker over the set marks; Enter jumps to the selected one.
                     Ex::Marks => {

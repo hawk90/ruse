@@ -2923,7 +2923,7 @@ use cmdline::{CmdLine, ExprTarget};
 use cmdwin::CmdWin;
 use history::CmdHistory;
 
-mod digraph;
+pub(crate) mod digraph; // `pub(crate)`: the `:digraphs` listing overlay (ui) reads `digraph::entries`.
 use digraph::digraph;
 
 mod repeat;

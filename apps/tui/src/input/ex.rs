@@ -32,6 +32,8 @@ pub enum Ex {
     Diagnostics,
     /// `:registers`/`:reg`/`:display` — view the non-empty registers (F-029). View-only.
     Registers,
+    /// `:digraphs`/`:dig` — list the curated digraph table (code + glyph + decimal) in a view-only overlay.
+    Digraphs,
     /// `:marks` — view the set marks (a-z, `.`, `^`); Enter jumps to the mark (F-003).
     Marks,
     /// `:jumps` — view the jumplist; Enter jumps to the position (F-003).
@@ -232,6 +234,9 @@ pub struct SubSpec {
     pub ignore_case: Option<bool>,
     /// `c`: confirm each substitution interactively (handled by the frontend; PR-c2).
     pub confirm: bool,
+    /// `n`: report-only — count the matches and echo `N matches on M lines` WITHOUT editing the buffer,
+    /// moving the cursor, or adding an undo entry (Vim's `:s///n`). Takes priority over `c` (like Vim).
+    pub count_only: bool,
 }
 
 /// Parse `:earlier [N]` / `:later [N]` (or `:ea` / `:lat`) — chronological undo time travel. The optional
@@ -407,6 +412,7 @@ pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
         global,
         ignore_case,
         confirm: flags.contains('c'),
+        count_only: flags.contains('n'),
     })
 }
 
@@ -634,6 +640,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "codeaction" | "codeactions" | "ca" => Ex::CodeAction,
         "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
         "registers" | "reg" | "display" | "di" => Ex::Registers,
+        "digraphs" | "digraph" | "dig" => Ex::Digraphs,
         "marks" => Ex::Marks,
         "jumps" => Ex::Jumps,
         "changes" => Ex::Changes,
@@ -1013,6 +1020,7 @@ mod reuse_last_search_tests {
             global: false,
             ignore_case: None,
             confirm: false,
+            count_only: false,
         })
     }
 
