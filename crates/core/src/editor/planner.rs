@@ -2223,6 +2223,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // `gd`/`gD` are resolved by the frontend (it reads the keyword under the cursor from the buffer and
         // rewrites this to a concrete `GotoFirstMatch`), so the pure core never acts on it directly.
         Command::GotoDeclaration { .. } => nop(cur, st.view.mode),
+        // `[i`/`]i`/`[I`/`]I` are resolved by the frontend (it reads the keyword under the cursor and scans
+        // the buffer lines, echoing or listing the matches); a pure display command — never mutates.
+        Command::ShowKeywordLines { .. } => nop(cur, st.view.mode),
         // The resolved `gd`/`gD` jump: land on the FIRST whole-word match scanning from the TOP of the file
         // (offset 0 — matching nvim v0.12.4's `gd`/`gD`), else keep the cursor. `is_jump` records the leave.
         Command::GotoFirstMatch(pat) => {

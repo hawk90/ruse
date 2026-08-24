@@ -924,6 +924,52 @@ mod tests {
     }
 
     #[test]
+    fn bracket_keyword_lookup_emits_show_keyword_lines() {
+        // `[i`/`]i` echo the count'th match (`[` from the top, `]` below the cursor); `[I`/`]I` list all.
+        // A leading count carries through to the single (echo) forms.
+        assert_eq!(
+            feed("[i"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: true,
+                list: false,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("]i"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: false,
+                list: false,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("2[i"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: true,
+                list: false,
+                count: 2
+            })
+        );
+        assert_eq!(
+            feed("[I"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: true,
+                list: true,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("]I"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: false,
+                list: true,
+                count: 1
+            })
+        );
+    }
+
+    #[test]
     fn insert_ctrl_w_and_ctrl_u_emit_delete_commands() {
         let mut e = InputEngine::new();
         assert_eq!(
