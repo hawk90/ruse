@@ -1558,6 +1558,26 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 } else {
                     cmd
                 };
+                // `gd`/`gD` (declaration under cursor, TEXT heuristic — not LSP): like `*`/`#`, the engine
+                // has no buffer, so resolve the keyword here and rewrite to a concrete whole-file first-match
+                // jump. `gd` and `gD` are currently identical (matching nvim v0.12.4). Set the last-search to
+                // the whole-word pattern forward so a following `n` continues from the landing spot (nvim's
+                // `gd` sets `@/` too). `global` is unused for now — the `gd` block-scope refinement reads it.
+                let cmd = if let Command::GotoDeclaration { .. } = cmd {
+                    match ws.word_under_cursor() {
+                        Some(word) => {
+                            let pat = format!("\\<{word}\\>");
+                            engine.set_last_search(pat.clone(), true);
+                            Command::GotoFirstMatch(pat)
+                        }
+                        None => {
+                            status = "E348: No string under cursor".into();
+                            continue;
+                        }
+                    }
+                } else {
+                    cmd
+                };
                 // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
                 let cmd = resolve_tree_aware(cmd, &ws, &highlighters, &line_idx, &snapshot);
                 // A completed search turns on hlsearch for that pattern (F-009 #1).
