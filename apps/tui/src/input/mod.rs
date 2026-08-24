@@ -377,6 +377,7 @@ impl InputEngine {
             cursor: 0,
             ex_mode,
             mx: false,
+            expr: None,
         });
     }
 
@@ -389,6 +390,21 @@ impl InputEngine {
             cursor: 0,
             ex_mode: false,
             mx: true,
+            expr: None,
+        });
+    }
+
+    /// Open the expression-register prompt (`"=` / `<C-r>=`, `:help quote=`): the same command-line namespace,
+    /// reading an EXPRESSION. The `=` prefix renders the prompt glyph. On `<CR>` the collected string is handed
+    /// to the evaluator via the command `target` produces (see [`ExprTarget`]); `<Esc>` aborts.
+    fn open_expr_prompt(&mut self, target: ExprTarget) {
+        self.cmdline = Some(CmdLine {
+            prefix: '=',
+            buffer: String::new(),
+            cursor: 0,
+            ex_mode: false,
+            mx: false,
+            expr: Some(target),
         });
     }
 
@@ -419,7 +435,18 @@ impl InputEngine {
                 let prefix = cl.prefix;
                 let ex_mode = cl.ex_mode;
                 let mx = cl.mx;
+                let expr = cl.expr;
                 let text = std::mem::take(&mut cl.buffer);
+                // Expression-register prompt (`"=` / `<C-r>=`): hand the collected expression to the editor,
+                // which evaluates it. `Paste` arms the `"=` register for the next paste; `Insert` splices the
+                // result at the caret. An empty/malformed expression degrades in the editor (empty result).
+                if let Some(target) = expr {
+                    self.cmdline = None;
+                    return match target {
+                        ExprTarget::Paste => Feed::Cmd(Command::SetExprRegister(text)),
+                        ExprTarget::Insert => Feed::Cmd(Command::InsertEval(text)),
+                    };
+                }
                 if mx {
                     // `M-x <name> <CR>`: resolve the command name against the registry; an unknown name is a
                     // no-op (Emacs shows "[No match]"). Completion / history are deferred (F-004).
@@ -1084,6 +1111,14 @@ impl InputEngine {
         // aborts without inserting. Checked before the layer so the register key never reaches text insertion.
         if self.insert.ctrl_r {
             self.insert.ctrl_r = false;
+            // `i_CTRL-R=` — the expression register (`:help i_CTRL-R`, the MOST common use): open the
+            // expression prompt; on `<CR>` the evaluated result is spliced at the caret. Handled before the
+            // stored-register names below.
+            if key.code == KeyCode::Char('=') {
+                self.reset();
+                self.open_expr_prompt(ExprTarget::Insert);
+                return Feed::Pending;
+            }
             return match key.code {
                 KeyCode::Char(c)
                     if c == '"'
@@ -1921,6 +1956,15 @@ impl InputEngine {
             }
             Awaiting::RegisterSelect => {
                 self.normal.awaiting = Awaiting::Nothing;
+                // `"=` — the expression register (`:help quote=`): open the expression prompt instead of
+                // arming a stored slot. On `<CR>` the collected expression is evaluated and the `"=` register
+                // armed, so the FOLLOWING `p`/`P` pastes the result. Reset first so no partial Normal state
+                // (a stray count/operator) survives into the prompt.
+                if key.code == KeyCode::Char('=') {
+                    self.reset();
+                    self.open_expr_prompt(ExprTarget::Paste);
+                    return Feed::Pending;
+                }
                 return match key.code {
                     // A register name — a letter (`a`–`z` / `A`–`Z`), the yank register `0`, the numbered
                     // delete-ring `1`–`9`, the small-delete `-`, or the blackhole `_`: emit `SetRegister` for the core
@@ -2000,7 +2044,7 @@ pub use emacs::emacs_command_by_name;
 use emacs::{emacs_repeat, fold_emacs_count, EmacsArg, EmacsBinding, EmacsKey, EmacsProfile, Step};
 
 mod cmdline;
-use cmdline::CmdLine;
+use cmdline::{CmdLine, ExprTarget};
 
 mod repeat;
 use repeat::{change_kind, ChangeIntent, ChangeKind};
