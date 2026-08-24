@@ -196,6 +196,20 @@ mod tests {
     }
 
     #[test]
+    fn gd_and_gd_global_emit_goto_declaration() {
+        // `gd` (local) and `gD` (global) both go through the GSecond tier; the frontend rewrites them to a
+        // concrete whole-file first-match jump. `global` distinguishes them (currently identical behavior).
+        assert_eq!(
+            feed("gd"),
+            Feed::Cmd(Command::GotoDeclaration { global: false })
+        );
+        assert_eq!(
+            feed("gD"),
+            Feed::Cmd(Command::GotoDeclaration { global: true })
+        );
+    }
+
+    #[test]
     fn case_operators_g_prefix() {
         use ruse_core::WordCase;
         // gu/gU/g~ over a motion.

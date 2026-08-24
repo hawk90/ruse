@@ -2010,6 +2010,14 @@ impl InputEngine {
                         forward: false,
                         whole_word: false,
                     }),
+                    // `gd` / `gD` — go to the local / global declaration of the keyword under the cursor via
+                    // Vim's TEXT heuristic (NOT LSP; ruse's LSP goto is separate). The engine has no buffer,
+                    // so — exactly like `*`/`#` — the frontend reads the word and rewrites this to a concrete
+                    // whole-file first-match jump. Both land on the first whole-word match from the top of the
+                    // file, matching nvim v0.12.4 where `gd` and `gD` are identical (verified); `global` marks
+                    // `gD` and reserves the `gd` enclosing-block refinement as a follow-up.
+                    KeyCode::Char('d') => self.action(Command::GotoDeclaration { global: false }),
+                    KeyCode::Char('D') => self.action(Command::GotoDeclaration { global: true }),
                     // In Visual, `gu`/`gU`/`g~` recase the selection immediately (same as bare `u`/`U`/`~`).
                     KeyCode::Char('u') if matches!(mode, Mode::Visual { .. }) => {
                         self.action(Command::CaseSelection(WordCase::Downcase))
