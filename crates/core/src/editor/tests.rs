@@ -6493,3 +6493,164 @@ mod tag_text_object_tests {
         assert_eq!(st.register().text(), b"<b>x</b>");
     }
 }
+
+/// `:[line]put [reg]` — the ex put command. Put is ALWAYS LINEWISE: a charwise register's text is split on
+/// newlines and each piece inserted as its own whole line. Ground truth captured from nvim v0.12.4
+/// (`nvim -u NONE`, `writefile(getline(1,'$'))` + `line('.')` / `col('.')`).
+#[cfg(test)]
+mod put_lines_tests {
+    use crate::editor::*;
+    use crate::register::Register;
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.doc.bytes().to_vec()).unwrap()
+    }
+
+    /// The cursor's 0-based (line, column).
+    fn cursor_line_col(st: &EditorState) -> (usize, usize) {
+        let b = st.doc.bytes();
+        let c = st.cursor();
+        let line = b[..c].iter().filter(|&&x| x == b'\n').count();
+        let line_start = b[..c]
+            .iter()
+            .rposition(|&x| x == b'\n')
+            .map_or(0, |i| i + 1);
+        (line, c - line_start)
+    }
+
+    /// A linewise register is put as whole line(s) BELOW the addressed line; the cursor lands on the last
+    /// inserted line. nvim: yank line1, `:2put` → `line1/line2/line1/line3`, cursor (3,1).
+    #[test]
+    fn linewise_put_below_addressed_line() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        assert_eq!(
+            st.yank_lines(SubRange::Lines(1, 1)),
+            1,
+            "yank line1 linewise"
+        );
+        assert_eq!(
+            st.put_lines(LineAddr::Line(2), None),
+            1,
+            ":2put inserts one line"
+        );
+        assert_eq!(text(&st), "line1\nline2\nline1\nline3\n");
+        assert_eq!(cursor_line_col(&st), (2, 0), "cursor on the inserted line");
+    }
+
+    /// The linewise-FORCING rule: a CHARWISE register is still put as its own new whole line — the key
+    /// difference from normal-mode `p`. nvim: reg a='foo' (charwise), `:2put a` → a new `foo` line.
+    #[test]
+    fn charwise_register_is_forced_linewise() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        st.view
+            .registers
+            .yank(Some('a'), Register::charwise(b"foo".to_vec()));
+        assert_eq!(st.put_lines(LineAddr::Line(2), Some('a')), 1);
+        assert_eq!(
+            text(&st),
+            "line1\nline2\nfoo\nline3\n",
+            "charwise `foo` opens a whole new line, not an inline splice"
+        );
+        assert_eq!(cursor_line_col(&st), (2, 0));
+    }
+
+    /// A charwise register carrying newlines splits into one line PER newline-separated piece. nvim: reg
+    /// a="aa\nbb" (charwise), `:1put a` → two new lines `aa` and `bb`, cursor on `bb` (3,1).
+    #[test]
+    fn charwise_register_with_newlines_splits_into_lines() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        st.view
+            .registers
+            .yank(Some('a'), Register::charwise(b"aa\nbb".to_vec()));
+        assert_eq!(st.put_lines(LineAddr::Line(1), Some('a')), 2, "two lines");
+        assert_eq!(text(&st), "line1\naa\nbb\nline2\nline3\n");
+        assert_eq!(
+            cursor_line_col(&st),
+            (2, 0),
+            "cursor on the last inserted line"
+        );
+    }
+
+    /// `:0put` inserts at the very top, before line 1. nvim: yank line1, `:0put` → `line1/line1/line2/line3`,
+    /// cursor (1,1).
+    #[test]
+    fn put_at_line_zero_inserts_at_the_top() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        st.yank_lines(SubRange::Lines(1, 1));
+        assert_eq!(st.put_lines(LineAddr::Line(0), None), 1);
+        assert_eq!(text(&st), "line1\nline1\nline2\nline3\n");
+        assert_eq!(cursor_line_col(&st), (0, 0), "cursor on the new top line");
+    }
+
+    /// `:$put` inserts after the last line. nvim: yank line1, `:$put` → `line1/line2/line3/line1`,
+    /// cursor (4,1).
+    #[test]
+    fn put_at_last_line_appends() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        st.yank_lines(SubRange::Lines(1, 1));
+        assert_eq!(st.put_lines(LineAddr::Last, None), 1);
+        assert_eq!(text(&st), "line1\nline2\nline3\nline1\n");
+        assert_eq!(cursor_line_col(&st), (3, 0));
+    }
+
+    /// A bare `:put` (LineAddr::Current) puts after the cursor's line. nvim: cursor on line1, yank line1,
+    /// `:put` → `line1/line1/line2/line3`, cursor (2,1).
+    #[test]
+    fn bare_put_inserts_after_the_current_line() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        st.set_cursor(0); // line1
+        st.yank_lines(SubRange::Lines(1, 1));
+        assert_eq!(st.put_lines(LineAddr::Current, None), 1);
+        assert_eq!(text(&st), "line1\nline1\nline2\nline3\n");
+        assert_eq!(cursor_line_col(&st), (1, 0));
+    }
+
+    /// The cursor lands on the FIRST NON-BLANK of the last inserted line, not column 0. nvim: reg
+    /// a="   indented\n" (linewise), `:1put a` → cursor (2,4).
+    #[test]
+    fn cursor_lands_on_first_non_blank() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        st.view
+            .registers
+            .yank(Some('a'), Register::linewise(b"   indented\n".to_vec()));
+        assert_eq!(st.put_lines(LineAddr::Line(1), Some('a')), 1);
+        assert_eq!(text(&st), "line1\n   indented\nline2\nline3\n");
+        assert_eq!(
+            cursor_line_col(&st),
+            (1, 3),
+            "cursor on the first non-blank (past the 3 leading spaces)"
+        );
+    }
+
+    /// An empty register is a no-op: the buffer and cursor are untouched. nvim: `:1put z` (z empty) leaves
+    /// the buffer unchanged.
+    #[test]
+    fn empty_register_is_a_no_op() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        st.set_cursor(6); // line2
+        assert_eq!(
+            st.put_lines(LineAddr::Line(1), Some('z')),
+            0,
+            "nothing inserted"
+        );
+        assert_eq!(text(&st), "line1\nline2\nline3\n", "buffer untouched");
+        assert_eq!(cursor_line_col(&st), (1, 0), "cursor untouched");
+    }
+
+    /// A put is ONE undo group: a single undo removes all inserted lines.
+    #[test]
+    fn put_is_one_undo_group() {
+        let mut st = EditorState::new(b"line1\nline2\nline3\n".to_vec());
+        st.view
+            .registers
+            .yank(Some('a'), Register::charwise(b"aa\nbb".to_vec()));
+        st.put_lines(LineAddr::Line(1), Some('a'));
+        assert_eq!(text(&st), "line1\naa\nbb\nline2\nline3\n");
+        apply_command(&mut st, &Command::Undo);
+        assert_eq!(
+            text(&st),
+            "line1\nline2\nline3\n",
+            "one undo removes the whole put"
+        );
+    }
+}

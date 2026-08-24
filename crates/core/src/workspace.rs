@@ -662,6 +662,31 @@ impl Workspace {
         n
     }
 
+    /// Run `:[line]put [reg]` against the FOCUSED window (swap-trick): put the register's text LINEWISE as
+    /// new whole line(s) after the addressed line. Returns the number of lines inserted. `:put +`/`:put *`
+    /// read the system clipboard, so — like [`Workspace::apply`] — pull the external clipboard into the
+    /// mirror slot first (the orchestration boundary; the pure core never does IO) so the put reflects what
+    /// another app copied. A put only READS a register, so nothing is pushed back out.
+    pub fn put_lines(&mut self, addr: LineAddr, reg: Option<char>) -> usize {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        if crate::register::RegisterStore::is_clipboard(reg) {
+            if let Some(text) = self.clipboard.get() {
+                st.sync_clipboard_in(text.into_bytes());
+            }
+        }
+        let n = st.put_lines(addr, reg);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        n
+    }
+
     /// Run `:[range]sort` against the FOCUSED window (swap-trick): sort the range's lines as one undo
     /// group. Returns the number of lines removed by the `unique` flag.
     pub fn sort_lines(&mut self, range: SubRange, opts: &crate::SortOptions) -> usize {
