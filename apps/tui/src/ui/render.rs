@@ -1167,6 +1167,7 @@ mod render_tests {
             start: 1,
             end: 3,
             closed: true,
+            level: 1,
         }];
         let mut s = screen::Screen::new(20, 5);
         paint_pane(
@@ -1201,6 +1202,58 @@ mod render_tests {
             s.cell(2, 0).content,
             screen::Content::Cluster("e".into()),
             "line 4 collapses up to row 2 (lines 2,3 hidden)",
+        );
+    }
+
+    /// End-to-end `foldmethod=indent` (slice 3): the pure pipeline `compute_indent_folds` →
+    /// `apply_foldlevel` → `paint_pane` collapses a NESTED indent buffer. At foldlevel=0 the outermost fold
+    /// closes and hides its whole subtree behind one summary row (nvim-verified ranges).
+    #[test]
+    fn paint_pane_collapses_computed_indent_folds() {
+        // 0:a0  1:·b  2:··c  3:··d  4:·e  5:f  (sw=4). Folds: outer [1,4] L1, inner [2,3] L2.
+        let bytes = b"a0\n    b\n        c\n        d\n    e\nf";
+        let mut folds = crate::folds::compute_indent_folds(bytes, 4);
+        crate::folds::apply_foldlevel(&mut folds, 0); // foldlevel=0 → close all outermost
+        let no_style: &[screen::CellStyle] = &[];
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 6,
+        };
+        let mut s = screen::Screen::new(20, 6);
+        paint_pane(
+            &mut s,
+            rect,
+            bytes,
+            no_style,
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &[],
+            9,
+            &[],
+            &mut Vec::new(),
+            false,
+            &std::collections::HashMap::new(),
+            &folds,
+        );
+        assert_eq!(
+            s.cell(0, 0).content,
+            screen::Content::Cluster("a".into()),
+            "the level-0 header line stays visible above the fold",
+        );
+        assert_eq!(
+            s.cell(1, 0).content,
+            screen::Content::Cluster("\u{25b8}".into()),
+            "the outer fold's summary (▸) collapses the whole indented subtree onto its start row",
+        );
+        assert_eq!(
+            s.cell(2, 0).content,
+            screen::Content::Cluster("f".into()),
+            "the trailing level-0 line pulls up to row 2 (lines 2..=4 hidden inside the fold)",
         );
     }
 

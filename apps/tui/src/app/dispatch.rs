@@ -464,6 +464,8 @@ pub(crate) fn run_ex(
         Ex::SetHlSearch(_) | Ex::SetIncSearch(_) => {}
         // `:set (no)fixeol` is handled in the run loop (a frontend write flag threaded into `save`); never here.
         Ex::SetFixEol(_) => {}
+        // `:set foldmethod/foldlevel/foldenable` are handled in the run loop (frontend fold state); never here.
+        Ex::SetFoldMethod(_) | Ex::SetFoldLevel(_) | Ex::SetFoldEnable(_) => {}
         // `:registers` is handled in the run loop (it opens the frontend-owned register-viewer picker).
         Ex::Registers => {}
         // `:digraphs` is handled in the run loop (it opens the frontend-owned digraph-listing picker).

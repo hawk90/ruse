@@ -114,6 +114,15 @@ pub enum Ex {
     /// `:set (no)fixeol` / `(no)fixendofline` — opt-in: on save, ADD a final `\n` when the buffer lacks one
     /// (frontend write preference; OFF by default — byte-preserve is the honest default). Vim's fixendofline.
     SetFixEol(bool),
+    /// `:set foldmethod=indent|manual` (`fdm`) — select how folds are formed for the focused buffer (folds
+    /// are a frontend concern; slice 3). `manual` keeps the hand-made `zf` model; `indent` derives nested
+    /// folds from indentation. Handled in the run loop.
+    SetFoldMethod(FoldMethod),
+    /// `:set foldlevel=N` (`fdl`) — folds deeper than `N` are closed under `foldmethod=indent` (frontend).
+    SetFoldLevel(usize),
+    /// `:set (no)foldenable` (`fen`) — master switch: when off, no fold is closed regardless of foldlevel
+    /// (Vim's `zn`/`zN`; frontend render state). ON by default.
+    SetFoldEnable(bool),
     /// `:lmap {lhs} {rhs}` — install a Lang-Arg (`lmap`) mapping (F-027). Single-char lhs/rhs for MVP.
     Lmap {
         lhs: char,
@@ -173,6 +182,17 @@ pub enum Ex {
     /// Handled in the run loop (unix `sh -c` only).
     Shell(String),
     Unknown(String),
+}
+
+/// How folds are formed for a buffer (`:set foldmethod`). Slice 3 implements `manual` (existing `zf` folds)
+/// and `indent` (nested folds derived from indentation); the other Vim methods (`expr`/`syntax`/`marker`/
+/// `diff`) are deferred.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FoldMethod {
+    /// `manual` — folds are created by hand (`zf`) and never recomputed. The default.
+    Manual,
+    /// `indent` — folds are derived from each line's indentation and recomputed on edit.
+    Indent,
 }
 
 /// The source of a `:r`/`:read`: a FILE (pure IO) or a shell COMMAND's stdout (`:r !{cmd}`).
@@ -272,6 +292,9 @@ fn parse_set(line: &str) -> Option<Ex> {
         "noincsearch" | "nois" => return Some(Ex::SetIncSearch(false)),
         "fixeol" | "fixendofline" => return Some(Ex::SetFixEol(true)),
         "nofixeol" | "nofixendofline" => return Some(Ex::SetFixEol(false)),
+        // Fold options (frontend; slice 3). `foldenable`/`fen` bool + `no` prefix.
+        "foldenable" | "fen" => return Some(Ex::SetFoldEnable(true)),
+        "nofoldenable" | "nofen" => return Some(Ex::SetFoldEnable(false)),
         _ => {}
     }
     let ex = match opt {
@@ -283,8 +306,23 @@ fn parse_set(line: &str) -> Option<Ex> {
         "noexpandtab" | "noet" => EditorOption::ExpandTab(false),
         _ => {
             let (k, v) = opt.split_once('=')?;
-            let n: usize = v.trim().parse().ok()?;
-            match k.trim() {
+            let k = k.trim();
+            let v = v.trim();
+            // Fold `=`-valued options (frontend; slice 3) are parsed before the numeric core options.
+            match k {
+                "foldmethod" | "fdm" => {
+                    return match v {
+                        "indent" => Some(Ex::SetFoldMethod(FoldMethod::Indent)),
+                        "manual" => Some(Ex::SetFoldMethod(FoldMethod::Manual)),
+                        // expr/syntax/marker/diff are deferred — unknown value → no-op (Unknown).
+                        _ => None,
+                    };
+                }
+                "foldlevel" | "fdl" => return Some(Ex::SetFoldLevel(v.parse().ok()?)),
+                _ => {}
+            }
+            let n: usize = v.parse().ok()?;
+            match k {
                 "shiftwidth" | "sw" | "tabstop" | "ts" => EditorOption::ShiftWidth(n),
                 "textwidth" | "tw" => EditorOption::TextWidth(n),
                 _ => return None,
@@ -1471,5 +1509,28 @@ mod set_hlsearch_incsearch_tests {
         // Vim's long spelling resolves the same way.
         assert_eq!(parse_ex("set fixendofline"), Ex::SetFixEol(true));
         assert_eq!(parse_ex("set nofixendofline"), Ex::SetFixEol(false));
+    }
+
+    #[test]
+    fn parses_fold_options() {
+        // foldmethod (fdm): only manual/indent are honored; the deferred methods are Unknown.
+        assert_eq!(
+            parse_ex("set foldmethod=indent"),
+            Ex::SetFoldMethod(FoldMethod::Indent)
+        );
+        assert_eq!(
+            parse_ex("set fdm=manual"),
+            Ex::SetFoldMethod(FoldMethod::Manual)
+        );
+        assert!(matches!(parse_ex("set foldmethod=expr"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("set fdm=marker"), Ex::Unknown(_)));
+        // foldlevel (fdl) = N.
+        assert_eq!(parse_ex("set foldlevel=2"), Ex::SetFoldLevel(2));
+        assert_eq!(parse_ex("set fdl=0"), Ex::SetFoldLevel(0));
+        // foldenable (fen) bool + `no` prefix.
+        assert_eq!(parse_ex("set foldenable"), Ex::SetFoldEnable(true));
+        assert_eq!(parse_ex("set nofoldenable"), Ex::SetFoldEnable(false));
+        assert_eq!(parse_ex("set fen"), Ex::SetFoldEnable(true));
+        assert_eq!(parse_ex("set nofen"), Ex::SetFoldEnable(false));
     }
 }
