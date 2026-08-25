@@ -478,6 +478,14 @@ impl View {
         self.mode
     }
 
+    /// This View's indent width in columns (`editor.tab_width`, the `:set shiftwidth`/`tabstop` knob). A
+    /// read-only config accessor: the frontend reads it to compute `foldmethod=indent` levels (folds stay a
+    /// frontend concern — core exposes the number, never the folds; INV-DOC-VIEW).
+    #[must_use]
+    pub fn tab_width(&self) -> usize {
+        self.indent.tab_width
+    }
+
     /// This View's scroll position (first visible buffer row). Maintained by the frontend.
     #[must_use]
     pub fn top(&self) -> usize {

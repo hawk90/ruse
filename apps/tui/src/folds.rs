@@ -11,13 +11,18 @@
 
 use ruse_core::Motion;
 
-/// One manual fold: the inclusive buffer line range `[start, end]` and whether it is currently collapsed.
-/// Slice 1 keeps folds non-overlapping (nesting is deferred).
+/// One fold: the inclusive buffer line range `[start, end]`, whether it is currently collapsed, and its
+/// nesting `level` (1 = outermost). Manual (`zf`) folds are flat and always level 1; `foldmethod=indent`
+/// folds (slice 3) can NEST, so an inner fold has a larger level and its range is contained in its parent's.
+/// A fold with `level > foldlevel` is closed under the indent method (see [`apply_foldlevel`]); manual folds
+/// ignore `foldlevel` and are driven purely by their `closed` flag.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Fold {
     pub start: usize,
     pub end: usize,
     pub closed: bool,
+    /// Nesting depth, 1 = outermost. Manual folds use 1; indent folds carry the level the range acquires.
+    pub level: usize,
 }
 
 impl Fold {
@@ -57,9 +62,15 @@ pub fn prev_fold_end(folds: &[Fold], line: usize) -> Option<usize> {
 }
 
 /// The CLOSED fold that starts at buffer `line` (the row whose summary the renderer paints), or `None`.
+/// When nested folds share a start row (an outer and an inner both beginning here), the OUTERMOST — the one
+/// with the widest range (largest `end`) — wins, so the summary reflects the largest collapsed span, matching
+/// Vim (a closed parent hides the whole subtree behind one summary line).
 #[must_use]
 pub fn closed_starting_at(folds: &[Fold], line: usize) -> Option<&Fold> {
-    folds.iter().find(|f| f.closed && f.start == line)
+    folds
+        .iter()
+        .filter(|f| f.closed && f.start == line)
+        .max_by_key(|f| f.end)
 }
 
 /// Whether buffer `line` is HIDDEN by a closed fold — inside a closed fold but NOT its start row (the start
@@ -82,23 +93,11 @@ pub fn snap_out(folds: &[Fold], line: usize) -> usize {
 
 /// The count of buffer lines hidden by closed folds strictly ABOVE `line` — the number of display rows the
 /// folds remove before `line`. `visible_row = line − hidden_before(line)` maps a buffer row to its display
-/// row (a hidden line maps to its fold's start's display row).
+/// row (a hidden line maps to its fold's start's display row). Counts DISTINCT hidden lines, so overlapping
+/// (nested) closed folds — where an inner fold's rows are a subset of its parent's — are not double-counted.
 #[must_use]
 pub fn hidden_before(folds: &[Fold], line: usize) -> usize {
-    folds
-        .iter()
-        .filter(|f| f.closed)
-        .map(|f| {
-            // Hidden rows of this fold that sit strictly below its start AND strictly above `line`.
-            let lo = f.start + 1;
-            let hi = f.end.min(line.saturating_sub(1));
-            if hi >= lo {
-                hi - lo + 1
-            } else {
-                0
-            }
-        })
-        .sum()
+    (0..line).filter(|&l| hidden(folds, l)).count()
 }
 
 /// Buffer row → display (visible) row, subtracting the rows collapsed by closed folds above it.
@@ -137,6 +136,7 @@ pub fn insert_closed_fold(folds: &mut Vec<Fold>, start: usize, end: usize) {
         start,
         end,
         closed: true,
+        level: 1, // manual folds are flat (level 1); nesting is an indent-method concept.
     });
 }
 
@@ -226,12 +226,143 @@ pub fn summary(fold: &Fold, first_line: &str) -> String {
     }
 }
 
+// ── `foldmethod=indent` (slice 3): folds are DERIVED from indentation, not created by hand. ───────────────
+// These pure functions compute the nested fold set from the buffer bytes + shiftwidth, and translate a
+// `foldlevel` value into per-fold closed state. The session recomputes on edit and re-applies `foldlevel`.
+
+/// The indent LEVEL of a single line: its indentation in columns (tabs expanded to `tab_width`) divided by
+/// `tab_width`, rounded DOWN. `tab_width` doubles as Vim's `shiftwidth` here — ruse folds
+/// `shiftwidth`/`tabstop` into one config knob, so the nvim `shiftwidth=0`→`tabstop` fallback is moot.
+/// nvim-verified: 4-space indent at sw=4 → 1, 8-space → 2, a 2-space indent at sw=4 → 0 (floor); a single
+/// tab at ts=8/sw=4 → 8 cols → level 2.
+#[must_use]
+fn line_indent_level(line: &[u8], tab_width: usize) -> usize {
+    let tw = tab_width.max(1);
+    let mut cols = 0usize;
+    for &c in line {
+        match c {
+            b' ' => cols += 1,
+            b'\t' => cols += tw - (cols % tw),
+            _ => break,
+        }
+    }
+    cols / tw
+}
+
+/// Whether a line is IGNORED for indent folding: it is blank (empty or all whitespace) or a `foldignore`
+/// line. Vim's default `foldignore` is `#`, so a line whose first non-blank byte is `#` is ignored too
+/// (nvim-verified: a `#`-leading line takes the surrounding fold level, exactly like a blank). An ignored
+/// line's effective level is the level of the next NON-ignored line below (Vim's classic blank-line rule):
+/// a blank/comment between two indented lines stays inside the fold, but a trailing blank before a dedent
+/// (or at end of buffer) drops to level 0 and is excluded from the fold above.
+fn is_ignored_line(line: &[u8]) -> bool {
+    let first = line.iter().find(|&&c| c != b' ' && c != b'\t');
+    matches!(first, None | Some(b'#'))
+}
+
+/// Compute the nested `foldmethod=indent` folds for `text` at the given `tab_width` (= shiftwidth). Pure and
+/// unit-tested against nvim v0.12.4. Every returned fold is OPEN (`closed: false`); the caller applies the
+/// foldlevel rule via [`apply_foldlevel`].
+///
+/// The algorithm assigns each line an EFFECTIVE level (a non-ignored line's own indent level; an ignored
+/// blank/`#` line takes the level of the next non-ignored line below, or 0 at trailing blanks / EOF). Then,
+/// for each depth `d ≥ 1`, every MAXIMAL run of consecutive lines with effective level `≥ d` spanning `≥ 2`
+/// lines becomes a fold whose `level` is the MINIMUM effective level within the run. So a 0→2 indent jump
+/// yields a single level-2 fold (matching nvim), not a redundant level-1 wrapper, and a lone indented line
+/// forms no fold (nvim: `foldclosed` is -1 for it). Identical `[start, end]` ranges are de-duplicated (the
+/// jump case emits the same run at several depths). Line indices are 0-based and match the frontend's line
+/// numbering (split on `\n`; a trailing `\n` does not add a phantom final line).
+#[must_use]
+pub fn compute_indent_folds(text: &[u8], tab_width: usize) -> Vec<Fold> {
+    let mut lines: Vec<&[u8]> = text.split(|&b| b == b'\n').collect();
+    // A trailing newline is the last real line's terminator, not a new empty line ("a\nb\n" = 2 lines).
+    if lines.len() > 1 && lines.last() == Some(&&b""[..]) {
+        lines.pop();
+    }
+    let n = lines.len();
+    // Own indent level for non-ignored lines; `None` marks an ignored (blank/`#`) line, resolved next.
+    let own: Vec<Option<usize>> = lines
+        .iter()
+        .map(|l| (!is_ignored_line(l)).then(|| line_indent_level(l, tab_width)))
+        .collect();
+    // Effective level: scan bottom-up so an ignored line inherits the next non-ignored line's level below it.
+    let mut eff = vec![0usize; n];
+    let mut next_lvl = 0usize;
+    for i in (0..n).rev() {
+        match own[i] {
+            Some(l) => {
+                eff[i] = l;
+                next_lvl = l;
+            }
+            None => eff[i] = next_lvl,
+        }
+    }
+    let max_eff = eff.iter().copied().max().unwrap_or(0);
+    let mut folds: Vec<Fold> = Vec::new();
+    for d in 1..=max_eff {
+        let mut i = 0;
+        while i < n {
+            if eff[i] < d {
+                i += 1;
+                continue;
+            }
+            let s = i;
+            while i < n && eff[i] >= d {
+                i += 1;
+            }
+            let e = i - 1;
+            if e > s {
+                let level = eff[s..=e].iter().copied().min().unwrap_or(d);
+                if !folds.iter().any(|f| f.start == s && f.end == e) {
+                    folds.push(Fold {
+                        start: s,
+                        end: e,
+                        closed: false,
+                        level,
+                    });
+                }
+            }
+        }
+    }
+    folds
+}
+
+/// Apply Vim's `foldlevel` rule to a set of (indent) folds: a fold is CLOSED iff its `level` EXCEEDS
+/// `foldlevel`. `foldlevel = 0` closes every outermost fold; a value ≥ the deepest level opens all.
+/// nvim-verified against `foldclosed()` at several `foldlevel` values on a nested buffer.
+pub fn apply_foldlevel(folds: &mut [Fold], foldlevel: usize) {
+    for f in folds.iter_mut() {
+        f.closed = f.level > foldlevel;
+    }
+}
+
+/// The deepest fold `level` present (0 if there are no folds) — the `foldlevel` value `zR` sets to open all.
+#[must_use]
+pub fn max_level(folds: &[Fold]) -> usize {
+    folds.iter().map(|f| f.level).max().unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn f(start: usize, end: usize, closed: bool) -> Fold {
-        Fold { start, end, closed }
+        Fold {
+            start,
+            end,
+            closed,
+            level: 1,
+        }
+    }
+
+    /// A fold with an explicit level, for the indent-method tests.
+    fn fl(start: usize, end: usize, closed: bool, level: usize) -> Fold {
+        Fold {
+            start,
+            end,
+            closed,
+            level,
+        }
     }
 
     #[test]
@@ -519,5 +650,132 @@ mod tests {
             "\u{25b8} 4 lines: fn main() {"
         );
         assert_eq!(summary(&f(0, 0, true), "   "), "\u{25b8} 1 lines");
+    }
+
+    // ── foldmethod=indent (slice 3) — every expectation is pinned against nvim v0.12.4. ──────────────────
+
+    #[test]
+    fn indent_level_maps_columns_over_shiftwidth() {
+        // 4-space at sw=4 → 1, 8-space → 2 (nvim foldlevel()).
+        assert_eq!(line_indent_level(b"    x", 4), 1);
+        assert_eq!(line_indent_level(b"        x", 4), 2);
+        // Floor: a 2-space and a 6-space indent at sw=4 → 0 and 1 (nvim-verified).
+        assert_eq!(line_indent_level(b"  x", 4), 0);
+        assert_eq!(line_indent_level(b"      x", 4), 1);
+        // A tab expands to `tab_width` columns: at ts=sw=4 one tab = 4 cols = level 1; two tabs = level 2.
+        assert_eq!(line_indent_level(b"\tx", 4), 1);
+        assert_eq!(line_indent_level(b"\t\tx", 4), 2);
+        // No indent → 0.
+        assert_eq!(line_indent_level(b"x", 4), 0);
+    }
+
+    #[test]
+    fn compute_indent_folds_nested_matches_nvim() {
+        // nvim table (sw=4): a0/·b1/·c2/··d3/··e4/·f5/g6  (· = one indent level of 4 spaces).
+        // foldlevel(): 0,1,1,2,2,1,0. Fold ranges at fdl=0: outer [1,5] L1, inner [3,4] L2 (0-based).
+        let text = b"a0\n    b1\n    c2\n        d3\n        e4\n    f5\ng6\n";
+        let folds = compute_indent_folds(text, 4);
+        assert_eq!(
+            folds,
+            vec![fl(1, 5, false, 1), fl(3, 4, false, 2)],
+            "outer level-1 fold [1,5] + inner level-2 fold [3,4], both open until foldlevel applied"
+        );
+    }
+
+    #[test]
+    fn compute_indent_folds_blank_lines_follow_next_nonblank() {
+        // (nvim ranges via foldclosed at fdl=0.)
+        // Trailing blank before a dedent is EXCLUDED: a0/·b/·c/<blank>/dd → fold [1,2] (blank line 3 out).
+        assert_eq!(
+            compute_indent_folds(b"a0\n    b\n    c\n\ndd\n", 4),
+            vec![fl(1, 2, false, 1)]
+        );
+        // Interior blank between same-level lines is INCLUDED: a0/·b/<blank>/·c/dd → fold [1,3].
+        assert_eq!(
+            compute_indent_folds(b"a0\n    b\n\n    c\ndd\n", 4),
+            vec![fl(1, 3, false, 1)]
+        );
+        // Blank between a deeper line and a same-outer-level line stays in the OUTER fold: a0/·b/··c/<blank>/·e/ff
+        // → outer [1,4] L1 (blank line 4 included); inner ··c is a lone line, no inner fold.
+        assert_eq!(
+            compute_indent_folds(b"a0\n    b\n        c\n\n    e\nff\n", 4),
+            vec![fl(1, 4, false, 1)]
+        );
+    }
+
+    #[test]
+    fn compute_indent_folds_foldignore_hash_is_like_blank() {
+        // nvim default foldignore="#": a `#`-leading line takes the surrounding level and is included, like a
+        // blank. a0/·b/#c/·d → single fold [1,3] L1 (the `#c` line sits inside it).
+        assert_eq!(
+            compute_indent_folds(b"a0\n    b\n#c\n    d\n", 4),
+            vec![fl(1, 3, false, 1)]
+        );
+    }
+
+    #[test]
+    fn compute_indent_folds_level_jump_is_single_deep_fold() {
+        // A 0→2 indent jump makes ONE level-2 fold (nvim: foldclosed stays set at fdl=1, clears at fdl=2),
+        // NOT a redundant level-1 wrapper. a0/··b/··c/d0 → fold [1,2] L2.
+        assert_eq!(
+            compute_indent_folds(b"a0\n        b\n        c\nd0\n", 4),
+            vec![fl(1, 2, false, 2)]
+        );
+    }
+
+    #[test]
+    fn compute_indent_folds_single_indented_line_makes_no_fold() {
+        // nvim: a lone indented line is not a closeable fold (foldclosed = -1 even at fdl=0).
+        assert!(compute_indent_folds(b"a0\n    b\ncc\n", 4).is_empty());
+        // An empty buffer / all-flat buffer has no folds.
+        assert!(compute_indent_folds(b"", 4).is_empty());
+        assert!(compute_indent_folds(b"a\nb\nc\n", 4).is_empty());
+    }
+
+    #[test]
+    fn apply_foldlevel_closes_folds_deeper_than_level() {
+        // From the nested nvim table: outer L1 [1,5], inner L2 [3,4].
+        let mut folds = compute_indent_folds(
+            b"a0\n    b1\n    c2\n        d3\n        e4\n    f5\ng6\n",
+            4,
+        );
+        // fdl=0 → level>0 closed → BOTH closed (nvim foldclosed=1 for lines 2..6, inner subsumed).
+        apply_foldlevel(&mut folds, 0);
+        assert!(folds.iter().all(|f| f.closed), "fdl=0 closes every fold");
+        // fdl=1 → only level>1 closed → inner [3,4] closed, outer open (nvim: only [4,5] closed at fdl=1).
+        apply_foldlevel(&mut folds, 1);
+        assert!(!folds[0].closed, "outer L1 open at fdl=1");
+        assert!(folds[1].closed, "inner L2 closed at fdl=1");
+        // fdl=2 ≥ max → nothing closed (nvim: all foldclosed=-1).
+        apply_foldlevel(&mut folds, 2);
+        assert!(folds.iter().all(|f| !f.closed), "fdl>=max opens all");
+    }
+
+    #[test]
+    fn max_level_reports_deepest_fold() {
+        let folds = compute_indent_folds(b"a\n    b\n        c\n            d\n", 4);
+        // a/·b/··c/···d → runs at depths 1,2,3 but each deeper run is a single line, so only... check:
+        // levels 1,2,3 each span [1,3],[2,3],[3,3]? d3 is lone. Ranges: [1,3]L1,[2,3]L2. max_level=2.
+        assert_eq!(max_level(&folds), 2);
+        assert_eq!(max_level(&[]), 0);
+    }
+
+    #[test]
+    fn hidden_before_counts_nested_closed_folds_once() {
+        // Nested closed folds overlap; the inner's rows are a subset of the outer's. hidden_before must count
+        // DISTINCT hidden lines, not sum per-fold (which would double-count and mis-place the display row).
+        let folds = vec![fl(1, 5, true, 1), fl(3, 4, true, 2)];
+        // Hidden lines (inside a closed fold, not a start row): 2,3,4,5. So below line 6 → 4 hidden rows.
+        assert_eq!(hidden_before(&folds, 6), 4);
+        assert_eq!(visible_row(&folds, 6), 2);
+        // Line 1 (outer start) keeps its row.
+        assert_eq!(visible_row(&folds, 1), 1);
+    }
+
+    #[test]
+    fn closed_starting_at_prefers_the_outermost_fold() {
+        // If an outer and inner fold shared a start row, the outer (widest) wins the summary.
+        let folds = vec![fl(2, 8, true, 1), fl(2, 4, true, 2)];
+        assert_eq!(closed_starting_at(&folds, 2).map(|f| f.end), Some(8));
     }
 }

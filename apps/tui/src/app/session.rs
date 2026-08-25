@@ -286,11 +286,19 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // A `[`/`]` prefix (Some(open)) awaits its second key; only `[z`/`]z` (fold nav) are handled here — every
     // other bracket command (`]p`/`[p`, …) is still armed in the engine, so this observes without shadowing it.
     let mut pending_bracket: Option<bool> = None;
-    // Manual folds, keyed by buffer (slice 1: per-buffer, not per-window). Closed folds collapse in
-    // render; the cursor/scroll skip them; edits shift/drop them.
+    // Folds, keyed by buffer (per-buffer, not per-window). Closed folds collapse in render; the cursor/scroll
+    // skip them. Under `foldmethod=manual` (default) edits shift/drop them; under `foldmethod=indent` (slice 3)
+    // they are RECOMPUTED from indentation on edit.
     let mut folds: HashMap<DocumentId, Vec<crate::folds::Fold>> = HashMap::new();
-    // Per-buffer line count from the previous frame, to detect edit-driven line shifts for the fold ranges.
+    // Per-buffer line count from the previous frame, to detect edit-driven line shifts for manual fold ranges.
     let mut fold_lines: HashMap<DocumentId, usize> = HashMap::new();
+    // Per-buffer `foldmethod` (default manual), `foldlevel` (default 0), `foldenable` (default true), and the
+    // buffer revision the indent folds were last computed at (recompute when it changes). All frontend state
+    // (folds never leak into core; INV-DOC-VIEW).
+    let mut fold_method: HashMap<DocumentId, crate::input::FoldMethod> = HashMap::new();
+    let mut foldlevel: HashMap<DocumentId, usize> = HashMap::new();
+    let mut foldenable: HashMap<DocumentId, bool> = HashMap::new();
+    let mut fold_rev: HashMap<DocumentId, ruse_core::Revision> = HashMap::new();
     // Vim macros (D-055): `q{a-z}` records the raw keystroke stream into a register, `@{a-z}` replays it.
     // The whole record/replay state machine lives in `keys::MacroState` (unit-tested end to end).
     let mut macros = crate::keys::MacroState::new();
@@ -358,7 +366,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         {
             let buf = ws.focused_buffer();
             let nlines = line_idx.line_of(snapshot.len());
-            if let Some(fv) = folds.get_mut(&buf) {
+            let indent = fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent);
+            if indent {
+                // Indent folds are DERIVED: recompute from indentation whenever the buffer content changed
+                // (revision bump), then apply the foldlevel/foldenable rule. This resets any per-fold
+                // za/zo/zc toggle on edit — an honest first slice; foldlevel drives closed state between
+                // edits (zr/zm/zR/zM and :set foldlevel re-apply immediately, below).
+                if fold_rev.get(&buf) != Some(&revision) {
+                    let tw = ws.focused().view.tab_width();
+                    let mut computed = crate::folds::compute_indent_folds(&snapshot, tw);
+                    let en = foldenable.get(&buf).copied().unwrap_or(true);
+                    let fdl = if en {
+                        foldlevel.get(&buf).copied().unwrap_or(0)
+                    } else {
+                        usize::MAX // foldenable off ⇒ nothing closed
+                    };
+                    crate::folds::apply_foldlevel(&mut computed, fdl);
+                    folds.insert(buf, computed);
+                    fold_rev.insert(buf, revision);
+                }
+            } else if let Some(fv) = folds.get_mut(&buf) {
+                // Manual folds are NOT recomputed: shift/drop them when the line count changed since last
+                // frame (approximating the edit point as the cursor line).
                 if !fv.is_empty() {
                     let prev = *fold_lines.get(&buf).unwrap_or(&nlines);
                     if nlines != prev {
@@ -367,6 +396,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         crate::folds::shift(fv, at, delta);
                     }
                 }
+            }
+            // Snap the cursor OUT of any closed fold onto its summary (start) row (both methods).
+            if let Some(fv) = folds.get(&buf) {
                 let cline = line_idx.line_of(ws.focused().view.cursor());
                 let snapped = crate::folds::snap_out(fv, cline);
                 if snapped != cline {
@@ -1077,9 +1109,30 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         ws.place_focused_cursor(line_idx.nth_line_start(line));
                     }
                 }
-                // `zR` / `zM` — open / close ALL folds.
-                KeyCode::Char('R') => fv.iter_mut().for_each(|f| f.closed = false),
-                KeyCode::Char('M') => fv.iter_mut().for_each(|f| f.closed = true),
+                // `zR`/`zM`/`zr`/`zm` — open/close all folds or step the foldlevel. Under
+                // `foldmethod=indent` these DRIVE the foldlevel value (Vim: zR=max, zM=0, zr=+1, zm=-1) and
+                // re-apply the closed rule to the derived folds; under `manual` they open/close the flat set
+                // directly (manual folds are a single level, so zr≡zR and zm≡zM there).
+                KeyCode::Char('R' | 'M' | 'r' | 'm') => {
+                    let is_indent =
+                        fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent);
+                    if is_indent {
+                        let maxl = crate::folds::max_level(fv);
+                        let cur = foldlevel.get(&buf).copied().unwrap_or(0);
+                        let new = match key.code {
+                            KeyCode::Char('R') => maxl,                // open all
+                            KeyCode::Char('M') => 0,                   // close all
+                            KeyCode::Char('r') => (cur + 1).min(maxl), // one level more open
+                            _ => cur.saturating_sub(1), // 'm' — one level more closed
+                        };
+                        foldlevel.insert(buf, new);
+                        let en = foldenable.get(&buf).copied().unwrap_or(true);
+                        crate::folds::apply_foldlevel(fv, if en { new } else { usize::MAX });
+                    } else {
+                        let close = matches!(key.code, KeyCode::Char('M' | 'm'));
+                        fv.iter_mut().for_each(|f| f.closed = close);
+                    }
+                }
                 // `zd` — delete the fold at the cursor line.
                 KeyCode::Char('d') => {
                     if let Some(idx) = crate::folds::fold_at(fv, cur_line) {
@@ -1377,6 +1430,47 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     Ex::SetFixEol(on) => {
                         fixeol_on = on;
                         status = format!("fixeol {}", if on { "on" } else { "off" });
+                    }
+                    // `:set foldmethod=indent|manual` (frontend fold state, slice 3). Switching just flips the
+                    // method + forces a recompute next frame; existing folds are kept (Vim keeps them).
+                    Ex::SetFoldMethod(m) => {
+                        let buf = ws.focused_buffer();
+                        fold_method.insert(buf, m);
+                        fold_rev.remove(&buf); // recompute (or leave manual folds) on the next frame
+                        status = match m {
+                            crate::input::FoldMethod::Indent => "foldmethod=indent".into(),
+                            crate::input::FoldMethod::Manual => "foldmethod=manual".into(),
+                        };
+                    }
+                    // `:set foldlevel=N` — folds deeper than N close under indent method; re-apply now.
+                    Ex::SetFoldLevel(n) => {
+                        let buf = ws.focused_buffer();
+                        foldlevel.insert(buf, n);
+                        if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent)
+                        {
+                            if let Some(fv) = folds.get_mut(&buf) {
+                                let en = foldenable.get(&buf).copied().unwrap_or(true);
+                                crate::folds::apply_foldlevel(fv, if en { n } else { usize::MAX });
+                            }
+                        }
+                        status = format!("foldlevel={n}");
+                    }
+                    // `:set (no)foldenable` — master switch; off opens everything under the indent method.
+                    Ex::SetFoldEnable(on) => {
+                        let buf = ws.focused_buffer();
+                        foldenable.insert(buf, on);
+                        if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent)
+                        {
+                            if let Some(fv) = folds.get_mut(&buf) {
+                                let fdl = if on {
+                                    foldlevel.get(&buf).copied().unwrap_or(0)
+                                } else {
+                                    usize::MAX
+                                };
+                                crate::folds::apply_foldlevel(fv, fdl);
+                            }
+                        }
+                        status = format!("foldenable {}", if on { "on" } else { "off" });
                     }
                     // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
                     // the request; the response is dispatched + applied (or opens a picker) on a later frame.
