@@ -23,6 +23,7 @@ From zero to your first PR. For *which* change to make, see [change-paths.md](ch
 1. **Clone.**
    ```bash
    git clone <your-fork-url> ruse && cd ruse
+   scripts/bootstrap.sh   # one-shot local setup: cargo fetch from Cargo.lock + Lefthook hooks
    ```
 
 2. **Validate the spec.**
