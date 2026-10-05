@@ -5,9 +5,9 @@
   "oracle": {
     "editor": "neovim",
     "invoke": "nvim --headless -u NONE -i NONE -l <script>",
-    "nvim_version": "NVIM v0.12.4",
-    "pin_version_label": "v0.12.4",
-    "pin_revision": "68ea43cd0c28af25cd47731308c94fedfcfd1b0b",
+    "nvim_version": "NVIM v0.12.5",
+    "pin_version_label": "v0.12.5",
+    "pin_revision": "5885a30e1e1225349079e7a1c4a3848aa8e43e42",
     "captured_observables": [
       "text",
       "cursor",

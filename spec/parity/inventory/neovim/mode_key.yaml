@@ -7,8 +7,8 @@ version: 1
 generated: true
 generator: tools/parity/extract_neovim.py
 upstream: neovim
-revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
-version_label: v0.12.4
+revision: 5885a30e1e1225349079e7a1c4a3848aa8e43e42
+version_label: v0.12.5
 surface: mode_key
 source_of_record: 'D: runtime/doc/index.txt'
 items:
@@ -1147,7 +1147,6 @@ items:
   tag: quote
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x23
   surface: mode_key.normal
   key: '#'
@@ -1167,7 +1166,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x25
   surface: mode_key.normal
   key: '%'
@@ -1177,7 +1175,6 @@ items:
   tag: '%'
   moves_cursor: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7bcountx7dx25
   surface: mode_key.normal
@@ -1333,7 +1330,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.-
   surface: mode_key.normal
   key: '-'
@@ -1361,7 +1357,6 @@ items:
   tag: .
   undoable: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x2fx7bpatternx7dCR
   surface: mode_key.normal
@@ -1393,7 +1388,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.1
   surface: mode_key.normal
   key: '1'
@@ -1402,7 +1396,6 @@ items:
   - D
   tag: count
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.2
   surface: mode_key.normal
@@ -1413,7 +1406,6 @@ items:
   tag: count
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.3
   surface: mode_key.normal
   key: '3'
@@ -1422,7 +1414,6 @@ items:
   - D
   tag: count
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.4
   surface: mode_key.normal
@@ -1433,7 +1424,6 @@ items:
   tag: count
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.5
   surface: mode_key.normal
   key: '5'
@@ -1442,7 +1432,6 @@ items:
   - D
   tag: count
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.6
   surface: mode_key.normal
@@ -1453,7 +1442,6 @@ items:
   tag: count
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.7
   surface: mode_key.normal
   key: '7'
@@ -1462,7 +1450,6 @@ items:
   - D
   tag: count
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.8
   surface: mode_key.normal
@@ -1473,7 +1460,6 @@ items:
   tag: count
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.9
   surface: mode_key.normal
   key: '9'
@@ -1482,7 +1468,6 @@ items:
   - D
   tag: count
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x3a
   surface: mode_key.normal
@@ -1511,7 +1496,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7bmotionx7d
   surface: mode_key.normal
   key: <{motion}
@@ -1530,7 +1514,6 @@ items:
   tag: '<<'
   undoable: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x3dx7bmotionx7d
   surface: mode_key.normal
@@ -1614,7 +1597,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dC
   surface: mode_key.normal
   key: '["x]C'
@@ -1624,7 +1606,6 @@ items:
   tag: C
   undoable: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dD
   surface: mode_key.normal
@@ -1636,7 +1617,6 @@ items:
   undoable: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.E
   surface: mode_key.normal
   key: E
@@ -1646,7 +1626,6 @@ items:
   tag: E
   moves_cursor: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.Fx7bcharx7d
   surface: mode_key.normal
@@ -1658,7 +1637,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.G
   surface: mode_key.normal
   key: G
@@ -1668,7 +1646,6 @@ items:
   tag: G
   moves_cursor: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.H
   surface: mode_key.normal
@@ -1755,7 +1732,6 @@ items:
   undoable: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.R
   surface: mode_key.normal
   key: R
@@ -1776,7 +1752,6 @@ items:
   undoable: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.Tx7bcharx7d
   surface: mode_key.normal
   key: T{char}
@@ -1786,7 +1761,6 @@ items:
   tag: T
   moves_cursor: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.U
   surface: mode_key.normal
@@ -1816,7 +1790,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dX
   surface: mode_key.normal
   key: '["x]X'
@@ -1834,7 +1807,6 @@ items:
   - D
   tag: Y
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.ZZ
   surface: mode_key.normal
@@ -1994,7 +1966,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dcx7bmotionx7d
   surface: mode_key.normal
   key: '["x]c{motion}'
@@ -2004,7 +1975,6 @@ items:
   tag: c
   undoable: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dcc
   surface: mode_key.normal
@@ -2016,7 +1986,6 @@ items:
   undoable: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5ddx7bmotionx7d
   surface: mode_key.normal
   key: '["x]d{motion}'
@@ -2027,7 +1996,6 @@ items:
   undoable: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5ddd
   surface: mode_key.normal
   key: '["x]dd'
@@ -2037,7 +2005,6 @@ items:
   tag: dd
   undoable: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.do
   surface: mode_key.normal
@@ -2067,7 +2034,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.fx7bcharx7d
   surface: mode_key.normal
   key: f{char}
@@ -2077,7 +2043,6 @@ items:
   tag: f
   moves_cursor: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.gx7bcharx7d
   surface: mode_key.normal
@@ -2097,7 +2062,6 @@ items:
   tag: h
   moves_cursor: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.i
   surface: mode_key.normal
@@ -2119,7 +2083,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.k
   surface: mode_key.normal
   key: k
@@ -2130,7 +2093,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.l
   surface: mode_key.normal
   key: l
@@ -2140,7 +2102,6 @@ items:
   tag: l
   moves_cursor: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.mx7bA-Za-zx7d
   surface: mode_key.normal
@@ -2179,7 +2140,6 @@ items:
   tag: p
   undoable: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.qx7b0-9a-zA-Zx22x7d
   surface: mode_key.normal
@@ -2259,7 +2219,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.u
   surface: mode_key.normal
   key: u
@@ -2289,7 +2248,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dx
   surface: mode_key.normal
   key: '["x]x'
@@ -2300,7 +2258,6 @@ items:
   undoable: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dyx7bmotionx7d
   surface: mode_key.normal
   key: '["x]y{motion}'
@@ -2310,7 +2267,6 @@ items:
   tag: y
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dyy
   surface: mode_key.normal
   key: '["x]yy'
@@ -2319,7 +2275,6 @@ items:
   - D
   tag: yy
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.zx7bcharx7d
   surface: mode_key.normal
@@ -2339,7 +2294,6 @@ items:
   moves_cursor: true
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7c
   surface: mode_key.normal
   key: '|'
@@ -2358,7 +2312,6 @@ items:
   tag: '}'
   moves_cursor: true
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7e
   surface: mode_key.normal
@@ -4898,7 +4851,6 @@ items:
   tag: o_v
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.operator_pending.V
   surface: mode_key.operator_pending
   key: V
@@ -4908,7 +4860,6 @@ items:
   tag: o_V
   status: targeted
   family: FAM-EDIT-VIM-GRAMMAR
-  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.operator_pending.c_V
   surface: mode_key.operator_pending
   key: CTRL-V
@@ -4917,7 +4868,6 @@ items:
   - D
   tag: o_CTRL-V
   status: targeted
-  family: FAM-EDIT-VIM-GRAMMAR
   family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.visual.c_A
   surface: mode_key.visual
