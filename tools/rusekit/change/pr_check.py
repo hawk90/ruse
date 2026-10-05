@@ -19,7 +19,7 @@ from rusekit.change.classify import classify_changeset  # noqa: E402
 # Automation whose PRs never carry a hand-authored gate block. Rather than exempt them blindly,
 # `pr check` synthesizes a self-consistent contract from the diff (declared = observed kind) and
 # still enforces the artifacts that kind requires — so a bot straying into a high-risk path fails.
-TRUSTED_BOTS = {"dependabot[bot]"}
+TRUSTED_BOTS = {"dependabot[bot]", "renovate[bot]"}
 
 
 def _match_any(path: str, prefixes: list[str]) -> bool:

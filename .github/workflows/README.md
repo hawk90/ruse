@@ -7,7 +7,7 @@ verified artifact.
 | Workflow | Trigger | Purpose | Required check |
 | --- | --- | --- | --- |
 | [`spec-check.yml`](spec-check.yml) | PR / push | `spec validate`, docs hygiene, toolchain unit tests, **actionlint** over these workflows | `spec-validate` |
-| [`change-policy.yml`](change-policy.yml) | PR | merge gate: re-derives change kind + blast radius from the diff vs the `ruse-gate:v1` block in the PR body (`dependabot[bot]` is auto-declared) | `gate` |
+| [`change-policy.yml`](change-policy.yml) | PR | merge gate: re-derives change kind + blast radius from the diff vs the `ruse-gate:v1` block in the PR body (`dependabot[bot]` / `renovate[bot]` are auto-declared) | `gate` |
 | [`ci.yml`](ci.yml) | PR / push | Rust: fmt · clippy `-D warnings` · test · `arch deps`; heavy steps self-skip on PRs with no Rust-relevant change. `rust-macos` (advisory) repeats clippy + test on macOS | `rust` |
 | [`security.yml`](security.yml) | PR / push / weekly | `rustsec` advisory scan (PRs only when a Cargo manifest changed); CodeQL + secret scanning live in repo settings | — |
 | [`labeler.yml`](labeler.yml) | PR | path-based `area/*` labels via [`.github/labeler.yml`](../labeler.yml) | — |
