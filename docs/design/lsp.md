@@ -46,6 +46,15 @@ reader thread + `mpsc` + the gated `event::poll` loop) — but over stdio **pipe
   silent no-op. This hard-coded map is the seam a config-driven `language-servers` registry replaces later.
   `path_to_uri`.
 
+## Workspace trust gate (D-057)
+
+Language servers execute workspace code (rust-analyzer runs `build.rs` + proc-macros), so the coordinator
+spawns **nothing** until the workspace (the working directory) is trusted — INV-TRUST-1. Trust is user-owned:
+`RUSE_TRUSTED_WORKSPACES` (an OS path list of absolute roots — the runtime stand-in for the user-scope
+`workspace.trusted_roots` key; `apps/tui/src/trust.rs`) decides at startup, and `:trust` grants it for the
+session. Untrusted: focusing a code buffer shows a one-time status notice, LSP commands (`:fmt`, `:rename`,
+…) report the untrusted state, and no `spawn`/`didOpen` happens.
+
 ## Session integration + render
 
 The session keeps `lsp: HashMap<serverKey, LspClient>` + `lsp_docs: DocumentId → (uri, version, rev)` +

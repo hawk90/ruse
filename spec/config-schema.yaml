@@ -101,6 +101,9 @@ settings:
   # ---- remote (security-sensitive: trust) ----
   remote.trust_prompt:  { type: bool,   default: true,   scope: user,      merge: replace,   security_locked: true,  derives_from: [F-017], desc: "Prompt before trusting a remote runtime/workspace. Workspace can NEVER override (INV-TRUST-1). Not yet runtime-wired (F-017 remote runtime still planned)." }
 
+  # ---- workspace trust (security-sensitive: trust; INV-TRUST-1, D-057) ----
+  workspace.trusted_roots: { type: list, default: [], scope: user, merge: set-union, security_locked: true, derives_from: [F-014], desc: "Absolute workspace roots the user trusts (a root and everything under it). Until trusted, ruse spawns no language server (they execute workspace code); `:trust` grants trust for one session. Runtime-wired via the RUSE_TRUSTED_WORKSPACES env path list; the config-file key has no loader yet. Workspace can NEVER set it (INV-TRUST-1)." }
+
   # ---- plugins (security-sensitive: executables/trust) ----
   plugins.allow_unsigned: { type: bool, default: false,  scope: machine,   merge: replace,   security_locked: true,  derives_from: [F-016], desc: "Allow loading unsigned/unverified plugins. Admin-only; workspace can NEVER override (INV-TRUST-1). Not yet runtime-wired (F-016 plugin loader still planned)." }
 

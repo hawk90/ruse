@@ -717,7 +717,9 @@ features:
     # text-only, user-selected only; namespace allowlist deferred). #314: MULTI-LANGUAGE — server_for_ext maps
     # rust/python/ts/js/go/c/cpp/lua (ts+js share one server, c/cpp share clangd; missing binary = silent
     # no-op); the hard-coded map is the seam a config-driven registry replaces. Stays `planned` — local,
-    # no remote/multi-source merge, hard-coded server map yet.
+    # no remote/multi-source merge, hard-coded server map yet. TRUST GATE (D-057, INV-TRUST-1): no server is
+    # spawned until the user trusts the workspace (`:trust` per session, or RUSE_TRUSTED_WORKSPACES =
+    # workspace.trusted_roots); an untrusted workspace shows a one-time status notice instead.
     status: planned
     depends_on: [C-LSPHOST, C-WORKSPACE, C-SCHEDULER, C-RENDER]
     summary: >
@@ -732,6 +734,7 @@ features:
       - Client UI never consumes raw LSP protocol (goes through the Language Service model).
       - Diagnostics from LSP/tree-sitter/compiler merge by namespace into one model.
       - No duplicate per-plugin LSP process is spawned for the same server.
+      - No language server is spawned for an untrusted workspace; trust comes only from the user (INV-TRUST-1, D-057).
 
   F-015:
     title: Tree-sitter highlighting

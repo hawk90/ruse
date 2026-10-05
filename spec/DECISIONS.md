@@ -816,3 +816,26 @@ related:
   divergence is proposed whose vanilla rationale still applies (muscle-memory / current script compat), in
   which case it does NOT qualify under this decision and stays at the Vim default.
 - Refs: [../docs/rfc/proposed/RFC-0017-better-than-vanilla-defaults.md](../docs/rfc/proposed/RFC-0017-better-than-vanilla-defaults.md), D-043, D-049, F-009, C-CONFIG.
+
+## D-057 — Workspace trust gates language-server spawning; untrusted by default, granted only by the user · decided
+- **Decision:** A language server executes workspace code (rust-analyzer runs `build.rs` and proc-macros;
+  other servers load project plugins/config), so ruse spawns **no** language server until the user trusts
+  the workspace (root = the working directory). A workspace is **untrusted by default**. Trust is granted
+  only by the USER principal, never by anything inside the workspace: `:trust` trusts it for the current
+  session (not persisted), and the user-scope `workspace.trusted_roots` list (absolute roots; a root and
+  everything under it, compared after canonicalization) trusts it at startup — runtime-wired via the
+  `RUSE_TRUSTED_WORKSPACES` OS path list until a config loader exists. While untrusted, focusing a buffer
+  with a known server shows a one-time status notice and LSP commands say why they cannot run; nothing is
+  spawned. Implementation: `apps/tui/src/trust.rs` (decision) + `LspCoordinator` (gate, `:trust`).
+- **Reason:** INV-TRUST-1 ("no code executes before a workspace-trust decision") and DR-TRUST-2 (trust
+  decision before opening a workspace) were violated: opening a `.rs` file auto-started rust-analyzer, so
+  cloning and opening a hostile repo ran its build script. Default-deny with an explicit, user-owned grant is
+  the standard posture (VS Code Restricted Mode, Neovim `vim.secure`/`exrc` trust); a blocking modal prompt
+  at startup was rejected for now because the TUI has no startup-prompt flow outside crash recovery and a
+  status notice + `:trust` keeps the gate non-intrusive. Session-only `:trust` avoids inventing a persisted
+  trust-store format before the config loader (C-CONFIG) lands.
+- **Re-evaluate if:** the config loader lands (read `workspace.trusted_roots` from the user layer, and decide
+  whether `:trust` should offer to persist the grant); workspace config, tasks, plugins or a remote root start
+  executing workspace code (they must sit behind the same decision — per-root trust, view-window-workspace.md
+  §8.4); or users ask for an interactive prompt on first open.
+- Refs: INV-TRUST-1, ENG-TRUST-001, F-014, CAP-LSP-COORD, [../docs/design/lsp.md](../docs/design/lsp.md), [../docs/design/config-model.md](../docs/design/config-model.md).

@@ -50,6 +50,8 @@ pub(crate) mod term_buffer;
 #[cfg(unix)]
 pub(crate) mod term_grid;
 pub(crate) mod terminal;
+// Workspace trust (INV-TRUST-1, D-057): gates language-server spawning until the user trusts the workspace.
+pub(crate) mod trust;
 pub(crate) mod ui;
 pub(crate) mod viewport;
 
