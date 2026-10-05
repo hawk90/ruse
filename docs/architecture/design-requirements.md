@@ -3,19 +3,21 @@ doc: design-requirements
 project: ruse
 title: "ruse Long-Horizon Design Requirements"
 summary: >
-  Normative design requirements across 20 domains that cause failures 2–5 years out (not at first
-  implementation): spec-vs-implementation separation, parity meaning, persistence & crash consistency,
-  determinism & replay, background scheduler, cache, IDs/generations/time, multi-client concurrency,
-  plugin governance, config/profile/feature-pack, extended error/status, security/trust boundaries,
-  cross-platform semantics, terminal UX, render-IR risks, API-stability paradox, performance stability,
-  CI/CD, contributor sustainability, and product scope. Each domain lists what to add; the mirror
-  anti-patterns live in anti-patterns.md.
+  Why ruse carries 111 long-horizon design requirements (DR-*) across 20 domains, the failures 2–5 years out
+  (not at first implementation) that each domain guards against: spec-vs-implementation separation, parity
+  meaning, persistence & crash consistency, determinism & replay, background scheduler, cache,
+  IDs/generations/time, multi-client concurrency, plugin governance, config/profile/feature-pack, extended
+  error/status, security/trust boundaries, cross-platform semantics, terminal UX, render-IR risks, the
+  API-stability paradox, performance stability, CI/CD, contributor sustainability, and product scope. The
+  requirement list, priorities and statuses live in spec/design-requirements.yaml; the mirror anti-patterns live
+  in anti-patterns.md.
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
   - architecture.md
   - stability-and-observability.md
   - render-and-frontends.md
+  - ../../spec/design-requirements.yaml
   - ../protocols/versioning-and-evolution.md
   - ../operations/ci-cd-and-release.md
   - ../anti-patterns/anti-patterns.md
@@ -30,224 +32,154 @@ related:
 > These are the areas that bite 2–5 years later: many features but inconsistent meaning; a stable API over
 > a wrong abstraction; recovery that recovers corrupted state; many plugins with uncontrolled quality/
 > security; multi-platform support with divergent per-platform behavior; many tests that don't guarantee
-> real user flows. Each numbered domain below is a normative checklist (what to add); the mirror
-> anti-patterns are in [../anti-patterns/anti-patterns.md](../anti-patterns/anti-patterns.md).
+> real user flows. Each numbered domain below explains why it matters. The mirror anti-patterns are in
+> [../anti-patterns/anti-patterns.md](../anti-patterns/anti-patterns.md).
 
-> **Requirement IDs.** Each requirement is tagged `DR-<CODE>-<n>` (Design Requirement) — `<CODE>` is the enclosing domain's code, `<n>` its position within that domain in document order — plus a priority tier P0–P3 (P0 foundational/data-integrity/core-path · P1 major-subsystem correctness · P2 quality · P3 long-horizon/polish).
-> These `DR-`-prefixed IDs are the positive "do" mirror of the same-code anti-pattern "don'ts" in [../anti-patterns/anti-patterns.md](../anti-patterns/anti-patterns.md); the `DR-` prefix keeps them in a distinct namespace (e.g. `DR-SPEC-1` here vs. the unrelated `SPEC-1` anti-pattern).
+> **The requirement list and its status live in [`spec/design-requirements.yaml`](../../spec/design-requirements.yaml)**
+> (상태·목록의 정본은 spec/design-requirements.yaml). Each requirement keeps its original `DR-<CODE>-<n>` id as
+> `legacy_ids` (registry id `<CODE>-<NNN>`, e.g. `DR-PERSIST-3` → `PERSIST-003`), with priority tier P0–P3
+> (P0 foundational/data-integrity/core-path · P1 major-subsystem correctness · P2 quality · P3
+> long-horizon/polish). The `DR-` prefix is the positive "do" mirror of the same-code anti-pattern "don'ts"
+> and keeps them in a distinct namespace (e.g. `DR-SPEC-1` vs the unrelated `SPEC-1` anti-pattern). Schema
+> and update rules: [design-requirements-registry.md](design-requirements-registry.md).
+
+## Status summary (verified against code, 2026-10-05)
+
+| | done | partial | todo | total |
+|---|---|---|---|---|
+| P0 | 4 | 10 | 0 | 14 |
+| P1 | 9 | 36 | 2 | 47 |
+| P2 | 8 | 29 | 10 | 47 |
+| P3 | 0 | 2 | 1 | 3 |
+| **all** | **21** | **77** | **13** | **111** |
+
+Most requirements are *partial*: designed in `docs/design/`, `spec/` or an RFC, but not yet implemented or
+enforced. The done set is concentrated in spec discipline (§1), determinism/replay (§4), and product scope
+(§20).
 
 ## 1. Specification ↔ Implementation (`SPEC`)
-- **DR-SPEC-1** (P0) — Separate the **normative specification** from implementation docs ("must be X" vs "the current Rust impl
-  does Y").
-- **DR-SPEC-2** (P0) — Define a language-independent state machine + invariants per core concept.
-- **DR-SPEC-3** (P1) — Protocols define **wire-level meaning**, not implementation examples.
-- **DR-SPEC-4** (P1) — Mark ambiguous behavior deliberately as **unspecified / implementation-defined**.
-- **DR-SPEC-5** (P1) — Write spec tests against **observable results**, not specific Rust types.
-- **DR-SPEC-6** (P2) — Separate the reference-implementation path from production-optimization paths.
-- **DR-SPEC-7** (P2) — RFCs record approval rationale **and** rejected alternatives **and** re-evaluation conditions.
-- **DR-SPEC-8** (P2) — Maintain the terminology glossary independently (Buffer/Document/View/Workspace/Session/Client not mixed;
-  see [../README.md](../README.md) glossary).
+The code is a reference implementation that proves the spec, not the source of it. Normative statements
+("must be X") stay apart from descriptions of the current Rust implementation ("does Y"). Protocols carry
+wire-level meaning, ambiguity is marked as unspecified on purpose, and spec tests assert observable results.
+That way a second implementation, or a rewrite, can be judged against the spec.
 
 ## 2. Parity Meaning (`PAR`)
-Define **levels of compatibility**, not a flat feature list:
+Parity is **levels of compatibility**, not a flat feature list:
 `Syntax parity · Semantic parity · Observable-behavior parity · Workflow parity · Plugin parity · Bug
-compatibility`.
-- **DR-PAR-1** (P1) — Tag each feature with a compatibility level: **Exact · Equivalent · Adapted · Unsupported · Intentionally
-  different**.
-- **DR-PAR-2** (P1) — When the same name means different things in Vim vs Emacs, do **not** force-merge into one command.
-- **DR-PAR-3** (P1) — Parity tests include: cursor position, register/kill ring, mode, selection shape, undo grouping, error
-  timing (not just final document).
-- **DR-PAR-4** (P2) — Officially document Vim Style vs Native Style differences.
-- **DR-PAR-5** (P2) — Decide **bug compatibility** explicitly, per behavior.
-- **DR-PAR-6** (P2) — Auto-generate a **compatibility-impact report** when behavior changes.
-- **DR-PAR-7** (P2) — Parity % is weighted by **usage frequency and importance**, not feature count.
+compatibility`. Each feature is tagged **Exact · Equivalent · Adapted · Unsupported · Intentionally
+different**. Same-named Vim and Emacs behaviors are not forced into one command. Parity % is weighted by
+usage and importance, not by counting features.
 (See [../parity/README.md](../parity/README.md); this taxonomy governs the parity files.)
 
 ## 3. Persistence & Crash Consistency (`PERSIST`)
-The state at the moment of a crash matters more than the running state.
-- **DR-PERSIST-1** (P0) — Track as distinct states: **Document revision · Saved revision · Externally observed file version ·
-  Recovery-journal position**.
-- **DR-PERSIST-2** (P1) — Separate the roles of autosave / swap / journal / backup.
-- **DR-PERSIST-3** (P0) — Transaction journal starts **append-only**; records carry **checksum + schema version**; on truncation,
-  recover up to the last valid record.
-- **DR-PERSIST-4** (P0) — Recovery data **never auto-overwrites** the original file.
-- **DR-PERSIST-5** (P1) — Crash recovery offers three outcomes: **current document · disk file · recoverable changes**.
-- **DR-PERSIST-6** (P0) — Use **atomic replace** on save where the platform allows; define directory fsync / metadata / permission
-  preservation per platform.
-- **DR-PERSIST-7** (P2) — Large files use an **incremental journal**, not a full snapshot.
-- **DR-PERSIST-8** (P1) — Workspace/session state has a **versioned persistence format**.
-- **DR-PERSIST-9** (P2) — Recovery files have a retention period + PII-removal policy.
+The state at the moment of a crash matters more than the running state. Document revision, saved revision,
+the externally observed file version, and the journal position are different things. Autosave, swap, journal
+and backup play different roles. The journal is append-only and self-checking, recovery never silently
+overwrites the original, and saves are atomic where the platform allows. Full design:
+[../design/persistence-and-recovery.md](../design/persistence-and-recovery.md).
 
 ## 4. Determinism & Replay (`DET`)
-Deterministic replay powers "know exactly where it broke."
-- **DR-DET-1** (P0) — Restrict direct access to wall clock / randomness / OS state in core command processing; make time/random/
-  environment **injectable services**.
-- **DR-DET-2** (P1) — Record input events, commands, transactions, and key async results as **replayable events**; attach an
-  **ordering sequence** to external async results.
-- **DR-DET-3** (P1) — Replaying the same event log yields the same document state.
-- **DR-DET-4** (P2) — Crash reports include the last N semantic events.
-- **DR-DET-5** (P2) — Replay logs store the **minimum needed data + a redaction policy**, not full content.
-- **DR-DET-6** (P2) — Fuzzing failures auto-save as replay fixtures.
+Deterministic replay is how we know exactly where something broke. The core does not reach for the wall
+clock, randomness or OS state. Inputs, commands and key async results become ordered, replayable events,
+so a crash report, a fuzz failure or a bug report can be replayed into the same document state, with only
+the data needed and a redaction policy.
 
 ## 5. Background Scheduler & Resource Control (`SCHED`)
-A central scheduler is aware of **all** background work.
-- **DR-SCHED-1** (P1) — Each task carries metadata: **priority · deadline · cost estimate · cancellation token · workspace ·
-  document revision · owner/plugin**.
-- **DR-SCHED-2** (P0) — User input and screen refresh always outrank background work.
-- **DR-SCHED-3** (P1) — Coalesce duplicate parse/index requests per document; cancel superseded requests where only the latest
-  result matters.
-- **DR-SCHED-4** (P2) — Per-service and per-plugin **CPU / memory / I/O budgets**; separate idle-time from interactive work; a
-  **bandwidth budget** in remote environments.
-- **DR-SCHED-5** (P2) — Detect starvation and priority inversion; degrade feature quality under load
-  (`full semantic index → current-file index → visible-range only`).
+A central scheduler knows about **all** background work. User input and screen refresh always come first.
+Redundant parse/index work is coalesced and superseded work is cancelled. Budgets are per service and per
+plugin. Under load, features degrade step by step
+(`full semantic index → current-file index → visible-range only`) instead of stalling the cursor. Full
+design: [../design/scheduler.md](../design/scheduler.md).
 
 ## 6. Cache (`CACHE`)
-Caches are the most common source of inconsistency.
-- **DR-CACHE-1** (P1) — Every cache names its **source data + invalidation source**.
-- **DR-CACHE-2** (P1) — Cache keys include **revision, profile, capability, schema version**.
-- **DR-CACHE-3** (P1) — Any cache is deletable at any time; guarantee a regeneration path on corruption.
-- **DR-CACHE-4** (P0) — A cache hit must **not** change the semantic result.
-- **DR-CACHE-5** (P2) — Distinguish the trust boundary of remote vs local caches.
-- **DR-CACHE-6** (P2) — Make cache size + eviction observable; manage command-palette / syntax / LSP-position caches independently.
+Caches are the most common source of inconsistency. Each cache names its source data and invalidation
+trigger, keys on everything that can change its answer, can be deleted at any time, and must never change
+the semantic result. Remote caches sit behind a different trust boundary from local ones.
 
 ## 7. IDs, Generations, Time (`ID`)
-- **DR-ID-1** (P1) — Scope IDs: **process-local · session-local · workspace-persistent · globally stable**.
-- **DR-ID-2** (P1) — Reusable slot IDs carry a **generation**.
-- **DR-ID-3** (P0) — Never persist process-local IDs in external protocols.
-- **DR-ID-4** (P1) — Use **monotonic sequence** for ordering, not wall clock; separate user-display time from internal timeout
-  time.
-- **DR-ID-5** (P1) — Define ownership of Remote-Client ID / Workspace ID / Document ID and the collision policy for
-  command/transaction IDs.
+An ID's scope (process, session, workspace, global) decides where it may travel. Reusable slots carry
+generations so stale handles fail loudly. Ordering uses monotonic sequences, never the wall clock, and
+display time is separate from timeout time.
 
 ## 8. Multi-Client & Concurrency (`MULTI`)
-Even if single-TUI first, design for remote/GUI/web clients.
-- **DR-MULTI-1** (P1) — Decide whether multiple clients may attach to one workspace runtime.
-- **DR-MULTI-2** (P1) — Cursor / viewport / input mode are **client/view-local**.
-- **DR-MULTI-3** (P0) — Choose **optimistic concurrency** or **authoritative sequencing** for document changes; specify
-  conflicting-transaction rules.
-- **DR-MULTI-4** (P2) — Manage each client's capability + profile independently.
-- **DR-MULTI-5** (P1) — **Backpressure** so a slow client can't block the whole runtime.
-- **DR-MULTI-6** (P2) — On reconnect, recover missed events via snapshot or delta.
-- **DR-MULTI-7** (P2) — Specify the target client for client-local actions (clipboard, notification, open-browser).
+Even a single-TUI-first editor should be designed for remote, GUI and web clients. Cursor, viewport and mode
+belong to the client/view. Document changes follow one explicit concurrency model. A slow client must not
+block the runtime, and reconnecting recovers missed state.
 
 ## 9. Plugin Ecosystem Governance (`GOV`)
-A stable API does not imply a stable ecosystem.
-- **DR-GOV-1** (P2) — Distinguish responsibility scope of official vs third-party plugins.
-- **DR-GOV-2** (P2) — Marketplace verification levels: **Official · Verified · Community · Unreviewed · Deprecated ·
-  Quarantined**.
-- **DR-GOV-3** (P1) — Require re-approval when a plugin's permissions change; policy for malicious/abandoned packages.
-- **DR-GOV-4** (P3) — Namespace ownership + package-name dispute policy; transfer procedure for orphaned plugins.
-- **DR-GOV-5** (P2) — Service-sharing rules between same-capability plugins; dependency resolution via lockfile + checksum.
-- **DR-GOV-6** (P3) — Plugin quality metrics: **crash rate · activation latency · API compatibility**.
-- **DR-GOV-7** (P2) — Don't blanket-block plugins competing with core, but define the conflict boundary; ship an Extension SDK
-  **conformance test kit**.
+A stable API does not imply a stable ecosystem. Responsibility, verification levels, permission
+re-approval, namespace ownership, dependency locking and quality metrics are what keep the ecosystem healthy
+once third parties arrive. Plugin research: [../parity/plugin-ecosystem.md](../parity/plugin-ecosystem.md).
 
 ## 10. Config, Profile, Feature Pack (`CFG`)
-- **DR-CFG-1** (P1) — Separate user / workspace / machine-local settings; security-sensitive settings are **not** overridable by
-  a workspace.
-- **DR-CFG-2** (P1) — Define merge rules per type: **replace · append · set-union · deep merge**.
-- **DR-CFG-3** (P2) — Preserve **source provenance**; provide `:inspect config editor.tab_width` to show where a value came from.
-- **DR-CFG-4** (P2) — Profiles may carry behavior policy (not just keymaps) but with **bounded scope** (no full core monkey-patch).
-- **DR-CFG-5** (P1) — Feature packs are **declarative dependency bundles**; config migration separates auto-conversion from
-  manual warnings; a **safe mode** runs even with bad config.
+Settings have scopes (user, workspace, machine), per-type merge rules and provenance. Security-sensitive
+settings cannot be overridden by a workspace. Profiles may carry bounded behavior policy. Feature packs are
+declarative, and a safe mode always starts. Model: [../design/config-model.md](../design/config-model.md);
+keys: [`spec/config-schema.yaml`](../../spec/config-schema.yaml).
 
 ## 11. Extended Error / Log / Status (`STAB` addendum)
 (Base model in [stability-and-observability.md](../design/stability-and-observability.md).)
-- **DR-STAB-1** (P1) — Separate state from error (**Error = event, Status = persistent state**); log each transition's reason +
-  cause event.
-- **DR-STAB-2** (P2) — Layer error codes but don't over-subdivide; separate user-facing message from developer diagnostic.
-- **DR-STAB-3** (P1) — Designate fields that must **never** be logged, by default.
-- **DR-STAB-4** (P2) — Per-component **ring buffer** of recent logs; a trace-sampling policy.
-- **DR-STAB-5** (P1) — A dedicated minimal **crash path** on fatal invariant failure that depends less on allocation/locks.
-- **DR-STAB-6** (P2) — Health status includes **freshness** (`LSP: Ready, checked 200ms ago`; `Remote: Unknown, no heartbeat 20s`).
+An error is an event and a status is persistent state. Some fields are never logged. Recent logs sit in
+bounded ring buffers. A fatal invariant failure takes a minimal crash path. Health reports say how fresh
+they are.
 
 ## 12. Security & Trust Boundary (`TRUST`)
-- **DR-TRUST-1** (P0) — Treat each principal at a distinct trust level: **core · official plugin · third-party plugin · workspace
-  repository · remote server · terminal output · AI agent**.
-- **DR-TRUST-2** (P0) — Make a **trust decision before opening** a workspace; the client verifies remote-runtime binary integrity.
-- **DR-TRUST-3** (P1) — Sanitize terminal escapes into a semantic terminal model; define env-var forwarding policy to plugins/shell.
-- **DR-TRUST-4** (P1) — A **secret provider API** so plugins don't store plaintext secrets.
-- **DR-TRUST-5** (P1) — Distinguish AI commands that may **execute** from those that may only **propose**.
-- **DR-TRUST-6** (P1) — Package-signing key rotation + revoke; a forced plugin-block for security fixes; **redaction preview** when
-  building a diagnostic bundle.
+Core, official plugins, third-party plugins, the workspace repository, remote servers, terminal output and
+AI agents are each separate principals with their own trust level. Trust is decided before a workspace
+opens. Terminal escapes are interpreted, never passed through. Secrets go through a provider. AI may
+propose separately from executing.
 
 ## 13. Cross-Platform Semantics (`XPLAT`)
-- **DR-XPLAT-1** (P1) — Manage a list of **behavioral differences**, not just an OS abstraction.
-- **DR-XPLAT-2** (P1) — Policies for filename case-sensitivity + normalization; model symlink/junction/UNC/WSL paths separately.
-- **DR-XPLAT-3** (P2) — Handle executable bit / permission / ACL per platform; abstract process signal + termination semantics.
-- **DR-XPLAT-4** (P1) — Do shell quoting via a real quoter, never string concatenation; specify newline/encoding/clipboard format.
-- **DR-XPLAT-5** (P2) — Test macOS Unicode normalization; treat file-watcher missing/duplicate events as normal.
-- **DR-XPLAT-6** (P2) — Split platform capability into **build-time** and **runtime** capability.
+Abstracting the OS is not enough; ruse has to manage a list of **behavioral differences**: path case and
+normalization, symlink/junction/UNC/WSL, permissions and ACLs, signals, shell quoting, newline/encoding,
+and file-watcher quirks. Capabilities are split into build-time and runtime.
 
 ## 14. Terminal UX (`TUX` addendum)
 (Base model in [../parity/terminal.md](../parity/terminal.md).)
-- **DR-TUX-1** (P1) — Manage terminal capability separately from user preference; capability changes don't auto-switch
-  mid-session — define a **renegotiation point**.
-- **DR-TUX-2** (P2) — Specify the editor escape chord inside a terminal-buffer passthrough; per-profile key-ambiguity timeout.
-- **DR-TUX-3** (P2) — Model escape wrapping by SSH/tmux nesting depth; define modal-transition policy during IME.
-- **DR-TUX-4** (P2) — View priority + collapse rules when width shrinks; preserve selection/focus/accessibility even in image
-  fallback; never convey state by color alone; core commands usable even on headless/dumb terminals.
+Terminal capability and user preference are separate, and capability changes happen only at defined
+renegotiation points. Escape chords, ambiguity timeouts, SSH/tmux nesting and IME are modeled explicitly.
+Degraded terminals (narrow, no images, no color, dumb) keep the core usable.
 
 ## 15. Render-IR Risks (`RIR`)
-A common IR is powerful but can become another giant legacy.
-- **DR-RIR-1** (P1) — Separate the **Semantic View Model** from the low-level **Render IR**; the plugin API exposes only up to
-  the semantic model where possible.
-- **DR-RIR-2** (P2) — The Render IR is backend-neutral but **not the union of all backends**; isolate backend-specific
-  extensions in a **capability namespace**.
-- **DR-RIR-3** (P2) — IR version-migration tests; support **incremental diff**, not only whole-tree.
-- **DR-RIR-4** (P2) — Resource references are **stable resource handles**, not raw file paths; specify image/font/binary resource
-  lifecycle.
+A common IR is powerful, but it can become one more giant legacy. A semantic view model sits above a
+backend-neutral Render IR that is **not** the union of all backends. Backend extensions live in capability
+namespaces, the IR gets migration tests and incremental diffs, and resources are stable handles.
 
 ## 16. API-Stability Paradox (`APIX`)
-The most dangerous thing is stabilizing a bad API too fast.
-- **DR-APIX-1** (P1) — Promotion ladder **Internal → Experimental → Preview → Stable → Deprecated → Removed** (see
-  [../protocols/versioning-and-evolution.md](../protocols/versioning-and-evolution.md)).
-- **DR-APIX-2** (P2) — ≥2 independent implementations/plugins before Stable; opt-in/local-only API telemetry; an **API surface
-  budget**; distinguish convenience vs primitive APIs.
-- **DR-APIX-3** (P1) — Every API can express failure/cancellation/partial success; each new API ships with versioning + migration.
+The most dangerous thing is stabilizing a bad API too fast. APIs climb a promotion ladder
+(**Internal → Experimental → Preview → Stable → Deprecated → Removed**, see
+[../protocols/versioning-and-evolution.md](../protocols/versioning-and-evolution.md)), need independent users
+before Stable, stay within a surface budget, and can express failure, cancellation and partial success from
+day one.
 
 ## 17. Performance Stability (`PERFS`)
-- **DR-PERFS-1** (P1) — Manage **p95/p99**, not averages; per-stage budgets (input→command→transaction→render).
-- **DR-PERFS-2** (P2) — Measure cold vs warm start separately; benchmark with a **real plugin set**, not only an empty editor.
-- **DR-PERFS-3** (P2) — Separate memory peak vs steady-state; simulate poor remote latency/bandwidth; per-feature degradation
-  policy; track allocator/allocation-count regressions; export a per-device performance profile.
+Track p95/p99, not averages, against per-stage budgets (input → command → transaction → render). Measure cold
+vs warm start, peak vs steady memory, and allocation counts, with real plugin sets and poor remote links,
+because that is what users actually run.
 
 ## 18. CI/CD Additions (`OPS` addendum)
 (Base pipeline in [../operations/ci-cd-and-release.md](../operations/ci-cd-and-release.md).)
-- **DR-OPS-1** (P2) — Change-impact analysis to run relevant tests fast, with periodic full CI; a **merge queue**.
-- **DR-OPS-2** (P1) — Build the release artifact **once**; all channels reuse it; **rollback = re-publish a prior verified
-  artifact**.
-- **DR-OPS-3** (P2) — Ship a plugin-API compatibility report as a release asset; verify **binary reproducibility** where
-  possible; long **soak tests** on nightly; **fault-injection CI** (disk full, permission loss, process
-  crash, packet loss, truncated journal); test-quarantine entries carry expiry + owner; observe CI's own
-  health.
+Fast impact-scoped CI with periodic full runs and a merge queue. Release artifacts are built once and
+rollback re-publishes a verified artifact. Reproducibility, soak and fault-injection runs, and quarantined
+tests with an expiry date keep CI honest about the long tail.
 
 ## 19. Contributor Sustainability (`CONTRIB`)
-- **DR-CONTRIB-1** (P2) — A new contributor can build/test within 30 minutes (bootstrap).
-- **DR-CONTRIB-2** (P1) — Enforce architecture-boundary violations via lint / dependency rules.
-- **DR-CONTRIB-3** (P2) — Separate good first-contribution areas from core-critical areas; an ownership map by **area**, not code.
-- **DR-CONTRIB-4** (P2) — Clear criteria for what changes require an RFC; review checklist includes performance/compatibility/
-  recovery/observability.
-- **DR-CONTRIB-5** (P3) — Separate generated vs hand-written code; provide test-fixture generators; track maintainer bus factor; no
-  single-person tacit knowledge on key design decisions.
+The project has to outlive any one contributor's memory: a 30-minute bootstrap, architecture boundaries
+enforced by tooling, area ownership, clear RFC triggers, and no key design knowledge held by one person
+alone.
 
 ## 20. Product Scope & Strategy (`SCOPE`)
 The largest risk. Non-goals to hold (canonical: [`spec/PROJECT.md` §Non-goals](../../spec/PROJECT.md) /
-[`spec/PRD.yaml` `mvp.non_goals`](../../spec/PRD.yaml)):
-- **DR-SCOPE-1** (P1) — Don't complete Vim + Emacs + Native all in v1; don't build TUI + GUI + Web simultaneously.
-- **DR-SCOPE-2** (P1) — Don't platformize Editor + IDE + OS shell + notebook + analyzer at once.
-- **DR-SCOPE-3** (P2) — Don't build a Marketplace before there are users, or a Plugin SDK before real plugins validate the API.
-- **DR-SCOPE-4** (P2) — Don't over-distribute local runtime/client into a distributed system before remote is needed.
-- **DR-SCOPE-5** (P1) — Don't generalize every feature until simple file editing becomes complex.
-- **DR-SCOPE-6** (P0) — Don't defer the MVP forever in the name of "sustainability"; don't refuse to use the current language's
-  strengths for the sake of hypothetical future porting; don't perfect the architecture without real user
-  feedback.
+[`spec/PRD.yaml` `mvp.non_goals`](../../spec/PRD.yaml)): don't build every profile and frontend in v1, don't
+platformize everything at once, no marketplace or SDK before real users and plugins, no distributed runtime
+before remote is needed, and don't defer the MVP in the name of sustainability.
 
 ---
 
 ## How to Use
 Each domain maps 1:1 to an anti-pattern category in
-[../anti-patterns/anti-patterns.md](../anti-patterns/anti-patterns.md) (same code). Requirements here are the
-"do"; anti-patterns are the "don't." The design-concern checklist + doc template are in
+[../anti-patterns/anti-patterns.md](../anti-patterns/anti-patterns.md) (same code). Requirements are the
+"do"; anti-patterns are the "don't." Look a requirement up by its old id with
+`grep -n "DR-PERSIST-3" spec/design-requirements.yaml`. The design-concern checklist + doc template are in
 [design-charter.md](design-charter.md); the lock-before-coding decisions are in
 [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
