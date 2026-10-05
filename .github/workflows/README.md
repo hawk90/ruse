@@ -27,5 +27,6 @@ Notes:
   performance budgets (§10).
 - **Gotcha:** `hashFiles()` is only valid in step-level fields, not a job-level `if:` — the whole run fails
   before any step. `actionlint` in `spec-check` now catches this class.
-- **Gotcha:** `dtolnay/rust-toolchain` pinned by SHA cannot infer the toolchain from the ref — always pass
-  `toolchain:` explicitly.
+- **Toolchain:** `actions-rust-lang/setup-rust-toolchain` is used WITHOUT a `toolchain:` input so it reads the
+  repo's `rust-toolchain.toml` — local rustup and CI then run the same pinned version. Pass `cache: false`
+  (Swatinem/rust-cache is the cache) and `build-warnings: allow` (the action defaults to `deny`).

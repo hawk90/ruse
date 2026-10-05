@@ -46,8 +46,8 @@ jobs:
       - if: steps.detect.outputs.rust == '0'
         run: echo "No Rust-relevant change in this PR — cargo/arch steps skipped (still green)."
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
-        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with: { toolchain: stable, components: "rustfmt, clippy" }
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with: { components: "rustfmt, clippy", cache: false, build-warnings: allow }
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 — caches ~/.cargo + target/ keyed on Cargo.lock
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
@@ -71,8 +71,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with: { toolchain: stable, components: clippy }
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with: { components: clippy, cache: false, build-warnings: allow }
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
