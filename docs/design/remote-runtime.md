@@ -51,8 +51,9 @@ before "remote."
   module is the honest, precedent-matching home.
 - **Slice 2a — SSH stdio transport seam (F-017, #316): SHIPPED.** `apps/tui/src/remote/transport.rs`
   centralises how the agent is launched into two `Command` builders: `local_command` (the slice-1 pipe) and
-  `ssh_command` (`ssh -o BatchMode=yes <host> ruse agent` — "SSH stdio first", non-interactive so a headless
-  client never hangs on a password prompt). `AgentClient` was already transport-agnostic (it takes a
+  `ssh_command` (`ssh -o BatchMode=yes -- <host> ruse agent` — "SSH stdio first", non-interactive so a headless
+  client never hangs on a password prompt; the host follows `--` and a host that is empty or starts with `-`
+  is rejected, so user input can never be parsed as an ssh option such as `-oProxyCommand=`). `AgentClient` was already transport-agnostic (it takes a
   `Command`), so only the launch differs; the command *assembly* is deterministically unit-tested and the live
   wire is an env-gated ignored smoke (`tests/agent_ssh.rs`). **Limitation:** without agent bootstrap yet, a
   remote host must already have `ruse` on its `PATH` (the remote command is `ruse agent`, not yet the
