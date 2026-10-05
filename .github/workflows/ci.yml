@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       rust: ${{ steps.detect.outputs.rust }}
     steps:
@@ -47,7 +47,7 @@ jobs:
         run: echo "No Rust-relevant change in this PR — cargo/arch steps skipped (still green)."
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with: { toolchain: stable, components: rustfmt, clippy }
+        with: { toolchain: stable, components: "rustfmt, clippy" }
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 — caches ~/.cargo + target/ keyed on Cargo.lock
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
