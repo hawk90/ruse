@@ -816,3 +816,49 @@ related:
   divergence is proposed whose vanilla rationale still applies (muscle-memory / current script compat), in
   which case it does NOT qualify under this decision and stays at the Vim default.
 - Refs: [../docs/rfc/proposed/RFC-0017-better-than-vanilla-defaults.md](../docs/rfc/proposed/RFC-0017-better-than-vanilla-defaults.md), D-043, D-049, F-009, C-CONFIG.
+
+## D-057 — Editor-global state is owned by the Workspace, not the per-View EditorState; buffers gain disposition + kind · decided (design)
+- **Decision:** The buffer ARENA already exists (F-007, `crates/core/src/workspace.rs`: a `Workspace`
+  owning many `Document`s/`View`s by `DocumentId`/`ViewId`, a listed `buffer_order`, an `alt` buffer, and
+  working `:e`/`:ls`/`:b`/`:bnext`/`:bd`/`:split`). What this decision adds is the CROSS-BUFFER layer.
+  **(1) Editor-global state moves to the `Workspace`.** State that Vim/Emacs treat as global-to-the-editor —
+  the register store, uppercase/global marks `mA`-`mZ`, the alternate-file `"#`/`"%` bridge, and the
+  cross-buffer portion of the jumplist — moves OUT of `View`/`EditorState` (today: `View.registers`
+  `editor/mod.rs:167`, `View.named_marks` a-z-only `:233`, `View.jumps` single-buffer offsets `:255`,
+  CLONED on `:split` at `workspace.rs:802` — an admitted Vim-parity bug) into a `Workspace`-owned global
+  store, LENT into the transient `EditorState` for one command's duration by the extended swap-trick
+  (`from_parts`/`into_parts` gain a `&mut` to the store). Buffer-LOCAL state (cursor, mode, scroll,
+  selection, lowercase marks `a`-`z`, Emacs `mark`, change list, per-view config) stays on `View`
+  (INV-DOC-VIEW). **(2) Cross-buffer positions are anchors.** Uppercase/global marks and jumplist entries
+  become `(DocumentId, Anchor)` (D-023/INV-ANCHOR; the C-POSHIST `NamedMap`/`Ring` containers of D-027), so
+  a position into an unfocused, editable buffer survives edits. **(3) Buffers gain a `Disposition`
+  {Listed, Unlisted, Hidden} and a `BufferKind` {Ordinary, Scratch, NoFile, Interactive}** (the enums
+  already specified in view-window-workspace.md §8.1 / INV-BUFFER-KIND), enabling Vim `'hidden'` and the
+  special buffers the editable `q:` and pickers need; retirement becomes observable so frontend
+  `DocumentId`-keyed maps prune in lockstep. This unblocks `mA`-`mZ`/global marks, the `"#` register,
+  buffer/file pickers, an editable command-line window (`q:`/`q/`/`q?`, replacing the read-only overlay in
+  `apps/tui/src/input/cmdwin.rs`), and the "other buffers" completion source (`keyword_completion` iterating
+  `buffer_order` instead of only `focused()`). Sliced: (1) lifecycle + `"#` + completion, (2) registers→
+  Workspace, (3) global marks/jumplist, (4) editable `q:`. Full design:
+  [buffer-arena-and-global-state.md](../docs/design/buffer-arena-and-global-state.md).
+- **Reason:** the five features share one root cause — state Vim/Emacs share across all buffers is trapped
+  inside a single `View`, and the swap-trick only ever reconstitutes the FOCUSED `(Document, View)`, so
+  cross-buffer code has nowhere to stand and no way to point into another buffer. Fixing ownership ONCE in
+  the arena unblocks all five and simultaneously fixes the register-divergence bug the split-clone ships.
+  Putting the state on a `Document` (violates INV-DOC-VIEW) or in a process-global singleton (violates
+  INV-NO-GLOBAL-STATE + the D-002 single-executor) are the two wrong shapes; the `Workspace` is the single
+  legitimate owner, and "editor-global" here means workspace-SCOPED, which INV-NO-GLOBAL-STATE permits.
+- **Open (design):** lowercase-marks→anchors timing; exactly which registers are global vs. buffer-local
+  (proposal: all global, D-026); `q:` re-entry via the `:normal`/`:g` executor; per-View vs. single
+  jumplist; whether to pull generational handles (INV-HANDLE) forward; the file picker's read boundary
+  (buffers vs. CAP-FS/SEARCH). Resolved at review before slice 2 (the ownership move) lands. Details in the
+  RFC/design Open questions.
+- **Re-evaluate if:** a second client is enabled (D-012) — some registers/marks may need a client-scope
+  split; or session persistence (mksession/shada) lands — the global store gains a serialized on-disk form,
+  promoting the register/mark byte encoding to a persistent-format CONTRACT decision (as D-055 notes for
+  macros), superseding the "internal only" stance here.
+- Refs: [../docs/rfc/proposed/RFC-0018-multi-buffer-arena.md](../docs/rfc/proposed/RFC-0018-multi-buffer-arena.md),
+  [../docs/design/buffer-arena-and-global-state.md](../docs/design/buffer-arena-and-global-state.md),
+  [../docs/design/view-window-workspace.md](../docs/design/view-window-workspace.md),
+  D-003, D-023, D-026, D-027, D-039, D-055, INV-DOC-VIEW, INV-NO-GLOBAL-STATE, INV-ANCHOR, INV-HANDLE,
+  INV-BUFFER-KIND, F-007, F-032, C-VIEW, C-WORKSPACE, C-POSHIST, C-REGISTER, CAP-BUFFER-ARENA.

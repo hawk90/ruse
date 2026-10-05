@@ -973,3 +973,38 @@ features:
       - Markdown and Org both render headings, emphasis, links (URL concealed, label faced), and checkboxes.
       - Selecting and yanking across concealed markup copies the RAW markup bytes — conceal is
         presentation-only, never mutation.
+
+  F-032:
+    title: Multi-buffer arena — workspace-global state + buffer lifecycle
+    stage: post-mvp
+    priority: should
+    status: planned
+    depends_on: [C-WORKSPACE, C-VIEW, C-POSHIST, C-REGISTER]
+    summary: >
+      Promote editor-global state (registers, uppercase/global marks mA-mZ, the cross-buffer jumplist, the
+      "#/"% alternate-file bridge) OUT of the per-View EditorState — where it is cloned on :split and reachable
+      only for the focused (Document, View) pair — INTO a Workspace-owned store lent in by the swap-trick; and
+      add buffer Disposition (Listed/Unlisted/Hidden) + BufferKind (Ordinary/Scratch/NoFile/Interactive). This
+      is the cross-buffer layer over the existing F-007 arena; it unblocks global marks, buffer/file pickers,
+      an editable q:, the "# register, and the "other buffers" completion source (D-057).
+    trace:
+      # Census-N/A (like F-007, D-043): this is ruse WORKSPACE ARCHITECTURE (C-WORKSPACE/C-VIEW ownership +
+      # C-POSHIST/C-REGISTER scope) — "where editor-global state is owned" is an INV-DOC-VIEW/INV-NO-GLOBAL-STATE
+      # architecture fact, not an enumerable upstream census surface. The feature COMMANDS it unblocks (`mA`,
+      # `"#`, `q:`, buffer/file pickers) have ex_command/key census homes owned by their own features; this
+      # entry owns the arena substrate. No new hand-authored parity ids are cited (parity_na → implementable
+      # chain closes via the N/A path, as F-007).
+      parity: []
+      design: [../docs/design/buffer-arena-and-global-state.md, ../docs/design/view-window-workspace.md, ../docs/design/positions-history.md, ../docs/design/register-model.md]
+      verify: [../tests/unit/registers-global-across-buffers, ../tests/unit/global-marks-cross-file, ../tests/property/global-positions-never-dangle]
+    acceptance:
+      - Yanking in buffer A then switching to buffer B (`:b`) and pasting yields the yanked text — registers
+        are global, not cloned-then-diverged per View; a split shows the same register content in both panes.
+      - Setting `mA` in file A, switching to file B, then `` `A `` returns focus to A at the marked position
+        even after A was edited while unfocused (a cross-buffer mark is an anchor, INV-ANCHOR).
+      - The `"#` register (and `<C-^>`/`:b#`) resolve to the alternate buffer's file name / buffer consistently.
+      - Running `:ls` lists Listed buffers and `:ls!` includes Unlisted; a Hidden/modified buffer survives
+        losing its last window (Vim `'hidden'`) instead of being wiped.
+      - Opening `q:` shows an editable buffer of command history; editing a line and pressing `<CR>` runs the
+        edited command.
+      - Insert-mode keyword completion (`i_CTRL-N`) offers a keyword that exists only in another loaded buffer.
