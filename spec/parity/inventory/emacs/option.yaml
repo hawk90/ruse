@@ -1,6 +1,6 @@
 # GENERATED — do not hand-edit item enumeration. Regenerate:
 #   python3 tools/parity/extract_emacs.py
-# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
 # enumeration is not. `status: unclassified` is legitimate and expected — discovery is
 # strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
 # This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
@@ -10,10 +10,10 @@ version: 1
 generated: true
 generator: tools/parity/extract_emacs.py
 upstream: emacs
-revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
-version_label: emacs-30.2
+revision: a360712c9d272d950d8d8255ef74570f7e90b7d9
+version_label: emacs-31.1
 derived_from: runtime-binary
-binary_version: '30.2'
+binary_version: '31.1'
 binary_identity: unverified-build
 baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
   project)
@@ -107,7 +107,8 @@ items:
   name: auto-save-file-name-transforms
   defined_in: files.elc
   type: (repeat (list (regexp :tag "Regexp") (string :tag "Replacement") (choice (const :tag "Uniquify" t) (const md5) (const
-    sha1) (const sha224) (const sha256) (const sha384) (const sha512))))
+    sha1) (const sha224) (const sha256) (const sha384) (const sha512) (const sha3-224) (const sha3-256) (const sha3-384) (const
+    sha3-512))))
   default: (("\\`/[^/]*:\\([^/]*/\\)*\\([^/]*\\)\\'" "/var/folders/62/1n0w6tvd2j53zx21hzdrz1xw0000gn/T/\\2" t))
   desc: Transforms to apply to buffer file name before making auto-save file name.
   attestation:
@@ -304,6 +305,16 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.bookmark-after-load-file-hook
+  surface: option
+  name: bookmark-after-load-file-hook
+  defined_in: bookmark.elc
+  type: hook
+  default: nil
+  desc: Hook run after a bookmark file is loaded by ‘bookmark-load’.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.bookmark-automatically-show-annotations
   surface: option
   name: bookmark-automatically-show-annotations
@@ -334,6 +345,16 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.bookmark-bmenu-type-column-width
+  surface: option
+  name: bookmark-bmenu-type-column-width
+  defined_in: bookmark.elc
+  type: natnum
+  default: '8'
+  desc: Column width for bookmark type in a buffer listing bookmarks.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.bookmark-completion-ignore-case
   surface: option
   name: bookmark-completion-ignore-case
@@ -349,7 +370,7 @@ items:
   name: bookmark-default-file
   defined_in: bookmark.elc
   type: file
-  default: '"~/.emacs.d/bookmarks"'
+  default: '"~/.emacs.d/bookmarks.eld"'
   desc: File in which to save bookmarks by default.
   attestation:
   - R
@@ -359,7 +380,7 @@ items:
   name: bookmark-file
   defined_in: bookmark.elc
   type: sexp
-  default: '"~/.emacs.d/bookmarks"'
+  default: '"~/.emacs.d/bookmarks.eld"'
   desc: File in which to save bookmarks by default.
   attestation:
   - R
@@ -409,7 +430,7 @@ items:
   name: bookmark-old-default-file
   defined_in: bookmark.elc
   type: sexp
-  default: '"~/.emacs.d/bookmarks"'
+  default: '"~/.emacs.d/bookmarks.eld"'
   desc: File in which to save bookmarks by default.
   attestation:
   - R
@@ -618,16 +639,18 @@ items:
   defined_in: minibuffer.elc
   type: (alist :key-type (choice :tag "Category" (const buffer) (const file) (const unicode-name) (const bookmark) symbol)
     :value-type (set :tag "Properties to override" (cons :tag "Completion Styles" (const :tag "Select a style from the menu;"
-    styles) (repeat :tag "insert a new menu to add more styles" (choice :convert-widget completion--update-styles-options)))
-    (cons :tag "Completion Cycling" (const :tag "Select one value from the menu." cycle) (choice (const :tag "No cycling"
-    nil) (const :tag "Always cycle" t) (integer :tag "Threshold"))) (cons :tag "Cycle Sorting" (const :tag "Select one value
-    from the menu." cycle-sort-function) (choice (function :tag "Custom function"))) (cons :tag "Completion Sorting" (const
-    :tag "Select one value from the menu." display-sort-function) (choice (const :tag "Use default" nil) (const :tag "No sorting"
-    identity) (const :tag "Alphabetical sorting" minibuffer-sort-alphabetically) (const :tag "Historical sorting" minibuffer-sort-by-history)
-    (function :tag "Custom function"))) (cons :tag "Completion Groups" (const :tag "Select one value from the menu." group-function)
-    (choice (function :tag "Custom function"))) (cons :tag "Completion Annotation" (const :tag "Select one value from the
-    menu." annotation-function) (choice (function :tag "Custom function"))) (cons :tag "Completion Affixation" (const :tag
-    "Select one value from the menu." affixation-function) (choice (function :tag "Custom function")))))
+    styles) (repeat :tag "insert a new menu to add more styles" (single-or-list (choice :convert-widget completion--update-styles-options)
+    (repeat :tag "Variable overrides" (group variable sexp))))) (cons :tag "Completion Cycling" (const :tag "Select one value
+    from the menu." cycle) (choice (const :tag "No cycling" nil) (const :tag "Always cycle" t) (integer :tag "Threshold")))
+    (cons :tag "Cycle Sorting" (const :tag "Select one value from the menu." cycle-sort-function) (choice (function :tag "Custom
+    function"))) (cons :tag "Completion Sorting" (const :tag "Select one value from the menu." display-sort-function) (choice
+    (const :tag "Use default" nil) (const :tag "No sorting" identity) (const :tag "Alphabetical sorting" minibuffer-sort-alphabetically)
+    (const :tag "Historical sorting" minibuffer-sort-by-history) (function :tag "Custom function"))) (cons :tag "Completion
+    Groups" (const :tag "Select one value from the menu." group-function) (choice (function :tag "Custom function"))) (cons
+    :tag "Completion Annotation" (const :tag "Select one value from the menu." annotation-function) (choice (function :tag
+    "Custom function"))) (cons :tag "Completion Affixation" (const :tag "Select one value from the menu." affixation-function)
+    (choice (function :tag "Custom function"))) (cons :tag "Eager display" (const :tag "Select one value from the menu." eager-display)
+    boolean) (cons :tag "Eager update" (const :tag "Select one value from the menu." eager-update) boolean)))
   default: nil
   desc: List of category-specific user overrides for completion metadata.
   attestation:
@@ -640,6 +663,28 @@ items:
   type: (choice (const :tag "No cycling" nil) (const :tag "Always cycle" t) (integer :tag "Threshold"))
   default: nil
   desc: Number of completion candidates below which cycling is used.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-eager-display
+  surface: option
+  name: completion-eager-display
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "Never show *Completions* eagerly" nil) (const :tag "Always show *Completions* eagerly" t) (const
+    :tag "If requested by the completion command" auto))
+  default: auto
+  desc: Whether completion commands should display *Completions* buffer eagerly.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.completion-eager-update
+  surface: option
+  name: completion-eager-update
+  defined_in: minibuffer.elc
+  type: (choice (const :tag "Don't update as you type" nil) (const :tag "Auto-update based on the category" auto) (const :tag
+    "Always update as you type" t))
+  default: auto
+  desc: Whether the *Completions* buffer should update as you type.
   attestation:
   - R
   status: unclassified
@@ -673,6 +718,16 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.completion-pcm-leading-wildcard
+  surface: option
+  name: completion-pcm-leading-wildcard
+  defined_in: minibuffer.elc
+  type: boolean
+  default: nil
+  desc: If non-nil, partial-completion behaves as if each word is preceded by wildcard.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.completion-pcm-word-delimiters
   surface: option
   name: completion-pcm-word-delimiters
@@ -697,7 +752,8 @@ items:
   surface: option
   name: completion-styles
   defined_in: minibuffer.elc
-  type: (repeat :tag "insert a new menu to add more styles" (choice :convert-widget completion--update-styles-options))
+  type: (repeat :tag "insert a new menu to add more styles" (single-or-list (choice :convert-widget completion--update-styles-options)
+    (repeat :tag "Variable overrides" (group variable sexp))))
   default: (basic partial-completion emacs22)
   desc: List of completion styles to use.
   attestation:
@@ -925,6 +981,16 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.delete-trailing-whitespace-mode-hook
+  surface: option
+  name: delete-trailing-whitespace-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘delete-trailing-whitespace-mode’.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.delete-window-choose-selected
   surface: option
   name: delete-window-choose-selected
@@ -997,6 +1063,16 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.dired-auto-toggle-b-switch
+  surface: option
+  name: dired-auto-toggle-b-switch
+  defined_in: dired.elc
+  type: boolean
+  default: nil
+  desc: Whether to automatically add or remove the ‘b’ switch.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.dired-before-readin-hook
   surface: option
   name: dired-before-readin-hook
@@ -1004,6 +1080,16 @@ items:
   type: hook
   default: nil
   desc: This hook is run before a Dired buffer is read in (created or reverted).
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-check-symlinks
+  surface: option
+  name: dired-check-symlinks
+  defined_in: dired.elc
+  type: boolean
+  default: t
+  desc: Whether symlinks are checked for validity.
   attestation:
   - R
   status: unclassified
@@ -1187,6 +1273,16 @@ items:
   type: (choice (const :tag "None" nil) (string :tag "Switches"))
   default: nil
   desc: 'If non-nil, then string of switches passed to ‘znew’, example: "-K".'
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.dired-hide-details-hide-absolute-location
+  surface: option
+  name: dired-hide-details-hide-absolute-location
+  defined_in: dired.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means ‘dired-hide-details-mode’ hides directory absolute location.
   attestation:
   - R
   status: unclassified
@@ -1484,17 +1580,21 @@ items:
   surface: option
   name: display-buffer-alist
   defined_in: window.elc
-  type: (alist :key-type (choice :tag "Condition" regexp (function :tag "Matcher function")) :value-type (cons :tag "Action"
-    (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window) (const
-    display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
-    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
-    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
-    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
-    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
-    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
-    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
-    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
-    :value-type (sexp :tag "Value"))))
+  type: (alist :key-type (buffer-predicate :tag "Condition") :value-type (cons :tag "Action" (choice :tag "Action functions"
+    (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-same-window) (const display-buffer-reuse-window)
+    (const display-buffer-in-previous-window) (const display-buffer-reuse-mode-window) (const display-buffer-use-some-window)
+    (const display-buffer-use-least-recent-window) (const display-buffer-pop-up-window) (const display-buffer-pop-up-frame)
+    (const display-buffer-full-frame) (const display-buffer-use-some-frame) (const display-buffer-in-child-frame) (const display-buffer-in-side-window)
+    (const display-buffer-in-atom-window) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-direction)
+    (const display-buffer-in-tab) (const display-buffer-in-new-tab) (const display-buffer-no-window) (function :tag "Other
+    function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-same-window)
+    (const display-buffer-reuse-window) (const display-buffer-in-previous-window) (const display-buffer-reuse-mode-window)
+    (const display-buffer-use-some-window) (const display-buffer-use-least-recent-window) (const display-buffer-pop-up-window)
+    (const display-buffer-pop-up-frame) (const display-buffer-full-frame) (const display-buffer-use-some-frame) (const display-buffer-in-child-frame)
+    (const display-buffer-in-side-window) (const display-buffer-in-atom-window) (const display-buffer-below-selected) (const
+    display-buffer-at-bottom) (const display-buffer-in-direction) (const display-buffer-in-tab) (const display-buffer-in-new-tab)
+    (const display-buffer-no-window) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol :value-type
+    (sexp :tag "Value"))))
   default: nil
   desc: Alist of user-defined conditional actions for ‘display-buffer’.
   attestation:
@@ -1504,16 +1604,20 @@ items:
   surface: option
   name: display-buffer-base-action
   defined_in: window.elc
-  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
-    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
-    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
-    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
-    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
-    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
-    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
-    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
-    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
-    :value-type (sexp :tag "Value")))
+  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-same-window)
+    (const display-buffer-reuse-window) (const display-buffer-in-previous-window) (const display-buffer-reuse-mode-window)
+    (const display-buffer-use-some-window) (const display-buffer-use-least-recent-window) (const display-buffer-pop-up-window)
+    (const display-buffer-pop-up-frame) (const display-buffer-full-frame) (const display-buffer-use-some-frame) (const display-buffer-in-child-frame)
+    (const display-buffer-in-side-window) (const display-buffer-in-atom-window) (const display-buffer-below-selected) (const
+    display-buffer-at-bottom) (const display-buffer-in-direction) (const display-buffer-in-tab) (const display-buffer-in-new-tab)
+    (const display-buffer-no-window) (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function"
+    (const :tag "--" ignore) (const display-buffer-same-window) (const display-buffer-reuse-window) (const display-buffer-in-previous-window)
+    (const display-buffer-reuse-mode-window) (const display-buffer-use-some-window) (const display-buffer-use-least-recent-window)
+    (const display-buffer-pop-up-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame) (const display-buffer-use-some-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-in-side-window) (const display-buffer-in-atom-window) (const
+    display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-direction) (const display-buffer-in-tab)
+    (const display-buffer-in-new-tab) (const display-buffer-no-window) (function :tag "Other function")))) (alist :tag "Action
+    arguments" :key-type symbol :value-type (sexp :tag "Value")))
   default: (nil)
   desc: User-specified default action for ‘display-buffer’.
   attestation:
@@ -1526,44 +1630,6 @@ items:
   type: boolean
   default: nil
   desc: Non-nil means ‘display-buffer’ should reuse frames.
-  attestation:
-  - R
-  status: unclassified
-- id: emacs.option.display-comint-buffer-action
-  surface: option
-  name: display-comint-buffer-action
-  defined_in: window.elc
-  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
-    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
-    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
-    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
-    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
-    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
-    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
-    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
-    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
-    :value-type (sexp :tag "Value")))
-  default: (display-buffer-same-window (inhibit-same-window) (category . comint))
-  desc: ‘display-buffer’ action for displaying comint buffers.
-  attestation:
-  - R
-  status: unclassified
-- id: emacs.option.display-tex-shell-buffer-action
-  surface: option
-  name: display-tex-shell-buffer-action
-  defined_in: window.elc
-  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
-    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
-    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
-    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
-    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
-    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
-    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
-    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
-    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
-    :value-type (sexp :tag "Value")))
-  default: (display-buffer-in-previous-window (inhibit-same-window . t) (category . tex-shell))
-  desc: ‘display-buffer’ action for displaying TeX shell buffers.
   attestation:
   - R
   status: unclassified
@@ -1660,12 +1726,22 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.exchange-point-and-mark-highlight-region
+  surface: option
+  name: exchange-point-and-mark-highlight-region
+  defined_in: simple.elc
+  type: boolean
+  default: t
+  desc: Activate region when exchanging point and mark.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.exec-path
   surface: option
   name: exec-path
   defined_in: files.elc
   type: sexp
-  default: ("/Users/hawk/.cargo/bin" "/Users/hawk/.local/state/fnm_multishells/46772_1786088320410/bin" "/opt/homebrew/bin"
+  default: ("/Users/hawk/.cargo/bin" "/Users/hawk/.local/state/fnm_multishells/81441_1790908584600/bin" "/opt/homebrew/bin"
     "/opt/homebrew/sbin" "/usr/local/bin" "/System/Cryptexes/App/usr/bin" "/usr/bin" "/bin" "/usr/sbin" "/sbin" "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin"
     "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin" ...)
   desc: List of directories to search programs to run in subprocesses.
@@ -1747,7 +1823,7 @@ items:
   name: find-file-hook
   defined_in: files.elc
   type: hook
-  default: (url-handlers-set-buffer-mode epa-file-find-file-hook vc-refresh-state)
+  default: (tramp-set-connection-local-variables-for-buffer url-handlers-set-buffer-mode vc-refresh-state epa-file-find-file-hook)
   desc: List of functions to be called after a buffer is loaded from a file.
   attestation:
   - R
@@ -1757,7 +1833,7 @@ items:
   name: find-file-hooks
   defined_in: files.elc
   type: sexp
-  default: (url-handlers-set-buffer-mode epa-file-find-file-hook vc-refresh-state)
+  default: (tramp-set-connection-local-variables-for-buffer url-handlers-set-buffer-mode vc-refresh-state epa-file-find-file-hook)
   desc: List of functions to be called after a buffer is loaded from a file.
   attestation:
   - R
@@ -2177,6 +2253,16 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.kill-buffer-quit-windows
+  surface: option
+  name: kill-buffer-quit-windows
+  defined_in: window.elc
+  type: boolean
+  default: nil
+  desc: Non-nil means killing buffers shall quit windows.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.kill-do-not-save-duplicates
   surface: option
   name: kill-do-not-save-duplicates
@@ -2204,6 +2290,17 @@ items:
   type: boolean
   default: nil
   desc: Non-nil means don’t signal an error for killing read-only text.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.kill-region-dwim
+  surface: option
+  name: kill-region-dwim
+  defined_in: simple.elc
+  type: (choice (const :tag "Kill region even when inactive" nil) (const :tag "Kill a word like `backward-kill-word'" emacs-word)
+    (const :tag "Kill a word like Bash would" unix-word))
+  default: nil
+  desc: Behavior when ‘kill-region’ is invoked without an active region.
   attestation:
   - R
   status: unclassified
@@ -2542,7 +2639,9 @@ items:
   surface: option
   name: lock-file-name-transforms
   defined_in: files.elc
-  type: (repeat (list (regexp :tag "Regexp") (string :tag "Replacement") (boolean :tag "Uniquify")))
+  type: (repeat (list (regexp :tag "Regexp") (string :tag "Replacement") (choice (const :tag "Uniquify" t) (const md5) (const
+    sha1) (const sha224) (const sha256) (const sha384) (const sha512) (const sha3-224) (const sha3-256) (const sha3-384) (const
+    sha3-512))))
   default: nil
   desc: Transforms to apply to buffer file name before making a lock file name.
   attestation:
@@ -2570,7 +2669,7 @@ items:
   surface: option
   name: major-mode-remap-alist
   defined_in: files.elc
-  type: (alist (symbol) (function))
+  type: (alist :tag "Remappings" :key-type (symbol :tag "From major mode") :value-type (function :tag "To mode (or function)"))
   default: nil
   desc: Alist mapping file-specified modes to alternative modes.
   attestation:
@@ -2631,7 +2730,7 @@ items:
   name: minibuffer-completion-auto-choose
   defined_in: minibuffer.elc
   type: boolean
-  default: t
+  default: nil
   desc: Non-nil means to automatically insert completions to the minibuffer.
   attestation:
   - R
@@ -2676,6 +2775,26 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.minibuffer-nonselected-mode
+  surface: option
+  name: minibuffer-nonselected-mode
+  defined_in: minibuffer.elc
+  type: boolean
+  default: t
+  desc: Non-nil if Minibuffer-Nonselected mode is enabled.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.minibuffer-nonselected-mode-hook
+  surface: option
+  name: minibuffer-nonselected-mode-hook
+  defined_in: minibuffer.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘minibuffer-nonselected-mode’.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.minibuffer-regexp-mode
   surface: option
   name: minibuffer-regexp-mode
@@ -2710,9 +2829,31 @@ items:
   surface: option
   name: minibuffer-visible-completions
   defined_in: minibuffer.elc
-  type: boolean
+  type: (choice (const :tag "Disable completions navigation with arrow keys" nil) (const :tag "Enable completions navigation
+    with arrow keys" t) (const :tag "Enable completions navigation with up/down arrows" up-down))
   default: nil
-  desc: Whether candidates shown in *Completions* can be navigated from minibuffer.
+  desc: Whether to enable navigation of candidates in *Completions* from minibuffer.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-collapse-minor-modes
+  surface: option
+  name: mode-line-collapse-minor-modes
+  defined_in: bindings.elc
+  type: (choice (const :tag "No modes" nil) (repeat :tag "Modes" symbol) (cons :tag "All modes except" (const not) (repeat
+    symbol)) (const :tag "All modes" t))
+  default: nil
+  desc: Minor modes for which mode line lighters are hidden.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-collapse-minor-modes-to
+  surface: option
+  name: mode-line-collapse-minor-modes-to
+  defined_in: bindings.elc
+  type: string
+  default: '" …"'
+  desc: Lighter for collapsed minor modes.
   attestation:
   - R
   status: unclassified
@@ -2727,6 +2868,26 @@ items:
     mouse-3: Remove current window from display"))'
   default: mode-line-default-help-echo
   desc: Default help text for the mode line.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-invisible-mode-hook
+  surface: option
+  name: mode-line-invisible-mode-hook
+  defined_in: simple.elc
+  type: hook
+  default: nil
+  desc: Hook run after entering or leaving ‘mode-line-invisible-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.mode-line-modes-delimiters
+  surface: option
+  name: mode-line-modes-delimiters
+  defined_in: bindings.elc
+  type: (choice (const :tag "No delimiters") (cons (string :tag "Left delimiter") (string :tag "Right delimiter")))
+  default: ("(" . ")")
+  desc: Strings placed around the modes displayed in the mode line.
   attestation:
   - R
   status: unclassified
@@ -3176,12 +3337,22 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.project-list-exclude
+  surface: option
+  name: project-list-exclude
+  defined_in: project.elc
+  type: (repeat (choice regexp function))
+  default: nil
+  desc: Exclude projects from being remembered by ‘project-remember-project’.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.project-list-file
   surface: option
   name: project-list-file
   defined_in: project.elc
   type: file
-  default: '"~/.emacs.d/projects"'
+  default: '"~/.emacs.d/projects.eld"'
   desc: File in which to save the list of known projects.
   attestation:
   - R
@@ -3190,7 +3361,8 @@ items:
   surface: option
   name: project-mode-line
   defined_in: project.elc
-  type: boolean
+  type: (choice (const :tag "Don't show project on mode line" nil) (const :tag "Show project only for local files" non-remote)
+    (const :tag "Always show project on mode line" t))
   default: nil
   desc: Whether to show current project name and Project menu on the mode line.
   attestation:
@@ -3207,12 +3379,22 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.project-prune-zombie-projects
+  surface: option
+  name: project-prune-zombie-projects
+  defined_in: project.elc
+  type: alist
+  default: ((prompt . project-prune-zombies-default))
+  desc: Remove automatically from project list the projects that were removed.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.project-read-file-name-function
   surface: option
   name: project-read-file-name-function
   defined_in: project.elc
-  type: (choice (const :tag "Read with completion from relative names" project--read-file-cpd-relative) (const :tag "Read
-    with completion from absolute names" project--read-file-absolute) (function :tag "Custom function" nil))
+  type: (choice (const :tag "Read with completion from relative file names" project--read-file-cpd-relative) (const :tag "Read
+    with completion from file names" project--read-file-absolute) (function :tag "Custom function" nil))
   default: project--read-file-cpd-relative
   desc: Function to call to read a file name from a list.
   attestation:
@@ -3381,6 +3563,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.quit-restore-window-no-switch
+  surface: option
+  name: quit-restore-window-no-switch
+  defined_in: window.elc
+  type: (choice (const :tag "Switch to previous buffer" nil) (const :tag "Skip previous buffer" skip-first) (const :tag "Try
+    to delete window" t))
+  default: nil
+  desc: Non-nil means ‘quit-restore-window’ preferably won’t switch buffers.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.quit-window-hook
   surface: option
   name: quit-window-hook
@@ -3388,6 +3581,16 @@ items:
   type: hook
   default: nil
   desc: Hook run before performing any other actions in the ‘quit-window’ command.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.quit-window-kill-buffer
+  surface: option
+  name: quit-window-kill-buffer
+  defined_in: window.elc
+  type: (choice (boolean :tag "All major modes") (repeat (symbol :tag "Major mode")))
+  default: nil
+  desc: Non-nil means ‘quit-window’ will try to kill buffer of WINDOW it quits.
   attestation:
   - R
   status: unclassified
@@ -3484,6 +3687,16 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.rectangle-indicate-zero-width-rectangle
+  surface: option
+  name: rectangle-indicate-zero-width-rectangle
+  defined_in: rect.elc
+  type: boolean
+  default: t
+  desc: If non-nil, make zero-width rectangles visible on display.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.option.rectangle-mark-mode-hook
   surface: option
   name: rectangle-mark-mode-hook
@@ -3538,16 +3751,20 @@ items:
   surface: option
   name: register-preview-display-buffer-alist
   defined_in: register.elc
-  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
-    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
-    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
-    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
-    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
-    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
-    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
-    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
-    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
-    :value-type (sexp :tag "Value")))
+  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-same-window)
+    (const display-buffer-reuse-window) (const display-buffer-in-previous-window) (const display-buffer-reuse-mode-window)
+    (const display-buffer-use-some-window) (const display-buffer-use-least-recent-window) (const display-buffer-pop-up-window)
+    (const display-buffer-pop-up-frame) (const display-buffer-full-frame) (const display-buffer-use-some-frame) (const display-buffer-in-child-frame)
+    (const display-buffer-in-side-window) (const display-buffer-in-atom-window) (const display-buffer-below-selected) (const
+    display-buffer-at-bottom) (const display-buffer-in-direction) (const display-buffer-in-tab) (const display-buffer-in-new-tab)
+    (const display-buffer-no-window) (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function"
+    (const :tag "--" ignore) (const display-buffer-same-window) (const display-buffer-reuse-window) (const display-buffer-in-previous-window)
+    (const display-buffer-reuse-mode-window) (const display-buffer-use-some-window) (const display-buffer-use-least-recent-window)
+    (const display-buffer-pop-up-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame) (const display-buffer-use-some-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-in-side-window) (const display-buffer-in-atom-window) (const
+    display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-direction) (const display-buffer-in-tab)
+    (const display-buffer-in-new-tab) (const display-buffer-no-window) (function :tag "Other function")))) (alist :tag "Action
+    arguments" :key-type symbol :value-type (sexp :tag "Value")))
   default: (display-buffer-at-bottom (window-height . fit-window-to-buffer) (preserve-size nil . t))
   desc: Window configuration for the register preview buffer.
   attestation:
@@ -3640,7 +3857,7 @@ items:
   name: remote-shell-program
   defined_in: files.elc
   type: file
-  default: '"/usr/bin/ssh"'
+  default: '"ssh"'
   desc: Program to use to execute commands on a remote host (i.e. ssh).
   attestation:
   - R
@@ -4118,7 +4335,7 @@ items:
   name: split-width-threshold
   defined_in: window.elc
   type: (choice (const nil) (integer :tag "columns"))
-  default: '160'
+  default: '150'
   desc: Minimum width for splitting windows sensibly.
   attestation:
   - R
@@ -4130,6 +4347,17 @@ items:
   type: boolean
   default: t
   desc: If non-nil, C-x 2 preserves point in the new window.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.split-window-preferred-direction
+  surface: option
+  name: split-window-preferred-direction
+  defined_in: window.elc
+  type: (radio (const :tag "Try to split vertically first" vertical) (const :tag "Try to split horizontally first" horizontal)
+    (const :tag "Try to split along the longest edge first" longest))
+  default: longest
+  desc: The first direction tried when Emacs needs to split a window.
   attestation:
   - R
   status: unclassified
@@ -4425,7 +4653,7 @@ items:
   name: visual-line-mode-hook
   defined_in: simple.elc
   type: hook
-  default: (visual-line-mode-set-explicitly)
+  default: (visual-line-mode--set-explicitly)
   desc: Hook run after entering or leaving ‘visual-line-mode’.
   attestation:
   - R
@@ -4459,6 +4687,16 @@ items:
     function)
   default: window-adjust-process-window-size-smallest
   desc: Control how Emacs chooses inferior process window sizes.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.option.window-deletable-functions
+  surface: option
+  name: window-deletable-functions
+  defined_in: window.elc
+  type: hook
+  default: nil
+  desc: Abnormal hook to decide whether a window may be implicitly deleted.
   attestation:
   - R
   status: unclassified
@@ -4565,3 +4803,43 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.option.display-comint-buffer-action
+  surface: option
+  name: display-comint-buffer-action
+  defined_in: window.elc
+  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
+    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
+    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
+    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
+    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
+    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
+    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
+    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
+    :value-type (sexp :tag "Value")))
+  default: (display-buffer-same-window (inhibit-same-window) (category . comint))
+  desc: ‘display-buffer’ action for displaying comint buffers.
+  attestation:
+  - R
+  status: unclassified
+  upstream_gone: true
+- id: emacs.option.display-tex-shell-buffer-action
+  surface: option
+  name: display-tex-shell-buffer-action
+  defined_in: window.elc
+  type: (cons :tag "Action" (choice :tag "Action functions" (choice :tag "Function" (const :tag "--" ignore) (const display-buffer-reuse-window)
+    (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame) (const display-buffer-full-frame)
+    (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom) (const display-buffer-in-previous-window)
+    (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window) (const display-buffer-use-some-frame)
+    (function :tag "Other function")) (repeat :tag "List of functions" (choice :tag "Function" (const :tag "--" ignore) (const
+    display-buffer-reuse-window) (const display-buffer-pop-up-window) (const display-buffer-same-window) (const display-buffer-pop-up-frame)
+    (const display-buffer-full-frame) (const display-buffer-in-child-frame) (const display-buffer-below-selected) (const display-buffer-at-bottom)
+    (const display-buffer-in-previous-window) (const display-buffer-use-least-recent-window) (const display-buffer-use-some-window)
+    (const display-buffer-use-some-frame) (function :tag "Other function")))) (alist :tag "Action arguments" :key-type symbol
+    :value-type (sexp :tag "Value")))
+  default: (display-buffer-in-previous-window (inhibit-same-window . t) (category . tex-shell))
+  desc: ‘display-buffer’ action for displaying TeX shell buffers.
+  attestation:
+  - R
+  status: unclassified
+  upstream_gone: true

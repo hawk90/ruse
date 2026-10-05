@@ -1,6 +1,6 @@
 # GENERATED — do not hand-edit item enumeration. Regenerate:
 #   python3 tools/parity/extract_emacs.py
-# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
 # enumeration is not. `status: unclassified` is legitimate and expected — discovery is
 # strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
 # This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
@@ -10,10 +10,10 @@ version: 1
 generated: true
 generator: tools/parity/extract_emacs.py
 upstream: emacs
-revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
-version_label: emacs-30.2
+revision: a360712c9d272d950d8d8255ef74570f7e90b7d9
+version_label: emacs-31.1
 derived_from: runtime-binary
-binary_version: '30.2'
+binary_version: '31.1'
 binary_identity: unverified-build
 baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
   project)
@@ -56,7 +56,7 @@ items:
 - id: emacs.command.info-goto-emacs-command-node
   surface: command
   name: Info-goto-emacs-command-node
-  defined_in: info
+  defined_in: info.elc
   builtin_c: false
   interactive_spec: 'CFind documentation for command: '
   desc: Go to the Info node in the Emacs manual for command COMMAND.
@@ -135,7 +135,7 @@ items:
 - id: emacs.command.add-change-log-entry-other-window
   surface: command
   name: add-change-log-entry-other-window
-  defined_in: add-log
+  defined_in: add-log.elc
   builtin_c: false
   interactive_spec: ''
   desc: Find change log file in other window and add entry and item.
@@ -201,7 +201,7 @@ items:
 - id: emacs.command.apropos-command
   surface: command
   name: apropos-command
-  defined_in: apropos
+  defined_in: apropos.elc
   builtin_c: false
   interactive_spec: ''
   desc: Show commands (interactively callable functions) that match PATTERN.
@@ -216,6 +216,17 @@ items:
   builtin_c: false
   interactive_spec: ''
   desc: Show symbols whose documentation contains matches for PATTERN.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.apropos-user-option
+  surface: command
+  name: apropos-user-option
+  defined_in: apropos.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show user options that match PATTERN.
   derived_from: key_binding
   attestation:
   - R
@@ -930,7 +941,7 @@ items:
 - id: emacs.command.browse-url-of-dired-file
   surface: command
   name: browse-url-of-dired-file
-  defined_in: browse-url
+  defined_in: browse-url.elc
   builtin_c: false
   interactive_spec: P
   desc: In Dired, ask a WWW browser to display the file named on this line.
@@ -949,10 +960,21 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.buffer-to-register
+  surface: command
+  name: buffer-to-register
+  defined_in: register.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Store reference to BUFFER in REGISTER.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.calc-dispatch
   surface: command
   name: calc-dispatch
-  defined_in: calc
+  defined_in: calc.elc
   builtin_c: false
   interactive_spec: ''
   desc: Invoke the GNU Emacs Calculator.  See M-x calc-dispatch-help for details.
@@ -1218,7 +1240,7 @@ items:
 - id: emacs.command.dabbrev-completion
   surface: command
   name: dabbrev-completion
-  defined_in: dabbrev
+  defined_in: dabbrev.elc
   builtin_c: false
   interactive_spec: '*P'
   desc: Completion on current word.
@@ -1417,7 +1439,7 @@ items:
 - id: emacs.command.describe-coding-system
   surface: command
   name: describe-coding-system
-  defined_in: mule-diag
+  defined_in: mule-diag.elc
   builtin_c: false
   interactive_spec: 'zDescribe coding system (default current choices): '
   desc: Display information about CODING-SYSTEM.
@@ -1428,7 +1450,7 @@ items:
 - id: emacs.command.describe-command
   surface: command
   name: describe-command
-  defined_in: help-fns
+  defined_in: help-fns.elc
   builtin_c: false
   interactive_spec: ''
   desc: Display the full documentation of COMMAND (a symbol).
@@ -1549,7 +1571,7 @@ items:
 - id: emacs.command.describe-package
   surface: command
   name: describe-package
-  defined_in: package
+  defined_in: package.elc
   builtin_c: false
   interactive_spec: ''
   desc: Display the full documentation of PACKAGE (a symbol).
@@ -1590,6 +1612,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.diff
+  surface: command
+  name: diff
+  defined_in: diff.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Find and display the differences between OLD and NEW files.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.digit-argument
   surface: command
   name: digit-argument
@@ -1626,7 +1659,7 @@ items:
 - id: emacs.command.dired-clean-directory
   surface: command
   name: dired-clean-directory
-  defined_in: dired-aux
+  defined_in: dired-aux.elc
   builtin_c: false
   interactive_spec: P
   desc: Flag numerical backups for deletion.
@@ -2580,7 +2613,7 @@ items:
   name: dired-undo
   defined_in: dired.elc
   builtin_c: false
-  interactive_spec: ''
+  interactive_spec: P
   desc: Undo in a Dired buffer.
   derived_from: key_binding
   attestation:
@@ -2699,7 +2732,7 @@ items:
 - id: emacs.command.display-local-help
   surface: command
   name: display-local-help
-  defined_in: help-at-pt
+  defined_in: help-at-pt.elc
   builtin_c: false
   interactive_spec: ''
   desc: Display in the echo area ‘kbd-help’ or ‘help-echo’ text at point.
@@ -2756,7 +2789,7 @@ items:
 - id: emacs.command.edit-kbd-macro
   surface: command
   name: edit-kbd-macro
-  defined_in: edmacro
+  defined_in: edmacro.elc
   builtin_c: false
   interactive_spec: ''
   desc: Edit a keyboard macro.
@@ -2789,7 +2822,7 @@ items:
 - id: emacs.command.emoji-describe
   surface: command
   name: emoji-describe
-  defined_in: emoji
+  defined_in: emoji.elc
   builtin_c: false
   interactive_spec: ''
   desc: Display the name of the grapheme cluster composed from GLYPH.
@@ -2814,7 +2847,7 @@ items:
   defined_in: emoji.elc
   builtin_c: false
   interactive_spec: ''
-  desc: List emojis and allow selecting and inserting one of them.
+  desc: List Emoji and allow selecting and inserting one of them.
   derived_from: key_binding
   attestation:
   - R
@@ -2945,7 +2978,7 @@ items:
 - id: emacs.command.epa-dired-do-decrypt
   surface: command
   name: epa-dired-do-decrypt
-  defined_in: epa-dired
+  defined_in: epa-dired.elc
   builtin_c: false
   interactive_spec: ''
   desc: Decrypt marked files.
@@ -3011,7 +3044,7 @@ items:
 - id: emacs.command.eww-search-words
   surface: command
   name: eww-search-words
-  defined_in: eww
+  defined_in: eww.elc
   builtin_c: false
   interactive_spec: ''
   desc: Search the web for the text in the region.
@@ -3099,7 +3132,7 @@ items:
 - id: emacs.command.expand-jump-to-next-slot
   surface: command
   name: expand-jump-to-next-slot
-  defined_in: expand
+  defined_in: expand.elc
   builtin_c: false
   interactive_spec: ''
   desc: Move the cursor to the next slot in the last abbrev expansion.
@@ -3121,10 +3154,21 @@ items:
 - id: emacs.command.file-cache-minibuffer-complete
   surface: command
   name: file-cache-minibuffer-complete
-  defined_in: filecache
+  defined_in: filecache.elc
   builtin_c: false
   interactive_spec: P
   desc: Complete a filename in the minibuffer using a preloaded cache.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.file-to-register
+  surface: command
+  name: file-to-register
+  defined_in: register.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Insert FILE-NAME into REGISTER.
   derived_from: key_binding
   attestation:
   - R
@@ -3242,7 +3286,7 @@ items:
 - id: emacs.command.finder-by-keyword
   surface: command
   name: finder-by-keyword
-  defined_in: finder
+  defined_in: finder.elc
   builtin_c: false
   interactive_spec: ''
   desc: Find packages matching a given keyword.
@@ -3371,7 +3415,7 @@ items:
 - id: emacs.command.frameset-to-register
   surface: command
   name: frameset-to-register
-  defined_in: frameset
+  defined_in: frameset.elc
   builtin_c: false
   interactive_spec: ''
   desc: Store the current frameset in register REGISTER.
@@ -3382,7 +3426,7 @@ items:
 - id: emacs.command.global-text-scale-adjust
   surface: command
   name: global-text-scale-adjust
-  defined_in: face-remap
+  defined_in: face-remap.elc
   builtin_c: false
   interactive_spec: p
   desc: Change (a.k.a. "adjust") the font size of all faces by INCREMENT.
@@ -3514,7 +3558,7 @@ items:
 - id: emacs.command.help-with-tutorial
   surface: command
   name: help-with-tutorial
-  defined_in: tutorial
+  defined_in: tutorial.elc
   builtin_c: false
   interactive_spec: P
   desc: Select the Emacs learn-by-doing tutorial.
@@ -3525,7 +3569,7 @@ items:
 - id: emacs.command.hi-lock-find-patterns
   surface: command
   name: hi-lock-find-patterns
-  defined_in: hi-lock
+  defined_in: hi-lock.elc
   builtin_c: false
   interactive_spec: ''
   desc: Add patterns from the current buffer to the list of hi-lock patterns.
@@ -3613,7 +3657,7 @@ items:
 - id: emacs.command.image-dired-delete-tag
   surface: command
   name: image-dired-delete-tag
-  defined_in: image-dired-tags
+  defined_in: image-dired-tags.elc
   builtin_c: false
   interactive_spec: P
   desc: Remove tag for selected file(s).
@@ -3635,7 +3679,7 @@ items:
 - id: emacs.command.image-dired-dired-display-external
   surface: command
   name: image-dired-dired-display-external
-  defined_in: image-dired-dired
+  defined_in: image-dired-dired.elc
   builtin_c: false
   interactive_spec: ''
   desc: Display file at point using an external viewer.
@@ -3745,7 +3789,7 @@ items:
 - id: emacs.command.imenu
   surface: command
   name: imenu
-  defined_in: imenu
+  defined_in: imenu.elc
   builtin_c: false
   interactive_spec: ''
   desc: Jump to a place in the buffer chosen using a buffer menu or mouse menu.
@@ -3883,7 +3927,7 @@ items:
 - id: emacs.command.info-lookup-symbol
   surface: command
   name: info-lookup-symbol
-  defined_in: info-look
+  defined_in: info-look.elc
   builtin_c: false
   interactive_spec: ''
   desc: Look up and display documentation of SYMBOL in the relevant Info manual.
@@ -4456,7 +4500,7 @@ items:
 - id: emacs.command.isearch-toggle-input-method
   surface: command
   name: isearch-toggle-input-method
-  defined_in: isearch-x
+  defined_in: isearch-x.elc
   builtin_c: false
   interactive_spec: ''
   desc: Toggle input method in interactive search.
@@ -4654,7 +4698,7 @@ items:
 - id: emacs.command.ispell-word
   surface: command
   name: ispell-word
-  defined_in: ispell
+  defined_in: ispell.elc
   builtin_c: false
   interactive_spec: ''
   desc: Check spelling of word under or before the cursor.
@@ -4946,19 +4990,8 @@ items:
   name: kmacro-end-and-call-macro
   defined_in: kmacro.elc
   builtin_c: false
-  interactive_spec: p
+  interactive_spec: ''
   desc: Call last keyboard macro, ending it first if currently being defined.
-  derived_from: key_binding
-  attestation:
-  - R
-  status: unclassified
-- id: emacs.command.kmacro-end-call-mouse
-  surface: command
-  name: kmacro-end-call-mouse
-  defined_in: kmacro.elc
-  builtin_c: false
-  interactive_spec: e
-  desc: Move point to the position clicked with the mouse and call last kbd macro.
   derived_from: key_binding
   attestation:
   - R
@@ -5406,7 +5439,7 @@ items:
 - id: emacs.command.mail
   surface: command
   name: mail
-  defined_in: sendmail
+  defined_in: sendmail.elc
   builtin_c: false
   interactive_spec: P
   desc: Edit a message to be sent.  Prefix arg means resume editing (don’t erase).
@@ -5570,7 +5603,7 @@ items:
   name: minibuffer-complete-and-exit
   defined_in: minibuffer.elc
   builtin_c: false
-  interactive_spec: ''
+  interactive_spec: P
   desc: Exit if the minibuffer contains a valid completion.
   derived_from: key_binding
   attestation:
@@ -5605,6 +5638,17 @@ items:
   builtin_c: false
   interactive_spec: ''
   desc: Complete the minibuffer contents at most a single word.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.minibuffer-completion-exit
+  surface: command
+  name: minibuffer-completion-exit
+  defined_in: minibuffer.elc
+  builtin_c: false
+  interactive_spec: P
+  desc: Call ‘exit-minibuffer’, inserting the selected completion first if any.
   derived_from: key_binding
   attestation:
   - R
@@ -6198,13 +6242,24 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.next-column-completion
+  surface: command
+  name: next-column-completion
+  defined_in: simple.elc
+  builtin_c: false
+  interactive_spec: p
+  desc: Move to the item in the next column of the completions buffer.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.next-completion
   surface: command
   name: next-completion
   defined_in: simple.elc
   builtin_c: false
   interactive_spec: p
-  desc: Move to the next item in the completions buffer.
+  desc: Move according to ‘completions-format’ to next completion item.
   derived_from: key_binding
   attestation:
   - R
@@ -6463,7 +6518,7 @@ items:
   defined_in: frame.elc
   builtin_c: false
   interactive_spec: p
-  desc: Select the ARGth different visible frame on current display, and raise it.
+  desc: Select the ARGth visible frame on current display, and raise it.
   derived_from: key_binding
   attestation:
   - R
@@ -6501,6 +6556,21 @@ items:
 
     p'
   desc: Select another window in cyclic ordering of windows.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.other-window-backward
+  surface: command
+  name: other-window-backward
+  defined_in: window.elc
+  builtin_c: false
+  interactive_spec: 'p
+
+    i
+
+    p'
+  desc: Select another window in the reverse cyclic ordering of windows.
   derived_from: key_binding
   attestation:
   - R
@@ -6562,13 +6632,24 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.previous-column-completion
+  surface: command
+  name: previous-column-completion
+  defined_in: simple.elc
+  builtin_c: false
+  interactive_spec: p
+  desc: Move to the item in the previous column of the completions buffer.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.previous-completion
   surface: command
   name: previous-completion
   defined_in: simple.elc
   builtin_c: false
   interactive_spec: p
-  desc: Move to the previous item in the completions buffer.
+  desc: Move according to ‘completions-format’ to previous completion item.
   derived_from: key_binding
   attestation:
   - R
@@ -6872,6 +6953,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.project-save-some-buffers
+  surface: command
+  name: project-save-some-buffers
+  defined_in: project.elc
+  builtin_c: false
+  interactive_spec: P
+  desc: Like ‘save-some-buffers’, but only for this project’s buffers.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.project-shell
   surface: command
   name: project-shell
@@ -6945,6 +7037,17 @@ items:
   builtin_c: false
   interactive_spec: ''
   desc: Replace some occurrences of FROM-STRING with TO-STRING.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.query-replace-read-transpose-from-to
+  surface: command
+  name: query-replace-read-transpose-from-to
+  defined_in: replace.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Transpose the FROM and TO arguments of a ‘query-replace’ operation.
   derived_from: key_binding
   attestation:
   - R
@@ -7207,7 +7310,7 @@ items:
 - id: emacs.command.repeat
   surface: command
   name: repeat
-  defined_in: repeat
+  defined_in: repeat.elc
   builtin_c: false
   interactive_spec: P
   desc: Repeat most recently executed command.
@@ -7229,7 +7332,7 @@ items:
 - id: emacs.command.reposition-window
   surface: command
   name: reposition-window
-  defined_in: reposition
+  defined_in: reposition.elc
   builtin_c: false
   interactive_spec: 'P
 
@@ -7290,6 +7393,28 @@ items:
   builtin_c: false
   interactive_spec: ^p
   desc: Move point N words to the right (to the left if N is negative).
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.rotate-windows
+  surface: command
+  name: rotate-windows
+  defined_in: window-x.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Rotate child windows of WINDOW in cyclic ordering.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.rotate-windows-back
+  surface: command
+  name: rotate-windows-back
+  defined_in: window-x.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Rotate child windows of WINDOW backwards in cyclic ordering.
   derived_from: key_binding
   attestation:
   - R
@@ -7376,7 +7501,7 @@ items:
 - id: emacs.command.scroll-lock-mode
   surface: command
   name: scroll-lock-mode
-  defined_in: scroll-lock
+  defined_in: scroll-lock.elc
   builtin_c: false
   interactive_spec: ''
   desc: Buffer-local minor mode for pager-like scrolling.
@@ -7534,7 +7659,7 @@ items:
   name: set-fill-prefix
   defined_in: fill.elc
   builtin_c: false
-  interactive_spec: ''
+  interactive_spec: P
   desc: Set the fill prefix to the current line up to point.
   derived_from: key_binding
   attestation:
@@ -8104,7 +8229,7 @@ items:
 - id: emacs.command.tmm-menubar
   surface: command
   name: tmm-menubar
-  defined_in: tmm
+  defined_in: tmm.elc
   builtin_c: false
   interactive_spec: ''
   desc: Text-mode emulation of looking and choosing from a menubar.
@@ -8180,6 +8305,28 @@ items:
 
     p'
   desc: Toggle whether WINDOW is dedicated to its current buffer.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.tramp-dired-find-file-with-sudo
+  surface: command
+  name: tramp-dired-find-file-with-sudo
+  defined_in: tramp-cmds.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Visit the file or directory named on this line as the superuser.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.tramp-revert-buffer-with-sudo
+  surface: command
+  name: tramp-revert-buffer-with-sudo
+  defined_in: tramp-cmds.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Visit the current file again with superuser, or root, permissions.
   derived_from: key_binding
   attestation:
   - R
@@ -8340,13 +8487,46 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.vc-add-working-tree
+  surface: command
+  name: vc-add-working-tree
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Create working tree DIRECTORY with same backing repository as this tree.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.vc-annotate
   surface: command
   name: vc-annotate
-  defined_in: vc-annotate
+  defined_in: vc-annotate.elc
   builtin_c: false
   interactive_spec: ''
   desc: Display the edit history of the current FILE using colors.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-apply-root-to-other-working-tree
+  surface: command
+  name: vc-apply-root-to-other-working-tree
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Apply all local changes in this working tree to the tree under DIRECTORY.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-apply-to-other-working-tree
+  surface: command
+  name: vc-apply-to-other-working-tree
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Apply VC fileset’s local changes to working tree under DIRECTORY.
   derived_from: key_binding
   attestation:
   - R
@@ -8384,6 +8564,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.vc-delete-working-tree
+  surface: command
+  name: vc-delete-working-tree
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Delete working tree DIRECTORY with same backing repository as this tree.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.vc-diff
   surface: command
   name: vc-diff
@@ -8406,10 +8597,43 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.vc-diff-outgoing-and-edited
+  surface: command
+  name: vc-diff-outgoing-and-edited
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Report combined diff of outgoing and uncommitted changes to VC fileset.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-diff-remote-unintegrated
+  surface: command
+  name: vc-diff-remote-unintegrated
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show remote fileset changes since merge base with UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-diff-unintegrated
+  surface: command
+  name: vc-diff-unintegrated
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Report changes to VC fileset since the merge base with UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.vc-dir
   surface: command
   name: vc-dir
-  defined_in: vc-dir
+  defined_in: vc-dir.elc
   builtin_c: false
   interactive_spec: ''
   desc: Show the VC status for "interesting" files in and below DIR.
@@ -8439,13 +8663,13 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.command.vc-log-incoming
+- id: emacs.command.vc-kill-other-working-tree-buffers
   surface: command
-  name: vc-log-incoming
+  name: vc-kill-other-working-tree-buffers
   defined_in: vc.elc
   builtin_c: false
   interactive_spec: ''
-  desc: Show log of changes that will be received with pull from REMOTE-LOCATION.
+  desc: Kill buffers visiting versions of this file in other working trees.
   derived_from: key_binding
   attestation:
   - R
@@ -8461,13 +8685,24 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.command.vc-log-outgoing
+- id: emacs.command.vc-log-remote-unintegrated
   surface: command
-  name: vc-log-outgoing
+  name: vc-log-remote-unintegrated
   defined_in: vc.elc
   builtin_c: false
   interactive_spec: ''
-  desc: Show log of changes that will be sent with a push operation to REMOTE-LOCATION.
+  desc: Show remote log for VC fileset since merge base with UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-log-unintegrated
+  surface: command
+  name: vc-log-unintegrated
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show log for the VC fileset since the merge base with UPSTREAM-LOCATION.
   derived_from: key_binding
   attestation:
   - R
@@ -8483,6 +8718,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.vc-move-working-tree
+  surface: command
+  name: vc-move-working-tree
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Relocate a working tree from FROM to TO, two directory file names.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.vc-next-action
   surface: command
   name: vc-next-action
@@ -8494,13 +8740,13 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.command.vc-print-branch-log
+- id: emacs.command.vc-print-fileset-branch-log
   surface: command
-  name: vc-print-branch-log
+  name: vc-print-fileset-branch-log
   defined_in: vc.elc
   builtin_c: false
   interactive_spec: ''
-  desc: Show the change log for BRANCH in another window.
+  desc: Show log of VC changes on BRANCH, limited to the current fileset.
   derived_from: key_binding
   attestation:
   - R
@@ -8512,6 +8758,17 @@ items:
   builtin_c: false
   interactive_spec: ''
   desc: Show in another window the VC change history of the current fileset.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-print-root-branch-log
+  surface: command
+  name: vc-print-root-branch-log
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show root log of VC changes on BRANCH in another window.
   derived_from: key_binding
   attestation:
   - R
@@ -8560,6 +8817,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.vc-rename-file
+  surface: command
+  name: vc-rename-file
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Rename file OLD to NEW in both working tree and repository.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.vc-retrieve-tag
   surface: command
   name: vc-retrieve-tag
@@ -8604,6 +8872,83 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.vc-root-diff-outgoing-and-edited
+  surface: command
+  name: vc-root-diff-outgoing-and-edited
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Report combined diff of all outgoing and uncommitted changes.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-root-diff-remote-unintegrated
+  surface: command
+  name: vc-root-diff-remote-unintegrated
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Report diff of remote changes since merge base with UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-root-diff-unintegrated
+  surface: command
+  name: vc-root-diff-unintegrated
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Report diff of all changes since the merge base with UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-root-log-incoming
+  surface: command
+  name: vc-root-log-incoming
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show log of changes that will be received with pull from UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-root-log-outgoing
+  surface: command
+  name: vc-root-log-outgoing
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show log of changes that will be sent with a push to UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-root-log-remote-unintegrated
+  surface: command
+  name: vc-root-log-remote-unintegrated
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show log of remote revisions since merge base with UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-root-log-unintegrated
+  surface: command
+  name: vc-root-log-unintegrated
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show log of revisions since the merge base with UPSTREAM-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.vc-switch-branch
   surface: command
   name: vc-switch-branch
@@ -8611,6 +8956,17 @@ items:
   builtin_c: false
   interactive_spec: ''
   desc: Switch to the branch NAME in the directory DIR.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-switch-working-tree
+  surface: command
+  name: vc-switch-working-tree
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Switch to the version of this file in working tree under DIRECTORY.
   derived_from: key_binding
   attestation:
   - R
@@ -8633,6 +8989,17 @@ items:
   builtin_c: false
   interactive_spec: ''
   desc: Find change log file and add entries from recent version control logs.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.vc-working-tree-switch-project
+  surface: command
+  name: vc-working-tree-switch-project
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Like C-x p p but limited to projects with the same backing repository.
   derived_from: key_binding
   attestation:
   - R
@@ -8730,7 +9097,7 @@ items:
   name: view-lossage
   defined_in: help.elc
   builtin_c: false
-  interactive_spec: ''
+  interactive_spec: P
   desc: Display last few input keystrokes and the commands run.
   derived_from: key_binding
   attestation:
@@ -8791,6 +9158,61 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.window-layout-flip-leftright
+  surface: command
+  name: window-layout-flip-leftright
+  defined_in: window-x.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Flip WINDOW’s child windows horizontally.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.window-layout-flip-topdown
+  surface: command
+  name: window-layout-flip-topdown
+  defined_in: window-x.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Flip WINDOW’s child windows vertically.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.window-layout-rotate-anticlockwise
+  surface: command
+  name: window-layout-rotate-anticlockwise
+  defined_in: window-x.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Rotate layout of WINDOW’s child windows counterclockwise by 90 degrees.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.window-layout-rotate-clockwise
+  surface: command
+  name: window-layout-rotate-clockwise
+  defined_in: window-x.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Rotate layout of WINDOW’s child windows clockwise by 90 degrees.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.command.window-layout-transpose
+  surface: command
+  name: window-layout-transpose
+  defined_in: window-x.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Transpose child windows of WINDOW.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.command.window-toggle-side-windows
   surface: command
   name: window-toggle-side-windows
@@ -8816,7 +9238,7 @@ items:
 - id: emacs.command.xref-find-apropos
   surface: command
   name: xref-find-apropos
-  defined_in: xref
+  defined_in: xref.elc
   builtin_c: false
   interactive_spec: ''
   desc: Find all meaningful symbols that match PATTERN.
@@ -8967,3 +9389,51 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.command.kmacro-end-call-mouse
+  surface: command
+  name: kmacro-end-call-mouse
+  defined_in: kmacro.elc
+  builtin_c: false
+  interactive_spec: e
+  desc: Move point to the position clicked with the mouse and call last kbd macro.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+  upstream_gone: true
+- id: emacs.command.vc-log-incoming
+  surface: command
+  name: vc-log-incoming
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show log of changes that will be received with pull from REMOTE-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+  upstream_gone: true
+- id: emacs.command.vc-log-outgoing
+  surface: command
+  name: vc-log-outgoing
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show log of changes that will be sent with a push operation to REMOTE-LOCATION.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+  upstream_gone: true
+- id: emacs.command.vc-print-branch-log
+  surface: command
+  name: vc-print-branch-log
+  defined_in: vc.elc
+  builtin_c: false
+  interactive_spec: ''
+  desc: Show the change log for BRANCH in another window.
+  derived_from: key_binding
+  attestation:
+  - R
+  status: unclassified
+  upstream_gone: true

@@ -1,6 +1,6 @@
 # GENERATED — do not hand-edit item enumeration. Regenerate:
 #   python3 tools/parity/extract_emacs.py
-# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
 # enumeration is not. `status: unclassified` is legitimate and expected — discovery is
 # strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
 # This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
@@ -10,10 +10,10 @@ version: 1
 generated: true
 generator: tools/parity/extract_emacs.py
 upstream: emacs
-revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
-version_label: emacs-30.2
+revision: a360712c9d272d950d8d8255ef74570f7e90b7d9
+version_label: emacs-31.1
 derived_from: runtime-binary
-binary_version: '30.2'
+binary_version: '31.1'
 binary_identity: unverified-build
 baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
   project)
@@ -31,8 +31,8 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL
 - id: emacs.keymaptier.02.overriding-local-map
   surface: keymap_tier
   rank: 2
@@ -44,8 +44,8 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL
 - id: emacs.keymaptier.03.keymap
   surface: keymap_tier
   rank: 3
@@ -57,8 +57,8 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL
 - id: emacs.keymaptier.04.emulation-mode-map-alists
   surface: keymap_tier
   rank: 4
@@ -70,8 +70,8 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL
 - id: emacs.keymaptier.05.minor-mode-overriding-map-alist
   surface: keymap_tier
   rank: 5
@@ -83,8 +83,8 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL
 - id: emacs.keymaptier.06.minor-mode-map-alist
   surface: keymap_tier
   rank: 6
@@ -96,8 +96,8 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL
 - id: emacs.keymaptier.07.local-map
   surface: keymap_tier
   rank: 7
@@ -109,8 +109,8 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL
 - id: emacs.keymaptier.08.current-local-map
   surface: keymap_tier
   rank: 8
@@ -122,8 +122,8 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL
 - id: emacs.keymaptier.09.global-map
   surface: keymap_tier
   rank: 9
@@ -135,5 +135,5 @@ items:
   - D
   - R
   status: targeted
-  family: FAM-KEYMAP-MODEL
   ruse: contracts/keymap-layers.yaml#profiles.emacs-style
+  family: FAM-KEYMAP-MODEL

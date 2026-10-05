@@ -1,6 +1,6 @@
 # GENERATED — do not hand-edit item enumeration. Regenerate:
 #   python3 tools/parity/extract_emacs.py
-# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
 # enumeration is not. `status: unclassified` is legitimate and expected — discovery is
 # strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
 # This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
@@ -10,10 +10,10 @@ version: 1
 generated: true
 generator: tools/parity/extract_emacs.py
 upstream: emacs
-revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
-version_label: emacs-30.2
+revision: a360712c9d272d950d8d8255ef74570f7e90b7d9
+version_label: emacs-31.1
 derived_from: runtime-binary
-binary_version: '30.2'
+binary_version: '31.1'
 binary_identity: unverified-build
 baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
   project)
@@ -160,6 +160,17 @@ items:
   event_class: key
   namespace_group: major-mode
   binds: bookmark-bmenu-search
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.bookmark-bmenu-mode-map.j
+  surface: key_binding
+  keymap: bookmark-bmenu-mode-map
+  key: J
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: bookmark-jump
   attestation:
   - R
   status: unclassified
@@ -449,7 +460,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.bookmark-bmenu-mode-map.j
+- id: emacs.key.bookmark-bmenu-mode-map.j~2
   surface: key_binding
   keymap: bookmark-bmenu-mode-map
   key: j
@@ -1446,7 +1457,7 @@ items:
   kind: command
   event_class: key
   namespace_group: major-mode
-  binds: next-completion
+  binds: next-column-completion
   attestation:
   - R
   status: unclassified
@@ -1457,7 +1468,7 @@ items:
   kind: command
   event_class: key
   namespace_group: major-mode
-  binds: previous-completion
+  binds: previous-column-completion
   attestation:
   - R
   status: unclassified
@@ -3584,6 +3595,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.ctl-x-map.o
+  surface: key_binding
+  keymap: ctl-x-map
+  key: O
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: other-window-backward
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.ctl-x-map.x~13
   surface: key_binding
   keymap: ctl-x-map
@@ -3760,7 +3782,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.ctl-x-map.o
+- id: emacs.key.ctl-x-map.o~2
   surface: key_binding
   keymap: ctl-x-map
   key: o
@@ -3837,6 +3859,94 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.ctl-x-map.v-w-a
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v w A
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-apply-root-to-other-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-w-a~2
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v w a
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-apply-to-other-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-w-r
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v w R
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-move-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-w-x
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v w x
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-delete-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-w-s
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v w s
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-working-tree-switch-project
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-w-k
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v w k
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-kill-other-working-tree-buffers
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-w-w
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v w w
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-switch-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-w-c
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v w c
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-add-working-tree
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.ctl-x-map.v
   surface: key_binding
   keymap: ctl-x-map
@@ -3856,6 +3966,17 @@ items:
   event_class: key
   namespace_group: core
   binds: vc-delete-file
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-r
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v R
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-rename-file
   attestation:
   - R
   status: unclassified
@@ -3925,6 +4046,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.ctl-x-map.v~5
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v @
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-revert
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.ctl-x-map.v-u
   surface: key_binding
   keymap: ctl-x-map
@@ -3947,7 +4079,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.ctl-x-map.v-r
+- id: emacs.key.ctl-x-map.v-r~2
   surface: key_binding
   keymap: ctl-x-map
   key: v r
@@ -3966,6 +4098,127 @@ items:
   event_class: key
   namespace_group: core
   binds: vc-merge
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-e-d
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v E D
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-diff-outgoing-and-edited
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-e
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v E =
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-diff-outgoing-and-edited
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-e-l
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v E L
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-log-outgoing
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-t-r-d
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v T R D
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-diff-remote-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-t-r
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v T R =
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-diff-remote-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-t-r-l
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v T R L
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-log-remote-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-t-r-l~2
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v T R l
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-log-remote-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-t-d
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v T D
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-diff-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-t
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v T =
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-diff-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-t-l
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v T L
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-log-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-t-l~2
+  surface: key_binding
+  keymap: ctl-x-map
+  key: v T l
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-log-unintegrated
   attestation:
   - R
   status: unclassified
@@ -3998,7 +4251,7 @@ items:
   kind: command
   event_class: key
   namespace_group: core
-  binds: vc-log-outgoing
+  binds: vc-root-log-outgoing
   attestation:
   - R
   status: unclassified
@@ -4009,7 +4262,7 @@ items:
   kind: command
   event_class: key
   namespace_group: core
-  binds: vc-log-incoming
+  binds: vc-root-log-incoming
   attestation:
   - R
   status: unclassified
@@ -4104,11 +4357,22 @@ items:
 - id: emacs.key.ctl-x-map.v-b-l
   surface: key_binding
   keymap: ctl-x-map
+  key: v b L
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-print-root-branch-log
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-map.v-b-l~2
+  surface: key_binding
+  keymap: ctl-x-map
   key: v b l
   kind: command
   event_class: key
   namespace_group: core
-  binds: vc-print-branch-log
+  binds: vc-print-fileset-branch-log
   attestation:
   - R
   status: unclassified
@@ -4354,7 +4618,29 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.ctl-x-r-map.b~2
+  surface: key_binding
+  keymap: ctl-x-r-map
+  key: B
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: buffer-to-register
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.ctl-x-r-map.f
+  surface: key_binding
+  keymap: ctl-x-r-map
+  key: F
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: file-to-register
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-r-map.f~2
   surface: key_binding
   keymap: ctl-x-r-map
   key: f
@@ -4582,6 +4868,17 @@ items:
   event_class: key
   namespace_group: core
   binds: clear-rectangle
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.ctl-x-x-map.x
+  surface: key_binding
+  keymap: ctl-x-x-map
+  key: '@'
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: tramp-revert-buffer-with-sudo
   attestation:
   - R
   status: unclassified
@@ -5465,6 +5762,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.dired-mode-map.x~19
+  surface: key_binding
+  keymap: dired-mode-map
+  key: '@'
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: tramp-dired-find-file-with-sudo
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.dired-mode-map.a
   surface: key_binding
   keymap: dired-mode-map
@@ -5674,7 +5982,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.dired-mode-map.x~19
+- id: emacs.key.dired-mode-map.x~20
   surface: key_binding
   keymap: dired-mode-map
   key: X
@@ -5707,7 +6015,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.dired-mode-map.x~20
+- id: emacs.key.dired-mode-map.x~21
   surface: key_binding
   keymap: dired-mode-map
   key: ^
@@ -5916,7 +6224,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.dired-mode-map.x~21
+- id: emacs.key.dired-mode-map.x~22
   surface: key_binding
   keymap: dired-mode-map
   key: x
@@ -5938,7 +6246,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.dired-mode-map.x~22
+- id: emacs.key.dired-mode-map.x~23
   surface: key_binding
   keymap: dired-mode-map
   key: '~'
@@ -5979,17 +6287,6 @@ items:
   event_class: remap
   namespace_group: major-mode
   binds: dired-vc-next-action
-  attestation:
-  - R
-  status: unclassified
-- id: emacs.key.dired-mode-map.remap-advertised-undo
-  surface: key_binding
-  keymap: dired-mode-map
-  key: <remap> <advertised-undo>
-  kind: command
-  event_class: remap
-  namespace_group: major-mode
-  binds: dired-undo
   attestation:
   - R
   status: unclassified
@@ -6081,7 +6378,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.dired-mode-map.x~23
+- id: emacs.key.dired-mode-map.x~24
   surface: key_binding
   keymap: dired-mode-map
   key: <
@@ -6092,7 +6389,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.dired-mode-map.x~24
+- id: emacs.key.dired-mode-map.x~25
   surface: key_binding
   keymap: dired-mode-map
   key: '>'
@@ -6114,7 +6411,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.dired-mode-map.x~25
+- id: emacs.key.dired-mode-map.x~26
   surface: key_binding
   keymap: dired-mode-map
   key: '?'
@@ -6279,7 +6576,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.dired-mode-map.x~26
+- id: emacs.key.dired-mode-map.x~27
   surface: key_binding
   keymap: dired-mode-map
   key: '-'
@@ -7860,6 +8157,17 @@ items:
   event_class: key
   namespace_group: core
   binds: info
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-h-u
+  surface: key_binding
+  keymap: global-map
+  key: C-h u
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: apropos-user-option
   attestation:
   - R
   status: unclassified
@@ -9843,6 +10151,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.global-map.c-x-o
+  surface: key_binding
+  keymap: global-map
+  key: C-x O
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: other-window-backward
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.global-map.c-x~13
   surface: key_binding
   keymap: global-map
@@ -10019,7 +10338,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.global-map.c-x-o
+- id: emacs.key.global-map.c-x-o~2
   surface: key_binding
   keymap: global-map
   key: C-x o
@@ -10096,6 +10415,94 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.global-map.c-x-v-w-a
+  surface: key_binding
+  keymap: global-map
+  key: C-x v w A
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-apply-root-to-other-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-w-a~2
+  surface: key_binding
+  keymap: global-map
+  key: C-x v w a
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-apply-to-other-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-w-r
+  surface: key_binding
+  keymap: global-map
+  key: C-x v w R
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-move-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-w-x
+  surface: key_binding
+  keymap: global-map
+  key: C-x v w x
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-delete-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-w-s
+  surface: key_binding
+  keymap: global-map
+  key: C-x v w s
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-working-tree-switch-project
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-w-k
+  surface: key_binding
+  keymap: global-map
+  key: C-x v w k
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-kill-other-working-tree-buffers
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-w-w
+  surface: key_binding
+  keymap: global-map
+  key: C-x v w w
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-switch-working-tree
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-w-c
+  surface: key_binding
+  keymap: global-map
+  key: C-x v w c
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-add-working-tree
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.global-map.c-x-v
   surface: key_binding
   keymap: global-map
@@ -10115,6 +10522,17 @@ items:
   event_class: key
   namespace_group: core
   binds: vc-delete-file
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-r
+  surface: key_binding
+  keymap: global-map
+  key: C-x v R
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-rename-file
   attestation:
   - R
   status: unclassified
@@ -10184,6 +10602,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.global-map.c-x-v~5
+  surface: key_binding
+  keymap: global-map
+  key: C-x v @
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-revert
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.global-map.c-x-v-u
   surface: key_binding
   keymap: global-map
@@ -10206,7 +10635,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.global-map.c-x-v-r
+- id: emacs.key.global-map.c-x-v-r~2
   surface: key_binding
   keymap: global-map
   key: C-x v r
@@ -10225,6 +10654,127 @@ items:
   event_class: key
   namespace_group: core
   binds: vc-merge
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-e-d
+  surface: key_binding
+  keymap: global-map
+  key: C-x v E D
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-diff-outgoing-and-edited
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-e
+  surface: key_binding
+  keymap: global-map
+  key: C-x v E =
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-diff-outgoing-and-edited
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-e-l
+  surface: key_binding
+  keymap: global-map
+  key: C-x v E L
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-log-outgoing
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-t-r-d
+  surface: key_binding
+  keymap: global-map
+  key: C-x v T R D
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-diff-remote-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-t-r
+  surface: key_binding
+  keymap: global-map
+  key: C-x v T R =
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-diff-remote-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-t-r-l
+  surface: key_binding
+  keymap: global-map
+  key: C-x v T R L
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-log-remote-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-t-r-l~2
+  surface: key_binding
+  keymap: global-map
+  key: C-x v T R l
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-log-remote-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-t-d
+  surface: key_binding
+  keymap: global-map
+  key: C-x v T D
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-diff-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-t
+  surface: key_binding
+  keymap: global-map
+  key: C-x v T =
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-diff-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-t-l
+  surface: key_binding
+  keymap: global-map
+  key: C-x v T L
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-root-log-unintegrated
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-t-l~2
+  surface: key_binding
+  keymap: global-map
+  key: C-x v T l
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-log-unintegrated
   attestation:
   - R
   status: unclassified
@@ -10257,7 +10807,7 @@ items:
   kind: command
   event_class: key
   namespace_group: core
-  binds: vc-log-outgoing
+  binds: vc-root-log-outgoing
   attestation:
   - R
   status: unclassified
@@ -10268,7 +10818,7 @@ items:
   kind: command
   event_class: key
   namespace_group: core
-  binds: vc-log-incoming
+  binds: vc-root-log-incoming
   attestation:
   - R
   status: unclassified
@@ -10363,11 +10913,22 @@ items:
 - id: emacs.key.global-map.c-x-v-b-l
   surface: key_binding
   keymap: global-map
+  key: C-x v b L
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: vc-print-root-branch-log
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.c-x-v-b-l~2
+  surface: key_binding
+  keymap: global-map
   key: C-x v b l
   kind: command
   event_class: key
   namespace_group: core
-  binds: vc-print-branch-log
+  binds: vc-print-fileset-branch-log
   attestation:
   - R
   status: unclassified
@@ -11885,7 +12446,7 @@ items:
   kind: command
   event_class: mouse
   namespace_group: core
-  binds: kmacro-end-call-mouse
+  binds: kmacro-end-and-call-macro
   attestation:
   - R
   status: unclassified
@@ -12780,6 +13341,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.global-map.f1-u
+  surface: key_binding
+  keymap: global-map
+  key: <f1> u
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: apropos-user-option
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.global-map.f1-h
   surface: key_binding
   keymap: global-map
@@ -13338,6 +13910,17 @@ items:
   event_class: key
   namespace_group: core
   binds: info
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.global-map.help-u
+  surface: key_binding
+  keymap: global-map
+  key: <help> u
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: apropos-user-option
   attestation:
   - R
   status: unclassified
@@ -16718,6 +17301,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.kmacro-step-edit-map.d~2
+  surface: key_binding
+  keymap: kmacro-step-edit-map
+  key: d
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: diff
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.kmacro-step-edit-map.u
   surface: key_binding
   keymap: kmacro-step-edit-map
@@ -17378,6 +17972,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.minibuffer-local-completion-map.ret
+  surface: key_binding
+  keymap: minibuffer-local-completion-map
+  key: RET
+  kind: command
+  event_class: key
+  namespace_group: minibuffer
+  binds: minibuffer-completion-exit
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.minibuffer-local-completion-map.spc
   surface: key_binding
   keymap: minibuffer-local-completion-map
@@ -17433,7 +18038,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.minibuffer-local-completion-map.ret
+- id: emacs.key.minibuffer-local-completion-map.ret~2
   surface: key_binding
   keymap: minibuffer-local-completion-map
   key: RET
@@ -17972,6 +18577,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.minibuffer-local-must-match-map.ret~2
+  surface: key_binding
+  keymap: minibuffer-local-must-match-map
+  key: RET
+  kind: command
+  event_class: key
+  namespace_group: minibuffer
+  binds: minibuffer-completion-exit
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.minibuffer-local-must-match-map.spc
   surface: key_binding
   keymap: minibuffer-local-must-match-map
@@ -18027,7 +18643,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.minibuffer-local-must-match-map.ret~2
+- id: emacs.key.minibuffer-local-must-match-map.ret~3
   surface: key_binding
   keymap: minibuffer-local-must-match-map
   key: RET
@@ -19171,6 +19787,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.multi-query-replace-map.d
+  surface: key_binding
+  keymap: multi-query-replace-map
+  key: d
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: diff
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.multi-query-replace-map.u
   surface: key_binding
   keymap: multi-query-replace-map
@@ -19713,6 +20340,17 @@ items:
 - id: emacs.key.other-window-repeat-map.o
   surface: key_binding
   keymap: other-window-repeat-map
+  key: O
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: other-window-backward
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.other-window-repeat-map.o~2
+  surface: key_binding
+  keymap: other-window-repeat-map
   key: o
   kind: command
   event_class: key
@@ -19773,6 +20411,17 @@ items:
   event_class: key
   namespace_group: major-mode
   binds: project-display-buffer
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.project-prefix-map.c-x-s
+  surface: key_binding
+  keymap: project-prefix-map
+  key: C-x s
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: project-save-some-buffers
   attestation:
   - R
   status: unclassified
@@ -20150,6 +20799,17 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.query-replace-map.d
+  surface: key_binding
+  keymap: query-replace-map
+  key: d
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: diff
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.query-replace-map.u
   surface: key_binding
   keymap: query-replace-map
@@ -20389,6 +21049,237 @@ items:
   event_class: key
   namespace_group: major-mode
   binds: act
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.esc-s-t
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: ESC s t
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: query-replace-read-transpose-from-to
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.esc-s-esc-s
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: ESC s ESC s
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: next-matching-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.esc-s-s
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: ESC s s
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: next-matching-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.c-x-down
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: C-x <down>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: minibuffer-complete-defaults
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.c-x-up
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: C-x <up>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: minibuffer-complete-history
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.ret
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: RET
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: exit-minibuffer
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.c-j
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: C-j
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: exit-minibuffer
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.c-g
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: C-g
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: abort-minibuffers
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.c-tab
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: C-<tab>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: file-cache-minibuffer-complete
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.tab
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: TAB
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: self-insert-command
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.xf86back
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: <XF86Back>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: previous-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.up
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: <up>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: previous-line-or-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.prior
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: <prior>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: previous-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.xf86forward
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: <XF86Forward>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: next-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.down
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: <down>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: next-line-or-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.next
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: <next>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: next-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.esc
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: ESC <
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: minibuffer-beginning-of-buffer
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.esc-r
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: ESC r
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: previous-matching-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.esc-s
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: ESC s
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: next-matching-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.esc-p
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: ESC p
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: previous-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.query-replace-read-map.esc-n
+  surface: key_binding
+  keymap: query-replace-read-map
+  key: ESC n
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: next-history-element
   attestation:
   - R
   status: unclassified
@@ -21173,6 +22064,39 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.read-regexp-map.esc-s-t
+  surface: key_binding
+  keymap: read-regexp-map
+  key: ESC s t
+  kind: command
+  event_class: key
+  namespace_group: minibuffer
+  binds: query-replace-read-transpose-from-to
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.read-regexp-map.esc-s-esc-s
+  surface: key_binding
+  keymap: read-regexp-map
+  key: ESC s ESC s
+  kind: command
+  event_class: key
+  namespace_group: minibuffer
+  binds: next-matching-history-element
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.read-regexp-map.esc-s-s
+  surface: key_binding
+  keymap: read-regexp-map
+  key: ESC s s
+  kind: command
+  event_class: key
+  namespace_group: minibuffer
+  binds: next-matching-history-element
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.read-regexp-map.c-x-down
   surface: key_binding
   keymap: read-regexp-map
@@ -21511,6 +22435,28 @@ items:
   event_class: key
   namespace_group: major-mode
   binds: enlarge-window
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.rotate-windows-repeat-map.right
+  surface: key_binding
+  keymap: rotate-windows-repeat-map
+  key: <right>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: rotate-windows
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.rotate-windows-repeat-map.left
+  surface: key_binding
+  keymap: rotate-windows-repeat-map
+  key: <left>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: rotate-windows-back
   attestation:
   - R
   status: unclassified
@@ -22394,6 +23340,171 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.window-layout-flip-repeat-map.down
+  surface: key_binding
+  keymap: window-layout-flip-repeat-map
+  key: <down>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: window-layout-flip-topdown
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-layout-flip-repeat-map.up
+  surface: key_binding
+  keymap: window-layout-flip-repeat-map
+  key: <up>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: window-layout-flip-topdown
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-layout-flip-repeat-map.right
+  surface: key_binding
+  keymap: window-layout-flip-repeat-map
+  key: <right>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: window-layout-flip-leftright
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-layout-flip-repeat-map.left
+  surface: key_binding
+  keymap: window-layout-flip-repeat-map
+  key: <left>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: window-layout-flip-leftright
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-layout-rotate-repeat-map.right
+  surface: key_binding
+  keymap: window-layout-rotate-repeat-map
+  key: <right>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: window-layout-rotate-clockwise
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-layout-rotate-repeat-map.left
+  surface: key_binding
+  keymap: window-layout-rotate-repeat-map
+  key: <left>
+  kind: command
+  event_class: key
+  namespace_group: major-mode
+  binds: window-layout-rotate-anticlockwise
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.f-down
+  surface: key_binding
+  keymap: window-prefix-map
+  key: f <down>
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: window-layout-flip-topdown
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.f-up
+  surface: key_binding
+  keymap: window-prefix-map
+  key: f <up>
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: window-layout-flip-topdown
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.f-right
+  surface: key_binding
+  keymap: window-prefix-map
+  key: f <right>
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: window-layout-flip-leftright
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.f-left
+  surface: key_binding
+  keymap: window-prefix-map
+  key: f <left>
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: window-layout-flip-leftright
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.r-right
+  surface: key_binding
+  keymap: window-prefix-map
+  key: r <right>
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: window-layout-rotate-clockwise
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.r-left
+  surface: key_binding
+  keymap: window-prefix-map
+  key: r <left>
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: window-layout-rotate-anticlockwise
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.t
+  surface: key_binding
+  keymap: window-prefix-map
+  key: t
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: window-layout-transpose
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.o-right
+  surface: key_binding
+  keymap: window-prefix-map
+  key: o <right>
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: rotate-windows
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.key.window-prefix-map.o-left
+  surface: key_binding
+  keymap: window-prefix-map
+  key: o <left>
+  kind: command
+  event_class: key
+  namespace_group: core
+  binds: rotate-windows-back
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.key.window-prefix-map.q
   surface: key_binding
   keymap: window-prefix-map
@@ -22427,7 +23538,7 @@ items:
   attestation:
   - R
   status: unclassified
-- id: emacs.key.window-prefix-map.t
+- id: emacs.key.window-prefix-map.t~2
   surface: key_binding
   keymap: window-prefix-map
   key: ^ t
@@ -22933,3 +24044,15 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.key.dired-mode-map.remap-advertised-undo
+  surface: key_binding
+  keymap: dired-mode-map
+  key: <remap> <advertised-undo>
+  kind: command
+  event_class: remap
+  namespace_group: major-mode
+  binds: dired-undo
+  attestation:
+  - R
+  status: unclassified
+  upstream_gone: true

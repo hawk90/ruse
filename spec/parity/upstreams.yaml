@@ -77,8 +77,8 @@ source_of_record:
 upstreams:
   neovim:
     repo: https://github.com/neovim/neovim.git
-    revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b   # v0.12.4
-    version_label: v0.12.4
+    revision: 5885a30e1e1225349079e7a1c4a3848aa8e43e42   # v0.12.5
+    version_label: v0.12.5
     role: primary            # ruse's editing-language reference; Vim is derived as a computed delta
     census_scope:
       include:
@@ -165,8 +165,8 @@ upstreams:
 
   emacs:
     repo: https://github.com/emacs-mirror/emacs.git
-    revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd   # emacs-30.2
-    version_label: emacs-30.2
+    revision: a360712c9d272d950d8d8255ef74570f7e90b7d9   # emacs-31.1
+    version_label: emacs-31.1
     role: secondary          # command/buffer/extension model; surveyed AFTER the pipeline is proven on Neovim
     census_scope:
       include:

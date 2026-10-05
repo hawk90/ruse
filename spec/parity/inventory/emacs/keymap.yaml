@@ -1,6 +1,6 @@
 # GENERATED — do not hand-edit item enumeration. Regenerate:
 #   python3 tools/parity/extract_emacs.py
-# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
 # enumeration is not. `status: unclassified` is legitimate and expected — discovery is
 # strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
 # This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
@@ -10,10 +10,10 @@ version: 1
 generated: true
 generator: tools/parity/extract_emacs.py
 upstream: emacs
-revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
-version_label: emacs-30.2
+revision: a360712c9d272d950d8d8255ef74570f7e90b7d9
+version_label: emacs-31.1
 derived_from: runtime-binary
-binary_version: '30.2'
+binary_version: '31.1'
 binary_identity: unverified-build
 baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
   project)
@@ -396,6 +396,14 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.keymap.minibuffer-visible-completions-up-down-map
+  surface: keymap
+  name: minibuffer-visible-completions-up-down-map
+  defined_in: minibuffer.elc
+  desc: Local keymap for minibuffer input with visible completions, only for up/down.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.keymap.mode-line-buffer-identification-keymap
   surface: keymap
   name: mode-line-buffer-identification-keymap
@@ -580,6 +588,14 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.keymap.query-replace-read-map
+  surface: keymap
+  name: query-replace-read-map
+  defined_in: replace.elc
+  desc: ''
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.keymap.read-expression-map
   surface: keymap
   name: read--expression-map
@@ -652,6 +668,14 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.keymap.rotate-windows-repeat-map
+  surface: keymap
+  name: rotate-windows-repeat-map
+  defined_in: window.elc
+  desc: Keymap to repeat window-rotating commands.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.keymap.search-map
   surface: keymap
   name: search-map
@@ -697,6 +721,22 @@ items:
   name: visual-line-mode-map
   defined_in: simple.elc
   desc: ''
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.window-layout-flip-repeat-map
+  surface: keymap
+  name: window-layout-flip-repeat-map
+  defined_in: window.elc
+  desc: Keymap to repeat window-flipping commands.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.keymap.window-layout-rotate-repeat-map
+  surface: keymap
+  name: window-layout-rotate-repeat-map
+  defined_in: window.elc
+  desc: Keymap to repeat window layout-rotating commands.
   attestation:
   - R
   status: unclassified
