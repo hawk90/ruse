@@ -35,11 +35,17 @@ Terminal-first, remote-first, extensible editor with Vim/Neovim/Emacs feature pa
 specification + reference implementation.
 
 ## Current stage
-Skeleton phase. The Cargo workspace compiles but `crates/*` and `apps/*` are stubs pending the design
-docs — no product behavior yet. The repo tooling *is* built: `spec-validate`, the change-workflow CLI
-(`tools/ruse.py`: classify / impact / context / verify / pr check), docs-check and dependency-check,
-enforced by CI + lefthook. Next milestone: the first vertical slice
-(Document → Transaction → Undo → Snapshot) to prove the architecture under real code.
+**MVP complete; post-MVP feature growth.** All 18 MVP features (phases `core-editing` + `usable-vim-tui`
+in [phases.yaml](phases.yaml)) are `done`, plus F-022 (command traces). Two crates per D-039: `crates/core`
+(kernel: document, transactions, undo, anchors, registers, editing grammar) and `apps/tui` (the `ruse`
+binary: input profiles, rendering, terminal, LSP, remote, PTY). Behavior parity is checked against pinned
+Neovim/Emacs oracles (D-043; `tests/parity/`).
+
+Post-MVP features with **partial slices landed** while PRD status stays `planned` until a done-decision:
+F-011 PTY terminal buffer · F-012 Emacs profile · F-013 Native profile · F-014 LSP (local diagnostics) ·
+F-015 tree-sitter highlight + indent · F-017 remote (SSH transport + fs service) · F-030 `:checkhealth` ·
+F-031 rich Markdown/Org rendering. Not started: F-016 plugins, F-018 GUI (parked), F-019 marketplace,
+F-020 AI agent, F-021 debugger. Exact state: [PRD.yaml](PRD.yaml) + `git log --grep F-0NN`.
 
 ## Core invariants (must hold)
 - Document does not depend on View. (INV-DOC-VIEW)
@@ -55,11 +61,10 @@ enforced by CI + lefthook. Next milestone: the first vertical slice
 Input → Input Profile → Semantic Command → Transaction → Document(rev++) → View Model → Render Tree →
 Frontend Lowering. (ARCH-FLOW-001)
 
-## Active requirements (MVP)
-- F-001 Transactional editing · F-002 Document & coordinate model · F-003 Vim input profile
-- F-004 Semantic command engine + palette · F-005 Undo grouping · F-006 TUI rendering
-- F-007 Buffers/views/windows · F-008 Save + crash recovery · F-009 Search · F-010 Terminal capability
-(full list + post-MVP/future in [PRD.yaml](PRD.yaml))
+## Requirements
+MVP (done): F-001..F-010, F-023..F-029 — editing kernel, Vim profile and its namespaces, command engine,
+undo, TUI, windows, save/recovery, search, terminal capability. Post-MVP (planned/partial): F-011..F-021,
+F-030, F-031. Full list in [PRD.yaml](PRD.yaml).
 
 ## Active decisions
 - Rust workspace, TUI-first. (D-020)
@@ -67,9 +72,12 @@ Frontend Lowering. (ARCH-FLOW-001)
 - Plugins: WASM/process protocol, not Rust dylib; **no WASM host in MVP** (internal API first). (D-004, D-009)
 - Client/runtime boundary first-class from day one. (D-011)
 - spec/ (state) + docs/ (reference); generator is future work. (D-021, D-022)
+- Two-crate editor; remote/plugin/render boundaries deferred until needed. (D-039)
+- Parity = machine census of SHA-pinned upstreams; humans classify, never enumerate. (D-043)
+- Engine keeps Vim factory defaults; better-than-Vim defaults live at the frontend layer. (D-056)
 
 ## Open questions
-- Save/recovery journal format + undo-grouping boundaries. (D-005)
+- Save/recovery tuning (design decided). (D-005)
 - Multi-client workspace + offline/reconnect policy. (D-012, D-013)
 - Log PII/redaction field list. (D-017)
 
