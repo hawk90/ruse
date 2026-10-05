@@ -35,6 +35,10 @@ class TestPrCheckBotGate(unittest.TestCase):
         # Dependabot bumping a CI action → derived kind 'build' (no required artifacts) → passes.
         self.assertEqual(_run([".github/workflows/ci.yml"], actor="dependabot[bot]"), 0)
 
+    def test_trusted_renovate_build_change_passes(self):
+        # Renovate (renovate.json replaces Dependabot) is trusted the same way.
+        self.assertEqual(_run([".github/workflows/ci.yml"], actor="renovate[bot]"), 0)
+
     def test_trusted_bot_straying_into_code_still_fails(self):
         # Safety: a bot diff that reaches implementation territory needs an `issue` artifact it
         # cannot supply, so the auto-declared contract still FAILS the artifact gate.

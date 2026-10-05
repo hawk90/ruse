@@ -46,7 +46,7 @@ reader thread + `mpsc` + the gated `event::poll` loop) — but over stdio **pipe
   silent no-op. This hard-coded map is the seam a config-driven `language-servers` registry replaces later.
   `path_to_uri`.
 
-## Workspace trust gate (D-057)
+## Workspace trust gate (D-058)
 
 Language servers execute workspace code (rust-analyzer runs `build.rs` + proc-macros), so the coordinator
 spawns **nothing** until the workspace (the working directory) is trusted — INV-TRUST-1. Trust is user-owned:

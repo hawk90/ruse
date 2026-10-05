@@ -17,7 +17,7 @@ use crate::app::dispatch::{is_ctrl, open_file_into_buffer, Files, Highlighters};
 use crate::input::Ex;
 use crate::lsp::{self, Diag, LspClient};
 
-/// Status shown when a language server is held back because the workspace is not trusted (D-057).
+/// Status shown when a language server is held back because the workspace is not trusted (D-058).
 const UNTRUSTED_NOTICE: &str =
     "language server not started: workspace untrusted (:trust to allow, or RUSE_TRUSTED_WORKSPACES)";
 
@@ -61,7 +61,7 @@ struct CompletionMenu {
 pub(crate) struct LspCoordinator {
     root_uri: String,
     cwd: PathBuf,
-    /// The workspace-trust decision (INV-TRUST-1, D-057). Language servers execute workspace code (e.g.
+    /// The workspace-trust decision (INV-TRUST-1, D-058). Language servers execute workspace code (e.g.
     /// rust-analyzer runs `build.rs` + proc-macros), so NO server is spawned while this is false. Granted
     /// only by the user: `RUSE_TRUSTED_WORKSPACES` at startup or `:trust` (`grant_trust`).
     trusted: bool,
@@ -132,7 +132,7 @@ impl LspCoordinator {
     }
 
     /// `:trust` — the user trusts this workspace for the session: language servers may start (the next
-    /// `sync_and_poll` spawns the focused buffer's server). Not persisted (D-057).
+    /// `sync_and_poll` spawns the focused buffer's server). Not persisted (D-058).
     pub(crate) fn grant_trust(&mut self, status: &mut String) {
         *status = if self.trusted {
             "workspace already trusted".to_string()
@@ -258,7 +258,7 @@ impl LspCoordinator {
                 .and_then(|e| e.to_str())
                 .and_then(lsp::server_for_ext)
                 .and_then(|(key, cmd, lang)| {
-                    // INV-TRUST-1 / D-057: never spawn a server (which runs workspace code) in an
+                    // INV-TRUST-1 / D-058: never spawn a server (which runs workspace code) in an
                     // untrusted workspace. Say why once, instead of failing silently.
                     if !self.trusted {
                         if !self.trust_notice_shown {
@@ -976,7 +976,7 @@ mod tests {
         assert!(c.completion.as_ref().unwrap().items[0].resolved);
     }
 
-    /// Regression (INV-TRUST-1 / D-057): in an UNTRUSTED workspace, focusing a file with a known language
+    /// Regression (INV-TRUST-1 / D-058): in an UNTRUSTED workspace, focusing a file with a known language
     /// server spawns nothing — previously opening a `.rs` file auto-started rust-analyzer, which runs the
     /// project's build scripts. The user sees why (once), LSP commands report it, and `:trust` lifts the gate.
     #[test]

@@ -202,7 +202,7 @@ Security-locked keys cover the three categories called out by `CFG`/architecture
 (which binaries may run, formatter/tool paths), **trust** (unsigned-plugin allowance, remote trust
 prompting), and **forwarding** (credential/port forwarding). In the schema these are, at minimum:
 `plugins.allow_unsigned` (scope machine), `remote.trust_prompt` (scope user), `workspace.trusted_roots`
-(scope user; D-057 — the roots whose language servers may start), plus the trust/forwarding
+(scope user; D-058 — the roots whose language servers may start), plus the trust/forwarding
 keys owned by C-REMOTE. A workspace-authored keymap may likewise never bind a security-gated command to a
 key (§7). This directly discharges INV-TRUST-1 for the "workspace repo" principal and POLICY
 [`ENG-TRUST-001`](../../spec/POLICY.yaml).

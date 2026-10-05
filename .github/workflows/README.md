@@ -7,7 +7,7 @@ verified artifact.
 | Workflow | Trigger | Purpose | Required check |
 | --- | --- | --- | --- |
 | [`spec-check.yml`](spec-check.yml) | PR / push | `spec validate`, docs hygiene, toolchain unit tests, **actionlint** over these workflows | `spec-validate` |
-| [`change-policy.yml`](change-policy.yml) | PR | merge gate: re-derives change kind + blast radius from the diff vs the `ruse-gate:v1` block in the PR body (`dependabot[bot]` is auto-declared) | `gate` |
+| [`change-policy.yml`](change-policy.yml) | PR | merge gate: re-derives change kind + blast radius from the diff vs the `ruse-gate:v1` block in the PR body (`dependabot[bot]` / `renovate[bot]` are auto-declared) | `gate` |
 | [`ci.yml`](ci.yml) | PR / push | Rust: fmt · clippy `-D warnings` · test · `arch deps`; heavy steps self-skip on PRs with no Rust-relevant change. `rust-macos` (advisory) repeats clippy + test on macOS | `rust` |
 | [`security.yml`](security.yml) | PR / push / weekly | `rustsec` advisory scan (PRs only when a Cargo manifest changed); CodeQL + secret scanning live in repo settings | — |
 | [`labeler.yml`](labeler.yml) | PR | path-based `area/*` labels via [`.github/labeler.yml`](../labeler.yml) | — |
@@ -27,5 +27,6 @@ Notes:
   performance budgets (§10).
 - **Gotcha:** `hashFiles()` is only valid in step-level fields, not a job-level `if:` — the whole run fails
   before any step. `actionlint` in `spec-check` now catches this class.
-- **Gotcha:** `dtolnay/rust-toolchain` pinned by SHA cannot infer the toolchain from the ref — always pass
-  `toolchain:` explicitly.
+- **Toolchain:** `actions-rust-lang/setup-rust-toolchain` is used WITHOUT a `toolchain:` input so it reads the
+  repo's `rust-toolchain.toml` — local rustup and CI then run the same pinned version. Pass `cache: false`
+  (Swatinem/rust-cache is the cache) and `build-warnings: allow` (the action defaults to `deny`).

@@ -31,7 +31,7 @@ pub enum Ex {
     /// `:diagnostics`/`:diags`/`:diag` — list the focused buffer's diagnostics; Enter jumps (F-014).
     Diagnostics,
     /// `:trust` — trust the current workspace for this session, allowing language servers to start
-    /// (INV-TRUST-1, D-057). ruse-specific (no Vim counterpart).
+    /// (INV-TRUST-1, D-058). ruse-specific (no Vim counterpart).
     Trust,
     /// `:registers`/`:reg`/`:display` — view the non-empty registers (F-029). View-only.
     Registers,

@@ -521,7 +521,7 @@ pub(crate) fn run_ex(
                 None => *status = "E23: no alternate buffer".into(),
             }
         }
-        // `:terminal` (F-011) / `:fmt` / `:rename` / `:references` (F-014) / `:trust` (D-057) are handled in
+        // `:terminal` (F-011) / `:fmt` / `:rename` / `:references` (F-014) / `:trust` (D-058) are handled in
         // `session::run`
         // (they need the terminals / lsp maps); they never reach here, but the match stays exhaustive.
         Ex::Terminal

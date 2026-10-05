@@ -346,7 +346,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut pending_term_escape = false;
     // F-014: all app-side LSP orchestration (clients, diagnostics, hover/completion, request dispatch,
     // deferred edit-applies) lives behind the coordinator; the loop just drives it (CAP-LSP-COORD).
-    // INV-TRUST-1 / D-057: language servers execute workspace code (build scripts, proc-macros), so they
+    // INV-TRUST-1 / D-058: language servers execute workspace code (build scripts, proc-macros), so they
     // start only once the user trusts the workspace (`RUSE_TRUSTED_WORKSPACES` at startup, or `:trust`).
     let cwd = std::env::current_dir().unwrap_or_default();
     let trusted = crate::trust::workspace_trusted(&cwd);
@@ -1481,7 +1481,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
                         lsp.on_ex(&ex, &ws, &files, &snapshot, &mut status);
                     }
-                    // `:trust` (D-057): the user grants workspace trust for this session; language servers
+                    // `:trust` (D-058): the user grants workspace trust for this session; language servers
                     // start on the next frame's sync.
                     Ex::Trust => lsp.grant_trust(&mut status),
                     // `:diagnostics` (F-014): open a picker over the focused buffer's already-collected

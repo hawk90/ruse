@@ -1,4 +1,4 @@
-//! Workspace trust (INV-TRUST-1, D-057): the decision that gates any process which would execute code from
+//! Workspace trust (INV-TRUST-1, D-058): the decision that gates any process which would execute code from
 //! the workspace — today, language servers (rust-analyzer runs the project's `build.rs` and proc-macros;
 //! other servers load project plugins/config). A workspace is **untrusted by default**; it becomes trusted
 //! only by an explicit grant from the USER principal, never from anything inside the workspace:
