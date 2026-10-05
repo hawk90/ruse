@@ -14,8 +14,10 @@ pub mod snippet;
 pub use client::LspClient;
 pub use model::{counts, Diag};
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use percent_encoding::{percent_decode_str, percent_encode, AsciiSet, NON_ALPHANUMERIC};
 
 /// The language server for a file extension: `(server key, launch command, LSP languageId)`. The key dedups
 /// spawns so one process serves every buffer of that language (acceptance: no duplicate process per server) —
@@ -49,15 +51,116 @@ pub fn server_for_ext(ext: &str) -> Option<(&'static str, Command, &'static str)
     Some((key, cmd, lang))
 }
 
-/// A `file://` URI for an absolute path. Slice 1 does no percent-encoding — language servers accept a raw
-/// absolute path, and the same formatting is used for both `didOpen` and matching `publishDiagnostics` back.
+/// Bytes a `file://` URI path must percent-encode (RFC 3986 §3.3): everything except `unreserved`
+/// (ALPHA / DIGIT / `-._~`), `sub-delims` (`!$&'()*+,;=`), `:`, `@`, and the `/` segment separator. So
+/// space, `%`, `#`, `?`, `[`, `]`, controls and every non-ASCII byte (UTF-8, byte-wise) are encoded.
+const URI_PATH: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~')
+    .remove(b'!')
+    .remove(b'$')
+    .remove(b'&')
+    .remove(b'\'')
+    .remove(b'(')
+    .remove(b')')
+    .remove(b'*')
+    .remove(b'+')
+    .remove(b',')
+    .remove(b';')
+    .remove(b'=')
+    .remove(b':')
+    .remove(b'@')
+    .remove(b'/');
+
+/// A `file://` URI for an absolute path (RFC 3986 / RFC 8089): `file://` + the percent-encoded path, so a
+/// path with a space, `%`, `#`, `?` or non-ASCII characters round-trips through a language server intact.
+/// On Windows, `C:\a\b` becomes `file:///C:/a/b`. Inverse: [`uri_to_path`].
 pub fn path_to_uri(path: &Path) -> String {
-    format!("file://{}", path.display())
+    #[cfg(unix)]
+    let (lead, raw): (&str, std::borrow::Cow<'_, [u8]>) = {
+        use std::os::unix::ffi::OsStrExt;
+        ("", path.as_os_str().as_bytes().into())
+    };
+    #[cfg(not(unix))]
+    let (lead, raw): (&str, std::borrow::Cow<'_, [u8]>) = {
+        let s = path.to_string_lossy().replace('\\', "/");
+        let lead = if s.starts_with('/') { "" } else { "/" }; // `C:/x` → `/C:/x`
+        (lead, s.into_bytes().into())
+    };
+    format!("file://{lead}{}", percent_encode(&raw, URI_PATH))
+}
+
+/// The filesystem path a `file://` URI names — the inverse of [`path_to_uri`], also accepting what servers
+/// send: an optional `localhost` authority and any percent-encoding (decoded byte-wise, so a non-UTF-8 Unix
+/// filename survives). A string without the `file://` scheme is taken as a plain path (lenient fallback).
+pub fn uri_to_path(uri: &str) -> PathBuf {
+    let Some(rest) = uri.strip_prefix("file://") else {
+        return PathBuf::from(uri);
+    };
+    let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+    let bytes: Vec<u8> = percent_decode_str(rest).collect();
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        PathBuf::from(std::ffi::OsString::from_vec(bytes))
+    }
+    #[cfg(not(unix))]
+    {
+        let s = String::from_utf8_lossy(&bytes);
+        // `/C:/x` → `C:/x` (a drive letter after the leading slash).
+        let b = s.as_bytes();
+        let s = if b.len() >= 3 && b[0] == b'/' && b[1].is_ascii_alphabetic() && b[2] == b':' {
+            &s[1..]
+        } else {
+            &s[..]
+        };
+        PathBuf::from(s)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::server_for_ext;
+    use super::{path_to_uri, server_for_ext, uri_to_path};
+    use std::path::Path;
+
+    /// Regression: `path_to_uri` percent-encodes per RFC 3986 (previously it pasted the raw path, so a
+    /// space / `%` / `#` / non-ASCII path produced an invalid URI that servers mis-parsed — `#` even cut the
+    /// path into a fragment). Safe path characters stay literal.
+    #[cfg(unix)]
+    #[test]
+    fn path_to_uri_percent_encodes_reserved_and_non_ascii() {
+        let cases = [
+            (
+                "/home/u/proj/src/main.rs",
+                "file:///home/u/proj/src/main.rs",
+            ),
+            ("/tmp/my dir/a b.rs", "file:///tmp/my%20dir/a%20b.rs"),
+            ("/tmp/100%/x#1?.rs", "file:///tmp/100%25/x%231%3F.rs"),
+            ("/tmp/한글/é.rs", "file:///tmp/%ED%95%9C%EA%B8%80/%C3%A9.rs"),
+            ("/tmp/a[1]{2}.rs", "file:///tmp/a%5B1%5D%7B2%7D.rs"),
+            ("/tmp/k=v,x@y:z~_-.rs", "file:///tmp/k=v,x@y:z~_-.rs"),
+        ];
+        for (path, uri) in cases {
+            assert_eq!(path_to_uri(Path::new(path)), uri, "{path}");
+            assert_eq!(uri_to_path(uri), Path::new(path), "round trip {uri}");
+        }
+    }
+
+    /// `uri_to_path` also accepts the shapes servers send: a `localhost` authority, lowercase hex escapes,
+    /// and a bare path (lenient fallback). A non-UTF-8 Unix filename survives the round trip.
+    #[cfg(unix)]
+    #[test]
+    fn uri_to_path_accepts_server_shapes() {
+        use std::os::unix::ffi::OsStrExt;
+        assert_eq!(uri_to_path("file://localhost/a%20b"), Path::new("/a b"));
+        assert_eq!(uri_to_path("file:///x%c3%a9"), Path::new("/xé"));
+        assert_eq!(uri_to_path("/plain/path"), Path::new("/plain/path"));
+        let odd = Path::new(std::ffi::OsStr::from_bytes(b"/tmp/\xff\xfe"));
+        assert_eq!(path_to_uri(odd), "file:///tmp/%FF%FE");
+        assert_eq!(uri_to_path(&path_to_uri(odd)), odd);
+    }
 
     /// Each supported extension maps to the expected `(server key, languageId)`; extensions that share a
     /// server (ts/js → typescript-language-server; c/cpp/h → clangd) reuse the SAME key so one process serves

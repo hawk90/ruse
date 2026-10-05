@@ -262,14 +262,16 @@ impl LspCoordinator {
         } else {
             None
         };
-        // Poll every client: apply diagnostics for the focused buffer (matched by uri), and dispatch any
-        // request responses by their pending (serverKey, id).
+        // Poll every client: apply diagnostics for the focused buffer, and dispatch any request responses by
+        // their pending (serverKey, id). Diagnostics match by DECODED path, not URI string: servers may
+        // re-encode a URI differently (hex case, which reserved chars they escape) than we sent it.
+        let focused_path = focused_uri.as_deref().map(lsp::uri_to_path);
         let mut completion_responses: Vec<(i64, Revision, Value)> = Vec::new();
         let mut resolve_responses: Vec<(i64, Revision, usize, Value)> = Vec::new();
         for (key, client) in self.lsp.iter_mut() {
             let polled = client.poll();
             for params in polled.diagnostics {
-                if Some(&params.uri) == focused_uri.as_ref() {
+                if focused_path.is_some() && Some(lsp::uri_to_path(&params.uri)) == focused_path {
                     self.diagnostics
                         .insert(id, lsp::protocol::to_diags(snapshot, &params));
                 }
@@ -415,8 +417,8 @@ impl LspCoordinator {
     ) {
         // Goto: same file → move the cursor; another file → open it, then move.
         if let Some((uri, l, c)) = self.goto_jump.take() {
-            let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-            let target = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+            let path = lsp::uri_to_path(&uri);
+            let target = std::fs::canonicalize(&path).unwrap_or(path);
             let cur_path = files
                 .get(&ws.focused_buffer())
                 .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
@@ -789,8 +791,8 @@ fn apply_workspace_edit(
     let orig = ws.focused_buffer();
     let (mut files_n, mut edits_n) = (0usize, 0usize);
     for (uri, ledits) in edit {
-        let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-        let target = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+        let path = lsp::uri_to_path(&uri);
+        let target = std::fs::canonicalize(&path).unwrap_or(path);
         let existing = files.iter().find_map(|(id, bf)| {
             (std::fs::canonicalize(&bf.path).ok().as_deref() == Some(target.as_path()))
                 .then_some(*id)

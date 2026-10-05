@@ -801,9 +801,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if let Some(outcome) = ref_picker.as_mut().map(|p| p.on_key(key)) {
             if let PickOutcome::Accept = outcome {
                 if let Some((uri, l, c)) = ref_picker.as_ref().and_then(|p| p.selected().cloned()) {
-                    let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-                    let target =
-                        std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+                    let path = crate::lsp::uri_to_path(&uri);
+                    let target = std::fs::canonicalize(&path).unwrap_or(path);
                     let cur_path = files
                         .get(&ws.focused_buffer())
                         .and_then(|bf| std::fs::canonicalize(&bf.path).ok());

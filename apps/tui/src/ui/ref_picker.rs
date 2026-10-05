@@ -14,11 +14,11 @@ pub(crate) fn open(locs: Vec<(String, u32, u32)>, root: &Path) -> Picker<(String
     let items = locs
         .into_iter()
         .map(|(uri, line, col)| {
-            let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-            let rel = Path::new(&path)
+            let path = crate::lsp::uri_to_path(&uri);
+            let rel = path
                 .strip_prefix(root)
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|_| path.clone());
+                .unwrap_or_else(|_| path.display().to_string());
             let display = format!("{}:{}:{}", rel, line + 1, col + 1);
             PickItem {
                 search: display.clone(),
