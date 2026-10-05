@@ -1,5 +1,5 @@
 # Doc-system integrity (runnable today). Blocks dangling refs / layer violations / broken links /
-# bad enums / dup IDs across spec/ + docs/. See docs/operations/spec-validate.md.
+# bad enums / dup IDs across spec/ + docs/. See docs/operations/spec-validate.md. Also lints .github/workflows.
 name: spec-check
 on:
   pull_request:
@@ -9,8 +9,8 @@ jobs:
   spec-validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4          # TODO pin SHA
-      - uses: actions/setup-python@v5      # TODO pin SHA
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: '3.12' }
       - run: pip install pyyaml
       - run: python3 tools/spec-validate.py
@@ -19,3 +19,9 @@ jobs:
         run: python3 tools/ruse.py docs check
       - name: change-workflow toolchain tests
         run: python3 -m unittest discover -s tools/tests -t .
+      # Workflow files are code too: an invalid expression fails the run before any step executes
+      # (perf.yml failed 35/35 nightly runs that way unnoticed). shellcheck off — inline scripts are tiny.
+      - name: workflow lint (actionlint 1.7.12)
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        with:
+          args: -color -shellcheck=
