@@ -167,7 +167,7 @@ impl Highlight {
         let mut caps = cursor.captures(&self.query, tree.root_node(), src);
         let mut spans = Vec::new();
         while let Some((m, idx)) = caps.next() {
-            let cap = m.captures[*idx];
+            let cap = m.captures()[*idx];
             let name = names[cap.index as usize];
             spans.push(Span {
                 start: cap.node.start_byte(),
@@ -241,7 +241,7 @@ impl Highlight {
                     None => continue,
                 },
             };
-            for cap in m.captures {
+            for cap in m.captures() {
                 if Some(cap.index) != content_idx {
                     continue;
                 }
