@@ -39,7 +39,10 @@ before "remote."
 
 - **Slice 1 — client↔agent transport foundation (F-017, #315): SHIPPED, local pipe (no SSH yet).**
   `apps/tui/src/remote/` hosts the versioned wire protocol (`Content-Length` framing, identical to
-  `lsp/codec.rs`), a headless serve loop (`ruse agent`), and a local `AgentClient` that spawns the agent,
+  `lsp/codec.rs`; a body is capped at `MAX_FRAME_BYTES` = the `CONTRACT-REMOTE` `frame_max_bytes` budget,
+  4 MiB — an over-limit `Content-Length` is an `InvalidData` error checked before allocating, the sender
+  refuses to write one, and the agent answers an over-limit response with a typed `ResponseTooLarge` error
+  reply instead), a headless serve loop (`ruse agent`), and a local `AgentClient` that spawns the agent,
   handshakes (exchange `PROTOCOL_VERSION` + negotiate capabilities), and issues blocking request→response
   calls. Capability negotiation **degrades** a wanted-but-unoffered service (dropped, never a failed
   connect — the mechanism behind acceptance #3, built now so the SSH slice inherits it). One trivial service,

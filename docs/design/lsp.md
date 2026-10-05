@@ -29,7 +29,9 @@ reader thread + `mpsc` + the gated `event::poll` loop) — but over stdio **pipe
 ```
 
 - **`codec.rs`** — JSON-RPC framing (`Content-Length` + body); `spawn_reader` parses frames off the server's
-  stdout on a thread (mirrors `pty::spawn_reader`); `write_message` frames outgoing.
+  stdout on a thread (mirrors `pty::spawn_reader`); `write_message` frames outgoing. A server's `Content-Length` is bounded (`MAX_FRAME_BYTES`, 64 MiB — LSP
+  has no protocol cap and the 4 MiB remote budget is too small for real completion/diagnostic replies): an
+  over-limit body is drained without allocating and skipped, so the stream stays in sync.
 - **`protocol.rs`** — the minimal serde types we consume/produce; `to_diags(bytes, params)` converts an LSP
   `publishDiagnostics` into normalized byte-range diagnostics. Raw protocol never leaves `lsp/`.
 - **`client.rs`** — `LspClient`: one server process; `spawn` (→ `None` if the binary is missing, so a missing
