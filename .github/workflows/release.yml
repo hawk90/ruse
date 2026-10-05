@@ -4,6 +4,9 @@ name: release
 on:
   push: { tags: ['v*'] }
 permissions: { contents: read }   # widen to write when the build lands
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-24.04
