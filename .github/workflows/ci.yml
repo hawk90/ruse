@@ -1,9 +1,10 @@
-# Rust CI. The Cargo workspace exists (skeleton), so fmt/clippy/test + dependency-check run now and
-# grow teeth as crates/ gains real code. This job is NOT a required check, so it is safe to scope:
-# on a PR the heavy cargo/arch steps run ONLY when Rust-relevant paths changed (docs/spec/tools-only
-# PRs skip the compile entirely). push/schedule and any Rust-touching PR run the full set. Skipping
-# still reports success — no paths-filter deadlock (that trap is reserved for required checks).
-# Security (docs/operations/ci-cd-and-release.md §11): pin actions by SHA (TODO), least-privilege token.
+# Rust CI: fmt · clippy (-D warnings) · test · dependency-direction check.
+# `rust` (ubuntu) is a REQUIRED check, so it never uses a workflow-level paths filter (a skipped required
+# check deadlocks the PR). Instead it always runs and, on a PR, skips the heavy steps itself when no
+# Rust-relevant path changed — the skip still reports success.
+# `rust-macos` is advisory (not required): clippy + test on macOS, because platform-specific code
+# (pty/forkpty, terminal) can be clean on Linux and broken on macOS. Same Rust-relevance gate.
+# Security (docs/operations/ci-cd-and-release.md §11): actions pinned by SHA, least-privilege token.
 name: ci
 on:
   pull_request:
@@ -14,9 +15,11 @@ concurrency:
   cancel-in-progress: true
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    outputs:
+      rust: ${{ steps.detect.outputs.rust }}
     steps:
-      - uses: actions/checkout@v4          # TODO pin SHA
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0                   # need the base ref to diff a PR
       - id: detect
@@ -32,7 +35,7 @@ jobs:
           if [ "$EVENT" = "pull_request" ]; then
             if git fetch --no-tags --depth=1 origin "$BASE_REF" 2>/dev/null; then
               if git diff --name-only FETCH_HEAD HEAD 2>/dev/null \
-                   | grep -qE '^(crates|apps)/|Cargo\.(toml|lock)$|^rust-toolchain|^\.github/workflows/ci\.yml$|^spec/(architecture|dependencies)\.yaml$'; then
+                   | grep -qE '^(crates|apps|tests)/|Cargo\.(toml|lock)$|^rust-toolchain|^\.github/workflows/ci\.yml$|^spec/(architecture|dependencies)\.yaml$'; then
                 rust=1
               else
                 rust=0
@@ -43,10 +46,10 @@ jobs:
       - if: steps.detect.outputs.rust == '0'
         run: echo "No Rust-relevant change in this PR — cargo/arch steps skipped (still green)."
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
-        uses: dtolnay/rust-toolchain@stable  # TODO pin SHA
-        with: { components: rustfmt, clippy }
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with: { components: "rustfmt, clippy", cache: false, build-warnings: allow }
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
-        uses: Swatinem/rust-cache@v2         # TODO pin SHA — caches ~/.cargo + target/ keyed on Cargo.lock
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 — caches ~/.cargo + target/ keyed on Cargo.lock
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo fmt --all --check
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
@@ -54,10 +57,22 @@ jobs:
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo test --workspace
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
-        uses: actions/setup-python@v5        # TODO pin SHA
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: '3.12' }
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: pip install pyyaml
       - name: dependency direction + cycle check
         if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: python3 tools/ruse.py arch deps
+
+  rust-macos:
+    needs: rust
+    if: needs.rust.outputs.rust == '1'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with: { components: clippy, cache: false, build-warnings: allow }
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace

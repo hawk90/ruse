@@ -924,6 +924,52 @@ mod tests {
     }
 
     #[test]
+    fn bracket_keyword_lookup_emits_show_keyword_lines() {
+        // `[i`/`]i` echo the count'th match (`[` from the top, `]` below the cursor); `[I`/`]I` list all.
+        // A leading count carries through to the single (echo) forms.
+        assert_eq!(
+            feed("[i"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: true,
+                list: false,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("]i"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: false,
+                list: false,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("2[i"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: true,
+                list: false,
+                count: 2
+            })
+        );
+        assert_eq!(
+            feed("[I"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: true,
+                list: true,
+                count: 1
+            })
+        );
+        assert_eq!(
+            feed("]I"),
+            Feed::Cmd(Command::ShowKeywordLines {
+                above: false,
+                list: true,
+                count: 1
+            })
+        );
+    }
+
+    #[test]
     fn insert_ctrl_w_and_ctrl_u_emit_delete_commands() {
         let mut e = InputEngine::new();
         assert_eq!(
@@ -2499,6 +2545,9 @@ mod tests {
         assert_eq!(feed("ma"), Feed::Cmd(Command::SetNamedMark('a')));
         assert_eq!(feed("`a"), Feed::Cmd(Command::GotoNamedMark('a')));
         assert_eq!(feed("gi"), Feed::Cmd(Command::InsertAtLastInsert));
+        // `gI` — insert at column 0 (before indentation); `gr{char}` — classic virtual-replace one char.
+        assert_eq!(feed("gI"), Feed::Cmd(Command::InsertColumnZero));
+        assert_eq!(feed("grz"), Feed::Cmd(Command::VirtualReplaceChar(1, 'z')));
         assert_eq!(feed("'a"), Feed::Cmd(Command::GotoNamedMarkLine('a')));
         assert_eq!(feed("'."), Feed::Cmd(Command::GotoLastChangeLine));
         // Counts multiply the single-key actions (Vim `3x` / `3~` / `3rz`).
@@ -2511,6 +2560,15 @@ mod tests {
             e.feed(k('z'), Mode::Normal),
             Feed::Cmd(Command::ReplaceChar(3, 'z'))
         );
+        // `3grz` — the count carries through `g` and the `gr` char-await into a count-3 virtual replace.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('3'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('r'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('z'), Mode::Normal),
+            Feed::Cmd(Command::VirtualReplaceChar(3, 'z'))
+        );
         let mut e = InputEngine::new();
         assert_eq!(
             e.feed(
@@ -2519,6 +2577,43 @@ mod tests {
             ),
             Feed::Cmd(Command::Redo)
         );
+    }
+
+    #[test]
+    fn info_commands_emit_frontend_resolved_actions() {
+        let cg = || KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL);
+        // `ga` — ascii info (the `:ascii`/`:as` ex synonym resolves to the same message downstream).
+        assert_eq!(feed("ga"), Feed::Cmd(Command::AsciiInfo));
+        // Plain `CTRL-G` in Normal is file info (previously an inert stub).
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(cg(), Mode::Normal), Feed::Cmd(Command::FileInfo));
+        // `g CTRL-G` is cursor position/counts. It must NOT be mistaken for `gg` (which ignores the
+        // modifier) nor consumed by the top-level `CTRL-G` handler (that only fires with no `g` pending).
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(cg(), Mode::Normal), Feed::Cmd(Command::CursorInfo));
+        // Regression guard: bare `gg` is still GotoLine, and `ga`'s `!ctrl` guard leaves the Visual
+        // `g CTRL-A` sequence-increment intact.
+        assert_eq!(feed("gg"), Feed::Cmd(Command::Move(1, Motion::GotoLine)));
+        // `CTRL-G` in a selection still toggles Visual<->Select (unchanged behaviour).
+        assert_eq!(
+            e.feed(
+                cg(),
+                Mode::Visual {
+                    kind: SelectKind::Charwise
+                }
+            ),
+            Feed::Cmd(Command::EnterSelect {
+                kind: SelectKind::Charwise
+            })
+        );
+    }
+
+    #[test]
+    fn ascii_ex_command_parses() {
+        use crate::input::ex::{parse_ex, Ex};
+        assert_eq!(parse_ex("ascii"), Ex::Ascii);
+        assert_eq!(parse_ex("as"), Ex::Ascii);
     }
 
     #[test]
@@ -2911,8 +3006,8 @@ mod tests {
                 kind: SelectKind::Linewise
             })
         );
-        // CTRL-G is inert in Normal (no selection to toggle); it is NOT the start of `gg`.
-        assert_eq!(e.feed(ctrl_g(), Mode::Normal), Feed::Ignored);
+        // In Normal (no selection to toggle) CTRL-G is Vim's file-info command — NOT the start of `gg`.
+        assert_eq!(e.feed(ctrl_g(), Mode::Normal), Feed::Cmd(Command::FileInfo));
     }
 
     #[test]
@@ -3163,6 +3258,7 @@ mod dot_repeat_tests {
                 Feed::Cmd(Command::EnterInsert)
                 | Feed::Cmd(Command::EnterInsertAfter)
                 | Feed::Cmd(Command::InsertLineStart)
+                | Feed::Cmd(Command::InsertColumnZero)
                 | Feed::Cmd(Command::AppendLineEnd)
                 | Feed::Cmd(Command::OpenBelow)
                 | Feed::Cmd(Command::OpenAbove)

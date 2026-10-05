@@ -167,7 +167,7 @@ impl Highlight {
         let mut caps = cursor.captures(&self.query, tree.root_node(), src);
         let mut spans = Vec::new();
         while let Some((m, idx)) = caps.next() {
-            let cap = m.captures[*idx];
+            let cap = m.captures()[*idx];
             let name = names[cap.index as usize];
             spans.push(Span {
                 start: cap.node.start_byte(),
@@ -241,7 +241,7 @@ impl Highlight {
                     None => continue,
                 },
             };
-            for cap in m.captures {
+            for cap in m.captures() {
                 if Some(cap.index) != content_idx {
                     continue;
                 }
@@ -1406,6 +1406,27 @@ mod tests {
         // Viewport bound: the first line's match is excluded when only the second line is visible.
         let two = b"a\na\n";
         assert_eq!(s.spans(Revision(3), two, 2..4, "a"), &[(2, 3)]);
+    }
+
+    /// Regression (issue #514): an empty-matching search pattern used to spin `find_all` forever inside
+    /// hlsearch highlighting, hanging the editor on `/a*`, `/$`, `/.*`, `/x*`, or an empty `/`. This drives
+    /// the real `CachedSearch::spans` path — it would NOT return if the bug regressed. Spans are the
+    /// nvim v0.12.4-faithful zero-width behavior (no trailing empty match at end-of-line for an unanchored
+    /// pattern; a lone anchored `$` match at EOL is kept).
+    #[test]
+    fn cached_search_empty_matching_pattern_terminates() {
+        let mut s = CachedSearch::default();
+        // `a*` on "aax": only the "aa" run (no empty span after it, none at EOL).
+        assert_eq!(s.spans(Revision(0), b"aax", 0..3, "a*"), &[(0, 2)]);
+        // `x*` on "abc": a zero-width match before each char, but NOT at end-of-line.
+        assert_eq!(
+            s.spans(Revision(1), b"abc", 0..3, "x*"),
+            &[(0, 0), (1, 1), (2, 2)]
+        );
+        // `$` on "abc": the lone anchored empty match at EOL is kept.
+        assert_eq!(s.spans(Revision(2), b"abc", 0..3, "$"), &[(3, 3)]);
+        // Empty pattern / empty buffer: the sole zero-width match is kept.
+        assert_eq!(s.spans(Revision(3), b"", 0..0, "x*"), &[(0, 0)]);
     }
 
     #[test]

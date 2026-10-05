@@ -14,19 +14,19 @@ concurrency:
   cancel-in-progress: true
 jobs:
   bench:
-    runs-on: ubuntu-latest
-    if: ${{ hashFiles('Cargo.toml') != '' }}
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4          # TODO pin SHA
-      - uses: dtolnay/rust-toolchain@stable # TODO pin SHA
-      - uses: Swatinem/rust-cache@v2        # TODO pin SHA
-      - uses: actions/setup-python@v5       # TODO pin SHA
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with: { cache: false, build-warnings: allow }
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: '3.12' }
       - run: pip install pyyaml
       # Trend + warn: numbers are machine-relative, so this never fails the job — it reports regressions
       # for a human to confirm on the fixed baseline machine before touching spec/perf-baseline.yaml.
       - run: python3 tools/ruse.py bench --check --measurement-time 2 | tee perf-report.txt
-      - uses: actions/upload-artifact@v4    # TODO pin SHA
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: perf-report
           path: perf-report.txt

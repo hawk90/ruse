@@ -100,7 +100,14 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
         | Motion::UnmatchedParenBack
         | Motion::UnmatchedParenFwd
         | Motion::UnmatchedBraceBack
-        | Motion::UnmatchedBraceFwd => {
+        | Motion::UnmatchedBraceFwd
+        // Method motions (`d]m`/`d[m`/`d]M`/`d[M`) are exclusive charwise and take the same
+        // exclusive-linewise reduction (verified against nvim: a landing on a `}` at column 0 deletes
+        // whole lines; a mid-line landing stays charwise). A no-op target collapses to an empty span.
+        | Motion::MethodStartFwd
+        | Motion::MethodStartBack
+        | Motion::MethodEndFwd
+        | Motion::MethodEndBack => {
             let t = motion::target(b, cur, m, count);
             exclusive_linewise(b, cur.min(t), cur.max(t))
         }

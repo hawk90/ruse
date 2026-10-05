@@ -5,9 +5,9 @@
   "oracle": {
     "editor": "neovim",
     "invoke": "nvim --headless -u NONE -i NONE -l <script>",
-    "nvim_version": "NVIM v0.12.4",
-    "pin_version_label": "v0.12.4",
-    "pin_revision": "68ea43cd0c28af25cd47731308c94fedfcfd1b0b",
+    "nvim_version": "NVIM v0.12.5",
+    "pin_version_label": "v0.12.5",
+    "pin_revision": "5885a30e1e1225349079e7a1c4a3848aa8e43e42",
     "captured_observables": [
       "text",
       "cursor",
@@ -7926,6 +7926,202 @@
       }
     },
     {
+      "name": "gI_insert_column_zero",
+      "lines": [
+        "\thello"
+      ],
+      "keys": "gIX<Esc>",
+      "setup": "set noexpandtab",
+      "expect": {
+        "text": [
+          "X\thello"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gI_before_space_indent",
+      "lines": [
+        "  ab"
+      ],
+      "keys": "gIX<Esc>",
+      "expect": {
+        "text": [
+          "X  ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gI_count_repeats_text",
+      "lines": [
+        "\thello"
+      ],
+      "keys": "3gIx<Esc>",
+      "setup": "set noexpandtab",
+      "expect": {
+        "text": [
+          "xxx\thello"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "grchar_one_char",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "lgrX",
+      "expect": {
+        "text": [
+          "aXcdef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "grchar_count",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "3grZ",
+      "expect": {
+        "text": [
+          "ZZZdef"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "grchar_past_eol_appends",
+      "lines": [
+        "ab"
+      ],
+      "keys": "4grX",
+      "expect": {
+        "text": [
+          "XXXX"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "grchar_over_tab",
+      "lines": [
+        "\tX"
+      ],
+      "keys": "grA",
+      "setup": "set tabstop=4 noexpandtab",
+      "expect": {
+        "text": [
+          "A\tX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "grchar_count_over_tab",
+      "lines": [
+        "\tX"
+      ],
+      "keys": "2grA",
+      "setup": "set tabstop=4 noexpandtab",
+      "expect": {
+        "text": [
+          "AA\tX"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
       "name": "ctrl_o_x_delete",
       "lines": [
         "hello"
@@ -9359,6 +9555,728 @@
         ],
         "reg_unnamed": {
           "text": "(abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_bare",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_count2",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          2,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_count3",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "3]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          5,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_count4_class_close",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "4]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          8,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_end_fwd_bare",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "]M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_end_fwd_count2",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2]M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          5,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_back_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j[m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          2,
+          13
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_end_fwd_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j]M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          4,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_end_back_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j[M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_back_count2_from_inside",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2j2[m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_flat_top_level",
+      "lines": [
+        "void a() {",
+        "    x;",
+        "}",
+        "void b() {",
+        "    y;",
+        "}"
+      ],
+      "keys": "]m",
+      "expect": {
+        "text": [
+          "void a() {",
+          "    x;",
+          "}",
+          "void b() {",
+          "    y;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_flat_count2_close",
+      "lines": [
+        "void a() {",
+        "    x;",
+        "}",
+        "void b() {",
+        "    y;",
+        "}"
+      ],
+      "keys": "2]m",
+      "expect": {
+        "text": [
+          "void a() {",
+          "    x;",
+          "}",
+          "void b() {",
+          "    y;",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "method_start_fwd_no_brace_noop",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "]m",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_method_start_fwd_charwise",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2jd]m",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "{",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "        x;\n    }\n    void b() ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_method_end_back_charwise",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2jd[M",
+      "expect": {
+        "text": [
+          "class Foo ",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "{\n    void a() {",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_method_start_fwd_count4_linewise",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "d4]m",
+      "expect": {
+        "text": [
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "class Foo {\n    void a() {\n        x;\n    }\n    void b() {\n        y;\n    }\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "d_method_start_fwd_flat_linewise",
+      "lines": [
+        "void a() {",
+        "    x;",
+        "}",
+        "void b() {",
+        "    y;",
+        "}"
+      ],
+      "keys": "d2]m",
+      "expect": {
+        "text": [
+          "}",
+          "void b() {",
+          "    y;",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "void a() {\n    x;\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "y_method_end_fwd",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "y]M",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "        x;",
+          "    }",
+          "    void b() {",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "class Foo ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "class Foo ",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "c_method_start_fwd",
+      "lines": [
+        "class Foo {",
+        "    void a() {",
+        "        x;",
+        "    }",
+        "    void b() {",
+        "        y;",
+        "    }",
+        "}"
+      ],
+      "keys": "2jc]mZ<Esc>",
+      "expect": {
+        "text": [
+          "class Foo {",
+          "    void a() {",
+          "Z{",
+          "        y;",
+          "    }",
+          "}"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "        x;\n    }\n    void b() ",
           "type": "charwise"
         },
         "reg0": {

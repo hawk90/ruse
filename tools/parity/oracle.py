@@ -653,6 +653,21 @@ FIXTURES: list[dict] = [
     {"name": "gr_consumes_tab_fully", "lines": ["a\tb"], "keys": "lgRXYZ<Esc>", "setup": "set tabstop=4 noexpandtab"},
     {"name": "gr_over_tab_then_overwrite", "lines": ["a\tb"], "keys": "lgRXYZW<Esc>", "setup": "set tabstop=4 noexpandtab"},
     {"name": "gr_over_tab_backspace_regrows", "lines": ["a\tb"], "keys": "lgRX<BS><Esc>", "setup": "set tabstop=4 noexpandtab"},
+    #     `gI` — insert at column 1 (byte col 0), BEFORE all indentation (unlike `I` = first non-blank).
+    #     `{count}gI` repeats the typed text like the other insert-entries. `<Tab>` here is layout only; the
+    #     inserted text is plain chars, so the result is tabstop-independent (no setup needed).
+    {"name": "gI_insert_column_zero", "lines": ["\thello"], "keys": "gIX<Esc>", "setup": "set noexpandtab"},
+    {"name": "gI_before_space_indent", "lines": ["  ab"], "keys": "gIX<Esc>"},
+    {"name": "gI_count_repeats_text", "lines": ["\thello"], "keys": "3gIx<Esc>", "setup": "set noexpandtab"},
+    #     `gr{char}` — CLASSIC-Vim virtual-replace of ONE (or `{count}`) char, then back to Normal (the one-
+    #     shot of `gR`, as `r` is to `R`). NOTE: nvim 0.11+ maps `gr`/`grn`/`gra`/`grr` to LSP by default, but
+    #     under `-u NONE` those maps are absent, so bare `gr{char}` here is the classic built-in. Tab-aware:
+    #     over a multi-column <Tab> the char inserts before it, preserving the following column.
+    {"name": "grchar_one_char", "lines": ["abcdef"], "keys": "lgrX"},
+    {"name": "grchar_count", "lines": ["abcdef"], "keys": "3grZ"},
+    {"name": "grchar_past_eol_appends", "lines": ["ab"], "keys": "4grX"},
+    {"name": "grchar_over_tab", "lines": ["\tX"], "keys": "grA", "setup": "set tabstop=4 noexpandtab"},
+    {"name": "grchar_count_over_tab", "lines": ["\tX"], "keys": "2grA", "setup": "set tabstop=4 noexpandtab"},
     # (No `R`-then-`u` fixture: the oracle sets the buffer via set_lines, which is NOT an undo boundary, so
     #  `u` undoes past the initial content to empty — an oracle artifact, not Vim behavior. R+undo is covered
     #  by a core unit test instead.)
@@ -749,6 +764,35 @@ FIXTURES: list[dict] = [
     #     visual mode — selection is inclusive of both ends ------------------------------------------------
     {"name": "visual_unmatched_paren_fwd_delete", "lines": ["(abcdef)"], "keys": "3lv])d"},
     {"name": "visual_unmatched_paren_back_delete", "lines": ["(abcdef)"], "keys": "3lv[(d"},
+    # --- METHOD (brace-block) motions (feat/method-motions): `]m`/`[m` next/prev method START (a `{`);
+    #     `]M`/`[M` next/prev method END (a `}`). A faithful port of Vim's `nv_bracket_block` — pure brace
+    #     navigation (ruse has no language model). Count-aware; exclusive charwise under an operator, sharing
+    #     the exclusive-linewise reduction with the section / unmatched-brace motions (a column-0 landing
+    #     deletes whole lines). VERIFIED against nvim v0.12.4 on flat / class / nested layouts. DIVERGENCE
+    #     (documented non-goal, NO fixtures): braces inside string literals and comments are NOT skipped
+    #     (ruse has no syntax model); nvim's `findmatch` skips them.
+    #     CLASS = a two-method class; FLAT = top-level `{}` blocks.
+    {"name": "method_start_fwd_bare", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "]m"},
+    {"name": "method_start_fwd_count2", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2]m"},
+    {"name": "method_start_fwd_count3", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "3]m"},
+    {"name": "method_start_fwd_count4_class_close", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "4]m"},
+    {"name": "method_end_fwd_bare", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "]M"},
+    {"name": "method_end_fwd_count2", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2]M"},
+    {"name": "method_start_fwd_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j]m"},
+    {"name": "method_start_back_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j[m"},
+    {"name": "method_end_fwd_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j]M"},
+    {"name": "method_end_back_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j[M"},
+    {"name": "method_start_back_count2_from_inside", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2j2[m"},
+    {"name": "method_start_fwd_flat_top_level", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "]m"},
+    {"name": "method_start_fwd_flat_count2_close", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "2]m"},
+    {"name": "method_start_fwd_no_brace_noop", "lines": ["abc", "def"], "keys": "]m"},
+    # operators — charwise mid-line landings and column-0 linewise reductions.
+    {"name": "d_method_start_fwd_charwise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jd]m"},
+    {"name": "d_method_end_back_charwise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jd[M"},
+    {"name": "d_method_start_fwd_count4_linewise", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "d4]m"},
+    {"name": "d_method_start_fwd_flat_linewise", "lines": ["void a() {", "    x;", "}", "void b() {", "    y;", "}"], "keys": "d2]m"},
+    {"name": "y_method_end_fwd", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "y]M"},
+    {"name": "c_method_start_fwd", "lines": ["class Foo {", "    void a() {", "        x;", "    }", "    void b() {", "        y;", "    }", "}"], "keys": "2jc]mZ<Esc>"},
     #     change/yank marks `[ `] '[ '] (issue #428) — the marks bound the last changed/yanked text.
     #     `[ / `] jump charwise to the first/last char; '[ / '] jump linewise to the first non-blank.
     {"name": "yank_word_mark_start", "lines": ["foo bar baz"], "keys": "wyiw$`["},

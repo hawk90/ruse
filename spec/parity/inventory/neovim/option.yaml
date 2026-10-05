@@ -7,8 +7,8 @@ version: 1
 generated: true
 generator: tools/parity/extract_neovim.py
 upstream: neovim
-revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
-version_label: v0.12.4
+revision: 5885a30e1e1225349079e7a1c4a3848aa8e43e42
+version_label: v0.12.5
 surface: option
 source_of_record: 'R: nvim_get_all_options_info() (S: src/nvim/options.lua)'
 items:
@@ -1431,7 +1431,7 @@ items:
   type: string
   scope: global
   abbreviation: hf
-  default: /opt/homebrew/Cellar/neovim/0.12.4/share/nvim/runtime/doc/help.txt
+  default: /opt/homebrew/Cellar/neovim/0.12.5_1/share/nvim/runtime/doc/help.txt
   attestation:
   - R
   - S
@@ -2344,7 +2344,7 @@ items:
   type: string
   scope: global
   abbreviation: pp
-  default: /Users/hawk/.config/nvim,/opt/homebrew/etc/xdg/nvim,/etc/xdg/nvim,/Users/hawk/.local/share/nvim/site,/usr/local/share/nvim/site,/usr/share/nvim/site,/Applications/Ghostty.app/Contents/Resources/ghostty/../nvim/site,/opt/homebrew/Cellar/neovim/0.12.4/share/nvim/runtime,/opt/homebrew/Cellar/neovim/0.12.4/lib/nvim,/Applications/Ghostty.app/Contents/Resources/ghostty/../nvim/site/after,/usr/share/nvim/site/after,/usr/local/share/nvim/site/after,/Users/hawk/.local/share/nvim/site/after,/etc/xdg/nvim/after,/opt/homebrew/etc/xdg/nvim/after,/Users/hawk/.config/nvim/after
+  default: /Users/hawk/.config/nvim,/opt/homebrew/etc/xdg/nvim,/etc/xdg/nvim,/Users/hawk/.local/share/nvim/site,/usr/local/share/nvim/site,/usr/share/nvim/site,/Applications/Ghostty.app/Contents/Resources/ghostty/../nvim/site,/opt/homebrew/Cellar/neovim/0.12.5_1/share/nvim/runtime,/opt/homebrew/Cellar/neovim/0.12.5_1/lib/nvim,/Applications/Ghostty.app/Contents/Resources/ghostty/../nvim/site/after,/usr/share/nvim/site/after,/usr/local/share/nvim/site/after,/Users/hawk/.local/share/nvim/site/after,/etc/xdg/nvim/after,/opt/homebrew/etc/xdg/nvim/after,/Users/hawk/.config/nvim/after
   attestation:
   - R
   - S
@@ -2685,7 +2685,7 @@ items:
   type: string
   scope: global
   abbreviation: rtp
-  default: /Users/hawk/.config/nvim,/opt/homebrew/etc/xdg/nvim,/etc/xdg/nvim,/Users/hawk/.local/share/nvim/site,/usr/local/share/nvim/site,/usr/share/nvim/site,/Applications/Ghostty.app/Contents/Resources/ghostty/../nvim/site,/opt/homebrew/Cellar/neovim/0.12.4/share/nvim/runtime,/opt/homebrew/Cellar/neovim/0.12.4/lib/nvim,/Applications/Ghostty.app/Contents/Resources/ghostty/../nvim/site/after,/usr/share/nvim/site/after,/usr/local/share/nvim/site/after,/Users/hawk/.local/share/nvim/site/after,/etc/xdg/nvim/after,/opt/homebrew/etc/xdg/nvim/after,/Users/hawk/.config/nvim/after
+  default: /Users/hawk/.config/nvim,/opt/homebrew/etc/xdg/nvim,/etc/xdg/nvim,/Users/hawk/.local/share/nvim/site,/usr/local/share/nvim/site,/usr/share/nvim/site,/Applications/Ghostty.app/Contents/Resources/ghostty/../nvim/site,/opt/homebrew/Cellar/neovim/0.12.5_1/share/nvim/runtime,/opt/homebrew/Cellar/neovim/0.12.5_1/lib/nvim,/Applications/Ghostty.app/Contents/Resources/ghostty/../nvim/site/after,/usr/share/nvim/site/after,/usr/local/share/nvim/site/after,/Users/hawk/.local/share/nvim/site/after,/etc/xdg/nvim/after,/opt/homebrew/etc/xdg/nvim/after,/Users/hawk/.config/nvim/after
   attestation:
   - R
   - S

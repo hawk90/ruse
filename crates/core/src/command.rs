@@ -234,6 +234,9 @@ pub enum Command {
     EnterTerminalNormal,
     /// `I` — insert before the first non-blank char of the line.
     InsertLineStart,
+    /// `gI` — insert at column 1 (byte column 0), BEFORE all indentation, unlike `I` which stops at the
+    /// first non-blank. `{count}gI` repeats the typed text `count` times like the other insert-entries.
+    InsertColumnZero,
     /// `A` — append at the end of the line.
     AppendLineEnd,
     /// `o` — open a new line below and insert.
@@ -254,6 +257,15 @@ pub enum Command {
     /// that char is a `<Tab>` insert BEFORE it (shrinking the tab) until its last virtual column, then
     /// replace it; append at end-of-line. `<BS>` uses [`Command::ReplaceBackspace`].
     VirtualReplaceType(char),
+    /// `{count}gr{char}` — CLASSIC-Vim virtual-replace of `count` chars with `char`, then return to Normal.
+    /// The one-shot form of `gR` (like `r` is to `R`): tab-aware (over a multi-column `<Tab>` it inserts
+    /// before the tab, preserving the following text's column), and it APPENDS past end-of-line when `count`
+    /// overruns the line (Vim), unlike `r` which is a no-op there. The cursor lands on the last replaced char.
+    ///
+    /// DIVERGENCE NOTE: Neovim 0.11+ ships `gr`/`grn`/`gra`/`grr` as DEFAULT LSP *keymaps* (rename / code-
+    /// action / references), but those are keymaps, not a built-in editor command. ruse installs no such
+    /// mapping and targets the classic-Vim built-in, so `gr` here is virtual-replace-one-char.
+    VirtualReplaceChar(u32, char),
     // edit
     InsertChar(char),
     /// `i_CTRL-R{reg}` — insert the named register's contents at the caret, staying in Insert (Vim). Reads
@@ -406,6 +418,16 @@ pub enum Command {
     /// `gi` — resume Insert at the last-insert position (Vim's `` `^ ``). Enters Insert at buffer start
     /// before any Insert session has ended.
     InsertAtLastInsert,
+    /// `ga` / `:ascii` / `:as` — print the numeric value of the character under the cursor to the status
+    /// line (no buffer mutation). Frontend-resolved (the engine has no buffer): the frontend reads the
+    /// focused buffer's bytes + cursor and formats via [`crate::info::ascii_info`].
+    AsciiInfo,
+    /// `CTRL-G` (Normal) — print file info (name, modified flag, line count, cursor percentage) to the
+    /// status line. Frontend-resolved via [`crate::info::file_info`]; no buffer mutation.
+    FileInfo,
+    /// `g CTRL-G` — print cursor position and buffer counts (column/line/word/char/byte) to the status
+    /// line. Frontend-resolved via [`crate::info::cursor_pos_info`]; no buffer mutation.
+    CursorInfo,
     /// `m{a-z}` — set the named mark `char` at the cursor (Vim). Per-buffer; the cursor does not move.
     SetNamedMark(char),
     /// `` `{a-z} `` — jump the cursor to named mark `char` (Vim). A no-op if that mark is unset.
@@ -578,6 +600,20 @@ pub enum Command {
     /// char. No match keeps the cursor (Vim rings the bell). A JUMP — records the leaving position so
     /// `CTRL-O` returns. The pattern is carried so traces replay deterministically (like [`SearchNext`]).
     GotoFirstMatch(String),
+    /// `[i` / `]i` / `[I` / `]I` — DISPLAY the line(s) in the CURRENT buffer containing the keyword under
+    /// the cursor (`:help [i`). `above` = the `[` forms (scan from the TOP of the file); `!above` = the
+    /// `]` forms (below the cursor line). `list` = the uppercase `[I`/`]I` list-ALL forms; `!list` = the
+    /// lowercase single-line echo. `count` selects the N-th match for the single forms (ignored by the
+    /// list forms). Purely a display command (no buffer mutation): the input engine has no buffer, so the
+    /// FRONTEND resolves the keyword and scans the lines (like [`SearchWordUnder`]/[`GotoDeclaration`])
+    /// and never plans it. The `#include`-following forms (`:checkpath`, searching included files) are
+    /// OUT (cross-file); ruse has no `iskeyword`, so word boundaries follow the Word class (alnum/`_`/
+    /// non-ASCII) — a documented divergence. Formats verified against nvim v0.12.4.
+    ShowKeywordLines {
+        above: bool,
+        list: bool,
+        count: u32,
+    },
     /// `{count}/{pattern}<CR>` (forward) or `{count}?{pattern}<CR>` (backward) as a MOTION: bare it moves
     /// to the `count`-th match in `backward`'s direction; under an operator (`op`) it folds into a charwise-
     /// EXCLUSIVE edit over `[cursor, match)` forward, or `[match, cursor)` backward (`d/pat`, `c?pat`,
@@ -774,6 +810,10 @@ fn motion_token(m: Motion) -> String {
         Motion::UnmatchedParenFwd => "unmatched_paren_fwd",
         Motion::UnmatchedBraceBack => "unmatched_brace_back",
         Motion::UnmatchedBraceFwd => "unmatched_brace_fwd",
+        Motion::MethodStartFwd => "method_start_fwd",
+        Motion::MethodStartBack => "method_start_back",
+        Motion::MethodEndFwd => "method_end_fwd",
+        Motion::MethodEndBack => "method_end_back",
         // A single whitespace-free token so the `<count> <motion>` split still works: the char is its decimal
         // scalar value; `f`/`t` and forward/back are flags. e.g. `find_char:120:1:0` = `fx`.
         Motion::FindChar { ch, forward, till } => {
@@ -881,6 +921,10 @@ fn motion_from_token(s: &str) -> Option<Motion> {
         "unmatched_paren_fwd" => Motion::UnmatchedParenFwd,
         "unmatched_brace_back" => Motion::UnmatchedBraceBack,
         "unmatched_brace_fwd" => Motion::UnmatchedBraceFwd,
+        "method_start_fwd" => Motion::MethodStartFwd,
+        "method_start_back" => Motion::MethodStartBack,
+        "method_end_fwd" => Motion::MethodEndFwd,
+        "method_end_back" => Motion::MethodEndBack,
         _ => return None,
     })
 }
@@ -1048,6 +1092,7 @@ impl Command {
             Command::EnterTerminal => "enter_terminal".into(),
             Command::EnterTerminalNormal => "enter_terminal_normal".into(),
             Command::InsertLineStart => "insert_line_start".into(),
+            Command::InsertColumnZero => "insert_column_zero".into(),
             Command::AppendLineEnd => "append_line_end".into(),
             Command::OpenBelow => "open_below".into(),
             Command::OpenAbove => "open_above".into(),
@@ -1056,6 +1101,7 @@ impl Command {
             Command::ReplaceBackspace => "replace_backspace".into(),
             Command::EnterVirtualReplace => "enter_virtual_replace".into(),
             Command::VirtualReplaceType(c) => format!("virtual_replace_type {}", *c as u32),
+            Command::VirtualReplaceChar(n, c) => format!("virtual_replace_char {n} {}", *c as u32),
             Command::InsertChar(c) => {
                 let mut s = String::from("insert_char ");
                 let _ = write!(s, "{}", *c as u32);
@@ -1111,6 +1157,9 @@ impl Command {
             Command::GotoOlderJump => "goto_older_jump".into(),
             Command::GotoNewerJump => "goto_newer_jump".into(),
             Command::InsertAtLastInsert => "insert_at_last_insert".into(),
+            Command::AsciiInfo => "ascii_info".into(),
+            Command::FileInfo => "file_info".into(),
+            Command::CursorInfo => "cursor_info".into(),
             Command::SetNamedMark(c) => format!("set_named_mark {}", *c as u32),
             Command::GotoNamedMark(c) => format!("goto_named_mark {}", *c as u32),
             Command::GotoNamedMarkLine(c) => format!("goto_named_mark_line {}", *c as u32),
@@ -1256,6 +1305,11 @@ impl Command {
             }
             // Pattern is LAST so it may contain spaces (like search_next).
             Command::GotoFirstMatch(p) => format!("goto_first_match {p}"),
+            Command::ShowKeywordLines { above, list, count } => format!(
+                "show_keyword_lines {} {} {count}",
+                if *above { "above" } else { "below" },
+                if *list { "list" } else { "echo" }
+            ),
             // Direction + offset before the pattern (pattern is LAST so it may contain spaces, like
             // search_next). The offset token is whitespace-free so it never collides with the pattern.
             Command::Search {
@@ -1344,6 +1398,7 @@ impl Command {
             "enter_terminal" => Command::EnterTerminal,
             "enter_terminal_normal" => Command::EnterTerminalNormal,
             "insert_line_start" => Command::InsertLineStart,
+            "insert_column_zero" => Command::InsertColumnZero,
             "append_line_end" => Command::AppendLineEnd,
             "open_below" => Command::OpenBelow,
             "open_above" => Command::OpenAbove,
@@ -1361,6 +1416,21 @@ impl Command {
                 let c = char::from_u32(cp)
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::VirtualReplaceType(c)
+            }
+            "virtual_replace_char" => {
+                let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let mut it = a.split_whitespace();
+                let n: u32 = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let cp: u32 = it
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                let c = char::from_u32(cp)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
+                Command::VirtualReplaceChar(n, c)
             }
             "insert_char" => {
                 let cp = arg_u32(arg, line)?;
@@ -1487,6 +1557,9 @@ impl Command {
             "goto_older_jump" => Command::GotoOlderJump,
             "goto_newer_jump" => Command::GotoNewerJump,
             "insert_at_last_insert" => Command::InsertAtLastInsert,
+            "ascii_info" => Command::AsciiInfo,
+            "file_info" => Command::FileInfo,
+            "cursor_info" => Command::CursorInfo,
             "set_named_mark" => {
                 let cp = arg_u32(arg, line)?;
                 let c = char::from_u32(cp)
@@ -1751,6 +1824,13 @@ impl Command {
                 global: matches!(raw.split_whitespace().next(), Some("global")),
             },
             "goto_first_match" => Command::GotoFirstMatch(raw.to_string()),
+            "show_keyword_lines" => {
+                let mut it = raw.split_whitespace();
+                let above = !matches!(it.next(), Some("below"));
+                let list = matches!(it.next(), Some("list"));
+                let count = it.next().and_then(|c| c.parse().ok()).unwrap_or(1);
+                Command::ShowKeywordLines { above, list, count }
+            }
             "search" => {
                 // `search {op} {count} {fwd|bwd} {offset} {pattern...}` — pattern is the untrimmed
                 // remainder (may contain spaces); the offset token is whitespace-free.
@@ -1866,6 +1946,7 @@ mod tests {
             Command::EnterTerminal,
             Command::EnterTerminalNormal,
             Command::InsertLineStart,
+            Command::InsertColumnZero,
             Command::AppendLineEnd,
             Command::OpenBelow,
             Command::OpenAbove,
@@ -1876,6 +1957,9 @@ mod tests {
             Command::EnterVirtualReplace,
             Command::VirtualReplaceType('z'),
             Command::VirtualReplaceType('가'),
+            Command::VirtualReplaceChar(1, 'z'),
+            Command::VirtualReplaceChar(3, 'z'),
+            Command::VirtualReplaceChar(1, '가'),
             Command::InsertChar('h'),
             Command::ReplaceChar(1, 'z'),
             Command::ReplaceChar(3, 'z'),
@@ -1930,7 +2014,30 @@ mod tests {
             Command::GotoDeclaration { global: true },
             Command::GotoFirstMatch("\\<foo\\>".into()),
             Command::GotoFirstMatch("bar baz".into()),
+            Command::ShowKeywordLines {
+                above: true,
+                list: false,
+                count: 1,
+            },
+            Command::ShowKeywordLines {
+                above: false,
+                list: false,
+                count: 3,
+            },
+            Command::ShowKeywordLines {
+                above: true,
+                list: true,
+                count: 1,
+            },
+            Command::ShowKeywordLines {
+                above: false,
+                list: true,
+                count: 1,
+            },
             Command::InsertAtLastInsert,
+            Command::AsciiInfo,
+            Command::FileInfo,
+            Command::CursorInfo,
             Command::SetNamedMark('a'),
             Command::SetNamedMark('z'),
             Command::GotoNamedMark('a'),
@@ -2182,6 +2289,10 @@ mod tests {
             Command::Yank(1, Motion::UnmatchedParenFwd),
             Command::Change(2, Motion::UnmatchedBraceBack),
             Command::Delete(1, Motion::UnmatchedBraceFwd),
+            Command::Move(1, Motion::MethodStartFwd),
+            Command::Move(2, Motion::MethodStartBack),
+            Command::Delete(1, Motion::MethodEndFwd),
+            Command::Yank(3, Motion::MethodEndBack),
             Command::Yank(1, Motion::Line),
             Command::Yank(2, Motion::WordFwd),
             Command::Paste {

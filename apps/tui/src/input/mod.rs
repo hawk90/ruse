@@ -116,6 +116,9 @@ enum Awaiting {
     GSecond,
     /// After `r`: the next key is the replacement char.
     ReplaceChar,
+    /// After `gr`: the next key is the CLASSIC-Vim virtual-replace char (`{count}gr{char}`, the one-shot form
+    /// of `gR`). The live count carries through so `3gr{char}` replaces three chars.
+    VirtualReplaceChar,
     /// After `` ` `` (backtick): the next key names a mark to jump to — `.` (last change) or a named mark
     /// `a`–`z`. Any other key aborts.
     MarkJump,
@@ -202,6 +205,12 @@ struct InsertState {
     /// (that key ACCEPTS the current candidate, Vim's behavior) and, like the rest of `InsertState`, when
     /// the Insert layer dies. Local to Insert.
     completion: Option<Completion>,
+    /// Insert-mode `CTRL-X` completion submode (`i_CTRL-X`): the next key selects a completion SOURCE. Only
+    /// `CTRL-L` (whole-line, current buffer) is in scope this slice — the frontend intercepts it before
+    /// `feed_insert` (it needs the buffer) and resolves the candidate lines. Any other key reaching the
+    /// engine cancels the submode. A one-key expectation local to Insert; ALWAYS separate from the Emacs
+    /// profile's `C-x` prefix (`emacs_prefix`), which lives on the non-modal `feed` path.
+    ctrl_x: bool,
 }
 
 /// One in-flight insert-mode keyword-completion session (`i_CTRL-N` / `i_CTRL-P`). The candidate list is
@@ -1176,9 +1185,18 @@ impl InputEngine {
     pub fn insert_plain_text_ctx(&self) -> bool {
         !self.insert.ctrl_g
             && !self.insert.ctrl_r
+            && !self.insert.ctrl_x
             && self.insert.digraph.is_none()
             && self.insert.literal.is_none()
             && !self.in_one_shot()
+    }
+
+    /// Whether the Insert `CTRL-X` completion submode (`i_CTRL-X`) is armed — the previous key was `CTRL-X`
+    /// and the engine awaits the source selector. The frontend checks this so `i_CTRL-X CTRL-L` (whole-line
+    /// completion) is resolved against the buffer here rather than reaching `feed_insert`.
+    #[must_use]
+    pub fn insert_ctrl_x_pending(&self) -> bool {
+        self.insert.ctrl_x
     }
 
     /// `i_CTRL-E` / `i_CTRL-Y`: insert the frontend-resolved character directly below / above the caret.
@@ -1227,6 +1245,18 @@ impl InputEngine {
             applied,
         });
         self.complete_cycle(forward)
+    }
+
+    /// Start an insert-mode WHOLE-LINE completion cycle (`i_CTRL-X CTRL-L`) and take the first step. Consumes
+    /// the `CTRL-X` submode ([`insert_ctrl_x_pending`](Self::insert_ctrl_x_pending)) and reuses the same
+    /// [`Completion`] cycle machinery as [`complete_start`](Self::complete_start) — the ONLY difference is
+    /// the SOURCE: `base` and `cands` are whole-line (post-indent) text resolved by the frontend via
+    /// [`Workspace::line_completion`](ruse_core::Workspace::line_completion). Always steps FORWARD onto the
+    /// first matching line (Vim's `CTRL-X CTRL-L`); a bare `CTRL-L` (or `CTRL-N`/`CTRL-P`) then continues the
+    /// cycle. With NO candidates this is a no-op ([`Feed::Ignored`]) and no cycle is armed (Vim bells).
+    pub fn complete_line_start(&mut self, base: String, cands: Vec<String>) -> Feed {
+        self.insert.ctrl_x = false; // the submode's job is done — the cycle owns continuation from here
+        self.complete_start(base, cands, true)
     }
 
     /// Advance (`CTRL-N`) or retreat (`CTRL-P`) the active keyword-completion cycle by one stop and emit the
@@ -1394,7 +1424,7 @@ impl InputEngine {
         // (replace). Vim's Lang-Arg translates that argument regardless of how the command was reached.
         if matches!(
             self.normal.awaiting,
-            Awaiting::FindTarget { .. } | Awaiting::ReplaceChar
+            Awaiting::FindTarget { .. } | Awaiting::ReplaceChar | Awaiting::VirtualReplaceChar
         ) {
             return true;
         }
@@ -1673,6 +1703,19 @@ impl InputEngine {
         // accepted text already sits in the buffer; dropping the state is all that is needed.
         self.insert.completion = None;
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // `i_CTRL-X` submode: the in-scope second key `CTRL-L` (whole-line completion) is intercepted by the
+        // frontend BEFORE `feed_insert` (it needs the buffer), so any key that REACHES here cancels the
+        // submode. A CONTROL-modified key is a would-be submode selector we do not support (the deferred
+        // `CTRL-N`/`CTRL-P` local-keyword, `CTRL-F` filename sources): SWALLOW it as a clean cancel rather
+        // than inserting a stray char. A non-ctrl key falls through and is processed as normal Insert input
+        // (so `CTRL-X` then `<Esc>` still leaves Insert, `CTRL-X` then a letter inserts it).
+        if self.insert.ctrl_x {
+            self.insert.ctrl_x = false;
+            if ctrl {
+                self.reset();
+                return Feed::Ignored;
+            }
+        }
         // `CTRL-R` prefix: consume the second key as the register NAME and insert its contents at the caret.
         // Accepts the same names the paste path reads (`"`, `0`–`9`, `-`, `a`–`z`/`A`–`Z`); any other key
         // aborts without inserting. Checked before the layer so the register key never reaches text insertion.
@@ -1789,6 +1832,15 @@ impl InputEngine {
         if ctrl && key.code == KeyCode::Char('r') {
             self.reset();
             self.insert.ctrl_r = true;
+            return Feed::Pending;
+        }
+        // `i_CTRL-X` — arm the completion submode; the next key selects the source. Only `CTRL-L` (whole-line,
+        // current buffer) is in scope this slice, resolved by the frontend (see the run loop). The Emacs
+        // profile's `C-x` prefix is a SEPARATE non-modal path (`emacs_prefix`); this fires only in Vim/Native
+        // Insert, which is the only profile set that reaches `feed_insert`.
+        if ctrl && key.code == KeyCode::Char('x') {
+            self.reset();
+            self.insert.ctrl_x = true;
             return Feed::Pending;
         }
         // `i_CTRL-K` — arm the digraph prefix; the next TWO printable keys select the digraph.
@@ -2041,13 +2093,15 @@ impl InputEngine {
     /// grammar and the mode-specific keys.
     fn feed_base(&mut self, key: KeyEvent, mode: Mode) -> Feed {
         // `CTRL-G` toggles Visual<->Select over the SAME selection (Vim's documented behaviour). Handled
-        // here, before the shared `g` initiator below, so it is never mistaken for the start of `gg` — and
-        // fully consumed in every mode: outside a selection nothing is bound (Vim's file-info `CTRL-G` is
-        // not implemented), which is inert, NOT the start of `gg`.
+        // here, before the shared `g` initiator below, so it is never mistaken for the start of `gg`. In
+        // Normal it is Vim's file-info command (name / [Modified] / line count / cursor percent), resolved
+        // + status-surfaced by the frontend. In any other non-selection mode nothing is bound (inert, NOT
+        // the start of `gg`).
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('g') {
             return match mode {
                 Mode::Visual { kind } => self.action(Command::EnterSelect { kind }),
                 Mode::Select { kind } => self.action(Command::EnterVisual { kind }),
+                Mode::Normal => self.action(Command::FileInfo),
                 _ => {
                     self.reset();
                     Feed::Ignored
@@ -2588,6 +2642,13 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::Nothing;
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 return match key.code {
+                    // `g CTRL-G` — cursor position / buffer counts (Col/Line/Word/[Char]/Byte). Checked
+                    // before the bare `g` (=`gg`) arm, since that arm ignores the ctrl modifier. Frontend-
+                    // resolved + status-surfaced; no buffer mutation.
+                    KeyCode::Char('g') if ctrl => self.action(Command::CursorInfo),
+                    // `ga` — the numeric value of the character under the cursor (`:ascii`/`:as` synonym).
+                    // `!ctrl` keeps it distinct from the Visual `g CTRL-A` sequence-increment arm below.
+                    KeyCode::Char('a') if !ctrl => self.action(Command::AsciiInfo),
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
                     // `ge` / `gE` — backward to the end of the previous word / WORD (operator-aware via
                     // `motion`, so `dge` deletes back through the previous word-end).
@@ -2706,6 +2767,17 @@ impl InputEngine {
                     KeyCode::Char(',') => self.action(Command::GotoNewerChange),
                     // `gi` — resume Insert at the last-insert position (Vim `` `^ ``).
                     KeyCode::Char('i') => self.action(Command::InsertAtLastInsert),
+                    // `gI` — insert at column 1 (byte column 0), BEFORE all indentation (`I` stops at the
+                    // first non-blank). Routed through `insert_entry` so `{count}gI` repeats the typed text.
+                    KeyCode::Char('I') => self.insert_entry(Command::InsertColumnZero),
+                    // `gr{char}` — CLASSIC-Vim virtual-replace of ONE (or `{count}`) char, then back to Normal
+                    // (the one-shot of `gR`). NOTE: nvim 0.11+ maps `gr`/`grn`/`gra`/`grr` to LSP actions by
+                    // default, but those are keymaps, not a built-in; ruse installs no such map and targets the
+                    // classic-Vim built-in. Arm the char expectation; the count carries through untouched.
+                    KeyCode::Char('r') => {
+                        self.normal.awaiting = Awaiting::VirtualReplaceChar;
+                        Feed::Pending
+                    }
                     // `gp` / `gP` — paste like `p`/`P` but leave the cursor JUST AFTER the pasted text.
                     KeyCode::Char('p') => self.action(Command::Paste {
                         after: true,
@@ -2757,6 +2829,17 @@ impl InputEngine {
                     KeyCode::Enter => self.action(Command::ReplaceChar(self.mcount(), '\n')),
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).
+                    _ => self.unmatched(Ns::OperatorPending, key),
+                };
+            }
+            Awaiting::VirtualReplaceChar => {
+                self.normal.awaiting = Awaiting::Nothing;
+                return match key.code {
+                    // `{count}gr{char}` — one-shot virtual replace (tab-aware) of `count` chars, back to
+                    // Normal. The count accumulated before `gr` is still live (the `gr` arm did not reset it).
+                    // No `<CR>` form: classic `gr<CR>` is not the line-splitting `r<CR>` — the char is taken
+                    // literally, so a bare Enter here simply aborts the pending construct.
+                    KeyCode::Char(c) => self.action(Command::VirtualReplaceChar(self.mcount(), c)),
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
@@ -2879,6 +2962,27 @@ impl InputEngine {
                     KeyCode::Char('{') if open_bracket => self.motion(Motion::UnmatchedBraceBack),
                     KeyCode::Char(')') if !open_bracket => self.motion(Motion::UnmatchedParenFwd),
                     KeyCode::Char('}') if !open_bracket => self.motion(Motion::UnmatchedBraceFwd),
+                    // Method (brace-block) motions — count/operator-aware via `self.motion`. `]m`/`[m` go to
+                    // the next/previous method START (a `{`); `]M`/`[M` go to the next/previous method END (a
+                    // `}`). The starting bracket (`]` vs `[`) fixes the direction; the case picks start vs end.
+                    KeyCode::Char('m') if !open_bracket => self.motion(Motion::MethodStartFwd),
+                    KeyCode::Char('m') if open_bracket => self.motion(Motion::MethodStartBack),
+                    KeyCode::Char('M') if !open_bracket => self.motion(Motion::MethodEndFwd),
+                    KeyCode::Char('M') if open_bracket => self.motion(Motion::MethodEndBack),
+                    // Keyword-line lookup (`:help [i`) — DISPLAY the line(s) containing the keyword under
+                    // the cursor (current buffer). `[i`/`]i` echo the count'th match (`[` from the top of
+                    // the file, `]` below the cursor); `[I`/`]I` list all matches. The frontend resolves
+                    // the keyword and scans the lines (the engine has no buffer), like `*`/`gd`.
+                    KeyCode::Char('i') => self.action(Command::ShowKeywordLines {
+                        above: open_bracket,
+                        list: false,
+                        count,
+                    }),
+                    KeyCode::Char('I') => self.action(Command::ShowKeywordLines {
+                        above: open_bracket,
+                        list: true,
+                        count,
+                    }),
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
@@ -2914,7 +3018,7 @@ use cmdline::{CmdLine, ExprTarget};
 use cmdwin::CmdWin;
 use history::CmdHistory;
 
-mod digraph;
+pub(crate) mod digraph; // `pub(crate)`: the `:digraphs` listing overlay (ui) reads `digraph::entries`.
 use digraph::digraph;
 
 mod repeat;
@@ -2924,7 +3028,7 @@ mod ex;
 pub(crate) use ex::reuse_last_search;
 // `GlobalPayload` is referenced by the non-test dispatch/run-loop (routing `:g/pat/normal` vs `d`/`s`) and
 // by the integration scenarios that drive `:g` directly, so it is part of the input surface like `Ex`.
-pub use ex::{parse_ex, BufTarget, Ex, GlobalPayload, ReadSource};
+pub use ex::{parse_ex, BufTarget, Ex, FoldMethod, GlobalPayload, ReadSource};
 #[cfg(test)]
 pub(crate) use ex::{parse_substitute, GlobalSpec, SubSpec};
 

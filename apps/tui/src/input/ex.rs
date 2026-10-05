@@ -32,12 +32,17 @@ pub enum Ex {
     Diagnostics,
     /// `:registers`/`:reg`/`:display` — view the non-empty registers (F-029). View-only.
     Registers,
+    /// `:digraphs`/`:dig` — list the curated digraph table (code + glyph + decimal) in a view-only overlay.
+    Digraphs,
     /// `:marks` — view the set marks (a-z, `.`, `^`); Enter jumps to the mark (F-003).
     Marks,
     /// `:jumps` — view the jumplist; Enter jumps to the position (F-003).
     Jumps,
     /// `:changes` — view the change list; Enter jumps to the position (F-003).
     Changes,
+    /// `:ascii`/`:as` — print the numeric value of the character under the cursor to the status line (the
+    /// ex synonym of Normal-mode `ga`). View-only; no buffer mutation.
+    Ascii,
     /// `:[range]d`/`:delete` — delete the range's lines (no range = the current line), like a linewise `dd`.
     Delete(SubRange),
     /// `:[range]y`/`:yank` — yank the range's lines linewise into the unnamed register (like `yy`).
@@ -109,6 +114,15 @@ pub enum Ex {
     /// `:set (no)fixeol` / `(no)fixendofline` — opt-in: on save, ADD a final `\n` when the buffer lacks one
     /// (frontend write preference; OFF by default — byte-preserve is the honest default). Vim's fixendofline.
     SetFixEol(bool),
+    /// `:set foldmethod=indent|manual` (`fdm`) — select how folds are formed for the focused buffer (folds
+    /// are a frontend concern; slice 3). `manual` keeps the hand-made `zf` model; `indent` derives nested
+    /// folds from indentation. Handled in the run loop.
+    SetFoldMethod(FoldMethod),
+    /// `:set foldlevel=N` (`fdl`) — folds deeper than `N` are closed under `foldmethod=indent` (frontend).
+    SetFoldLevel(usize),
+    /// `:set (no)foldenable` (`fen`) — master switch: when off, no fold is closed regardless of foldlevel
+    /// (Vim's `zn`/`zN`; frontend render state). ON by default.
+    SetFoldEnable(bool),
     /// `:lmap {lhs} {rhs}` — install a Lang-Arg (`lmap`) mapping (F-027). Single-char lhs/rhs for MVP.
     Lmap {
         lhs: char,
@@ -170,6 +184,17 @@ pub enum Ex {
     Unknown(String),
 }
 
+/// How folds are formed for a buffer (`:set foldmethod`). Slice 3 implements `manual` (existing `zf` folds)
+/// and `indent` (nested folds derived from indentation); the other Vim methods (`expr`/`syntax`/`marker`/
+/// `diff`) are deferred.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FoldMethod {
+    /// `manual` — folds are created by hand (`zf`) and never recomputed. The default.
+    Manual,
+    /// `indent` — folds are derived from each line's indentation and recomputed on edit.
+    Indent,
+}
+
 /// The source of a `:r`/`:read`: a FILE (pure IO) or a shell COMMAND's stdout (`:r !{cmd}`).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ReadSource {
@@ -229,6 +254,9 @@ pub struct SubSpec {
     pub ignore_case: Option<bool>,
     /// `c`: confirm each substitution interactively (handled by the frontend; PR-c2).
     pub confirm: bool,
+    /// `n`: report-only — count the matches and echo `N matches on M lines` WITHOUT editing the buffer,
+    /// moving the cursor, or adding an undo entry (Vim's `:s///n`). Takes priority over `c` (like Vim).
+    pub count_only: bool,
 }
 
 /// Parse `:earlier [N]` / `:later [N]` (or `:ea` / `:lat`) — chronological undo time travel. The optional
@@ -264,6 +292,9 @@ fn parse_set(line: &str) -> Option<Ex> {
         "noincsearch" | "nois" => return Some(Ex::SetIncSearch(false)),
         "fixeol" | "fixendofline" => return Some(Ex::SetFixEol(true)),
         "nofixeol" | "nofixendofline" => return Some(Ex::SetFixEol(false)),
+        // Fold options (frontend; slice 3). `foldenable`/`fen` bool + `no` prefix.
+        "foldenable" | "fen" => return Some(Ex::SetFoldEnable(true)),
+        "nofoldenable" | "nofen" => return Some(Ex::SetFoldEnable(false)),
         _ => {}
     }
     let ex = match opt {
@@ -275,8 +306,23 @@ fn parse_set(line: &str) -> Option<Ex> {
         "noexpandtab" | "noet" => EditorOption::ExpandTab(false),
         _ => {
             let (k, v) = opt.split_once('=')?;
-            let n: usize = v.trim().parse().ok()?;
-            match k.trim() {
+            let k = k.trim();
+            let v = v.trim();
+            // Fold `=`-valued options (frontend; slice 3) are parsed before the numeric core options.
+            match k {
+                "foldmethod" | "fdm" => {
+                    return match v {
+                        "indent" => Some(Ex::SetFoldMethod(FoldMethod::Indent)),
+                        "manual" => Some(Ex::SetFoldMethod(FoldMethod::Manual)),
+                        // expr/syntax/marker/diff are deferred — unknown value → no-op (Unknown).
+                        _ => None,
+                    };
+                }
+                "foldlevel" | "fdl" => return Some(Ex::SetFoldLevel(v.parse().ok()?)),
+                _ => {}
+            }
+            let n: usize = v.parse().ok()?;
+            match k {
                 "shiftwidth" | "sw" | "tabstop" | "ts" => EditorOption::ShiftWidth(n),
                 "textwidth" | "tw" => EditorOption::TextWidth(n),
                 _ => return None,
@@ -404,6 +450,7 @@ pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
         global,
         ignore_case,
         confirm: flags.contains('c'),
+        count_only: flags.contains('n'),
     })
 }
 
@@ -631,9 +678,11 @@ pub fn parse_ex(line: &str) -> Ex {
         "codeaction" | "codeactions" | "ca" => Ex::CodeAction,
         "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
         "registers" | "reg" | "display" | "di" => Ex::Registers,
+        "digraphs" | "digraph" | "dig" => Ex::Digraphs,
         "marks" => Ex::Marks,
         "jumps" => Ex::Jumps,
         "changes" => Ex::Changes,
+        "ascii" | "as" => Ex::Ascii,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
         "e!" | "edit!" => Ex::EditReload,
@@ -1009,6 +1058,7 @@ mod reuse_last_search_tests {
             global: false,
             ignore_case: None,
             confirm: false,
+            count_only: false,
         })
     }
 
@@ -1459,5 +1509,28 @@ mod set_hlsearch_incsearch_tests {
         // Vim's long spelling resolves the same way.
         assert_eq!(parse_ex("set fixendofline"), Ex::SetFixEol(true));
         assert_eq!(parse_ex("set nofixendofline"), Ex::SetFixEol(false));
+    }
+
+    #[test]
+    fn parses_fold_options() {
+        // foldmethod (fdm): only manual/indent are honored; the deferred methods are Unknown.
+        assert_eq!(
+            parse_ex("set foldmethod=indent"),
+            Ex::SetFoldMethod(FoldMethod::Indent)
+        );
+        assert_eq!(
+            parse_ex("set fdm=manual"),
+            Ex::SetFoldMethod(FoldMethod::Manual)
+        );
+        assert!(matches!(parse_ex("set foldmethod=expr"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("set fdm=marker"), Ex::Unknown(_)));
+        // foldlevel (fdl) = N.
+        assert_eq!(parse_ex("set foldlevel=2"), Ex::SetFoldLevel(2));
+        assert_eq!(parse_ex("set fdl=0"), Ex::SetFoldLevel(0));
+        // foldenable (fen) bool + `no` prefix.
+        assert_eq!(parse_ex("set foldenable"), Ex::SetFoldEnable(true));
+        assert_eq!(parse_ex("set nofoldenable"), Ex::SetFoldEnable(false));
+        assert_eq!(parse_ex("set fen"), Ex::SetFoldEnable(true));
+        assert_eq!(parse_ex("set nofen"), Ex::SetFoldEnable(false));
     }
 }

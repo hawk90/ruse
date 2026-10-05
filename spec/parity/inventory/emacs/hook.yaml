@@ -1,6 +1,6 @@
 # GENERATED — do not hand-edit item enumeration. Regenerate:
 #   python3 tools/parity/extract_emacs.py
-# Human-owned fields (status, ruse, note, superseded_by, surface_locked) ARE preserved across regeneration; the
+# Human-owned fields (status, ruse, note, superseded_by, surface_locked, family, secondary) ARE preserved across regeneration; the
 # enumeration is not. `status: unclassified` is legitimate and expected — discovery is
 # strict, classification is lazy (and locked per surface by `ruse gov parity_discovery`).
 # This census is RUNTIME-DERIVED (no source tree): the baseline is `emacs -Q --batch` plus
@@ -10,10 +10,10 @@ version: 1
 generated: true
 generator: tools/parity/extract_emacs.py
 upstream: emacs
-revision: 636f166cfc86aa90d63f592fd99f3fdd9ef95ebd
-version_label: emacs-30.2
+revision: a360712c9d272d950d8d8255ef74570f7e90b7d9
+version_label: emacs-31.1
 derived_from: runtime-binary
-binary_version: '30.2'
+binary_version: '31.1'
 binary_identity: unverified-build
 baseline: emacs -Q --batch + require(simple window files replace minibuffer isearch register rect kmacro macros dired bookmark
   project)
@@ -145,6 +145,14 @@ items:
   name: bookmark-after-jump-hook
   defined_in: bookmark.elc
   desc: Hook run after ‘bookmark-jump’ jumps to a bookmark.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.bookmark-after-load-file-hook
+  surface: hook
+  name: bookmark-after-load-file-hook
+  defined_in: bookmark.elc
+  desc: Hook run after a bookmark file is loaded by ‘bookmark-load’.
   attestation:
   - R
   status: unclassified
@@ -305,6 +313,14 @@ items:
   name: delayed-warnings-hook
   defined_in: subr.elc
   desc: Normal hook run to process and display delayed warnings.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.delete-trailing-whitespace-mode-hook
+  surface: hook
+  name: delete-trailing-whitespace-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘delete-trailing-whitespace-mode’.
   attestation:
   - R
   status: unclassified
@@ -556,11 +572,27 @@ items:
   attestation:
   - R
   status: unclassified
+- id: emacs.hook.minibuffer-nonselected-mode-hook
+  surface: hook
+  name: minibuffer-nonselected-mode-hook
+  defined_in: minibuffer.elc
+  desc: Hook run after entering or leaving ‘minibuffer-nonselected-mode’.
+  attestation:
+  - R
+  status: unclassified
 - id: emacs.hook.minibuffer-regexp-mode-hook
   surface: hook
   name: minibuffer-regexp-mode-hook
   defined_in: minibuffer.elc
   desc: Hook run after entering or leaving ‘minibuffer-regexp-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.mode-line-invisible-mode-hook
+  surface: hook
+  name: mode-line-invisible-mode-hook
+  defined_in: simple.elc
+  desc: Hook run after entering or leaving ‘mode-line-invisible-mode’.
   attestation:
   - R
   status: unclassified
@@ -665,6 +697,14 @@ items:
   name: process-menu-mode-hook
   defined_in: simple.elc
   desc: Hook run after entering ‘process-menu-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.progress-reporter-update-functions
+  surface: hook
+  name: progress-reporter-update-functions
+  defined_in: subr.elc
+  desc: Special hook run on progress-reporter updates.
   attestation:
   - R
   status: unclassified
@@ -841,6 +881,14 @@ items:
   name: visual-line-mode-hook
   defined_in: simple.elc
   desc: Hook run after entering or leaving ‘visual-line-mode’.
+  attestation:
+  - R
+  status: unclassified
+- id: emacs.hook.window-deletable-functions
+  surface: hook
+  name: window-deletable-functions
+  defined_in: window.elc
+  desc: Abnormal hook to decide whether a window may be implicitly deleted.
   attestation:
   - R
   status: unclassified

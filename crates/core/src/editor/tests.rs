@@ -2973,6 +2973,27 @@ mod insert_entry_tests {
         );
         assert_eq!(text(&st), "  Xab", "I inserts before the first non-blank");
     }
+
+    #[test]
+    fn gi_column_zero_inserts_before_indentation() {
+        // `gI` inserts at byte column 0, BEFORE the leading tab — unlike `I` (first non-blank). Oracle from
+        // nvim v0.12.4: `gIX<Esc>` on `\thello` → `X\thello`.
+        let st = run(
+            "\thello",
+            &[
+                Command::Move(1, Motion::LineEnd),
+                Command::InsertColumnZero,
+                Command::InsertChar('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "X\thello",
+            "gI inserts at column 0, before the tab"
+        );
+        assert_eq!(st.cursor(), 0, "cursor rests on the inserted X after <Esc>");
+    }
 }
 
 #[cfg(test)]
@@ -4986,6 +5007,59 @@ mod virtual_replace_tests {
         );
         assert_eq!(text(&st), "a\tb");
     }
+
+    // `{count}gr{char}` — CLASSIC-Vim one-shot virtual replace. Byte oracles captured from nvim v0.12.4
+    // (`vim -u NONE`); see the parity corpus for the driven-through-keys equivalents.
+
+    #[test]
+    fn gr_replaces_one_char_and_returns_to_normal() {
+        // `gr` on `abcdef` with the cursor on `b` → `aXcdef`, cursor left on the replaced `X` (col 1).
+        let st = run(
+            "abcdef",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::VirtualReplaceChar(1, 'X'),
+            ],
+        );
+        assert_eq!(text(&st), "aXcdef");
+        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.view.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn count_gr_replaces_count_chars() {
+        // `3grZ` from col 0 → `ZZZdef`, cursor on the last `Z` (col 2).
+        let st = run("abcdef", &[Command::VirtualReplaceChar(3, 'Z')]);
+        assert_eq!(text(&st), "ZZZdef");
+        assert_eq!(st.cursor(), 2);
+    }
+
+    #[test]
+    fn gr_over_a_tab_preserves_the_following_column() {
+        // `grA` over a leading `<Tab>` (ts=4): the tab spans >1 virtual column, so `A` is inserted BEFORE it
+        // (the tab shrinks) rather than replacing it — `A<Tab>X` — keeping `X` at its original column.
+        let st = run("\tX", &[Command::VirtualReplaceChar(1, 'A')]);
+        assert_eq!(text(&st), "A\tX");
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn count_gr_over_a_tab_inserts_then_walks_onto_it() {
+        // `2grA` over `<Tab>X`: first `A` inserts before the (still multi-column) tab, the second `A` inserts
+        // before the now-shrunk-but-still-multi-column tab → `AA<Tab>X`, cursor on the 2nd `A`.
+        let st = run("\tX", &[Command::VirtualReplaceChar(2, 'A')]);
+        assert_eq!(text(&st), "AA\tX");
+        assert_eq!(st.cursor(), 1);
+    }
+
+    #[test]
+    fn gr_past_end_of_line_appends() {
+        // `4grX` on `ab` overruns the 2-char line: it replaces `a`,`b` then APPENDS two more `X` past EOL
+        // (virtual Replace grows the line) → `XXXX`. `r` would be a no-op here — this is the gr divergence.
+        let st = run("ab", &[Command::VirtualReplaceChar(4, 'X')]);
+        assert_eq!(text(&st), "XXXX");
+        assert_eq!(st.cursor(), 3);
+    }
 }
 
 #[cfg(test)]
@@ -6948,6 +7022,82 @@ mod unmatched_bracket_motion_tests {
             ],
         );
         assert_eq!(text(&st), "abcdef");
+        assert!(st.register().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod method_motion_tests {
+    //! Vim `]m`/`[m`/`]M`/`[M` under operators. Every expected buffer/register is pinned to nvim v0.12.4.
+    //! The motions are exclusive charwise and take the shared exclusive-linewise reduction, so a target on a
+    //! column-0 brace deletes whole lines.
+    use crate::editor::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+    // Line 3's first non-blank is `x` (byte 35), inside method a's body.
+    const CLASS: &str =
+        "class Foo {\n    void a() {\n        x;\n    }\n    void b() {\n        y;\n    }\n}\n";
+    const FLAT: &str = "void a() {\n    x;\n}\nvoid b() {\n    y;\n}\n";
+
+    #[test]
+    fn charwise_mid_line_landings() {
+        // From `x` (byte 35): `d]m` deletes to method b's `{` (byte 57) — exclusive charwise, mid-line.
+        let st = run(
+            CLASS,
+            &[
+                Command::Move(3, Motion::GotoLine),
+                Command::Delete(1, Motion::MethodStartFwd),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "class Foo {\n    void a() {\n        {\n        y;\n    }\n}\n"
+        );
+        assert!(!st.register().is_linewise());
+        assert_eq!(st.register().text(), b"x;\n    }\n    void b() ");
+
+        // `d[M` deletes back to the class `{` (byte 10) — charwise.
+        let st = run(
+            CLASS,
+            &[
+                Command::Move(3, Motion::GotoLine),
+                Command::Delete(1, Motion::MethodEndBack),
+            ],
+        );
+        assert_eq!(
+            text(&st),
+            "class Foo x;\n    }\n    void b() {\n        y;\n    }\n}\n"
+        );
+        assert_eq!(st.register().text(), b"{\n    void a() {\n        ");
+    }
+
+    #[test]
+    fn column_zero_landing_becomes_linewise() {
+        // `d4]m` from the top lands on the class's closing `}` at column 0 → whole-line delete (nvim: `V`).
+        let st = run(CLASS, &[Command::Delete(4, Motion::MethodStartFwd)]);
+        assert_eq!(text(&st), "}\n");
+        assert!(st.register().is_linewise());
+
+        // FLAT `d2]m` lands on the first block's top-level `}` (column 0) → linewise over lines 1-2.
+        let st = run(FLAT, &[Command::Delete(2, Motion::MethodStartFwd)]);
+        assert_eq!(text(&st), "}\nvoid b() {\n    y;\n}\n");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"void a() {\n    x;\n");
+    }
+
+    #[test]
+    fn no_brace_operator_deletes_nothing() {
+        let st = run("abcdef\n", &[Command::Delete(1, Motion::MethodStartFwd)]);
+        assert_eq!(text(&st), "abcdef\n");
         assert!(st.register().is_empty());
     }
 }

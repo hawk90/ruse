@@ -496,6 +496,29 @@ impl Workspace {
         out
     }
 
+    /// Count — WITHOUT editing — the matches `:[range]s/pat//n` (the `n` report-only flag) would act on
+    /// the focused window (F-009 #2). Read-only (swap-trick like [`Workspace::substitute_preview`]): the
+    /// buffer is unchanged and no undo entry is created. Returns the count or a [`RegexError`].
+    pub fn substitute_count(
+        &mut self,
+        range: SubRange,
+        pattern: &str,
+        flags: SubFlags,
+    ) -> Result<SubOutcome, RegexError> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let st = EditorState::from_parts(doc, view);
+        let out = st.substitute_count(range, pattern, flags);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        out
+    }
+
     /// Apply an accepted set of [`Substitution`]s to the focused window as one undo group (the tail of
     /// the `:s///c` confirm loop). Swap-trick like [`Workspace::apply`].
     pub fn apply_substitutions(&mut self, subs: &[Substitution]) -> SubOutcome {
@@ -1186,6 +1209,22 @@ impl Workspace {
         (base, cands)
     }
 
+    /// Insert-mode WHOLE-LINE completion source for `i_CTRL-X CTRL-L` (F-003, current-buffer only).
+    /// Returns `(base, candidates)` for the focused view: `base` is the caret line's post-indent text up to
+    /// the caret (the text being completed), and `candidates` are the OTHER buffer lines' post-indent text
+    /// that START WITH `base`, in Vim's backward-from-caret-with-wrap scan order, deduped by post-indent
+    /// content (see [`crate::motion::line_completions`]). Leading indent is ignored on both sides. The
+    /// engine has no buffer, so the frontend calls this and hands both to the input engine, which cycles the
+    /// selection exactly as for [`keyword_completion`](Self::keyword_completion). An EMPTY candidate list
+    /// means "no match" (a Vim no-op / bell).
+    #[must_use]
+    pub fn line_completion(&self) -> (String, Vec<String>) {
+        let pane = self.focused();
+        let b = pane.doc.bytes();
+        let cur = pane.view.cursor();
+        crate::motion::line_completions(b, cur)
+    }
+
     /// Set one `:set` option on the focused view (swap-trick, like [`Workspace::set_indent`]).
     pub fn set_option(&mut self, opt: crate::editor::EditorOption) {
         let vid = self.windows[self.focus].view;
@@ -1863,6 +1902,48 @@ mod tests {
         assert_eq!(cands, vec!["foo", "bar"]);
     }
 
+    /// `line_completion` backs `i_CTRL-X CTRL-L`: the post-indent prefix before the caret plus the other
+    /// buffer lines' post-indent content that start with it, in Vim's backward-from-caret-with-wrap order,
+    /// deduped by content (indent ignored). Cases captured from nvim v0.12.4.
+    #[test]
+    fn line_completion_base_and_candidates() {
+        // Prefix "foobar" on a fresh last line: backward scan (the two identical "foobar baz" dedupe).
+        let mut w =
+            Workspace::new(b"foobar baz\nfoobar qux\nfoobar baz\nhello world\nfoobar".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "foobar");
+        assert_eq!(cands, vec!["foobar baz", "foobar qux"]);
+
+        // Mid-buffer caret: backward to the top, then wrap from the bottom upward; the caret line excluded.
+        let mut w = Workspace::new(b"foo A\nfoo B\nfoo\nfoo C\nfoo D".to_vec());
+        w.place_focused_cursor(15); // end of the bare "foo" on line 3 (0-based row 2)
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "foo");
+        assert_eq!(cands, vec!["foo B", "foo A", "foo D", "foo C"]);
+
+        // Indent is ignored for matching and dedup: "foo bar" and "    foo bar" collapse to one candidate.
+        let mut w = Workspace::new(b"foo bar\n    foo bar\nfoo baz\nfoo".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "foo");
+        assert_eq!(cands, vec!["foo baz", "foo bar"]);
+
+        // The prefix's own indent is stripped from `base` (its length is what the completion deletes).
+        let mut w = Workspace::new(b"    indented alpha\nplain beta\n  in".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "in");
+        assert_eq!(cands, vec!["indented alpha"]);
+
+        // No matching line → empty candidate list (a Vim no-op / bell).
+        let mut w = Workspace::new(b"foo bar\nbaz\nzz".to_vec());
+        w.place_focused_cursor(w.focused().doc.bytes().len());
+        let (base, cands) = w.line_completion();
+        assert_eq!(base, "zz");
+        assert!(cands.is_empty());
+    }
+
     /// `adjacent_line_char` backs `i_CTRL-E`/`i_CTRL-Y`: the char below/above the caret at its column, or
     /// `None` for a short/absent adjacent line (a Vim no-op). Column = char count before the caret.
     #[test]
@@ -2178,6 +2259,81 @@ mod tests {
         w.substitute(SubRange::CurrentLine, "x", "y", SubFlags::default())
             .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"y x\ny x\n", "repeat on line 2");
+    }
+
+    /// F-009: `:s///n` (report-only) counts matches WITHOUT editing the buffer or adding an undo entry.
+    /// Numbers verified vs nvim v0.12.4: `%s/foo//gn` on this buffer → "6 matches on 3 lines".
+    #[test]
+    fn substitute_count_reports_without_editing_or_undo() {
+        let src = b"foo bar foo\nfoo baz\nno match here\nfoo foo foo\n";
+        let mut w = Workspace::new(src.to_vec());
+        w.place_focused_cursor(2); // anywhere — count must not move the cursor
+        let global = SubFlags {
+            global: true,
+            ignore_case: None,
+        };
+        let out = w
+            .substitute_count(SubRange::WholeFile, "foo", global)
+            .unwrap();
+        assert_eq!(
+            out.replacements, 6,
+            "6 matches on lines 1/2/4 (nvim: 6 matches)"
+        );
+        assert_eq!(out.lines, 3, "3 distinct lines had a match");
+        // The buffer, cursor, and dirty flag are all untouched — no edit, no undo entry.
+        assert_eq!(
+            w.focused().doc.bytes(),
+            src,
+            "count-only must not edit the buffer"
+        );
+        assert_eq!(
+            w.focused().view.cursor(),
+            2,
+            "count-only must not move the cursor"
+        );
+        assert!(
+            !w.focused().doc.is_modified(),
+            "count-only must not dirty the buffer"
+        );
+        // An undo is a genuine no-op: there was no transaction to undo.
+        w.apply(&Command::Undo);
+        assert_eq!(
+            w.focused().doc.bytes(),
+            src,
+            "no undo entry was created by :s///n"
+        );
+    }
+
+    /// F-009: without `g`, `:s///n` counts one match per line (verified vs nvim: "3 matches on 3 lines");
+    /// a single-line range counts only that line ("2 matches on 1 line").
+    #[test]
+    fn substitute_count_honors_g_flag_and_range() {
+        let mut w = Workspace::new(b"foo bar foo\nfoo baz\nno match here\nfoo foo foo\n".to_vec());
+        // No `g`: one match per line, three lines match.
+        let out = w
+            .substitute_count(SubRange::WholeFile, "foo", SubFlags::default())
+            .unwrap();
+        assert_eq!(
+            (out.replacements, out.lines),
+            (3, 3),
+            "nvim: 3 matches on 3 lines"
+        );
+        // Range = line 1 only, with `g`: both `foo`s on that line.
+        let out = w
+            .substitute_count(
+                SubRange::Lines(1, 1),
+                "foo",
+                SubFlags {
+                    global: true,
+                    ignore_case: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            (out.replacements, out.lines),
+            (2, 1),
+            "nvim: 2 matches on 1 line"
+        );
     }
 
     /// F-003: `marks_snapshot` lists the set named marks then `.` (last change) and `^` (last insert).

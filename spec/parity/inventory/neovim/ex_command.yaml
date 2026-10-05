@@ -7,8 +7,8 @@ version: 1
 generated: true
 generator: tools/parity/extract_neovim.py
 upstream: neovim
-revision: 68ea43cd0c28af25cd47731308c94fedfcfd1b0b
-version_label: v0.12.4
+revision: 5885a30e1e1225349079e7a1c4a3848aa8e43e42
+version_label: v0.12.5
 surface: ex_command
 source_of_record: 'S: src/nvim/ex_cmds.lua'
 items:

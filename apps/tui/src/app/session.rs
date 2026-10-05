@@ -286,11 +286,19 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // A `[`/`]` prefix (Some(open)) awaits its second key; only `[z`/`]z` (fold nav) are handled here — every
     // other bracket command (`]p`/`[p`, …) is still armed in the engine, so this observes without shadowing it.
     let mut pending_bracket: Option<bool> = None;
-    // Manual folds, keyed by buffer (slice 1: per-buffer, not per-window). Closed folds collapse in
-    // render; the cursor/scroll skip them; edits shift/drop them.
+    // Folds, keyed by buffer (per-buffer, not per-window). Closed folds collapse in render; the cursor/scroll
+    // skip them. Under `foldmethod=manual` (default) edits shift/drop them; under `foldmethod=indent` (slice 3)
+    // they are RECOMPUTED from indentation on edit.
     let mut folds: HashMap<DocumentId, Vec<crate::folds::Fold>> = HashMap::new();
-    // Per-buffer line count from the previous frame, to detect edit-driven line shifts for the fold ranges.
+    // Per-buffer line count from the previous frame, to detect edit-driven line shifts for manual fold ranges.
     let mut fold_lines: HashMap<DocumentId, usize> = HashMap::new();
+    // Per-buffer `foldmethod` (default manual), `foldlevel` (default 0), `foldenable` (default true), and the
+    // buffer revision the indent folds were last computed at (recompute when it changes). All frontend state
+    // (folds never leak into core; INV-DOC-VIEW).
+    let mut fold_method: HashMap<DocumentId, crate::input::FoldMethod> = HashMap::new();
+    let mut foldlevel: HashMap<DocumentId, usize> = HashMap::new();
+    let mut foldenable: HashMap<DocumentId, bool> = HashMap::new();
+    let mut fold_rev: HashMap<DocumentId, ruse_core::Revision> = HashMap::new();
     // Vim macros (D-055): `q{a-z}` records the raw keystroke stream into a register, `@{a-z}` replays it.
     // The whole record/replay state machine lives in `keys::MacroState` (unit-tested end to end).
     let mut macros = crate::keys::MacroState::new();
@@ -322,6 +330,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut diag_picker: Option<Picker<usize>> = None;
     // F-029: the `:registers` viewer — payload is the register name; view-only (Enter just closes).
     let mut reg_picker: Option<Picker<char>> = None;
+    // `:digraphs` listing — payload is the glyph; view-only (Enter just closes), like `reg_picker`.
+    let mut digraph_picker: Option<Picker<char>> = None;
+    // `[I`/`]I` keyword-line listing — payload is the match's 1-based line number; view-only (Enter closes).
+    let mut keyword_lines_picker: Option<Picker<usize>> = None;
     // F-003: the `:marks` viewer — payload is the mark's byte offset; Enter jumps the cursor there.
     let mut marks_picker: Option<Picker<usize>> = None;
     // F-003: the shared `:jumps` / `:changes` position viewer — payload is a byte offset; Enter jumps.
@@ -354,7 +366,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         {
             let buf = ws.focused_buffer();
             let nlines = line_idx.line_of(snapshot.len());
-            if let Some(fv) = folds.get_mut(&buf) {
+            let indent = fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent);
+            if indent {
+                // Indent folds are DERIVED: recompute from indentation whenever the buffer content changed
+                // (revision bump), then apply the foldlevel/foldenable rule. This resets any per-fold
+                // za/zo/zc toggle on edit — an honest first slice; foldlevel drives closed state between
+                // edits (zr/zm/zR/zM and :set foldlevel re-apply immediately, below).
+                if fold_rev.get(&buf) != Some(&revision) {
+                    let tw = ws.focused().view.tab_width();
+                    let mut computed = crate::folds::compute_indent_folds(&snapshot, tw);
+                    let en = foldenable.get(&buf).copied().unwrap_or(true);
+                    let fdl = if en {
+                        foldlevel.get(&buf).copied().unwrap_or(0)
+                    } else {
+                        usize::MAX // foldenable off ⇒ nothing closed
+                    };
+                    crate::folds::apply_foldlevel(&mut computed, fdl);
+                    folds.insert(buf, computed);
+                    fold_rev.insert(buf, revision);
+                }
+            } else if let Some(fv) = folds.get_mut(&buf) {
+                // Manual folds are NOT recomputed: shift/drop them when the line count changed since last
+                // frame (approximating the edit point as the cursor line).
                 if !fv.is_empty() {
                     let prev = *fold_lines.get(&buf).unwrap_or(&nlines);
                     if nlines != prev {
@@ -363,6 +396,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         crate::folds::shift(fv, at, delta);
                     }
                 }
+            }
+            // Snap the cursor OUT of any closed fold onto its summary (start) row (both methods).
+            if let Some(fv) = folds.get(&buf) {
                 let cline = line_idx.line_of(ws.focused().view.cursor());
                 let snapped = crate::folds::snap_out(fv, cline);
                 if snapped != cline {
@@ -468,6 +504,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             p.rows()
         } else if let Some(p) = reg_picker.as_ref() {
             p.rows()
+        } else if let Some(p) = digraph_picker.as_ref() {
+            p.rows()
+        } else if let Some(p) = keyword_lines_picker.as_ref() {
+            p.rows()
         } else if let Some(p) = marks_picker.as_ref() {
             p.rows()
         } else if let Some(p) = pos_picker.as_ref() {
@@ -498,6 +538,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Some(('✗', p.query.as_str())) // diagnostics-picker prompt
         } else if let Some(p) = reg_picker.as_ref() {
             Some(('"', p.query.as_str())) // registers-viewer prompt (" = registers)
+        } else if let Some(p) = digraph_picker.as_ref() {
+            Some(('§', p.query.as_str())) // digraph-listing prompt (§ = digraphs)
+        } else if let Some(p) = keyword_lines_picker.as_ref() {
+            Some(('i', p.query.as_str())) // keyword-line listing prompt (i = [I/]I identifiers)
         } else if let Some(p) = marks_picker.as_ref() {
             Some(('\'', p.query.as_str())) // marks-viewer prompt (' = marks)
         } else if let Some(p) = pos_picker.as_ref() {
@@ -821,6 +865,20 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // The `:digraphs` listing is view-only — any non-Continue outcome (Enter / Esc) just closes it.
+        if let Some(outcome) = digraph_picker.as_mut().map(|p| p.on_key(key)) {
+            if !matches!(outcome, PickOutcome::Continue) {
+                digraph_picker = None;
+            }
+            continue;
+        }
+        // The `[I`/`]I` keyword-line listing is view-only (Vim only displays) — any non-Continue closes it.
+        if let Some(outcome) = keyword_lines_picker.as_mut().map(|p| p.on_key(key)) {
+            if !matches!(outcome, PickOutcome::Continue) {
+                keyword_lines_picker = None;
+            }
+            continue;
+        }
         // F-003: the `:marks` viewer jumps the cursor to the selected mark's byte offset on Enter.
         if let Some(outcome) = marks_picker.as_mut().map(|p| p.on_key(key)) {
             if let PickOutcome::Accept = outcome {
@@ -1051,9 +1109,30 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         ws.place_focused_cursor(line_idx.nth_line_start(line));
                     }
                 }
-                // `zR` / `zM` — open / close ALL folds.
-                KeyCode::Char('R') => fv.iter_mut().for_each(|f| f.closed = false),
-                KeyCode::Char('M') => fv.iter_mut().for_each(|f| f.closed = true),
+                // `zR`/`zM`/`zr`/`zm` — open/close all folds or step the foldlevel. Under
+                // `foldmethod=indent` these DRIVE the foldlevel value (Vim: zR=max, zM=0, zr=+1, zm=-1) and
+                // re-apply the closed rule to the derived folds; under `manual` they open/close the flat set
+                // directly (manual folds are a single level, so zr≡zR and zm≡zM there).
+                KeyCode::Char('R' | 'M' | 'r' | 'm') => {
+                    let is_indent =
+                        fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent);
+                    if is_indent {
+                        let maxl = crate::folds::max_level(fv);
+                        let cur = foldlevel.get(&buf).copied().unwrap_or(0);
+                        let new = match key.code {
+                            KeyCode::Char('R') => maxl,                // open all
+                            KeyCode::Char('M') => 0,                   // close all
+                            KeyCode::Char('r') => (cur + 1).min(maxl), // one level more open
+                            _ => cur.saturating_sub(1), // 'm' — one level more closed
+                        };
+                        foldlevel.insert(buf, new);
+                        let en = foldenable.get(&buf).copied().unwrap_or(true);
+                        crate::folds::apply_foldlevel(fv, if en { new } else { usize::MAX });
+                    } else {
+                        let close = matches!(key.code, KeyCode::Char('M' | 'm'));
+                        fv.iter_mut().for_each(|f| f.closed = close);
+                    }
+                }
                 // `zd` — delete the fold at the cursor line.
                 KeyCode::Char('d') => {
                     if let Some(idx) = crate::folds::fold_at(fv, cur_line) {
@@ -1263,6 +1342,28 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             continue;
         }
+        // `i_CTRL-X CTRL-L` (Insert mode) — whole-line completion from the CURRENT buffer (F-003). `CTRL-X`
+        // armed the submode in the engine (`insert_ctrl_x_pending`); this `CTRL-L` resolves the candidate
+        // lines here (the engine has no buffer — the same split as `i_CTRL-N`) and starts the cycle. A bare
+        // `CTRL-L` while a cycle is already active steps it FORWARD (nvim's whole-line continuation key);
+        // `CTRL-N`/`CTRL-P` cycle it too (the block above). Deferred: `CTRL-X CTRL-N/CTRL-P` (local keyword)
+        // and `CTRL-X CTRL-F` (filename) sources, and the popup menu — all out of scope for this slice.
+        if matches!(ws.focused().view.mode(), Mode::Insert) && is_ctrl(key, 'l') {
+            if engine.insert_ctrl_x_pending() {
+                let (base, cands) = ws.line_completion();
+                if let Feed::Cmd(cmd) = engine.complete_line_start(base, cands) {
+                    run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
+                }
+                continue;
+            }
+            if engine.completion_active() && engine.insert_plain_text_ctx() {
+                if let Feed::Cmd(cmd) = engine.complete_cycle(true) {
+                    run_cmd(cmd, &mut ws, &files, &mut recorded, &mut status, &mut quit);
+                }
+                continue;
+            }
+            // Otherwise a lone `CTRL-L` in Insert with no active completion — fall through (unbound, no-op).
+        }
         // `H` / `M` / `L` — the top / middle / bottom visible line (first non-blank via GotoLine). These are
         // viewport-dependent, so they stay a FRONTEND intercept: the session resolves the target buffer line
         // from the current viewport, then hands it to the engine, which composes it with any PENDING OPERATOR
@@ -1330,6 +1431,47 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         fixeol_on = on;
                         status = format!("fixeol {}", if on { "on" } else { "off" });
                     }
+                    // `:set foldmethod=indent|manual` (frontend fold state, slice 3). Switching just flips the
+                    // method + forces a recompute next frame; existing folds are kept (Vim keeps them).
+                    Ex::SetFoldMethod(m) => {
+                        let buf = ws.focused_buffer();
+                        fold_method.insert(buf, m);
+                        fold_rev.remove(&buf); // recompute (or leave manual folds) on the next frame
+                        status = match m {
+                            crate::input::FoldMethod::Indent => "foldmethod=indent".into(),
+                            crate::input::FoldMethod::Manual => "foldmethod=manual".into(),
+                        };
+                    }
+                    // `:set foldlevel=N` — folds deeper than N close under indent method; re-apply now.
+                    Ex::SetFoldLevel(n) => {
+                        let buf = ws.focused_buffer();
+                        foldlevel.insert(buf, n);
+                        if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent)
+                        {
+                            if let Some(fv) = folds.get_mut(&buf) {
+                                let en = foldenable.get(&buf).copied().unwrap_or(true);
+                                crate::folds::apply_foldlevel(fv, if en { n } else { usize::MAX });
+                            }
+                        }
+                        status = format!("foldlevel={n}");
+                    }
+                    // `:set (no)foldenable` — master switch; off opens everything under the indent method.
+                    Ex::SetFoldEnable(on) => {
+                        let buf = ws.focused_buffer();
+                        foldenable.insert(buf, on);
+                        if fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent)
+                        {
+                            if let Some(fv) = folds.get_mut(&buf) {
+                                let fdl = if on {
+                                    foldlevel.get(&buf).copied().unwrap_or(0)
+                                } else {
+                                    usize::MAX
+                                };
+                                crate::folds::apply_foldlevel(fv, fdl);
+                            }
+                        }
+                        status = format!("foldenable {}", if on { "on" } else { "off" });
+                    }
                     // `:fmt` / `:rename {new}` / `:references` / `:codeaction` (F-014): the coordinator sends
                     // the request; the response is dispatched + applied (or opens a picker) on a later frame.
                     ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
@@ -1356,6 +1498,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             status = format!("{} register(s)", snapshot.len());
                             reg_picker = Some(register_picker::open(snapshot));
                         }
+                    }
+                    // `:ascii`/`:as` — the ex synonym of `ga`: print the char-under-cursor's value.
+                    Ex::Ascii => {
+                        let pane = ws.focused();
+                        status = ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor());
+                    }
+                    // `:digraphs` / `:dig`: open the view-only digraph-listing overlay.
+                    Ex::Digraphs => {
+                        let p = crate::ui::digraph_picker::open();
+                        status = format!("{} digraph(s)", p.rows().len());
+                        digraph_picker = Some(p);
                     }
                     // `:marks` (F-003): open a picker over the set marks; Enter jumps to the selected one.
                     Ex::Marks => {
@@ -1730,6 +1883,57 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     };
                     continue;
                 }
+                // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
+                // mutation. Like `*`/`gd`, the engine has no buffer, so the frontend reads the focused
+                // buffer's bytes + cursor here and formats the message via the pure `ruse_core::info` helpers.
+                if let Some(msg) = info_status(&cmd, &ws) {
+                    status = msg;
+                    continue;
+                }
+                // `[i`/`]i`/`[I`/`]I` (keyword under cursor): the engine has no buffer, so resolve the
+                // keyword here and scan the buffer lines. `[i`/`]i` echo the count'th match on the status
+                // line; `[I`/`]I` open a view-only listing overlay. Purely a display command (never planned).
+                // No keyword under the cursor → `E349` (like nvim; note `*`/`gd` use `E348`, a different code).
+                if let Command::ShowKeywordLines { above, list, count } = cmd {
+                    match ws.word_under_cursor() {
+                        Some(keyword) => {
+                            let pane = ws.focused();
+                            let bytes = pane.doc.bytes();
+                            let cursor_line =
+                                ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
+                            let matches = ruse_core::keyword_line_numbers(bytes, &keyword);
+                            if list {
+                                let rows: Vec<(usize, String)> =
+                                    ruse_core::keyword_list(&matches, cursor_line, above)
+                                        .into_iter()
+                                        .map(|l| (l, ruse_core::line_text(bytes, l)))
+                                        .collect();
+                                status = format!("{} line(s) matching \"{keyword}\"", rows.len());
+                                keyword_lines_picker =
+                                    Some(crate::ui::keyword_lines_picker::open(&rows));
+                            } else {
+                                status = match ruse_core::keyword_echo(
+                                    &matches,
+                                    cursor_line,
+                                    above,
+                                    count as usize,
+                                ) {
+                                    ruse_core::KeywordEcho::Line(l) => {
+                                        ruse_core::line_text(bytes, l)
+                                    }
+                                    ruse_core::KeywordEcho::CurrentLine => {
+                                        "E387: Match is on current line".into()
+                                    }
+                                    ruse_core::KeywordEcho::NotFound => {
+                                        "E389: Couldn't find pattern".into()
+                                    }
+                                };
+                            }
+                        }
+                        None => status = "E349: No identifier under cursor".into(),
+                    }
+                    continue;
+                }
                 // `*`/`#` (word under cursor): the engine has no buffer, so resolve the keyword here, then
                 // rewrite to a concrete search — records the deterministic pattern and drives hlsearch/`n`.
                 let cmd = if let Command::SearchWordUnder {
@@ -1818,6 +2022,42 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
+/// Resolve a Normal-mode INFO command (`ga`/`:ascii` → [`Command::AsciiInfo`], `CTRL-G` →
+/// [`Command::FileInfo`], `g CTRL-G` → [`Command::CursorInfo`]) into its status-line message against the
+/// focused buffer, or `None` for any other command. These print only — the buffer is never mutated — so the
+/// run loop just sets `status` and skips dispatch. Splitting this out keeps the whole
+/// keystroke→Command→message path unit-testable (the run loop itself needs a live terminal).
+fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
+    match cmd {
+        Command::AsciiInfo => {
+            let pane = ws.focused();
+            Some(ruse_core::ascii_info(pane.doc.bytes(), pane.view.cursor()))
+        }
+        Command::FileInfo => {
+            let id = ws.focused_buffer();
+            let name = ws.buffer_name(id);
+            let pane = ws.focused();
+            Some(ruse_core::file_info(
+                name,
+                pane.doc.is_modified(),
+                pane.doc.bytes(),
+                pane.view.cursor(),
+            ))
+        }
+        Command::CursorInfo => {
+            let pane = ws.focused();
+            // ruse renders tabs at `render::TAB_WIDTH` columns (not nvim's 8), so the `Col` vcol reflects
+            // the on-screen layout the user actually sees.
+            Some(ruse_core::cursor_pos_info(
+                pane.doc.bytes(),
+                pane.view.cursor(),
+                crate::ui::render::TAB_WIDTH as usize,
+            ))
+        }
+        _ => None,
+    }
+}
+
 /// Sync the four read-only special registers `"/ ": ". "%` of the focused view from the current frontend
 /// state (`:help quote_/`), so a `"/p` / `C-r :` / `".p` / `"%p` dispatched next reads the live values:
 /// `"/` from the search ring, `":` from the last executed Ex line, `".` from the last insert session, and
@@ -1859,5 +2099,61 @@ fn dispatch_window(key: crossterm::event::KeyEvent, ws: &mut Workspace, quit: &m
         // `C-w q`: close the focused window, or quit if it was the last one.
         KeyCode::Char('q') => *quit = !ws.close_focused(),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod info_tests {
+    use super::info_status;
+    use ruse_core::{Command, Workspace};
+
+    // End-to-end for the frontend-resolve seam: a Workspace + cursor -> the exact status message. The
+    // byte-precise format assertions live in `ruse_core::info`; here we prove the wiring reads the focused
+    // buffer's bytes, cursor, name, and modified flag and routes each Command to the right helper.
+    #[test]
+    fn ascii_info_reads_char_under_cursor() {
+        let mut ws = Workspace::new(&b"Hi"[..]);
+        ws.place_focused_cursor(1); // on 'i'
+        assert_eq!(
+            info_status(&Command::AsciiInfo, &ws).as_deref(),
+            Some("<i>  105,  Hex 69,  Octal 151")
+        );
+    }
+
+    #[test]
+    fn file_info_uses_name_and_line_count() {
+        let mut ws = Workspace::new(&b"one\ntwo\nthree\n"[..]);
+        ws.set_focused_buffer_name("f.txt");
+        ws.place_focused_cursor(0); // line 1 of 3 -> 33%
+        assert_eq!(
+            info_status(&Command::FileInfo, &ws).as_deref(),
+            Some("\"f.txt\" 3 lines --33%--")
+        );
+    }
+
+    #[test]
+    fn file_info_unnamed_buffer() {
+        let mut ws = Workspace::new(&b"x\n"[..]);
+        ws.place_focused_cursor(0);
+        assert_eq!(
+            info_status(&Command::FileInfo, &ws).as_deref(),
+            Some("\"[No Name]\" 1 line --100%--")
+        );
+    }
+
+    #[test]
+    fn cursor_info_counts_over_the_buffer() {
+        let mut ws = Workspace::new(&b"foo bar baz\n"[..]);
+        ws.place_focused_cursor(4); // on 'b' of "bar" (byte 4, word 2)
+        assert_eq!(
+            info_status(&Command::CursorInfo, &ws).as_deref(),
+            Some("Col 5 of 11; Line 1 of 1; Word 2 of 3; Byte 5 of 12")
+        );
+    }
+
+    #[test]
+    fn non_info_command_is_none() {
+        let ws = Workspace::new(&b"x\n"[..]);
+        assert!(info_status(&Command::Undo, &ws).is_none());
     }
 }

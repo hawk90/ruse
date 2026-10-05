@@ -107,6 +107,11 @@ const TABLE: &[(char, char, char)] = &[
     ('X', 'X', '\u{2717}'), // ✗
 ];
 
+/// The curated `(c1, c2, glyph)` table, in declaration order — for the `:digraphs` listing overlay.
+pub(crate) fn entries() -> &'static [(char, char, char)] {
+    TABLE
+}
+
 /// Look up the digraph glyph for the two-character code `c1 c2`. Returns `None` for any pair not in the
 /// curated table; the caller applies Vim's fallback (insert the second char literally). Case-sensitive.
 pub(crate) fn digraph(c1: char, c2: char) -> Option<char> {
