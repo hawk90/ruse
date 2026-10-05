@@ -5,6 +5,9 @@ on:
   pull_request:
   push: { branches: [main, next] }
 permissions: { contents: read }
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   spec-validate:
     runs-on: ubuntu-24.04
