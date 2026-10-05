@@ -39,9 +39,11 @@ jobs:
       - if: steps.detect.outputs.run == '0'
         run: echo "No dependency manifest change in this PR — rustsec deferred to the weekly scan."
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.run == '1'
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2
+        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          tool: cargo-audit
+      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.run == '1'
+        run: cargo audit
       - if: steps.detect.outputs.have == '0' && steps.detect.outputs.run == '1'
         run: echo "No Cargo.lock yet — advisory scan skipped."
   # TODO: CodeQL (Rust) + secret scanning are enabled in repo settings, not here.
