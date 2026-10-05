@@ -10,8 +10,8 @@ Tool-agnostic. Rules here are operational shortcuts; the normative sources are `
   rendering, terminal, LSP, remote).
 - Process: [CONTRIBUTING.md](CONTRIBUTING.md) → [docs/operations/development-model.md](docs/operations/development-model.md).
   AI policy: [docs/contributing/ai-assisted-development.md](docs/contributing/ai-assisted-development.md).
-- `spec/CONTEXT.md` is hand-maintained and lags reality; trust `spec/PRD.yaml`, `spec/capabilities.yaml`,
-  `spec/phases.yaml`, `spec/DECISIONS.md` over it.
+- `spec/CONTEXT.md` is a hand-maintained digest (refreshed 2026-10-05) and can lag; trust
+  `spec/PRD.yaml`, `spec/capabilities.yaml`, `spec/phases.yaml`, `spec/DECISIONS.md` over it.
 - Invariants: [docs/invariants/reference-invariants.md](docs/invariants/reference-invariants.md).
   Anti-patterns: [docs/anti-patterns/anti-patterns.md](docs/anti-patterns/anti-patterns.md).
 
