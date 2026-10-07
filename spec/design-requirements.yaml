@@ -1,0 +1,1786 @@
+# ruse long-horizon design-requirement registry (DR-*): the source of truth for each requirement's status.
+# Edit items in place; never renumber ids. Schema and rules: docs/architecture/design-requirements-registry.md.
+# Scope: DR-* design requirements only. Product features stay in spec/PRD.yaml (F-*).
+# Statuses verified against code on 2026-10-05 (code wins over docs; conflicts in notes).
+schema: 1
+updated: '2026-10-05'
+sources:
+  - docs/architecture/design-requirements.md (§1–§20, DR-* list before 2026-10-05)
+statuses:
+  done: 'requirement satisfied now: governance/spec items have an artifact that is enforced or in use; runtime items are implemented
+    in crates/core or apps/tui with a test'
+  partial: specified/designed (docs/design, spec/, RFC, D-record) but not implemented or enforced, or implemented only in
+    part
+  todo: not addressed beyond the requirement text
+  dropped: intentionally out of scope (reason in notes)
+items:
+  - id: SPEC-001
+    title: Normative spec separated from implementation docs
+    area: spec
+    priority: P0
+    status: done
+    acceptance:
+      - Normative state lives in spec/ (YAML/MD); prose and implementation notes live in docs/
+      - The split is machine-checked in CI
+    evidence:
+      - spec/PROJECT.md
+      - tools/spec-validate.py
+      - .github/workflows/spec-check.yml
+      - tools/rusekit/docs/check.py
+    legacy_ids:
+      - DR-SPEC-1
+    source:
+      - design-requirements.md §1 Specification ↔ Implementation
+    notes: D-021 doc system. Enforced by spec-validate + `ruse docs check` in spec-check.yml.
+  - id: SPEC-002
+    title: Language-independent state machine + invariants per core concept
+    area: spec
+    priority: P0
+    status: partial
+    acceptance:
+      - Each core concept has a written invariant set
+      - Each core concept has a language-independent state machine
+    evidence:
+      - docs/invariants/reference-invariants.md
+      - crates/core/tests/properties.rs
+    legacy_ids:
+      - DR-SPEC-2
+    source:
+      - design-requirements.md §1 Specification ↔ Implementation
+    notes: 29 INV-* invariants exist and core ones are property-tested; explicit state machines exist only for some concepts
+      (e.g. input modes, persistence states in docs/design), not every core concept.
+  - id: SPEC-003
+    title: Protocols define wire-level meaning, not implementation examples
+    area: spec
+    priority: P1
+    status: partial
+    acceptance:
+      - Each cross-boundary protocol has a declared contract with guarantees and versioning
+      - Contracts are verified by conformance tests
+    evidence:
+      - spec/contracts/remote-runtime.yaml
+      - spec/contracts/plugin-protocol.yaml
+      - spec/contracts/persistence-format.yaml
+      - docs/protocols/versioning-and-evolution.md
+    legacy_ids:
+      - DR-SPEC-3
+    source:
+      - design-requirements.md §1 Specification ↔ Implementation
+    notes: 'All three contracts are `status: declared`; their verified_by tests (tests/contract/*) are still planned.'
+  - id: SPEC-004
+    title: Ambiguous behavior marked unspecified / implementation-defined
+    area: spec
+    priority: P1
+    status: partial
+    acceptance:
+      - Design docs mark deliberately unspecified behavior explicitly
+    evidence:
+      - docs/design/config-model.md
+      - docs/design/view-window-workspace.md
+    legacy_ids:
+      - DR-SPEC-4
+    source:
+      - design-requirements.md §1 Specification ↔ Implementation
+    notes: Used in a few design docs only; no convention or check across the spec.
+  - id: SPEC-005
+    title: Spec tests assert observable results, not Rust types
+    area: spec
+    priority: P1
+    status: done
+    acceptance:
+      - Behavior is checked against observables (text, cursor, registers) captured from a pinned oracle
+    evidence:
+      - tests/parity/vim/fixtures/corpus.yaml
+      - tools/parity/oracle.py
+      - apps/tui/tests/parity_compare.rs
+      - apps/tui/tests/emacs_parity_compare.rs
+    legacy_ids:
+      - DR-SPEC-5
+    source:
+      - design-requirements.md §1 Specification ↔ Implementation
+    notes: Differential fixtures from pinned Neovim/Emacs (D-043) compare observable state only.
+  - id: SPEC-006
+    title: Reference-implementation path separate from production-optimization paths
+    area: spec
+    priority: P2
+    status: partial
+    acceptance:
+      - Optimized paths are separable from, and checked against, a reference path
+    evidence:
+      - docs/design/vim-regex.md
+      - apps/tui/src/line_index.rs::reuses_the_cache_on_unchanged_revision
+    legacy_ids:
+      - DR-SPEC-6
+    source:
+      - design-requirements.md §1 Specification ↔ Implementation
+    notes: 'Applied ad hoc (regex DefaultEngine vs owned dialect engine, D-028; LineIndex cache vs pos:: scan) but not as
+      a general rule with a differential check.'
+  - id: SPEC-007
+    title: RFCs record rationale, rejected alternatives and re-evaluation conditions
+    area: spec
+    priority: P2
+    status: done
+    acceptance:
+      - RFC template has Alternatives and Re-evaluation sections
+      - Decision records carry a Re-evaluate-if line
+      - Rejected RFCs are kept
+    evidence:
+      - spec/templates/rfc.md
+      - spec/templates/decision.md
+      - docs/rfc/rejected/RFC-R001-rust-dylib-plugin-abi.md
+      - spec/DECISIONS.md
+    legacy_ids:
+      - DR-SPEC-7
+    source:
+      - design-requirements.md §1 Specification ↔ Implementation
+  - id: SPEC-008
+    title: Terminology glossary maintained independently
+    area: spec
+    priority: P2
+    status: done
+    acceptance:
+      - One canonical glossary with stable term ids; Buffer/Document/View/Workspace/Session/Client distinct
+    evidence:
+      - spec/glossary.yaml
+      - tools/spec-validate.py
+    legacy_ids:
+      - DR-SPEC-8
+    source:
+      - design-requirements.md §1 Specification ↔ Implementation
+    notes: Glossary moved from docs/README.md into spec/glossary.yaml (the doc still points at docs/README.md).
+  - id: PAR-001
+    title: Each feature tagged with a compatibility level
+    area: par
+    priority: P1
+    status: partial
+    acceptance:
+      - Levels Exact/Equivalent/Adapted/Unsupported/Intentionally-different are defined
+      - Every parity item carries a level
+    evidence:
+      - docs/parity/README.md
+      - spec/DECISIONS.md
+      - spec/parity/coverage.yaml
+    legacy_ids:
+      - DR-PAR-1
+    source:
+      - design-requirements.md §2 Parity Meaning
+    notes: Taxonomy decided (D-007) and parity tables have a level column; the machine census is ~0% classified (classification
+      is deliberately lazy, D-043).
+  - id: PAR-002
+    title: Same-name Vim vs Emacs commands not force-merged
+    area: par
+    priority: P1
+    status: done
+    acceptance:
+      - Divergent same-name behavior gets separate commands per profile
+    evidence:
+      - docs/rfc/proposed/RFC-0016-emacs-command-divergence.md
+      - spec/parity/concepts/irreconcilable.yaml
+      - apps/tui/src/input/emacs.rs
+    legacy_ids:
+      - DR-PAR-2
+    source:
+      - design-requirements.md §2 Parity Meaning
+  - id: PAR-003
+    title: Parity tests cover cursor, registers, mode, selection, undo grouping, error timing
+    area: par
+    priority: P1
+    status: partial
+    acceptance:
+      - Fixtures compare text, cursor and registers
+      - Fixtures compare mode, selection shape, undo grouping, error timing
+    evidence:
+      - tests/parity/vim/fixtures/corpus.yaml
+      - apps/tui/tests/parity_compare.rs
+    legacy_ids:
+      - DR-PAR-3
+    source:
+      - design-requirements.md §2 Parity Meaning
+    notes: Oracle captures text/cursor/reg_unnamed/reg0 (reg0 excluded from comparison); mode, selection shape, undo grouping
+      and error timing are not compared.
+  - id: PAR-004
+    title: Vim Style vs Native Style differences documented
+    area: par
+    priority: P2
+    status: done
+    acceptance:
+      - An official document lists the differences
+    evidence:
+      - docs/parity/native-style.md
+      - spec/parity/contracts/vim-style.yaml
+    legacy_ids:
+      - DR-PAR-4
+    source:
+      - design-requirements.md §2 Parity Meaning
+  - id: PAR-005
+    title: Bug compatibility decided explicitly per behavior
+    area: par
+    priority: P2
+    status: partial
+    acceptance:
+      - Bug compatibility is a recorded per-behavior decision
+    evidence:
+      - docs/parity/README.md
+    legacy_ids:
+      - DR-PAR-5
+    source:
+      - design-requirements.md §2 Parity Meaning
+    notes: Bug compatibility is named as a parity dimension; there is no per-behavior record of the decision.
+  - id: PAR-006
+    title: Compatibility-impact report auto-generated on behavior change
+    area: par
+    priority: P2
+    status: partial
+    acceptance:
+      - A behavior change produces a compatibility-impact report automatically
+    evidence:
+      - tools/rusekit/change/impact.py
+      - tools/rusekit/gov/ratchet.py
+    legacy_ids:
+      - DR-PAR-6
+    source:
+      - design-requirements.md §2 Parity Meaning
+    notes: '`ruse impact` reports spec-graph impact (IDs, files) and the ratchet blocks parity-debt growth; neither reports
+      behavioral compatibility impact.'
+  - id: PAR-007
+    title: Parity % weighted by usage frequency and importance
+    area: par
+    priority: P2
+    status: partial
+    acceptance:
+      - Parity % is computed with usage/importance weights
+    evidence:
+      - spec/DECISIONS.md
+      - tools/parity/coverage.py
+    legacy_ids:
+      - DR-PAR-7
+    source:
+      - design-requirements.md §2 Parity Meaning
+    notes: D-007 decides weighting; coverage.py reports unweighted discovery/classification/verification counts.
+  - id: PERSIST-001
+    title: Track document / saved / external-file / journal positions as distinct states
+    area: persist
+    priority: P0
+    status: partial
+    acceptance:
+      - Document revision and saved revision are tracked separately
+      - The externally observed file version is tracked
+      - The recovery-journal position is tracked
+    evidence:
+      - crates/core/src/document.rs::mark_saved
+      - crates/core/src/document.rs::is_modified
+      - docs/design/persistence-and-recovery.md
+    legacy_ids:
+      - DR-PERSIST-1
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+    notes: Revision vs saved node exists. No external file version (no mtime/hash check, so `:w` overwrites a file changed
+      on disk without warning) and no journal position.
+  - id: PERSIST-002
+    title: Separate roles of autosave / swap / journal / backup
+    area: persist
+    priority: P1
+    status: partial
+    acceptance:
+      - Each role has its own mechanism and lifecycle
+    evidence:
+      - apps/tui/src/persist/journal.rs
+      - docs/design/persistence-and-recovery.md
+    legacy_ids:
+      - DR-PERSIST-2
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+    notes: Only the recovery journal exists (throttled main-loop appends + panic hook); no autosave, backup or swap roles.
+  - id: PERSIST-003
+    title: Append-only journal with checksum + schema version; truncation recovers to last valid record
+    area: persist
+    priority: P0
+    status: partial
+    acceptance:
+      - Journal is append-only
+      - Every record carries a checksum
+      - Records carry a schema version
+      - A truncated tail recovers up to the last valid record
+    evidence:
+      - apps/tui/src/persist/journal.rs::append
+      - apps/tui/src/persist/journal.rs::replay_bytes
+      - apps/tui/src/persist/journal.rs::torn_payload_tail_is_discarded
+      - apps/tui/tests/persist_roundtrip.rs::a_torn_journal_tail_never_blocks_reopening
+    legacy_ids:
+      - DR-PERSIST-3
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+    notes: Frame is [len][crc32][payload]; no schema version yet (spec/contracts/persistence-format.yaml guarantees it).
+  - id: PERSIST-004
+    title: Recovery data never auto-overwrites the original file
+    area: persist
+    priority: P0
+    status: done
+    acceptance:
+      - Recovered bytes go into the buffer only; writing the file is an explicit later save
+    evidence:
+      - apps/tui/src/persist/mod.rs::assess_recovery
+      - apps/tui/tests/persist_roundtrip.rs::crash_with_unsaved_work_is_recoverable_then_cleared_on_save
+    legacy_ids:
+      - DR-PERSIST-4
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+  - id: PERSIST-005
+    title: Crash recovery offers current document / disk file / recoverable changes
+    area: persist
+    priority: P1
+    status: partial
+    acceptance:
+      - The user picks between the recovered buffer and the disk file
+      - A third choice shows the recoverable changes (diff)
+    evidence:
+      - apps/tui/src/persist/mod.rs::assess_recovery
+    legacy_ids:
+      - DR-PERSIST-5
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+    notes: Two-way choice (Recovery::Available vs disk); no diff/changes view.
+  - id: PERSIST-006
+    title: Atomic replace on save; per-platform fsync / metadata / permission policy
+    area: persist
+    priority: P0
+    status: partial
+    acceptance:
+      - Save writes a temp file, fsyncs, renames over the target
+      - The directory is fsynced on Unix
+      - File permissions and metadata are preserved per platform
+    evidence:
+      - apps/tui/src/persist/atomic.rs::save
+      - apps/tui/tests/persist_roundtrip.rs::atomic_save_preserves_crlf_and_is_durable
+    legacy_ids:
+      - DR-PERSIST-6
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+    notes: 'Atomic + durable done. Permission/metadata preservation is missing: the temp file is created with default mode,
+      so a save drops the executable bit, and renaming over a symlink replaces the link with a regular file (bug, not fixed).'
+  - id: PERSIST-007
+    title: Large files use an incremental journal
+    area: persist
+    priority: P2
+    status: todo
+    acceptance:
+      - Journal records are incremental edits, not full snapshots
+    evidence: []
+    legacy_ids:
+      - DR-PERSIST-7
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+    notes: Every journal record is the full buffer (MVP-minimal); incremental records are the planned C-PERSIST elaboration
+      in docs/design/persistence-and-recovery.md.
+  - id: PERSIST-008
+    title: Versioned workspace/session persistence format
+    area: persist
+    priority: P1
+    status: todo
+    acceptance:
+      - Workspace/session state is persisted in a versioned format
+    evidence: []
+    legacy_ids:
+      - DR-PERSIST-8
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+    notes: No session persistence exists (history is in-memory only, no shada/viminfo equivalent).
+  - id: PERSIST-009
+    title: Recovery-file retention period + PII-removal policy
+    area: persist
+    priority: P2
+    status: partial
+    acceptance:
+      - Recovery files have a retention period
+      - A PII-removal policy applies to recovery files
+    evidence:
+      - docs/design/persistence-and-recovery.md
+    legacy_ids:
+      - DR-PERSIST-9
+    source:
+      - design-requirements.md §3 Persistence & Crash Consistency
+    notes: Designed; the journal is deleted on a successful save, but stale journals have no retention sweep and D-017 (PII/redaction)
+      is still open.
+  - id: DET-001
+    title: No direct wall clock / randomness / OS state in core command processing
+    area: det
+    priority: P0
+    status: done
+    acceptance:
+      - The core command path is IO-free; side effects are returned as Effects for the frontend
+    evidence:
+      - crates/core/src/effect.rs::Effect
+      - crates/core/Cargo.toml
+      - crates/core/src/trace.rs::doc_hash
+    legacy_ids:
+      - DR-DET-1
+    source:
+      - design-requirements.md §4 Determinism & Replay
+    notes: crates/core has no clock/random/env access at all (dependency set limited to unicode + regex). There is no injectable
+      Clock service because nothing in core needs time yet.
+  - id: DET-002
+    title: Inputs, commands, transactions and async results recorded as ordered replayable events
+    area: det
+    priority: P1
+    status: partial
+    acceptance:
+      - Commands are recorded as a replayable trace
+      - Async results carry an ordering sequence and are recorded
+    evidence:
+      - crates/core/src/trace.rs::Trace
+      - apps/tui/src/app/lsp_coordinator.rs::ingest_completion
+    legacy_ids:
+      - DR-DET-2
+    source:
+      - design-requirements.md §4 Determinism & Replay
+    notes: Command-level traces exist (F-022). LSP results are revision-tagged and stale ones dropped, but async results are
+      deliberately not recorded (LSP is outside the determinism boundary).
+  - id: DET-003
+    title: Replaying the same event log yields the same document
+    area: det
+    priority: P1
+    status: done
+    acceptance:
+      - Same initial document + same trace => same final state, in-library and at the process boundary
+    evidence:
+      - crates/core/src/trace.rs::replay
+      - crates/core/tests/properties.rs::trace_replay_is_deterministic
+      - apps/tui/tests/system_replay.rs::replay_is_deterministic_across_runs
+    legacy_ids:
+      - DR-DET-3
+    source:
+      - design-requirements.md §4 Determinism & Replay
+  - id: DET-004
+    title: Crash reports include the last N semantic events
+    area: det
+    priority: P2
+    status: todo
+    acceptance:
+      - A crash report includes the last N semantic events
+    evidence: []
+    legacy_ids:
+      - DR-DET-4
+    source:
+      - design-requirements.md §4 Determinism & Replay
+    notes: The panic hook writes the buffer to the journal and logs one event; no event history is attached.
+  - id: DET-005
+    title: Replay logs store minimum data + redaction policy
+    area: det
+    priority: P2
+    status: todo
+    acceptance:
+      - Replay logs store only needed data
+      - A redaction policy applies
+    evidence: []
+    legacy_ids:
+      - DR-DET-5
+    source:
+      - design-requirements.md §4 Determinism & Replay
+    notes: Traces store every inserted character verbatim (insert_char N); no redaction.
+  - id: DET-006
+    title: Fuzzing failures auto-save as replay fixtures
+    area: det
+    priority: P2
+    status: done
+    acceptance:
+      - A failing fuzz case is persisted and replayed on every later run
+    evidence:
+      - apps/tui/tests/session_fuzz.rs
+      - apps/tui/proptest-regressions
+      - crates/core/tests/properties.proptest-regressions
+    legacy_ids:
+      - DR-DET-6
+    source:
+      - design-requirements.md §4 Determinism & Replay
+    notes: proptest persists shrunk failing seeds; AGENTS.md requires committing them. They are seeds, not Trace files.
+  - id: SCHED-001
+    title: Background tasks carry priority/deadline/cost/cancellation/owner metadata
+    area: sched
+    priority: P1
+    status: partial
+    acceptance:
+      - Every background task carries the metadata set
+    evidence:
+      - docs/design/scheduler.md
+    legacy_ids:
+      - DR-SCHED-1
+    source:
+      - design-requirements.md §5 Background Scheduler & Resource Control
+    notes: Designed (C-SCHEDULER, D-018); no scheduler in code. LSP/PTY readers are ad-hoc threads.
+  - id: SCHED-002
+    title: User input and screen refresh always outrank background work
+    area: sched
+    priority: P0
+    status: partial
+    acceptance:
+      - Input and redraw are never blocked by background work
+    evidence:
+      - apps/tui/src/app/session.rs::run
+      - docs/design/scheduler.md
+    legacy_ids:
+      - DR-SCHED-2
+    source:
+      - design-requirements.md §5 Background Scheduler & Resource Control
+    notes: 'Holds by construction today: one main loop, background I/O on reader threads drained per frame, highlight bounded
+      to the viewport. Not enforced by a scheduler (INV-SCHED-1 unimplemented).'
+  - id: SCHED-003
+    title: Coalesce duplicate parse/index requests; cancel superseded requests
+    area: sched
+    priority: P1
+    status: partial
+    acceptance:
+      - Duplicate requests per document are coalesced
+      - Superseded requests are cancelled
+    evidence:
+      - apps/tui/src/app/lsp_coordinator.rs::ingest_completion
+      - apps/tui/src/highlight.rs::CachedHighlight
+    legacy_ids:
+      - DR-SCHED-3
+    source:
+      - design-requirements.md §5 Background Scheduler & Resource Control
+    notes: Stale LSP completion/resolve responses are dropped (latest-id + revision guard) and highlight recomputes once per
+      revision; superseded requests are not cancelled ($/cancelRequest not sent).
+  - id: SCHED-004
+    title: Per-service/per-plugin CPU, memory, I/O and remote bandwidth budgets
+    area: sched
+    priority: P2
+    status: partial
+    acceptance:
+      - Budgets exist per service and plugin
+      - Idle work is separated from interactive work
+    evidence:
+      - docs/design/scheduler.md
+    legacy_ids:
+      - DR-SCHED-4
+    source:
+      - design-requirements.md §5 Background Scheduler & Resource Control
+    notes: Mechanism designed; numbers open (D-018); nothing implemented.
+  - id: SCHED-005
+    title: Starvation / priority-inversion detection and load-based degradation
+    area: sched
+    priority: P2
+    status: partial
+    acceptance:
+      - Starvation and priority inversion are detected
+      - Features degrade under load (full -> current file -> visible range)
+    evidence:
+      - docs/design/scheduler.md
+    legacy_ids:
+      - DR-SCHED-5
+    source:
+      - design-requirements.md §5 Background Scheduler & Resource Control
+    notes: Designed only.
+  - id: CACHE-001
+    title: Every cache names its source data and invalidation source
+    area: cache
+    priority: P1
+    status: partial
+    acceptance:
+      - Each cache documents its source and invalidation trigger
+    evidence:
+      - apps/tui/src/highlight.rs::CachedHighlight
+      - apps/tui/src/line_index.rs
+    legacy_ids:
+      - DR-CACHE-1
+    source:
+      - design-requirements.md §6 Cache
+    notes: The existing in-memory caches (highlight, search matches, LineIndex) document revision/viewport keys; no cache
+      registry.
+  - id: CACHE-002
+    title: Cache keys include revision, profile, capability, schema version
+    area: cache
+    priority: P1
+    status: partial
+    acceptance:
+      - Keys include revision
+      - Keys include profile, capability and schema version
+    evidence:
+      - apps/tui/src/highlight.rs::cache_recomputes_only_on_revision_change
+    legacy_ids:
+      - DR-CACHE-2
+    source:
+      - design-requirements.md §6 Cache
+    notes: Keys are (revision, viewport/pattern) only.
+  - id: CACHE-003
+    title: Any cache deletable; regeneration path on corruption
+    area: cache
+    priority: P1
+    status: partial
+    acceptance:
+      - Deleting a cache never loses data
+      - Corruption triggers regeneration
+    evidence:
+      - apps/tui/src/line_index.rs::reuses_the_cache_on_unchanged_revision
+    legacy_ids:
+      - DR-CACHE-3
+    source:
+      - design-requirements.md §6 Cache
+    notes: Trivially true for today's in-memory caches; no persistent cache exists yet to exercise the corruption path.
+  - id: CACHE-004
+    title: A cache hit never changes the semantic result
+    area: cache
+    priority: P0
+    status: partial
+    acceptance:
+      - Cached and uncached computation give the same result, under test
+    evidence:
+      - apps/tui/src/highlight.rs::cached_search_matches_and_bounds_to_viewport
+    legacy_ids:
+      - DR-CACHE-4
+    source:
+      - design-requirements.md §6 Cache
+    notes: Cache-reuse tests exist; no differential test of cached vs fresh results.
+  - id: CACHE-005
+    title: Remote vs local cache trust boundary distinguished
+    area: cache
+    priority: P2
+    status: todo
+    phase: ecosystem
+    acceptance:
+      - Remote caches are treated at a different trust level from local ones
+    evidence: []
+    legacy_ids:
+      - DR-CACHE-5
+    source:
+      - design-requirements.md §6 Cache
+    notes: No remote caches and no design text for this yet.
+  - id: CACHE-006
+    title: Cache size and eviction observable; caches managed independently
+    area: cache
+    priority: P2
+    status: todo
+    acceptance:
+      - Cache size/eviction is observable
+      - Palette/syntax/LSP-position caches are managed independently
+    evidence: []
+    legacy_ids:
+      - DR-CACHE-6
+    source:
+      - design-requirements.md §6 Cache
+    notes: No cache metrics are exposed.
+  - id: ID-001
+    title: 'ID scopes: process-local / session-local / workspace-persistent / global'
+    area: id
+    priority: P1
+    status: partial
+    acceptance:
+      - Every ID type declares its scope
+    evidence:
+      - docs/design/view-window-workspace.md
+    legacy_ids:
+      - DR-ID-1
+    source:
+      - design-requirements.md §7 IDs, Generations, Time
+    notes: Scope chain described in the design doc; ID types in code (ViewId, DocumentId, AnchorId) don't declare scope.
+  - id: ID-002
+    title: Reusable slot IDs carry a generation
+    area: id
+    priority: P1
+    status: partial
+    acceptance:
+      - Anchor handles are generation-checked
+      - Workspace/view slot IDs are generation-checked
+    evidence:
+      - crates/core/src/anchor.rs::AnchorId
+      - crates/core/src/anchor.rs::stale_id_is_not_resolvable
+    legacy_ids:
+      - DR-ID-2
+    source:
+      - design-requirements.md §7 IDs, Generations, Time
+    notes: 'AnchorId is generational; ViewId/DocumentId are bare indexes (workspace.rs: generational validation is post-MVP).'
+  - id: ID-003
+    title: Process-local IDs never persisted in external protocols
+    area: id
+    priority: P0
+    status: partial
+    acceptance:
+      - No process-local ID crosses a protocol or persisted format
+    evidence:
+      - apps/tui/src/remote/protocol.rs
+      - crates/core/src/trace.rs
+    legacy_ids:
+      - DR-ID-3
+    source:
+      - design-requirements.md §7 IDs, Generations, Time
+    notes: 'Holds today: traces store commands + a content hash, the remote protocol uses paths. Not checked by any test or
+      lint.'
+  - id: ID-004
+    title: Monotonic sequence for ordering; display time separate from timeout time
+    area: id
+    priority: P1
+    status: done
+    acceptance:
+      - Ordering uses a monotonic sequence, not wall clock
+      - Timeouts use a monotonic clock
+    evidence:
+      - crates/core/src/undo.rs::MonotonicSeq
+      - crates/core/src/pos.rs::Revision
+      - apps/tui/src/lsp/client.rs
+    legacy_ids:
+      - DR-ID-4
+    source:
+      - design-requirements.md §7 IDs, Generations, Time
+    notes: Undo/revision ordering uses MonotonicSeq/Revision; timers use Instant. No wall-clock display times exist yet.
+  - id: ID-005
+    title: Ownership of client/workspace/document IDs and command/transaction ID collision policy
+    area: id
+    priority: P1
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - Owners of remote client, workspace and document IDs are defined
+      - A collision policy exists
+    evidence:
+      - docs/design/remote-runtime.md
+    legacy_ids:
+      - DR-ID-5
+    source:
+      - design-requirements.md §7 IDs, Generations, Time
+    notes: Remote runtime design only; D-012 (multi-client) is still open.
+  - id: MULTI-001
+    title: Decide whether multiple clients may attach to one workspace runtime
+    area: multi
+    priority: P1
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - A decision record settles multi-client attach
+    evidence:
+      - spec/DECISIONS.md
+    legacy_ids:
+      - DR-MULTI-1
+    source:
+      - design-requirements.md §8 Multi-Client & Concurrency
+    notes: D-012 is open.
+  - id: MULTI-002
+    title: Cursor / viewport / input mode are view-local
+    area: multi
+    priority: P1
+    status: done
+    acceptance:
+      - Two views of one document have independent cursor, mode and scroll
+    evidence:
+      - crates/core/src/editor/mod.rs::View
+      - crates/core/src/workspace.rs::split_gives_two_views_one_buffer_independent_cursors
+    legacy_ids:
+      - DR-MULTI-2
+    source:
+      - design-requirements.md §8 Multi-Client & Concurrency
+    notes: D-003 Document != View. The per-client part waits for multi-client (D-012).
+  - id: MULTI-003
+    title: Optimistic concurrency or authoritative sequencing for document changes
+    area: multi
+    priority: P0
+    status: partial
+    acceptance:
+      - A concurrency model is chosen
+      - Conflicting-transaction rules are specified
+    evidence:
+      - crates/core/src/document.rs
+      - spec/DECISIONS.md
+    legacy_ids:
+      - DR-MULTI-3
+    source:
+      - design-requirements.md §8 Multi-Client & Concurrency
+    notes: 'Single-writer core with base_revision checks: a stale transaction is refused (INV-TXN). The multi-client sequencing
+      choice is not decided (D-012).'
+  - id: MULTI-004
+    title: Per-client capability and profile managed independently
+    area: multi
+    priority: P2
+    status: todo
+    phase: ecosystem
+    acceptance:
+      - Each client has its own capability set and profile
+    evidence: []
+    legacy_ids:
+      - DR-MULTI-4
+    source:
+      - design-requirements.md §8 Multi-Client & Concurrency
+    notes: Single client today.
+  - id: MULTI-005
+    title: Backpressure so a slow client cannot block the runtime
+    area: multi
+    priority: P1
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - Client queues are bounded; a slow client is dropped or degraded
+    evidence:
+      - docs/design/scheduler.md
+    legacy_ids:
+      - DR-MULTI-5
+    source:
+      - design-requirements.md §8 Multi-Client & Concurrency
+    notes: Bounded lanes designed. The remote client is a blocking request/response proof; LSP/PTY use unbounded mpsc channels.
+  - id: MULTI-006
+    title: Reconnect recovers missed events via snapshot or delta
+    area: multi
+    priority: P2
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - Reconnect restores state from a snapshot or delta
+    evidence:
+      - spec/contracts/remote-runtime.yaml
+    legacy_ids:
+      - DR-MULTI-6
+    source:
+      - design-requirements.md §8 Multi-Client & Concurrency
+    notes: Contract guarantee `reconnect_preserves_or_declares_state`; D-013 open; not implemented.
+  - id: MULTI-007
+    title: Target client specified for client-local actions
+    area: multi
+    priority: P2
+    status: todo
+    phase: ecosystem
+    acceptance:
+      - Clipboard/notification/open-browser actions name a target client
+    evidence: []
+    legacy_ids:
+      - DR-MULTI-7
+    source:
+      - design-requirements.md §8 Multi-Client & Concurrency
+  - id: GOV-001
+    title: Responsibility scope of official vs third-party plugins
+    area: gov
+    priority: P2
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - Official and third-party plugin responsibilities are defined
+    evidence:
+      - spec/capabilities.yaml
+      - docs/rfc/proposed/RFC-0003-plugin-api.md
+    legacy_ids:
+      - DR-GOV-1
+    source:
+      - design-requirements.md §9 Plugin Ecosystem Governance
+    notes: Plugin host not started (F-016 planned); capabilities.yaml carries product_layer/trust (base|official-pack|third-party),
+      checked by spec-validate.
+  - id: GOV-002
+    title: Marketplace verification levels
+    area: gov
+    priority: P2
+    status: partial
+    phase: breadth
+    acceptance:
+      - Official/Verified/Community/Unreviewed/Deprecated/Quarantined levels exist
+    evidence:
+      - docs/parity/plugin-ecosystem.md
+    legacy_ids:
+      - DR-GOV-2
+    source:
+      - design-requirements.md §9 Plugin Ecosystem Governance
+    notes: Designed; marketplace is a non-goal until F-019 (future).
+  - id: GOV-003
+    title: Re-approval on plugin permission change; malicious/abandoned package policy
+    area: gov
+    priority: P1
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - A permission change requires re-approval
+      - Malicious/abandoned package policy exists
+    evidence:
+      - docs/rfc/proposed/RFC-0003-plugin-api.md
+      - docs/parity/plugin-ecosystem.md
+    legacy_ids:
+      - DR-GOV-3
+    source:
+      - design-requirements.md §9 Plugin Ecosystem Governance
+    notes: Plugin host not started (F-016 planned); designed only.
+  - id: GOV-004
+    title: Namespace ownership, name-dispute and orphaned-plugin transfer policy
+    area: gov
+    priority: P3
+    status: todo
+    phase: breadth
+    acceptance:
+      - Namespace ownership and dispute policy
+      - Orphaned-plugin transfer procedure
+    evidence: []
+    legacy_ids:
+      - DR-GOV-4
+    source:
+      - design-requirements.md §9 Plugin Ecosystem Governance
+    notes: No policy text yet; depends on a marketplace (F-019).
+  - id: GOV-005
+    title: Service sharing between same-capability plugins; lockfile + checksum resolution
+    area: gov
+    priority: P2
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - Same-capability service sharing rules
+      - Dependency resolution via lockfile + checksum
+    evidence:
+      - docs/parity/plugin-ecosystem.md
+      - docs/rfc/proposed/RFC-0003-plugin-api.md
+    legacy_ids:
+      - DR-GOV-5
+    source:
+      - design-requirements.md §9 Plugin Ecosystem Governance
+    notes: Plugin host not started (F-016 planned); designed only.
+  - id: GOV-006
+    title: 'Plugin quality metrics: crash rate, activation latency, API compatibility'
+    area: gov
+    priority: P3
+    status: partial
+    phase: breadth
+    acceptance:
+      - Crash rate, activation latency and API compatibility are measured per plugin
+    evidence:
+      - docs/parity/plugin-ecosystem.md
+    legacy_ids:
+      - DR-GOV-6
+    source:
+      - design-requirements.md §9 Plugin Ecosystem Governance
+    notes: Plugin host not started (F-016 planned); designed only.
+  - id: GOV-007
+    title: Conflict boundary with core-competing plugins; Extension SDK conformance kit
+    area: gov
+    priority: P2
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - Conflict boundary defined
+      - A conformance test kit ships with the SDK
+    evidence:
+      - spec/contracts/plugin-protocol.yaml
+      - docs/parity/plugin-ecosystem.md
+    legacy_ids:
+      - DR-GOV-7
+    source:
+      - design-requirements.md §9 Plugin Ecosystem Governance
+    notes: Plugin host not started (F-016 planned); conformance tests are planned in the contract (tests/contract/plugin-*).
+  - id: CFG-001
+    title: User / workspace / machine settings separated; security settings not workspace-overridable
+    area: cfg
+    priority: P1
+    status: partial
+    acceptance:
+      - Each setting declares its scope
+      - security_locked settings are dropped from workspace config
+    evidence:
+      - spec/config-schema.yaml
+      - tools/spec-validate.py
+      - docs/design/config-model.md
+    legacy_ids:
+      - DR-CFG-1
+    source:
+      - design-requirements.md §10 Config, Profile, Feature Pack
+    notes: Declared and enum-validated in config-schema.yaml; there is no config-file loader yet, so nothing is enforced at
+      runtime.
+  - id: CFG-002
+    title: 'Merge rules per type: replace / append / set-union / deep-merge'
+    area: cfg
+    priority: P1
+    status: partial
+    acceptance:
+      - Each setting declares a merge rule
+      - The loader applies it
+    evidence:
+      - spec/config-schema.yaml
+      - tools/spec-validate.py
+    legacy_ids:
+      - DR-CFG-2
+    source:
+      - design-requirements.md §10 Config, Profile, Feature Pack
+    notes: Declared + validated; no loader.
+  - id: CFG-003
+    title: Setting source provenance; `:inspect config <key>`
+    area: cfg
+    priority: P2
+    status: partial
+    acceptance:
+      - Each effective value records its source
+      - '`:inspect config` shows it'
+    evidence:
+      - docs/design/config-model.md
+    legacy_ids:
+      - DR-CFG-3
+    source:
+      - design-requirements.md §10 Config, Profile, Feature Pack
+    notes: Designed only.
+  - id: CFG-004
+    title: Profiles may carry bounded behavior policy
+    area: cfg
+    priority: P2
+    status: partial
+    acceptance:
+      - Profiles carry behavior policy within a bounded scope
+    evidence:
+      - docs/rfc/proposed/RFC-0015-emacs-caret-gravity.md
+      - apps/tui/src/input/emacs.rs
+    legacy_ids:
+      - DR-CFG-4
+    source:
+      - design-requirements.md §10 Config, Profile, Feature Pack
+    notes: Emacs profile carries caret-gravity policy (RFC-0015); profiles are compiled in, not configurable.
+  - id: CFG-005
+    title: Declarative feature packs; config migration; safe mode with bad config
+    area: cfg
+    priority: P1
+    status: partial
+    acceptance:
+      - Feature packs are declarative bundles
+      - Config migration splits auto-conversion from warnings
+      - A safe mode runs with bad config
+    evidence:
+      - docs/design/delivery-and-dependencies.md
+      - docs/design/config-model.md
+    legacy_ids:
+      - DR-CFG-5
+    source:
+      - design-requirements.md §10 Config, Profile, Feature Pack
+    notes: Designed only. No config is loaded, so a bad config cannot break startup today.
+  - id: STAB-001
+    title: Error is an event, Status is persistent state; transitions logged with cause
+    area: stab
+    priority: P1
+    status: partial
+    acceptance:
+      - Errors and statuses are separate types
+      - Status transitions are logged with reason and cause event
+    evidence:
+      - spec/DECISIONS.md
+      - apps/tui/src/health.rs::report
+      - apps/tui/src/shell.rs::ShellError
+    legacy_ids:
+      - DR-STAB-1
+    source:
+      - design-requirements.md §11 Extended Error / Log / Status
+    notes: D-016 decided; typed errors and the :checkhealth status report exist; no per-component status state machine.
+  - id: STAB-002
+    title: Layered error codes; user message separate from developer diagnostic
+    area: stab
+    priority: P2
+    status: partial
+    acceptance:
+      - Error codes are layered
+      - User-facing message differs from the developer diagnostic
+    evidence:
+      - apps/tui/src/shell.rs::ShellError
+      - apps/tui/src/app/dispatch.rs::save
+      - tools/rusekit/gov/rust_discipline.py
+    legacy_ids:
+      - DR-STAB-2
+    source:
+      - design-requirements.md §11 Extended Error / Log / Status
+    notes: Typed errors render Vim-style status messages and log once via tracing; no error-code scheme.
+  - id: STAB-003
+    title: Fields that must never be logged, by default
+    area: stab
+    priority: P1
+    status: partial
+    acceptance:
+      - A default never-log field list exists and is enforced
+    evidence:
+      - docs/design/stability-and-observability.md
+    legacy_ids:
+      - DR-STAB-3
+    source:
+      - design-requirements.md §11 Extended Error / Log / Status
+    notes: D-017 (PII/redaction) open. Logging is off unless RUSE_LOG is set; log events include file paths.
+  - id: STAB-004
+    title: Per-component ring buffer of recent logs; trace sampling
+    area: stab
+    priority: P2
+    status: partial
+    acceptance:
+      - Recent logs are kept in per-component ring buffers
+      - A trace-sampling policy exists
+    evidence:
+      - docs/rfc/proposed/RFC-0010-stability-observability.md
+    legacy_ids:
+      - DR-STAB-4
+    source:
+      - design-requirements.md §11 Extended Error / Log / Status
+    notes: Designed only; apps/tui/src/log.rs writes to a file.
+  - id: STAB-005
+    title: Minimal crash path on fatal invariant failure
+    area: stab
+    priority: P1
+    status: partial
+    acceptance:
+      - A dedicated crash path saves state on fatal failure
+      - It depends minimally on allocation and locks
+    evidence:
+      - apps/tui/src/recover.rs::install_hook
+      - clippy.toml
+    legacy_ids:
+      - DR-STAB-5
+    source:
+      - design-requirements.md §11 Extended Error / Log / Status
+    notes: The panic hook journals the unsaved buffer and chains to the default hook (catch_unwind banned). It takes a Mutex
+      and allocates, so it isn't minimal.
+  - id: STAB-006
+    title: Health status includes freshness
+    area: stab
+    priority: P2
+    status: partial
+    acceptance:
+      - Each health row shows when it was last checked
+    evidence:
+      - apps/tui/src/health.rs::report
+    legacy_ids:
+      - DR-STAB-6
+    source:
+      - design-requirements.md §11 Extended Error / Log / Status
+    notes: The :checkhealth rows (F-030) have no timestamps or heartbeat age.
+  - id: TRUST-001
+    title: Distinct trust levels per principal
+    area: trust
+    priority: P0
+    status: partial
+    acceptance:
+      - core / official plugin / third-party plugin / workspace / remote / terminal output / AI agent each have a trust level
+    evidence:
+      - spec/capabilities.yaml
+      - spec/config-schema.yaml
+      - docs/invariants/reference-invariants.md
+    legacy_ids:
+      - DR-TRUST-1
+    source:
+      - design-requirements.md §12 Security & Trust Boundary
+    notes: Trust enums exist for capabilities and config layers; no runtime trust model for workspace, terminal output or
+      AI.
+  - id: TRUST-002
+    title: Trust decision before opening a workspace; remote binary integrity verified
+    area: trust
+    priority: P0
+    status: partial
+    acceptance:
+      - Opening a workspace asks for a trust decision
+      - The client verifies the remote runtime binary
+    evidence:
+      - spec/config-schema.yaml
+      - spec/contracts/remote-runtime.yaml
+    legacy_ids:
+      - DR-TRUST-2
+    source:
+      - design-requirements.md §12 Security & Trust Boundary
+    notes: 'remote.trust_prompt declared but not wired. Gap: opening a .rs/.py/.go/... file auto-spawns its language server
+      (apps/tui/src/lsp/mod.rs::server_for_ext) with no trust gate, and rust-analyzer runs the project''s build scripts. `ruse
+      ssh` runs whatever `ruse` is on the remote PATH without checking it.'
+  - id: TRUST-003
+    title: Terminal escapes sanitized into a semantic model; env forwarding policy
+    area: trust
+    priority: P1
+    status: partial
+    acceptance:
+      - PTY output is parsed into a semantic grid, not passed through
+      - An env-forwarding policy exists
+    evidence:
+      - apps/tui/src/term_grid.rs::Grid
+      - apps/tui/src/pty.rs
+    legacy_ids:
+      - DR-TRUST-3
+    source:
+      - design-requirements.md §12 Security & Trust Boundary
+    notes: 'PTY bytes go through a vte parser into a cell grid (OSC/DCS are not forwarded). Children inherit the full environment:
+      no forwarding policy.'
+  - id: TRUST-004
+    title: Secret provider API for plugins
+    area: trust
+    priority: P1
+    status: todo
+    phase: ecosystem
+    acceptance:
+      - Plugins store secrets through a provider, never as plaintext
+    evidence: []
+    legacy_ids:
+      - DR-TRUST-4
+    source:
+      - design-requirements.md §12 Security & Trust Boundary
+    notes: No plugin host (F-016).
+  - id: TRUST-005
+    title: AI commands split into may-execute vs may-only-propose
+    area: trust
+    priority: P1
+    status: partial
+    phase: breadth
+    acceptance:
+      - AI actions are classified execute vs propose
+    evidence:
+      - spec/PRD.yaml
+    legacy_ids:
+      - DR-TRUST-5
+    source:
+      - design-requirements.md §12 Security & Trust Boundary
+    notes: F-020 (future) specifies reviewed AI proposals; not implemented.
+  - id: TRUST-006
+    title: Signing-key rotation/revoke, forced plugin block, redaction preview for diagnostic bundles
+    area: trust
+    priority: P1
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - Package signing keys can rotate and be revoked
+      - A security fix can force-block a plugin
+      - Diagnostic bundles show a redaction preview
+    evidence:
+      - docs/design/stability-and-observability.md
+    legacy_ids:
+      - DR-TRUST-6
+    source:
+      - design-requirements.md §12 Security & Trust Boundary
+    notes: Diagnostic bundle redaction designed; signing/revocation not designed (no plugin/package system yet).
+  - id: XPLAT-001
+    title: Managed list of per-platform behavioral differences
+    area: xplat
+    priority: P1
+    status: partial
+    acceptance:
+      - A maintained list of behavioral differences per platform
+    evidence:
+      - docs/design/delivery-and-dependencies.md
+      - AGENTS.md
+    legacy_ids:
+      - DR-XPLAT-1
+    source:
+      - design-requirements.md §13 Cross-Platform Semantics
+    notes: Scattered notes (forkpty signatures, dir fsync Unix-only, shell Unix-only); no single list.
+  - id: XPLAT-002
+    title: Filename case/normalization policy; symlink/junction/UNC/WSL paths modeled
+    area: xplat
+    priority: P1
+    status: partial
+    acceptance:
+      - Case-sensitivity and normalization policy
+      - Symlink/junction/UNC/WSL paths modeled separately
+    evidence:
+      - docs/design/persistence-and-recovery.md
+    legacy_ids:
+      - DR-XPLAT-2
+    source:
+      - design-requirements.md §13 Cross-Platform Semantics
+    notes: Designed. Code uses raw PathBuf; buffer dedup canonicalizes in places; save does not resolve symlinks.
+  - id: XPLAT-003
+    title: Executable bit / permission / ACL per platform; process signal semantics abstracted
+    area: xplat
+    priority: P2
+    status: partial
+    acceptance:
+      - Permissions preserved per platform
+      - Signal/termination semantics abstracted
+    evidence:
+      - docs/design/persistence-and-recovery.md
+      - apps/tui/src/pty.rs
+    legacy_ids:
+      - DR-XPLAT-3
+    source:
+      - design-requirements.md §13 Cross-Platform Semantics
+    notes: 'Not implemented: save drops the mode bits (see PERSIST-006). PTY hangup on drop is Unix-only.'
+  - id: XPLAT-004
+    title: Shell quoting via a real quoter; newline/encoding/clipboard format specified
+    area: xplat
+    priority: P1
+    status: partial
+    acceptance:
+      - No command is built by string concatenation
+      - Newline and encoding handling are specified
+    evidence:
+      - apps/tui/src/remote/transport.rs::ssh_command
+      - apps/tui/src/persist/encoding.rs
+      - apps/tui/src/clipboard.rs
+    legacy_ids:
+      - DR-XPLAT-4
+    source:
+      - design-requirements.md §13 Cross-Platform Semantics
+    notes: 'Spawns use argv vectors (no concatenation); :! passes user text to `sh -c` as Vim does. EOL/BOM are detected and
+      restored. Gap: ssh_command passes the host without `--`, so a host starting with ''-'' is parsed as an ssh option.'
+  - id: XPLAT-005
+    title: macOS Unicode normalization tests; watcher missing/duplicate events tolerated
+    area: xplat
+    priority: P2
+    status: todo
+    acceptance:
+      - Tests cover NFD filenames on macOS
+      - Watcher event loss/duplication is handled
+    evidence: []
+    legacy_ids:
+      - DR-XPLAT-5
+    source:
+      - design-requirements.md §13 Cross-Platform Semantics
+    notes: No file watcher exists (files.watcher not wired); no NFD tests.
+  - id: XPLAT-006
+    title: Platform capability split into build-time and runtime
+    area: xplat
+    priority: P2
+    status: partial
+    acceptance:
+      - Build-time (cfg) and runtime-probed capability are distinct
+    evidence:
+      - apps/tui/src/caps/ledger.rs::Source
+      - apps/tui/src/term_grid.rs
+    legacy_ids:
+      - DR-XPLAT-6
+    source:
+      - design-requirements.md §13 Cross-Platform Semantics
+    notes: Terminal capabilities are runtime-probed; PTY/shell are cfg(unix). Not modeled as one capability split.
+  - id: TUX-001
+    title: Terminal capability separate from user preference; defined renegotiation point
+    area: tux
+    priority: P1
+    status: done
+    acceptance:
+      - Capability rows record source (default/env/probe/user override)
+      - User override wins
+      - Capabilities are negotiated at startup, never auto-switched mid-session
+    evidence:
+      - apps/tui/src/caps/ledger.rs::Source
+      - apps/tui/src/caps/mod.rs
+      - apps/tui/tests/caps_probe.rs
+      - docs/rfc/proposed/RFC-0005-terminal-capability.md
+    legacy_ids:
+      - DR-TUX-1
+    source:
+      - design-requirements.md §14 Terminal UX
+  - id: TUX-002
+    title: Escape chord inside terminal passthrough; per-profile key-ambiguity timeout
+    area: tux
+    priority: P2
+    status: partial
+    acceptance:
+      - CTRL-\ CTRL-N leaves a terminal buffer
+      - Ambiguity timeout configurable per profile
+    evidence:
+      - apps/tui/src/app/session.rs
+    legacy_ids:
+      - DR-TUX-2
+    source:
+      - design-requirements.md §14 Terminal UX
+    notes: Escape chord implemented (F-011); no per-profile timeout.
+  - id: TUX-003
+    title: Escape wrapping by SSH/tmux nesting depth; IME modal-transition policy
+    area: tux
+    priority: P2
+    status: partial
+    acceptance:
+      - Escape sequences wrapped per nesting depth
+      - IME policy during mode transitions
+    evidence:
+      - apps/tui/src/graphics.rs
+      - docs/design/input-engine.md
+    legacy_ids:
+      - DR-TUX-3
+    source:
+      - design-requirements.md §14 Terminal UX
+    notes: Graphics escapes are tmux-wrapped one level ($TMUX); no nesting-depth model; IME policy designed only.
+  - id: TUX-004
+    title: Width-collapse rules, accessible image fallback, no color-only state, dumb-terminal core
+    area: tux
+    priority: P2
+    status: partial
+    acceptance:
+      - View collapse rules when width shrinks
+      - Image fallback keeps selection/focus
+      - State never conveyed by color alone
+      - Core commands usable on dumb terminals
+    evidence:
+      - apps/tui/src/graphics.rs
+    legacy_ids:
+      - DR-TUX-4
+    source:
+      - design-requirements.md §14 Terminal UX
+    notes: Image placeholder fallback exists; color-only state and dumb-terminal operation are not addressed.
+  - id: RIR-001
+    title: Semantic View Model separate from low-level Render IR
+    area: rir
+    priority: P1
+    status: partial
+    phase: breadth
+    acceptance:
+      - A semantic view model sits above the render IR
+      - Plugin API exposes only the semantic model
+    evidence:
+      - docs/rfc/proposed/RFC-0009-render-model.md
+      - spec/DECISIONS.md
+    legacy_ids:
+      - DR-RIR-1
+    source:
+      - design-requirements.md §15 Render-IR Risks
+    notes: D-014 decided but deferred by D-039; the TUI paints cells directly (apps/tui/src/ui/render.rs).
+  - id: RIR-002
+    title: Backend-neutral Render IR with capability namespaces
+    area: rir
+    priority: P2
+    status: partial
+    phase: breadth
+    acceptance:
+      - IR is not the union of backends
+      - Backend-specific extensions in capability namespaces
+    evidence:
+      - docs/rfc/proposed/RFC-0009-render-model.md
+    legacy_ids:
+      - DR-RIR-2
+    source:
+      - design-requirements.md §15 Render-IR Risks
+    notes: Designed only (no Render IR in code).
+  - id: RIR-003
+    title: IR version-migration tests; incremental diff
+    area: rir
+    priority: P2
+    status: partial
+    phase: breadth
+    acceptance:
+      - Migration tests across IR versions
+      - Incremental diff supported
+    evidence:
+      - apps/tui/src/ui/render.rs
+      - docs/rfc/proposed/RFC-0009-render-model.md
+    legacy_ids:
+      - DR-RIR-3
+    source:
+      - design-requirements.md §15 Render-IR Risks
+    notes: The TUI does a cell-level frame diff (prev_frame); no IR or IR versions exist.
+  - id: RIR-004
+    title: Stable resource handles; resource lifecycle
+    area: rir
+    priority: P2
+    status: partial
+    acceptance:
+      - Resources referenced by stable handles, not raw paths
+      - Image/font/binary lifecycle specified
+    evidence:
+      - apps/tui/src/graphics.rs
+      - docs/rfc/proposed/RFC-0009-render-model.md
+    legacy_ids:
+      - DR-RIR-4
+    source:
+      - design-requirements.md §15 Render-IR Risks
+    notes: Kitty images use resident ids with a lifecycle; the render path still reads images by file path.
+  - id: APIX-001
+    title: API promotion ladder Internal -> Experimental -> Preview -> Stable -> Deprecated -> Removed
+    area: apix
+    priority: P1
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - The ladder is defined
+      - Every public API declares its rung
+    evidence:
+      - docs/protocols/versioning-and-evolution.md
+      - spec/DECISIONS.md
+    legacy_ids:
+      - DR-APIX-1
+    source:
+      - design-requirements.md §16 API-Stability Paradox
+    notes: Ladder defined (D-010); no public API exists yet to carry a rung.
+  - id: APIX-002
+    title: Two independent users before Stable; local API telemetry; API surface budget
+    area: apix
+    priority: P2
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - Stable requires 2 independent users
+      - API surface budget exists
+      - Convenience vs primitive APIs distinguished
+    evidence:
+      - docs/protocols/versioning-and-evolution.md
+      - spec/contracts/plugin-protocol.yaml
+    legacy_ids:
+      - DR-APIX-2
+    source:
+      - design-requirements.md §16 API-Stability Paradox
+    notes: Policy only (contract guarantee stable_only_after_two_users).
+  - id: APIX-003
+    title: Every API expresses failure/cancellation/partial success; ships with versioning + migration
+    area: apix
+    priority: P1
+    status: partial
+    phase: ecosystem
+    acceptance:
+      - APIs can report failure, cancellation and partial success
+      - New APIs ship with versioning + migration
+    evidence:
+      - docs/protocols/versioning-and-evolution.md
+      - apps/tui/src/remote/protocol.rs::PROTOCOL_VERSION
+    legacy_ids:
+      - DR-APIX-3
+    source:
+      - design-requirements.md §16 API-Stability Paradox
+    notes: The remote protocol is versioned with error responses; no cancellation/partial-success shape.
+  - id: PERFS-001
+    title: Manage p95/p99 with per-stage latency budgets
+    area: perfs
+    priority: P1
+    status: partial
+    acceptance:
+      - Per-stage budgets input->command->transaction->render
+      - p95/p99 tracked, not averages
+    evidence:
+      - spec/perf-baseline.yaml
+      - tools/rusekit/gov/perf.py
+      - .github/workflows/perf.yml
+      - docs/operations/ci-cd-and-release.md
+    legacy_ids:
+      - DR-PERFS-1
+    source:
+      - design-requirements.md §17 Performance Stability
+    notes: D-019 budgets documented; the baseline records criterion p50 only and nightly perf is trend+warn.
+  - id: PERFS-002
+    title: Cold vs warm start measured; benchmarks with a real plugin set
+    area: perfs
+    priority: P2
+    status: todo
+    acceptance:
+      - Cold and warm start measured separately
+      - Benchmarks run with a real plugin set
+    evidence: []
+    legacy_ids:
+      - DR-PERFS-2
+    source:
+      - design-requirements.md §17 Performance Stability
+    notes: No startup benchmark; no plugins exist. Described in docs/operations/testing-and-benchmarks.md.
+  - id: PERFS-003
+    title: Memory peak vs steady-state, remote latency simulation, allocation regressions, device profiles
+    area: perfs
+    priority: P2
+    status: todo
+    acceptance:
+      - Peak vs steady memory tracked
+      - Poor remote latency simulated
+      - Allocation-count regressions tracked
+      - Per-device performance profile exported
+    evidence: []
+    legacy_ids:
+      - DR-PERFS-3
+    source:
+      - design-requirements.md §17 Performance Stability
+    notes: Described in docs/operations/testing-and-benchmarks.md; nothing implemented.
+  - id: OPS-001
+    title: Change-impact test selection with periodic full CI; merge queue
+    area: ops
+    priority: P2
+    status: partial
+    acceptance:
+      - Only relevant tests run per change
+      - Full CI runs periodically
+      - A merge queue gates main
+    evidence:
+      - .github/workflows/ci.yml
+      - tools/rusekit/change/impact.py
+    legacy_ids:
+      - DR-OPS-1
+    source:
+      - design-requirements.md §18 CI/CD Additions
+    notes: ci.yml skips the Rust job on non-Rust diffs (fail-safe) and `ruse impact` exists; no merge_group trigger, no scheduled
+      full run.
+  - id: OPS-002
+    title: Release artifact built once; rollback re-publishes a verified artifact
+    area: ops
+    priority: P1
+    status: partial
+    acceptance:
+      - One build feeds all channels
+      - Rollback re-publishes a prior artifact
+    evidence:
+      - .github/workflows/release.yml
+      - docs/operations/ci-cd-and-release.md
+    legacy_ids:
+      - DR-OPS-2
+    source:
+      - design-requirements.md §18 CI/CD Additions
+    notes: release.yml is a stub that echoes TODO; the policy is documented only.
+  - id: OPS-003
+    title: Compat report asset, reproducible builds, soak tests, fault-injection CI, test quarantine
+    area: ops
+    priority: P2
+    status: partial
+    acceptance:
+      - Plugin-API compat report per release
+      - Binary reproducibility verified
+      - Nightly soak tests
+      - Fault-injection CI (disk full, permission loss, crash, packet loss, truncated journal)
+      - Quarantined tests carry expiry + owner
+    evidence:
+      - apps/tui/src/persist/journal.rs::torn_header_tail_is_discarded
+      - docs/operations/ci-cd-and-release.md
+    legacy_ids:
+      - DR-OPS-3
+    source:
+      - design-requirements.md §18 CI/CD Additions
+    notes: Only truncated-journal fault cases are tested (unit level); the rest is documented.
+  - id: CONTRIB-001
+    title: New contributor builds and tests within 30 minutes
+    area: contrib
+    priority: P2
+    status: done
+    acceptance:
+      - A quickstart covers clone -> validate -> test -> PR
+    evidence:
+      - docs/contributing/quickstart.md
+      - tools/ruse.py
+    legacy_ids:
+      - DR-CONTRIB-1
+    source:
+      - design-requirements.md §19 Contributor Sustainability
+    notes: quickstart.md still says the crates are stubs, which is out of date. The 30-minute target is not measured.
+  - id: CONTRIB-002
+    title: Architecture-boundary violations enforced by lint/dependency rules
+    area: contrib
+    priority: P1
+    status: partial
+    acceptance:
+      - Crate dependency cycles fail CI
+      - Layer direction is enforced
+    evidence:
+      - tools/rusekit/arch/dependencies.py
+      - .github/workflows/ci.yml
+      - tools/spec-validate.py
+    legacy_ids:
+      - DR-CONTRIB-2
+    source:
+      - design-requirements.md §19 Contributor Sustainability
+    notes: CI runs `ruse arch deps` (acyclic crate graph + DEP placement) and spec-validate checks PRD build-stage order.
+      crate_layers is not declared, so the input->command->document direction inside apps/tui is not linted.
+  - id: CONTRIB-003
+    title: Good-first vs core-critical areas; ownership map by area
+    area: contrib
+    priority: P2
+    status: partial
+    acceptance:
+      - Good-first areas labeled
+      - Ownership map by area
+    evidence:
+      - .github/CODEOWNERS
+      - .github/labels.yml
+    legacy_ids:
+      - DR-CONTRIB-3
+    source:
+      - design-requirements.md §19 Contributor Sustainability
+    notes: CODEOWNERS is a commented-out template (solo project).
+  - id: CONTRIB-004
+    title: Clear RFC-required criteria; review checklist covers perf/compat/recovery/observability
+    area: contrib
+    priority: P2
+    status: done
+    acceptance:
+      - Change levels say what needs an RFC
+      - The review checklist covers performance, compatibility, recovery and observability
+    evidence:
+      - docs/contributing/change-paths.md
+      - spec/review-axes.yaml
+      - tools/review_axes.py
+      - spec/templates/rfc.md
+    legacy_ids:
+      - DR-CONTRIB-4
+    source:
+      - design-requirements.md §19 Contributor Sustainability
+  - id: CONTRIB-005
+    title: Generated vs hand-written code separated; fixture generators; bus-factor tracking
+    area: contrib
+    priority: P3
+    status: partial
+    acceptance:
+      - Generated artifacts marked and not hand-edited
+      - Fixture generators exist
+      - Bus factor tracked
+    evidence:
+      - tools/parity/oracle.py
+      - spec/parity/coverage.yaml
+      - tools/gen_roadmap.py
+    legacy_ids:
+      - DR-CONTRIB-5
+    source:
+      - design-requirements.md §19 Contributor Sustainability
+    notes: Generated files carry GENERATED headers and oracle fixtures are generated; bus factor only appears as a review
+      axis / dependency field.
+  - id: SCOPE-001
+    title: Don't complete Vim + Emacs + Native in v1; don't build TUI + GUI + Web at once
+    area: scope
+    priority: P1
+    status: done
+    acceptance:
+      - Non-goals recorded
+      - Only the TUI frontend exists; Emacs/Native are post-MVP slices
+    evidence:
+      - spec/PRD.yaml
+      - spec/PROJECT.md
+      - spec/phases.yaml
+    legacy_ids:
+      - DR-SCOPE-1
+    source:
+      - design-requirements.md §20 Product Scope & Strategy
+    notes: 'PRD mvp.non_goals: gui, web.'
+  - id: SCOPE-002
+    title: Don't platformize editor + IDE + OS shell + notebook + analyzer at once
+    area: scope
+    priority: P1
+    status: done
+    acceptance:
+      - Scope limited to the editor and staged IDE features
+    evidence:
+      - spec/PRD.yaml
+      - spec/PROJECT.md
+      - spec/phases.yaml
+    legacy_ids:
+      - DR-SCOPE-2
+    source:
+      - design-requirements.md §20 Product Scope & Strategy
+  - id: SCOPE-003
+    title: No marketplace before users; no plugin SDK before real plugins
+    area: scope
+    priority: P2
+    status: done
+    acceptance:
+      - Marketplace and WASM plugin host are non-goals
+      - No SDK exists
+    evidence:
+      - spec/PRD.yaml
+      - spec/PROJECT.md
+      - spec/DECISIONS.md
+    legacy_ids:
+      - DR-SCOPE-3
+    source:
+      - design-requirements.md §20 Product Scope & Strategy
+    notes: 'D-009 / non_goals: marketplace, wasm-plugin-host.'
+  - id: SCOPE-004
+    title: Don't distribute runtime/client before remote is needed
+    area: scope
+    priority: P2
+    status: done
+    acceptance:
+      - Remote boundary deferred behind re-boundary triggers
+    evidence:
+      - spec/DECISIONS.md
+      - docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md
+    legacy_ids:
+      - DR-SCOPE-4
+    source:
+      - design-requirements.md §20 Product Scope & Strategy
+    notes: D-039 collapsed to two crates; the SSH agent is an in-binary slice (F-017), not a separate runtime.
+  - id: SCOPE-005
+    title: Don't generalize every feature until simple editing becomes complex
+    area: scope
+    priority: P1
+    status: done
+    acceptance:
+      - Generalization is deferred until needed
+    evidence:
+      - docs/rfc/proposed/RFC-0012-collapse-to-two-crate-editor.md
+      - spec/DECISIONS.md
+    legacy_ids:
+      - DR-SCOPE-5
+    source:
+      - design-requirements.md §20 Product Scope & Strategy
+    notes: Judgment requirement; D-039 / RFC-0012 is the standing example.
+  - id: SCOPE-006
+    title: Don't defer the MVP for sustainability; use the language's strengths
+    area: scope
+    priority: P0
+    status: done
+    acceptance:
+      - MVP shipped
+    evidence:
+      - spec/PRD.yaml
+      - spec/phases.yaml
+    legacy_ids:
+      - DR-SCOPE-6
+    source:
+      - design-requirements.md §20 Product Scope & Strategy
+    notes: All 18 MVP features are done (spec/CONTEXT.md).
