@@ -3198,6 +3198,7 @@ mod tests {
         assert_eq!(parse_ex("diagnostics"), Ex::Diagnostics);
         assert_eq!(parse_ex("diags"), Ex::Diagnostics);
         assert_eq!(parse_ex("diag"), Ex::Diagnostics);
+        assert_eq!(parse_ex("trust"), Ex::Trust);
         assert_eq!(parse_ex("registers"), Ex::Registers);
         assert_eq!(parse_ex("reg"), Ex::Registers);
         assert_eq!(parse_ex("display"), Ex::Registers);

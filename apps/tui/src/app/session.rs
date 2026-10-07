@@ -346,7 +346,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut pending_term_escape = false;
     // F-014: all app-side LSP orchestration (clients, diagnostics, hover/completion, request dispatch,
     // deferred edit-applies) lives behind the coordinator; the loop just drives it (CAP-LSP-COORD).
-    let mut lsp = LspCoordinator::new(std::env::current_dir().unwrap_or_default());
+    // INV-TRUST-1 / D-058: language servers execute workspace code (build scripts, proc-macros), so they
+    // start only once the user trusts the workspace (`RUSE_TRUSTED_WORKSPACES` at startup, or `:trust`).
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let trusted = crate::trust::workspace_trusted(&cwd);
+    let mut lsp = LspCoordinator::new(cwd, trusted);
 
     while !quit {
         // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
@@ -801,9 +805,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if let Some(outcome) = ref_picker.as_mut().map(|p| p.on_key(key)) {
             if let PickOutcome::Accept = outcome {
                 if let Some((uri, l, c)) = ref_picker.as_ref().and_then(|p| p.selected().cloned()) {
-                    let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-                    let target =
-                        std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+                    let path = crate::lsp::uri_to_path(&uri);
+                    let target = std::fs::canonicalize(&path).unwrap_or(path);
                     let cur_path = files
                         .get(&ws.focused_buffer())
                         .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
@@ -1477,6 +1480,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     ex @ (Ex::Format | Ex::Rename(_) | Ex::References | Ex::CodeAction) => {
                         lsp.on_ex(&ex, &ws, &files, &snapshot, &mut status);
                     }
+                    // `:trust` (D-058): the user grants workspace trust for this session; language servers
+                    // start on the next frame's sync.
+                    Ex::Trust => lsp.grant_trust(&mut status),
                     // `:diagnostics` (F-014): open a picker over the focused buffer's already-collected
                     // diagnostics (no server round-trip); Enter jumps to the selected one.
                     Ex::Diagnostics => {

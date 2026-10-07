@@ -93,6 +93,18 @@
       "packageNameTemplate": "rust-lang/rust",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"
+    },
+    {
+      "description": "PyYAML installed by .github/actions/setup-python-yaml",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/actions/setup-python-yaml/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "pip install pyyaml==(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "PyYAML",
+      "datasourceTemplate": "pypi"
     }
   ]
 }

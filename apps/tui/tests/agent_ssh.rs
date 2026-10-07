@@ -18,7 +18,8 @@ fn ssh_handshakes_and_reads_a_remote_file() {
     let remote_path =
         std::env::var("RUSE_SSH_TEST_PATH").unwrap_or_else(|_| "/etc/hostname".into());
 
-    let cmd = transport::ssh_command(&host, transport::DEFAULT_REMOTE_AGENT_CMD);
+    let cmd =
+        transport::ssh_command(&host, transport::DEFAULT_REMOTE_AGENT_CMD).expect("valid host");
     let mut client = AgentClient::spawn(cmd, &["fs.readFile"]).expect("ssh spawn + handshake");
 
     assert_eq!(

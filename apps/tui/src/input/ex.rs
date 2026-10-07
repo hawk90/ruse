@@ -30,6 +30,9 @@ pub enum Ex {
     CodeAction,
     /// `:diagnostics`/`:diags`/`:diag` — list the focused buffer's diagnostics; Enter jumps (F-014).
     Diagnostics,
+    /// `:trust` — trust the current workspace for this session, allowing language servers to start
+    /// (INV-TRUST-1, D-058). ruse-specific (no Vim counterpart).
+    Trust,
     /// `:registers`/`:reg`/`:display` — view the non-empty registers (F-029). View-only.
     Registers,
     /// `:digraphs`/`:dig` — list the curated digraph table (code + glyph + decimal) in a view-only overlay.
@@ -677,6 +680,7 @@ pub fn parse_ex(line: &str) -> Ex {
         "references" | "refs" | "ref" => Ex::References,
         "codeaction" | "codeactions" | "ca" => Ex::CodeAction,
         "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
+        "trust" => Ex::Trust,
         "registers" | "reg" | "display" | "di" => Ex::Registers,
         "digraphs" | "digraph" | "dig" => Ex::Digraphs,
         "marks" => Ex::Marks,

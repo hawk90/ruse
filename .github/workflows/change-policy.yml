@@ -4,6 +4,9 @@
 # `ruse-gate:v1` block that `ruse pr render` embeds in the PR body — untrusted input, cross-checked against
 # the diff. `.ruse/` (local evidence.json / change.yaml) is gitignored ON PURPOSE and never trusted here:
 # a self-reported "tests passed" file cannot be the gate. See docs/operations/change-workflow.md.
+# The gate's own CODE and POLICY (tools/, spec/change-kinds.yaml) are taken from the BASE branch, not the
+# PR: otherwise a PR could edit pr_check.py or the kind table to wave itself through. A PR that changes
+# the gate is therefore judged by the gate it is replacing; the new gate applies from the next PR.
 name: change-policy
 on:
   pull_request:
@@ -16,14 +19,18 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0                   # need the base ref to diff the PR
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-      - run: pip install pyyaml
+      - uses: ./.github/actions/setup-python-yaml
+      - name: Use the base branch's gate code + policy (the PR cannot grade itself)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          rm -rf tools
+          git checkout "origin/$BASE_REF" -- tools spec/change-kinds.yaml
       - name: Read the author-declared gate block from the PR body
         env:
           GH_TOKEN: ${{ github.token }}

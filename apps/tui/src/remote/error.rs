@@ -20,6 +20,9 @@ pub enum AgentError {
         method: &'static str,
         detail: String,
     },
+    /// The response would exceed the protocol frame limit (`CONTRACT-REMOTE` `frame_max_bytes`), so it is
+    /// replaced by this error reply instead of being sent (e.g. `fs/readFile` of a file larger than a frame).
+    ResponseTooLarge { bytes: usize, limit: usize },
 }
 
 impl fmt::Display for AgentError {
@@ -28,6 +31,10 @@ impl fmt::Display for AgentError {
             AgentError::UnknownMethod(m) => write!(f, "unknown method: {m}"),
             AgentError::MissingParam { method, field } => write!(f, "{method}: missing `{field}`"),
             AgentError::Service { method, detail } => write!(f, "{method}: {detail}"),
+            AgentError::ResponseTooLarge { bytes, limit } => write!(
+                f,
+                "response of {bytes} bytes exceeds the {limit}-byte protocol frame limit"
+            ),
         }
     }
 }
