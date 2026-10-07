@@ -29,7 +29,9 @@ reader thread + `mpsc` + the gated `event::poll` loop) — but over stdio **pipe
 ```
 
 - **`codec.rs`** — JSON-RPC framing (`Content-Length` + body); `spawn_reader` parses frames off the server's
-  stdout on a thread (mirrors `pty::spawn_reader`); `write_message` frames outgoing.
+  stdout on a thread (mirrors `pty::spawn_reader`); `write_message` frames outgoing. A server's `Content-Length` is bounded (`MAX_FRAME_BYTES`, 64 MiB — LSP
+  has no protocol cap and the 4 MiB remote budget is too small for real completion/diagnostic replies): an
+  over-limit body is drained without allocating and skipped, so the stream stays in sync.
 - **`protocol.rs`** — the minimal serde types we consume/produce; `to_diags(bytes, params)` converts an LSP
   `publishDiagnostics` into normalized byte-range diagnostics. Raw protocol never leaves `lsp/`.
 - **`client.rs`** — `LspClient`: one server process; `spawn` (→ `None` if the binary is missing, so a missing
@@ -43,6 +45,15 @@ reader thread + `mpsc` + the gated `event::poll` loop) — but over stdio **pipe
   c/cpp/h→clangd, lua→lua-language-server; ts+js share one key, c+cpp share `clangd`). A missing binary is a
   silent no-op. This hard-coded map is the seam a config-driven `language-servers` registry replaces later.
   `path_to_uri`.
+
+## Workspace trust gate (D-058)
+
+Language servers execute workspace code (rust-analyzer runs `build.rs` + proc-macros), so the coordinator
+spawns **nothing** until the workspace (the working directory) is trusted — INV-TRUST-1. Trust is user-owned:
+`RUSE_TRUSTED_WORKSPACES` (an OS path list of absolute roots — the runtime stand-in for the user-scope
+`workspace.trusted_roots` key; `apps/tui/src/trust.rs`) decides at startup, and `:trust` grants it for the
+session. Untrusted: focusing a code buffer shows a one-time status notice, LSP commands (`:fmt`, `:rename`,
+…) report the untrusted state, and no `spawn`/`didOpen` happens.
 
 ## Session integration + render
 

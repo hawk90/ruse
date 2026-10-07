@@ -17,6 +17,10 @@ use crate::app::dispatch::{is_ctrl, open_file_into_buffer, Files, Highlighters};
 use crate::input::Ex;
 use crate::lsp::{self, Diag, LspClient};
 
+/// Status shown when a language server is held back because the workspace is not trusted (D-058).
+const UNTRUSTED_NOTICE: &str =
+    "language server not started: workspace untrusted (:trust to allow, or RUSE_TRUSTED_WORKSPACES)";
+
 /// What a pending LSP request was for, so its response (correlated by id) is dispatched correctly.
 #[derive(Clone, Copy)]
 enum LspKind {
@@ -57,6 +61,12 @@ struct CompletionMenu {
 pub(crate) struct LspCoordinator {
     root_uri: String,
     cwd: PathBuf,
+    /// The workspace-trust decision (INV-TRUST-1, D-058). Language servers execute workspace code (e.g.
+    /// rust-analyzer runs `build.rs` + proc-macros), so NO server is spawned while this is false. Granted
+    /// only by the user: `RUSE_TRUSTED_WORKSPACES` at startup or `:trust` (`grant_trust`).
+    trusted: bool,
+    /// The one-time "language servers held back: untrusted" notice was shown (not re-set every frame).
+    trust_notice_shown: bool,
     /// One client per server (keyed by server command); the buffers opened into them; the servers already
     /// tried to spawn (so a missing binary is not retried each frame); the normalized diagnostics.
     lsp: HashMap<String, LspClient>,
@@ -94,10 +104,12 @@ pub(crate) struct LspCoordinator {
 }
 
 impl LspCoordinator {
-    pub(crate) fn new(cwd: PathBuf) -> LspCoordinator {
+    pub(crate) fn new(cwd: PathBuf, trusted: bool) -> LspCoordinator {
         LspCoordinator {
             root_uri: lsp::path_to_uri(&cwd),
             cwd,
+            trusted,
+            trust_notice_shown: false,
             lsp: HashMap::new(),
             lsp_docs: HashMap::new(),
             lsp_tried: HashSet::new(),
@@ -117,6 +129,20 @@ impl LspCoordinator {
             pending_actions: None,
             pending_server_edits: Vec::new(),
         }
+    }
+
+    /// `:trust` — the user trusts this workspace for the session: language servers may start (the next
+    /// `sync_and_poll` spawns the focused buffer's server). Not persisted (D-058).
+    pub(crate) fn grant_trust(&mut self, status: &mut String) {
+        *status = if self.trusted {
+            "workspace already trusted".to_string()
+        } else {
+            self.trusted = true;
+            format!(
+                "workspace trusted for this session: language servers enabled ({})",
+                self.cwd.display()
+            )
+        };
     }
 
     /// The `(server key, uri)` for the FOCUSED buffer, if it is backed by a spawned+opened language server.
@@ -232,6 +258,15 @@ impl LspCoordinator {
                 .and_then(|e| e.to_str())
                 .and_then(lsp::server_for_ext)
                 .and_then(|(key, cmd, lang)| {
+                    // INV-TRUST-1 / D-058: never spawn a server (which runs workspace code) in an
+                    // untrusted workspace. Say why once, instead of failing silently.
+                    if !self.trusted {
+                        if !self.trust_notice_shown {
+                            self.trust_notice_shown = true;
+                            *status = UNTRUSTED_NOTICE.to_string();
+                        }
+                        return None;
+                    }
                     // Spawn the server once (track attempts so a missing binary is not retried each frame).
                     if !self.lsp.contains_key(key) && self.lsp_tried.insert(key.to_string()) {
                         if let Some(c) = LspClient::spawn(cmd, &self.root_uri) {
@@ -676,7 +711,12 @@ impl LspCoordinator {
             return false;
         }
         let Some((key_s, uri)) = self.focused_server(ws, files) else {
-            *status = "no language server for this buffer".to_string();
+            *status = if self.trusted {
+                "no language server for this buffer"
+            } else {
+                UNTRUSTED_NOTICE
+            }
+            .to_string();
             return true;
         };
         match ex {
@@ -872,7 +912,7 @@ mod tests {
             json!({"items": [{"label": "width"}, {"label": "window"}, {"label": "wibble"}]});
 
         // STALE by request-id: a response whose id isn't the latest is discarded.
-        let mut c = LspCoordinator::new(std::path::PathBuf::from("/"));
+        let mut c = LspCoordinator::new(std::path::PathBuf::from("/"), true);
         c.completion_req = Some(9);
         c.ingest_completion(1, rev, &result, cur, bytes, rev);
         assert!(c.completion.is_none(), "wrong id → discarded");
@@ -916,7 +956,7 @@ mod tests {
     fn ingest_resolve_stale_index_and_merge() {
         let rev = Revision::ZERO;
         let resolved = json!({"detail": "struct HashMap"});
-        let mut c = LspCoordinator::new(std::path::PathBuf::from("/"));
+        let mut c = LspCoordinator::new(std::path::PathBuf::from("/"), true);
         c.completion = Some(menu(&["HashMap", "HashSet"], 0));
         let detail0 = |c: &LspCoordinator| c.completion.as_ref().unwrap().items[0].detail.clone();
 
@@ -934,5 +974,51 @@ mod tests {
         c.ingest_resolve(1, rev, 0, &resolved, rev); // fresh + valid → merged
         assert_eq!(detail0(&c).as_deref(), Some("struct HashMap"));
         assert!(c.completion.as_ref().unwrap().items[0].resolved);
+    }
+
+    /// Regression (INV-TRUST-1 / D-058): in an UNTRUSTED workspace, focusing a file with a known language
+    /// server spawns nothing — previously opening a `.rs` file auto-started rust-analyzer, which runs the
+    /// project's build scripts. The user sees why (once), LSP commands report it, and `:trust` lifts the gate.
+    #[test]
+    fn untrusted_workspace_never_spawns_a_language_server() {
+        let ws = Workspace::new(&b"fn main() {}\n"[..]);
+        let mut files = Files::new();
+        files.insert(
+            ws.focused_buffer(),
+            crate::app::dispatch::BufferFile {
+                path: PathBuf::from("/nonexistent-ruse-trust/src/main.rs"),
+                fmt: Default::default(),
+            },
+        );
+        let bytes = ws.focused().doc.bytes().to_vec();
+        let rev = ws.focused().doc.revision();
+        let mut c = LspCoordinator::new(PathBuf::from("/nonexistent-ruse-trust"), false);
+
+        let mut status = String::new();
+        c.sync_and_poll(&ws, &files, rev, &bytes, &mut status);
+        assert!(
+            c.lsp.is_empty() && c.lsp_tried.is_empty(),
+            "no spawn attempted"
+        );
+        assert!(c.lsp_docs.is_empty(), "no didOpen");
+        assert!(status.contains("untrusted"), "status explains: {status}");
+
+        // The notice is shown once, not re-asserted every frame over other status messages.
+        let mut status = "other".to_string();
+        c.sync_and_poll(&ws, &files, rev, &bytes, &mut status);
+        assert_eq!(status, "other");
+        assert!(c.lsp_tried.is_empty());
+
+        // An LSP command in an untrusted workspace says why it cannot run.
+        let mut status = String::new();
+        assert!(c.on_ex(&Ex::Format, &ws, &files, &bytes, &mut status));
+        assert!(status.contains("untrusted"), "{status}");
+
+        // `:trust` grants trust for the session (a second `:trust` is a no-op).
+        let mut status = String::new();
+        c.grant_trust(&mut status);
+        assert!(c.trusted && status.contains("trusted"), "{status}");
+        c.grant_trust(&mut status);
+        assert_eq!(status, "workspace already trusted");
     }
 }

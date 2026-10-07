@@ -39,7 +39,10 @@ before "remote."
 
 - **Slice 1 — client↔agent transport foundation (F-017, #315): SHIPPED, local pipe (no SSH yet).**
   `apps/tui/src/remote/` hosts the versioned wire protocol (`Content-Length` framing, identical to
-  `lsp/codec.rs`), a headless serve loop (`ruse agent`), and a local `AgentClient` that spawns the agent,
+  `lsp/codec.rs`; a body is capped at `MAX_FRAME_BYTES` = the `CONTRACT-REMOTE` `frame_max_bytes` budget,
+  4 MiB — an over-limit `Content-Length` is an `InvalidData` error checked before allocating, the sender
+  refuses to write one, and the agent answers an over-limit response with a typed `ResponseTooLarge` error
+  reply instead), a headless serve loop (`ruse agent`), and a local `AgentClient` that spawns the agent,
   handshakes (exchange `PROTOCOL_VERSION` + negotiate capabilities), and issues blocking request→response
   calls. Capability negotiation **degrades** a wanted-but-unoffered service (dropped, never a failed
   connect — the mechanism behind acceptance #3, built now so the SSH slice inherits it). One trivial service,
@@ -51,8 +54,9 @@ before "remote."
   module is the honest, precedent-matching home.
 - **Slice 2a — SSH stdio transport seam (F-017, #316): SHIPPED.** `apps/tui/src/remote/transport.rs`
   centralises how the agent is launched into two `Command` builders: `local_command` (the slice-1 pipe) and
-  `ssh_command` (`ssh -o BatchMode=yes <host> ruse agent` — "SSH stdio first", non-interactive so a headless
-  client never hangs on a password prompt). `AgentClient` was already transport-agnostic (it takes a
+  `ssh_command` (`ssh -o BatchMode=yes -- <host> ruse agent` — "SSH stdio first", non-interactive so a headless
+  client never hangs on a password prompt; the host follows `--` and a host that is empty or starts with `-`
+  is rejected, so user input can never be parsed as an ssh option such as `-oProxyCommand=`). `AgentClient` was already transport-agnostic (it takes a
   `Command`), so only the launch differs; the command *assembly* is deterministically unit-tested and the live
   wire is an env-gated ignored smoke (`tests/agent_ssh.rs`). **Limitation:** without agent bootstrap yet, a
   remote host must already have `ruse` on its `PATH` (the remote command is `ruse agent`, not yet the
