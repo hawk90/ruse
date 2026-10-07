@@ -8,7 +8,7 @@
 name: ci
 on:
   pull_request:
-  push: { branches: [main, next] }
+  push: { branches: [main] }
 permissions: { contents: read }
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,6 +16,7 @@ concurrency:
 jobs:
   rust:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     outputs:
       rust: ${{ steps.detect.outputs.rust }}
     steps:
@@ -60,10 +61,7 @@ jobs:
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo test --workspace
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with: { python-version: '3.12' }
-      - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
-        run: pip install pyyaml
+        uses: ./.github/actions/setup-python-yaml
       - name: dependency direction + cycle check
         if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: python3 tools/ruse.py arch deps
@@ -72,6 +70,7 @@ jobs:
     needs: rust
     if: needs.rust.outputs.rust == '1'
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
