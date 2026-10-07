@@ -8,7 +8,9 @@ use std::io::{self, BufRead, Write};
 use serde_json::{json, Value};
 
 use super::error::AgentError;
-use super::protocol::{read_message, response, write_message, PROTOCOL_VERSION};
+use super::protocol::{
+    read_message, response, write_body, write_message, MAX_FRAME_BYTES, PROTOCOL_VERSION,
+};
 
 /// The services this agent offers. The handshake announces these; the client negotiates them down to what it
 /// needs (missing ones degrade, never fail). Grows as watch/search/git/lsp/debug/pty land in later slices.
@@ -28,7 +30,17 @@ pub fn serve<R: BufRead, W: Write>(mut r: R, mut w: W) -> io::Result<()> {
             break;
         }
         let reply = dispatch(method, &params);
-        write_message(&mut w, &response(id, reply))?;
+        let mut body = serde_json::to_vec(&response(id.clone(), reply))?;
+        if body.len() > MAX_FRAME_BYTES {
+            // Never put an over-limit frame on the wire (the client would reject it and the connection
+            // would die): answer with a typed error the client can surface, and keep serving.
+            let too_large = AgentError::ResponseTooLarge {
+                bytes: body.len(),
+                limit: MAX_FRAME_BYTES,
+            };
+            body = serde_json::to_vec(&response(id, Err(too_large)))?;
+        }
+        write_body(&mut w, &body)?;
     }
     Ok(())
 }
@@ -170,6 +182,36 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("unknown method"));
+    }
+
+    /// Regression (frame limit): a `fs/readFile` whose response would exceed `MAX_FRAME_BYTES` gets a typed
+    /// error REPLY instead of an over-limit frame, and the agent keeps serving the next request.
+    #[test]
+    fn oversized_response_becomes_an_error_reply_and_serving_continues() {
+        let path = std::env::temp_dir().join(format!("ruse_agent_big_{}.txt", std::process::id()));
+        std::fs::write(&path, vec![b'a'; MAX_FRAME_BYTES + 1]).unwrap();
+
+        let mut input = Vec::new();
+        write_message(
+            &mut input,
+            &request(1, "fs/readFile", json!({ "path": path.to_str().unwrap() })),
+        )
+        .unwrap();
+        write_message(&mut input, &request(2, "initialize", json!({}))).unwrap();
+
+        let mut out = Vec::new();
+        serve(Cursor::new(input), &mut out).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        let mut r = Cursor::new(out);
+        let big = read_message(&mut r).unwrap().unwrap();
+        assert_eq!(big["id"], json!(1));
+        assert!(big["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("frame limit"));
+        let next = read_message(&mut r).unwrap().unwrap();
+        assert_eq!(next["result"]["protocolVersion"], json!(PROTOCOL_VERSION));
     }
 
     /// The fs write/stat/list services round-trip over `serve`: write a file, stat it (exists + len), stat a

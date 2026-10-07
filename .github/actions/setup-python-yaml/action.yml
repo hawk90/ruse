@@ -1,0 +1,12 @@
+name: setup-python-yaml
+description: >-
+  Python 3.12 with PyYAML, the interpreter and the one package every spec /
+  governance tool under tools/ needs. One place to bump either.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: '3.12'
+    - run: pip install pyyaml==6.0.3
+      shell: bash

@@ -73,7 +73,13 @@ fn agent_serve() -> ExitCode {
 #[allow(clippy::print_stdout, clippy::print_stderr)] // headless CLI output (D-041).
 fn ssh_connect(host: Option<&str>) -> ExitCode {
     let cmd = match host {
-        Some(h) => transport::ssh_command(h, transport::DEFAULT_REMOTE_AGENT_CMD),
+        Some(h) => match transport::ssh_command(h, transport::DEFAULT_REMOTE_AGENT_CMD) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("ruse ssh: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
         None => match std::env::current_exe() {
             Ok(exe) => transport::local_command(exe),
             Err(e) => {

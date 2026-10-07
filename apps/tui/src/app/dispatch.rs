@@ -521,14 +521,16 @@ pub(crate) fn run_ex(
                 None => *status = "E23: no alternate buffer".into(),
             }
         }
-        // `:terminal` (F-011) / `:fmt` / `:rename` / `:references` (F-014) are handled in `session::run`
+        // `:terminal` (F-011) / `:fmt` / `:rename` / `:references` (F-014) / `:trust` (D-058) are handled in
+        // `session::run`
         // (they need the terminals / lsp maps); they never reach here, but the match stays exhaustive.
         Ex::Terminal
         | Ex::Format
         | Ex::Rename(_)
         | Ex::References
         | Ex::CodeAction
-        | Ex::Diagnostics => {}
+        | Ex::Diagnostics
+        | Ex::Trust => {}
         // `:[range]normal` is handled in the run loop (it drives the input `engine`, which this fn does not
         // borrow, to replay the keys through the same pipeline); never reaches here.
         Ex::Normal { .. } => {}

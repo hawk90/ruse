@@ -15,6 +15,7 @@ version: 1
 capabilities:
   # ---- Base: always present; complete local+remote editing with zero plugins ----
   CAP-EDIT-CORE:    { title: Editing core (Document/View/Transaction/Undo/Selection), product_layer: base, architecture_tier: kernel, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false, prd: [F-001, F-002, F-005] }
+  CAP-BUFFER-ARENA: { title: Multi-buffer arena + workspace-global state (registers/global-marks/jumplist, buffer disposition+kind), product_layer: base, architecture_tier: kernel, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false, requires: [CAP-EDIT-CORE], prd: [F-032] }  # F-007 arena + D-057 cross-buffer layer; unblocks pickers/q:/global-marks/completion
   CAP-TRACE:        { title: Command trace + deterministic replay, product_layer: base, architecture_tier: kernel, implementation: own, runtime: both, activation: startup, trust: core, replaceable: false, prd: [F-022] }
   CAP-VIM-PROFILE:  { title: Vim input profile, product_layer: base, architecture_tier: kernel, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-003, F-023, F-024, F-025, F-026, F-027, F-028, F-029] }
   CAP-NATIVE-PROFILE: { title: Native input profile, product_layer: base, architecture_tier: kernel, implementation: own, runtime: client, activation: startup, trust: core, replaceable: true, prd: [F-013] }

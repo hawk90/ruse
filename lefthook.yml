@@ -32,3 +32,17 @@ pre-push:
   commands:
     verify-full:
       run: python3 tools/ruse.py verify --full
+
+# --- keep local deps in sync with the lockfiles after pull / checkout / rebase ---
+post-merge:
+  commands:
+    sync-deps:
+      run: scripts/sync-deps.sh
+post-checkout:
+  commands:
+    sync-deps:
+      run: scripts/sync-deps.sh --since {1}
+post-rewrite:
+  commands:
+    sync-deps:
+      run: scripts/sync-deps.sh
