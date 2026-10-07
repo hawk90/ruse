@@ -44,7 +44,9 @@ reader thread + `mpsc` + the gated `event::poll` loop) — but over stdio **pipe
   process per server key (rust→rust-analyzer, py→pyright, ts/js→typescript-language-server, go→gopls,
   c/cpp/h→clangd, lua→lua-language-server; ts+js share one key, c+cpp share `clangd`). A missing binary is a
   silent no-op. This hard-coded map is the seam a config-driven `language-servers` registry replaces later.
-  `path_to_uri`.
+  `path_to_uri` / `uri_to_path` convert between paths and RFC 3986 `file://` URIs (percent-encoded via
+  `DEP-PERCENT-ENCODING`; spaces, `%`, `#`, non-ASCII round-trip). Every server-supplied URI is decoded
+  through `uri_to_path`, and diagnostics match the focused buffer by decoded path, not URI string.
 
 ## Workspace trust gate (D-058)
 
