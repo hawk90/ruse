@@ -25,7 +25,7 @@ jobs:
       # Trend + warn: numbers are machine-relative, so this never fails the job — it reports regressions
       # for a human to confirm on the fixed baseline machine before touching spec/perf-baseline.yaml.
       - run: python3 tools/ruse.py bench --check --measurement-time 2 | tee perf-report.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: perf-report
           path: perf-report.txt
