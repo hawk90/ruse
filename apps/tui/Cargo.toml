@@ -17,15 +17,15 @@ bench = false
 [dependencies]
 ruse-core = { path = "../../crates/core" }
 crossterm = "0.29"
-tree-sitter = "0.27.0"
+tree-sitter = "0.27.1"
 tree-sitter-rust = "0.24.2"
-streaming-iterator = "0.1"
+streaming-iterator = "0.1.9"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # F-006 render diff: paint by grapheme CLUSTER (so `👨‍👩‍👧` is one cell pair, not three glyphs) with
 # display-cell widths (wide CJK = 2). Same crates the core coordinate layer uses (F-002); in the tree.
-unicode-segmentation = "1"
-unicode-width = "0.2"
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.2"
 tree-sitter-json = "0.24.8"
 tree-sitter-python = "0.25.0"
 tree-sitter-bash = "0.25.1"
@@ -35,24 +35,24 @@ tree-sitter-javascript = "0.25.0"
 tree-sitter-css = "0.25.0"
 vte = "0.15.0"
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1"
+serde_json = "1.0.154"
 tree-sitter-md = "0.5.3"
 # F-014 file URIs: RFC 3986 percent-encoding of paths (DEP-PERCENT-ENCODING). Never hand-roll escapes (D-034).
-percent-encoding = "2.3"
+percent-encoding = "2.3.2"
 
 # F-010 live capability probe: a `poll()` liveness net so startup never hangs on a terminal that
 # never answers DA1 (the fence, not the clock, decides support). Unix-only; other targets fall back
 # to the env/default ledger. Already in the tree via crossterm — no new transitive weight.
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc = "0.2.190"
 
 [dev-dependencies]
 # Benchmarking harness (D-042). Lean features: keep cargo-bench integration, drop rayon + plotters/gnuplot.
-criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 # Property-based tests of the input-engine state machine (no pending leak, orthogonal-axis invariants).
-proptest = { version = "1", default-features = false, features = ["std"] }
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 # Parity fixture corpus is JSON-in-YAML (a subset of YAML 1.2); serde_json reads it with no YAML dep.
-serde_json = "1"
+serde_json = "1.0.154"
 
 [[bench]]
 name = "highlight_parse"
