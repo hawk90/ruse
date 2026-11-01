@@ -15,5 +15,5 @@ Orientation: read [`spec/CONTEXT.md`](spec/CONTEXT.md) (compact) then the releva
 decision / RFC. Contribution process: [CONTRIBUTING.md](CONTRIBUTING.md) and
 [docs/contributing/](docs/contributing/README.md).
 
-> ruse is an early, unreleased editor: `cargo run` builds a working Vim-style TUI, and feature state is in
+> ruse is an early, unreleased editor: `cargo run -p ruse-tui` builds a working Vim-style TUI, and feature state is in
 > [`spec/PRD.yaml`](spec/PRD.yaml). Usage questions, design questions and contributions are all welcome.

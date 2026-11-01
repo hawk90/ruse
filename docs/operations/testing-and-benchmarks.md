@@ -247,7 +247,7 @@ Each failing case **must be reduced to a saved deterministic fixture** (§1.10),
 #### v0 status — SHIPPED (`crates/core/tests/properties.rs`)
 
 The property layer is **live** for the v0 semantic core (the first mechanized test-quality layer beyond
-example tests). Seven invariants run under `proptest` (dev-dependency only; the core crate stays dep-free):
+example tests). Seven invariants run under `proptest` (a dev-dependency, not linked into the core crate):
 
 - **UTF-8 / cursor-boundary safety** — no command sequence, from any buffer, ever produces invalid UTF-8 or
   leaves the cursor off a char boundary / out of bounds. (The headline totality property.)

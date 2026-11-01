@@ -5,7 +5,7 @@
 ruse's *project* self-verification is strong — `ruse verify`, `gov check` (auto-discovered
 `tools/rusekit/gov/*.py`), the parity oracles, `pr check`. But the *running editor* has no user-facing
 diagnostic: a user who hits "why isn't syntax highlighting on?" or "which input profile am I in?" has
-only the ntic log. Neovim solves this with `:checkhealth` — a command that reports the editor's runtime
+only the log. Neovim solves this with `:checkhealth` — a command that reports the editor's runtime
 health in an OK / WARN / ERROR list. F-030 is that analogue for ruse.
 
 ## What it reports (first slice)
