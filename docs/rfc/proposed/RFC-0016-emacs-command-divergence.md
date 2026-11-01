@@ -28,7 +28,7 @@ related:
 - **Status:** proposed
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-16
-- **Decision link:** D-051 (proposed by this RFC; recorded on acceptance)
+- **Decision link:** D-051
 - **Builds on:** D-047 (the change-intent is the semantic unit), D-049 (Emacs is a configuration of decided machinery), D-050 / RFC-0015 (caret gravity — the one cross-cutting caret property), RFC-0014 (the Emacs profile).
 - **Evidence:** `apps/tui/tests/emacs_parity_compare.rs` vs pinned emacs-30.2 — the last Family-3 divergences (`yank` / buffer jumps not setting the mark) motivated the choice; applying it takes the corpus to 23/23.
 

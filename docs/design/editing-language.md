@@ -12,7 +12,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - architecture.md
+  - ../architecture/architecture.md
   - register-model.md
   - persistence-and-recovery.md
   - ../invariants/reference-invariants.md
@@ -51,17 +51,16 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 
 `r{char}` replaces the character under the cursor (via the input engine's `Awaiting::ReplaceChar` state — the
 key after `r` is the replacement; ctrl-r stays redo), leaving the cursor on it; it is a no-op at end-of-line
-or over a newline. `~` toggles the ASCII case of the char and moves right (a non-letter just moves). `J` joins
-the current line with the next on a single space, dropping the next line's leading indent (no-op on the last
-line). Deferred: counted `r`/`~`, non-ASCII case folding, and `J`'s Vim niceties (no space before `)`, keep
-existing trailing space).
+or over a newline. `~` toggles the case of the char (Unicode-aware; `ß` differs from Vim, #732) and moves right (a non-letter just moves). `J` joins
+the current line with the next on a single space, dropping the next line's leading indent, with no space before
+`)` and existing trailing space kept (no-op on the last line; empty next line, #718). `r` and `~` take a count.
 
 ## v0 — insert-entry commands (SHIPPED)
 
 Beyond `i`/`a`, the common insert entries ship as their own semantic commands (so a trace records the intent):
 `o`/`O` open a new line below/above and enter Insert (an edit — insert `\n` at the line end / start), `A`
-appends at the line end, `I` inserts before the first non-blank. Deferred: autoindent (the new line copies no
-indentation yet), and the Visual-mode meanings of `o`/`I`/`A` (swap-ends / block-insert).
+appends at the line end, `I` inserts before the first non-blank. The frontend supplies tree-aware indent
+(`apps/tui/src/indent.rs`), and Visual `o` / block `I`/`A` swap ends and block-insert.
 
 ## v0 — small-word vs WORD motions (SHIPPED)
 
@@ -70,8 +69,7 @@ Word motions now use Vim's character classes. Small-word `w`/`b`/`e` recognize *
 *punctuation* — so `foo.bar` is three words (`foo`, `.`, `bar`). `W`/`B`/`E` are the **WORD** motions: two
 classes (whitespace vs not), so `foo.bar` is one WORD. Both share one class-parameterized scanner (`big:
 bool`); class changes only fall on char boundaries, so positions stay valid. `cw`/`cW` still behave like
-`ce`/`cE` (don't eat the trailing whitespace). Deferred: text objects (`iw`/`aw`) are still 2-class
-(whitespace vs not) — upgrading them to the same three classes is a follow-up.
+`ce`/`cE` (don't eat the trailing whitespace). Text objects `iw`/`aw` use the same three classes (newline handling, #740).
 
 ## v0 — bracket-match motion `%` (SHIPPED)
 
@@ -79,8 +77,8 @@ bool`); class changes only fall on char boundaries, so positions stay valid. `cw
 per pair type, so `([)]` matches `(`↔`)` exactly as Vim), and the match may be on **another line** (only the
 initial "which bracket" scan is line-local: if the cursor is not on a bracket, the first bracket forward on
 the current line is matched). As an operator target it is **charwise-inclusive** — `d%` deletes both brackets
-and everything between. `count%` (jump to a percentage of the file) is a *different* Vim feature and is
-**deferred**; bare `%` ignores any count for now. Deferred too: language-aware matching (strings/comments) and
+and everything between. `count%` jumps to that percentage of the file (`Motion::GotoPercent`). Deferred:
+language-aware matching (strings/comments) and
 configurable `matchpairs`.
 
 ## v0 — line-jump motions (SHIPPED)
@@ -92,8 +90,8 @@ whole-line span between the cursor and the target (`change` keeps the final newl
 into). `Motion::{GotoLine, LastLine}` carry no data (the line number rides in the command's count);
 `target` resolves them directly rather than via the repeat loop (a count is an absolute line, not a repeat).
 Input: bare `G` reads the count (or jumps to the last line when none); `gg` is a two-key prefix wired through
-the input engine's `Awaiting::GSecond` state (see input-engine.md v0). Deferred: `gj`/`gk` display-line
-motions, and the rest of the `g`-prefix family.
+the input engine's `Awaiting::GSecond` state (see input-engine.md v0). `gj`/`gk`/`g0`/`g$`/`g^` map to their
+buffer-line motions, because ruse does not soft-wrap (#615).
 
 ## v0 — char-search motions (SHIPPED)
 
@@ -107,7 +105,7 @@ for forward search (`dfx` removes `x`, `dtx` stops before it). Search is confine
 The char argument rides inside the motion — `Motion::FindChar { ch, forward, till }` (still `Copy`) —
 resolved in `motion::target` / `motion::char_span`, and serialized in a trace as a single whitespace-free
 token `find_char:<codepoint>:<fwd>:<till>` so the `<count> <motion>` line form is unchanged. The input engine
-holds a one-key `pending_find` state (the key after `f` is the target) plus `last_find` for `;` (repeat) and
+holds a one-key `Awaiting::FindTarget` state (the key after `f` is the target) plus `last_find` for `;` (repeat) and
 `,` (repeat reversed). Deferred: Vim's `t`-repeat adjacency quirk, and search across a count that spans lines.
 
 ## Model
@@ -193,7 +191,7 @@ pub struct ChangeIntent {
     pub operator: OperatorId,
     pub target: RepeatTarget,      // Motion | TextObject | ForcedLinewise
     pub count: Count,
-    pub inserted_text: Option<Rope>,  // for c/i/a/o insert sessions
+    pub inserted_text: Option<Vec<u8>>,  // for c/i/a/o insert sessions
     pub register: RegisterId,
 }
 ```
@@ -261,7 +259,6 @@ generalization of `dw/dd`. Both ultimately produce a Range consumed by an operat
   structure that reproduces Vim's editing language and is load-bearing for dot-repeat and custom operators.
 
 ## Open questions
-- Exact `RepeatTarget` serialization for macro/`ChangeIntent` interplay when a macro contains a `.`.
 - Blockwise operator semantics for ragged-right blocks and virtual columns (`VIM-MODE-4` blockwise + `$`).
 - Interaction of `=`/`!` external-filter operators with the single-transaction rule (may need a
   Composite outcome + preflight).

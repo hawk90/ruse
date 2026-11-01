@@ -32,20 +32,9 @@ related:
 
 Never test-and-immediately-deploy in one giant `ci.yml`.
 
-```
-.github/workflows/
-├── ci-fast.yml          # every PR, 5–10 min
-├── ci-full.yml          # main / merge
-├── compatibility.yml    # parity + plugin + protocol
-├── security.yml
-├── release-build.yml
-├── release-publish.yml
-└── nightly.yml
-```
-
-> Skeletons live in [`.github/workflows/`](../../.github/workflows/README.md). `ci-fast.yml`'s
-> `spec-validate` job is runnable today (`python3 tools/spec-validate.py`); Rust jobs no-op until `crates/`
-> exists; the rest are planned stubs.
+The workflow set, triggers and required checks are listed in
+[`.github/workflows/README.md`](../../.github/workflows/README.md), including the planned `ci-full`,
+`compatibility` and `nightly` workflows. `release.yml` is a stub. The sections below describe the target pipeline.
 
 ### Fast PR CI (5–10 min)
 `format → lint → compile → unit tests → core property tests → changed-component tests`.
@@ -72,10 +61,12 @@ Do not manage Vim/Neovim/Emacs parity in doc tables only — they rot. Encode as
 
 ```
 tests/parity/
-├── vim/    operator_motion.yaml, registers.yaml, dot_repeat.yaml
-├── emacs/  kill_ring.yaml, universal_argument.yaml, prefix_keys.yaml
-└── expected/
+├── vim/fixtures/corpus.yaml
+└── emacs/fixtures/corpus.yaml
 ```
+
+The fixture below is the design shape; the live format is in
+[testing-and-benchmarks.md](testing-and-benchmarks.md).
 
 ```yaml
 name: vim-delete-inner-word

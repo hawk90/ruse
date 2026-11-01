@@ -15,7 +15,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - architecture.md
+  - ../architecture/architecture.md
   - editing-language.md
   - register-model.md
   - ../parity/vim.md
@@ -28,7 +28,12 @@ related:
 
 # ruse Regex Abstraction & Vim-Dialect Engine
 
-Resolves **D-028** (open) and **V-8** (verification.md: "Vim regex dialect has no owning component or
+> **Current code.** `crates/core/src/pattern.rs` is a magic-aware front-end over the wrapped `regex` crate, the
+> only engine today; atoms that crate cannot represent are rejected with a typed error. `VimEngine`, the IR, budgets
+> and the fast-path allow-list below are unbuilt. Whether the wrapped-only scope needs a D-028 amendment is open
+> (#996).
+
+Design behind **D-028** (decided, design) and **V-8** (verification.md: "Vim regex dialect has no owning component or
 decision"). Specifies the `C-REGEX` component referenced by D-028 and by
 [F-009](../../spec/PRD.yaml) (Search & substitute), and closes the strategy question flagged by
 [VIM-SEARCH-1](../parity/vim.md#vim-search--search--substitute) and
@@ -119,7 +124,7 @@ This doc depends on and is governed by (single-registry rule — no new `INV-*` 
   none`, `allowed_layers: [core]`).
 - **INV-CMD-SEMANTIC** — search/substitute are semantic commands with a **pattern + flags** argument; the engine
   is an *implementation detail resolved by the router*, never a user-visible command target.
-- **INV-QUERY-SNAPSHOT** — a compiled `Regex` matches against an immutable text **snapshot** (a Rope slice /
+- **INV-QUERY-SNAPSHOT** — a compiled `Regex` matches against an immutable text **snapshot** (a byte slice /
   visible-range snapshot), never live mutable Document state; incsearch decoration runs outside the paint
   critical section.
 - **INV-ASYNC-ORDER** — an incremental-search match request carries a request id + revision; a superseded
@@ -505,13 +510,13 @@ This is a substitute-layer obligation noted for F-009.
 
 ## Migration strategy
 
-Greenfield (no prior regex layer). Land `C-REGEX` (trait + `DefaultEngine` + IR + `Vim` front-end) as a leaf
-kernel component **before** F-009 reaches Vim search parity. Sequence: (1) `RegexIr` + `Default` dialect +
-`DefaultEngine` (unblocks internal/LSP/plain find immediately, ReDoS-free); (2) `Vim` front-end + magic
+`C-REGEX` currently ships as the front-end over the wrapped engine; whether that scope stands is open (#996).
+Sequence for the rest:
+(1) `RegexIr` + `Default` dialect + `DefaultEngine`; (2) `Vim` front-end on the IR + magic
 resolution + Pike-VM `VimEngine` covering NFA-native atoms incl. `\zs`/`\ze`; (3) bounded-backtracking fallback +
 budgets for backrefs/variable-lookbehind; (4) certify DefaultEngine fast-path shapes (§7 step 3) under the
-differential corpus. The substitute-command layer (`gdefault`, offsets, `\=`) lands with F-009 on top of the
-stable engine contract.
+differential corpus. The substitute-command layer (`gdefault`, offsets, capture groups, `\=`) lands on top of the
+stable engine contract (#638).
 
 ## Test strategy
 

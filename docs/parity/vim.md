@@ -71,8 +71,8 @@ Source: `change.txt`, `motion.txt`. Grammar: `[count1] operator [count2] {motion
 
 _Partially retired to the census (D-043): the IMPLEMENTED operator grammar — `d c y` (VIM-OP-1) + the
 normal aliases + `<<` (part of VIM-OP-2) — migrated to `nvim.key.normal.*` (surface `mode_key.normal`),
-screened FAM-EDIT-VIM-GRAMMAR/targeted and cited by PRD F-023. NOT repointed (un-implemented or on other
-census sub-surfaces — screen when feature-motivated): `>`/`>{motion}` (census-extraction gap: no upstream
+screened FAM-EDIT-VIM-GRAMMAR/targeted and cited by PRD F-023. NOT repointed (on other census sub-surfaces,
+or awaiting classification — screen when feature-motivated): `>`/`>{motion}` (census-extraction gap: no upstream
 row, only `<` present), `=` reindent (VIM-OP-3), `!` filter (VIM-OP-5), the extended operators
 `gu gU g~ gq gw g? g@` (VIM-OP-4/6/7/9, surface `mode_key.normal.g`) and `zf` (VIM-OP-8, `mode_key.normal.z`)._
 
@@ -86,7 +86,7 @@ Source: `motion.txt`. Three types: **characterwise** (inclusive/exclusive), **li
 _Partially retired to the census (D-043): the IMPLEMENTED motions — `h l j k 0 $` (VIM-MOT-1 subset),
 `f t F T ; ,` (VIM-MOT-2), `w W b B e E` (VIM-MOT-3 subset), `G` (VIM-MOT-4 subset), `( )`/`{ }` para
 (VIM-MOT-6) and `%` match (VIM-MOT-8) — migrated to `nvim.key.normal.*`, screened FAM-EDIT-VIM-GRAMMAR/
-targeted and cited by PRD F-023. NOT repointed (un-implemented or elsewhere): `^ _ + - | H M L {n}%`,
+targeted and cited by PRD F-023. NOT repointed (awaiting classification, or elsewhere): `^ _ + - | H M L {n}%`,
 `ge gE` (rest of VIM-MOT-1/3/4); display-line `gj gk g0 g^ g$` (VIM-MOT-5, `mode_key.normal.g`); section
 `[[ ]] [] ][` (VIM-MOT-7, `mode_key.normal.bracket`); search `/ ? n N * #` (VIM-MOT-9 → PRD F-009)._
 
@@ -123,8 +123,8 @@ Source: `change.txt`.
 _Partially retired to the census (D-043): the IMPLEMENTED register surface — the `"{register}` selection
 prefix (`nvim.key.normal.x22x7bregisterx7d`, named `"a`-`"z`/`"A`-`"Z` append = VIM-REG-5; unnamed `""` =
 VIM-REG-1; yank-only `"0` = VIM-REG-2, a store SEMANTIC of the same key) plus put `p`/`P` — migrated to
-`nvim.key.normal.*`, screened FAM-EDIT-VIM-GRAMMAR/targeted and cited by PRD F-029. NOT modelled yet
-(carve-outs, screen when feature-motivated): numbered ring `"1`-`"9` (VIM-REG-3), small-delete `"-`
+`nvim.key.normal.*`, screened FAM-EDIT-VIM-GRAMMAR/targeted and cited by PRD F-029. Not repointed to the census
+(screen when feature-motivated; `spec/PRD.yaml` F-029 records what shipped): numbered ring `"1`-`"9` (VIM-REG-3), small-delete `"-`
 (VIM-REG-4), black-hole `"_` (VIM-REG-6), expression `"=` (VIM-REG-7), clipboard `"+`/`"*` (VIM-REG-8),
 special `"~ "% "# ". ": "/` (VIM-REG-9); `gp gP ]p [p`._
 - **⚠️ VIM-REG-TYPE**: register **type** (char/line/blockwise) is stored and governs paste geometry.

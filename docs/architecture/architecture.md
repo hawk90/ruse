@@ -18,7 +18,7 @@ related:
 > This document starts from the question "How should we port/redesign Neovim in Rust?"
 > Conclusion up front: **not a full port, but "a Rust-based Neovim-compatible core + a stable
 > plugin API"** is the realistic project. The goal is not to reproduce every internal structure
-> of Neovim, but to inherit — at the **feature-parity** level (see parity.md) — the *editing
+> of Neovim, but to inherit — at the **feature-parity** level (see [parity](../parity/README.md)) — the *editing
 > language* of Vim/Neovim and the *command/buffer/extension model* of Emacs, while building an
 > ecosystem foundation that **breaks less** than Neovim from day one.
 
@@ -154,12 +154,12 @@ realistic midpoint.
   **3–5 people, 2–3 years** can produce something quite usable.
 
 The difference is large. A new editor can drop awkward compatibility and use Rust-friendly
-structures from the start — rope, generational arena, typed handles, explicit command
+structures from the start — replaceable text storage, generational arena, typed handles, explicit command
 transactions. A full port prioritizes **preserving every quirky behavior** over good Rust
 architecture.
 
 > **ruse's choice:** closer to Goal B, a redesign. But it targets Vim/Neovim/Emacs at the
-> **feature-parity** level (see parity.md); it does not replicate internal structures or the
+> **feature-parity** level (see [parity](../parity/README.md)); it does not replicate internal structures or the
 > script runtime. Getting clean subsystem boundaries right from the start yields "a platform that
 > grows an ecosystem yet breaks less than Neovim."
 
@@ -425,6 +425,8 @@ org.example.git.stage
 org.example.git.commit
 ```
 
+Shipped ids such as `editor.undo` do not follow this yet (#951).
+
 When renaming a command, provide **an alias and a deprecation window.**
 
 ```toml
@@ -470,7 +472,7 @@ remove_after = "4.0"
 
 - Do not represent all coordinates as `usize`. Explicitly distinguish **byte / char / grapheme /
   UTF-16 column** and enforce via types.
-- Do not expose rope or piece-table **implementation details across all layers.**
+- Do not expose text-storage **implementation details across all layers** (flat bytes today, D-042).
 - Do not store raw offsets as long-lived positions; manage positions as **anchors (with affinity).**
   Design so anchor updates are not `O(anchors × edits)`.
 - Consider large-file mode, binary/invalid-UTF-8 policy, and separation of line endings/encoding
@@ -527,7 +529,7 @@ A plugin should see only:
 - Typed UI models
 - Capabilities
 
-Internal Rope, slotmap, undo node, renderer types are **never exposed.**
+Internal text storage, slotmap, undo node, renderer types are **never exposed.**
 
 ### 4.2 API Layering (stable / experimental / internal)
 
@@ -763,7 +765,7 @@ observable ordering requires a model close to a **single-threaded deterministic 
 - Do not fully re-index the command palette on every call.
 - Do not make plugin IPC overly chatty (e.g. per-cell RPC). Do not issue thousands of small remote
   reads.
-- Respect rope chunk boundaries. Do not run UTF-16 conversion over the whole document on every LSP
+- Do not run UTF-16 conversion over the whole document on every LSP
   request.
 - Do not overuse `Box<dyn Trait>`/heap allocation for small enum states. Do not duplicate command
   implementations per profile.
@@ -869,7 +871,7 @@ Plugins may also provide recommended keymaps for a specific profile.
 
 ### 12.1 Five Axes to Lock in Docs First
 
-Rather than solving all ~300 anti-patterns at once, lock these five boundaries in documentation
+Rather than solving all anti-patterns at once, lock these five boundaries in documentation
 first. Get these right and more than half of the remaining anti-patterns are prevented naturally.
 
 1. **Core State & Transaction** (§3)

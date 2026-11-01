@@ -112,8 +112,9 @@ decides:
 
 **Ranges.** A region is `(start: Anchor, end: Anchor)` with **independent** bias, giving all four edge
 behaviors. The common "grow with text typed inside, fixed at both outer edges" decoration is
-`start.bias = Before`, `end.bias = After` (matches Neovim `gravity=false` + `end_right_gravity=true`).
-A "grow at every edge including the boundaries" selection is `start=After`, `end=Before`.
+`start.bias = After`, `end.bias = Before`.
+A "grow at every edge including the boundaries" selection is `start=Before`, `end=After` (Neovim
+`right_gravity=false` + `end_right_gravity=true`).
 
 ### 3. The transaction update rule {#anchor-update}
 
@@ -169,16 +170,17 @@ apply(txn, store):
   transaction). `A` = live anchors, `E` = edits in the transaction. No per-anchor rescan of the document.
 - **Data structure:** an offset-ordered index (balanced BST / order-statistics tree, or anchors carried in
   the rope's own leaf metadata). INV-ANCHOR fixes the **cost**, not the structure; either satisfies it.
-- `resolve(id, rev)` and `insert`/`remove` are `O(log A)`.
+- `resolve(id)` and `insert`/`remove` are `O(log A)`.
 
 ### 5. Resolution to typed positions {#anchor-resolve}
 
-`resolve(id, rev) -> TypedPos` returns the anchor's position **as of revision `rev`** (INV-QUERY-SNAPSHOT):
-a snapshot resolution never sees a half-applied edit. The canonical unit is bytes; conversions to
+`resolve(id)` on the store returns the anchor's current position, and `DocumentSnapshot::resolve(id)` returns it
+**as of the snapshot's revision** through a frozen `AnchorIndex` (INV-QUERY-SNAPSHOT), so a snapshot resolution
+never sees a half-applied edit. The canonical unit is bytes; conversions to
 char / grapheme / UTF-16 column / screen cell go through the document's coordinate layer (INV-POS-TYPED,
 [render-and-frontends.md](render-and-frontends.md)) — the anchor store never stores a screen coordinate
-(it changes on resize with no edit). Resolving an anchor against a revision **older** than its last update
-is an error, not a guess (the caller must hold a snapshot of that revision).
+(it changes on resize with no edit). The API takes no revision: to read an older revision, the caller holds a
+snapshot of it. An anchor not live at that revision resolves to `None`.
 
 ### 6. Detach & re-anchor {#anchor-detach}
 
@@ -198,7 +200,7 @@ When a buffer unloads or a file is reloaded from disk, live anchors **detach** t
 - **Span-deleted anchor:** never silently wrong — `Clamp` → live at `pos`; `Invalidate` → flagged for the
   owner to drop. No dangling offsets.
 - **Range inversion:** prevented by the monotonic update (§3); a debug assert catches any regression.
-- **Resolve against an unavailable revision:** typed error; the caller lacked the snapshot.
+- **Resolve an anchor not live at the snapshot's revision:** `None`.
 
 ## Recovery behavior
 
@@ -246,11 +248,6 @@ guessed (mirrors the offline `render-diff`/inspector tooling).
 - **Line/column as the stored form** — breaks on multi-byte/grapheme edits and is O(n) to re-derive; bytes
   are canonical, typed units are a resolution.
 
-## Migration strategy
-
-New kernel component; nothing to migrate. It is a **prerequisite** for the first vertical slice
-(Document → Transaction → Undo → Snapshot): the slice exercises the store's update rule end-to-end.
-
 ## Test strategy
 
 This subsystem is where the missing differential corpus starts (`tests/property/anchor-*`,
@@ -259,7 +256,8 @@ This subsystem is where the missing differential corpus starts (`tests/property/
 - **Bias truth table** (§2): one case per (bias × edit-at-boundary) cell; exact expected offset.
 - **Span-delete** (§[span](#anchor-span)): inside / left-edge / right-edge × `Clamp`/`Invalidate`.
 - **Property — round-trip:** for a random anchor set and a random sequence of transactions, resolving after
-  applying-then-undoing every transaction restores the original offsets (INV-UNDO round-trip).
+  applying-then-undoing every transaction restores the original offset of each anchor no span delete touched
+  (INV-UNDO round-trip). An anchor inside a deleted span collapsed, so it does not recover its offset (§3).
 - **Property — monotonicity & no-inversion:** ordering preserved under any edit set.
 - **Property — batch ≡ sequential:** applying a disjoint edit set as one batch equals applying its edits
   left-to-right individually (validates §4).

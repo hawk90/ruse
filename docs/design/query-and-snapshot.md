@@ -5,7 +5,7 @@ title: "ruse Query / Snapshot Layer (C-QUERY, the CQRS read side)"
 summary: >
   The read side of ruse's Command/Query split: how a Query returns an immutable, revision-stamped
   Snapshot/DTO (never a live mutable object — INV-QUERY-SNAPSHOT), how a cheap-to-share Snapshot is
-  produced by rope structural sharing rather than deep-copying the document, how every snapshot and
+  produced by sharing an `Arc` rather than deep-copying the document, how every snapshot and
   async result carries a revision so stale results are dropped (INV-ASYNC-ORDER), how background
   consumers (parser/LSP/git) read snapshots not live buffers with coalescing and cancellation, and the
   bounded snapshot-scoped decoration-provider API that resolves the NVIM-EXT-7 clash (V-26).
@@ -42,7 +42,7 @@ The core splits **mutation (Command)** from **read (Query)** at mutation/remote/
 half has to satisfy four pressures that pull against each other, and no existing doc pins how:
 
 1. **No live-object leakage.** A query must never hand out a mutable, aliased handle into core state —
-   a stale or aliased `&mut Document` (or an internal `Rope`) can corrupt core state and couples every
+   a stale or aliased `&mut Document` (or an internal text store) can corrupt core state and couples every
    reader to internals (INV-QUERY-SNAPSHOT, INV-PLUGIN-NO-CORE). Reads must return an *immutable
    snapshot / DTO*.
 
@@ -66,7 +66,7 @@ The job of `C-QUERY` is to make all four hold simultaneously, with concrete Rust
 
 - A `Query` contract: a read-only request that returns an immutable `Snapshot` or a plain DTO, never a
   live mutable core object (**Q-QUERY**; INV-QUERY-SNAPSHOT).
-- A `DocumentSnapshot` value that is **cheap to clone and share** (O(1) rope structural share + `Arc`ed
+- A `DocumentSnapshot` value that is **cheap to clone and share** (O(1) `Arc` share + `Arc`ed
   auxiliary indices), **revision-stamped**, and `Send + Sync` so it can cross to background workers
   (**Q-SNAP**).
 - A revision stamp on **every** snapshot and **every** async result, with a single stale-drop rule
@@ -176,15 +176,15 @@ Two properties make INV-QUERY-SNAPSHOT structural rather than a convention:
 ### 2. The Snapshot type — cheap, revision-stamped, structurally shared (Q-SNAP)
 
 A `DocumentSnapshot` is an immutable view of one document at one revision. It is **not** a deep copy: the
-text is a persistent rope whose clone shares structure in O(1), and every auxiliary index is behind an
-`Arc` that is rebuilt *incrementally on transaction commit*, not per snapshot.
+text is a flat `Arc<Vec<u8>>` whose clone is O(1) (D-042 keeps it flat until a benchmark says otherwise), and
+every auxiliary index is behind an `Arc` that is rebuilt *on transaction commit*, not per snapshot.
 
 ```rust
-#[derive(Clone)]           // Clone is O(1): one rope handle clone + a handful of Arc bumps
+#[derive(Clone)]           // Clone is O(1): a handful of Arc bumps
 pub struct DocumentSnapshot {
     doc: DocumentId,               // typed handle w/ generation (INV-HANDLE)
     revision: Revision,            // the stamp (Q-REVSTAMP)
-    text: Rope,                    // persistent B-tree rope: clone = O(1) structural share
+    text: Arc<Vec<u8>>,            // flat bytes (D-042): clone = O(1) refcount bump
     lines: Arc<LineIndex>,         // byte↔line + UTF-16/char prefix sums (Q-U16)
     anchors: Arc<AnchorIndex>,     // decoration/diagnostic/mark positions (INV-ANCHOR)
     diagnostics: Arc<DiagnosticSet>, // by namespace (NVIM-DIAG-1)
@@ -196,7 +196,7 @@ pub struct DocumentSnapshot {
 pub struct Revision(pub u64);      // monotonic; a transaction strictly increases it (INV-TXN)
 ```
 
-**How a snapshot is produced without deep-copying.** The live document holds the *current* rope and the
+**How a snapshot is produced without deep-copying.** The live document holds the *current* text `Arc` and the
 current `Arc` indices. `Document::snapshot()` does no traversal:
 
 ```rust
@@ -205,7 +205,7 @@ impl Document {
         DocumentSnapshot {
             doc: self.id,
             revision: self.revision,
-            text: self.text.clone(),          // O(1): shares the immutable rope root
+            text: self.text.clone(),          // O(1): shares the immutable buffer
             lines: Arc::clone(&self.lines),    // O(1)
             anchors: Arc::clone(&self.anchors),
             diagnostics: Arc::clone(&self.diagnostics),
@@ -217,9 +217,8 @@ impl Document {
 ```
 
 Cost is a fixed number of atomic increments regardless of document size — snapshotting on every keystroke
-and every redraw is free. The persistent rope gives **copy-on-write across revisions for free**: when a
-transaction edits the document, only the O(log n) path of touched nodes is replaced; every outstanding
-snapshot keeps pointing at the old root, so a background worker holding an old `DocumentSnapshot` sees a
+and every redraw is free. An edit allocates a new buffer (O(doc), D-042) and swaps the `Arc`; every outstanding
+snapshot keeps pointing at the old buffer, so a background worker holding an old `DocumentSnapshot` sees a
 stable, consistent document even as the foreground edits ([architecture.md §3.3](../architecture/architecture.md):
 "Background parsers read a snapshot, not the live buffer").
 
@@ -231,7 +230,7 @@ once per snapshot or once per query.
 
 **Immutability is enforced, not requested.** `DocumentSnapshot` exposes only `&self` readers
 (`slice`, `line`, `char_len`, `byte_to_utf16`, `anchors_in`, …). It has no interior mutability and no
-method returning `&mut` or the inner `Rope` by value. That is what makes it safe to publish across the
+method returning `&mut` or the inner text store by value. That is what makes it safe to publish across the
 plugin and remote boundaries (INV-PLUGIN-NO-CORE): the worst a holder can do is read a slightly old
 document.
 
@@ -338,7 +337,7 @@ pub struct ParseJob { snap: DocumentSnapshot }   // owns an immutable view at sn
 impl BackgroundJob for ParseJob {
     type Out = Stamped<SyntaxTree>;
     fn run(self, cancel: &CancelToken) -> Option<Self::Out> {
-        let tree = incremental_parse(&self.snap.text, cancel)?;   // reads the frozen rope
+        let tree = incremental_parse(&self.snap.text, cancel)?;   // reads the frozen text
         Some(Stamped { request: self.request_id, base_revision: self.snap.revision, payload: tree })
     }
 }
@@ -354,7 +353,7 @@ consumed here as a contract. The read side requires exactly this shape:
   key.
 - **Cancel superseded.** An in-flight job for a superseded revision is signalled via its `CancelToken`;
   `incremental_parse` checks it at chunk boundaries and bails (`None`), so CPU is not spent finishing a
-  parse whose result would be `Stale`. Cancellation is cooperative — the frozen rope means an
+  parse whose result would be `Stale`. Cancellation is cooperative — the frozen text means an
   un-cancelled job that *does* finish still produces a consistent (if old) tree that the freshness rule
   (§3) then classifies.
 - **Input and render outrank background** (INV-SCHED-1): taking a snapshot for a foreground redraw never
@@ -443,13 +442,13 @@ O(doc).
 pub struct LineIndex {
     line_starts: Vec<ByteOffset>,     // byte offset of each line start (binary search: O(log n))
     utf16_prefix: Vec<u32>,           // cumulative UTF-16 units up to each line start
-    // per-line residual conversion walks only that line's bytes, respecting rope chunk boundaries
+    // per-line residual conversion walks only that line's bytes
 }
 
 impl DocumentSnapshot {
     pub fn utf16_to_byte(&self, p: Utf16Position) -> ByteOffset {
         let line_start = self.lines.line_starts[p.line as usize];   // O(1)
-        // walk only within the target line, O(line length), on the frozen rope chunk
+        // walk only within the target line, O(line length), on the frozen text
         self.text.utf16_col_to_byte(line_start, p.col)
     }
     pub fn byte_to_utf16(&self, b: ByteOffset) -> Utf16Position { /* symmetric, O(log n)+O(line) */ }
@@ -458,18 +457,17 @@ impl DocumentSnapshot {
 
 Because the index is part of the snapshot, a batch of LSP conversions for one response all run against
 **one consistent revision** and share the prefix-sum arrays (built once at commit, §2). The conversion is
-per-request-region, not per-request-document. Rope chunk boundaries are respected — the per-line walk
-iterates chunks, never assembling the line into a `String` (PERF; guards "respect rope chunk boundaries").
+per-request-region, not per-request-document.
 
 ## Failure modes
 
 - **Live-object leakage (the invariant this doc exists to prevent).** Structurally impossible: `Query::Output:
-  Send + 'static` forbids returning a borrow; `DocumentSnapshot` exposes no `&mut`/inner-`Rope`. A reviewer
-  need only check that no query returns `&Document`/`Rope`.
+  Send + 'static` forbids returning a borrow; `DocumentSnapshot` exposes no `&mut` or inner text store. A reviewer
+  need only check that no query returns `&Document` or the text store.
 - **Stale async result applied.** Prevented by Q-STALE: raw-offset payloads at a superseded revision are
   dropped; anchor-bound payloads are rebased. A missed stamp is an assertion (impossible state), not a
   silent apply (INV-ERR-CLASS).
-- **Snapshot pins memory.** A background job holding an old `DocumentSnapshot` keeps the old rope root
+- **Snapshot pins memory.** A background job holding an old `DocumentSnapshot` keeps the old buffer
   (and its `Arc` indices) alive; a runaway job on a huge file retains that version. Bounded by scheduler
   cancellation (§5) and a cap on in-flight jobs per key; snapshots are dropped as soon as a job finishes
   or is cancelled. Worst case is *one* extra document version resident per in-flight job, not unbounded
@@ -509,7 +507,7 @@ iterates chunks, never assembling the line into a `String` (PERF; guards "respec
 
 The read side is on the keystroke and redraw hot paths; the O-bounds are the point.
 
-- **Snapshot = O(1).** One rope-handle clone + a few `Arc` bumps, independent of document size
+- **Snapshot = O(1).** A few `Arc` bumps, independent of document size
   ([architecture.md §9](../architecture/architecture.md): no deep-copy snapshots). Safe to take per
   keystroke and per redraw.
 - **No O(doc) per keystroke.** Auxiliary indices rebuild incrementally at commit over the touched range
@@ -523,7 +521,7 @@ The read side is on the keystroke and redraw hot paths; the O-bounds are the poi
   (PERF). A batch of conversions shares one snapshot's arrays.
 - **`get_available_commands`** reads a cached, incrementally-maintained index; never a full palette
   re-index per call (PERF).
-- **No live-object leakage** ⇒ no defensive deep copies elsewhere: consumers share one immutable rope root
+- **No live-object leakage** ⇒ no defensive deep copies elsewhere: consumers share one immutable buffer
   instead of each cloning text.
 
 Budgets are enforced by [D-019](../../spec/DECISIONS.md) per-stage p95/p99; the snapshot/query stages are
@@ -562,7 +560,7 @@ tracked there.
 - **Immutable persistent map for *all* state (à la a global immutable store).** Clean, but makes
   view-local and workspace state pay rope-style structural-sharing overhead they don't need, and blurs
   INV-DOC-VIEW. Rejected in favor of separate `Document/View/Workspace` snapshots.
-- **MVCC with explicit version GC.** The rope already gives MVCC for free (old roots stay alive while a
+- **MVCC with explicit version GC.** The `Arc` already gives MVCC for free (old buffers stay alive while a
   snapshot holds them; dropped when the last snapshot drops). An explicit version table would duplicate
   what `Arc` refcounts already do. Kept the implicit form; the only added machinery is the in-flight-job
   cap (§Failure modes).
@@ -571,7 +569,7 @@ tracked there.
 
 - **Rejected: snapshot = deep copy of the document.** Directly banned ([architecture.md §9](../architecture/architecture.md));
   O(doc) per snapshot destroys the keystroke budget. → O(1) structural share (§2).
-- **Rejected: queries return `&Document` / the inner `Rope` / any `&mut`.** A stale or aliased mutable
+- **Rejected: queries return `&Document` / the inner text store / any `&mut`.** A stale or aliased mutable
   handle can corrupt core state and couples every reader to internals (the exact hazard INV-QUERY-SNAPSHOT
   names). → value-typed `Output` (§1).
 - **Rejected: apply async results whenever they arrive.** Drifts decorations/diagnostics and re-creates
@@ -587,10 +585,11 @@ tracked there.
 
 ## Migration strategy
 
-Greenfield component (`C-QUERY`, `status: planned`); no legacy read API to migrate. Sequencing:
+`DocumentSnapshot`, `Revision` and the `AnchorIndex` rebuild-on-commit are in `crates/core/src/snapshot.rs` and
+`document.rs`. Sequencing for the rest:
 
-1. Land `DocumentSnapshot` + `Revision` + `LineIndex`/`AnchorIndex` `Arc` rebuild-on-commit alongside
-   `C-DOCUMENT`/`C-TRANSACTION` (they are the substrate for both `Q-SNAP` and `Q-U16`).
+1. Land a `LineIndex` inside the snapshot (today the frontend caches one, `apps/tui/src/line_index.rs`), the
+   substrate for `Q-U16`.
 2. Land the `Query` trait + `QueryEngine` and the six catalog entries; wire `C-RENDER` to
    `get_render_snapshot` (C-RENDER `depends_on: [C-QUERY]` in [PRD.yaml](../../spec/PRD.yaml)).
 3. Land `Stamped<T>` + freshness rule; wire the first background consumer (`C-TS` tree-sitter) through the

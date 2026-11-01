@@ -10,7 +10,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - architecture.md
+  - ../architecture/architecture.md
   - ../invariants/reference-invariants.md
   - ../../spec/DECISIONS.md
   - ../../spec/PRD.yaml

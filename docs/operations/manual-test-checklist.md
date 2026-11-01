@@ -21,7 +21,7 @@ Automation covers the engine and core exhaustively (unit, property, full-stack k
 oracle differential, system `--replay`, cross-feature scenarios — see
 [testing-and-benchmarks.md](testing-and-benchmarks.md) §1). What it **cannot** reach is the live
 terminal: `--replay` bypasses the input engine, and the fuzzer/scenario tests drive the engine *below*
-the terminal, so `main.rs::run`'s crossterm read loop, the screen flush, and every real-terminal / IME /
+the terminal, so `app/session.rs::run`'s crossterm read loop, the screen flush, and every real-terminal / IME /
 signal interaction are verified only by hand. This file lists those scenarios.
 
 **When to run:**
@@ -67,7 +67,7 @@ Each item names *why* it is manual — the structural reason an automated test c
 ## 4. Terminal lifecycle / recovery (D-040)
 *Why manual: raw-mode, signals, and panic-time terminal restoration need a real tty.*
 - [ ] Enter and exit are clean — after quit the shell prompt is intact (no stuck raw mode, no colour bleed).
-- [ ] **Panic recovery**: force a panic mid-edit → `<file>.ruse-recovered` is written **and** the terminal
+- [ ] **Panic recovery**: force a panic mid-edit → a record is appended to `<file>.ruse-journal` **and** the terminal
       is restored to a usable state (the panic hook, not a garbled screen).
 - [ ] Terminal **resize** (SIGWINCH) reflows the layout; the cursor stays correct.
 - [ ] `CTRL-Z` suspend then `fg` resume restores the screen; `CTRL-C` behaves as configured.

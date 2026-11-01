@@ -3,9 +3,9 @@
 ## Why
 
 ruse's *project* self-verification is strong — `ruse verify`, `gov check` (auto-discovered
-`tools/gov/*.py`), the parity oracles, `pr check`. But the *running editor* has no user-facing
+`tools/rusekit/gov/*.py`), the parity oracles, `pr check`. But the *running editor* has no user-facing
 diagnostic: a user who hits "why isn't syntax highlighting on?" or "which input profile am I in?" has
-only the ntic log. Neovim solves this with `:checkhealth` — a command that reports the editor's runtime
+only the log. Neovim solves this with `:checkhealth` — a command that reports the editor's runtime
 health in an OK / WARN / ERROR list. F-030 is that analogue for ruse.
 
 ## What it reports (first slice)
@@ -15,8 +15,7 @@ land):
 
 | check | OK when | WARN/absent when |
 |---|---|---|
-| input profile | a profile is active (Vim / Emacs) | — (always present) |
-| caret gravity | reported (OnChar / BetweenChar) | — |
+| input profile | a profile is active (Vim / Emacs), with its caret gravity (OnChar / BetweenChar) | — (always present) |
 | terminal capabilities | the detected ledger (truecolor, synchronized-output, …) | a capability is absent/degraded |
 | syntax grammar | a tree-sitter grammar is available for the current buffer's extension | no grammar for this file type |
 | buffers | N buffers open | — |
@@ -36,7 +35,7 @@ where `HealthInputs` is a plain snapshot (active profile, caret gravity, termina
 file extension + the set of supported grammars, buffer count, trace status). This is fully unit-testable
 with no terminal. `:checkhealth` (`Ex::CheckHealth`) gathers the snapshot from the running frontend and
 renders `HealthReport` into a scratch view / the message area — a thin wiring layer over the tested
-builder. This keeps the risk off `main.rs` (which has thin test coverage) and in a covered pure module.
+builder. This keeps the risk off the session loop (which has thin test coverage) and in a covered pure module.
 
 ## Non-goals (first slice)
 

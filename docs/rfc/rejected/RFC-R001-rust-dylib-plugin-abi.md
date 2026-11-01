@@ -9,7 +9,7 @@ summary: >
   Rust-only SDK. Replacement: a versioned, language-independent protocol over WASM or an external process
   (D-004, INV-PROTOCOL-VERSIONED). Records the single re-evaluation condition so it is never re-litigated.
 audience: [maintainers, contributors, llm-agents]
-status: draft
+status: rejected
 related:
   - ../proposed/RFC-0003-plugin-api.md
   - ../../architecture/architecture.md

@@ -14,7 +14,7 @@ summary: >
   (D-016) and defers the PII/redaction field list and retention (D-017). It does not duplicate the
   design model it links.
 audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
-status: draft
+status: proposed
 related:
   - ../../design/stability-and-observability.md
   - ../../architecture/architecture.md
@@ -29,6 +29,7 @@ related:
 - **Author(s):** ruse core
 - **Created:** 2026-08-05
 - **Decision link:** D-016 (Status / Error / Panic are separate); relates to D-017 (log PII / redaction, open)
+- **Status note:** D-040 narrows the v0 scope, including the observability module layout below.
 
 <!-- Hard-to-reverse: this fixes the error model, the status model, and the panic policy — contracts
      that plugin authors, tests, and diagnostic tooling all bind to. Changing them later breaks error

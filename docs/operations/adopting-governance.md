@@ -25,7 +25,7 @@ adoption procedure.
 
 | Layer | What | In another repo |
 | --- | --- | --- |
-| **Engine** (reusable) | `tools/ruse.py` + `tools/rusekit/` + the checkers under `tools/{change,verify,arch,gov,docs}/` | copy as-is |
+| **Engine** (reusable) | `tools/ruse.py` + `tools/rusekit/` (checkers under `tools/rusekit/{change,verify,arch,gov,docs}/`) | copy as-is |
 | **Policy** (per-repo) | the `spec/*.yaml` files each checker reads | author your own |
 | **Surfaces** | `ruse verify` (local) · lefthook (pre-commit/push) · CI | wire all three |
 
@@ -74,7 +74,6 @@ CAP-*, crate names) — that is exactly the part you replace. A checker that nam
 
 ## Non-goals
 
-- This is not a packaged distribution yet (no `pip install`); adoption is copy-in until `pyproject.toml`
-  lands (tracked). The engine's only runtime dependency is PyYAML.
+- This is not a published distribution (`pyproject.toml` supports a local `pip install -e .`); adoption is copy-in. The engine's only runtime dependency is PyYAML.
 - The plane governs repository evolution; it does not replace a per-change execution harness — it sits
   above one (see [governance-model.md](governance-model.md)).

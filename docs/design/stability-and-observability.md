@@ -12,7 +12,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - architecture.md
+  - ../architecture/architecture.md
   - ../invariants/reference-invariants.md
   - ../anti-patterns/anti-patterns.md
 ---
@@ -39,13 +39,13 @@ pattern names first; that is over-design.
 
 This model was written for the *full* architecture (plugins, LSP, remote runtime, terminal jobs, a service
 supervisor, a multi-component Health Registry). RFC-0012 collapsed ruse to a **two-crate editor**
-(`editor-core` + the `ruse` TUI); most of those components do not exist yet. This section scopes which of
+(`ruse-core` + the `ruse` TUI). This section scopes which of
 the contract is **live now** and which is **deferred with the boundary that needs it** — it changes no rule,
 it records what applies today so v0 code is built against the real contract, not the full one. (Building it
 all now would be exactly the "pattern names first" over-design warned against above.)
 
 **Live now (v0 code is built against this):**
-- **§0/§1 three failure classes; assert vs error.** `editor-core` uses `debug_assert!` for internal
+- **§0/§1 three failure classes; assert vs error.** `ruse-core` uses `debug_assert!` for internal
   invariants (revision strictly increases, a delete range within bounds, a freed-generation handle — §1's
   exact examples) and typed `Result` errors for expected failures (`TxnError`, `EditError`, `TraceError`,
   file IO). The two are never swapped (anti-pattern **STAB-2 [P0]** — swallowing an assert as an error and
@@ -53,8 +53,8 @@ all now would be exactly the "pattern names first" over-design warned against ab
 - **§2 typed, structured errors**, never `Err(String)` (anti-pattern **STAB-1**). The `ErrorReport` /
   `ErrorCode` *ecosystem-API* scheme (§2.1) is **deferred** — v0 keeps the typed enums.
 - **§6/§8 recovery on a core-invariant break + panic policy.** A core panic *is* an invariant violation
-  (§8). The TUI installs a panic hook that first saves the unsaved buffer to `<file>.ruse-recovered` (a
-  recovery snapshot, §6) and then lets the panic unwind (`TermGuard` restores the terminal) — it does
+  (§8). The TUI installs a panic hook that first appends the unsaved buffer to the recovery journal
+  `<file>.ruse-journal` (§6, `apps/tui/src/recover.rs`; only the focused buffer, #856) and then lets the panic unwind (`TermGuard` restores the terminal) — it does
   **not** `catch_unwind`-swallow (anti-pattern **STAB-6 [P1]**) nor blanket `panic=abort` (**STAB-5 [P1]**).
 - **§7 fail-fast (internal) vs graceful (external).** Internal bad state → fail-fast (assert). External
   failure only lowers the feature level: a tree-sitter parse failure drops to no highlighting; a file-IO
@@ -71,12 +71,11 @@ all now would be exactly the "pattern names first" over-design warned against ab
 
 **Deferred (returns with its boundary — RFC-0012 re-boundary triggers):**
 - §2.1 the `ErrorCode` ecosystem API — with the plugin protocol (asserting-on-a-code needs an ecosystem).
-- §5 full transaction/correlation-ID *trace propagation* — with async/LSP (v0 records the metadata but does
-  not propagate a distributed trace).
+- §5 full transaction/correlation-ID *trace propagation* (a `Transaction` carries base revision, edits, origin
+  and group hint; no id, correlation, command or timestamp).
 - §6 isolation boundaries, §9 the **supervisor**, §11 the full **Health Registry** (per-component state
-  machine + `SystemHealth` aggregate), §10 the **diagnostic bundle** — all need the failure-prone
-  components (plugins, LSP, remote, terminal jobs) v0 does not have. They land with the LSP/async slice,
-  where a supervisor + health registry first earn their place.
+  machine + `SystemHealth` aggregate), §10 the **diagnostic bundle** — none is built, including for the LSP clients and terminals that exist today.
+  `:checkhealth` ([health-check.md](health-check.md)) is a point-in-time report, not this registry.
 
 ### v0 decision table — which tool, where
 
@@ -481,7 +480,9 @@ So "why did that feature suddenly turn off?" is traceable.
 The TUI may show `LSP: OK`, `SSH: LOST` — but the UI must not manage that state. It **subscribes to the
 Health Registry** and only renders it. (Guards UI managing state directly; see [architecture.md](../architecture/architecture.md) §7, invariant INV-STATUS.)
 
-## 12. Early Observability Modules
+## 12. Observability Modules (target)
+
+This is the target layout. The two-crate v0 has `apps/tui/src/log.rs` and `health.rs`.
 
 ```
 observability/
@@ -545,8 +546,7 @@ Resolution chain:
 inspection rather than guesswork, and is the product-facing side of the observability model.
 
 **Offline counterparts (the `tools/` CLIs).** The same surfaces are reachable without a running editor, for
-bug reports and CI regression capture (`tools/`, see [docs/README.md](../README.md) §Target Repository
-Layout):
+bug reports and CI regression capture (`tools/`, none is built yet):
 - `protocol-dump` — decodes a captured **framed protocol stream** (remote runtime ↔ agent, or host ↔
   plugin) into human-readable, versioned records: one line per frame with `session-id`, direction,
   `protocol-version`, message kind, and transaction id. Unknown/newer variants are shown, not dropped

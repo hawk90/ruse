@@ -1,14 +1,13 @@
 # ruse
 
-A **Rust, terminal-first, remote-first, extensible code editor** targeting feature parity with Vim/Neovim
+A **Rust, terminal-based modal code editor** targeting feature parity with Vim/Neovim
 (editing language) and Emacs (command/buffer/extension model) — designed **specification-first**: the
 architecture is meant to outlive the language, and the code is a *reference implementation* that proves the
 spec, not the source of it.
 
-> **Status: spec-first, early implementation.** The design is near-complete and self-validating; the
-> two-crate reference implementation (`crates/core` + `apps/tui`, collapsed per RFC-0012) now runs — a Vim
-> editing engine verified against a pinned Neovim oracle (102/102 differential fixtures) — with most MVP
-> features in progress (see `spec/PRD.yaml` status fields). Build order below.
+> **Status: MVP features marked done in `spec/PRD.yaml`, post-MVP growth; #1028 tracks where the code disagrees.** The two-crate reference implementation (`crates/core` +
+> `apps/tui`, D-039) runs as a Vim-style editor, with its editing engine compared against pinned Neovim and
+> Emacs oracles (`tests/parity/`). Feature state is in `spec/PRD.yaml`; releases are in `spec/phases.yaml`.
 
 ## Where to start
 
@@ -19,7 +18,7 @@ The repo has **two documentation layers on purpose** — a normative source of t
 | **The compact orientation pack** (read this first) | [`spec/CONTEXT.md`](spec/CONTEXT.md) |
 | **The authoritative state** (vision, requirements, decisions, policy) | [`spec/`](spec/PROJECT.md) — normative, machine-managed |
 | **The supporting reference** (deep design, parity research, RFCs, anti-patterns) | [`docs/`](docs/README.md) — prose |
-| **The reference implementation** | [`crates/`](Cargo.toml) (engine) + `apps/` (thin frontends) |
+| **The reference implementation** | [`crates/`](Cargo.toml) (kernel) + `apps/` (the `ruse` binary) |
 
 **One rule ties them together:** *state* (records with fields) lives as YAML in `spec/`; *explanation and
 research* live as prose in `docs/`; `spec/` IDs point **into** `docs/`, and no fact has two homes. This split
@@ -32,18 +31,17 @@ spec/     Source of truth (state). PROJECT · glossary · capabilities · depend
           POLICY · DECISIONS · CONTEXT · context-profiles · templates/       (YAML where it's data, MD where prose)
 docs/     Reference (prose). README (hub) · architecture/ · design/ (subsystems) · parity/ · invariants/ ·
           protocols/ · operations/ · anti-patterns/ · reviews/ · rfc/
-crates/   Reference implementation (engine). Today: core — the dependency-free kernel (document,
-          transaction, undo, anchors, registers, editing grammar). Later stages add render/workspace/
-          plugin/remote crates as the build order below reaches them.
-apps/     Thin frontends. Today: tui — the `ruse` binary (Vim input engine + terminal rendering).
-tools/    spec-validate.py — the doc-system checker (D-022 reference)
-.github/  Issue forms, PR template, labels, workflows (spec-check runs today)
+crates/   core: the IO-free kernel (document, transaction, undo, anchors, registers, editing grammar).
+apps/     tui: the `ruse` binary (input profiles, rendering, terminal, LSP, remote, persistence).
+tests/    parity: differential fixture corpora for the Neovim and Emacs oracles.
+tools/    ruse.py + rusekit (change workflow, governance checkers), spec-validate.py, parity oracles.
+.github/  Issue forms, PR template, labels, workflows.
 ```
 
 ## Build order (spec → reference implementation)
 
 ```
-0 RFCs → 1 editor-core (Document, Transaction, Command) → 2 input-engine (Vim) → 3 tui-client
+0 RFCs → 1 core (Document, Transaction, Command) → 2 input-engine (Vim) → 3 tui-client
 → 4 workspace (local buffers, save/recovery) → 5 plugin-api → 6 remote-runtime → 7 GUI → 8 Marketplace → 9 AI
 ```
 

@@ -30,6 +30,8 @@ related:
      decision of all: everything downstream inherits them. This RFC ratifies what is already stated in
      spec/PROJECT.md and the design charter; it does not re-derive it. -->
 
+> **Status note:** D-039 deferred the remote-first commitment; `spec/PROJECT.md` holds the current vision.
+
 ## Summary
 
 `ruse` is a Rust, terminal-first, remote-first, extensible code editor built **as a specification with a

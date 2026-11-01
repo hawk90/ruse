@@ -5,8 +5,8 @@ title: "ruse — GitHub Operating Model"
 summary: >
   How ruse represents the Spec-Gated Iterative Development model on GitHub: the load-bearing principle
   (Label = nature, Project field = state, Milestone = stage-proof), a prefixed label taxonomy, one Project
-  with fixed fields (Status/Type/Area/Stage/Priority/Risk/Spec-ID/Evidence/Target/Blocking), milestones as
-  stage proofs (M0–M6), views, issue dependencies, Discussions-vs-Issues, automation, and branch/PR/commit
+  with fixed fields (Status/Type/Area/Stage/Priority/Risk/Spec-ID/Evidence/Target/Blocking), milestones named
+  by release version, views, issue dependencies, Discussions-vs-Issues, automation, and branch/PR/commit
   conventions. The process definitions are canonical in development-model.md; this is the GitHub mechanics.
 audience: [maintainers, contributors, llm-agents]
 status: draft

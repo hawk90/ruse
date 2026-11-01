@@ -22,7 +22,7 @@ related:
 - **Status:** proposed
 - **Author(s):** hawking90a@gmail.com
 - **Created:** 2026-08-05
-- **Decision link:** <D-xxx once accepted>
+- **Decision link:** D-003
 
 <!-- Hard-to-reverse: this fixes the layer model, the buffer/view/window/file boundary, and the
      mutation contract for non-text surfaces. Ecosystem code depends on all three. -->

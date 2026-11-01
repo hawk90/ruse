@@ -59,8 +59,8 @@ session. Untrusted: focusing a code buffer shows a one-time status notice, LSP c
 
 ## Session integration + render
 
-The session keeps `lsp: HashMap<serverKey, LspClient>` + `lsp_docs: DocumentId → (uri, version, rev)` +
-`diagnostics: DocumentId → Vec<Diag>`. Each frame it syncs the **focused** file buffer (spawn once, `didOpen`
+`LspCoordinator` (`apps/tui/src/app/lsp_coordinator.rs`) keeps the clients by server key, the per-document
+`(uri, version, rev)`, and the diagnostics. Each frame it syncs the **focused** file buffer (spawn once, `didOpen`
 once, `didChange` full-document on a revision change), then `poll()`s every client and stores diagnostics whose
 uri matches the focused buffer. The poll-gate that keeps the loop responsive for a terminal is extended to
 "terminal OR any LSP client" (a slower ~10fps tick when only an LSP is live) so async diagnostics render
@@ -69,8 +69,9 @@ without a keypress. Render **underlines** the diagnostic ranges (via `paint_pane
 
 ## Determinism boundary (F-022)
 
-LSP I/O is external and non-deterministic: it never mutates a `Document`, is not recorded as `Command`s, and
-`--replay` ignores it. Diagnostics are presentation state, layered over the buffer, not edits.
+LSP I/O is external and non-deterministic: it is not recorded as `Command`s, and `--replay` ignores it. Diagnostics
+are presentation state, layered over the buffer, not edits. Rename, formatting, completion and code actions do
+edit, through `Workspace::apply_edits` as transactions with `TransactionOrigin::Lsp`.
 
 ## Request-response (slice 2)
 
@@ -100,8 +101,8 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
 - **Slice 5 (landed):** completion — the first **floating** overlay (a cursor-anchored popup menu / pum, vs
   the bottom-panel overlays). In Vim/Native **Insert** mode `<C-x><C-o>` (authentic Vim omni; a frontend
   two-key prefix `pending_omni`, gated to non-Emacs) requests `textDocument/completion`; `parse_completion`
-  normalizes both `CompletionList`/`CompletionItem[]` (insert = `textEdit.newText` → `insertText` → `label`,
-  snippet items fall back to the clean `label`). The pum is drawn into the cell grid at the cursor
+  normalizes both `CompletionList`/`CompletionItem[]` (insert = `textEdit.newText` → `insertText` → `label`;
+  snippet items keep their body, see Completion snippets). The pum is drawn into the cell grid at the cursor
   (`cursor_cell` anchor, flips above when it would overflow) — the existing diff emits it and repaints the
   covered cells on dismiss. `<C-n>/<C-p>`/`↓↑` move, `<CR>/<Tab>` accept (a single edit replacing the typed
   identifier prefix via `Workspace::apply_edits`, staying in Insert), `<Esc>`/typing dismisses. Verified
@@ -116,8 +117,7 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
 - **Slice 7 (landed):** code-actions (`:codeaction` / `:ca`) — `textDocument/codeAction` at the cursor with a
   reconstructed `context.diagnostics` (the normalized `Diag`s overlapping the cursor, round-tripped to LSP via
   `Severity::to_lsp` + `byte_to_lsp_pos`, so the server offers their quickfixes alongside assists) →
-  `parse_code_actions` (edit-bearing actions only; command-only actions that need `workspace/executeCommand`
-  are dropped for now) → an **action picker** (`ui/action_picker.rs`, a `Picker<CodeAction>`) listing titles;
+  `parse_code_actions` (see Command code actions) → an **action picker** (`ui/action_picker.rs`, a `Picker<CodeAction>`) listing titles;
   Enter applies the selected action's `WorkspaceEdit` via the shared multi-file `apply_workspace_edit` (the
   same path as rename). The live smoke asserts the request/response wire round-trips.
 - **Coordinator (2026-08-20, #306):** all app-side LSP orchestration now lives in `app/lsp_coordinator.rs`
@@ -129,7 +129,7 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   buffers) needs a per-buffer bytes API to map each publish's UTF-16 ranges → that buffer's bytes (the
   coordinator only has the focused snapshot today) — deferred, as is multi-SOURCE merge (LSP + tree-sitter +
   compiler) by namespace.
-- **Completion live-filter (landed):** while the pum is open, a word char / `<C-Backspace>` edits the buffer
+- **Completion live-filter (landed):** while the pum is open, a word char / `<Backspace>` edits the buffer
   AND keeps the pum open — the coordinator re-requests completion once the edit syncs (`refilter` flag →
   `request_completion` in `sync_and_poll`). A response is applied only when it is the LATEST request
   (`completion_req` id) at the CURRENT revision (`LspKind::Completion(Revision)`) — stale/out-of-order
@@ -158,10 +158,9 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   fired ONLY for a user-selected action (never auto). A command-namespace allowlist + workspace-root sandbox
   are noted as future hardening.
 - **Later:** snippet slice 2 (tabstop navigation);
-  `completionItem/resolve` lazy docs + a docs side-panel; signature help; trigger-character auto-popup; a
+  a docs side-panel; signature help; trigger-character auto-popup; a
   source-preview line in the references picker; a floating name-input prompt + resource-op renames; a jumplist
-  for `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a diagnostics list
-  / quickfix UI; more languages (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
+  for `<C-o>` back-navigation; merge LSP with tree-sitter/compiler diagnostics by namespace; a quickfix UI; more languages (config-driven); incremental `didChange`; remote (C-AGENT); `C-SCHEDULER`.
 
 ## Verification
 

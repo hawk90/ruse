@@ -10,8 +10,9 @@ Tool-agnostic. Rules here are operational shortcuts; the normative sources are `
   rendering, terminal, LSP, remote).
 - Process: [CONTRIBUTING.md](CONTRIBUTING.md) → [docs/operations/development-model.md](docs/operations/development-model.md).
   AI policy: [docs/contributing/ai-assisted-development.md](docs/contributing/ai-assisted-development.md).
-- `spec/CONTEXT.md` is a hand-maintained digest (refreshed 2026-10-05) and can lag; trust
+- `spec/CONTEXT.md` is a hand-maintained digest and can lag; trust
   `spec/PRD.yaml`, `spec/capabilities.yaml`, `spec/phases.yaml`, `spec/DECISIONS.md` over it.
+- Releases: GitHub Milestones are named by release version and mirror `spec/phases.yaml` one-way (D-037, D-059).
 - Long-horizon design requirements (DR-*): status lives in `spec/design-requirements.yaml` (rules:
   [docs/architecture/design-requirements-registry.md](docs/architecture/design-requirements-registry.md)); `docs/architecture/design-requirements.md` is narrative only.
 - Invariants: [docs/invariants/reference-invariants.md](docs/invariants/reference-invariants.md).
@@ -50,7 +51,8 @@ python3 tools/ruse.py verify --full                     # what pre-push (lefthoo
 ## Testing and parity
 
 - Behavior parity is checked against real Neovim/Emacs via oracle fixtures; when fixing a divergence,
-  capture the oracle ground truth first, then fix (see `tests/parity/` and `tools/parity/`).
+  capture the oracle ground truth first, then fix (see `tests/parity/` and `tools/parity/`). Oracle versions
+  are pinned in `spec/parity/upstreams.yaml`.
 - Property tests guard core invariants; a proptest regression file is evidence — commit it.
 - Platform hazard: `forkpty` signatures differ between macOS and Linux; clippy-clean on one is not proof for
   the other — check CI on both.

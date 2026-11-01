@@ -13,9 +13,9 @@ summary: >
 audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
 status: draft
 related:
-  - architecture.md
+  - ../architecture/architecture.md
   - stability-and-observability.md
-  - design-requirements.md
+  - ../architecture/design-requirements.md
   - ../parity/common.md
   - ../parity/vim.md
   - ../parity/workspace.md
@@ -24,9 +24,15 @@ related:
 ---
 
 <!-- code-blocks: illustrative — the concrete types shown are NOT normative; the canonical home is code (internal types) or spec/contracts/ (cross-boundary), per D-038. -->
-<!-- design-code-ack: UndoNode — design ahead of code: the first vertical slice stores forward/inverse/origin per undo node (in-memory undo/redo) and tracks the saved point via Document.saved_node, with the node id being its slot index; the persistent-undo `id`/`saved_here` fields land with F-008. -->
+<!-- design-code-ack: UndoNode — design ahead of code: the first vertical slice stores forward/inverse/origin per undo node (in-memory undo/redo) and tracks the saved point via Document.saved_node, with the node id being its slot index; the persistent-undo `id`/`saved_here` fields land with persistent undo (#639). -->
 
 # ruse Persistence, Crash Recovery & the Undo Journal
+
+> **Shipped v0.** The journal is `<file>.ruse-journal`, whole-buffer snapshots in `[u32 len LE][u32 crc32
+> LE][payload]` frames, with no file header or schema version (`apps/tui/src/persist/journal.rs`). Undo is
+> in-memory (`crates/core/src/undo.rs`). The rest of this doc, including the per-transaction `RJ01` format, is the
+> target; the status of each save and recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008. Open journal
+> bugs include #844, #845, #858, #859, #862 and #873.
 
 > This doc **resolves [D-005](../../spec/DECISIONS.md)** (was `open`): journal format details, incremental-
 > journal thresholds for large files, and undo-grouping boundaries. It is the normative specification behind
@@ -595,8 +601,8 @@ disk-changed. Journal health (position, last fsync age, truncation events) is a 
 
 ## Migration strategy
 
-Formats are versioned from v1 (`magic RJ01`, `schema_ver`). No prior format exists (pre-F-008), so v1 is
-greenfield. Future changes: additive fields bump minor and are ignored by older readers per INV-ADDITIVE;
+The target format is versioned from v1 (`magic RJ01`, `schema_ver`). The shipped v0 frames have no header. How a v1 reader treats a headerless v0 journal is not decided; #932 should
+settle it. Later changes: additive fields bump minor and are ignored by older readers per INV-ADDITIVE;
 layout-breaking changes bump the record major and readers refuse unknown majors (halt-safe, §2). A journal
 written by a newer ruse is read by an older ruse only up to the first record it doesn't understand, and it
 never auto-overwrites — so cross-version open degrades to "recover as much as safely possible", never silent

@@ -8,7 +8,7 @@ summary: >
   typed arguments, `when` availability predicate, declared side-effects, undoable flag, client/workspace
   execution location, doc/autocomplete metadata); the registry + dispatch pipeline; the `when`-expression
   grammar/evaluator and how the Context Key Resolver consumes it under the priority ABI; the context-aware
-  command palette; the bounded CommandOutcome enum; macros as command sequences; command-id alias/
+  command palette; the bounded CommandOutcome enum; Emacs macros as command sequences; command-id alias/
   deprecation; and how `:normal`/`:global` re-enter the input engine (D-025).
 audience: [maintainers, contributors, llm-agents]
 status: draft
@@ -52,8 +52,8 @@ lists the command contract as a bullet list (§2.3) but leaves the concrete shap
 - What may a command *do*? Without a **bounded** result type, command handlers grow an unbounded effect
   surface (anti-pattern CMD-14) — mutating UI directly, leaving partial mutation on failure, hiding
   control flow.
-- Discovery (M-x / `C-h b` / where-is / apropos, EMACS-CMD-3, EMACS-HELP) and macros (record **commands**,
-  not raw keys, EMACS-MACRO / VIM-REPEAT / anti-pattern CMD-19) both need the registry + metadata to be
+- Discovery (M-x / `C-h b` / where-is / apropos, EMACS-CMD-3, EMACS-HELP) and Emacs macros (record **commands**,
+  EMACS-MACRO; Vim macros record raw keys, D-055) both need the registry + metadata to be
   first-class, not bolted on.
 
 This doc closes that gap so that [editing-language.md](editing-language.md) (emits `CommandOutcome`),
@@ -81,8 +81,8 @@ engine, and the palette all bind against one stable contract.
 - **G6** — A **bounded** `CommandOutcome` enum (`NoChange | Transaction | ViewChange | AsyncTask |
   Composite`) — no unbounded effect system (CMD-14); commands never mutate UI/global state directly and leave
   no partial mutation on failure (architecture §2.3, §3.3).
-- **G7** — **Macros as command sequences** (EMACS-MACRO, VIM-REPEAT): record the dispatched command +
-  gathered args, not raw keys (CMD-19); and **command→input re-entry** for `:normal`/`:global` (delegating
+- **G7** — **Emacs macros as command sequences** (EMACS-MACRO, #657): record the dispatched command +
+  gathered args. Vim macros record raw keys ([macros.md](macros.md), D-055). And **command→input re-entry** for `:normal`/`:global` (delegating
   to [editing-language.md](editing-language.md), D-025 / V-9).
 - **G8** — **Alias + deprecation** for command IDs (D-006): renames provide a shim and a removal window;
   configs/keymaps/macros keep resolving.
@@ -158,7 +158,7 @@ This doc **depends on and enforces** (does not mint — single-registry rule, D-
 ```
   key event ─▶ C-INPUT ─▶ (C-EDITLANG composes operator+motion, D-025) ─┐
   palette / M-x  ─────────────────────────────────────────────────────┤
-  macro replay (command list) ───────────────────────────────────────┤─▶  Invocation{ id, args, origin }
+  Emacs macro replay (command list) ─────────────────────────────────┤─▶  Invocation{ id, args, origin }
   :Ex / :command / RPC ───────────────────────────────────────────────┤
   another command (Composite / :normal / :global) ────────────────────┘
                                                                         │
@@ -605,8 +605,8 @@ pub fn resolve(active: &ActiveKeymaps, seq: &KeySequence, ctx: &Context)
         .collect();
     if cands.is_empty() { return Resolution::Unbound; }
 
-    // 2. Order by the priority ABI: (tier, sub_order) ascending = higher priority (architecture §1.4).
-    cands.sort_by_key(|b| (b.tier, b.sub_order));
+    // 2. Descend the layer stack; within the first layer that binds, provenance picks the winner (D-046).
+    cands.sort_by_key(|b| (b.layer, b.provenance));
     let winner = cands[0];
 
     // 3. If the top candidate is a plugin-SUGGESTED binding still unresolved against a conflict, it stays
@@ -615,9 +615,9 @@ pub fn resolve(active: &ActiveKeymaps, seq: &KeySequence, ctx: &Context)
 }
 ```
 
-- **Prefix / transient state** (Vim operator-pending, Emacs `C-x` prefix, transient popup) is *tier 1*
+- **Prefix / transient state** (Vim operator-pending, Emacs `C-x` prefix, transient popup) is the *top layer*
   (temporary state) and resolves first, matching EMACS-KEYMAP rank 1 and EMACS-TRANSIENT-1 — a transient map
-  is just a top-tier, self-dismissing binding set.
+  is just a top, self-dismissing layer.
 - Availability of the *resolved command* is still checked at dispatch (§3 step 2); a key can be bound yet the
   command unavailable (then it's a `NotAvailable` status, not a crash).
 
@@ -677,16 +677,17 @@ pub struct PaletteEntry {
 - `which-key`-style live continuation discovery (EMACS-TRANSIENT-3) is the same query scoped to the pending
   prefix.
 
-#### 7.2 Macros are command sequences, not raw keys
+#### 7.2 Emacs macros are command sequences
 
-Recording captures the **dispatched `Invocation`** (`CommandId` + concrete `ArgValue`s + origin), *not* the
-keystrokes (EMACS-MACRO, VIM-REPEAT; guards CMD-19 "raw key replay"):
+Vim macros record raw keystrokes into the a-z registers and re-feed the input engine ([macros.md](macros.md),
+D-055). This section is the design for Emacs keyboard macros (#657): recording captures the **dispatched
+`Invocation`** (`CommandId` + concrete `ArgValue`s + origin), *not* the keystrokes (EMACS-MACRO):
 
 ```rust
 pub struct Macro { pub steps: Vec<Invocation>, pub counter: Option<MacroCounter> }  // EMACS-MACRO-3 counter
 ```
 
-- Replay re-dispatches each `Invocation` with `origin = Macro` (INV-ORIGIN) — so a recorded `"add` shifts the
+- Replay re-dispatches each `Invocation` with `origin = Macro` (INV-ORIGIN, #880) — so a recorded `"add` shifts the
   register ring on replay identically (register-model §INV-ORIGIN), and replay is robust to keymap changes and
   works across profiles/locations (the ABI is the command, not the key).
 - Macros are promotable to a **named/bound command** (EMACS-MACRO-2): a `Macro` gets a `CommandId` + generated
@@ -842,8 +843,9 @@ simply absent (safe-mode), and bindings to them resolve to `NotAvailable` rather
   clear of the L3 script-runtime non-goal, D-007.)
 - **R3 — `Vec<String>` / positional string args.** Loses typing, prompting, completion, and doc generation;
   forces every handler to re-parse. Rejected for the typed `ArgSchema`/`ArgValue` (§2), per architecture §2.3.
-- **R4 — Record macros as raw keystrokes.** Breaks across keymap changes/profiles/locations and can't carry
-  origin for register/AI semantics — the CMD-19 anti-pattern. Rejected for command-sequence macros (§7.2).
+- **R4 — Record Emacs macros as raw keystrokes.** Breaks across keymap changes/profiles/locations and can't
+  carry origin for register/AI semantics — the CMD-19 anti-pattern. Rejected for command-sequence macros (§7.2).
+  Vim macros take the other side of this trade-off (D-055).
 - **R5 — Model `:global`/`:normal` as a giant `Composite` of outcomes.** Would smuggle an unbounded control-
   flow engine into the outcome enum. Rejected: they re-enter the input engine as a bounded, two-pass batched
   driver owned by `C-EDITLANG` (§7.3, D-025).
@@ -869,9 +871,9 @@ simply absent (safe-mode), and bindings to them resolve to `NotAvailable` rather
 
 ## Migration strategy
 
-Greenfield (no prior command engine). Land `C-CONTEXT` (DSL + evaluator + Context Key registry) and
-`C-COMMAND` (descriptor + registry + dispatch + bounded outcome) as kernel components before the input engine
-(`C-INPUT`, F-003) and palette wire onto them. Per **D-009**, the *internal* command/registration API ships
+`C-CONTEXT` (DSL + evaluator + Context Key registry, #955) and the full `C-COMMAND` (descriptor + dispatch +
+bounded outcome, #953) still land as kernel components, and the input engine and palette move onto them. Per
+**D-009**, the *internal* command/registration API ships
 first and is dogfooded by built-ins (git, search) before any public plugin command surface is stabilized
 (INV-PROMOTION, ≥2 users, D-010). The priority-ABI tiers stay provisional data (D-008) until F-003/F-016
 validate them. Alias/deprecation tooling and `spec validate` cross-reference checks (D-022) land with the
@@ -893,7 +895,7 @@ registry so id stability is enforced from day one.
   provenance, same seq ⇒ conflict reported; new binding disabled until resolved.
 - **Typed args** — `Acquire` chains (prompt/pick/from-context), defaults, missing/ bad-arg errors; `Count` vs
   `RawPrefix` distinction (EMACS-ARG); `Range`/`Pattern` coerced to IR, not strings.
-- **Macros (command sequences)** — record captures Invocations not keys; replay carries `Origin::Macro` and
+- **Emacs macros (command sequences)** — record captures Invocations not keys; replay carries `Origin::Macro` and
   reproduces register-ring effects (cross-check register-model corpus); promotion to a bound command; macro is
   robust to keymap change.
 - **Ex re-entry** — `:global` two-pass over anchors (VIM-EX-GLOBAL differential test), `:normal` batched
@@ -908,7 +910,7 @@ registry so id stability is enforced from day one.
 - **OQ-1** — Exact final Context Key set and their namespaces (esp. plugin-contributed keys) — enumerate as
   F-003/F-016 land; needs a registry + `spec validate` check like commands.
 - **OQ-2** — `Composite` depth/step budget numbers and whether user commands may nest `:normal` bodies beyond
-  a fixed depth (ties D-025 `ChangeIntent`-in-macro serialization).
+  a fixed depth.
 - **OQ-3** — Where the `when` static-satisfiability check draws the line for `=~` (regex) operands — likely
   treated as opaque (assume satisfiable) rather than solved, to keep conflict detection cheap.
 - **OQ-4** — Precise mapping of Emacs `interactive` codes and Vim `:command -complete=` values onto the

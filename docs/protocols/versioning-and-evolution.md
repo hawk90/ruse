@@ -64,7 +64,7 @@ pub struct ProtocolHeader {
 
 Readers must implement: **unknown-variant handling** (never panic/reject on a new variant), **missing
 optional field** defaults, and **ignore unknown capability**. These three are the compatibility-test
-matrix (see [../operations/ci-cd-and-release.md](../operations/ci-cd-and-release.md) §Protocol-Compat).
+matrix (see [../operations/ci-cd-and-release.md](../operations/ci-cd-and-release.md) §5).
 
 ## API Promotion Ladder
 

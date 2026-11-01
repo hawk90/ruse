@@ -17,8 +17,9 @@ related:
 
 # ruse RFC Index
 
-Folders: `proposed/` (under discussion) · `accepted/` (ratified) · `rejected/` (kept forever so decisions
-aren't re-litigated). An RFC records *why*; the design docs record *how* (linked, not duplicated); the
+Folders: `proposed/` (under discussion) · `accepted/` (ratified; not created yet, and every RFC currently sits in
+`proposed/` whatever its decision status, #1027) · `rejected/` (kept forever so decisions aren't re-litigated). An
+RFC records *why*; the design docs record *how* (linked, not duplicated); the
 compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 
 ## Proposed
@@ -36,9 +37,14 @@ compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 | [RFC-0009](proposed/RFC-0009-render-model.md) | Render Model & Frontends | D-014, D-015, D-012 | [render-and-frontends](../design/render-and-frontends.md), [parity/terminal](../parity/terminal.md) |
 | [RFC-0010](proposed/RFC-0010-stability-observability.md) | Stability & Observability | D-016, D-017 | [stability-and-observability](../design/stability-and-observability.md) |
 | [RFC-0011](proposed/RFC-0011-layer-axis-terminology.md) | Layer-axis terminology (build_stage / architecture_tier) | D-036 | [glossary](../../spec/glossary.yaml), [spec-validate](../operations/spec-validate.md) |
+| [RFC-0012](proposed/RFC-0012-collapse-to-two-crate-editor.md) | Collapse to a two-crate terminal modal editor | D-039 | [spec/PROJECT.md](../../spec/PROJECT.md) |
+| [RFC-0013](proposed/RFC-0013-lang-arg-translation-stage.md) | Lang-Arg translation stage | D-048 | [input-engine](../design/input-engine.md) |
 | [RFC-0014](proposed/RFC-0014-emacs-input-profile.md) | The Emacs input profile (F-012) | D-049 | [register-model](../design/register-model.md), [positions-history](../design/positions-history.md) |
 | [RFC-0015](proposed/RFC-0015-emacs-caret-gravity.md) | Caret gravity (Emacs point is between-character) | D-050 | [emacs-cursor-and-mark-fidelity](../design/emacs-cursor-and-mark-fidelity.md) |
 | [RFC-0016](proposed/RFC-0016-emacs-command-divergence.md) | Emacs-vs-Vim command divergence = distinct Commands | D-051 | [emacs-cursor-and-mark-fidelity](../design/emacs-cursor-and-mark-fidelity.md) |
+| [RFC-0017](proposed/RFC-0017-better-than-vanilla-defaults.md) | Better-than-vanilla defaults at the frontend layer | D-056 | [config-model](../design/config-model.md) |
+| [RFC-0018](proposed/RFC-0018-multi-buffer-arena.md) | Multi-buffer arena and workspace-global state | D-057 | [buffer-arena-and-global-state](../design/buffer-arena-and-global-state.md) |
+| [RFC-0019](proposed/RFC-0019-version-named-milestones.md) | Version-named milestones | D-059 | [spec/phases.yaml](../../spec/phases.yaml) |
 
 ## Rejected (do-not-relitigate)
 
@@ -46,6 +52,5 @@ compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 | --- | --- | --- |
 | [RFC-R001](rejected/RFC-R001-rust-dylib-plugin-abi.md) | Rust dynamic-library plugin ABI | WASM / versioned protocol (D-004, RFC-0003) |
 
-All ten planned RFCs (0001–0010) are drafted as **proposed**; RFC-R001 is the sole rejected record. Next
-lifecycle step is review → `accepted/`. New hard-to-reverse decisions get a new RFC via
+RFC-R001 is the sole rejected record. New hard-to-reverse decisions get a new RFC via
 [`spec/templates/rfc.md`](../../spec/templates/rfc.md).

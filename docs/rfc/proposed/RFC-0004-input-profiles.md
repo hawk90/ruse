@@ -30,8 +30,9 @@ related:
 - **Status:** proposed
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-05
-- **Decision link:** D-006, D-008 (principle) — this RFC also depends on the open decisions D-025,
-  D-026, D-027, which **block** its L2 obligations.
+- **Decision link:** D-006, D-008 (principle); depends on D-025, D-026, D-027.
+- **Status note:** D-025, D-026 and D-027 are decided (design), and D-048 answers KL-Q-LANG-ARG. The body records
+  them as they stood when this RFC was written.
 
 > This RFC records a hard-to-reverse decision: the product's input philosophy and the semantic layer
 > that plugins, configs, macros, and keymaps all bind against. It does **not** restate the source

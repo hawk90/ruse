@@ -21,7 +21,7 @@ usage: >
 
 > This editor couples an editing core, input modes, plugins, remote, and terminal rendering.
 > A wrong early decision here is nearly impossible to unwind later. Establishing this catalog
-> up front is worth it. Do **not** try to solve all ~300 items at once — lock the five boundaries
+> up front is worth it. Do **not** try to solve all items at once (`spec-validate` prints the count) — lock the five boundaries
 > first (see [architecture.md §12.1](../architecture/architecture.md)); most of the rest follow.
 
 Legend: each category has a short code; items are numbered for stable reference (e.g. `CORE-3`).
@@ -619,7 +619,7 @@ All items matter, but these must be locked before writing core code. Each maps t
 
 ## Priorities — Five Axes to Fix First
 
-Rather than tackling all ~300 at once, lock these five boundaries in docs first; more than half of the
+Rather than tackling all at once, lock these five boundaries in docs first; more than half of the
 remaining anti-patterns are then prevented naturally:
 
 1. **Core State & Transaction** (CORE, TEXT, ASYNC)

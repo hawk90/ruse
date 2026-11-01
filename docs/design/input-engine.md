@@ -25,7 +25,6 @@ related:
   - ../rfc/proposed/RFC-0004-input-profiles.md
   - ../../spec/parity/contracts/keymap-layers.yaml  # the SCOPE axis — the kernel keymap primitive (D-045)
   - ../../spec/parity/contracts/vim-style.yaml      # the Vim profile's own obligations (VS-OBL-1..4)
-  - parity-evidence.md                        # where the upstream facts under D-045/D-046 come from
   - ../../spec/DECISIONS.md                    # D-008, D-025, D-002, D-043, D-045, D-046
 notation: "See parity/terminal.md for escape-sequence notation (ESC/CSI/OSC …); this doc does not re-emit sequences."
 ---
@@ -312,15 +311,17 @@ pending axes (aborts operator-pending with no change).
 
 #### v0 status — the TUI `InputEngine` (SHIPPED)
 
-The v0 frontend engine (`apps/tui/src/input.rs`) implements a **small** slice of this — no keymap resolution,
-timers, priority ABI, or profiles (all deferred) — but it holds the axes **orthogonally**, as the model
+The v0 frontend engine (`apps/tui/src/input/mod.rs`) implements a slice of this: Vim, Emacs and Native profiles
+(`input/vim.rs`, `emacs.rs`, `native.rs`) over the keymap primitive, with no timers or priority ABI. It holds the
+axes **orthogonally**, as the model
 requires, rather than as ad-hoc booleans with implicit precedence (the anti-pattern this doc's Problem names).
 Three transient axes plus sticky repeat state:
 
 - **count** — `u32`, the accumulating numeric prefix.
-- **operator-pending** — `Option<OpPending{op, count}>` (`d`/`c`/`y`; register-prefix is deferred with D-026).
-- **key-expectation** — `Awaiting::{ Nothing | FindTarget{fwd,till} | TextObjectChar{inner} }`: a single enum,
-  so awaiting two things at once is **unrepresentable** (the concrete leak the ad-hoc booleans risked).
+- **operator-pending** — `Option<OpPending{op, count}>` (`d`/`c`/`y`), with the register prefix selected through
+  `Awaiting::RegisterSelect`.
+- **key-expectation** — `Awaiting::{ Nothing | FindTarget | TextObjectChar | GSecond | ReplaceChar | … }`: a single
+  enum, so awaiting two things at once is **unrepresentable** (the concrete leak the ad-hoc booleans risked).
 
 `feed` resolves in one **fixed precedence**, so the hierarchy is explicit, not encoded in statement order:
 **input-mode** (Insert consumes text) → **the key-expectation tier** (a pending `FindTarget`/`TextObjectChar`
@@ -330,43 +331,33 @@ outcome runs through `reset()`, and this is **enforced by a property test** (`no
 over random key/mode sequences, no partial command ever leaks past a completed/ignored/mode-open outcome, and
 `TextObjectChar` never holds without an operator. A second property pins `feed` determinism.
 
-**What that fixed ladder is, in the model above (D-045).** It is a **hardcoded depth-3 stack** — pending
-state, key-expectation, base keys — with the layers written as statement order instead of as data. Two things
-follow, and both are defects rather than simplifications. First, `if mode == Mode::Insert` is a fourth layer
-smuggled in ahead of the ladder as an early return. Second, and worse, every miss funnels into one shared
-`Feed::Ignored`, which hardcodes `closed/ignore` for **all** namespaces — but five of Vim's eight are `open`
-([vim-style.yaml](../../spec/parity/contracts/vim-style.yaml) VS-OBL-1), so Insert had to be special-cased
-*because* the fallthrough was wrong for it. That is one policy standing in for six. The migration is to make
-the layers data (`crates/core` keymap primitive) and give each namespace its declared `unmatched_key`, which
-is behaviour-preserving for the four namespaces v0 actually reaches. Until that lands, this section describes
-the shipped shape, not the target; the target is §Priority resolution above.
+**That ladder in the model above (D-045).** Each Vim namespace is a layer in `VimProfile` (`input/vim.rs`) that
+declares its `unmatched_key` (`crates/core/src/keymap.rs`, [vim-style.yaml](../../spec/parity/contracts/vim-style.yaml)
+VS-OBL-1), so a miss in an `open` namespace is not funnelled into one `Feed::Ignored`. The pending state and
+key-expectation tiers are still engine code ahead of the layer lookup; §Priority resolution above is the target.
 
-**v0 Command-line mode (VIM-MODE-7) — the design to build toward** (PRD F-003). Today the `:`/`/` line lives
-in `main.rs` as a separate ad-hoc line editor **outside** the engine (opening it goes through `reset()`,
-tested) — that is the shipped stub, and it is exactly anti-pattern "command-line as an ordinary text buffer"
-(P2). The v0 target reconciles it into the same model:
+**v0 Command-line mode (VIM-MODE-7)** (PRD F-026). The `:`/`/` line is owned by the engine (`input/cmdline.rs`).
 
-- **Command-line is a real input-mode**, the `Cmdline` value already listed in the Mode-axes table above —
-  one mode owner, not a hidden 4th state split into `main.rs`. It carries a *prompt* (`:` ex vs `/`/`?`
-  search) and the line buffer + a caret within the line.
-- **The engine routes it**, like Insert: a `Cmdline` branch in the resolver turns keys into command-line
-  edits (printable → insert at caret; Backspace/Delete; Left/Right/Home/End; `<CR>` → dispatch the ex/search
-  command; `<Esc>`/`C-c` → abort). No parallel editor in the frontend; the frontend only renders the prompt
-  + buffer + caret.
+- **Command-line is a real input-mode**, the `Cmdline` value already listed in the Mode-axes table above — one
+  mode owner. It carries a *prompt* (`:` ex vs `/`/`?` search) and the line buffer. The caret field stays at the end of the
+  line until the line editor lands (#612).
+- **The engine routes it**, like Insert: a `Cmdline` branch turns keys into command-line edits; `<CR>` dispatches
+  the ex/search command; `<Esc>` aborts (`C-c` does not yet, #612, #599). The frontend only renders the prompt + buffer + caret.
 - **Precedence** stays the fixed ladder (input-mode → key-expectation tier → base keys); `Cmdline` sits at
   the input-mode level beside Insert, so it is total and testable by the same no-leak property.
 
-**Shipped (post-#97):** command-line & search **history** (`:help cmdline-history`, #452). The engine owns
+**Shipped:** command-line & search **history** (`:help cmdline-history`, #452). The engine owns
 two SEPARATE rings — `:` ex lines and `/`+`?` search patterns (Vim keeps them apart; `/` and `?` share the
 search ring) — populated on `<CR>` (empty ignored; an immediate repeat is de-duplicated by moving it to the
 most-recent slot). The prompt recalls with `<Up>`/`<Down>` (PREFIX-FILTERED by the draft typed before the
 walk) and `<C-p>`/`<C-n>` (RAW ring, unfiltered — the nvim-verified distinction); `<Down>` past the newest
 restores the typed draft. The ring + recall walk live in a pure, unit-tested `CmdHistory`/`HistWalk`
-(`apps/tui/src/input/history.rs`); this is the enabler for the `q:`/`q/` command-line window.
+(`apps/tui/src/input/history.rs`). `q:`/`q/`/`q?` open a read-only history window (`input/cmdwin.rs`; editable
+in [buffer-arena-and-global-state.md](buffer-arena-and-global-state.md) slice 4, #947), and incsearch highlights
+through `apps/tui/src/highlight.rs` (it ignores `ignorecase`/`smartcase`, #824).
 
-**Deferred (not v0):** `q:`/`q/` windows, `wildmenu`/`wildmode` completion, `C-r` register insertion, and the
-incsearch **UX** (the regex/decoration side is [vim-regex.md](vim-regex.md)); the full INPUT-RESOLVE
-keymap/timeout/priority machinery above. v0 ships the mode + in-line editing + history recall only.
+**Deferred:** the full line editor and `C-r` register insertion (#612), `wildmenu`/`wildmode` completion (#613),
+and the full INPUT-RESOLVE timeout/priority machinery above.
 
 ### How a profile plugs in (INPUT-PROFILE)
 
@@ -581,8 +572,8 @@ text-objects are valid after `d`, what registers after `"`).
 
 ## Reference Invariants
 
-- **INV-PRIORITY** — resolution follows the fixed priority ABI incl. the V-28 ordered minor-mode/text-span
-  sub-list; plugins cannot force global keys. (Tiers provisional — D-008 open.)
+- **INV-PRIORITY** — resolution descends the layer stack, then provenance picks within a layer (D-045, D-046);
+  plugins cannot force global keys. (Provenance order provisional — D-008 open.)
 - **INV-PROFILE-ISOLATION** — profiles never share a key space; real conflicts (`same profile + sequence +
   overlapping context + priority`) are detected statically.
 - **INV-CMD-SEMANTIC** — a resolved binding names a semantic command (or drives C-EDITLANG, which emits one);
@@ -597,10 +588,7 @@ text-objects are valid after `d`, what registers after `"`).
 
 ## Migration strategy
 
-Greenfield subsystem (F-003, MVP; PRD `C-INPUT`, depends_on `C-COMMAND, C-EDITLANG, C-CONFIG`). No legacy
-input path to migrate. Sequencing: land `INPUT-EVENT` + `INPUT-RESOLVE` + mode axes + the two-timer policy
-against the Vim profile first (F-003), driven initially by C-TERMINAL; add Emacs/Native profiles as pure
-`INPUT-PROFILE` plug-ins with no engine change. The provisional priority tiers are finalized once F-003 (this
+The two-timer policy and the rest of `INPUT-RESOLVE` land against the Vim profile first. The provisional priority tiers are finalized once F-003 (this
 engine) and F-016 (real plugins) exist (D-008 re-evaluation).
 
 ## Test strategy
@@ -624,10 +612,6 @@ engine) and F-016 (real plugins) exist (D-008 re-evaluation).
 - **The provisional provenance tiers** (esp. plugin-explicit vs plugin-suggested) — **open per D-008**;
   cannot be validated pre-F-016. *(The tier-3 ordered sub-list, V-28, is no longer part of this question:
   D-046 moved it to the scope axis, where a sub-list member is just another layer.)*
-- **Lang-Arg as a layer** (KL-Q-LANG-ARG, CONCEPT-LANG-ARG) — Vim's Lang-Arg **translates** a key and
-  re-dispatches rather than binding it, which makes resolution non-total. It is D-045's own stated
-  re-evaluation trigger and it blocks F-027; a layer that rewrites-and-yields is expressible but must be
-  designed, not assumed.
 - **Whether provenance can ever reorder layers** rather than bindings within one (e.g. a plugin that must
   install a whole layer above the user's). If it can, the two axes are not independent and D-046 needs a
   joining rule.

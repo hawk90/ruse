@@ -23,7 +23,7 @@ related:
 
 # ruse Development Model — Spec-Gated Iterative Development
 
-Korean: **사양 게이트형 반복 개발.** This is not "hyper waterfall-agile" (not an established method — usually a
+This is not "hyper waterfall-agile" (not an established method — usually a
 misname for Hybrid Waterfall–Agile). ruse needs something more specialized:
 
 ```
@@ -37,20 +37,20 @@ The loop: **Spec-first → thin implementation → executable evidence → spec 
 
 ## Build order is a dependency direction, not a waterfall
 
-The staged order is kept, but it is **not** "finish editor-core completely, then move to input-engine":
+The staged order is kept, but it is **not** "finish the core completely, then move to input-engine":
 
 ```
-RFCs → editor-core → input-engine → tui-client → workspace → plugin-api → remote-runtime → GUI → Marketplace → AI
+RFCs → core → input-engine → tui-client → workspace → plugin-api → remote-runtime → GUI → Marketplace → AI
 ```
 
 Progress is by **thin vertical slices that connect stages early**, and evidence can flow *back* into an
 earlier stage's spec:
 
 ```
-editor-core minimal slice   (Document → Transaction → Command → Undo)
+core minimal slice          (Document → Transaction → Command → Undo)
   → input-engine minimal link   (key input → command → transaction)
     → TUI minimal link          (input → edit → render)
-      → problems found feed back into the editor-core spec (via RFC/decision)
+      → problems found feed back into the core spec (via RFC/decision)
 ```
 
 Stages are ordered, but verification results may reopen an earlier stage.
@@ -108,7 +108,7 @@ Specified → Executable → Integrated → Dogfoodable → Stable
   exists; regression tests exist; docs match implementation.
 
 A stage may intentionally stop at an earlier gate (an experimental subsystem may be *Executable* but not
-*Stable*). Example — `editor-core` isn't "done" because the crate exists; it must **prove**
+*Stable*). Example — `ruse-core` isn't "done" because the crate exists; it must **prove**
 `Document → Command → Transaction → Undo/Redo → deterministic replay` via headless tests to pass its gate.
 
 ## Iteration cadence
@@ -123,19 +123,19 @@ A stage may intentionally stop at an earlier gate (an experimental subsystem may
 ## Milestones = stage proofs (not sprints)
 
 GitHub Milestones are named by release version and mirror `spec/phases.yaml` (D-037, D-059). The stage proofs
-below are the **one-sentence exit conditions** behind that ladder:
+below are the exit conditions behind that ladder:
 
-| Milestone | Exit condition (example) |
+| Phase | Exit condition (example) |
 | --- | --- |
-| M0 Spec foundation | The normative spec, invariants, and validation exist and pass. |
-| M1 Headless editor-core | A deterministic headless editor can execute commands, record transactions, and replay undo/redo. |
-| M2 Vim editing kernel | Operator+motion/registers/dot-repeat pass the Vim L2 differential corpus. |
-| M3 Dogfoodable terminal editor | A developer can edit real files in the TUI without manual workarounds. |
-| M4 Local workspace | Buffers/views/splits + atomic save + crash recovery work end-to-end. |
-| M5 Plugin proof | An isolated plugin registers a command and requests a transaction over the versioned protocol. |
-| M6 Remote editing proof | An auto-bootstrapped SSH agent serves fs/search/PTY with reconnect. |
+| all | The normative spec, invariants, and validation exist and pass. |
+| v0.1.0 | A deterministic headless editor can execute commands, record transactions, and replay undo/redo. |
+| v0.2.0 | Operator+motion/registers/dot-repeat pass the Vim L2 differential corpus. |
+| v0.2.0 | A developer can edit real files in the TUI without manual workarounds. |
+| v0.2.0 | Buffers/views/splits + atomic save + crash recovery work end-to-end. |
+| v1.0.0 | An isolated plugin registers a command and requests a transaction over the versioned protocol. |
+| v1.0.0 | An auto-bootstrapped SSH agent serves fs/search/PTY with reconnect. |
 
-Never write "implement editor-core" — write the behavior that proves the stage.
+Never write "implement the core" — write the behavior that proves the stage.
 
 ## What ruse does NOT optimize for
 

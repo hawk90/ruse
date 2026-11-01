@@ -27,7 +27,7 @@ related:
 > here to record a newly discovered upstream feature: humans classify, they do not enumerate.
 
 
-ruse is **TUI-first** but remote-first in architecture: the local client is thin, and a workspace runtime
+ruse is **TUI-first**, and remote is a deferred capability (D-039). When it returns, the local client is thin, and a workspace runtime
 runs next to the code. Remote is not "a remote filesystem" — a design where only files are remote while
 LSP/build/debugger run locally fails (SSHFS-style latency on every keystroke). Parity target = the
 architecture properties below (see [../architecture/architecture.md](../architecture/architecture.md) §5), at L1.

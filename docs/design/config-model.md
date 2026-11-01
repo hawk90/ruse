@@ -35,7 +35,7 @@ related:
 ruse has no configuration model. `CFG` (design-requirements §10) requires separated user / workspace /
 machine-local settings, per-type merge, source provenance, a `:inspect config` command, safe mode,
 migration, and — the load-bearing security rule — **security-sensitive settings that a workspace cannot
-override** ([architecture §10](../architecture/architecture.md#10-security-trust-model): "Project settings
+override** ([architecture §10](../architecture/architecture.md): "Project settings
 do not arbitrarily override user settings"). Neovim's failure mode is the anti-model: config is arbitrary
 Lua, so a value's origin is unknowable, one bad line aborts startup, a project `exrc` can silently change
 security behavior, and there is no static type/deprecation/migration story. C-CONFIG must be the opposite:
@@ -220,8 +220,8 @@ key **only once its behavior is analyzed and shipped/designed** — never bulk-m
 gdefault` as a checklist, not as typed keys). Materializing a typed key with a guessed default from an
 un-analyzed option is exactly the "shaky derivation" the breadth→depth split guards against. The key arrives
 **with its feature's design**, alongside the runtime that honors it. Example: `editor.scrolloff` exists
-because the viewport behavior it configures shipped (its margin was a constant); the Vim search options do
-**not** yet have keys because that search behavior is not built. So `config-schema.yaml` grows one analyzed
+because the viewport behavior it configures shipped, and `editor.ignorecase`/`smartcase`/`hlsearch`/`incsearch`
+arrived with the search behavior they configure. So `config-schema.yaml` grows one analyzed
 option at a time, and completeness-vs-parity is a *per-feature* obligation, not a one-time backfill.
 
 ### CFG schema — types/defaults/enums driving tooling
@@ -237,7 +237,7 @@ optional `enum`/`min`/`max`, and a one-line `desc`. From it C-CONFIG derives, wi
   to its replacement for a deprecation window (INV-ADDITIVE).
 - **Migration** — the schema `version` drives §9.
 
-The schema is authored (records-with-fields ⇒ YAML, per [D-021](../../spec/DECISIONS.md#d-021)); a generator
+The schema is authored (records-with-fields ⇒ YAML, per [D-021](../../spec/DECISIONS.md)); a generator
 may emit a JSON copy for editor tooling but the YAML is canonical and hand-edited.
 
 ### CFG-PLUGIN — Per-plugin config schema
@@ -274,7 +274,9 @@ layer contributes bindings *into* keymap layers at its own provenance rank; it i
   Emacs binding are in different key spaces.
 - A workspace keymap config layer enters at the **workspace provenance tier** (the old ABI tier 4) and only
   when the workspace is trusted; it can never register a global binding above the user tier, and can never
-  bind a security-gated command (CFG-LOCK-001). Plugin-suggested bindings remain the lowest, opt-in tier.
+  bind a security-gated command (CFG-LOCK-001). `keymap.*` keys are `scope: user` in
+  [config-schema.yaml](../../spec/config-schema.yaml), which conflicts with this; the choice is open (#1026).
+  Plugin-suggested bindings remain the lowest, opt-in tier.
   Provenance never lets a config layer reorder *keymap layers* — only bindings within one (D-046).
 
 The keymap *values* (the map of `key → command + when`) deep-merge; the *resolution* is out of scope here.

@@ -6,8 +6,8 @@ summary: >
   Entry point and philosophy for the ruse documentation set. ruse is designed as a specification with
   a reference implementation, not as "an editor written in Rust." Architecture, invariants, protocols,
   anti-patterns, and parity are first-class, language-independent artifacts; code proves them. This hub
-  defines the spec-first philosophy, the RFC process, the stable glossary, the build order, the target
-  repository layout, and the document map.
+  defines the spec-first philosophy, the RFC process, the stable glossary, the build order, and the
+  document map.
 audience: [maintainers, contributors, llm-agents]
 status: draft
 ---
@@ -62,7 +62,7 @@ A solo/small-team effort must not aim at the final product on the first pass. Se
 
 ```
 0. RFCs
-1. editor-core        (Document, Transaction, Command, Query, Anchor, Undo, Registers)  # Command is kernel (ARCH-LAYER-001)
+1. core               (Document, Transaction, Command, Query, Anchor, Undo, Registers)  # Command is kernel (ARCH-LAYER-001)
 2. input-engine       (Vim first; operator/motion composition)                          # depends on Command → must follow stage 1
 3. tui-client         (Render IR, ANSI/Unicode, terminal capability)
 4. workspace          (buffers, save/recovery — LOCAL only, no remote)                  # F-007/F-008 need this before plugins/remote
@@ -73,37 +73,12 @@ A solo/small-team effort must not aim at the final product on the first pass. Se
 9. AI
 ```
 
-> Reconciles verification V-10 (Command was contradictorily placed at step 4 while Input at step 2 depends
-> on it) and V-11 (Workspace was unplaced yet F-007/F-008 need it). Command lives in editor-core; a local
-> Workspace stage precedes plugin/remote. **Machine-checkable ordering = `spec/PRD.yaml` component
-> `build_stage`/`depends_on`** (this prose is the narrative view).
+> Machine-checkable ordering is `spec/PRD.yaml` component `build_stage`/`depends_on`; this prose is the
+> narrative view. The current crate layout is in [`README.md`](../README.md) (D-039).
 
 Render backends specifically sequence: (1) Semantic Render Tree → (2) ANSI/Unicode backend → (3) virtual
 terminal tests → (4) Kitty image backend → (5) remote protocol → (6) GUI backend. Do **not** implement
 ANSI + Kitty + SIXEL + GUI + Web all at once.
-
-## Target Repository Layout
-
-Big boundaries only at first; `document/transaction/command/anchor` start as **modules inside one core
-crate**, not separate crates. Do not confuse well-named folders with public package boundaries.
-
-```
-project/
-├── crates/
-│   ├── core/            # document, transaction, command, query, anchor, undo, registers, context, health
-│   ├── render-model/    # node, layout, decoration, protocol
-│   ├── terminal-platform/ # input, capability, ansi, image, virtual-terminal
-│   ├── workspace/       # LOCAL: buffers, filesystem, save, recovery journal   (stage 4 — no remote)
-│   ├── workspace-runtime/ # remote runtime: process, remote, lsp, plugin-host  (stages 5–6)
-│   └── plugin-protocol/
-├── apps/                # tui, remote-agent, gui   (thin; engine is reusable)
-├── extensions/          # core-git, core-search, examples
-├── docs/                # see doc map below
-├── tests/               # command-parity, terminal-matrix, plugin-compat, remote-scenarios
-└── tools/               # inspector, protocol-dump, render-diff, diagnostic-bundle
-```
-
-Large sample outputs / test corpora belong in a separate repo or Git LFS, not the main tree.
 
 ## Document Map
 
@@ -116,17 +91,15 @@ reviews are separate folders.
 | --- | --- |
 | **Vision / hub** | this file · [`spec/PROJECT.md`](../spec/PROJECT.md) |
 | **Architecture & governance** | [architecture/](architecture/architecture.md) — `architecture.md` (deep map), `design-requirements.md` (20 long-horizon domains; DR-* status in [../spec/design-requirements.yaml](../spec/design-requirements.yaml)), `design-charter.md` (governance) |
-| **Subsystem design specs** | [design/](design/editing-language.md) — editing-language, register-model, positions-history, vim-regex, persistence-and-recovery, render-and-frontends, stability-and-observability, remote-runtime, delivery-and-dependencies |
+| **Subsystem design specs** | [design/](design/editing-language.md): one document per subsystem; the folder is the list |
 | **Invariants** | [invariants/reference-invariants.md](invariants/reference-invariants.md) |
 | **Protocols** | [protocols/versioning-and-evolution.md](protocols/versioning-and-evolution.md) |
 | **Parity** | [parity/README.md](parity/README.md) → vim, neovim, emacs, terminal, remote, native-style, workspace, plugin-ecosystem, roadmap, common |
 | **Anti-patterns** | [anti-patterns/anti-patterns.md](anti-patterns/anti-patterns.md) |
-| **Operations** | [operations/](operations/ci-cd-and-release.md) — development-model, definition-of-done, testing-and-benchmarks, github-workflow, ci-cd-and-release, spec-validate, review-axes |
+| **Operations** | [operations/](operations/ci-cd-and-release.md) — development-model, definition-of-done, change-workflow, testing-and-benchmarks, github-workflow, ci-cd-and-release, spec-validate, review-axes, governance-model, adopting-governance, manual-test-checklist |
 | **Contributing** | [contributing/](contributing/README.md) — hub, change-paths, ai-assisted-development, quickstart (+ root CONTRIBUTING/SUPPORT/CODE_OF_CONDUCT/SECURITY) |
 | **Reviews** | [reviews/verification.md](reviews/verification.md) (point-in-time design-verification report) |
-| **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/` (0001–0011), `rejected/` (R001) |
-
-> The old "one PRD.md per folder" idea is superseded by the single [`spec/PRD.yaml`](../spec/PRD.yaml).
+| **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/`, `rejected/`; the index is there |
 
 > Convention for all docs here: English, LLM-agent-parseable (frontmatter, stable headings/IDs, tables,
-> cross-references). See the standing preference in project memory.
+> cross-references).

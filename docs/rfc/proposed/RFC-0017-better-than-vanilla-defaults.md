@@ -24,7 +24,7 @@ related:
 - **Status:** proposed
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-23
-- **Decision link:** D-056 (proposed by this RFC; recorded on acceptance)
+- **Decision link:** D-056
 - **Builds on:** D-043 (parity is a machine-derived census; humans classify), D-049 (a profile is a configuration of decided machinery), F-009 (search/substitute), C-CONFIG.
 - **Evidence:** the 2026-08-23 "better-than-vanilla" audit; `apps/tui/tests/parity_compare.rs` drives `EditorState::new` directly, so an engine-level default change would corrupt the oracle baseline.
 

@@ -65,6 +65,7 @@ It mirrors the human one-minute guide in [change-paths.md](../contributing/chang
 | --- | --- | --- |
 | `docs-editorial` | 0 | direct PR (CI only) |
 | `docs-semantic` | 1 | link the spec/Decision ID; PR |
+| `build` | 1 | PR; CI stays green; no spec/Decision artifact |
 | `implementation` | 2 | Issue + one observable acceptance condition |
 | `spec` | 2 | Issue + spec diff (spec lands before/with the first impl PR) |
 | `architecture` | 3 | RFC + impact analysis + human approval; Decision when hard to reverse |
@@ -166,6 +167,6 @@ crate dependency-cycle detection; enforces an explicit `crate_layers:` direction
 spec/dependencies.yaml). Both are wired into `verify`.
 
 Deferred (P1+, reported as "not built yet" by `verify`): `public-api-diff` and `protocol-compat` (need a
-git baseline and real Rust/protocol surface — the crates are still skeletons), and the `spec generate`
+git baseline and a real protocol surface), and the `spec generate`
 derived-artifact generator (tracked by D-022). These raise the floor of what `verify --full` and `pr check`
 can enforce as the reference implementation grows.

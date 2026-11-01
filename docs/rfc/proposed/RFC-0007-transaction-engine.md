@@ -12,7 +12,7 @@ summary: >
   the temporal-index format (D-005), and delegates the dot-repeat change-intent to the
   editing-language engine (D-025).
 audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
-status: draft
+status: proposed
 related:
   - ../../architecture/architecture.md
   - ../../design/stability-and-observability.md

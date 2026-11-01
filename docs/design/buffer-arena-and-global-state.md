@@ -29,17 +29,18 @@ The multi-buffer arena exists (`crates/core/src/workspace.rs`, F-007). What does
 that lets state be **shared across buffers** or **point into another buffer**. Concretely, three fields
 that Vim/Emacs treat as editor-global are stored on `View` and cloned on `:split`:
 
-- `registers: RegisterStore` — `crates/core/src/editor/mod.rs:167`
-- `named_marks: [Option<usize>; 26]` (a-z only, raw offsets) — `:233`
-- `jumps: Vec<usize>` / `jump_idx` (single-buffer offsets) — `:255-258`
+- `registers: RegisterStore` (`View`, `crates/core/src/editor/mod.rs`)
+- `named_marks: [Option<usize>; 26]` (a-z only, raw offsets)
+- `jumps: Vec<usize>` / `jump_idx` (single-buffer offsets)
 
-`:split` clones the whole `View` (`workspace.rs:802-816`), so these diverge between panes; and the
-swap-trick (`workspace.rs:275-314`) only ever reconstitutes the **focused** `(Document, View)` into an
+`:split` clones the whole `View` (`Workspace::split`), so these diverge between panes; and the
+swap-trick (`crates/core/src/workspace.rs`) only ever reconstitutes the **focused** `(Document, View)` into an
 `EditorState`, so cross-buffer code has nowhere to stand. Buffers also have no lifecycle model
 (no Listed/Unlisted/Hidden, no kind), so a special buffer (editable `q:`, picker results) has no home.
 
-This blocks: uppercase/global marks (`mA`-`mZ`), the `"#` register, buffer/file pickers, an editable
-`q:`, and cross-buffer keyword completion. (`:ls`/`:bnext`/`:bprev`/`:bd` already work.)
+This blocks: uppercase/global marks (`mA`-`mZ`), the `"#` register, an editable `q:`, and cross-buffer
+keyword completion. (`:ls`/`:bnext`/`:bprev`/`:bd` work, and the buffer and file pickers ship as overlays in
+`apps/tui/src/ui/buffer_picker.rs` and `file_picker.rs`.)
 
 ## Goals
 
@@ -191,15 +192,11 @@ retired, so the frontend prunes its parallel maps (`Files`, highlighters, folds,
 
 - **`"#` register:** resolved like `"%`: `set_special_registers` gains an `alt_file` param the frontend
   fills from `alt` + `Files`. Read-only.
-- **Buffer picker:** a `Scratch`/`Unlisted` buffer + overlay (view-window-workspace.md §7) whose rows are
-  `buffers()`; `<CR>` runs `focus_buffer(id)`.
-- **File picker:** same overlay; rows from a CAP-FS/CAP-SEARCH scan (thin consumer, its own feature) with a
-  cross-buffer read for preview.
 - **Editable `q:`/`q/`/`q?`:** a `Scratch` buffer seeded with history lines; `<CR>` on a line extracts it
   and runs it through the `:normal`/`:g` driven-command re-entry executor. Replaces `cmdwin.rs`'s
   read-only overlay.
 - **Other-buffers completion:** `keyword_completion` iterates `buffer_order` (Listed) reading each
-  `Document`'s bytes rather than only `focused()` (`workspace.rs:1179-1187`).
+  `Document`'s bytes rather than only `focused()` (`Workspace::keyword_completion`).
 
 ## Failure modes
 
@@ -250,8 +247,7 @@ Do not re-litigate; the `Workspace` is the single owner.
 
 1. **Slice 1 — buffer lifecycle + `"#` + other-buffers completion (no ownership move).**
    Add `Disposition`/`BufferKind`; make retirement disposition-aware and observable; wire `"#`; iterate
-   `buffer_order` in `keyword_completion`. Unblocks the buffer picker's data, `"#`, `'hidden'`, cross-buffer
-   completion. No swap-trick signature change.
+   `buffer_order` in `keyword_completion`. Unblocks `"#`, `'hidden'`, cross-buffer completion. No swap-trick signature change.
 2. **Slice 2 — register store to the Workspace (the ownership move).**
    Move `RegisterStore` off `View`; extend `from_parts`/`into_parts` + the ~20 swap-trick ops to lend the
    global store; give the oracle a test constructor. Fixes the split-clone register-divergence bug. This is
@@ -263,8 +259,6 @@ Do not re-litigate; the `Workspace` is the single owner.
 4. **Slice 4 — editable `q:`/`q/`/`q?`.**
    A `Scratch` buffer seeded with history; `<CR>` extract-and-execute via the driven-command executor;
    replace the read-only overlay. Depends on slice 1 (BufferKind).
-5. **(Consumer, separate feature) — file picker** over CAP-FS/CAP-SEARCH, reusing slice 1's special-buffer
-   + overlay.
 
 Each slice leaves the tree green and is independently shippable.
 

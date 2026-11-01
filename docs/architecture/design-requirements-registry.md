@@ -1,7 +1,7 @@
 # Design-requirement registry (DR-*)
 
-[`spec/design-requirements.yaml`](../../spec/design-requirements.yaml) is the **source of truth for the status of the long-horizon design requirements (DR-\*)**
-(상태·목록의 정본). [`docs/architecture/design-requirements.md`](design-requirements.md) keeps
+[`spec/design-requirements.yaml`](../../spec/design-requirements.yaml) is the **source of truth for the status of the long-horizon design requirements (DR-\*)**.
+[`docs/architecture/design-requirements.md`](design-requirements.md) keeps
 only the narrative: why each of the 20 domains matters. Don't put requirement lists or ✅/❌ status there.
 
 **Scope.** This registry tracks DR-\* design requirements only. Product features (F-\*), components (C-\*),
@@ -72,4 +72,4 @@ the difference goes in `notes`.
    ```
 6. Bump `updated:` at the top of the file.
 
-Snapshot on 2026-10-05 (after deep verification): 111 items, with 21 done, 77 partial and 13 todo.
+The registry's `updated:` field and item statuses are the current snapshot.

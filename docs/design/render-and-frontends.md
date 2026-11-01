@@ -10,7 +10,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - architecture.md
+  - ../architecture/architecture.md
   - ../protocols/versioning-and-evolution.md
   - ../invariants/reference-invariants.md
   - ../parity/terminal.md
@@ -163,15 +163,16 @@ Debug surfaces are **product features**, not ad-hoc logging — specified in
 Keep apps thin so the TUI doesn't become a monolith; the engine is reusable.
 
 ```
-workspace-kernel          editor-tui                 editor-gui
+ruse-core (crates/core)   ruse-tui (apps/tui)        GUI (future, F-018)
 ├─ document               ├─ terminal input          ├─ native window
 ├─ command                ├─ ANSI rendering          ├─ GPU rendering
-├─ plugin                 ├─ clipboard               └─ OS integration
-├─ remote                 └─ process bootstrap
-└─ render-model
+├─ transaction, undo      ├─ clipboard               └─ OS integration
+└─ registers, anchors     ├─ LSP, remote, persistence
+                          └─ process bootstrap
 ```
 
-Maps to the repo layout in [../README.md](../README.md): `crates/*` = engine, `apps/*` = thin frontends.
+`crates/core` is IO-free and reusable. `apps/tui` holds everything that does IO, so it is not thin today; a
+second frontend is what would force more of it into a shared crate (D-039).
 
 ## 7. Structural Guardrails
 
@@ -179,22 +180,21 @@ Maps to the repo layout in [../README.md](../README.md): `crates/*` = engine, `a
   samples, and generated outputs becomes unmanageable. ruse splits strictly early (`crates/ apps/
   extensions/ sdk/ tests/ docs/ tools/`) and keeps sample outputs / large corpora in a separate repo or
   Git LFS.
-- **Too many backends early.** Follow the render sequencing in §4 of [../README.md](../README.md).
-- **Folder ≠ crate.** Start with big crate boundaries (`editor-core`, `terminal-client`,
-  `workspace-runtime`, `plugin-protocol`); keep `document/transaction/command/anchor` as modules inside
-  `core` until a real boundary demands a split. (Guards CORE-11/12/13.)
+- **Too many backends early.** Follow the render sequencing under Build Order in [../README.md](../README.md).
+- **Folder ≠ crate.** Two crates (D-039); `document/transaction/command/anchor` are modules inside `core`
+  until a real boundary demands a split. (Guards CORE-11/12/13.)
 
 ## v0 — TUI viewport & vertical scroll (SHIPPED, not the deferred IR above)
 
 > Sections 1–7 describe the **deferred** multi-frontend render-IR architecture (paused per RFC-0012 until a
 > second frontend is actually started). This section is the **live v0**: the single `ruse` TUI binary
-> renders a plain `Document` directly, with no IR. It exists so tall files are editable — the correctness
-> gap this slice closes (before it, `render` always started at buffer row 0, so the cursor could sit off
-> the bottom of the screen and its line was never drawn).
+> renders a plain `Document` directly, with no IR. Folds (`apps/tui/src/folds.rs`) and virtual rows
+> ([rich-rendering.md](rich-rendering.md)) adjust the row walk on top of this model.
 
-**View state is frontend-only.** The core stays IO-free / view-free (INV-DOC-VIEW): it knows nothing of
-rows, columns, terminal size, or scroll. The viewport is a single `top` offset (the first visible buffer
-line) held in the TUI event loop, recomputed each frame from the cursor's row — never stored in `EditorState`.
+**The frontend computes the viewport.** The core stays IO-free (INV-DOC-VIEW): it knows nothing of columns,
+terminal size, or the scroll rule. The viewport is a single `top` offset (the first visible buffer line) stored
+per View (`View.top`, so two Views of one buffer scroll independently) and recomputed each frame by the
+frontend viewport pass from the cursor's row.
 
 **Scroll-to-cursor (the one rule).** Before each draw, `top` is adjusted so the cursor stays visible with a
 `scrolloff` margin of context above and below (Vim's `scrolloff`). Given the cursor's buffer row, the text
@@ -206,8 +206,7 @@ height (screen rows minus the status line), the current `top`, and the margin:
 - otherwise `top` is unchanged (no scroll on pure horizontal / in-viewport motion).
 
 All arithmetic saturates at 0, and the margin is clamped to `(height−1)/2` so it always fits (a 3-row window
-can't reserve 5 rows of context). The function is **pure and unit-tested** (`viewport::scroll_top`); the
-event loop owns only the `mut top` it threads through.
+can't reserve 5 rows of context). The function is **pure and unit-tested** (`viewport::scroll_top`).
 
 **Rendering.** `render` draws the `height` buffer lines starting at `top`, and places the terminal cursor at
 `(cursor_row − top, col)`. Long lines are **truncated at the terminal width** (no wrap) so screen-row math

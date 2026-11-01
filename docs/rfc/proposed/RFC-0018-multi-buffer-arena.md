@@ -27,7 +27,7 @@ related:
 - **Status:** proposed
 - **Author(s):** Claude Opus 4.8 (design agent), for maintainer review
 - **Created:** 2026-08-24
-- **Decision link:** D-057 (proposed with this RFC)
+- **Decision link:** D-057
 
 <!-- Hard-to-reverse: this moves ownership of core editor state (registers, marks, jumplist) out of the
      per-View EditorState into the Workspace, changing the core data model and the swap-trick pipeline's

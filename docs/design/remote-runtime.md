@@ -12,7 +12,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - architecture.md
+  - ../architecture/architecture.md
   - ../parity/remote.md
   - ../../spec/DECISIONS.md
   - ../protocols/versioning-and-evolution.md
@@ -58,7 +58,7 @@ before "remote."
   client never hangs on a password prompt; the host follows `--` and a host that is empty or starts with `-`
   is rejected, so user input can never be parsed as an ssh option such as `-oProxyCommand=`). `AgentClient` was already transport-agnostic (it takes a
   `Command`), so only the launch differs; the command *assembly* is deterministically unit-tested and the live
-  wire is an env-gated ignored smoke (`tests/agent_ssh.rs`). **Limitation:** without agent bootstrap yet, a
+  wire is an env-gated ignored smoke (`apps/tui/tests/agent_ssh.rs`). **Limitation:** without agent bootstrap yet, a
   remote host must already have `ruse` on its `PATH` (the remote command is `ruse agent`, not yet the
   versioned `$HOME` install below).
 - **Slice 2b — remote filesystem service set (F-017, #317): SHIPPED.** The agent grows from one service to
@@ -77,7 +77,7 @@ before "remote."
 ## Not like VS Code's local Remote extension
 
 There is **no required local Remote package**. The SSH connector is a **Built-in Service**; the user just
-runs `editor ssh host`. Making remote a plugin would cause: hard-to-discover feature, plugin↔core version
+runs `ruse ssh host`. Making remote a plugin would cause: hard-to-discover feature, plugin↔core version
 coupling, connection breaking on plugin-load failure, remote unusable in safe/recovery mode, and the
 client/runtime protocol becoming hostage to a third-party extension API. (DECISIONS **D-029**.)
 
@@ -107,18 +107,18 @@ Local TUI Client                         Workspace Runtime (remote)
                                          Debug Target (remote process / container / board / QEMU)
 ```
 
-The Agent is a **supervisor of workspace-local services**, not a single daemon. `editor-client` has no
-business understanding remote files directly; `editor-agent` has no terminal rendering / clipboard / input
+The Agent is a **supervisor of workspace-local services**, not a single daemon. The client has no
+business understanding remote files directly; `ruse agent` has no terminal rendering / clipboard / input
 profile / status-bar / theme / command-palette UI.
 
 ## Bootstrap & install (auto, no sudo)
 
-User does one thing: `editor ssh build-server` (or `editor ssh user@host:/workspace/project`). Internally:
+User does one thing: `ruse ssh build-server` (or `ruse ssh user@host:/workspace/project`). Internally:
 
 ```
 1 SSH connect → 2 detect OS/arch → 3 check for a compatible agent →
 4 if absent, client UPLOADS the matching agent binary → 5 verify checksum →
-6 atomic install under $HOME → 7 run agent --stdio → 8 protocol handshake → 9 workspace connect
+6 atomic install under $HOME → 7 run `ruse agent` over stdio → 8 protocol handshake → 9 workspace connect
 ```
 
 Install layout (versioned, side-by-side):
@@ -134,8 +134,8 @@ side-by-side per version; checksum/signature verify; upload to a temp file then 
 from a world-writable path; auto-prune old versions; provide removal.
 
 ```
-editor remote status <host>     editor remote reinstall <host>     editor remote logs <host>
-editor remote remove <host>     editor remote prune <host>
+ruse remote status <host>     ruse remote reinstall <host>     ruse remote logs <host>
+ruse remote remove <host>     ruse remote prune <host>
 ```
 
 **Offline-first:** the client ships agent bundles for common targets and uploads over SSH rather than having
@@ -150,14 +150,14 @@ release package
 ```
 
 Three install policies: **managed** (default; auto-install/update on connect), **pre-installed**
-(`editor-agent install --system` by an admin; client detects it), **no-install** (basic mode / limited).
+(`ruse agent install --system` by an admin; client detects it), **no-install** (basic mode / limited).
 
 ## Transport: SSH stdio first
 
 Start with SSH stdio + a multiplexed framed protocol; no listening ports/tunnels initially.
 
 ```
-ssh host ~/.local/share/ruse/agents/<ver>/editor-agent --stdio
+ssh host ~/.local/share/ruse/agents/<ver>/ruse agent
    └─ multiplexed protocol: control · filesystem · process · terminal · language · debug · git · events · logs
 ```
 
@@ -307,7 +307,7 @@ Fixing this "Agent = headless workspace execution runtime" definition early lets
 QEMU, and dev boards** all fit under the same Workspace Runtime model later — SSH is just the first transport.
 
 ## Reference Invariants
-- **INV-REMOTE-FIRST**, **INV-CAP-DEGRADE**, **INV-ADDITIVE**, **INV-TRUST-1** (see
+- **INV-REMOTE-FIRST** (a deferred commitment since D-039), **INV-CAP-DEGRADE**, **INV-ADDITIVE**, **INV-TRUST-1** (see
   [../invariants/reference-invariants.md](../invariants/reference-invariants.md)).
 
 ## Alternatives / Rejected / Trade-offs
