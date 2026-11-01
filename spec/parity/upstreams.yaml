@@ -77,8 +77,8 @@ source_of_record:
 upstreams:
   neovim:
     repo: https://github.com/neovim/neovim.git
-    revision: 5885a30e1e1225349079e7a1c4a3848aa8e43e42   # v0.12.5
-    version_label: v0.12.5
+    revision: 779c36969e31080503be2dfccbcc3f999e289606   # v0.12.6
+    version_label: v0.12.6
     role: primary            # ruse's editing-language reference; Vim is derived as a computed delta
     census_scope:
       include:
