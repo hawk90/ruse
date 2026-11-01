@@ -122,18 +122,8 @@ A stage may intentionally stop at an earlier gate (an experimental subsystem may
 
 ## Milestones = stage proofs (not sprints)
 
-GitHub Milestones are named by release version and mirror `spec/phases.yaml` (D-037, D-059). The stage proofs
-below are the **one-sentence exit conditions** behind that ladder:
-
-| Milestone | Exit condition (example) |
-| --- | --- |
-| M0 Spec foundation | The normative spec, invariants, and validation exist and pass. |
-| M1 Headless editor-core | A deterministic headless editor can execute commands, record transactions, and replay undo/redo. |
-| M2 Vim editing kernel | Operator+motion/registers/dot-repeat pass the Vim L2 differential corpus. |
-| M3 Dogfoodable terminal editor | A developer can edit real files in the TUI without manual workarounds. |
-| M4 Local workspace | Buffers/views/splits + atomic save + crash recovery work end-to-end. |
-| M5 Plugin proof | An isolated plugin registers a command and requests a transaction over the versioned protocol. |
-| M6 Remote editing proof | An auto-bootstrapped SSH agent serves fs/search/PTY with reconnect. |
+GitHub Milestones are named by release version and mirror `spec/phases.yaml` (D-037, D-059). Each phase's
+`goal` there is the one-sentence exit condition behind that ladder.
 
 Never write "implement the core" — write the behavior that proves the stage.
 

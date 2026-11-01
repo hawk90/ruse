@@ -6,8 +6,8 @@ summary: >
   Entry point and philosophy for the ruse documentation set. ruse is designed as a specification with
   a reference implementation, not as "an editor written in Rust." Architecture, invariants, protocols,
   anti-patterns, and parity are first-class, language-independent artifacts; code proves them. This hub
-  defines the spec-first philosophy, the RFC process, the stable glossary, the build order, the target
-  repository layout, and the document map.
+  defines the spec-first philosophy, the RFC process, the stable glossary, the build order, and the
+  document map.
 audience: [maintainers, contributors, llm-agents]
 status: draft
 ---
@@ -73,37 +73,12 @@ A solo/small-team effort must not aim at the final product on the first pass. Se
 9. AI
 ```
 
-> Reconciles verification V-10 (Command was contradictorily placed at step 4 while Input at step 2 depends
-> on it) and V-11 (Workspace was unplaced yet F-007/F-008 need it). Command lives in editor-core; a local
-> Workspace stage precedes plugin/remote. **Machine-checkable ordering = `spec/PRD.yaml` component
-> `build_stage`/`depends_on`** (this prose is the narrative view).
+> Machine-checkable ordering is `spec/PRD.yaml` component `build_stage`/`depends_on`; this prose is the
+> narrative view. The current crate layout is in [`README.md`](../README.md) (D-039).
 
 Render backends specifically sequence: (1) Semantic Render Tree → (2) ANSI/Unicode backend → (3) virtual
 terminal tests → (4) Kitty image backend → (5) remote protocol → (6) GUI backend. Do **not** implement
 ANSI + Kitty + SIXEL + GUI + Web all at once.
-
-## Target Repository Layout
-
-Big boundaries only at first; `document/transaction/command/anchor` start as **modules inside one core
-crate**, not separate crates. Do not confuse well-named folders with public package boundaries.
-
-```
-project/
-├── crates/
-│   ├── core/            # document, transaction, command, query, anchor, undo, registers, context, health
-│   ├── render-model/    # node, layout, decoration, protocol
-│   ├── terminal-platform/ # input, capability, ansi, image, virtual-terminal
-│   ├── workspace/       # LOCAL: buffers, filesystem, save, recovery journal   (stage 4 — no remote)
-│   ├── workspace-runtime/ # remote runtime: process, remote, lsp, plugin-host  (stages 5–6)
-│   └── plugin-protocol/
-├── apps/                # tui, remote-agent, gui   (thin; engine is reusable)
-├── extensions/          # core-git, core-search, examples
-├── docs/                # see doc map below
-├── tests/               # command-parity, terminal-matrix, plugin-compat, remote-scenarios
-└── tools/               # inspector, protocol-dump, render-diff, diagnostic-bundle
-```
-
-Large sample outputs / test corpora belong in a separate repo or Git LFS, not the main tree.
 
 ## Document Map
 
@@ -126,7 +101,5 @@ reviews are separate folders.
 | **Reviews** | [reviews/verification.md](reviews/verification.md) (point-in-time design-verification report) |
 | **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/`, `rejected/`; the index is there |
 
-> The old "one PRD.md per folder" idea is superseded by the single [`spec/PRD.yaml`](../spec/PRD.yaml).
-
 > Convention for all docs here: English, LLM-agent-parseable (frontmatter, stable headings/IDs, tables,
-> cross-references). See the standing preference in project memory.
+> cross-references).

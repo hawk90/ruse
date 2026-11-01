@@ -302,42 +302,15 @@ lowering failure pins that node to the compatibility rung (placeholder), never t
 (INV-RENDER-PROFILE). Decoding untrusted image bytes is a sandboxed, size-bounded step (a decode bomb must not
 OOM the editor — bound dimensions before allocation).
 
-### 8.3 Compositing images with the cell-diff renderer (slice 3b-2 — the crux)
+### 8.3 Compositing images with the cell-diff renderer
 
-The hazard: a terminal image is a **raw escape written at a screen position**, not a grid of `Cell`s, so it
-does **not** fit `screen.rs`'s cell grid or its frame diff (which emits only changed cells). Forcing image
-bytes through the cell model would corrupt the diff. The chosen model is **reserve-in-grid + overlay-after-flush**:
+A terminal image is a **raw escape**, not a grid of `Cell`s, so forcing image bytes through `screen.rs`'s cell
+model would corrupt the frame diff. The image's `virt_lines` block reserves `height` rows in the cell grid
+(slice 3a), and §8.8 fills them with placeholder cells. Synchronized output (TERM-SYNC, if present) wraps the
+frame so an image update does not tear.
 
-1. **Reserve.** The image's `virt_lines` block already reserves `height` rows in the cell grid (slice 3a). On
-   a graphics-capable client the reserved rows are painted as **blanks** (not the placeholder box), so the
-   diff keeps those cells consistent and, when the image is later deleted, the correct background shows.
-2. **Overlay pass (new).** *After* `flush_diff` writes the cell changes, a **graphics pass** reconciles a
-   small owned map `placed: HashMap<Handle, Placement>` (handle → screen row/col + rows×cols) against the
-   blocks visible this frame:
-   - a block **newly visible or moved** → (transmit the image if not already resident) + **place** it at its
-     block's top-left screen cell (`CSI` cursor-move, then the Kitty `APC _G` place);
-   - a block **no longer visible / scrolled off / whose buffer moved** → **delete** its placement
-     (Kitty `_Ga=d`), so the reserved blanks underneath repaint normally;
-   - a block **unchanged** (same handle, same screen position) → **emit nothing** (mirrors the cell diff's
-     "unchanged ⇒ zero bytes", so a still frame stays silent).
-   The pass runs outside the cell critical section and touches only `Write`; the cell grid never holds image
-   bytes.
-   - **Concrete Kitty commands** (`APC _G <keys> ; <base64 payload> ESC \`): **transmit** once per resident
-     image — `a=t` (transmit), `f=100` (PNG) or `f=32` (RGBA), `i=<image-id>`, chunked with `m=1` on all but
-     the last chunk (payload split into ≤4096-byte base64 runs); **place** — move the cursor to the block's
-     top-left cell (`CSI <row> ; <col> H`) then `a=p, i=<image-id>, p=<placement-id>, c=<cols>, r=<rows>`;
-     **delete a placement** — `a=d, d=i, i=<image-id>, p=<placement-id>` (frees the on-screen placement, keeps
-     the transmitted image); **free the image** (on cache eviction) — `a=d, d=I, i=<image-id>`.
-3. **Placement lifecycle.** Transmit-once/place-many: an image is transmitted (assigned a Kitty image id)
-   the first time it enters view and kept resident; re-scrolling only re-places (cheap). Deleting a placement
-   does not evict the transmitted image (cache stays warm for scroll-back).
-4. **Synchronized output** (TERM-SYNC, if present) wraps the *cell flush + graphics pass* together so a frame
-   with an image update does not tear.
-
-This keeps INV-RENDER-IR honest: the decoration model carries a **semantic image node** (handle + rows); the
-Kitty/Sixel escape bytes are produced only here, in the **TUI backend lowering** — no provider or core code
-emits terminal bytes. It is the same "lower per capability" the render-and-frontends doc mandates, realized
-for one backend.
+The decoration model carries a **semantic image node** (handle + rows); the Kitty/Sixel escape bytes are produced
+only in the **TUI backend lowering**, and no provider or core code emits terminal bytes (INV-RENDER-IR).
 
 ### 8.4 Decode, sizing, and identity
 
@@ -377,32 +350,13 @@ a bounded file load; degrade to the 3a placeholder when graphics is absent; `Ter
 render. **Out (follow-ups):** Sixel + iTerm2 lowering (3b-3); the Kitty-APC *detection* probe (env hint stands
 in); the `CSI 14/16 t` pixel probe; animated images; a Unicode half-block preview rung.
 
-### 8.7 Scroll & partial visibility
-
-Scrolling is where the placement map earns its keep — it is driven by the SAME `top` the cell renderer uses,
-so image and text move in lockstep:
-
-- **Fully above/below the viewport** → the block is not painted; the graphics pass finds a stale `placed`
-  entry and emits a **delete-placement**. No transmit/decode churn (the image stays resident for scroll-back).
-- **Fully visible, same screen position as last frame** → **no-op** (the still-frame silence rule).
-- **Fully visible, moved** (scrolled by N rows, or the buffer above it changed height) → **re-place** at the
-  new cell (one `CSI H` + `a=p`); no re-transmit.
-- **Partially clipped at the viewport top/bottom** → Kitty crops via the placement's cell rectangle
-  (`c`/`r` plus a source-offset), so a half-scrolled image shows its visible band; the reserved blank cells
-  bound it. If cropping is unavailable, that frame falls to the placeholder for the block rather than drawing
-  an overflowing image (INV-RENDER-PROFILE — never paint outside the pane).
-- **The block's own reserved rows** already come from the slice-3a row model, so `top`/`scrolloff` math is
-  unchanged; only the *overlay* is added. (The documented 3a limitation — `top` is buffer-line based, so
-  scrolloff can be slightly loose near a tall block — is inherited, not worsened.)
-
 Multi-pane: a placement belongs to the focused pane's view (like conceal/virt today); an image in a
 non-focused pane is not placed in slice 3b-2 (its block shows the placeholder). Per-pane placement is a
 follow-up when a real second pane shows the same image.
 
 ### 8.8 Positioning via Unicode placeholders (the tmux-correct method — slice 3b-2c)
 
-**Why direct placement fails.** The reserve+overlay of §8.3 draws the image with a Kitty placement at the
-*cursor* — which lands at the OUTER terminal's absolute coordinates. Live testing exposed the fatal case:
+**Why direct placement fails.** A Kitty placement at the *cursor* lands at the OUTER terminal's absolute coordinates. Live testing exposed the fatal case:
 inside a **tmux pane**, ruse only knows *pane-relative* coordinates, does not know the pane's offset within
 the window, and tmux does not clip a passthrough image to the pane. So the image lands at the window's
 top-left (0,0), overflows the pane, and isn't cleared on the pane's own redraws. Cursor-based placement is
@@ -454,67 +408,11 @@ bounded to `[0, 296]` (our blocks are ≤ ~40 rows; columns are clamped). The em
 pty byte-capture harness (structure: `U+10EEEE` + two diacritics per cell, `fg` = id), then the pixels are
 eyeballed on a real Ghostty+tmux.
 
-This supersedes §8.3's cursor placement as the positioning mechanism; the reserve model stays (the block still
-reserves `ROWS` display rows via the slice-3a row model), but the reserved cells become placeholder cells
-rather than blanks-plus-an-overlay.
+## 9. Spec home
 
-## 9. Governance & spec deltas
-
-This is **architecture-tier** (it introduces the display-coordinate boundary and reactivates part of RFC-0009).
-The change set:
-
-- **New PRD feature** — e.g. `F-031 Rich in-buffer rendering (prose mode)`, stage post-mvp. Acceptance drafted
-  around: markup conceals with reveal-at-point; faces render (bold/italic/heading); a fenced image shows real
-  on a capable terminal and a labelled placeholder elsewhere (degrade); Org and Markdown both render; the
-  document bytes are never mutated by rendering (INV-DOC-VIEW).
-- **Capabilities** (`spec/capabilities.yaml`) — repoint `CAP-MARKDOWN` (drop `prd:[]`); add `CAP-ORG`; add a
-  render capability for the decoration/layout primitive (e.g. `CAP-DECORATION`, base/service); add
-  `CAP-GRAPHICS` (client, replaceable, the inline-image lowering). Wire `requires` (decoration ← syntax
-  snapshot; graphics ← terminal caps).
-- **RFC** — an **RFC-0009 addendum** (or a new RFC referencing it) recording the *partial single-frontend
-  reactivation*: the layout pass + decoration model are TUI-local; the multi-frontend Render Tree stays
-  deferred. Plus a note in RFC-0005 for the graphics capability + pixel-size probe.
-- **Invariants** — restate (not mint) INV-CAP-DEGRADE, INV-RENDER-PROFILE, INV-QUERY-SNAPSHOT, INV-DOC-VIEW;
-  the layout pass is where INV-DOC-VIEW is *proven* for rendering (presentation ≠ mutation).
-- **Deps** — `tree-sitter-md`, `tree-sitter-org`, an image decode crate (bounded).
-
-### 9.1 Decision bodies (draft for `spec/DECISIONS.md`)
-
-- **D-A — Conceal caret semantics.** Conceal is presentation-only (INV-DOC-VIEW); the document is never
-  mutated by rendering. An element is revealed iff the caret lies within its grammar-node extent (reveal on
-  the caret's source line); search hits and diagnostics inside a concealed range force-reveal. Horizontal
-  motion steps over un-revealed concealed ranges to their far edge; vertical motion keeps a display goal
-  column. Selection/yank/operators act on buffer bytes, not the concealed display. `render.conceal` default =
-  `off` globally, auto-`markers` for `.md`/`.org`. *Re-evaluate if a filetype needs a third caret policy or if
-  reveal-on-line proves too eager for dense prose (then fall back to reveal-on-element-only).*
-- **D-B — Inline-graphics ladder & detection.** `Capability::InlineGraphics` is a ladder
-  `{Kitty > Sixel > iTerm2 > None}`, not a bool. Detection: Kitty via `APC _G` transmit-and-query, Sixel via
-  the DA1 param `4`, iTerm2 via `$TERM_PROGRAM` env-hint; precedence UserOverride > Probed > EnvHint > Default
-  (the existing ledger rule). When multiple are present, prefer the highest rung. Cell pixel size via
-  `CSI 14 t`/`CSI 16 t`, on the DA1-fenced batch. The tier is pinned per client-view (INV-RENDER-PROFILE);
-  lowering failure falls to the compatibility rung. Images lower real → Unicode preview → labelled placeholder
-  (INV-CAP-DEGRADE). *Re-evaluate when a fourth protocol or a GUI backend (F-018) appears.*
-- **D-C — Partial single-frontend reactivation of RFC-0009 (RFC-0012 re-boundary).** A second render **tier**
-  within the one TUI (rich in-buffer rendering) is a re-boundary trigger that reintroduces **only** the
-  TUI-local layout pass + decoration model — the in-line facet of RFC-0009's Semantic View Model. The
-  backend-neutral, serializable, `schemaVersion`-carrying multi-frontend Render Tree stays **deferred** until a
-  real second frontend (GUI, F-018). The layout pass is an internal lowering step, not the versioned wire IR;
-  nothing here forecloses the full IR later (the decoration model is a strict subset of it). *Supersede only by
-  superseding this scoping when F-018's GUI backend lands.*
-
-### 9.2 F-031 acceptance (draft)
-
-1. In an `.md` buffer, `**x**` renders `x` bold with the `**` markers hidden; moving the caret onto that word
-   reveals the markers (editable), and moving away re-hides them.
-2. ATX headings render with a distinct face; **the document bytes are unchanged** — a content hash before and
-   after any number of render frames is identical (INV-DOC-VIEW).
-3. A fenced Markdown image (`![alt]` + a `.png` target) shows a real image on a Kitty-graphics terminal and a bordered `alt` + dimensions
-   placeholder on a plain terminal — **same buffer, two render profiles** (INV-CAP-DEGRADE).
-4. With `render.conceal = off`, rendering is **byte-for-byte identical** to plain syntax highlighting — no
-   column drift, caret and paint agree (P6; the slice-0 identity guard).
-5. Markdown and Org both render headings, emphasis, links (URL concealed, label faced), and checkboxes.
-6. Selecting and yanking across concealed markup copies the **raw markup bytes** (`**`, `[[…]]`), proving
-   conceal is presentation-only.
+Decisions: D-052 (conceal), D-053 (graphics ladder), D-054 (partial RFC-0009 reactivation). Feature and acceptance:
+`F-031` in [PRD.yaml](../../spec/PRD.yaml). Capabilities: `CAP-MARKDOWN`, `CAP-ORG`, `CAP-DECORATION`, `CAP-GRAPHICS`
+in [capabilities.yaml](../../spec/capabilities.yaml).
 
 ## 10. Slicing plan (honest, incremental — each slice ships something testable)
 

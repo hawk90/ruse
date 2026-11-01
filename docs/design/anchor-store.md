@@ -248,11 +248,6 @@ guessed (mirrors the offline `render-diff`/inspector tooling).
 - **Line/column as the stored form** — breaks on multi-byte/grapheme edits and is O(n) to re-derive; bytes
   are canonical, typed units are a resolution.
 
-## Migration strategy
-
-New kernel component; nothing to migrate. It is a **prerequisite** for the first vertical slice
-(Document → Transaction → Undo → Snapshot): the slice exercises the store's update rule end-to-end.
-
 ## Test strategy
 
 This subsystem is where the missing differential corpus starts (`tests/property/anchor-*`,

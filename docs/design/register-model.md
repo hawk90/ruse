@@ -491,12 +491,6 @@ persistence is enabled, OQ-4). Undoing a paste removes inserted Document text vi
   Emacs and pollutes the Document undo tree with non-Document state. Rejected: the store is session state
   outside INV-TXN/INV-UNDO (see Invariants).
 
-## Migration strategy
-
-Greenfield (no prior register impl). Land the `RegisterStore` + `C-REGISTER` contract behind the input engine
-(F-003) before either surface reaches L2. The Vim surface mapping (§3.1) and Emacs surface mapping (§3.2) are
-implemented as command handlers over the same store; the differential corpus (below) gates the merge.
-
 ## Test strategy
 
 Differential tests (TEST-2 corpus, required to pass). Each asserts store state and/or resulting buffer.
