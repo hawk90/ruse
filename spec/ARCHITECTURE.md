@@ -28,7 +28,7 @@ related:
 ## ARCH-LAYER-001 — Layers (dependency flows downward only)
 
 ```
-Kernel                (Document, Transaction, Command, Query, Anchor, Undo; Health, Scheduler (deferred))
+Kernel                (Document, Transaction, Command, Anchor, Undo; Query (deferred, #970); Health, Scheduler (deferred))
   → Built-in Services (Workspace, Render, Terminal platform, LSP, Git)
     → Bundled Extensions (core-git, core-search — built on the same stable API)
       → Third-party Plugins (isolated, versioned protocol)
@@ -45,7 +45,7 @@ Input
     → Semantic Command
       → Transaction
         → Document (revision++)
-          → View Model
+          → View Model (deferred, D-039)
             → Render Tree (semantic paint IR; deferred, D-039, the TUI paints directly)
               → Frontend Lowering (ANSI cell grid / Kitty image / GUI / Web)
 ```
