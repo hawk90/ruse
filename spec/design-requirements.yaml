@@ -3,7 +3,7 @@
 # Scope: DR-* design requirements only. Product features stay in spec/PRD.yaml (F-*).
 # Statuses verified against code on 2026-10-05 (code wins over docs; conflicts in notes).
 schema: 1
-updated: 2026-11-02
+updated: '2026-11-02'
 sources:
   - docs/architecture/design-requirements.md (§1–§20, DR-* list before 2026-10-05)
 statuses:
@@ -357,7 +357,7 @@ items:
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
     notes: 'Atomic + durable done. Permission bits are carried over and a symlink is followed to its target
-      (apps/tui/src/persist/atomic.rs). Ownership and other metadata are not preserved.'
+      (apps/tui/src/persist/atomic.rs). Ownership and other metadata are not preserved, and hard links break (#864).'
   - id: PERSIST-007
     title: Large files use an incremental journal
     area: persist

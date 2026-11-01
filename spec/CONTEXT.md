@@ -35,19 +35,18 @@ Terminal-based modal editor with Vim/Neovim/Emacs feature parity, built as a spe
 implementation. Remote, GUI and a plugin protocol are deferred capabilities (D-039).
 
 ## Current stage
-**MVP features done; post-MVP feature growth.** All 18 MVP features (phases `core-editing` v0.1.0 +
-`usable-vim-tui` v0.2.0 in [phases.yaml](phases.yaml)) are `done`. GitHub Milestones are named by release version
+**MVP features marked done; post-MVP feature growth.** All 18 MVP features (phases `core-editing` v0.1.0 +
+`usable-vim-tui` v0.2.0 in [phases.yaml](phases.yaml)) are marked `done` (#1028 tracks where the code disagrees). GitHub Milestones are named by release version
 and mirror the phases one-way (D-037, D-059). Two crates per D-039: `crates/core`
 (kernel: document, transactions, undo, anchors, registers, editing grammar) and `apps/tui` (the `ruse`
 binary: input profiles, rendering, terminal, LSP, remote, PTY). Behavior parity is checked against pinned
-Neovim/Emacs oracles (D-043; `tests/parity/`; pins in `spec/parity/upstreams.yaml`, nvim v0.12.6 and emacs-31.1
-at this writing).
+Neovim/Emacs oracles (D-043; `tests/parity/`; pins in `spec/parity/upstreams.yaml`).
 
 Post-MVP features with **partial slices landed** while PRD status stays `planned` until a done-decision:
 F-011 PTY terminal buffer · F-012 Emacs profile · F-013 Native profile · F-014 LSP (diagnostics, goto, rename, formatting, completion, references, code actions) ·
 F-015 tree-sitter highlight + injections + indent · F-017 remote (SSH transport + fs service) · F-030 `:checkhealth` ·
-F-031 rich Markdown/Org rendering · F-032 buffer arena (design decided, D-057). Not started: F-016 plugins, F-018 GUI (parked), F-019 marketplace,
-F-020 AI agent, F-021 debugger. Exact state: [PRD.yaml](PRD.yaml) + `git log --grep F-0NN`.
+F-031 rich Markdown/Org rendering. Not started: F-016 plugins, F-018 GUI (parked), F-019 marketplace,
+F-020 AI agent, F-021 debugger, F-032 buffer arena (design decided, D-057). Exact state: [PRD.yaml](PRD.yaml) + `git log --grep F-0NN`.
 
 ## Core invariants (must hold)
 - Document does not depend on View. (INV-DOC-VIEW)
@@ -64,7 +63,7 @@ Input → Input Profile → Semantic Command → Transaction → Document(rev++)
 stages of ARCH-FLOW-001 are the deferred target (D-039); the TUI paints the document directly.
 
 ## Requirements
-MVP (done): F-001..F-010, F-023..F-029 — editing kernel, Vim profile and its namespaces, command engine,
+MVP (marked done): F-001..F-010, F-023..F-029 — editing kernel, Vim profile and its namespaces, command engine,
 undo, TUI, windows, save/recovery, search, terminal capability. Post-MVP (planned/partial): F-011..F-021,
 F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 
@@ -78,7 +77,7 @@ F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 - Engine keeps Vim factory defaults; better-than-Vim defaults live at the frontend layer. (D-056)
 - Macros record raw keystrokes into the a-z registers. (D-055)
 - Editor-global state moves to the Workspace; buffers gain disposition + kind. (D-057)
-- Workspace trust gates processes that execute project code. (D-058)
+- Workspace trust gates language-server spawning. (D-058)
 - Milestones are titled by release version. (D-059)
 
 ## Open questions

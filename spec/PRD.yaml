@@ -234,7 +234,8 @@ features:
     # NOW IMPLEMENTED (register.rs; unit-tested — census-tracing/formal acceptance is a follow-up): the
     # numbered ring `"1`-`"9`, small-delete `"-`, and black-hole `"_` registers, plus `:registers`/`:reg`
     # (F-026 command engine + a picker). Also implemented: expression `"=` (crates/core/src/expr.rs) and
-    # clipboard `"+`/`"*` (crates/core/src/clipboard.rs). MACROS (q record / @ replay) ship per D-055: recording
+    # clipboard `"+`/`"*` (crates/core/src/clipboard.rs); open register bugs include #704, #708, #749, #796 and #816.
+    # MACROS (q record / @ replay) ship per D-055, with open bugs #680, #681, #787, #812 and #851: recording
     # captures RAW KEYSTROKES and stores them as bytes in these same a-z registers, replayed by re-feeding the
     # input engine (so `"ap` shows a macro and yanked text runs as one). This is a distinct mechanism from
     # dot-repeat/trace (which record resolved Commands), and not an F-029 acceptance criterion. See macros.md.
@@ -630,9 +631,10 @@ features:
     priority: should
     # progress: InputProfile{Vim,Emacs,..} on the engine; `feed` branches to the non-modal `feed_emacs` BEFORE
     # any Vim modal handling (Emacs has no Normal/Insert grammar). apps/tui/src/input/emacs.rs holds the keymap
-    # layer stack, the C-x prefix map, the C-u prefix argument (D-049), M-x and the kill commands. `RUSE_PROFILE=
-    # emacs` selects it (no config loader yet). REMAINING includes the yank-pop kill-ring view (D-026), the
-    # mark ring (D-027, #654) and keyboard macros (#657).
+    # layer stack, the C-x prefix map, a numeric C-u path, M-x and the kill commands. `RUSE_PROFILE=
+    # emacs` selects it (no config loader yet). REMAINING includes the raw prefix argument and the other prefix
+    # maps (D-049, #650), the command model (#651), Vim-frontend interception (#604), the yank-pop kill-ring view
+    # (D-026, #653), the mark ring (D-027, #654) and keyboard macros (#657).
     status: planned
     depends_on: [C-INPUT, C-COMMAND, C-POSHIST]
     summary: Prefix keys, M-x, mark/region, kill ring, universal argument, major/minor modes.
