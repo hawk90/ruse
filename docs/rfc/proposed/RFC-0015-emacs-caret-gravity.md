@@ -31,7 +31,7 @@ related:
 - **Status:** proposed
 - **Author(s):** ruse maintainers
 - **Created:** 2026-08-13
-- **Decision link:** D-050 (proposed by this RFC; recorded on acceptance)
+- **Decision link:** D-050
 - **Builds on:** RFC-0014 / D-049 (the Emacs profile), RFC-0004 (input profiles), D-003 (Document ≠ View — the caret is View-local).
 - **Evidence:** `apps/tui/tests/emacs_parity_compare.rs` vs the pinned emacs-30.2 oracle (`tools/parity/emacs_oracle.py`); tally 10/23 verified, and ~half the 13 divergences are this one cause.
 

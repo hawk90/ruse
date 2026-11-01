@@ -59,8 +59,8 @@ You use ruse and want to interact, not (yet) build.
 You want your first merged change to succeed. **Start in the low-risk surface**, where feedback is fast and
 the blast radius is small:
 - docs, tests, error messages, validator improvements, small TUI behavior, reproducible bug fixtures.
-- Filter for labels: `good-first-issue`, `help-wanted`, `area/docs`, `area/testing`, `area/infra`.
-- **Do NOT** start in `editor-core` or `plugin-protocol` — those changes are contract-level and need an RFC
+- Filter for labels: `community/good-first-issue`, `community/help-wanted`, `area/docs`, `area/infra`.
+- **Do NOT** start in `crates/core` or a public contract: those changes are contract-level and need an RFC
   path (see Design contributor).
 - Follow [quickstart.md](quickstart.md) to reach your first PR.
 

@@ -17,7 +17,7 @@ source and the loop multiplexing that renders it. The feature is intentionally s
  ┌──────────┐  master fd  ┌───────────────┐  Vec<u8>   ┌──────────────────────────┐
  │  $SHELL  │◀───write────│  read()→Sender │──mpsc────▶│ terminals: DocumentId →  │
  │  (child) │────output──▶│                │           │   Terminal (drain →      │
- └──────────┘             └───────────────┘            │   AnsiStrip → scrollback)│
+ └──────────┘             └───────────────┘            │   vte → Grid)            │
                                                         └──────────────────────────┘
 ```
 
@@ -27,16 +27,15 @@ source and the loop multiplexing that renders it. The feature is intentionally s
   disconnects on EOF (child exit). `Drop` hangs up (`SIGHUP`), reaps (`waitpid`), and joins the reader.
   `Pty` is a trait so a future Windows ConPTY impl (slice 3) slots in without touching the session.
 - **Terminal state** (`apps/tui/src/term_buffer.rs`): a session-side `Terminal` owns the PTY, the receiver,
-  and a **bounded, sanitized** scrollback. `drain()` pulls pending output through `AnsiStrip` and appends it.
+  and a VT `Grid` with a **bounded** scrollback. `drain()` feeds pending output to the `vte` parser, which drives the grid.
 - **Loop multiplex** (`apps/tui/src/app/session.rs`): gated so the common case is unchanged. With **no**
-  terminal, the loop keeps the pure blocking `event::read()` (no spin). With a terminal live, it `drain`s each
+  terminal and no live language server, the loop keeps the pure blocking `event::read()` (no spin). With a terminal live, it `drain`s each
   frame and uses `event::poll(TERM_TICK_MS ≈ 33ms)` — a key is handled if ready, otherwise the loop re-renders
-  the freshly drained output. Only the terminal-active path polls.
+  the freshly drained output. An LSP-only session polls too, more slowly (`LSP_TICK_MS`).
 
 ## VT grid model (slice 2)
 
-Slice 1 shipped a line-mode stand-in (`AnsiStrip` → sanitized text). Slice 2 replaces it with a real **VT
-screen grid** (`apps/tui/src/term_grid.rs`): a `rows × cols` matrix of styled cells with a cursor, implementing
+Terminal output lands in a **VT screen grid** (`apps/tui/src/term_grid.rs`): a `rows × cols` matrix of styled cells with a cursor, implementing
 `vte::Perform` so `Terminal::drain` feeds raw PTY bytes straight into the `vte` parser. Coverage: printable +
 wrap + CR/LF/BS/TAB; cursor `CUP`/`CUU`/`CUD`/`CUF`/`CUB`/`CHA`/`VPA` + save/restore; `SGR` (16 + bright
 colors, truecolor, bold/underline/italic/reverse); erase `ED`/`EL`; **alt-screen** (`?1049h/l` — stash/restore

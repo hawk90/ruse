@@ -15,8 +15,8 @@ audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
   - architecture.md
-  - stability-and-observability.md
-  - render-and-frontends.md
+  - ../design/stability-and-observability.md
+  - ../design/render-and-frontends.md
   - ../../spec/design-requirements.yaml
   - ../protocols/versioning-and-evolution.md
   - ../operations/ci-cd-and-release.md
@@ -35,8 +35,8 @@ related:
 > real user flows. Each numbered domain below explains why it matters. The mirror anti-patterns are in
 > [../anti-patterns/anti-patterns.md](../anti-patterns/anti-patterns.md).
 
-> **The requirement list and its status live in [`spec/design-requirements.yaml`](../../spec/design-requirements.yaml)**
-> (상태·목록의 정본은 spec/design-requirements.yaml). Each requirement keeps its original `DR-<CODE>-<n>` id as
+> **The requirement list and its status live in [`spec/design-requirements.yaml`](../../spec/design-requirements.yaml)**.
+> Each requirement keeps its original `DR-<CODE>-<n>` id as
 > `legacy_ids` (registry id `<CODE>-<NNN>`, e.g. `DR-PERSIST-3` → `PERSIST-003`), with priority tier P0–P3
 > (P0 foundational/data-integrity/core-path · P1 major-subsystem correctness · P2 quality · P3
 > long-horizon/polish). The `DR-` prefix is the positive "do" mirror of the same-code anti-pattern "don'ts"

@@ -10,7 +10,7 @@ summary: >
   lockfile, deterministic deactivation cleanup, and the client/workspace execution-location distinction.
   Cites D-004/D-009/D-010, ENG-PLUG-001, ENG-PROTO-001.
 audience: [maintainers, contributors, llm-agents]
-status: draft
+status: proposed
 related:
   - ../../architecture/architecture.md
   - ../../protocols/versioning-and-evolution.md

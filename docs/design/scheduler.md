@@ -188,7 +188,7 @@ pub struct JobCx {
 ```
 
 A Job reads an immutable document/workspace **snapshot** (INV-QUERY-SNAPSHOT; architecture §3.3 "background
-parsers read a snapshot"). It cannot see a `Rope`, `View`, slotmap, or undo node (INV-PLUGIN-NO-CORE). Its
+parsers read a snapshot"). It cannot see the text store, `View`, slotmap, or undo node (INV-PLUGIN-NO-CORE). Its
 `Output` is a *value* (a parse tree, an index delta, a diagnostic set, a **transaction request**), never a
 mutation. Completion hand-off (§9) is the only way that value re-enters editor state, and only through the
 normal transaction/command path with an `origin` (INV-TXN/INV-ORIGIN).

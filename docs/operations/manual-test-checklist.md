@@ -21,7 +21,7 @@ Automation covers the engine and core exhaustively (unit, property, full-stack k
 oracle differential, system `--replay`, cross-feature scenarios — see
 [testing-and-benchmarks.md](testing-and-benchmarks.md) §1). What it **cannot** reach is the live
 terminal: `--replay` bypasses the input engine, and the fuzzer/scenario tests drive the engine *below*
-the terminal, so `main.rs::run`'s crossterm read loop, the screen flush, and every real-terminal / IME /
+the terminal, so `app/session.rs::run`'s crossterm read loop, the screen flush, and every real-terminal / IME /
 signal interaction are verified only by hand. This file lists those scenarios.
 
 **When to run:**

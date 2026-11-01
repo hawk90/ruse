@@ -4,8 +4,8 @@ project: ruse
 title: "ruse — Contributor Quickstart"
 summary: >
   Clone to first PR in a few steps: clone, validate the spec (python3 tools/spec-validate.py), check Rust
-  format and tests (cargo fmt --all --check && cargo test --workspace — crates are stubs today), pick a
-  good-first-issue, branch feat/<issue>-<name>, open a Draft PR early with Closes #NN, satisfy the Definition
+  format and tests (cargo fmt --all --check && cargo test --workspace), pick a
+  community/good-first-issue, branch feat/<issue>-<name>, open a Draft PR early with Closes #NN, satisfy the Definition
   of Done, and squash merge. Intentionally short.
 audience: [maintainers, contributors, llm-agents]
 status: draft
@@ -30,17 +30,16 @@ From zero to your first PR. For *which* change to make, see [change-paths.md](ch
    ```bash
    python3 tools/spec-validate.py
    ```
-   This checks the `spec/` set (IDs, cross-references) and should pass before you start.
+   This checks the `spec/` set (IDs, cross-references) and should pass before you start. It needs PyYAML
+   (`pip install -e .` from the repo root declares it).
 
 3. **Check format and tests.**
    ```bash
    cargo fmt --all --check && cargo test --workspace
    ```
-   > Note: the Rust crates are **stubs today** — the workspace builds and tests run, but there is little
-   > implementation yet. That is expected.
 
-4. **Pick a `good-first-issue`.** Filter Issues for `good-first-issue` / `help-wanted` and the low-risk
-   areas (`area/docs`, `area/testing`, `area/infra`). See the First-time contributor persona in
+4. **Pick a `community/good-first-issue`.** Filter Issues for `community/good-first-issue` /
+   `community/help-wanted` and the low-risk areas (`area/docs`, `area/infra`). See the First-time contributor persona in
    [README.md](README.md).
 
 5. **Branch.** Use a short, prefixed name:

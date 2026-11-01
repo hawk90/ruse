@@ -26,6 +26,8 @@ related:
 - **Author(s):** hawk
 - **Created:** 2026-08-07
 - **Decision link:** D-039
+- **Status note:** the crates are `ruse-core` and `ruse-tui`. `crates/core/Cargo.toml` has three dependencies by
+  later decision, and traces are a text format (`crates/core/src/trace.rs`), not JSON in `testdata/traces`.
 
 ## Summary
 

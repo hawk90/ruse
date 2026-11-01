@@ -27,7 +27,7 @@ related:
 # RFC-0013: The Lang-Arg translation stage (resolving CONCEPT-LANG-ARG)
 
 - **Status:** proposed
-- **Decision link:** D-048 (proposed by this RFC; not yet recorded)
+- **Decision link:** D-048
 - **Resolves:** CONCEPT-LANG-ARG (`spec/parity/concepts/irreconcilable.yaml`), KL-Q-LANG-ARG
   (`spec/parity/contracts/keymap-layers.yaml`), D-045's stated re-evaluation trigger.
 - **Unblocks:** F-027 (Lang-Arg namespace), C-INPUT.

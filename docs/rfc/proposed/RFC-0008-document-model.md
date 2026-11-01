@@ -13,7 +13,7 @@ summary: >
   large-file/degraded mode as a distinct profile rather than a slow normal mode. It defers no new
   identity to other RFCs and delegates the transaction/undo contract itself to RFC-0007.
 audience: [maintainers, contributors, llm-agents, implementers-in-any-language]
-status: draft
+status: proposed
 related:
   - ../../architecture/architecture.md
   - ../../parity/common.md

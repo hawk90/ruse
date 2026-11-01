@@ -47,7 +47,7 @@ Consequences that shape everything here:
 
 Hard-to-reverse decisions are captured as RFCs (as in Rust, Swift, Kubernetes): ~3–10 pages, each ending
 with **Alternatives / Rejected Ideas / Trade-offs** + a **Reference Invariants** section, so a debate isn't
-re-litigated later. `rejected/` matters as much as `accepted/`. **The RFC index, status, and process live in
+re-litigated later. `rejected/` matters as much as the accepted record. **The RFC index, status, and process live in
 [`docs/rfc/README.md`](rfc/README.md)** (single home); small changes go in PR descriptions, not RFCs.
 
 ## Stable Glossary (paper terminology)
@@ -62,7 +62,7 @@ A solo/small-team effort must not aim at the final product on the first pass. Se
 
 ```
 0. RFCs
-1. editor-core        (Document, Transaction, Command, Query, Anchor, Undo, Registers)  # Command is kernel (ARCH-LAYER-001)
+1. core               (Document, Transaction, Command, Query, Anchor, Undo, Registers)  # Command is kernel (ARCH-LAYER-001)
 2. input-engine       (Vim first; operator/motion composition)                          # depends on Command → must follow stage 1
 3. tui-client         (Render IR, ANSI/Unicode, terminal capability)
 4. workspace          (buffers, save/recovery — LOCAL only, no remote)                  # F-007/F-008 need this before plugins/remote
@@ -116,15 +116,15 @@ reviews are separate folders.
 | --- | --- |
 | **Vision / hub** | this file · [`spec/PROJECT.md`](../spec/PROJECT.md) |
 | **Architecture & governance** | [architecture/](architecture/architecture.md) — `architecture.md` (deep map), `design-requirements.md` (20 long-horizon domains; DR-* status in [../spec/design-requirements.yaml](../spec/design-requirements.yaml)), `design-charter.md` (governance) |
-| **Subsystem design specs** | [design/](design/editing-language.md) — editing-language, register-model, positions-history, vim-regex, persistence-and-recovery, render-and-frontends, stability-and-observability, remote-runtime, delivery-and-dependencies |
+| **Subsystem design specs** | [design/](design/editing-language.md): one document per subsystem; the folder is the list |
 | **Invariants** | [invariants/reference-invariants.md](invariants/reference-invariants.md) |
 | **Protocols** | [protocols/versioning-and-evolution.md](protocols/versioning-and-evolution.md) |
 | **Parity** | [parity/README.md](parity/README.md) → vim, neovim, emacs, terminal, remote, native-style, workspace, plugin-ecosystem, roadmap, common |
 | **Anti-patterns** | [anti-patterns/anti-patterns.md](anti-patterns/anti-patterns.md) |
-| **Operations** | [operations/](operations/ci-cd-and-release.md) — development-model, definition-of-done, testing-and-benchmarks, github-workflow, ci-cd-and-release, spec-validate, review-axes |
+| **Operations** | [operations/](operations/ci-cd-and-release.md) — development-model, definition-of-done, change-workflow, testing-and-benchmarks, github-workflow, ci-cd-and-release, spec-validate, review-axes, governance-model, adopting-governance, manual-test-checklist |
 | **Contributing** | [contributing/](contributing/README.md) — hub, change-paths, ai-assisted-development, quickstart (+ root CONTRIBUTING/SUPPORT/CODE_OF_CONDUCT/SECURITY) |
 | **Reviews** | [reviews/verification.md](reviews/verification.md) (point-in-time design-verification report) |
-| **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/` (0001–0011), `rejected/` (R001) |
+| **RFCs** | [rfc/README.md](rfc/README.md) — `proposed/`, `rejected/`; the index is there |
 
 > The old "one PRD.md per folder" idea is superseded by the single [`spec/PRD.yaml`](../spec/PRD.yaml).
 

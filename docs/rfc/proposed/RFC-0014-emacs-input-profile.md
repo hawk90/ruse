@@ -28,7 +28,7 @@ related:
 # RFC-0014: The Emacs input profile (F-012)
 
 - **Status:** proposed
-- **Decision link:** D-049 (proposed by this RFC; not yet recorded)
+- **Decision link:** D-049
 - **Resolves:** CONCEPT-COUNT-VS-PREFIX, CONCEPT-POSITION-HISTORY (`spec/parity/concepts/irreconcilable.yaml`).
 - **Unblocks:** F-012; C-COMMAND (prefix-arg), C-POSHIST / C-ANCHOR (mark ring).
 - **Builds on:** D-045 (layer router), D-026 (kill ring over C-REGISTER), D-027 (C-POSHIST), D-047 (change-intent count channel), RFC-0004 (input profiles).

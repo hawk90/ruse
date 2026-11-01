@@ -35,11 +35,10 @@ an inline image (Markdown `![alt]` + a `.png` target) shows the actual picture. 
 text properties + overlays + inline images); Neovim does the equivalent with `extmark`s (`virt_text`,
 `virt_lines`, `conceal`, `hl_group`) + a graphics backend.
 
-**ruse has none of this today.** The v0 TUI paints straight from buffer bytes into a flat cell grid with a
-strict *1 buffer-line = 1 screen-row, column = Σ grapheme-cell-widths* model — no soft-wrap, no
-display-line abstraction, no decoration/extmark layer, and syntax highlighting is **color-only**
-(`highlight::Span { start, end, color }`, flattened into a per-byte color array before paint;
-`apps/tui/src/ui/render.rs:182-191`). See [render-and-frontends.md §"v0"](render-and-frontends.md).
+**ruse ships faces, conceal, virtual text and rows, and Kitty inline images for Markdown and Org**
+(`apps/tui/src/highlight.rs`, `org.rs`, `graphics.rs`, `ui/render.rs`). The base model is still *1 buffer-line =
+1 screen-row, column = Σ grapheme-cell-widths* with no soft-wrap (#615); see
+[render-and-frontends.md §"v0"](render-and-frontends.md). F-031 owns the status.
 
 ### 1.1 The TUI ceiling (what is and isn't possible)
 
@@ -110,7 +109,7 @@ face-only decoration); the Markdown/Org providers (§7) are the rich ones.
 
 ### 3.2 The layout pass — one source of truth for paint AND caret
 
-Today `paint_pane` (`render.rs:46-108`) and `cursor_cell` (`render.rs:487-505`) **independently re-derive
+`paint_pane` and `cursor_cell` (`apps/tui/src/ui/render.rs`) **independently re-derive
 layout from raw bytes**, and they must agree byte-for-byte. Conceal and virtual cells break that
 "byte-string *is* the layout" assumption in both. The fix is to derive layout **once**:
 
@@ -205,10 +204,8 @@ Let `L` be the layout of a line. These are the slice-1 property tests (the hard-
 
 ## 4. Faces & theme
 
-`CellStyle` (`screen.rs:37-44`) already models `fg/bg/bold/underline/italic/reverse`; the paint path just
-never sets more than `fg`+`reverse` (`Screen::put` hardcodes the rest; `put_styled` is the full path used by
-the terminal grid and diagnostic underline). Faces are therefore the **least-disruptive** first extension —
-the same shape as the existing diagnostic-underline path (`render.rs:96-103`).
+`CellStyle` (`apps/tui/src/screen.rs`) models `fg/bg/bold/underline/italic/reverse`, and `paint_pane` paints
+through `put_styled`, the same path as the terminal grid and diagnostic underline.
 
 A **Face** is a named style (`heading.1`, `emphasis.bold`, `markup.link`, `keyword.todo`, …) resolved through
 a **theme table** to a concrete `CellStyle`, degraded per render profile (truecolor → 256 → 16). Faces are
@@ -218,7 +215,7 @@ captures map capture-name → face rather than capture-name → raw color.
 ## 5. Conceal (the product-shaping decision)
 
 Conceal hides a buffer range from layout (0 cells, or 1 replacement char). The **caret behavior** is the
-genuine product decision (resolved here — see D-A in §9):
+genuine product decision (D-052):
 
 - **Reveal-at-point:** an element is *revealed* (its markup shown un-concealed, editable) iff the caret's
   buffer position lies within the element's **extent** — the concealed range plus its owning grammar node
@@ -250,19 +247,20 @@ Both flow through the layout pass as `origin = Virtual` cells; caret and motion 
 ## 7. Markdown & Org providers
 
 Providers consume a read-only parse **snapshot** (tree-sitter, the F-015 pipeline) and emit decorations —
-they never mutate. Grammars are new deps behind the existing `grammar_for` dispatch (`highlight.rs:32`):
+they never mutate. The Markdown grammar sits behind the `grammar_for` dispatch (`apps/tui/src/highlight.rs`):
 
 - **Markdown** — `tree-sitter-md` (+ its inline grammar). Map: ATX/setext headings → `heading.N` face +
   optional rule `virt_line`; emphasis/strong → face + conceal markers; inline/fenced code → face; links →
   conceal URL, face the label; images → §8; lists → bullet `virt_text`; task list items → checkbox glyph;
   block quote → rail; tables → faces now, rendered `virt_lines` later.
-- **Org** — `tree-sitter-org`. Headings/`TODO`/`DONE`/priorities/tags, `#+begin_…` blocks, emphasis
+- **Org** — a hand-rolled line scanner (`apps/tui/src/org.rs`), since `tree-sitter-org` pins an incompatible
+  tree-sitter version. Headings/`TODO`/`DONE`/priorities/tags, `#+begin_…` blocks, emphasis
   (`*bold*`, `/italic/`, `=verbatim=`), links `[[target][label]]` (conceal target, face label), tables,
-  checkboxes. Org rides **entirely** on the primitives from §3–§6 — it adds a grammar + a mapping table, no
+  checkboxes. Org rides **entirely** on the primitives from §3–§6 — it adds a scanner + a mapping table, no
   new engine work. This is the payoff of building the primitive first.
 
-Backing capability: repoint `CAP-MARKDOWN` (today `prd:[]`) and add `CAP-ORG` to the new feature; the provider
-layer itself is a core render capability (see §9), not a plugin — plugin-authored providers are a later F-016
+Backing capabilities are `CAP-MARKDOWN` and `CAP-ORG` (F-031); the provider
+layer itself is a core render capability (`CAP-DECORATION`), not a plugin — plugin-authored providers are a later F-016
 extension.
 
 ## 8. Inline images
@@ -289,7 +287,7 @@ Per the F-010 ledger pattern (`caps/ledger.rs`, `probe.rs`), add:
   **first protocol implemented** (§10 slice 3b); Sixel second for legacy breadth.
 
 Thread the resolved graphics tier off `TermGuard` into paint exactly as `sync_output` is pinned once
-(`session.rs:138`) and passed to `flush_diff` — no live re-probe on frame noise.
+(`apps/tui/src/app/session.rs`) and passed to `flush_diff` — no live re-probe on frame noise.
 
 ### 8.2 The degradation ladder (INV-CAP-DEGRADE)
 
@@ -358,8 +356,10 @@ for one backend.
   architecture.md:692). The image is scaled to `cols × rows` cells: `cols` = min(image aspect width, pane
   width); **`rows` (the `VirtLine.height`) becomes dynamic** — derived from the image aspect ratio and cell
   pixel size, replacing slice 3a's fixed 2. The row-coordinate model (3a) already handles any height.
-- **Decode safety.** Decoding uses a bounded step: reject dimensions above a megapixel cap **before**
-  allocation (decode-bomb guard), cap the on-disk read size, and treat any decode/IO error as a soft failure.
+- **Decode safety.** ruse has no image decoder: Kitty decodes PNG itself (`f=100`) and ruse sends the raw file
+  bytes, reading the IHDR for dimensions. The on-disk read is capped at 16 MiB and any IO error is a soft
+  failure. A non-PNG format or a downsampled preview rung would need a bounded decode step (reject dimensions
+  above a megapixel cap before allocation).
 
 ### 8.5 Failure modes & testing
 
@@ -367,17 +367,15 @@ for one backend.
   text + the reason; never crash, never tear (INV-CAP-DEGRADE / INV-RENDER-PROFILE).
 - **Capability absent** (`graphics() == None`) → placeholder, exactly as today.
 - **Testing.** Unit-test the pure pieces off any terminal: the Kitty `APC _G` payload/`base64` chunk encoder,
-  the cell→pixel sizing math, and the placement-diff (newly-visible / moved / unchanged / gone → the right
-  transmit/place/delete/no-op decisions) via a mock `Write`. A real Kitty draw is an env-gated `#[ignore]`
+  the cell→pixel sizing math, and the per-image transmit reconciliation via a mock `Write`. A real Kitty draw is an env-gated `#[ignore]`
   smoke (CI has no graphics-capable terminal), mirroring `live_lsp_pipeline`.
 
 ### 8.6 Slice 3b-2 scope (chosen)
 
-**In:** Kitty graphics only (the ladder's top rung); reserve+overlay compositing; the graphics pass +
-placement map; `CSI 14/16 t` pixel sizing; dynamic block height; decode-bounded file load; degrade to the 3a
-placeholder on any failure/absence; `TermGuard::graphics()` pinned once (like `sync_output`) and threaded into
+**In:** Kitty graphics only (the ladder's top rung); Unicode-placeholder compositing (§8.8); the graphics pass;
+a bounded file load; degrade to the 3a placeholder when graphics is absent; `TermGuard::graphics()` pinned once (like `sync_output`) and threaded into
 render. **Out (follow-ups):** Sixel + iTerm2 lowering (3b-3); the Kitty-APC *detection* probe (env hint stands
-in); animated images; image reflow on horizontal resize beyond a re-place; a Unicode half-block preview rung.
+in); the `CSI 14/16 t` pixel probe; animated images; a Unicode half-block preview rung.
 
 ### 8.7 Scroll & partial visibility
 
@@ -434,13 +432,12 @@ pane position and clips them to the pane — **no cursor math, no pane-offset kn
 placement**. Only the transmit + virtual-placement APCs still need the tmux passthrough envelope (they carry
 no position), and they are sent once per image, not per frame.
 
-**What changes vs. §8.3:**
+**How it is wired:**
 
 - `paint_pane`: for a graphics-on image block, paint **placeholder cells** (U+10EEEE + row/col diacritics,
   `fg = id`) instead of blanks. `screen::CellStyle` already carries an `Rgb` fg; the cell content is a normal
   grapheme cluster (base + combining marks, width 1).
-- `graphics_pass`: drops `move_cursor` / direct `place` / the per-screen-position placement diff. It now only
-  **transmits + virtual-places each resident image once** (reconcile keyed on image id, not screen rect).
+- `graphics_pass`: only **transmits + virtual-places each resident image once** (reconcile keyed on image id, not screen rect).
   Visibility is driven entirely by whether the placeholder cells are painted (a scrolled-off block paints no
   cells → the image is not shown), so there is no per-frame delete. `delete_all` on exit still frees
   everything.
@@ -537,7 +534,7 @@ The change set:
   placeholder block, no pixels yet — testable without a capable terminal). 3b: the **Kitty graphics** lowering
   (chosen first, §8.1) as a `virt_lines` block, with the Unicode-preview and alt-placeholder degrade rungs;
   Sixel follows. Markdown `![]()` renders.
-- **Slice 4 — Org provider.** `tree-sitter-org` + a mapping table only; rides slices 0–3 entirely.
+- **Slice 4 — Org provider.** A line scanner + a mapping table only; rides slices 0–3 entirely.
 
 Slices 0–2 need **no** special terminal; slice 3 is the only terminal-gated one and is built degrade-first so
 it's testable and useful everywhere.
@@ -547,15 +544,15 @@ it's testable and useful everywhere.
 **Decided (this review):**
 
 1. **Markdown first** — `tree-sitter-md` is the slice-1 consumer that proves the primitive; **Org is slice 4**
-   (grammar + mapping table only).
-2. **conceallevel default `off`**, auto-`markers` for `.md`/`.org` (D-A).
-3. **Kitty graphics first**, Sixel second (D-B, §8.1).
+   (scanner + mapping table only).
+2. **conceallevel default `off`**, auto-`markers` for `.md`/`.org` (D-052).
+3. **Kitty graphics first**, Sixel second (D-053, §8.1).
 4. **Dedicated `F-031`** (a distinct capability), not folded under F-015/F-006.
 
 **Still open (do not block slice 0):**
 
 - **Reveal granularity** — reveal-on-caret-*line* (chosen default) vs reveal-on-*element*-only, if line-reveal
-  proves too eager in dense prose (D-A re-eval hook).
+  proves too eager in dense prose (D-052 re-eval hook).
 - **Soft-wrap** — now *cheap* once the layout pass exists (a line → multiple `DisplayRow`s is already the
   pass's shape), but still **out of scope** here; a follow-up once rich rendering lands.
 - **Decoration-provider budget** — the per-frame time budget for providers (ties to the open scheduler budgets,

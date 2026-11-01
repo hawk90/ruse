@@ -16,7 +16,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - architecture.md
+  - ../architecture/architecture.md
   - register-model.md
   - editing-language.md
   - persistence-and-recovery.md
@@ -31,7 +31,7 @@ related:
 
 # ruse Unified Positions-History Model
 
-Resolves **D-027** (open, BLOCKING for Vim marks F-003 L2 and Native multi-selection NAT-5). Closes the
+Design behind **D-027** (decided, design). Closes the
 "one anchor store, many navigation histories" question for
 [VIM-MARK-1](../parity/vim.md#vim-mark--marks-jumplist-changelist),
 [EMACS-REGION-2](../parity/emacs.md#emacs-region--point-mark-region-mark-ring),
@@ -104,7 +104,7 @@ N-caret sets) — **deferred** (D-027, RFC-0012). What **ships in v0** is the si
 mode needs, built on the model's load-bearing invariant (**G4**): a selection is a range with a fixed
 **anchor** and a moving **active** end, and a bare caret is the degenerate collapsed selection.
 
-- **`Mode::Visual { line }`** — charwise (`v`) and linewise (`V`). Blockwise (`Ctrl-V`) is deferred.
+- **`Mode::Visual { kind: SelectKind }`** — charwise (`v`), linewise (`V`), and blockwise (`Ctrl-V`).
 - **The selection is `(anchor, cursor)`** — one `Option<usize>` anchor on the frontend `EditorState`; the
   cursor is the active end. Entering Visual sets `anchor = cursor` (collapsed); motions move the cursor and
   extend the range; any exit clears the anchor. Charwise includes the character under the higher end (Vim's
@@ -112,12 +112,14 @@ mode needs, built on the model's load-bearing invariant (**G4**): a selection is
 - **Operators over the selection:** `d`/`x` delete, `y` yank, `c` change — each captures the span into the
   unnamed register ([register-model.md](register-model.md) v0) and returns to Normal (Insert for `c`).
 
+Vim marks, the jumplist and the changelist ship on raw byte offsets on `View`, not on anchors (#686, #636).
+
 **Deferred, and additive over this** (no rework of the `(anchor, active)` shape): the anchor-store-backed
-`Selection` type, N-caret multi-selection (a `Vec<Selection>` — v0's one range is `N = 1`), the jumplist /
-mark-ring / changelist containers, blockwise geometry, and Visual-mode `p` register-swap. The single range is
-already on the D-027 trajectory: growing to multi-selection changes *how many* selections exist, not the
-selection's type. Implementation: `Mode::Visual` + `EditorState::anchor` / `selection_span` in
-`crates/core/src/editor.rs`, keys in `apps/tui/src/input.rs`, reverse-video paint in `main.rs`.
+`Selection` type, N-caret multi-selection (a `Vec<Selection>` — v0's one range is `N = 1`), and the
+`C-POSHIST` containers. The single range is on the D-027 trajectory: growing to multi-selection changes *how
+many* selections exist, not the selection's type. Implementation: `Mode::Visual` + `selection_span` in
+`crates/core/src/editor/mod.rs`, keys in `apps/tui/src/input/mod.rs`, reverse-video paint in
+`apps/tui/src/ui/render.rs`.
 
 ## Terminology
 
@@ -488,8 +490,9 @@ jumps(view) / changes(buffer) / marks(scope) / mark_ring(buffer) -> Snapshot
 
 ## Failure modes
 
-- **Mark inside a deleted region.** The anchor collapses to the edit boundary per its affinity (INV-ANCHOR);
-  the entry stays valid at the collapsed position (Vim/Emacs both keep the mark, just moved).
+- **Mark inside a deleted region.** The anchor collapses to the edit boundary per its affinity (INV-ANCHOR).
+  The surface decides what that means: Vim erases a mark whose line is deleted (the pinned nvim's `getpos`
+  returns zeros), and an Emacs marker stays at the collapsed position.
 - **Persisted global mark to a since-changed file.** Re-anchor by fingerprint; on miss, clamp to the stored
   line and flag `shifted` with a status note (INV-CAP-DEGRADE). Never a panic, never a silent wrong jump
   without the flag.
@@ -597,9 +600,9 @@ Vim and Emacs.
 
 ## Migration strategy
 
-Greenfield (no prior positions-history impl). Land the `PositionRef`/`Caret`/`Selection` primitives and the
-three containers with `C-POSHIST` behind the input engine (F-003) *before* Vim marks/jumplist reach L2. Ship
-single-caret `Selection` for MVP; NAT-5 flips `carets.len() > 1` on with **no** type change (G5). Persisted
+Marks and lists ship on offsets (see v0 scope), so `C-POSHIST` replaces them behind the input engine. The
+`PositionRef`/`Caret`/`Selection` primitives and the three containers land together. Single-caret `Selection`
+comes first; NAT-5 flips `carets.len() > 1` on with **no** type change (G5). Persisted
 classes (§6) integrate with the session store when D-005's session serialization lands. The differential
 corpus below gates each surface's merge.
 

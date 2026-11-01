@@ -14,7 +14,7 @@ status: draft
 related:
   - ../../spec/capabilities.yaml
   - ../../spec/dependencies.yaml
-  - architecture.md
+  - ../architecture/architecture.md
   - remote-runtime.md
   - ../../spec/DECISIONS.md
 ---
@@ -25,7 +25,7 @@ Communities like `awesome-neovim` list LSP, completion, file-explorer, terminal,
 UI, AI, database, games — all as *plugins*. That is a great **feature inventory and boundary-validation
 checklist**, but it does **not** mean everything must be an external plugin in ruse. Classify features along
 **two independent axes** (D-033), and do not use either as the code architecture (Kernel / Built-in Service /
-Bundled Extension / External Plugin — that is `architecture.md`).
+Bundled Extension / External Plugin — that is [architecture.md](../architecture/architecture.md)).
 
 ## Axis 1 — Product / delivery (Base / Official Pack / Third-party)
 
@@ -124,10 +124,13 @@ replaceable boundaries everywhere, but to **stop external types from spreading t
 
 ## Combined example (both axes)
 
+An illustration of how the axes combine, not an inventory; [capabilities.yaml](../../spec/capabilities.yaml) is the
+inventory and holds what is built.
+
 | Capability | Product | Impl source |
 | --- | --- | --- |
 | Document / Transaction / Command | Base kernel | **Own** |
-| Rope storage · terminal backend · watcher · LSP codec | Base internal/service | **Wrapped** |
+| Terminal backend · watcher · LSP codec | Base internal/service | **Wrapped** |
 | File tree UI · search UI · LSP coordinator · debug model | Base / Official | **Own** |
 | Search exec · rust-analyzer · gdb · git | Base/Pack service | **External-tool** (some wrapped) |
 | Git UI · debug UI | Official Pack | **Own** |

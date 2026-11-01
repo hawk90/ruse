@@ -15,9 +15,9 @@ related:
 
 # ruse Feature-Parity Reference — Index
 
-> **⚠️ Source of truth moved (D-043).** The files in this directory are **hand-authored and were
+> **Source of truth (D-043).** The files in this directory are **hand-authored and were
 > never checked against a pinned upstream revision**. They are retained as human *annotation* —
-> reading, grouping, intent — and are migrating onto census IDs. The parity source is now:
+> reading, grouping, intent — and point at census IDs where migrated. The parity source is:
 >
 > | Layer | Location | Authored by |
 > | --- | --- | --- |
