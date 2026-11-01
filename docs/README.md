@@ -47,7 +47,7 @@ Consequences that shape everything here:
 
 Hard-to-reverse decisions are captured as RFCs (as in Rust, Swift, Kubernetes): ~3–10 pages, each ending
 with **Alternatives / Rejected Ideas / Trade-offs** + a **Reference Invariants** section, so a debate isn't
-re-litigated later. `rejected/` matters as much as the accepted record. **The RFC index, status, and process live in
+re-litigated later. `rejected/` matters as much as `accepted/`. **The RFC index, status, and process live in
 [`docs/rfc/README.md`](rfc/README.md)** (single home); small changes go in PR descriptions, not RFCs.
 
 ## Stable Glossary (paper terminology)

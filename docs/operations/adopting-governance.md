@@ -74,6 +74,6 @@ CAP-*, crate names) — that is exactly the part you replace. A checker that nam
 
 ## Non-goals
 
-- This is not a packaged distribution (`pyproject.toml` configures tooling only); adoption is copy-in. The engine's only runtime dependency is PyYAML.
+- This is not a published distribution (`pyproject.toml` supports a local `pip install -e .`); adoption is copy-in. The engine's only runtime dependency is PyYAML.
 - The plane governs repository evolution; it does not replace a per-change execution harness — it sits
   above one (see [governance-model.md](governance-model.md)).

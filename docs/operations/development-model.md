@@ -122,8 +122,18 @@ A stage may intentionally stop at an earlier gate (an experimental subsystem may
 
 ## Milestones = stage proofs (not sprints)
 
-GitHub Milestones are named by release version and mirror `spec/phases.yaml` (D-037, D-059). Each phase's
-`goal` there is the one-sentence exit condition behind that ladder.
+GitHub Milestones are named by release version and mirror `spec/phases.yaml` (D-037, D-059). The stage proofs
+below are the exit conditions behind that ladder:
+
+| Phase | Exit condition (example) |
+| --- | --- |
+| all | The normative spec, invariants, and validation exist and pass. |
+| v0.1.0 | A deterministic headless editor can execute commands, record transactions, and replay undo/redo. |
+| v0.2.0 | Operator+motion/registers/dot-repeat pass the Vim L2 differential corpus. |
+| v0.2.0 | A developer can edit real files in the TUI without manual workarounds. |
+| v0.2.0 | Buffers/views/splits + atomic save + crash recovery work end-to-end. |
+| v1.0.0 | An isolated plugin registers a command and requests a transaction over the versioned protocol. |
+| v1.0.0 | An auto-bootstrapped SSH agent serves fs/search/PTY with reconnect. |
 
 Never write "implement the core" — write the behavior that proves the stage.
 

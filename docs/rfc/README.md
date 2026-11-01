@@ -17,9 +17,9 @@ related:
 
 # ruse RFC Index
 
-Folders: `proposed/` (every RFC that is not rejected; whether its decision was taken is in
-[`spec/DECISIONS.md`](../../spec/DECISIONS.md), not in the folder) · `rejected/` (kept forever so decisions aren't
-re-litigated). An RFC records *why*; the design docs record *how* (linked, not duplicated); the
+Folders: `proposed/` (under discussion) · `accepted/` (ratified; not created yet, and every RFC currently sits in
+`proposed/` whatever its decision status, #1027) · `rejected/` (kept forever so decisions aren't re-litigated). An
+RFC records *why*; the design docs record *how* (linked, not duplicated); the
 compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 
 ## Proposed

@@ -404,7 +404,7 @@ the *View* is what turns a user gesture into the kind-appropriate mutation. The 
 this doc pins the **View-side descriptor** that a WS-* surface supplies:
 
 ```rust
-pub enum BufferKind { Ordinary, Scratch, NoFile, Interactive } // D-057
+pub enum BufferKind { Editable, ReadOnly, Generated, Streaming, Interactive } // owned by RFC-0008
 
 /// A View of an Interactive buffer carries a write-back descriptor: how a buffer edit
 /// (wdired rename, Magit stage line) becomes a typed domain CommandRequest.
@@ -415,6 +415,8 @@ pub struct WriteBackDescriptor {
     interpret_edit: fn(edit: &BufferEditIntent, &RenderModel) -> Option<CommandRequest>,
 }
 ```
+
+D-057 names `{Ordinary, Scratch, NoFile, Interactive}`; reconciling the two is part of #945.
 
 Per-kind view behavior:
 
@@ -812,8 +814,8 @@ projection keyed by the focused/hosted `DocumentId`, not a separate store.
 
 ## Migration strategy
 
-The three handles, view-local state, the flat layout, multi-view of one buffer and the buffer list are in
-place. Order for the rest, respecting `depends_on` (C-VIEW → C-RENDER, C-ANCHOR; C-WORKSPACE → C-DOCUMENT,
+`DocumentId` and `ViewId` (plain indexes), view-local state, the flat layout, multi-view of one buffer and the
+buffer list are in place. `WindowId` and generation checks are not (#973). Order for the rest, respecting `depends_on` (C-VIEW → C-RENDER, C-ANCHOR; C-WORKSPACE → C-DOCUMENT,
 C-VIEW): the split tree + solve + full `C-w` surface + tabs; the lifecycle/leak model (§3) with scheduler task
 cancellation; kinds + interactive write-back (§5); narrowing (§6); overlays (§7); multi-root, session
 save/restore, settings scope (§8). Session and settings formats are versioned from v1 (INV-ADDITIVE) so
@@ -888,10 +890,11 @@ later multi-client/remote work extends them without a break.
 
 | Field(s) | Lives on | Why |
 |---|---|---|
-| `doc: Document`, `last_was_edit` | **Document/Buffer** (shared) | text + undo + the grouping bit are buffer facts |
+| `doc: Document` | **Document/Buffer** (shared) | text + undo are buffer facts |
+| `last_was_edit` | **`View`** today | the grouping bit is a buffer fact; not moved yet |
 | `cursor`, `mode`, `anchor`, `last_visual`, `curswant`, `block_insert`, `replace_stack`, `pending_register`, viewport `top` | **`View`** (per-View, `ViewId`) | INV-DOC-VIEW: two Views of one buffer have independent cursors/selection/mode |
 | `registers` | **`View`** today; **Workspace** by D-057 | Vim registers are global, not per-buffer or per-view |
-| `tab_width`, `indent_style` | **Workspace/config** | editor config, not view or buffer |
+| `tab_width`, `indent_style` | **`View`** today (`IndentConfig`); Workspace/config is the target | editor config, not view or buffer |
 
 `apply_command` keeps its `EditorState` signature. To run a command, the focused `(Document, View)` pair is
 swapped out of its arena slots into an `EditorState`, the pipeline runs, and the pair is swapped back

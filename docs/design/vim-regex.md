@@ -28,9 +28,10 @@ related:
 
 # ruse Regex Abstraction & Vim-Dialect Engine
 
-> **Shipped.** `crates/core/src/pattern.rs` is a magic-aware front-end over the wrapped `regex` crate, the sole
-> engine in the MVP (`crates/core/Cargo.toml`). Atoms that crate cannot represent are rejected with a typed error.
-> `VimEngine`, the IR, budgets and the fast-path allow-list below are the post-MVP target (#638).
+> **Current code.** `crates/core/src/pattern.rs` is a magic-aware front-end over the wrapped `regex` crate, the
+> only engine today; atoms that crate cannot represent are rejected with a typed error. `VimEngine`, the IR, budgets
+> and the fast-path allow-list below are unbuilt. Whether the wrapped-only scope needs a D-028 amendment is open
+> (#996).
 
 Design behind **D-028** (decided, design) and **V-8** (verification.md: "Vim regex dialect has no owning component or
 decision"). Specifies the `C-REGEX` component referenced by D-028 and by
@@ -509,11 +510,13 @@ This is a substitute-layer obligation noted for F-009.
 
 ## Migration strategy
 
-`C-REGEX` ships as the front-end over the wrapped engine (see the top of this doc). Sequence for the rest:
+`C-REGEX` currently ships as the front-end over the wrapped engine; whether that scope stands is open (#996).
+Sequence for the rest:
 (1) `RegexIr` + `Default` dialect + `DefaultEngine`; (2) `Vim` front-end on the IR + magic
 resolution + Pike-VM `VimEngine` covering NFA-native atoms incl. `\zs`/`\ze`; (3) bounded-backtracking fallback +
 budgets for backrefs/variable-lookbehind; (4) certify DefaultEngine fast-path shapes (§7 step 3) under the
-differential corpus.
+differential corpus. The substitute-command layer (`gdefault`, offsets, capture groups, `\=`) lands on top of the
+stable engine contract (#638).
 
 ## Test strategy
 

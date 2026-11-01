@@ -38,7 +38,8 @@ text properties + overlays + inline images); Neovim does the equivalent with `ex
 **ruse ships faces, conceal, virtual text and rows, and Kitty inline images for Markdown and Org**
 (`apps/tui/src/highlight.rs`, `org.rs`, `graphics.rs`, `ui/render.rs`). The base model is still *1 buffer-line =
 1 screen-row, column = Σ grapheme-cell-widths* with no soft-wrap (#615); see
-[render-and-frontends.md §"v0"](render-and-frontends.md). F-031 owns the status.
+[render-and-frontends.md §"v0"](render-and-frontends.md). F-031 owns the status; open image bugs include #829, #838,
+#839, #1005 and #1006.
 
 ### 1.1 The TUI ceiling (what is and isn't possible)
 
@@ -348,11 +349,17 @@ only in the **TUI backend lowering**, and no provider or core code emits termina
 **In:** Kitty graphics only (the ladder's top rung); Unicode-placeholder compositing (§8.8); the graphics pass;
 a bounded file load; degrade to the 3a placeholder when graphics is absent; `TermGuard::graphics()` pinned once (like `sync_output`) and threaded into
 render. **Out (follow-ups):** Sixel + iTerm2 lowering (3b-3); the Kitty-APC *detection* probe (env hint stands
-in); the `CSI 14/16 t` pixel probe; animated images; a Unicode half-block preview rung.
+in); the `CSI 14/16 t` pixel probe; `rows` derived from the cell metric (§8.4); image reflow on horizontal resize;
+animated images; a Unicode half-block preview rung.
+
+### 8.7 Scroll & multi-pane
+
+Scrolling moves the placeholder cells with the same `top` the cell renderer uses (§8.8), so image and text move in
+lockstep, and a scrolled-off block paints no cells.
 
 Multi-pane: a placement belongs to the focused pane's view (like conceal/virt today); an image in a
 non-focused pane is not placed in slice 3b-2 (its block shows the placeholder). Per-pane placement is a
-follow-up when a real second pane shows the same image.
+follow-up when a real second pane shows the same image. Today an unfocused pane paints no block at all (#1003).
 
 ### 8.8 Positioning via Unicode placeholders (the tmux-correct method — slice 3b-2c)
 
@@ -412,7 +419,8 @@ eyeballed on a real Ghostty+tmux.
 
 Decisions: D-052 (conceal), D-053 (graphics ladder), D-054 (partial RFC-0009 reactivation). Feature and acceptance:
 `F-031` in [PRD.yaml](../../spec/PRD.yaml). Capabilities: `CAP-MARKDOWN`, `CAP-ORG`, `CAP-DECORATION`, `CAP-GRAPHICS`
-in [capabilities.yaml](../../spec/capabilities.yaml).
+in [capabilities.yaml](../../spec/capabilities.yaml). Still owed: a note in RFC-0005 for the graphics capability and
+the pixel-size probe.
 
 ## 10. Slicing plan (honest, incremental — each slice ships something testable)
 

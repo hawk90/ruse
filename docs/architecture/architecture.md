@@ -419,11 +419,13 @@ Because plugins can call each other's commands, changing a command ID casually b
 keymaps, macros, and other plugins. **Enforce namespaces.**
 
 ```
-editor.insert
-workspace.open
+core.editor.delete
+core.workspace.open
 org.example.git.stage
 org.example.git.commit
 ```
+
+Shipped ids such as `editor.undo` do not follow this yet (#951).
 
 When renaming a command, provide **an alias and a deprecation window.**
 

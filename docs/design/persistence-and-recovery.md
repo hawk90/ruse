@@ -31,7 +31,8 @@ related:
 > **Shipped v0.** The journal is `<file>.ruse-journal`, whole-buffer snapshots in `[u32 len LE][u32 crc32
 > LE][payload]` frames, with no file header or schema version (`apps/tui/src/persist/journal.rs`). Undo is
 > in-memory (`crates/core/src/undo.rs`). The rest of this doc, including the per-transaction `RJ01` format, is the
-> target; the status of each save and recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008.
+> target; the status of each save and recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008. Open journal
+> bugs include #844, #845, #858, #859, #862 and #873.
 
 > This doc **resolves [D-005](../../spec/DECISIONS.md)** (was `open`): journal format details, incremental-
 > journal thresholds for large files, and undo-grouping boundaries. It is the normative specification behind
@@ -600,8 +601,8 @@ disk-changed. Journal health (position, last fsync age, truncation events) is a 
 
 ## Migration strategy
 
-The target format is versioned from v1 (`magic RJ01`, `schema_ver`). The shipped v0 frames have no header, so a
-reader of v1 has to tell a v0 journal apart by the absent magic. Later changes: additive fields bump minor and are ignored by older readers per INV-ADDITIVE;
+The target format is versioned from v1 (`magic RJ01`, `schema_ver`). The shipped v0 frames have no header. How a v1 reader treats a headerless v0 journal is not decided; #932 should
+settle it. Later changes: additive fields bump minor and are ignored by older readers per INV-ADDITIVE;
 layout-breaking changes bump the record major and readers refuse unknown majors (halt-safe, §2). A journal
 written by a newer ruse is read by an older ruse only up to the first record it doesn't understand, and it
 never auto-overwrites — so cross-version open degrades to "recover as much as safely possible", never silent

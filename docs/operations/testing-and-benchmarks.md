@@ -45,7 +45,7 @@ The full methodology (§3) is written for the whole platform (plugins, remote, r
 what the two-crate v0 ([D-039]) actually has, and — per RFC-0012's rule that perf choices are made *after*
 measurement, never by intuition — fixes **what we measure first** before any optimization lands.
 
-**Per-keystroke cost has four independent hot spots.** Naming them (with code homes) so a regression
+**Per-keystroke cost has these hot spots** (#876 adds another per-frame buffer copy). Naming them (with code homes) so a regression
 localizes to one, and so the storage question is not confused with the others. The numbers and the wins that
 changed #2, #3 and #4 follow below.
 
@@ -53,7 +53,7 @@ changed #2, #3 and #4 follow below.
 | --- | --- | --- | --- |
 | 1 | `EditList::apply_to` builds a fresh `Vec`, then the anchor index is rebuilt | `crates/core/src/{edit,document}.rs` | O(n) per edit |
 | 2 | Tree-sitter parse: incremental against the kept `Tree`, query bounded to the viewport; the `InputEdit` comes from an O(n) byte diff | `apps/tui/src/highlight.rs` | O(n) diff + reparse of the edit + O(viewport) query |
-| 3 | Per-byte color vec, bounded to the viewport | `apps/tui/src/ui/render.rs` | O(viewport) per frame |
+| 3 | Per-byte color vec, bounded to the viewport | `apps/tui/src/ui/render.rs` | O(viewport) for the colour vec; paint still walks every grapheme above `top` (#840) |
 | 4 | Line-start index, cached per revision | `apps/tui/src/line_index.rs` | O(n) per edit, O(log n) lookup per frame |
 
 **Hypothesis (to confirm with numbers, not assert):** at daily-driver sizes (hundreds–thousands of lines) a

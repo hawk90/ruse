@@ -272,9 +272,11 @@ layer contributes bindings *into* keymap layers at its own provenance rank; it i
 
 - Cross-profile keymaps never merge or conflict (INV-PROFILE-ISOLATION): a workspace Vim binding and a user
   Emacs binding are in different key spaces.
-- `keymap.*` keys are `scope: user` ([config-schema.yaml](../../spec/config-schema.yaml)): a binding invokes a
-  command, so a workspace-supplied keymap needs its own Decision first. No keymap layer can bind a
-  security-gated command (CFG-LOCK-001). Plugin-suggested bindings remain the lowest, opt-in tier.
+- A workspace keymap config layer enters at the **workspace provenance tier** (the old ABI tier 4) and only
+  when the workspace is trusted; it can never register a global binding above the user tier, and can never
+  bind a security-gated command (CFG-LOCK-001). `keymap.*` keys are `scope: user` in
+  [config-schema.yaml](../../spec/config-schema.yaml), which conflicts with this; the choice is open (#1026).
+  Plugin-suggested bindings remain the lowest, opt-in tier.
   Provenance never lets a config layer reorder *keymap layers* — only bindings within one (D-046).
 
 The keymap *values* (the map of `key → command + when`) deep-merge; the *resolution* is out of scope here.

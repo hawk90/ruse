@@ -52,7 +52,7 @@ python3 tools/ruse.py verify --full                     # what pre-push (lefthoo
 
 - Behavior parity is checked against real Neovim/Emacs via oracle fixtures; when fixing a divergence,
   capture the oracle ground truth first, then fix (see `tests/parity/` and `tools/parity/`). Oracle versions
-  are pinned in `spec/parity/upstreams.yaml` (nvim v0.12.6, emacs-31.1 at this writing).
+  are pinned in `spec/parity/upstreams.yaml`.
 - Property tests guard core invariants; a proptest regression file is evidence — commit it.
 - Platform hazard: `forkpty` signatures differ between macOS and Linux; clippy-clean on one is not proof for
   the other — check CI on both.

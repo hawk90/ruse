@@ -871,7 +871,9 @@ simply absent (safe-mode), and bindings to them resolve to `NotAvailable` rather
 
 ## Migration strategy
 
-Per **D-009**, the *internal* command/registration API ships
+`C-CONTEXT` (DSL + evaluator + Context Key registry, #955) and the full `C-COMMAND` (descriptor + dispatch +
+bounded outcome, #953) still land as kernel components, and the input engine and palette move onto them. Per
+**D-009**, the *internal* command/registration API ships
 first and is dogfooded by built-ins (git, search) before any public plugin command surface is stabilized
 (INV-PROMOTION, ≥2 users, D-010). The priority-ABI tiers stay provisional data (D-008) until F-003/F-016
 validate them. Alias/deprecation tooling and `spec validate` cross-reference checks (D-022) land with the

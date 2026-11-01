@@ -5,7 +5,7 @@ A **Rust, terminal-based modal code editor** targeting feature parity with Vim/N
 architecture is meant to outlive the language, and the code is a *reference implementation* that proves the
 spec, not the source of it.
 
-> **Status: MVP features done, post-MVP growth.** The two-crate reference implementation (`crates/core` +
+> **Status: MVP features marked done in `spec/PRD.yaml`, post-MVP growth; #1028 tracks where the code disagrees.** The two-crate reference implementation (`crates/core` +
 > `apps/tui`, D-039) runs as a Vim-style editor, with its editing engine compared against pinned Neovim and
 > Emacs oracles (`tests/parity/`). Feature state is in `spec/PRD.yaml`; releases are in `spec/phases.yaml`.
 

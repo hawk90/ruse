@@ -339,9 +339,10 @@ key-expectation tiers are still engine code ahead of the layer lookup; §Priorit
 **v0 Command-line mode (VIM-MODE-7)** (PRD F-026). The `:`/`/` line is owned by the engine (`input/cmdline.rs`).
 
 - **Command-line is a real input-mode**, the `Cmdline` value already listed in the Mode-axes table above — one
-  mode owner. It carries a *prompt* (`:` ex vs `/`/`?` search), the line buffer, and a caret.
+  mode owner. It carries a *prompt* (`:` ex vs `/`/`?` search) and the line buffer. The caret field stays at the end of the
+  line until the line editor lands (#612).
 - **The engine routes it**, like Insert: a `Cmdline` branch turns keys into command-line edits; `<CR>` dispatches
-  the ex/search command; `<Esc>`/`C-c` aborts. The frontend only renders the prompt + buffer + caret.
+  the ex/search command; `<Esc>` aborts (`C-c` does not yet, #612, #599). The frontend only renders the prompt + buffer + caret.
 - **Precedence** stays the fixed ladder (input-mode → key-expectation tier → base keys); `Cmdline` sits at
   the input-mode level beside Insert, so it is total and testable by the same no-leak property.
 
@@ -352,8 +353,8 @@ most-recent slot). The prompt recalls with `<Up>`/`<Down>` (PREFIX-FILTERED by t
 walk) and `<C-p>`/`<C-n>` (RAW ring, unfiltered — the nvim-verified distinction); `<Down>` past the newest
 restores the typed draft. The ring + recall walk live in a pure, unit-tested `CmdHistory`/`HistWalk`
 (`apps/tui/src/input/history.rs`). `q:`/`q/`/`q?` open a read-only history window (`input/cmdwin.rs`; editable
-in [buffer-arena-and-global-state.md](buffer-arena-and-global-state.md) slice 4), and incsearch highlights through
-`apps/tui/src/highlight.rs`.
+in [buffer-arena-and-global-state.md](buffer-arena-and-global-state.md) slice 4, #947), and incsearch highlights
+through `apps/tui/src/highlight.rs` (it ignores `ignorecase`/`smartcase`, #824).
 
 **Deferred:** the full line editor and `C-r` register insertion (#612), `wildmenu`/`wildmode` completion (#613),
 and the full INPUT-RESOLVE timeout/priority machinery above.

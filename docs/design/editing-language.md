@@ -51,9 +51,9 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 
 `r{char}` replaces the character under the cursor (via the input engine's `Awaiting::ReplaceChar` state — the
 key after `r` is the replacement; ctrl-r stays redo), leaving the cursor on it; it is a no-op at end-of-line
-or over a newline. `~` toggles the ASCII case of the char and moves right (a non-letter just moves). `J` joins
+or over a newline. `~` toggles the case of the char (Unicode-aware; `ß` differs from Vim, #732) and moves right (a non-letter just moves). `J` joins
 the current line with the next on a single space, dropping the next line's leading indent, with no space before
-`)` and existing trailing space kept (no-op on the last line). `r` and `~` take a count.
+`)` and existing trailing space kept (no-op on the last line; empty next line, #718). `r` and `~` take a count.
 
 ## v0 — insert-entry commands (SHIPPED)
 
@@ -69,7 +69,7 @@ Word motions now use Vim's character classes. Small-word `w`/`b`/`e` recognize *
 *punctuation* — so `foo.bar` is three words (`foo`, `.`, `bar`). `W`/`B`/`E` are the **WORD** motions: two
 classes (whitespace vs not), so `foo.bar` is one WORD. Both share one class-parameterized scanner (`big:
 bool`); class changes only fall on char boundaries, so positions stay valid. `cw`/`cW` still behave like
-`ce`/`cE` (don't eat the trailing whitespace). Text objects `iw`/`aw` use the same three classes.
+`ce`/`cE` (don't eat the trailing whitespace). Text objects `iw`/`aw` use the same three classes (newline handling, #740).
 
 ## v0 — bracket-match motion `%` (SHIPPED)
 
