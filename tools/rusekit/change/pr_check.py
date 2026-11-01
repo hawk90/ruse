@@ -20,6 +20,11 @@ from rusekit.change.classify import classify_changeset  # noqa: E402
 # `pr check` synthesizes a self-consistent contract from the diff (declared = observed kind) and
 # still enforces the artifacts that kind requires — so a bot straying into a high-risk path fails.
 TRUSTED_BOTS = {"dependabot[bot]", "renovate[bot]"}
+# A trusted bot whose whole diff is these dependency manifests is doing a version bump, so it needs no issue.
+# Humans keep the path_triggers floor: a member Cargo.toml edit by a person stays `implementation`.
+BOT_MANIFESTS = re.compile(
+    r"^((apps|crates)/[^/]+/)?Cargo\.toml$|^(Cargo\.lock|pyproject\.toml|rust-toolchain\.toml)$"
+)
 
 
 def _match_any(path: str, prefixes: list[str]) -> bool:
@@ -65,6 +70,7 @@ def main(argv: list[str]) -> int:
 
     ci = bool(args.pr_body)
     bot_note: str | None = None
+    manifest_bump = False
     if ci:
         try:
             with open(args.pr_body, encoding="utf-8") as fh:
@@ -78,7 +84,8 @@ def main(argv: list[str]) -> int:
             if actor in TRUSTED_BOTS:
                 bcs = repo.resolve_changeset(base=args.base, files=args.files)
                 bcl = classify_changeset(bcs.files, None, source=bcs.source)
-                derived = bcl.observed_kind or "build"
+                manifest_bump = bool(bcs.files) and all(BOT_MANIFESTS.match(f) for f in bcs.files)
+                derived = "build" if manifest_bump else (bcl.observed_kind or "build")
                 c = {"kind": derived, "goal": f"automated change by {actor}", "affected": {},
                      "artifacts": {}, "allow_paths": [], "forbid_paths": [], "contracts": {}}
                 bot_note = (f"trusted bot '{actor}': no gate block — auto-declared kind '{derived}' from "
@@ -117,7 +124,8 @@ def main(argv: list[str]) -> int:
         warns.append("no git/--files: checking against change.yaml declared paths only")
 
     declared = c.get("kind")
-    cl = classify_changeset(cs.files, declared, source=cs.source)
+    # A bot's manifest bump is `build` by the exemption above, so path floors must not raise it back.
+    cl = classify_changeset([] if manifest_bump else cs.files, declared, source=cs.source)
     checks.append((cl.ok, f"classify: declared '{declared}' vs observed "
                           f"'{cl.observed_kind or 'none'}'"
                           + ("" if cl.ok else " — declared too low or generated file edited")))
