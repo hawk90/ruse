@@ -12,7 +12,8 @@ Tool-agnostic. Rules here are operational shortcuts; the normative sources are `
   AI policy: [docs/contributing/ai-assisted-development.md](docs/contributing/ai-assisted-development.md).
 - `spec/CONTEXT.md` is a hand-maintained digest and can lag; trust
   `spec/PRD.yaml`, `spec/capabilities.yaml`, `spec/phases.yaml`, `spec/DECISIONS.md` over it.
-- Releases: GitHub Milestones are named by release version and mirror `spec/phases.yaml` one-way (D-037, D-059).
+- Releases: GitHub Milestones are named by release version and mirror `spec/phases.yaml` one-way (D-037, D-059);
+  unmarked intermediate versions between phases size the releases (D-060).
 - Long-horizon design requirements (DR-*): status lives in `spec/design-requirements.yaml` (rules:
   [docs/architecture/design-requirements-registry.md](docs/architecture/design-requirements-registry.md)); `docs/architecture/design-requirements.md` is narrative only.
 - Invariants: [docs/invariants/reference-invariants.md](docs/invariants/reference-invariants.md).

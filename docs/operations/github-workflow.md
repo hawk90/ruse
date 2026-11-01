@@ -62,6 +62,9 @@ Milestones are named by release version (`v0.1.0`, ...) and mirror `spec/phases.
 `ruse phase sync` (D-037, D-059). The phase goal is the exit condition. A milestone answers "which release",
 not "which feature" (use `area/*` for that).
 
+Intermediate version milestones between phases (`v0.1.1`, ...) keep each release a plannable size (D-060). They
+are created by hand, carry no `ruse-phase` marker, and hold issues only; `spec/phases.yaml` still owns features.
+
 ## 4. Views
 
 | View | Type | Filter |

@@ -896,3 +896,14 @@ related:
   with `ecosystem` and `ide-grade` is the v0.3.0 step toward it.
 - **Re-evaluate if:** a release needs features from more than one phase, or phases and tagged releases diverge.
 - Refs: D-037, `spec/phases.yaml`, `tools/phase_sync.py`, [../docs/parity/roadmap.md](../docs/parity/roadmap.md).
+
+## D-060 — Intermediate release milestones between phases · decided
+- **Decision:** GitHub may carry version milestones between phase milestones (for example `v0.1.1` to `v0.1.9`
+  before `v0.2.0`) to keep each release a plannable size. They have no `ruse-phase` marker, so `ruse phase sync`
+  neither owns nor reports them. They hold issues only; features still belong to phases in `spec/phases.yaml`,
+  and each phase milestone stays the release that completes its phase. This amends the one-milestone-per-phase
+  mirror of D-037 and D-059.
+- **Reason:** the audits left 231 open issues on v0.2.0, too many to plan or finish as one release. Adding phases
+  does not fit, because a phase must own PRD features and most of these issues are bugs and tests.
+- **Re-evaluate if:** intermediate milestones need gating, or tagged releases stop following them.
+- Refs: D-037, D-059, `spec/phases.yaml`, `tools/phase_sync.py`.

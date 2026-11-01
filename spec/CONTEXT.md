@@ -79,6 +79,7 @@ F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 - Editor-global state moves to the Workspace; buffers gain disposition + kind. (D-057)
 - Workspace trust gates language-server spawning. (D-058)
 - Milestones are titled by release version. (D-059)
+- Intermediate version milestones between phases hold issues only. (D-060)
 
 ## Open questions
 - Save/recovery tuning (design decided; v0 journal shipped). (D-005)
