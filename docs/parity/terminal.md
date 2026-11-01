@@ -70,9 +70,8 @@ security + correctness bug — some terminals leak `ESC` through the brackets).
 Source: contour vt-extensions.
 - BSU `CSI ? 2026 h`, ESU `CSI ? 2026 l`. Detect via `DECRQM` (`CSI ? 2026 $ p`; ps 1/2 = supported, 0/no-reply = unsupported).
 
-| ID | Capability | Target | Compat | Weight |
-| --- | --- | --- | --- | --- |
-| TERM-SYNC-1 | Atomic (tear-free) frame updates for large redraws | L1 | Equivalent | med |
+<!-- TERM-SYNC-1 (atomic frame updates) retired — census-backed by nvim.termmode.synchronizedoutput.
+     F-006 derives it from there. -->
 
 Gate behind detection so it never leaks as visible text (guards TERMOUT-9).
 

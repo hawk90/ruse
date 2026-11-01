@@ -47,7 +47,6 @@ backlog:
   # F-006 rendering (#99, D-043). TERM-SYNC-1 repointed onto census nvim.termmode.synchronizedoutput;
   # these are ruse render ARCHITECTURE / heuristics / post-MVP graphics with no census surface. NVIM-UI-2
   # stays derived via its other UI citer (not backlogged).
-  - { id: TERM-SYNC-1, feature: F-006, reason: "synchronized output — SUPERSEDED by census nvim.termmode.synchronizedoutput (F-006 now cites that); the legacy row is tracked until deleted" }
   - { id: TERM-COLOR-1, feature: F-006, reason: "truecolor with detection — a $COLORTERM/terminfo heuristic (F-010's ledger), not an enumerable render census surface; 256/nearest-color fallback is ruse render architecture" }
   - { id: TERM-WIDTH-1, feature: F-006, reason: "grapheme-correct cell widths — IMPLEMENTED (screen.rs cluster_width, unicode-width) but width is ruse render/coordinate architecture, no upstream census surface" }
   - { id: TERM-GFX-1, feature: F-006, reason: "inline image protocol (kitty/sixel/iTerm) — post-MVP enhanced tier (INV-CAP-DEGRADE); no census surface" }
