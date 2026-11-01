@@ -39,6 +39,11 @@ class TestPrCheckBotGate(unittest.TestCase):
         # Renovate (renovate.json replaces Dependabot) is trusted the same way.
         self.assertEqual(_run([".github/workflows/ci.yml"], actor="renovate[bot]"), 0)
 
+    def test_trusted_bot_member_manifest_bump_passes(self):
+        # A version bump in a member manifest is a build change, like the root manifest.
+        files = ["Cargo.lock", "apps/tui/Cargo.toml", "crates/core/Cargo.toml", "pyproject.toml", "rust-toolchain.toml"]
+        self.assertEqual(_run(files, actor="renovate[bot]"), 0)
+
     def test_trusted_bot_straying_into_code_still_fails(self):
         # Safety: a bot diff that reaches implementation territory needs an `issue` artifact it
         # cannot supply, so the auto-declared contract still FAILS the artifact gate.
