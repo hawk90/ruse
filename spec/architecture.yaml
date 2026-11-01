@@ -7,9 +7,7 @@
 # `python3 tools/ruse.py arch deps`.
 #
 # Semantics: a crate may depend (in Cargo) ONLY on crates in the transitive closure of its `may_depend_on`,
-# plus std + vetted external deps (those are governed separately in spec/dependencies.yaml). The crates are
-# empty skeletons today, so `respect_may_depend_on` is trivially satisfied now and GATES the implementation
-# phase — the contract lands before the code it constrains.
+# plus std + vetted external deps (those are governed separately in spec/dependencies.yaml).
 
 version: 1
 

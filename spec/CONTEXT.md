@@ -31,20 +31,22 @@ Read this first. Follow an ID into the sources only when the task needs that det
 see [context-profiles.yaml](context-profiles.yaml).
 
 ## Goal
-Terminal-first, remote-first, extensible editor with Vim/Neovim/Emacs feature parity, built as a
-specification + reference implementation.
+Terminal-based modal editor with Vim/Neovim/Emacs feature parity, built as a specification + reference
+implementation. Remote, GUI and a plugin protocol are deferred capabilities (D-039).
 
 ## Current stage
-**MVP complete; post-MVP feature growth.** All 18 MVP features (phases `core-editing` + `usable-vim-tui`
-in [phases.yaml](phases.yaml)) are `done`, plus F-022 (command traces). Two crates per D-039: `crates/core`
+**MVP features done; post-MVP feature growth.** All 18 MVP features (phases `core-editing` v0.1.0 +
+`usable-vim-tui` v0.2.0 in [phases.yaml](phases.yaml)) are `done`. GitHub Milestones are named by release version
+and mirror the phases one-way (D-037, D-059). Two crates per D-039: `crates/core`
 (kernel: document, transactions, undo, anchors, registers, editing grammar) and `apps/tui` (the `ruse`
 binary: input profiles, rendering, terminal, LSP, remote, PTY). Behavior parity is checked against pinned
-Neovim/Emacs oracles (D-043; `tests/parity/`).
+Neovim/Emacs oracles (D-043; `tests/parity/`; pins in `spec/parity/upstreams.yaml`, nvim v0.12.6 and emacs-31.1
+at this writing).
 
 Post-MVP features with **partial slices landed** while PRD status stays `planned` until a done-decision:
-F-011 PTY terminal buffer · F-012 Emacs profile · F-013 Native profile · F-014 LSP (local diagnostics) ·
-F-015 tree-sitter highlight + indent · F-017 remote (SSH transport + fs service) · F-030 `:checkhealth` ·
-F-031 rich Markdown/Org rendering. Not started: F-016 plugins, F-018 GUI (parked), F-019 marketplace,
+F-011 PTY terminal buffer · F-012 Emacs profile · F-013 Native profile · F-014 LSP (diagnostics, goto, rename, formatting, completion, references, code actions) ·
+F-015 tree-sitter highlight + injections + indent · F-017 remote (SSH transport + fs service) · F-030 `:checkhealth` ·
+F-031 rich Markdown/Org rendering · F-032 buffer arena (design decided, D-057). Not started: F-016 plugins, F-018 GUI (parked), F-019 marketplace,
 F-020 AI agent, F-021 debugger. Exact state: [PRD.yaml](PRD.yaml) + `git log --grep F-0NN`.
 
 ## Core invariants (must hold)
@@ -58,30 +60,33 @@ F-020 AI agent, F-021 debugger. Exact state: [PRD.yaml](PRD.yaml) + `git log --g
 - One fact, one home: state in spec/ YAML, prose in docs/, generated files not hand-edited. (ENG-DOC-001)
 
 ## Primary flow
-Input → Input Profile → Semantic Command → Transaction → Document(rev++) → View Model → Render Tree →
-Frontend Lowering. (ARCH-FLOW-001)
+Input → Input Profile → Semantic Command → Transaction → Document(rev++) → render. The View Model / Render Tree
+stages of ARCH-FLOW-001 are the deferred target (D-039); the TUI paints the document directly.
 
 ## Requirements
 MVP (done): F-001..F-010, F-023..F-029 — editing kernel, Vim profile and its namespaces, command engine,
 undo, TUI, windows, save/recovery, search, terminal capability. Post-MVP (planned/partial): F-011..F-021,
-F-030, F-031. Full list in [PRD.yaml](PRD.yaml).
+F-030..F-032. Full list in [PRD.yaml](PRD.yaml).
 
 ## Active decisions
 - Rust workspace, TUI-first. (D-020)
 - Transaction-only mutation; deterministic single-thread core. (D-001, D-002)
-- Plugins: WASM/process protocol, not Rust dylib; **no WASM host in MVP** (internal API first). (D-004, D-009)
-- Client/runtime boundary first-class from day one. (D-011)
+- Plugins: WASM/process protocol, not Rust dylib; **no WASM host in MVP**; paused by D-039. (D-004, D-009)
 - spec/ (state) + docs/ (reference); generator is future work. (D-021, D-022)
 - Two-crate editor; remote/plugin/render boundaries deferred until needed. (D-039)
 - Parity = machine census of SHA-pinned upstreams; humans classify, never enumerate. (D-043)
 - Engine keeps Vim factory defaults; better-than-Vim defaults live at the frontend layer. (D-056)
+- Macros record raw keystrokes into the a-z registers. (D-055)
+- Editor-global state moves to the Workspace; buffers gain disposition + kind. (D-057)
+- Workspace trust gates processes that execute project code. (D-058)
+- Milestones are titled by release version. (D-059)
 
 ## Open questions
-- Save/recovery tuning (design decided). (D-005)
+- Save/recovery tuning (design decided; v0 journal shipped). (D-005)
 - Multi-client workspace + offline/reconnect policy. (D-012, D-013)
 - Log PII/redaction field list. (D-017)
 
 ## Where things live
-`spec/`: PROJECT (vision/glossary), PRD.yaml (features), ARCHITECTURE.md (map), POLICY.yaml (enforced
-rules), DECISIONS.md (hard choices). `docs/`: deep design, parity research, full anti-pattern catalog,
+`spec/`: PROJECT (vision/glossary), PRD.yaml (features), phases.yaml (releases), ARCHITECTURE.md (map), POLICY.yaml
+(enforced rules), DECISIONS.md (hard choices), parity/ (census + pins). `docs/`: deep design, parity research, full anti-pattern catalog,
 invariants, protocols, operations. Templates in `spec/templates/`.

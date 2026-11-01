@@ -22,7 +22,7 @@ version: 1
 product:
   name: ruse
   goal: >
-    A terminal-first, remote-first, extensible editor with Vim/Neovim/Emacs feature parity,
+    A terminal-based modal editor with Vim/Neovim/Emacs feature parity,
     designed as a specification with a reference implementation.
   target_users:
     - terminal-first developers
@@ -36,7 +36,7 @@ mvp:
 # depend on a later stage (checked by spec validate). `depends_on` makes build order machine-verifiable.  # D-036
 
 components:
-  # kernel (stage 1: editor-core, includes Command per ARCH-LAYER-001)
+  # kernel (stage 1: ruse-core, includes Command per ARCH-LAYER-001)
   C-DOCUMENT:   { title: Document model, build_stage: kernel, depends_on: [], status: planned, ref: ../docs/rfc/proposed/RFC-0008-document-model.md }
   C-TRANSACTION: { title: Transaction engine, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/rfc/proposed/RFC-0007-transaction-engine.md }
   C-ANCHOR:     { title: Anchor/position model, build_stage: kernel, depends_on: [C-DOCUMENT], status: planned, ref: ../docs/design/anchor-store.md }   # D-023
@@ -130,7 +130,7 @@ features:
     priority: must
     # done (#104 namespaces + #105 layer-owned state + #106 return-address): the keymap layer router
     # (crates/core/src/keymap.rs LayerStack: rank-ordered resolve, sealed-stops-walk, DuplicateRank,
-    # collapse) + the Vim profile as eight addressable depth-1 SEALED namespaces (apps/tui/src/input.rs
+    # collapse) + the Vim profile as eight addressable depth-1 SEALED namespaces (apps/tui/src/input/
     # VimProfile), each declaring its census unmatched-key policy (KL-OBL-1/2/3). The five open policies
     # are exercised through the router — insert/replace-selection/overwrite live, append via feed_cmdline,
     # forward/translate declared (#4). Operator-pending is a namespace that ABORTS (#5, PR-1). Layer state
@@ -202,7 +202,7 @@ features:
     title: Text objects — inner/around targets
     stage: mvp
     priority: must
-    # done (#95): text objects implemented in apps/tui/src/input.rs (`text_object()` maps
+    # done (#95): text objects implemented in apps/tui/src/input/ (`text_object()` maps
     # iw/aw/i(/a"/it/... to Motions, Vim alias collapse b/B/[/]). Both acceptance criteria are
     # oracle-verified in tests/parity/vim/fixtures/corpus.yaml: operator operand (daw_a_word,
     # diw_inner_word, di(, f(di(), visual extend (viwd_visual_inner_word, viwc_visual_change_text,
@@ -233,14 +233,14 @@ features:
     # selection key + p/P within mode_key.normal (the operators that WRITE registers stay under F-023).
     # NOW IMPLEMENTED (register.rs; unit-tested — census-tracing/formal acceptance is a follow-up): the
     # numbered ring `"1`-`"9`, small-delete `"-`, and black-hole `"_` registers, plus `:registers`/`:reg`
-    # (F-026 command engine + a picker). Still carve-outs (NOT modelled): expression `"=`, clipboard `"+`/`"*`.
-    # MACROS (q record / @ replay) are DESIGNED as D-055: recording captures RAW KEYSTROKES and stores them as
-    # bytes in these same a-z registers, replayed by re-feeding the input engine (so `"ap` shows a macro and
-    # yanked text runs as one). This is a distinct mechanism from dot-repeat/trace (which record resolved
-    # Commands). Implementation is a follow-up slice — NOT yet an F-029 acceptance criterion. See macros.md.
+    # (F-026 command engine + a picker). Also implemented: expression `"=` (crates/core/src/expr.rs) and
+    # clipboard `"+`/`"*` (crates/core/src/clipboard.rs). MACROS (q record / @ replay) ship per D-055: recording
+    # captures RAW KEYSTROKES and stores them as bytes in these same a-z registers, replayed by re-feeding the
+    # input engine (so `"ap` shows a macro and yanked text runs as one). This is a distinct mechanism from
+    # dot-repeat/trace (which record resolved Commands), and not an F-029 acceptance criterion. See macros.md.
     status: done
     depends_on: [C-EDITLANG, C-REGISTER]
-    summary: Named/unnamed/yank-only registers via the `"{register}` prefix + p/P; entries carry a shape that survives round-trip. Census anchor = the `"` selection key (registers are a prefix, not a dedicated surface); numbered ring/black-hole/clipboard are carve-outs. Macros (q/@) are a designed carve-out reusing these registers (D-055).
+    summary: Named/unnamed/yank-only registers via the `"{register}` prefix + p/P; entries carry a shape that survives round-trip. Census anchor = the `"` selection key (registers are a prefix, not a dedicated surface); numbered ring, black-hole, expression and clipboard registers ship beyond these criteria. Macros (q/@) reuse these registers (D-055).
     trace:
       # repointed off legacy VIM-REG-* onto the mode_key.normal census (D-043): the `"{register}` selection
       # prefix + put p/P. Numbered/other register semantics are documented carve-outs. vim.md rows retired.
@@ -308,7 +308,7 @@ features:
     # done (#97): the command-line is now an engine-owned namespace, not an ad-hoc UI buffer.
     # InputEngine.cmdline (CmdLine{prefix,buffer,cursor,ex_mode}) owns the line; `:`/`/` open it via
     # feed(), printable keys append, <BS> deletes, <Esc> aborts, <CR> finalises (search folds through
-    # submit_search -> Feed::Cmd, `:` -> Feed::ExecuteEx). main.rs deleted its `cmd_line` and renders
+    # submit_search -> Feed::Cmd, `:` -> Feed::ExecuteEx). The session holds no `cmd_line` of its own and renders
     # engine.cmdline(). `gQ` (only) enters Ex mode (re-prompts until `:visual`); bare `Q` does not.
     # 6 namespace tests + property no-leak updated + oracle comparator simplified (still green).
     # VIM-MODE-8 (Ex mode, Adapted, gQ-only) has no map_mode census home -> backlogged.
@@ -330,7 +330,7 @@ features:
     stage: mvp
     priority: must
     # done (#118): CONCEPT-LANG-ARG resolved by D-048 (accepting RFC-0013) — Lang-Arg is a PRE-DISPATCH
-    # translation stage (apps/tui/src/input.rs `translate_lang`, called at the top of `feed` ABOVE the
+    # translation stage (apps/tui/src/input/mod.rs `translate_lang`, called at the top of `feed` ABOVE the
     # D-045 layer stack), NOT a resolution layer. It rewrites a decoded key through the active language
     # map in exactly the three Lang-Arg contexts — Insert, Command-line, and a command reading a single
     # character (f/t/F/T/r) — and nowhere else (#2), applying ONE substitution then dispatching the
@@ -494,7 +494,7 @@ features:
     priority: must
     # done (#94): apps/tui/src/persist/ — atomic::save (temp+fsync+rename+dir-fsync, #1),
     # encoding::FileFormat (detect+preserve BOM/CRLF, #2), journal (append-only framed records,
-    # torn-tail-tolerant replay, #4), assess_recovery + prompt_recovery (open-time 3-way, never
+    # torn-tail-tolerant replay, #4), assess_recovery + prompt_recovery (open-time recover-or-discard, never
     # auto-overwrites, #3/#4). MVP-minimal per ruse-mvp-minimal-slice: the full four-state /
     # inverse-edit / incremental journal in persistence-and-recovery.md is the post-MVP C-PERSIST
     # elaboration. 20 unit + 3 integration (tests/persist_roundtrip.rs) tests; all 4 acceptance met.
@@ -568,7 +568,7 @@ features:
     # done (#92): apps/tui/src/caps/ — a DA1-fenced probe (probe.rs: query_batch ends with the DA1
     # fence, ProbeParser stops at it, no per-cap timeout) feeding the {value,source,confidence}
     # ledger (ledger.rs: Source precedence Default<EnvHint<Probed<UserOverride, override always
-    # wins) with enter/exit push-pop (sequences.rs: exit reverses enter). Wired in main.rs TermGuard
+    # wins) with enter/exit push-pop (sequences.rs: exit reverses enter). Wired in the session's TermGuard
     # (poll() is a liveness net only; is_terminal-guarded; env hints + RUSE_NO_* overrides). All 3
     # acceptance criteria met + tested: 12 unit + 7 integration (tests/caps_probe.rs) over canned
     # DA1-fenced streams (modern/bare/split/stray-input/not-recognised).
@@ -628,12 +628,11 @@ features:
     title: Emacs input profile
     stage: post-mvp
     priority: should
-    # progress (#139): the profile SEAM is in — InputProfile{Vim,Emacs} on the engine; `feed` branches to
-    # the non-modal `feed_emacs` BEFORE any Vim modal handling (Emacs has no Normal/Insert grammar). Minimal
-    # global-map: C-f/C-b/C-n/C-p/C-a/C-e motions + self-insert; `d` is literal, not the Vim operator.
-    # `RUSE_PROFILE=emacs` selects it (no config loader yet). Motions work in one state because Move* keeps
-    # the mode. REMAINING: 9-tier stack, C-x/C-c prefix maps, prefix-arg channel (D-049), kill-ring view
-    # (D-026), mark-ring (D-027), M-x (C-COMMAND). Stays `planned` — this is the seam, not the profile.
+    # progress: InputProfile{Vim,Emacs,..} on the engine; `feed` branches to the non-modal `feed_emacs` BEFORE
+    # any Vim modal handling (Emacs has no Normal/Insert grammar). apps/tui/src/input/emacs.rs holds the keymap
+    # layer stack, the C-x prefix map, the C-u prefix argument (D-049), M-x and the kill commands. `RUSE_PROFILE=
+    # emacs` selects it (no config loader yet). REMAINING includes the yank-pop kill-ring view (D-026), the
+    # mark ring (D-027, #654) and keyboard macros (#657).
     status: planned
     depends_on: [C-INPUT, C-COMMAND, C-POSHIST]
     summary: Prefix keys, M-x, mark/region, kill ring, universal argument, major/minor modes.
@@ -908,7 +907,7 @@ features:
     summary: A `:checkhealth` command reporting the running editor's health — active input profile +
       caret gravity, detected terminal capabilities, syntax-grammar availability for the current buffer,
       open-buffer count, and trace/replay status — the Neovim `:checkhealth` analogue, so a user can
-      diagnose "why isn't X working" without reading the ntic log.
+      diagnose "why isn't X working" without reading the log.
     trace:
       parity: []
       design: [../docs/design/health-check.md]
@@ -917,7 +916,7 @@ features:
       - '`:checkhealth` renders a report covering input profile, terminal capabilities, syntax-grammar
         availability, buffer count, and trace/replay status.'
       - The report is produced by a PURE, unit-tested builder (frontend snapshot in -> report out); the
-        command is a thin wiring over it, so the core stays IO-free and the logic is covered off main.rs.
+        command is a thin wiring over it, so the core stays IO-free and the logic is covered off the session loop.
       - Each row reports OK / WARN / absent with a one-line reason (the Neovim checkhealth ok/warn shape).
 
   F-022:

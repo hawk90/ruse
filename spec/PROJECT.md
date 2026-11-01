@@ -71,7 +71,7 @@ rename a term id.
 ## Design-axis status
 
 Each big axis is tracked as a state, not "done": `Unexplored → Draft → Validated-by-implementation →
-Stable → Needs-revision`. Current states live in [CONTEXT.md](CONTEXT.md). New problems are classified into
+Stable → Needs-revision`. New problems are classified into
 an axis, given a minimal current decision, and promoted to policy/design only if they recur.
 
 ## Document system (how these files relate)
@@ -84,6 +84,9 @@ spec/                       maintained source of truth (LLM-first, minimal)
 ├── dependencies.yaml       dependency inventory: tier/usage/exit-strategy (D-034)  [state]
 ├── config-schema.yaml       user-config schema (types/defaults/scope/merge/lock)  [state]
 ├── PRD.yaml                requirements: stage/priority/status/deps/acceptance [state]
+├── phases.yaml             ordered phases + release versions; titles GitHub Milestones (D-037, D-059) [state]
+├── design-requirements.yaml long-horizon DR-* status registry                  [state]
+├── parity/                 upstream pins, census inventory, coverage, contracts (D-043) [state]
 ├── ARCHITECTURE.md         layers · flow · ownership · forbidden deps · open   [boundaries]
 ├── POLICY.yaml             enforced principles → reference anti-pattern IDs     [rules]
 ├── DECISIONS.md            D-xxx: decision · reason · re-evaluation condition   [decisions]

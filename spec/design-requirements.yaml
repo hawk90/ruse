@@ -3,7 +3,7 @@
 # Scope: DR-* design requirements only. Product features stay in spec/PRD.yaml (F-*).
 # Statuses verified against code on 2026-10-05 (code wins over docs; conflicts in notes).
 schema: 1
-updated: '2026-10-05'
+updated: 2026-11-02
 sources:
   - docs/architecture/design-requirements.md (§1–§20, DR-* list before 2026-10-05)
 statuses:
@@ -356,8 +356,8 @@ items:
       - DR-PERSIST-6
     source:
       - design-requirements.md §3 Persistence & Crash Consistency
-    notes: 'Atomic + durable done. Permission/metadata preservation is missing: the temp file is created with default mode,
-      so a save drops the executable bit, and renaming over a symlink replaces the link with a regular file (bug, not fixed).'
+    notes: 'Atomic + durable done. Permission bits are carried over and a symlink is followed to its target
+      (apps/tui/src/persist/atomic.rs). Ownership and other metadata are not preserved.'
   - id: PERSIST-007
     title: Large files use an incremental journal
     area: persist
@@ -1161,8 +1161,7 @@ items:
       - DR-TRUST-2
     source:
       - design-requirements.md §12 Security & Trust Boundary
-    notes: 'remote.trust_prompt declared but not wired. Gap: opening a .rs/.py/.go/... file auto-spawns its language server
-      (apps/tui/src/lsp/mod.rs::server_for_ext) with no trust gate, and rust-analyzer runs the project''s build scripts. `ruse
+    notes: 'remote.trust_prompt declared but not wired. LSP spawns are gated by workspace trust (apps/tui/src/trust.rs, D-058). `ruse
       ssh` runs whatever `ruse` is on the remote PATH without checking it.'
   - id: TRUST-003
     title: Terminal escapes sanitized into a semantic model; env forwarding policy
@@ -1272,7 +1271,7 @@ items:
       - DR-XPLAT-3
     source:
       - design-requirements.md §13 Cross-Platform Semantics
-    notes: 'Not implemented: save drops the mode bits (see PERSIST-006). PTY hangup on drop is Unix-only.'
+    notes: 'Mode bits survive a save (see PERSIST-006). PTY hangup on drop is Unix-only.'
   - id: XPLAT-004
     title: Shell quoting via a real quoter; newline/encoding/clipboard format specified
     area: xplat
@@ -1290,7 +1289,7 @@ items:
     source:
       - design-requirements.md §13 Cross-Platform Semantics
     notes: 'Spawns use argv vectors (no concatenation); :! passes user text to `sh -c` as Vim does. EOL/BOM are detected and
-      restored. Gap: ssh_command passes the host without `--`, so a host starting with ''-'' is parsed as an ssh option.'
+      restored. ssh_command passes `--` and rejects a host starting with ''-''.'
   - id: XPLAT-005
     title: macOS Unicode normalization tests; watcher missing/duplicate events tolerated
     area: xplat
