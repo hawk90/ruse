@@ -16,6 +16,9 @@
 # GENERATED FROM this file (planned, D-022): the docs/parity/roadmap.md milestone tables and the GitHub
 # Milestones (one per phase, one-way `ruse phase sync`). Those are mirrors; this file is the source.
 #
+# Versions: each phase names the release that completes it, and that version titles its GitHub Milestone
+# (D-059). Versions must be vX.Y.Z and strictly increase down the ladder.
+#
 # Naming: phase ids are SLUGS, not P0/P1 — governance-model.md already uses P0/P1/P2 for methodology
 # rollout priority; a distinct vocabulary keeps the delivery axis unambiguous.
 
@@ -32,6 +35,7 @@ axis:
 # Ordered: earlier phases must be shippable without later ones. `stage` ties each phase to the coarse bucket.
 phases:
   - id: core-editing
+    version: v0.1.0
     title: "Core editing — prove the contracts (headless vertical slice)"
     stage: mvp
     goal: >
@@ -40,6 +44,7 @@ phases:
     includes: [F-001, F-002, F-005]
 
   - id: usable-vim-tui
+    version: v0.2.0
     title: "Usable Vim-style TUI editor"
     stage: mvp
     goal: >
@@ -48,6 +53,7 @@ phases:
     includes: [F-003, F-004, F-006, F-007, F-008, F-009, F-010, F-022, F-023, F-024, F-025, F-026, F-027, F-028, F-029]
 
   - id: ide-grade
+    version: v0.3.0
     title: "IDE-grade — language intelligence"
     stage: post-mvp
     goal: >
@@ -56,6 +62,7 @@ phases:
     includes: [F-011, F-014, F-015, F-030, F-031, F-032]
 
   - id: ecosystem
+    version: v1.0.0
     title: "Ecosystem & multi-environment"
     stage: post-mvp
     goal: >
@@ -64,6 +71,7 @@ phases:
     includes: [F-012, F-013, F-016, F-017]
 
   - id: breadth
+    version: v2.0.0
     title: "Breadth — platform reach (full-parity target)"
     stage: future
     goal: >

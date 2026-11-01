@@ -885,3 +885,14 @@ related:
   executing workspace code (they must sit behind the same decision — per-root trust, view-window-workspace.md
   §8.4); or users ask for an interactive prompt on first open.
 - Refs: INV-TRUST-1, ENG-TRUST-001, F-014, CAP-LSP-COORD, [../docs/design/lsp.md](../docs/design/lsp.md), [../docs/design/config-model.md](../docs/design/config-model.md).
+
+## D-059 — GitHub Milestones are named by release version · decided
+- **Decision:** Every phase in `spec/phases.yaml` carries a `version` (`vX.Y.Z`, strictly increasing), and
+  `ruse phase sync` titles its GitHub Milestone with that version: `core-editing` v0.1.0, `usable-vim-tui`
+  v0.2.0, `ide-grade` v0.3.0, `ecosystem` v1.0.0, `breadth` v2.0.0. Phases stay the spec axis and milestones
+  stay a one-way mirror; this amends only the mirror's title in D-037.
+- **Reason:** the user directed version-based milestones, because a slug does not say which release a feature
+  ships in. The mapping keeps the roadmap's meaning of 1.0 (`ide-grade` + `ecosystem`), so v1.0.0 completes
+  with `ecosystem` and `ide-grade` is the v0.3.0 step toward it.
+- **Re-evaluate if:** a release needs features from more than one phase, or phases and tagged releases diverge.
+- Refs: D-037, `spec/phases.yaml`, `tools/phase_sync.py`, [../docs/parity/roadmap.md](../docs/parity/roadmap.md).

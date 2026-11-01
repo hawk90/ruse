@@ -58,9 +58,9 @@ The **process** (work-item types, Status meanings, stage gates, DoD) is defined 
 
 ## 3. Milestones = stage proofs (not sprints)
 
-`M0`–`M6` (+`Someday`), each with a one-sentence exit condition — the canonical table is in
-[development-model.md](development-model.md) §Milestones. A milestone answers "which stage proof", not
-"which feature" (use `area/*` for that).
+Milestones are named by release version (`v0.1.0`, ...) and mirror `spec/phases.yaml` one-way through
+`ruse phase sync` (D-037, D-059). The phase goal is the exit condition. A milestone answers "which release",
+not "which feature" (use `area/*` for that).
 
 ## 4. Views
 

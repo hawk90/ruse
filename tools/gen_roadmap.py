@@ -28,10 +28,10 @@ def _oneline(s):
 
 def table(path=PHASES):
     cat = yaml.safe_load(open(path))
-    rows = ["| # | Phase | Stage | Features | Goal |", "| --- | --- | --- | --- | --- |"]
+    rows = ["| # | Version | Phase | Stage | Features | Goal |", "| --- | --- | --- | --- | --- | --- |"]
     for i, ph in enumerate(cat.get("phases") or [], 1):
         feats = ", ".join(ph.get("includes") or [])
-        rows.append(f"| {i} | `{ph['id']}` | {ph.get('stage')} | {feats} | {_oneline(ph.get('goal'))} |")
+        rows.append(f"| {i} | {ph['version']} | `{ph['id']}` | {ph.get('stage')} | {feats} | {_oneline(ph.get('goal'))} |")
     return "\n".join(rows)
 
 

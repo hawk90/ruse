@@ -39,17 +39,17 @@ def _norm(s):
 def desired(cat):
     """Return [{id, title, body}] from spec/phases.yaml, in phase order."""
     out = []
-    for i, ph in enumerate(cat.get("phases") or [], 1):
+    for ph in cat.get("phases") or []:
         pid = ph["id"]
         feats = ", ".join(ph.get("includes") or [])
         body = (
-            f"**Phase `{pid}`** · refines PRD stage `{ph.get('stage')}`\n\n"
+            f"**{ph.get('title')}** · phase `{pid}` · refines PRD stage `{ph.get('stage')}`\n\n"
             f"{(ph.get('goal') or '').strip()}\n\n"
             f"**Features:** {feats}\n\n"
             f"_Mirror of `spec/phases.yaml` (source of truth) — one-way synced; do not edit here._\n\n"
             f"<!-- ruse-phase:{pid} -->"
         )
-        out.append({"id": pid, "title": f"{i}. {ph.get('title')}", "body": body})
+        out.append({"id": pid, "title": ph["version"], "body": body})
     return out
 
 

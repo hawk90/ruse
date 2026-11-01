@@ -68,9 +68,17 @@ def validate(cat, features, components=None):
         return (["no phases defined"], warnings)
 
     all_fids = set(features)
-    seen, prev_stage_idx = {}, -1
+    seen, prev_stage_idx, prev_version = {}, -1, None
     for i, ph in enumerate(phases):
         pid = ph.get("id") or f"<phase #{i}>"
+        vm = re.match(r"^v(\d+)\.(\d+)\.(\d+)$", str(ph.get("version") or ""))
+        if not vm:
+            errors.append(f"{pid}: version {ph.get('version')!r} must be vX.Y.Z (it titles the GitHub Milestone)")
+        else:
+            version = tuple(int(n) for n in vm.groups())
+            if prev_version is not None and version <= prev_version:
+                errors.append(f"{pid}: version {ph.get('version')} must be greater than the previous phase's")
+            prev_version = version
         if not re.match(r"^[a-z][a-z0-9-]*$", str(ph.get("id") or "")):
             errors.append(f"{pid}: id must be a lower-kebab slug (not P0/P1 — that is rollout priority)")
         stage = ph.get("stage")

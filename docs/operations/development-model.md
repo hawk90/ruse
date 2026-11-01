@@ -122,7 +122,8 @@ A stage may intentionally stop at an earlier gate (an experimental subsystem may
 
 ## Milestones = stage proofs (not sprints)
 
-Each milestone has a **one-sentence exit condition**:
+GitHub Milestones are named by release version and mirror `spec/phases.yaml` (D-037, D-059). The stage proofs
+below are the **one-sentence exit conditions** behind that ladder:
 
 | Milestone | Exit condition (example) |
 | --- | --- |
