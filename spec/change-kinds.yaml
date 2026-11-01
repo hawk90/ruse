@@ -81,11 +81,10 @@ path_triggers:
       min_kind: spec, reason: spec source of truth }
   - { pattern: '^docs/invariants/',            min_kind: spec,         reason: invariant registry }
   - { pattern: '^\.github/',                    min_kind: build,        reason: CI / repo automation config }
-  - { pattern: '^((apps|crates)/[^/]+/)?Cargo\.toml$|^(Cargo\.lock|pyproject\.toml|rust-toolchain\.toml|lefthook\.yml)$',
+  - { pattern: '^(Cargo\.toml|Cargo\.lock|pyproject\.toml|lefthook\.yml)$',
       min_kind: build, reason: build / dependency / hook manifest }
-  # A member manifest is a dependency manifest like the root one, so the source triggers skip it.
-  - { pattern: '^crates/(?![^/]+/Cargo\.toml$)', min_kind: implementation, reason: rust crate source }
-  - { pattern: '^apps/(?![^/]+/Cargo\.toml$)',   min_kind: implementation, reason: rust app source }
+  - { pattern: '^crates/',                     min_kind: implementation, reason: rust crate source }
+  - { pattern: '^apps/',                       min_kind: implementation, reason: rust app source }
   - { pattern: '^tools/',                      min_kind: implementation, reason: tooling source }
   - { pattern: '\.rs$',                        min_kind: implementation, reason: rust source }
 
