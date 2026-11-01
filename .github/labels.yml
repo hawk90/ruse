@@ -19,6 +19,7 @@
 - { name: area/plugin,      color: ededed, description: Plugin protocol / ecosystem }
 - { name: area/infra,       color: ededed, description: CI / tooling / repo }
 - { name: area/docs,        color: ededed, description: Docs / spec }
+- { name: parity,           color: 5319e7, description: Vim/Neovim/Emacs parity gap }
 - { name: impact/correctness,   color: b60205, description: Wrong behavior }
 - { name: impact/performance,   color: fbca04, description: Latency / memory / throughput }
 - { name: impact/reliability,   color: d93f0b, description: Crashes / recovery }
