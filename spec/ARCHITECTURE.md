@@ -21,11 +21,14 @@ related:
 > IDs (`ARCH-*`) are referenced from POLICY/PRD/DECISIONS. Depth lives in
 > [`../docs/design/`](../docs/architecture/architecture.md); invariants in
 > [`../docs/invariants/reference-invariants.md`](../docs/invariants/reference-invariants.md).
+>
+> This map states the target. The v0 editor is two crates, `crates/core` and `apps/tui` (D-039), so stages and
+> owners marked *(deferred)* below do not exist in code yet.
 
 ## ARCH-LAYER-001 — Layers (dependency flows downward only)
 
 ```
-Kernel                (Document, Transaction, Command, Query, Anchor, Undo, Health, Scheduler)
+Kernel                (Document, Transaction, Command, Anchor, Undo; Query (deferred, #970); Health, Scheduler (deferred))
   → Built-in Services (Workspace, Render, Terminal platform, LSP, Git)
     → Bundled Extensions (core-git, core-search — built on the same stable API)
       → Third-party Plugins (isolated, versioned protocol)
@@ -42,8 +45,8 @@ Input
     → Semantic Command
       → Transaction
         → Document (revision++)
-          → View Model
-            → Render Tree (semantic paint IR)
+          → View Model (deferred, D-039)
+            → Render Tree (semantic paint IR; deferred, D-039, the TUI paints directly)
               → Frontend Lowering (ANSI cell grid / Kitty image / GUI / Web)
 ```
 
@@ -52,9 +55,9 @@ Read side is separate (CQRS at boundaries): `Query → Snapshot/DTO` (never a li
 ## ARCH-OWN-001 — Ownership
 
 - **Document** owns text, encoding, and revision. Knows nothing about Views.
-- **View** owns cursor, selection, viewport, folds (view-local state).
-- **Scheduler** owns background task execution, priority, cancellation, budgets.
-- **Health Registry** derives system-wide status from per-component state machines.
+- **View** owns cursor, selection, viewport, folds (view-local state; v0 folds live in the frontend).
+- **Scheduler** (deferred) owns background task execution, priority, cancellation, budgets.
+- **Health Registry** (deferred) derives system-wide status from per-component state machines.
 - **Capability ledger** owns detected terminal/host capabilities + user overrides.
 - Long-lived references are **typed, generation-checked handles**, never raw pointers/offsets.
 
@@ -78,7 +81,7 @@ Enforced by architecture tests / dependency lint (see [POLICY.yaml](POLICY.yaml)
 
 ## ARCH-RENDER-001 — Render model
 
-- One semantic **Render Tree** lowered per capability to multiple backends.
+- One semantic **Render Tree** (deferred, D-039, D-054) lowered per capability to multiple backends.
 - Two renderer tiers (compatibility / enhanced), **pinned per client-view**, not flipped on probe noise.
 - Images degrade: native → Unicode preview → placeholder → external open.
 
@@ -87,14 +90,14 @@ Enforced by architecture tests / dependency lint (see [POLICY.yaml](POLICY.yaml)
 - External plugin transport specifics (WASM vs process) — D-009 (direction decided, details open).
 - Multi-client workspace support — D-012.
 - Offline remote editing / reconnect conflict policy — D-013.
-- Undo grouping boundaries — D-005 (open).
-- Save/recovery journal format details — D-005/D-017.
+- Save/recovery tuning — D-005 (design decided).
+- Log PII/redaction field list — D-017.
 
 ## Cross-references
 
 | ID | Depth |
 | --- | --- |
-| ARCH-LAYER-001 | [../docs/architecture/architecture.md](../docs/architecture/architecture.md) §4, [../docs/README.md](../docs/README.md) repo layout |
+| ARCH-LAYER-001 | [../docs/architecture/architecture.md](../docs/architecture/architecture.md) §4, [../README.md](../README.md) layout |
 | ARCH-FLOW-001 | [../docs/design/render-and-frontends.md](../docs/design/render-and-frontends.md) §5 |
 | ARCH-OWN-001 / ARCH-FORBID-001 | [../docs/invariants/reference-invariants.md](../docs/invariants/reference-invariants.md) |
 | ARCH-EXEC-001 | [../docs/architecture/architecture.md](../docs/architecture/architecture.md) §8 |
