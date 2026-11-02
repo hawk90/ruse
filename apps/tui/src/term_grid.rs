@@ -518,8 +518,8 @@ impl Perform for Grid {
                 self.wrap_next = false;
             }
             'A' => self.cy = self.cy.saturating_sub(n),
-            'B' => self.cy = (self.cy + n).min(self.rows - 1),
-            'C' => self.cx = (self.cx + n).min(self.cols - 1),
+            'B' => self.cy = self.cy.saturating_add(n).min(self.rows - 1),
+            'C' => self.cx = self.cx.saturating_add(n).min(self.cols - 1),
             'D' => self.cx = self.cx.saturating_sub(n),
             'G' => self.cx = (n - 1).min(self.cols - 1),
             'd' => self.cy = (n - 1).min(self.rows - 1),
@@ -529,7 +529,7 @@ impl Perform for Grid {
             'M' => self.delete_lines(n),
             '@' => self.insert_chars(n),
             'P' => self.delete_chars(n),
-            'X' => self.erase_span(self.cy, self.cx, self.cx + n), // ECH: erase n cells in place
+            'X' => self.erase_span(self.cy, self.cx, self.cx.saturating_add(n)), // ECH: erase n cells in place
             'r' => {
                 // DECSTBM: set the scroll region `[top, bottom]` (1-based, inclusive) and home the cursor.
                 let top = ps.first().copied().unwrap_or(1).max(1) - 1;
@@ -714,5 +714,88 @@ mod tests {
         g.resize(2, 4);
         let (r, c) = g.cursor();
         assert!(r < 2 && c < 4, "cursor clamped into the new size");
+    }
+
+    /// #907 (found by `hostile_output_never_panics`): a maximal CUF/CUD/ECH count overflowed `u16` — a panic in
+    /// debug builds and a wrapped (wrong, leftward) cursor in release. It clamps to the edge instead.
+    #[test]
+    fn huge_cursor_counts_clamp_to_the_edge() {
+        let mut g = Grid::new(3, 5);
+        feed(&mut g, b"ab\x1b[65535C");
+        assert_eq!(g.cursor(), (0, 4));
+        feed(&mut g, b"\x1b[65535B");
+        assert_eq!(g.cursor(), (2, 4));
+        feed(&mut g, b"\x1b[1;2Hxyz\x1b[1;2H\x1b[65535X");
+        assert_eq!(row_text(&g, 0), "a    ");
+    }
+
+    /// One piece of hostile terminal output: a CSI/ESC sequence with arbitrary (often huge) parameters, a
+    /// wide or combining character, a C0 control, or raw bytes.
+    fn chunk() -> impl proptest::strategy::Strategy<Value = Vec<u8>> {
+        use proptest::prelude::*;
+        let param = prop_oneof![
+            Just(String::new()),
+            (0u32..12).prop_map(|n| n.to_string()),
+            Just("65535".to_string()),
+            Just("99999".to_string()),
+            any::<u16>().prop_map(|n| n.to_string()),
+        ];
+        let csi = (
+            prop_oneof![Just(""), Just("?")],
+            proptest::collection::vec(param, 0..6),
+            proptest::sample::select(b"HfABCDGdJKLM@PXrmsuhlST".to_vec()),
+        )
+            .prop_map(|(lead, ps, act)| {
+                let mut b = format!("\x1b[{lead}{}", ps.join(";")).into_bytes();
+                b.push(act);
+                b
+            });
+        prop_oneof![
+            csi,
+            proptest::sample::select(b"M78cDE".to_vec()).prop_map(|c| vec![0x1b, c]),
+            Just(b"\x1b[?1049h".to_vec()),
+            Just(b"\x1b[?1049l".to_vec()),
+            proptest::sample::select(vec![
+                "\u{4e2d}",
+                "\u{301}",
+                "\u{1f600}",
+                "a",
+                "\t",
+                "\r\n",
+                "\x08"
+            ])
+            .prop_map(|s| s.as_bytes().to_vec()),
+            proptest::collection::vec(any::<u8>(), 0..24),
+        ]
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(512))]
+
+        /// Arbitrary child-process output never panics the grid (a PTY child is untrusted), across resizes,
+        /// and the cursor always stays inside the screen.
+        #[test]
+        fn hostile_output_never_panics(
+            size in (1u16..12, 1u16..12),
+            parts in proptest::collection::vec(
+                (chunk(), proptest::option::of((0u16..14, 0u16..14))), 0..24),
+        ) {
+            let mut g = Grid::new(size.0, size.1);
+            let mut parser = Parser::new();
+            for (bytes, resize) in parts {
+                parser.advance(&mut g, &bytes);
+                if let Some((r, c)) = resize {
+                    g.resize(r, c);
+                }
+                let (rows, cols) = g.size();
+                let (cy, cx) = g.cursor();
+                proptest::prop_assert!(cy < rows && cx < cols, "cursor ({cy},{cx}) outside {rows}x{cols}");
+                for r in 0..rows {
+                    for c in 0..cols {
+                        let _ = g.cell(r, c);
+                    }
+                }
+            }
+        }
     }
 }

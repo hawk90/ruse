@@ -298,6 +298,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut recorded: Vec<Command> = Vec::new();
     // Per-buffer journal throttles (#858): a frame is appended only after the buffer actually changed.
     let mut journal_throttle: HashMap<DocumentId, persist::journal::Throttle> = HashMap::new();
+    // Buffers whose last journal append failed, so the E303 warning shows once per failing run (#907).
+    let mut journal_failed: std::collections::HashSet<DocumentId> =
+        std::collections::HashSet::new();
     // `ruse` with no file: the start buffer has no path, but its journal (`.ruse-journal`) is what the next
     // pathless start replays, so a crash rescues it there (#856). Not throttle-journaled: it can never be
     // saved, so a periodic journal would outlive every `:q!`.
@@ -481,7 +484,22 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     .or_default()
                     .tick(rev, dirty, JOURNAL_THROTTLE)
                 {
-                    let _ = persist::journal::append(Some(bf.path.as_path()), doc.bytes());
+                    // A failed append (read-only or vanished directory, full disk) is shown once per
+                    // failing run, as Neovim's E303 is, rather than silently leaving the work unprotected.
+                    match persist::journal::append(Some(bf.path.as_path()), doc.bytes()) {
+                        Ok(()) => {
+                            journal_failed.remove(id);
+                        }
+                        Err(e) => {
+                            if journal_failed.insert(*id) {
+                                tracing::warn!(event = "journal.failed", path = %bf.path.display(), error = %e);
+                                status = format!(
+                                    "E303: unable to write the recovery journal for \"{}\": {e}",
+                                    bf.path.display()
+                                );
+                            }
+                        }
+                    }
                 }
                 entries.push(recover::Entry {
                     path: Some(bf.path.clone()),
@@ -1748,7 +1766,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     Ex::EditReload => {
                         let id = ws.focused_buffer();
                         match files.get(&id).map(|bf| bf.path.clone()) {
-                            Some(path) => match std::fs::read(&path) {
+                            Some(path) => match persist::read_file(&path) {
                                 Ok(raw) => {
                                     let fmt = persist::encoding::FileFormat::detect(&raw);
                                     ws.reload_focused(fmt.to_buffer(&raw));
@@ -1773,16 +1791,18 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // is IMPURE (fs / process); core only splices the resulting bytes. The cursor lands on the
                     // FIRST inserted line for a file read, the LAST for a command read (nvim v0.12.4 quirk).
                     Ex::Read { addr, source } => match source {
-                        ReadSource::File(path) => match std::fs::read(&path) {
-                            Ok(raw) => {
-                                // Strip the read file's own BOM / CRLF as opening it would; the target
-                                // buffer's format is applied on save (#860).
-                                let clean = persist::encoding::FileFormat::normalize(&raw);
-                                let n = ws.read_lines(addr, &clean, false);
-                                status = format!("\"{path}\" {n}L, {}B", raw.len());
+                        ReadSource::File(path) => {
+                            match persist::read_file(std::path::Path::new(&path)) {
+                                Ok(raw) => {
+                                    // Strip the read file's own BOM / CRLF as opening it would; the target
+                                    // buffer's format is applied on save (#860).
+                                    let clean = persist::encoding::FileFormat::normalize(&raw);
+                                    let n = ws.read_lines(addr, &clean, false);
+                                    status = format!("\"{path}\" {n}L, {}B", raw.len());
+                                }
+                                Err(e) => status = format!("E484: can't open {path}: {e}"),
                             }
-                            Err(e) => status = format!("E484: can't open {path}: {e}"),
-                        },
+                        }
                         ReadSource::Command(cmd) => match crate::shell::capture(&cmd) {
                             Ok(out) => {
                                 let n = ws.read_lines(addr, out.text.as_bytes(), true);

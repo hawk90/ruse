@@ -62,7 +62,7 @@ pub(crate) fn open_file_into_buffer(
             id: Some(id),
         };
     }
-    let raw = match fs::read(&p) {
+    let raw = match persist::read_file(&p) {
         Ok(raw) => raw,
         Err(e) => {
             return Opened {

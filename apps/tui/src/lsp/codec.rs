@@ -86,7 +86,7 @@ pub fn spawn_reader<R: BufRead + Send + 'static>(mut r: R, tx: Sender<Value>) ->
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use serde_json::json;
     use std::io::Cursor;
@@ -142,5 +142,54 @@ mod tests {
             read_frame(&mut cur).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
+    }
+
+    /// One piece of a hostile server stream: a well-formed frame, a header with a lying length, a bare
+    /// header line, or raw bytes.
+    pub(crate) fn chunk() -> impl proptest::strategy::Strategy<Value = Vec<u8>> {
+        use proptest::prelude::*;
+        let len = prop_oneof![
+            0usize..64,
+            Just(usize::MAX),
+            Just(4 * 1024 * 1024 + 1),
+            Just(MAX_FRAME_BYTES + 1),
+        ];
+        prop_oneof![
+            any::<i64>().prop_map(|n| {
+                let mut b = Vec::new();
+                write_message(&mut b, &json!({"id": n})).unwrap();
+                b
+            }),
+            (len, proptest::collection::vec(any::<u8>(), 0..48)).prop_map(|(n, body)| {
+                let mut b = format!("Content-Length: {n}\r\n\r\n").into_bytes();
+                b.extend(body);
+                b
+            }),
+            "(Content-(Length|Type): ?[-+0-9a-z ]{0,24})?\r?\n".prop_map(String::into_bytes),
+            proptest::collection::vec(any::<u8>(), 0..96),
+        ]
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+
+        /// A hostile byte stream never panics the reader, and every call makes progress (no frame loop
+        /// without consuming input), so the reader thread always ends at EOF.
+        #[test]
+        fn read_frame_never_panics_and_terminates(
+            chunks in proptest::collection::vec(chunk(), 0..8),
+        ) {
+            let bytes: Vec<u8> = chunks.concat();
+            let total = bytes.len() as u64;
+            let mut cur = Cursor::new(bytes);
+            for _ in 0..=total + 1 {
+                let before = cur.position();
+                match read_frame(&mut cur) {
+                    Ok(Some(_)) => proptest::prop_assert!(cur.position() > before, "no progress"),
+                    Ok(None) | Err(_) => return Ok(()),
+                }
+            }
+            proptest::prop_assert!(false, "reader did not reach EOF");
+        }
     }
 }

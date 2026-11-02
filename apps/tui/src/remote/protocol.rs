@@ -175,4 +175,28 @@ mod tests {
         // No overlap → empty (a connection with zero shared services, not an error).
         assert!(negotiate(&["debug"], &offered).is_empty());
     }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+
+        /// A hostile peer's byte stream never panics the reader and every frame read makes progress, so a
+        /// connection always ends at EOF or a typed error. Reuses the LSP codec's stream generator: the two
+        /// framings are the same wire format.
+        #[test]
+        fn read_message_never_panics_and_terminates(
+            chunks in proptest::collection::vec(crate::lsp::codec::tests::chunk(), 0..8),
+        ) {
+            let bytes: Vec<u8> = chunks.concat();
+            let total = bytes.len() as u64;
+            let mut cur = Cursor::new(bytes);
+            for _ in 0..=total + 1 {
+                let before = cur.position();
+                match read_message(&mut cur) {
+                    Ok(Some(_)) => proptest::prop_assert!(cur.position() > before, "no progress"),
+                    Ok(None) | Err(_) => return Ok(()),
+                }
+            }
+            proptest::prop_assert!(false, "reader did not reach EOF");
+        }
+    }
 }

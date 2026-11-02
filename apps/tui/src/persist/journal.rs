@@ -418,4 +418,114 @@ mod tests {
         // CRC-32/IEEE of "123456789" is 0xCBF43926 (standard check value).
         assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
     }
+
+    mod fuzz {
+        use super::*;
+        use proptest::prelude::*;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        fn bytes(max: usize) -> impl Strategy<Value = Vec<u8>> {
+            proptest::collection::vec(any::<u8>(), 0..max)
+        }
+
+        /// A fresh document path per case: [`KNOWN`] caches frame counts by path, so reusing one would
+        /// let an earlier case's count skip the torn-tail cut being tested.
+        fn fresh_doc(tag: &str) -> (PathBuf, PathBuf) {
+            static N: AtomicU32 = AtomicU32::new(0);
+            let n = N.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "ruse-journal-fuzz-{tag}-{}-{n}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&dir).unwrap();
+            (dir.join("doc.txt"), dir)
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(256))]
+
+            /// Arbitrary bytes (and arbitrary bytes behind the magic) never panic replay.
+            #[test]
+            fn replay_never_panics_on_arbitrary_bytes(raw in bytes(256), tail in bytes(64)) {
+                let _ = replay_bytes(&raw);
+                let mut j = MAGIC.to_vec();
+                j.extend_from_slice(&raw);
+                let _ = replay_bytes(&j);
+                let mut j = frame(&raw);
+                j.extend_from_slice(&tail);
+                // A valid frame followed by junk replays that frame (or a later valid one the junk forms).
+                prop_assert!(replay_bytes(&j).is_some());
+            }
+
+            /// Any single corrupted byte in a run of frames replays one of the written payloads or nothing —
+            /// never bytes that were not a whole record.
+            #[test]
+            fn one_corrupt_byte_yields_a_real_record_or_none(
+                payloads in proptest::collection::vec(bytes(32), 1..5),
+                at in any::<proptest::sample::Index>(),
+                xor in 1u8..=255,
+            ) {
+                let mut j = Vec::new();
+                for p in &payloads {
+                    j.extend(frame(p));
+                }
+                let i = at.index(j.len());
+                j[i] ^= xor;
+                if let Some(got) = replay_bytes(&j) {
+                    prop_assert!(payloads.contains(&got), "replayed a non-record: {:?}", got);
+                }
+            }
+
+            /// Whatever garbage a journal file already holds, an append lands a record that replays.
+            #[test]
+            fn append_after_arbitrary_garbage_replays_the_new_record(
+                prefix in proptest::collection::vec(bytes(24), 0..3),
+                junk in bytes(64),
+                payload in bytes(64),
+            ) {
+                let (doc, dir) = fresh_doc("append");
+                let mut j = Vec::new();
+                for p in &prefix {
+                    j.extend(frame(p));
+                }
+                j.extend_from_slice(&junk);
+                fs::write(journal_path(Some(&doc)), &j).unwrap();
+                append(Some(&doc), &payload).unwrap();
+                let got = replay(Some(&doc));
+                clear(Some(&doc));
+                let _ = fs::remove_dir_all(&dir);
+                prop_assert_eq!(got, Some(payload));
+            }
+        }
+    }
+
+    /// #907: a journal append that cannot write (here: the directory is read-only) is an error the caller
+    /// sees, not a panic and not a silent success; a previously written journal is left as it was.
+    #[cfg(unix)]
+    #[test]
+    fn append_into_a_read_only_directory_fails_visibly() {
+        use std::os::unix::fs::PermissionsExt;
+        // SAFETY: getuid has no preconditions.
+        if unsafe { libc::getuid() } == 0 {
+            return; // root ignores directory permissions
+        }
+        let dir = std::env::temp_dir().join(format!("ruse-journal-rodir-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("f.txt");
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+        let err = append(Some(&doc), b"unsaved\n");
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(err.is_err(), "append into a read-only dir must fail");
+        assert_eq!(replay(Some(&doc)), None);
+
+        // An existing journal made read-only keeps its last record when an append is refused.
+        append(Some(&doc), b"older\n").unwrap();
+        let jp = journal_path(Some(&doc));
+        fs::set_permissions(&jp, fs::Permissions::from_mode(0o444)).unwrap();
+        let err = append_fresh(Some(&doc), b"newer\n");
+        fs::set_permissions(&jp, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(err.is_err(), "append to a read-only journal must fail");
+        assert_eq!(replay(Some(&doc)).as_deref(), Some(&b"older\n"[..]));
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

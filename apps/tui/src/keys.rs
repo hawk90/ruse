@@ -820,4 +820,25 @@ mod tests {
         record(&mut m, 'A', &[ch('x')]);
         assert_eq!(m.step(ch('Q'), false, true), Step::Replay('a'));
     }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(512))]
+
+        /// Arbitrary register bytes (a hand-edited or binary-yanked register replayed with `@`) never panic
+        /// the decoder, and decoding is a fixpoint: what it yields re-encodes to bytes that decode the same.
+        #[test]
+        fn decode_never_panics_and_is_a_fixpoint(
+            bytes in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..256),
+        ) {
+            let keys = decode(&bytes);
+            proptest::prop_assert!(keys.len() <= bytes.len());
+            proptest::prop_assert_eq!(decode(&encode_all(&keys)), keys);
+        }
+
+        /// Arbitrary `:normal` payloads (including stray and unterminated `<`) never panic.
+        #[test]
+        fn parse_normal_keys_never_panics(s in "([<>]|<[cC]-|[a-zA-Z-]{0,4}|\\PC){0,24}") {
+            let _ = parse_normal_keys(&s);
+        }
+    }
 }

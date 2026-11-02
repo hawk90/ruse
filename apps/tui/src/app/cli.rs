@@ -23,8 +23,14 @@ use crate::app::session::run as session_run;
 pub fn run() -> ExitCode {
     crate::log::init();
     crate::recover::install_hook();
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.first().map(String::as_str) {
+    // `args_os`, not `args`: `std::env::args` panics on a non-UTF-8 argument, so `ruse $'\xff.txt'` crashed
+    // before opening (#907). The file argument stays an `OsString`; subcommand arguments are text.
+    let os_args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    let args: Vec<String> = os_args
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    match os_args.first().and_then(|a| a.to_str()) {
         // `ruse --replay <trace> <file>`: headless determinism replay (F-022).
         Some("--replay") => return replay(&args[1..]),
         // `ruse agent`: run the headless Workspace Agent over stdio (F-017). Spawned locally by `ruse ssh`
@@ -36,11 +42,11 @@ pub fn run() -> ExitCode {
         Some("ssh") => return ssh_connect(args.get(1).map(String::as_str)),
         _ => {}
     }
-    let path = args.first().map(PathBuf::from);
+    let path = os_args.first().map(PathBuf::from);
     // Raw on-disk bytes (BOM/CRLF intact); session run() detects the format and normalises for the buffer.
     // Only a missing file is a new buffer. Any other read error must not open blank: `:w` would then replace
     // the unread file.
-    let raw = match path.as_ref().map(fs::read) {
+    let raw = match path.as_deref().map(crate::persist::read_file) {
         None => Vec::new(),
         Some(Ok(bytes)) => bytes,
         Some(Err(e)) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
