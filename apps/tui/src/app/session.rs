@@ -46,6 +46,27 @@ const TERM_TICK_MS: u64 = 33;
 /// so a ~10fps tick keeps them prompt without spinning.
 const LSP_TICK_MS: u64 = 100;
 
+/// The session-level key prefix awaiting its next key (#878). One value instead of one flag per prefix, so
+/// two prefixes can never be armed at once.
+enum Prefix {
+    /// No session prefix is armed.
+    None,
+    /// `C-w` (Normal mode): the next key is a window command (F-007).
+    Window,
+    /// `z` (Normal or Visual): the next key is a scroll or fold verb (`zz`/`zt`/`zb`/`zf`/`zo`…).
+    Z,
+    /// `zf` in Normal mode awaits a {motion}: the keys typed after `zf` (an optional count and a linewise
+    /// motion, e.g. `3j`/`gg`/`ip`), buffered until they parse to a range for the reindent seam. Empty just
+    /// after `zf`.
+    Zf(String),
+    /// `[` (`true`) or `]` (`false`) awaits its second key. Only `[z`/`]z` (fold nav) are handled here; every
+    /// other bracket command (`]p`/`[p`, …) is armed in the engine too, so this observes without shadowing it.
+    Bracket(bool),
+    /// Terminal mode `CTRL-\` awaits `CTRL-N`, the Terminal → Terminal-Normal escape (F-011).
+    #[cfg(unix)]
+    TermEscape,
+}
+
 /// The union of the byte ranges visible in every pane showing the FOCUSED doc — the window syntax
 /// highlighting is bounded to, so a per-keystroke reparse stays O(viewport). Falls back to the whole buffer
 /// when no pane matches. Pure over the layout + revision-cached line index (lifted out of the `run` loop).
@@ -298,15 +319,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // Inside tmux the graphics escapes must be wrapped so tmux forwards them (needs `allow-passthrough on`).
     let in_tmux = std::env::var_os("TMUX").is_some();
     let mut resident: HashSet<graphics::ImageId> = HashSet::new();
-    let mut pending_window = false; // a `C-w` window-command prefix awaits its second key (F-007)
-    let mut pending_z = false; // a `z` scroll/fold prefix awaits its second key (`zz`/`zt`/`zb`/`zf`/`zo`…)
-                               // `zf` in Normal mode awaits a {motion}: this buffers the keys typed after `zf`
-                               // (an optional count + a linewise motion, e.g. `3j`/`gg`/`ip`) until they parse to
-                               // a range for the reindent seam. `Some("")` = just after `zf`, no motion key yet.
-    let mut pending_zf: Option<String> = None;
-    // A `[`/`]` prefix (Some(open)) awaits its second key; only `[z`/`]z` (fold nav) are handled here — every
-    // other bracket command (`]p`/`[p`, …) is still armed in the engine, so this observes without shadowing it.
-    let mut pending_bracket: Option<bool> = None;
+    // The armed session key prefix, if any (`C-w`, `z`, `zf`, `[`/`]`, `CTRL-\`).
+    let mut prefix = Prefix::None;
     // Folds, keyed by buffer (per-buffer, not per-window). Closed folds collapse in render; the cursor/scroll
     // skip them. Under `foldmethod=manual` (default) edits shift/drop them; under `foldmethod=indent` (slice 3)
     // they are RECOMPUTED from indentation on edit.
@@ -359,12 +373,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut marks_picker: Option<Picker<usize>> = None;
     // F-003: the shared `:jumps` / `:changes` position viewer — payload is a byte offset; Enter jumps.
     let mut pos_picker: Option<Picker<usize>> = None;
-    // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `pending_term_escape`
+    // F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `Prefix::TermEscape`
     // tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
     #[cfg(unix)]
     let mut terminals: HashMap<DocumentId, term_buffer::Terminal> = HashMap::new();
-    #[cfg(unix)]
-    let mut pending_term_escape = false;
     // F-014: all app-side LSP orchestration (clients, diagnostics, hover/completion, request dispatch,
     // deferred edit-applies) lives behind the coordinator; the loop just drives it (CAP-LSP-COORD).
     // INV-TRUST-1 / D-058: language servers execute workspace code (build scripts, proc-macros), so they
@@ -980,8 +992,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             if terminals.contains_key(&tid) {
                 match ws.focused().view.mode() {
                     Mode::Terminal => {
-                        if pending_term_escape {
-                            pending_term_escape = false;
+                        if matches!(prefix, Prefix::TermEscape) {
+                            prefix = Prefix::None;
                             if is_ctrl(key, 'n') {
                                 run_cmd(
                                     Command::EnterTerminalNormal,
@@ -996,7 +1008,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                             // Not the escape: the swallowed `CTRL-\` is dropped; fall through to send `key`.
                         }
                         if is_ctrl(key, '\\') {
-                            pending_term_escape = true;
+                            prefix = Prefix::TermEscape;
                             continue;
                         }
                         if let Some(bytes) = pty::encode_key(key) {
@@ -1033,7 +1045,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // `reindent_range` seam `=` uses, so `zf` folds exactly the lines `=`/`d` would touch. The cursor
         // lands on the fold's first line (matches nvim). This is folds "slice 2" — the Normal-mode
         // counterpart of the Visual `zf` below.
-        if let Some(mut buf) = pending_zf.take() {
+        if let Prefix::Zf(pending) = &mut prefix {
+            let mut buf = std::mem::take(pending);
+            prefix = Prefix::None;
             // A char key extends the motion; Esc or any non-char key abandons the pending `zf`.
             let ch = match key.code {
                 KeyCode::Char(c)
@@ -1044,12 +1058,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 _ => None,
             };
             let Some(c) = ch else {
-                continue; // cancelled — `pending_zf` already taken
+                continue; // cancelled — the `zf` prefix is already cleared
             };
             buf.push(c);
             match crate::folds::parse_fold_motion(&buf) {
                 crate::folds::FoldMotionParse::More => {
-                    pending_zf = Some(buf); // still accumulating (a count or a multi-key motion)
+                    prefix = Prefix::Zf(buf); // still accumulating (a count or a multi-key motion)
                 }
                 crate::folds::FoldMotionParse::Cancel => {} // not a fold motion — drop it
                 crate::folds::FoldMotionParse::Ready { motion, count } => {
@@ -1070,8 +1084,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // `z` scroll prefix: the second key recenters the view on the cursor line (`zz`/`z.` center,
         // `zt`/`z<CR>` top, `zb`/`z-` bottom). Only `top` moves; the per-frame scroll pass then applies
         // `scrolloff`, so `zt`/`zb` land the line `scrolloff` rows inside the edge, as in Vim.
-        if pending_z {
-            pending_z = false;
+        if matches!(prefix, Prefix::Z) {
+            prefix = Prefix::None;
             // Scroll-align verbs (zz/zt/zb/z./z-/z<CR>) — unchanged.
             let to = match key.code {
                 KeyCode::Char('z' | '.') => Some(viewport::RecenterTo::Center),
@@ -1113,7 +1127,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         // Normal mode: begin `zf{motion}`. Seed the buffer with any count typed before `z`
                         // (e.g. `3zfj`); further count digits typed after `f` are appended by the handler.
                         let seed = engine.take_count();
-                        pending_zf = Some(if seed > 0 {
+                        prefix = Prefix::Zf(if seed > 0 {
                             seed.to_string()
                         } else {
                             String::new()
@@ -1206,8 +1220,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // F-007 window layer: a `C-w` prefix (Normal mode, no command-line, not Insert where `C-w`
         // deletes a word) arms the next key as a window command. A thin frontend intercept for MVP;
         // F-003's keymap router will absorb it into a proper layer.
-        if pending_window {
-            pending_window = false;
+        if matches!(prefix, Prefix::Window) {
+            prefix = Prefix::None;
             dispatch_window(key, &mut ws, &mut quit);
             continue;
         }
@@ -1223,7 +1237,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // END (Vim's "current open fold"); non-overlapping slice-1 folds make `fold_at` the innermost one.
         // No fold at the cursor → no-op (Vim beeps). Count is ignored (Vim: `[z`/`]z` take none), so consume
         // it via `take_count`, which also resets the engine's dangling `BracketPrefix`.
-        if let Some(open) = pending_bracket.take() {
+        if let Prefix::Bracket(open) = prefix {
+            prefix = Prefix::None;
             if normal && key.code == KeyCode::Char('z') {
                 engine.take_count();
                 let buf = ws.focused_buffer();
@@ -1244,11 +1259,11 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             && key.modifiers.is_empty()
             && matches!(key.code, KeyCode::Char('[') | KeyCode::Char(']'))
         {
-            pending_bracket = Some(key.code == KeyCode::Char('['));
+            prefix = Prefix::Bracket(key.code == KeyCode::Char('['));
             // no `continue`: fall through to `engine.feed` so BracketPrefix is armed for non-`z` seconds.
         }
         if normal && is_ctrl(key, 'w') {
-            pending_window = true;
+            prefix = Prefix::Window;
             continue;
         }
         // F-014: `K` = hover, `<C-]>` = goto-definition (when the focused buffer has a live server; else
@@ -1287,7 +1302,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             Mode::Visual { .. } | Mode::Select { .. }
         );
         if (normal || visual) && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
-            pending_z = true;
+            prefix = Prefix::Z;
             continue;
         }
         // `&` repeats the last `:s` on the CURRENT line. Vim drops the previous flags here — a widely
