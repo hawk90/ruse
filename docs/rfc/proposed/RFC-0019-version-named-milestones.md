@@ -36,6 +36,12 @@ Milestones titled by phase do not state which release a feature ships in.
 
 The ladder keeps the roadmap's definition of 1.0 as `ide-grade` plus `ecosystem`.
 
+## Amendment: intermediate milestones (D-060)
+
+A phase can hold more issues than one release can plan: the 2026-11-02 audits left 231 open on v0.2.0. Version
+milestones without a `ruse-phase` marker may sit between phase milestones to size releases. They hold issues only,
+and `ruse phase sync` ignores them. A new phase was rejected, because a phase must own PRD features.
+
 ## Non-goals
 
 Tagging releases, and changing `Cargo.toml` versions. Neither is decided here.
