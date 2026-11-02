@@ -15699,6 +15699,198 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "split_q_closes_window",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":split<CR>:q<CR>x",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "split_q_modified_closes_window",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":split<CR>x:q<CR>x",
+      "expect": {
+        "text": [
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "split_q_bang_closes_window",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":split<CR>x:q!<CR>x",
+      "expect": {
+        "text": [
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "split_zq_closes_window",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":split<CR>xZQx",
+      "expect": {
+        "text": [
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "split_quit_closes_window",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":split<CR>:quit<CR>x",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "split_ctrl_w_q_closes_window",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":split<CR><C-w>qx",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "split_close_closes_window",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":split<CR>:close<CR>x",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "split_hide_closes_window",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":split<CR>:hide<CR>x",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

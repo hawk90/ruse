@@ -1049,6 +1049,17 @@ FIXTURES: list[dict] = [
     {"name": "i_insert_toggles_replace", "lines": ["abc"], "keys": "i<Insert>XY<Esc>"},
     {"name": "i_insert_toggles_back", "lines": ["abc"], "keys": "i<Insert>XY<Insert>Z<Esc>"},
     {"name": "R_insert_toggles_insert", "lines": ["abc"], "keys": "RX<Insert>Y<Esc>"},
+    # --- #611 quit in a split closes only the focused window: the editor keeps running, so the key after
+    #     it still edits (ruse's session ignores keys once it has quit). Never on the LAST window, which
+    #     would end the oracle process. ------------------------------------------------------------------
+    {"name": "split_q_closes_window", "lines": ["abc"], "keys": ":split<CR>:q<CR>x"},
+    {"name": "split_q_modified_closes_window", "lines": ["abc"], "keys": ":split<CR>x:q<CR>x"},
+    {"name": "split_q_bang_closes_window", "lines": ["abc"], "keys": ":split<CR>x:q!<CR>x"},
+    {"name": "split_zq_closes_window", "lines": ["abc"], "keys": ":split<CR>xZQx"},
+    {"name": "split_quit_closes_window", "lines": ["abc"], "keys": ":split<CR>:quit<CR>x"},
+    {"name": "split_ctrl_w_q_closes_window", "lines": ["abc"], "keys": ":split<CR><C-w>qx"},
+    {"name": "split_close_closes_window", "lines": ["abc"], "keys": ":split<CR>:close<CR>x"},
+    {"name": "split_hide_closes_window", "lines": ["abc"], "keys": ":split<CR>:hide<CR>x"},
 ]
 
 
