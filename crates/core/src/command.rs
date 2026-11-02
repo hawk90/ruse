@@ -21,6 +21,30 @@ pub enum SearchOp {
     Change,
     /// `y/pat`: yank `[cursor, match)`.
     Yank,
+    /// `gu/pat` / `gU/pat` / `g~/pat` / `g?/pat` (and `gUn`, `gUgn`): recase the span.
+    Case(WordCase),
+    /// `>/pat` (`left: false`) / `</pat` (`left: true`): shift every line the span touches.
+    Shift { left: bool },
+    /// `=/pat`: reindent every line the span touches.
+    Reindent,
+    /// `gq/pat` (`keep: false`) / `gw/pat` (`keep: true`): reflow every line the span touches.
+    Format { keep: bool },
+}
+
+impl SearchOp {
+    /// The span operator this search folds into, for every form beyond the bare move and the d/c/y trio
+    /// (which keep their own search-specific planning). Shared with [`MarkOp`] so a search, a `gn` match
+    /// and a mark all apply case / shift / reindent / format through ONE planner (#800).
+    #[must_use]
+    pub fn span_op(self) -> Option<MarkOp> {
+        match self {
+            SearchOp::Move | SearchOp::Delete | SearchOp::Change | SearchOp::Yank => None,
+            SearchOp::Case(c) => Some(MarkOp::Case(c)),
+            SearchOp::Shift { left } => Some(MarkOp::Shift { left }),
+            SearchOp::Reindent => Some(MarkOp::Reindent),
+            SearchOp::Format { keep } => Some(MarkOp::Format { keep }),
+        }
+    }
 }
 
 /// A Vim search offset — the `{offset}` after the closing `/` (forward) or `?` (backward) of a search
@@ -167,6 +191,10 @@ pub enum MarkOp {
     },
     /// `` =`a `` — reindent the spanned lines to their bracket-depth level.
     Reindent,
+    /// `` gq`a `` (`keep: false`) / `` gw`a `` (`keep: true`) — reflow the spanned lines to `'textwidth'`.
+    Format {
+        keep: bool,
+    },
 }
 
 /// A motion's forced wise-ness (Vim `o_v` / `o_V` / `o_CTRL-V`): the operator applies the motion but
@@ -966,6 +994,8 @@ fn mark_op_token(op: MarkOp) -> String {
         MarkOp::Shift { left: true } => "shift_left".into(),
         MarkOp::Shift { left: false } => "shift_right".into(),
         MarkOp::Reindent => "reindent".into(),
+        MarkOp::Format { keep: false } => "format".into(),
+        MarkOp::Format { keep: true } => "format_keep".into(),
     }
 }
 
@@ -987,6 +1017,8 @@ fn mark_op_from_token(s: &str) -> Option<MarkOp> {
         "shift_left" => MarkOp::Shift { left: true },
         "shift_right" => MarkOp::Shift { left: false },
         "reindent" => MarkOp::Reindent,
+        "format" => MarkOp::Format { keep: false },
+        "format_keep" => MarkOp::Format { keep: true },
         _ => return None,
     })
 }
@@ -1008,22 +1040,30 @@ fn forced_wise_from_token(s: &str) -> Option<ForcedWise> {
     })
 }
 
-fn search_op_token(op: SearchOp) -> &'static str {
+/// The trace-codec token for a [`SearchOp`]: `move`, or the same single token [`mark_op_token`] writes for
+/// the operator (`delete`, `case:upcase`, `shift_left`, `format_keep`, ...).
+fn search_op_token(op: SearchOp) -> String {
     match op {
-        SearchOp::Move => "move",
-        SearchOp::Delete => "delete",
-        SearchOp::Change => "change",
-        SearchOp::Yank => "yank",
+        SearchOp::Move => "move".into(),
+        SearchOp::Delete => "delete".into(),
+        SearchOp::Change => "change".into(),
+        SearchOp::Yank => "yank".into(),
+        other => mark_op_token(other.span_op().expect("every other SearchOp is a span op")),
     }
 }
 
 fn search_op_from_token(s: &str) -> Option<SearchOp> {
-    Some(match s {
-        "move" => SearchOp::Move,
-        "delete" => SearchOp::Delete,
-        "change" => SearchOp::Change,
-        "yank" => SearchOp::Yank,
-        _ => return None,
+    if s == "move" {
+        return Some(SearchOp::Move);
+    }
+    Some(match mark_op_from_token(s)? {
+        MarkOp::Delete => SearchOp::Delete,
+        MarkOp::Change => SearchOp::Change,
+        MarkOp::Yank => SearchOp::Yank,
+        MarkOp::Case(c) => SearchOp::Case(c),
+        MarkOp::Shift { left } => SearchOp::Shift { left },
+        MarkOp::Reindent => SearchOp::Reindent,
+        MarkOp::Format { keep } => SearchOp::Format { keep },
     })
 }
 
@@ -2095,6 +2135,16 @@ mod tests {
                 name: 'h',
                 linewise: false,
             },
+            Command::OpToMark {
+                op: MarkOp::Format { keep: false },
+                name: 'i',
+                linewise: true,
+            },
+            Command::OpToMark {
+                op: MarkOp::Format { keep: true },
+                name: 'j',
+                linewise: false,
+            },
             Command::BreakUndo,
             Command::ShiftRight(1),
             Command::ShiftRight(3),
@@ -2500,6 +2550,32 @@ mod tests {
                 count: 3,
                 pattern: "a b".into(),
                 backward: true,
+            },
+            Command::SearchObject {
+                op: SearchOp::Case(WordCase::Upcase),
+                count: 1,
+                pattern: "b".into(),
+                backward: false,
+            },
+            Command::SearchObject {
+                op: SearchOp::Shift { left: true },
+                count: 2,
+                pattern: "b".into(),
+                backward: false,
+            },
+            Command::Search {
+                op: SearchOp::Format { keep: true },
+                count: 1,
+                pattern: "end".into(),
+                backward: false,
+                offset: SearchOffset::None,
+            },
+            Command::Search {
+                op: SearchOp::Reindent,
+                count: 1,
+                pattern: "x y".into(),
+                backward: true,
+                offset: SearchOffset::None,
             },
             Command::Undo,
             Command::Redo,

@@ -2891,17 +2891,14 @@ mod tests {
             })
         );
 
-        // Like `dc`, a second (different) operator key re-arms rather than aborting; a motion then completes it.
+        // A second, DIFFERENT operator key aborts the armed one (nvim `checkclearop`, #790) — it does not
+        // re-arm — so the following motion is a bare move.
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('>'), Mode::Normal), Feed::Pending);
-        assert_eq!(e.feed(k('<'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('<'), Mode::Normal), Feed::Ignored);
         assert_eq!(
             e.feed(k('j'), Mode::Normal),
-            Feed::Cmd(Command::ShiftMotion {
-                left: true,
-                count: 1,
-                motion: Motion::Down
-            })
+            Feed::Cmd(Command::Move(1, Motion::Down))
         );
     }
 

@@ -22,11 +22,6 @@ fn push_count_digit(count: u32, d: u32) -> u32 {
     count.saturating_mul(10).saturating_add(d).min(MAX_COUNT)
 }
 
-/// Compose an operator count with a motion count (`3d2w` = 6), clamped to [`MAX_COUNT`].
-fn compose_count(op: u32, motion: u32) -> u32 {
-    op.max(1).saturating_mul(motion).min(MAX_COUNT)
-}
-
 /// Whether `key` is a chord: it carries a command modifier (CTRL, ALT, SUPER, HYPER or META). A chord never
 /// matches an arm written for the bare key (#598, #599, #1059): `<C-s>` is not `s`. SHIFT is not a chord
 /// modifier, because a real terminal reports an uppercase letter as SHIFT + `Q` (#681).
@@ -83,8 +78,9 @@ pub enum Feed {
 /// pickers, the macro `q`/`@`/`Q`); each may take a key only when the engine is not waiting for it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Pending {
-    /// A command boundary: a new command may start here. A count may be accumulating
-    /// ([`InputEngine::take_count`] consumes it).
+    /// A command boundary: a new command may start here. A count may be accumulating, and a `"x` register
+    /// prefix may already be emitted ([`InputEngine::take_count`] consumes the count; every count segment
+    /// folds through the same model the engine uses, #796).
     Base,
     /// An operator is armed (`d`, `gu`, `dv`, …) and waits for its motion, with no key expectation.
     Operator,
@@ -121,33 +117,90 @@ enum Op {
     Filter,
 }
 
-impl Op {
-    /// The `WordCase` a case operator applies (`None` for the non-case operators).
-    fn case(self) -> Option<WordCase> {
-        match self {
-            Op::CaseLower => Some(WordCase::Downcase),
-            Op::CaseUpper => Some(WordCase::Upcase),
-            Op::CaseToggle => Some(WordCase::Toggle),
-            Op::Rot13 => Some(WordCase::Rot13),
-            _ => None,
-        }
-    }
+/// What an armed [`Op`] DOES, independent of the key that armed it. Every consumer (a motion, the doubled
+/// linewise form, a search, `n`/`N`, `gn`, a mark) matches this ONCE, so no consumer can silently degrade a
+/// subset of the operators into a bare move (#800).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpClass {
+    /// `d` / `c` / `y`.
+    Text(OpKind),
+    /// `gu` / `gU` / `g~` / `g?`.
+    Case(WordCase),
+    /// `<` (`left`) / `>`.
+    Shift { left: bool },
+    /// `=`.
+    Reindent,
+    /// `gq` / `gw` (`keep`).
+    Format { keep: bool },
+    /// `!` — resolved by the frontend into a pre-seeded `:{range}!` line, never an edit here.
+    Filter,
+}
 
-    /// Whether this is a shift operator, and its direction (`Some(true)` = left, `Some(false)` = right).
-    fn shift(self) -> Option<bool> {
+impl Op {
+    fn class(self) -> OpClass {
         match self {
-            Op::ShiftLeft => Some(true),
-            Op::ShiftRight => Some(false),
-            _ => None,
+            Op::Delete => OpClass::Text(OpKind::Delete),
+            Op::Change => OpClass::Text(OpKind::Change),
+            Op::Yank => OpClass::Text(OpKind::Yank),
+            Op::CaseLower => OpClass::Case(WordCase::Downcase),
+            Op::CaseUpper => OpClass::Case(WordCase::Upcase),
+            Op::CaseToggle => OpClass::Case(WordCase::Toggle),
+            Op::Rot13 => OpClass::Case(WordCase::Rot13),
+            Op::ShiftRight => OpClass::Shift { left: false },
+            Op::ShiftLeft => OpClass::Shift { left: true },
+            Op::Reindent => OpClass::Reindent,
+            Op::Format => OpClass::Format { keep: false },
+            Op::FormatKeep => OpClass::Format { keep: true },
+            Op::Filter => OpClass::Filter,
         }
     }
 }
 
-/// The operator-pending axis: an armed operator (`d`/`c`/`y`) plus the count that preceded it.
+impl OpClass {
+    /// The operator as a search / `gn` operator. `None` for the filter, which has no buffer-side form.
+    fn search_op(self) -> Option<SearchOp> {
+        Some(match self {
+            OpClass::Text(OpKind::Delete) => SearchOp::Delete,
+            OpClass::Text(OpKind::Change) => SearchOp::Change,
+            OpClass::Text(OpKind::Yank) => SearchOp::Yank,
+            OpClass::Case(c) => SearchOp::Case(c),
+            OpClass::Shift { left } => SearchOp::Shift { left },
+            OpClass::Reindent => SearchOp::Reindent,
+            OpClass::Format { keep } => SearchOp::Format { keep },
+            OpClass::Filter => return None,
+        })
+    }
+
+    /// The operator as a mark-motion operator. `None` for the filter.
+    fn mark_op(self) -> Option<MarkOp> {
+        Some(match self {
+            OpClass::Text(OpKind::Delete) => MarkOp::Delete,
+            OpClass::Text(OpKind::Change) => MarkOp::Change,
+            OpClass::Text(OpKind::Yank) => MarkOp::Yank,
+            OpClass::Case(c) => MarkOp::Case(c),
+            OpClass::Shift { left } => MarkOp::Shift { left },
+            OpClass::Reindent => MarkOp::Reindent,
+            OpClass::Format { keep } => MarkOp::Format { keep },
+            OpClass::Filter => return None,
+        })
+    }
+}
+
+/// The operator-pending axis: an armed operator plus the RAW count typed before it (`0` = none, so `dG` and
+/// `2dG` stay distinguishable — #791).
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct OpPending {
     op: Op,
     count: u32,
+}
+
+/// Multiply two raw count segments (`3d2w` = 6), where `0` means "no count typed" (not a factor of zero),
+/// clamped to [`MAX_COUNT`].
+fn mul_raw(a: u32, b: u32) -> u32 {
+    match (a, b) {
+        (0, x) | (x, 0) => x,
+        (a, b) => a.saturating_mul(b).min(MAX_COUNT),
+    }
 }
 
 /// The one-shot key-expectation axis — what the *next* key must supply. Held separately from the operator
@@ -201,6 +254,12 @@ enum Awaiting {
 struct NormalState {
     /// Count axis: the accumulating numeric prefix for the next motion/operator.
     count: u32,
+    /// The RAW count typed before a `"x` register prefix (`0` = none). A register prefix ends a count
+    /// segment without consuming it: nvim multiplies the segments, `2"a3x` deletes 6 (#796).
+    reg_count: u32,
+    /// A `"x` register prefix has been emitted for the command being built. Not a count, but it makes the
+    /// state non-pristine (the next key still belongs to the same command).
+    register: bool,
     /// Operator axis: an armed operator awaiting its motion (`None` = none).
     op: Option<OpPending>,
     /// Key-expectation axis: what the next key must supply (the top-priority resolution tier).
@@ -216,10 +275,24 @@ impl NormalState {
     /// leader tier (F-013 NAT-2) only arms from here, so a Space mid-construct (`d<Space>`, `2<Space>`)
     /// stays the Vim right-motion — the text grammar is untouched (NAT-1).
     fn is_clean(&self) -> bool {
-        self.count == 0
-            && self.op.is_none()
-            && self.awaiting == Awaiting::Nothing
-            && self.forced_wise.is_none()
+        self.typed() == 0 && !self.register && !self.armed() && self.awaiting == Awaiting::Nothing
+    }
+
+    /// An operator is armed (or its forced wise, `dv`): the state [`InputEngine::pending`] reports as
+    /// [`Pending::Operator`], and the one in which [`vim::continues_op`] decides whether a key continues or
+    /// aborts the construct (#790).
+    fn armed(&self) -> bool {
+        self.op.is_some() || self.forced_wise.is_some()
+    }
+
+    /// The RAW effective count of the command being built: the product of every count segment typed so far
+    /// — before a register prefix, before the operator, and after it (`2"a3d2l` = 12) — or `0` when no
+    /// count was typed at all. This is the ONE count model every consumer reads (#789, #791, #796, #799).
+    fn typed(&self) -> u32 {
+        mul_raw(
+            mul_raw(self.reg_count, self.op.map_or(0, |p| p.count)),
+            self.count,
+        )
     }
 }
 
@@ -629,6 +702,8 @@ impl InputEngine {
     /// shared search ring. The frontend calls this when `q:`/`q/`/`q?` is recognised (the macro layer routes
     /// the `q`-prefixed `:`/`/`/`?` here instead of arming a macro recording). No-op if already open.
     pub fn open_cmdwin(&mut self, kind: char) {
+        // The window opens from a clean Normal base: no operator/count from an earlier search line applies.
+        self.pending_search = None;
         let ring = if kind == '/' || kind == '?' {
             &self.search_history
         } else {
@@ -798,6 +873,9 @@ impl InputEngine {
         match key.code {
             KeyCode::Esc => {
                 self.cmdline = None;
+                // Abandoning a `/` line abandons the operator/count it carried (`d/<Esc>`): left behind, a
+                // later `q/` window search would fold into it and delete (#798).
+                self.pending_search = None;
                 Feed::Ignored
             }
             KeyCode::Backspace => {
@@ -935,6 +1013,22 @@ impl InputEngine {
     /// its state and dies with it), which this engine does not model yet: count/operator/awaiting are
     /// still engine-wide, so `reset()` is the only available approximation of "the layer went away".
     fn unmatched(&mut self, ns: Ns, key: KeyEvent) -> Feed {
+        let had_register = self.normal.register;
+        let feed = self.unmatched_policy(ns, key);
+        self.drop_aborted_register(had_register, feed)
+    }
+
+    /// An abort also abandons a `"x` prefix already handed to the core (`"b<Esc>p` pastes the UNNAMED
+    /// register in nvim): clear the core's pending register in place of the bare `Ignored`.
+    fn drop_aborted_register(&self, had_register: bool, feed: Feed) -> Feed {
+        if had_register && feed == Feed::Ignored {
+            Feed::Cmd(Command::SetRegister(None))
+        } else {
+            feed
+        }
+    }
+
+    fn unmatched_policy(&mut self, ns: Ns, key: KeyEvent) -> Feed {
         let policy = match self.profile.stack(ns).resolve(&key.code) {
             Resolved::Bound { .. } => {
                 // Reachable only if a caller routes a bound key here; treat as unhandled rather than
@@ -983,31 +1077,13 @@ impl InputEngine {
     /// operator/count must survive the minibuffer (`d/pat`, `2?pat`): capture them (op-count × pending
     /// count, as `motion()` folds) BEFORE `reset()` clears the axes, then hand off to the command-line
     /// namespace, which collects the pattern and calls [`Self::submit_search`] to build the command.
-    fn enter_search(&mut self, backward: bool) -> Feed {
-        let op = match self.normal.op {
-            Some(OpPending { op, .. }) => match op {
-                Op::Delete => SearchOp::Delete,
-                Op::Change => SearchOp::Change,
-                Op::Yank => SearchOp::Yank,
-                // Recase-/shift-to-search (`gu/pat`, `>/pat`) are not modeled; degrade to a plain motion.
-                Op::CaseLower
-                | Op::CaseUpper
-                | Op::CaseToggle
-                | Op::Rot13
-                | Op::ShiftRight
-                | Op::ShiftLeft
-                | Op::Reindent
-                | Op::Format
-                | Op::FormatKeep
-                | Op::Filter => SearchOp::Move,
-            },
-            None => SearchOp::Move,
+    fn enter_search(&mut self, backward: bool, key: KeyEvent) -> Feed {
+        let Some(op) = self.search_op() else {
+            // `!/pat` — the filter over a search needs a frontend line range this path cannot carry yet;
+            // abort rather than degrade it into a bare move (#800).
+            return self.unmatched(Ns::OperatorPending, key);
         };
-        let count = match self.normal.op {
-            Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
-            None => self.mcount(),
-        };
-        self.pending_search = Some((op, count));
+        self.pending_search = Some((op, self.mcount()));
         self.reset();
         self.open_cmdline(if backward { '?' } else { '/' }, false);
         Feed::Pending
@@ -1057,9 +1133,14 @@ impl InputEngine {
         match self.last_search.clone() {
             Some((pattern, forward, offset)) => {
                 let backward = if opposite { forward } else { !forward };
+                // `n`/`N` are motions: `3n` steps three matches and `dn`/`cn`/`gUn` operate up to the match
+                // (#799), through the same operator and count model as `/`.
+                let Some(op) = self.search_op() else {
+                    return self.unmatched(Ns::OperatorPending, key);
+                };
                 self.action(Command::Search {
-                    op: SearchOp::Move,
-                    count: 1,
+                    op,
+                    count: self.mcount(),
                     pattern,
                     backward,
                     offset,
@@ -1125,23 +1206,30 @@ impl InputEngine {
     /// (`H`/`M`/`L`, `C-d`, …) that consumes a key the engine would otherwise never see: it reads the
     /// count the digits accumulated and resets, so the count can't leak onto the next command.
     pub fn take_count(&mut self) -> u32 {
-        let n = self.normal.count;
+        let n = self.normal.typed();
         self.reset();
         n
     }
 
+    /// The effective count, defaulting to 1: every typed count segment multiplied ([`NormalState::typed`]).
     fn mcount(&self) -> u32 {
-        self.normal.count.max(1)
+        self.normal.typed().max(1)
+    }
+
+    /// The armed operator as a search / `gn` operator: [`SearchOp::Move`] with none armed, `None` for an
+    /// operator with no search form (the filter), which the caller aborts.
+    fn search_op(&self) -> Option<SearchOp> {
+        match self.normal.op {
+            Some(p) => p.op.class().search_op(),
+            None => Some(SearchOp::Move),
+        }
     }
 
     /// Emit `m` — an operator command if one is armed, else a bare move — then clear the transient state.
     /// The repeat count is the operator count times the motion count (`3d2w` = 6), or the motion count for
-    /// a bare move; the composition itself lives in [`op_over_motion`](Self::op_over_motion).
+    /// a bare move ([`mcount`](Self::mcount) folds every segment).
     fn motion(&mut self, m: Motion) -> Feed {
-        let total = match self.normal.op {
-            Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
-            None => self.mcount(),
-        };
+        let total = self.mcount();
         self.op_over_motion(m, total)
     }
 
@@ -1151,99 +1239,53 @@ impl InputEngine {
     /// no operator armed it is the bare `Move(total, m)`. Shared by [`motion`](Self::motion) (computed
     /// `total`) and [`screen_op`](Self::screen_op) (the frontend-resolved `H`/`M`/`L` target line).
     fn op_over_motion(&mut self, m: Motion, total: u32) -> Feed {
-        // `!{motion}` — the filter operator does not resolve to an edit here: it is linewise-over-motion, so
-        // hand the motion + folded count to the frontend (it numbers the lines and opens the `:{range}!`
-        // cmdline). Early-return before the edit-building match so `Op::Filter` never reaches its arms.
-        if matches!(self.normal.op, Some(OpPending { op: Op::Filter, .. })) {
-            self.reset();
-            return Feed::FilterMotion {
+        let feed = match self.normal.op.map(|p| p.op.class()) {
+            None => Feed::Cmd(Command::Move(total, m)),
+            // `!{motion}` — the filter does not resolve to an edit here: hand the motion + folded count to the
+            // frontend (it numbers the lines and opens the `:{range}!` cmdline).
+            Some(OpClass::Filter) => Feed::FilterMotion {
                 count: total,
                 motion: m,
-            };
-        }
-        let cmd = match self.normal.op {
-            Some(OpPending { op, .. }) => {
-                // `gu`/`gU`/`g~` recase the operator span (no forced-wise / `cw`->`ce` rewrites apply).
-                if let Some(case) = op.case() {
-                    Command::CaseMotion {
-                        count: total,
-                        motion: m,
-                        case,
-                    }
-                } else if let Some(left) = op.shift() {
-                    // `>`/`<` over a motion — the planner shifts the motion's LINES (always linewise).
-                    Command::ShiftMotion {
-                        left,
-                        count: total,
-                        motion: m,
-                    }
-                } else if op == Op::Reindent {
-                    // `=` over a motion — the planner reindents the motion's LINES (always linewise).
-                    Command::Reindent {
-                        count: total,
-                        motion: m,
-                    }
-                } else if op == Op::Format || op == Op::FormatKeep {
-                    // `gq`/`gw` over a motion — the planner reflows the motion's LINES to textwidth.
-                    Command::Format {
-                        count: total,
-                        motion: m,
-                        keep_cursor: op == Op::FormatKeep,
-                    }
-                } else if let Some(wise) = self.normal.forced_wise {
-                    let opk = match op {
-                        Op::Delete => OpKind::Delete,
-                        Op::Change => OpKind::Change,
-                        Op::Yank => OpKind::Yank,
-                        // Case ops are handled by the `op.case()` branch above.
-                        Op::CaseLower
-                        | Op::CaseUpper
-                        | Op::CaseToggle
-                        | Op::Rot13
-                        | Op::ShiftRight
-                        | Op::ShiftLeft
-                        | Op::Reindent
-                        | Op::Format
-                        | Op::FormatKeep
-                        | Op::Filter => {
-                            unreachable!()
-                        }
-                    };
-                    Command::OpForced {
-                        op: opk,
-                        count: total,
-                        motion: m,
-                        wise,
-                    }
-                } else {
-                    match op {
-                        Op::Delete => Command::Delete(total, m),
-                        // Vim `cw`/`cW` do not eat the trailing space and, unlike `ce`, changing a word's
-                        // LAST char changes only that char. The core's `change_range` applies that special
-                        // case for `WordFwd`/`BigWordFwd`, so pass the motion through unchanged (rewriting to
-                        // `WordEnd` here would wrongly jump into the next word from a word-final cursor).
-                        Op::Change => Command::Change(total, m),
-                        Op::Yank => Command::Yank(total, m),
-                        // Case ops are handled by the `op.case()` branch above.
-                        Op::CaseLower
-                        | Op::CaseUpper
-                        | Op::CaseToggle
-                        | Op::Rot13
-                        | Op::ShiftRight
-                        | Op::ShiftLeft
-                        | Op::Reindent
-                        | Op::Format
-                        | Op::FormatKeep
-                        | Op::Filter => {
-                            unreachable!()
-                        }
-                    }
-                }
-            }
-            None => Command::Move(total, m),
+            },
+            // `gu`/`gU`/`g~`/`g?` recase the operator span (no forced-wise / `cw`->`ce` rewrites apply).
+            Some(OpClass::Case(case)) => Feed::Cmd(Command::CaseMotion {
+                count: total,
+                motion: m,
+                case,
+            }),
+            // `>`/`<`, `=`, `gq`/`gw` over a motion — the planner works on the motion's LINES.
+            Some(OpClass::Shift { left }) => Feed::Cmd(Command::ShiftMotion {
+                left,
+                count: total,
+                motion: m,
+            }),
+            Some(OpClass::Reindent) => Feed::Cmd(Command::Reindent {
+                count: total,
+                motion: m,
+            }),
+            Some(OpClass::Format { keep }) => Feed::Cmd(Command::Format {
+                count: total,
+                motion: m,
+                keep_cursor: keep,
+            }),
+            Some(OpClass::Text(op)) => Feed::Cmd(match (self.normal.forced_wise, op) {
+                (Some(wise), op) => Command::OpForced {
+                    op,
+                    count: total,
+                    motion: m,
+                    wise,
+                },
+                (None, OpKind::Delete) => Command::Delete(total, m),
+                // Vim `cw`/`cW` do not eat the trailing space and, unlike `ce`, changing a word's LAST char
+                // changes only that char. The core's `change_range` applies that special case for
+                // `WordFwd`/`BigWordFwd`, so pass the motion through unchanged (rewriting to `WordEnd` here
+                // would wrongly jump into the next word from a word-final cursor).
+                (None, OpKind::Change) => Command::Change(total, m),
+                (None, OpKind::Yank) => Command::Yank(total, m),
+            }),
         };
         self.reset();
-        Feed::Cmd(cmd)
+        feed
     }
 
     /// The EFFECTIVE count for a viewport screen-motion (`H`/`M`/`L`), WITHOUT consuming any state. When an
@@ -1252,9 +1294,10 @@ impl InputEngine {
     /// operator it is the raw pending count (0 = none, which the viewport resolver treats as 1). A frontend
     /// intercept resolves its target line from this, then hands the line to [`screen_op`](Self::screen_op).
     pub fn screen_count(&self) -> u32 {
-        match self.normal.op {
-            Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
-            None => self.normal.count,
+        if self.normal.op.is_some() {
+            self.mcount()
+        } else {
+            self.normal.typed()
         }
     }
 
@@ -1282,9 +1325,7 @@ impl InputEngine {
             return Pending::Argument;
         }
         match self.normal.awaiting {
-            Awaiting::Nothing if self.normal.op.is_some() || self.normal.forced_wise.is_some() => {
-                Pending::Operator
-            }
+            Awaiting::Nothing if self.normal.armed() => Pending::Operator,
             Awaiting::Nothing => Pending::Base,
             Awaiting::BracketPrefix { open_bracket } => Pending::Bracket { open: open_bracket },
             _ => Pending::Argument,
@@ -1418,57 +1459,42 @@ impl InputEngine {
     /// [`ChangeIntent`] this entry opens, and the terminating `<Esc>` replays the typed text that many
     /// times. Change-family entries (`c`/`s`/…) do NOT come through here, so their count never repeats text.
     fn insert_entry(&mut self, cmd: Command) -> Feed {
-        self.pending_insert_count = self.normal.count.max(1);
+        self.pending_insert_count = self.mcount();
         self.action(cmd)
     }
 
     /// A named-mark key after `` ` ``/`'`: with an operator pending it OPERATES to the mark
-    /// (`` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``); otherwise it JUMPS (`` `a ``/`'a`). `linewise`
-    /// is the `'` form (honoured by delete/change/yank/case; shift/reindent are always linewise). `gq`/`gw`
-    /// (Format) to a mark is not modeled — it falls back to the bare jump.
-    fn mark_op(&mut self, name: char, linewise: bool) -> Feed {
-        let op = self.normal.op.and_then(|p| match p.op {
-            Op::Delete => Some(MarkOp::Delete),
-            Op::Change => Some(MarkOp::Change),
-            Op::Yank => Some(MarkOp::Yank),
-            Op::CaseLower => Some(MarkOp::Case(WordCase::Downcase)),
-            Op::CaseUpper => Some(MarkOp::Case(WordCase::Upcase)),
-            Op::CaseToggle => Some(MarkOp::Case(WordCase::Toggle)),
-            Op::Rot13 => Some(MarkOp::Case(WordCase::Rot13)),
-            Op::ShiftRight => Some(MarkOp::Shift { left: false }),
-            Op::ShiftLeft => Some(MarkOp::Shift { left: true }),
-            Op::Reindent => Some(MarkOp::Reindent),
-            // `gq`/`gw` (Format) and `!` (Filter) to a mark are not modeled; fall through to a bare jump.
-            Op::Format | Op::FormatKeep | Op::Filter => None,
-        });
-        let cmd = match op {
-            Some(op) => Command::OpToMark { op, name, linewise },
+    /// (`` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``, `` gq`a ``); otherwise it JUMPS (`` `a ``/`'a`).
+    /// `linewise` is the `'` form (honoured by delete/change/yank/case; the line operators are always
+    /// linewise). The filter has no mark form yet and aborts rather than degrading into a jump (#800).
+    fn mark_op(&mut self, name: char, linewise: bool, key: KeyEvent) -> Feed {
+        let cmd = match self.normal.op.map(|p| p.op.class()) {
             None if linewise => Command::GotoNamedMarkLine(name),
             None => Command::GotoNamedMark(name),
+            Some(class) => match class.mark_op() {
+                Some(op) => Command::OpToMark { op, name, linewise },
+                None => return self.unmatched(Ns::OperatorPending, key),
+            },
         };
         self.action(cmd)
     }
 
     /// Emit `gn`/`gN` — the search-match text object. Reads the last search pattern and folds in any pending
-    /// operator (`dgn`/`cgn`/`ygn`); the bare form ([`SearchOp::Move`]) selects the match in Visual. With no
-    /// prior search there is nothing to match, so the pending construct aborts (leaking no state). Emitted as
-    /// a single [`Command::SearchObject`] with the pattern baked in, so `.` can replay `cgn`.
-    fn search_object(&mut self, backward: bool) -> Feed {
+    /// operator (`dgn`/`cgn`/`ygn`, `gUgn`, `>gn`, `gqgn`); the bare form ([`SearchOp::Move`]) selects the
+    /// match in Visual. With no prior search there is nothing to match, so the pending construct aborts
+    /// (leaking no state). Emitted as a single [`Command::SearchObject`] with the pattern baked in, so `.`
+    /// can replay `cgn`.
+    fn search_object(&mut self, backward: bool, key: KeyEvent) -> Feed {
         let Some((pattern, _, _)) = self.last_search.clone() else {
             // No prior search — nothing to match; abort the pending construct, leaking no state.
             self.reset();
             return Feed::Ignored;
         };
-        let op = match self.normal.op {
-            Some(OpPending { op: Op::Delete, .. }) => SearchOp::Delete,
-            Some(OpPending { op: Op::Change, .. }) => SearchOp::Change,
-            Some(OpPending { op: Op::Yank, .. }) => SearchOp::Yank,
-            // No operator (or a non-d/c/y one that gn does not accept): the bare, Visual-selecting form.
-            _ => SearchOp::Move,
+        let Some(op) = self.search_op() else {
+            return self.unmatched(Ns::OperatorPending, key);
         };
-        let count = compose_count(self.normal.op.map_or(1, |p| p.count), self.mcount());
-        self.reset();
-        Feed::Cmd(Command::SearchObject {
+        let count = self.mcount();
+        self.action(Command::SearchObject {
             op,
             count,
             pattern,
@@ -1476,65 +1502,61 @@ impl InputEngine {
         })
     }
 
-    /// Arm a case operator (`gu`/`gU`/`g~`) so the next motion recases its span. No doubling detection
-    /// here — the linewise `guu`/`gUU`/`g~~` form is handled where the second key is dispatched.
-    fn arm_case_op(&mut self, op: Op) -> Feed {
+    /// Arm `op` over the next motion, keeping the RAW count typed so far as the operator count.
+    fn arm_op(&mut self, op: Op) -> Feed {
         self.normal.op = Some(OpPending {
             op,
-            count: self.mcount(),
+            count: self.normal.count,
         });
         self.normal.count = 0;
         Feed::Pending
     }
 
-    /// Emit the LINEWISE case command for a doubled case operator (`guu`/`gUU`/`g~~`) — recase the current
-    /// `count` lines. Called only with a case operator armed.
-    fn case_linewise(&mut self) -> Feed {
-        let cmd = match self.normal.op {
-            Some(OpPending { op, count }) => {
-                let case = op.case().expect("a case operator is armed");
-                Command::CaseMotion {
-                    count: compose_count(count, self.mcount()),
-                    motion: Motion::Line,
-                    case,
-                }
-            }
-            None => unreachable!("case_linewise called without an armed case operator"),
+    /// The doubled, LINEWISE form of the armed operator (`dd`, `3d2d`, `>>`, `==`, `guu`/`gugu`, `gqgq`,
+    /// `!!`): it operates on the current `count` lines, where `count` multiplies EVERY count segment
+    /// (`d3d` = 3, `2d2d` = 4 — #789). Called only with an operator armed.
+    fn op_linewise(&mut self) -> Feed {
+        let n = self.mcount();
+        let Some(OpPending { op, .. }) = self.normal.op else {
+            unreachable!("op_linewise called without an armed operator")
+        };
+        let line = Motion::Line;
+        let feed = match op.class() {
+            OpClass::Text(OpKind::Delete) => Feed::Cmd(Command::Delete(n, line)),
+            OpClass::Text(OpKind::Change) => Feed::Cmd(Command::Change(n, line)),
+            OpClass::Text(OpKind::Yank) => Feed::Cmd(Command::Yank(n, line)),
+            OpClass::Case(case) => Feed::Cmd(Command::CaseMotion {
+                count: n,
+                motion: line,
+                case,
+            }),
+            OpClass::Shift { left: false } => Feed::Cmd(Command::ShiftRight(n)),
+            OpClass::Shift { left: true } => Feed::Cmd(Command::ShiftLeft(n)),
+            OpClass::Reindent => Feed::Cmd(Command::Reindent {
+                count: n,
+                motion: line,
+            }),
+            OpClass::Format { keep } => Feed::Cmd(Command::Format {
+                count: n,
+                motion: line,
+                keep_cursor: keep,
+            }),
+            OpClass::Filter => Feed::FilterMotion {
+                count: n,
+                motion: line,
+            },
         };
         self.reset();
-        Feed::Cmd(cmd)
+        feed
     }
 
-    /// Emit the LINEWISE reflow for a doubled `gq` (`gqq`/`gqgq`): format the current `count` lines.
-    fn format_linewise(&mut self) -> Feed {
-        let count = match self.normal.op {
-            Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
-            None => unreachable!("format_linewise called without an armed operator"),
-        };
-        self.reset();
-        Feed::Cmd(Command::Format {
-            count,
-            motion: Motion::Line,
-            keep_cursor: false,
-        })
-    }
-
-    /// Arm an operator, or emit its linewise form when doubled (`dd`/`cc`/`yy`). `linewise` builds the
-    /// linewise command from the operator's count.
-    fn operator(&mut self, op: Op, linewise: fn(u32, Motion) -> Command) -> Feed {
-        if let Some(OpPending { op: armed, count }) = self.normal.op {
-            if armed == op {
-                let n = count.max(1);
-                self.reset();
-                return Feed::Cmd(linewise(n, Motion::Line));
-            }
+    /// An operator key: arm it, or emit its linewise form when it repeats the armed one (`dd`/`cc`/`yy`).
+    /// A DIFFERENT armed operator never reaches here — the operator-pending guard aborts it first (#790).
+    fn operator(&mut self, op: Op) -> Feed {
+        if self.normal.op.is_some_and(|p| p.op == op) {
+            return self.op_linewise();
         }
-        self.normal.op = Some(OpPending {
-            op,
-            count: self.mcount(),
-        });
-        self.normal.count = 0;
-        Feed::Pending
+        self.arm_op(op)
     }
 
     /// Feed one key given the current mode. Resolves the key into an outcome, then folds that outcome into
@@ -1663,9 +1685,26 @@ impl InputEngine {
         // Count-on-insert (VIM-CNT-INS): a count-prefixed insert session that just closed on `<Esc>`
         // stages its extra repeats + trailing `EnterNormal` here — return them as one `Feed::Replay` in
         // place of the bare `EnterNormal` so the whole `3ihello` collapses into a single undo group.
+        // The tail REPLACES only the closing `EnterNormal`: a key that emitted more than that (`<C-v>65<Esc>`
+        // resolves the code AND leaves Insert; `<C-@>` re-inserts AND leaves) keeps its leading commands (#797).
         if let Some(tail) = self.pending_insert_replay.take() {
             if !interrupt {
-                return Feed::Replay(tail);
+                let mut cmds = match out {
+                    Feed::Cmd(Command::EnterNormal) => Vec::new(),
+                    Feed::Replay(mut cmds) if cmds.last() == Some(&Command::EnterNormal) => {
+                        cmds.pop();
+                        cmds
+                    }
+                    other => {
+                        debug_assert!(
+                            false,
+                            "an insert session closes only on EnterNormal, got {other:?}"
+                        );
+                        Vec::new()
+                    }
+                };
+                cmds.extend(tail);
+                return Feed::Replay(cmds);
             }
         }
         out
@@ -2244,24 +2283,31 @@ impl InputEngine {
             return self.insert_literal_key(key);
         }
         // >=1 digit: resolve the code, then process the terminating key as normal Insert input.
-        let resolved = self.resolve_char(base, value);
-        let term = self.feed_impl(key, Mode::Insert);
-        match resolved {
+        let Some(c) = self.resolve_char(base, value) else {
             // Invalid code point (a lone surrogate via `u`/`U`, say): nothing to prepend — just the term.
-            None => term,
-            Some(c) => match term {
-                Feed::Cmd(tc) => {
-                    // Emit BOTH the resolved char and the terminator's command. `Replay` is the only
-                    // multi-command channel and it bypasses the recorder, so fold both into the dot-repeat
-                    // record by hand (exactly what the outer `feed` would do for two consecutive `Cmd`s).
-                    self.record(&Feed::Cmd(Command::InsertChar(c)), Mode::Insert);
-                    self.record(&Feed::Cmd(tc.clone()), Mode::Insert);
-                    Feed::Replay(vec![Command::InsertChar(c), tc])
-                }
-                // The terminator armed a prefix / was ignored: only the resolved char applies now. Any
-                // Insert prefix it just armed survives `action`'s reset (which clears only Normal state).
-                _ => self.action(Command::InsertChar(c)),
-            },
+            return self.feed_impl(key, Mode::Insert);
+        };
+        // Emit the resolved char AHEAD of whatever the terminator produces. `Replay` is the only multi-command
+        // channel and it bypasses the recorder, so fold the char into the dot-repeat record by hand FIRST —
+        // before the terminator runs, since a terminator like `<C-a>` records its own commands (#797).
+        self.record(&Feed::Cmd(Command::InsertChar(c)), Mode::Insert);
+        match self.feed_impl(key, Mode::Insert) {
+            Feed::Cmd(tc) => {
+                self.record(&Feed::Cmd(tc.clone()), Mode::Insert);
+                Feed::Replay(vec![Command::InsertChar(c), tc])
+            }
+            // A terminator that is itself a multi-command replay (`<C-a>` / `<C-@>`), already recorded.
+            Feed::Replay(tcmds) => {
+                let mut cmds = vec![Command::InsertChar(c)];
+                cmds.extend(tcmds);
+                Feed::Replay(cmds)
+            }
+            // The terminator armed a prefix / was ignored: only the resolved char applies now. Any Insert
+            // prefix it just armed survives (the reset clears only Normal state).
+            _ => {
+                self.reset();
+                Feed::Replay(vec![Command::InsertChar(c)])
+            }
         }
     }
 
@@ -2445,6 +2491,18 @@ impl InputEngine {
     /// returned for the pending cases). Shared char-search initiators, then the count/operator/motion
     /// grammar and the mode-specific keys.
     fn feed_base(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        // Operator-pending (Vim's `checkclearop`): a key that cannot continue the armed operator ABORTS the
+        // whole construct and is consumed — `ydw` must not delete, `yx` must not cut, `dJ` must not join
+        // (#790). Checked first, so no Normal-only arm below can run with an operator armed.
+        // A chord is exempt: `feed_chord` owns the chord table and its own operator-pending rule (`d<C-j>`
+        // continues, `d<C-k>` aborts), and `<C-Left>`/`<S-Right>` are word motions.
+        if let Some(p) = self.normal.op {
+            // `{count}<Del>` edits the count being typed (`d23<Del>w` = `d2w`), so it continues too.
+            let count_edit = key.code == KeyCode::Delete && self.normal.count > 0;
+            if !is_chord(key) && !count_edit && !continues_op(p.op, key) {
+                return self.unmatched(Ns::OperatorPending, key);
+            }
+        }
         // A chord resolves in its own table and never reaches the bare-key arms below (#598, #1059).
         if is_chord(key) && matches!(key.code, KeyCode::Char(_)) {
             return self.feed_chord(key, mode);
@@ -2510,8 +2568,9 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::GSecond;
                 return Feed::Pending;
             }
+            // The count may have been typed BEFORE the operator (`2dG` = `d2G`, #791): read every segment.
             KeyCode::Char('G') => {
-                return if self.normal.count > 0 {
+                return if self.normal.typed() > 0 {
                     self.motion(Motion::GotoLine)
                 } else {
                     self.motion(Motion::LastLine)
@@ -2519,7 +2578,7 @@ impl InputEngine {
             }
             // Bare `%` matches the bracket; `{count}%` is Vim's percentage jump (go to count% of the file).
             KeyCode::Char('%') => {
-                return if self.normal.count > 0 {
+                return if self.normal.typed() > 0 {
                     self.motion(Motion::GotoPercent)
                 } else {
                     self.motion(Motion::MatchBracket)
@@ -2695,43 +2754,19 @@ impl InputEngine {
             KeyCode::Char('V') => self.action(Command::EnterVisual {
                 kind: SelectKind::Linewise,
             }),
-            KeyCode::Char('d') => self.operator(Op::Delete, Command::Delete),
-            KeyCode::Char('c') => self.operator(Op::Change, Command::Change),
-            KeyCode::Char('y') => self.operator(Op::Yank, Command::Yank),
+            KeyCode::Char('d') => self.operator(Op::Delete),
+            KeyCode::Char('c') => self.operator(Op::Change),
+            KeyCode::Char('y') => self.operator(Op::Yank),
             // `>`/`<` are operators: doubled (`>>`) shifts the current `count` lines, and over a motion
             // (`>j`, `>ap`) shifts the motion's lines (always linewise).
-            KeyCode::Char('>') => self.operator(Op::ShiftRight, |n, _| Command::ShiftRight(n)),
-            KeyCode::Char('<') => self.operator(Op::ShiftLeft, |n, _| Command::ShiftLeft(n)),
+            KeyCode::Char('>') => self.operator(Op::ShiftRight),
+            KeyCode::Char('<') => self.operator(Op::ShiftLeft),
             // `=` reindents (bracket-depth): doubled `==` is linewise, `=motion`/`=ap` over a motion.
-            KeyCode::Char('=') => self.operator(Op::Reindent, |n, _| Command::Reindent {
-                count: n,
-                motion: Motion::Line,
-            }),
-            // `!` — the filter operator. Doubled `!!` (and `{count}!!`) filters the current `count` lines
-            // (like `>>`/`gqq`); this guard must precede the arming arm below. The frontend numbers the lines
-            // and opens the `:{range}!` cmdline. `count` folds the operator count with the doubling key's.
-            KeyCode::Char('!')
-                if matches!(self.normal.op, Some(OpPending { op: Op::Filter, .. })) =>
-            {
-                let count = match self.normal.op {
-                    Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
-                    None => unreachable!("Op::Filter is armed"),
-                };
-                self.reset();
-                Feed::FilterMotion {
-                    count,
-                    motion: Motion::Line,
-                }
-            }
-            // `!{motion}{cmd}<CR>` — arm the filter operator over the next motion (linewise, like `=`/`gq`).
-            KeyCode::Char('!') if self.normal.op.is_none() => {
-                self.normal.op = Some(OpPending {
-                    op: Op::Filter,
-                    count: self.mcount(),
-                });
-                self.normal.count = 0;
-                Feed::Pending
-            }
+            KeyCode::Char('=') => self.operator(Op::Reindent),
+            // `!{motion}{cmd}<CR>` — the filter operator (linewise, like `=`/`gq`); doubled `!!` (and
+            // `{count}!!`) filters the current `count` lines. The frontend numbers the lines and opens the
+            // `:{range}!` cmdline.
+            KeyCode::Char('!') => self.operator(Op::Filter),
             KeyCode::Char('p') => self.action(Command::Paste {
                 after: true,
                 count: self.mcount(),
@@ -2791,55 +2826,19 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::ZSecond;
                 Feed::Pending
             }
-            // Doubled case operators (`guu` / `gUU` / `g~~`): the second key repeats the operator to make
-            // it linewise. These guards must precede the plain `u`/`~` handlers.
-            KeyCode::Char('u')
-                if matches!(
-                    self.normal.op,
-                    Some(OpPending {
-                        op: Op::CaseLower,
-                        ..
-                    })
-                ) =>
-            {
-                self.case_linewise()
-            }
-            KeyCode::Char('U')
-                if matches!(
-                    self.normal.op,
-                    Some(OpPending {
-                        op: Op::CaseUpper,
-                        ..
-                    })
-                ) =>
-            {
-                self.case_linewise()
-            }
-            KeyCode::Char('~')
-                if matches!(
-                    self.normal.op,
-                    Some(OpPending {
-                        op: Op::CaseToggle,
-                        ..
-                    })
-                ) =>
-            {
-                self.case_linewise()
-            }
-            // `g??` — the doubled ROT13 operator (linewise). `?` is not otherwise bound in Normal (backward
-            // search is unwired), so this guard is the only meaning of `?` after `g?` armed the operator.
+            // Doubled case operators (`guu` / `gUU` / `g~~` / `g??`): the second key repeats the operator to
+            // make it linewise. With an operator armed only its doubling key passes the operator-pending
+            // guard, so `u`/`U`/`~` here ARE the doubling key; `?` is also the backward search (`d?pat`).
+            KeyCode::Char('u' | 'U' | '~') if self.normal.op.is_some() => self.op_linewise(),
             KeyCode::Char('?')
                 if matches!(self.normal.op, Some(OpPending { op: Op::Rot13, .. })) =>
             {
-                self.case_linewise()
+                self.op_linewise()
             }
-            // `gqq` — the doubled reflow operator formats the current `count` lines (reachable now that the
-            // session's macro layer leaves a `q` to an armed operator, #679).
-            KeyCode::Char('q')
-                if matches!(self.normal.op, Some(OpPending { op: Op::Format, .. })) =>
-            {
-                self.format_linewise()
-            }
+            // `gqq` / `gww` — the doubled reflow operators format the current `count` lines (reachable now
+            // that the session's macro layer leaves a `q` to an armed operator, #679). Only the doubling key
+            // passes the operator-pending guard, so an armed operator here IS `gq` / `gw`.
+            KeyCode::Char('q' | 'w') if self.normal.op.is_some() => self.op_linewise(),
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Tab => self.action(Command::GotoNewerJump),
             KeyCode::Char('r') => {
@@ -2877,18 +2876,18 @@ impl InputEngine {
             // `closed/ignore` policy — Vim rings the bell).
             KeyCode::Char('.') => {
                 if let Some(intent) = self.last_change.clone() {
-                    let count = (self.normal.count > 0).then_some(self.normal.count);
+                    let count = (self.normal.typed() > 0).then_some(self.normal.typed());
                     self.reset();
                     Feed::Replay(intent.replay(count))
                 } else {
                     self.unmatched(Ns::Normal, key)
                 }
             }
-            KeyCode::Char('/') => self.enter_search(false),
+            KeyCode::Char('/') => self.enter_search(false, key),
             // `?` — open the BACKWARD search line. Reachable here only when no ROT13 operator is pending
             // (the guarded `g??` arm above wins that case); an armed d/c/y operator is captured so `d?pat`
             // works, exactly like `d/pat`.
-            KeyCode::Char('?') => self.enter_search(true),
+            KeyCode::Char('?') => self.enter_search(true, key),
             KeyCode::Char(':') => {
                 self.reset();
                 self.open_cmdline(':', false);
@@ -2963,9 +2962,10 @@ impl InputEngine {
             && key.code == KeyCode::Char('c')
             && key.modifiers.contains(KeyModifiers::CONTROL)
         {
+            let had_register = self.normal.register;
             self.reset();
             return if mode == Mode::Normal {
-                Feed::Ignored
+                self.drop_aborted_register(had_register, Feed::Ignored)
             } else {
                 self.action(Command::EnterNormal)
             };
@@ -3020,6 +3020,33 @@ impl InputEngine {
                 if is_chord(key) && matches!(key.code, KeyCode::Char(_)) && !(ctrl && g_chord) {
                     return self.unmatched(Ns::OperatorPending, key);
                 }
+                // Under an operator only the `g` MOTIONS continue it, and the doubled form of the `g`
+                // operators (`gugu`, `gUgU`, `g~g~`, `g?g?`, `gqgq`, `gwgw`) is its linewise form; any other
+                // `g` command (`dgJ`, `dgp`, `ygu`, ...) aborts instead of running bare (#790).
+                if let Some(p) = self.normal.op {
+                    let KeyCode::Char(c) = key.code else {
+                        return self.unmatched(Ns::OperatorPending, key);
+                    };
+                    let doubled = matches!(
+                        (p.op, c),
+                        (Op::CaseLower, 'u')
+                            | (Op::CaseUpper, 'U')
+                            | (Op::CaseToggle, '~')
+                            | (Op::Rot13, '?')
+                            | (Op::Format, 'q')
+                            | (Op::FormatKeep, 'w')
+                    );
+                    if !ctrl && doubled {
+                        return self.op_linewise();
+                    }
+                    let g_motion = matches!(
+                        c,
+                        'g' | 'e' | 'E' | '_' | 'j' | 'k' | '0' | '$' | '^' | 'o' | 'M' | 'n' | 'N'
+                    );
+                    if ctrl || !g_motion {
+                        return self.unmatched(Ns::OperatorPending, key);
+                    }
+                }
                 return match key.code {
                     // `g CTRL-G` — cursor position / buffer counts (Col/Line/Word/[Char]/Byte). Checked
                     // before the bare `g` (=`gg`) arm, since that arm ignores the ctrl modifier. Frontend-
@@ -3068,7 +3095,7 @@ impl InputEngine {
                     // char, `gM` on the 6th), so `gm` is left unbound (aborts as operator-pending) until a
                     // width-aware motion path exists.
                     KeyCode::Char('M') => {
-                        if self.normal.count == 0 {
+                        if self.normal.typed() == 0 {
                             self.normal.count = 50; // bare `gM` = 50% of the line
                         }
                         self.motion(Motion::MidLine)
@@ -3117,33 +3144,20 @@ impl InputEngine {
                         }),
                     // `gu` / `gU` / `g~` / `g?` — arm a case operator (lower / upper / toggle / ROT13) over
                     // the next motion. Only from Normal (no operator already pending): `dgu` is not Vim.
-                    KeyCode::Char('u') if self.normal.op.is_none() => {
-                        self.arm_case_op(Op::CaseLower)
-                    }
-                    KeyCode::Char('U') if self.normal.op.is_none() => {
-                        self.arm_case_op(Op::CaseUpper)
-                    }
-                    KeyCode::Char('~') if self.normal.op.is_none() => {
-                        self.arm_case_op(Op::CaseToggle)
-                    }
-                    KeyCode::Char('?') if self.normal.op.is_none() => self.arm_case_op(Op::Rot13),
+                    KeyCode::Char('u') if self.normal.op.is_none() => self.arm_op(Op::CaseLower),
+                    KeyCode::Char('U') if self.normal.op.is_none() => self.arm_op(Op::CaseUpper),
+                    KeyCode::Char('~') if self.normal.op.is_none() => self.arm_op(Op::CaseToggle),
+                    KeyCode::Char('?') if self.normal.op.is_none() => self.arm_op(Op::Rot13),
                     // `gq` / `gw` — arm the reflow operator over the next motion (`gqap`, `gwj`). Normal
-                    // only. `gqgq` is the doubled line form (`gqq` is in the base tier).
-                    KeyCode::Char('q')
-                        if matches!(self.normal.op, Some(OpPending { op: Op::Format, .. })) =>
-                    {
-                        self.format_linewise()
-                    }
-                    KeyCode::Char('q') if matches!(mode, Mode::Normal) => {
-                        self.arm_case_op(Op::Format)
-                    }
+                    // only. `gqgq` is the doubled line form (through the operator-pending `g` tier above).
+                    KeyCode::Char('q') if matches!(mode, Mode::Normal) => self.arm_op(Op::Format),
                     KeyCode::Char('w') if matches!(mode, Mode::Normal) => {
-                        self.arm_case_op(Op::FormatKeep)
+                        self.arm_op(Op::FormatKeep)
                     }
                     // `gn` / `gN` — the search-match text object: select (bare) or operate on (`dgn`/`cgn`/
                     // `ygn`) the next / previous match of the last search pattern. Operator-aware.
-                    KeyCode::Char('n') => self.search_object(false),
-                    KeyCode::Char('N') => self.search_object(true),
+                    KeyCode::Char('n') => self.search_object(false, key),
+                    KeyCode::Char('N') => self.search_object(true, key),
                     // `gJ` — join with the next line WITHOUT inserting a space (Vim `gJ`).
                     KeyCode::Char('J') => self.action(Command::JoinLinesNoSpace(self.mcount())),
                     // `g;` / `g,` — walk the change list to older / newer change positions (Vim).
@@ -3249,6 +3263,11 @@ impl InputEngine {
             }
             Awaiting::MarkJump => {
                 self.normal.awaiting = Awaiting::Nothing;
+                // Only a named mark composes with an operator here (`` d`a ``); the special marks do not yet,
+                // so under an operator they abort rather than jump with the operator dropped (#790).
+                if self.normal.op.is_some() && !matches!(key.code, KeyCode::Char('a'..='z')) {
+                    return self.unmatched(Ns::OperatorPending, key);
+                }
                 return match key.code {
                     // `` `. `` — jump to the last-change mark.
                     KeyCode::Char('.') => self.action(Command::GotoLastChange),
@@ -3263,7 +3282,7 @@ impl InputEngine {
                     KeyCode::Char('<') => self.action(Command::GotoVisualMarkStart),
                     KeyCode::Char('>') => self.action(Command::GotoVisualMarkEnd),
                     // `` `{a-z} `` — jump to a named mark, or `` d`a ``/`` y`a `` with an operator pending.
-                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, false),
+                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, false, key),
                     // Any other mark name is not wired — abort the pending construct.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
@@ -3279,6 +3298,9 @@ impl InputEngine {
             }
             Awaiting::MarkJumpLine => {
                 self.normal.awaiting = Awaiting::Nothing;
+                if self.normal.op.is_some() && !matches!(key.code, KeyCode::Char('a'..='z')) {
+                    return self.unmatched(Ns::OperatorPending, key);
+                }
                 return match key.code {
                     // `'.` — linewise to the last-change line.
                     KeyCode::Char('.') => self.action(Command::GotoLastChangeLine),
@@ -3293,7 +3315,7 @@ impl InputEngine {
                     KeyCode::Char('<') => self.action(Command::GotoVisualMarkStartLine),
                     KeyCode::Char('>') => self.action(Command::GotoVisualMarkEndLine),
                     // `'{a-z}` — linewise to a named mark's line, or `d'a`/`y'a` with an operator pending.
-                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, true),
+                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, true, key),
                     // Any other mark name is not wired — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
@@ -3312,9 +3334,10 @@ impl InputEngine {
                 return match key.code {
                     // A register name — a letter (`a`–`z` / `A`–`Z`), the yank register `0`, the numbered
                     // delete-ring `1`–`9`, the small-delete `-`, or the blackhole `_`: emit `SetRegister` for the core
-                    // to hold as the pending register the next yank/delete/change/paste reads. `action`
-                    // clears the transient axes — which is why the register PREFIX must precede a count
-                    // (`"a3yy`, as in Vim). `"0p`/`"1p`/`"-p` paste from read-only edit-history slots.
+                    // to hold as the pending register the next yank/delete/change/paste reads. A PREFIX, not
+                    // a command: the count typed so far survives as its own segment (`3"ayy` yanks 3,
+                    // `2"a3x` cuts 6) and an `i_CTRL-O` one-shot stays in flight for the command that follows
+                    // (`i<C-o>"ap` pastes) — #796. `"0p`/`"1p`/`"-p` paste from read-only edit-history slots.
                     KeyCode::Char(c)
                         if c.is_ascii_alphabetic()
                             || c.is_ascii_digit()
@@ -3331,7 +3354,10 @@ impl InputEngine {
                             || c == '.'
                             || c == '%' =>
                     {
-                        self.action(Command::SetRegister(Some(c)))
+                        self.normal.reg_count = mul_raw(self.normal.reg_count, self.normal.count);
+                        self.normal.count = 0;
+                        self.normal.register = true;
+                        Feed::Cmd(Command::SetRegister(Some(c)))
                     }
                     // Any other name is unusable; a pending construct is in flight, so it is `closed/abort`
                     // (operator-pending), leaking no state.
@@ -3340,6 +3366,12 @@ impl InputEngine {
             }
             Awaiting::BracketPrefix { open_bracket } => {
                 self.normal.awaiting = Awaiting::Nothing;
+                // `]p`/`[i`/... are commands, not motions: under an operator they abort (`d]p`, #790).
+                if self.normal.op.is_some()
+                    && matches!(key.code, KeyCode::Char('p' | 'P' | 'i' | 'I'))
+                {
+                    return self.unmatched(Ns::OperatorPending, key);
+                }
                 let count = self.mcount();
                 return match key.code {
                     // Indent-adjusting paste. Only `]p` pastes AFTER (below); `]P`, `[p`, `[P` all paste
@@ -3406,6 +3438,7 @@ impl Default for InputEngine {
 }
 
 mod vim;
+use vim::continues_op;
 pub(crate) use vim::{motion_key, text_object, Ns, VimProfile};
 
 mod native;

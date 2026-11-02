@@ -233,19 +233,34 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::OpForced {
             op: OpKind::Delete, ..
         }
-        // `d/pat<CR>` — the search motion is re-run from the new cursor.
+        // `d/pat<CR>`, `gU/pat<CR>`, `>/pat<CR>` — the search motion is re-run from the new cursor.
         | C::Search {
-            op: SearchOp::Delete,
+            op:
+                SearchOp::Delete
+                | SearchOp::Case(_)
+                | SearchOp::Shift { .. }
+                | SearchOp::Reindent
+                | SearchOp::Format { .. },
             ..
         }
-        // `` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a `` — the mark is re-resolved on replay.
+        // `` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``, `` gq`a `` — the mark is re-resolved on replay.
         | C::OpToMark {
-            op: MarkOp::Delete | MarkOp::Case(_) | MarkOp::Shift { .. } | MarkOp::Reindent,
+            op:
+                MarkOp::Delete
+                | MarkOp::Case(_)
+                | MarkOp::Shift { .. }
+                | MarkOp::Reindent
+                | MarkOp::Format { .. },
             ..
         }
-        // `dgn`/`dgN` — delete the match; dot-repeatable to sweep the next match.
+        // `dgn`/`dgN` — delete the match; dot-repeatable to sweep the next match. Likewise `gUgn`, `>gn`, ...
         | C::SearchObject {
-            op: SearchOp::Delete,
+            op:
+                SearchOp::Delete
+                | SearchOp::Case(_)
+                | SearchOp::Shift { .. }
+                | SearchOp::Reindent
+                | SearchOp::Format { .. },
             ..
         } => ChangeKind::Immediate,
         // Not a change: yanks (incl. forced, search and mark yanks), motions and jumps, mode switches,

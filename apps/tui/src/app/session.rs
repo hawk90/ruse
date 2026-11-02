@@ -1522,8 +1522,16 @@ impl Session {
                 count,
                 last_line,
             );
-            if let Feed::Cmd(cmd) = engine.screen_op(row as u32 + 1) {
-                run_cmd(cmd, ws, files, recorded, status, quit);
+            match engine.screen_op(row as u32 + 1) {
+                Feed::Cmd(cmd) => run_cmd(cmd, ws, files, recorded, status, quit),
+                // `!H` / `!L` / `!M`: the filter over the screen line opens its pre-seeded `:{range}!` line,
+                // exactly like `!{motion}` below (#800) — it was dropped, so the command was typed as text.
+                Feed::FilterMotion { count, motion } => {
+                    if let Some((first, last)) = ws.reindent_range(motion, count) {
+                        engine.open_filter_cmdline(&format!("{},{}!", first + 1, last + 1));
+                    }
+                }
+                _ => {}
             }
             return;
         }

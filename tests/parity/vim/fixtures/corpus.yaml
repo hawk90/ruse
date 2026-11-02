@@ -15891,6 +15891,1669 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "cnt_doubled_after_op",
+      "lines": [
+        "l1",
+        "l2",
+        "l3",
+        "l4",
+        "l5",
+        "l6"
+      ],
+      "keys": "d3d",
+      "expect": {
+        "text": [
+          "l4",
+          "l5",
+          "l6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "l1\nl2\nl3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_doubled_both",
+      "lines": [
+        "l1",
+        "l2",
+        "l3",
+        "l4",
+        "l5",
+        "l6"
+      ],
+      "keys": "2d2d",
+      "expect": {
+        "text": [
+          "l5",
+          "l6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "l1\nl2\nl3\nl4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_doubled_yank_paste",
+      "lines": [
+        "l1",
+        "l2",
+        "l3",
+        "l4",
+        "l5",
+        "l6"
+      ],
+      "keys": "y2yP",
+      "expect": {
+        "text": [
+          "l1",
+          "l2",
+          "l1",
+          "l2",
+          "l3",
+          "l4",
+          "l5",
+          "l6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "l1\nl2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "l1\nl2\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "cnt_doubled_change",
+      "lines": [
+        "l1",
+        "l2",
+        "l3",
+        "l4",
+        "l5",
+        "l6"
+      ],
+      "keys": "c2cX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "l3",
+          "l4",
+          "l5",
+          "l6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "l1\nl2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_doubled_shift",
+      "lines": [
+        "l1",
+        "l2",
+        "l3",
+        "l4"
+      ],
+      "keys": "2>2>",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    l1",
+          "    l2",
+          "    l3",
+          "    l4"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_doubled_case",
+      "lines": [
+        "ab",
+        "cd",
+        "ef",
+        "gh"
+      ],
+      "keys": "2gU2U",
+      "expect": {
+        "text": [
+          "AB",
+          "CD",
+          "EF",
+          "GH"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_doubled_case_g_form",
+      "lines": [
+        "ab",
+        "cd",
+        "ef",
+        "gh"
+      ],
+      "keys": "gU2gU",
+      "expect": {
+        "text": [
+          "AB",
+          "CD",
+          "ef",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_doubled_toggle_g_form",
+      "lines": [
+        "ab",
+        "cd",
+        "ef",
+        "gh"
+      ],
+      "keys": "g~g~",
+      "expect": {
+        "text": [
+          "AB",
+          "cd",
+          "ef",
+          "gh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_before_op_G",
+      "lines": [
+        "one two three",
+        "line2 a",
+        "line3 b",
+        "line4 c",
+        "line5 d"
+      ],
+      "keys": "3j2dG",
+      "expect": {
+        "text": [
+          "one two three",
+          "line5 d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line2 a\nline3 b\nline4 c\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_after_op_G",
+      "lines": [
+        "one two three",
+        "line2 a",
+        "line3 b",
+        "line4 c",
+        "line5 d"
+      ],
+      "keys": "3jd2G",
+      "expect": {
+        "text": [
+          "one two three",
+          "line5 d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line2 a\nline3 b\nline4 c\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_both_op_G",
+      "lines": [
+        "one two three",
+        "line2 a",
+        "line3 b",
+        "line4 c",
+        "line5 d"
+      ],
+      "keys": "3j2d3G",
+      "expect": {
+        "text": [
+          "one two three",
+          "line2 a",
+          "line3 b"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line4 c\nline5 d\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_before_op_G_yank",
+      "lines": [
+        "one two three",
+        "line2 a",
+        "line3 b",
+        "line4 c",
+        "line5 d"
+      ],
+      "keys": "3j2yGP",
+      "expect": {
+        "text": [
+          "one two three",
+          "line2 a",
+          "line3 b",
+          "line4 c",
+          "line2 a",
+          "line3 b",
+          "line4 c",
+          "line5 d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line2 a\nline3 b\nline4 c\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "line2 a\nline3 b\nline4 c\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "cnt_before_op_percent",
+      "lines": [
+        "one two three",
+        "line2 a",
+        "line3 b",
+        "line4 c",
+        "line5 d"
+      ],
+      "keys": "3j50d%",
+      "expect": {
+        "text": [
+          "one two three",
+          "line2 a",
+          "line5 d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line3 b\nline4 c\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_before_op_gg",
+      "lines": [
+        "one two three",
+        "line2 a",
+        "line3 b",
+        "line4 c",
+        "line5 d"
+      ],
+      "keys": "3j2dgg",
+      "expect": {
+        "text": [
+          "one two three",
+          "line5 d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line2 a\nline3 b\nline4 c\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_y_then_d",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "yd",
+      "expect": {
+        "text": [
+          "foo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_y_then_x",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "yx",
+      "expect": {
+        "text": [
+          "foo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_y_then_D",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "yD",
+      "expect": {
+        "text": [
+          "foo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_d_then_J",
+      "lines": [
+        "foo bar baz qux",
+        "two"
+      ],
+      "keys": "dJ",
+      "expect": {
+        "text": [
+          "foo bar baz qux",
+          "two"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_y_then_tilde",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "y~",
+      "expect": {
+        "text": [
+          "foo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_d_then_p",
+      "lines": [
+        "foo bar baz qux",
+        "two"
+      ],
+      "keys": "yyjdp",
+      "expect": {
+        "text": [
+          "foo bar baz qux",
+          "two"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar baz qux\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "foo bar baz qux\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "abort_y_then_u",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "xyu",
+      "expect": {
+        "text": [
+          "oo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_d_then_s",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "ds",
+      "expect": {
+        "text": [
+          "foo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_d_then_dot",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "xd.",
+      "expect": {
+        "text": [
+          "oo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_d_then_gJ",
+      "lines": [
+        "foo bar baz qux",
+        "two"
+      ],
+      "keys": "dgJ",
+      "expect": {
+        "text": [
+          "foo bar baz qux",
+          "two"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_gU_then_d",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "gUd",
+      "expect": {
+        "text": [
+          "foo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_d_then_bracket_p",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "yyd]p",
+      "expect": {
+        "text": [
+          "foo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar baz qux\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "foo bar baz qux\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "abort_d_then_ctrl_a",
+      "lines": [
+        "foo 12 baz"
+      ],
+      "keys": "d<C-a>",
+      "expect": {
+        "text": [
+          "foo 12 baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_count_before_prefix_yank",
+      "lines": [
+        "l1",
+        "l2",
+        "l3",
+        "l4",
+        "l5"
+      ],
+      "keys": "3\"ayy\"aP",
+      "expect": {
+        "text": [
+          "l1",
+          "l2",
+          "l3",
+          "l1",
+          "l2",
+          "l3",
+          "l4",
+          "l5"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "l1\nl2\nl3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_count_before_prefix_x",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "2\"ax",
+      "expect": {
+        "text": [
+          "cdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_count_after_prefix_x",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "\"a2x",
+      "expect": {
+        "text": [
+          "cdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_count_segments_multiply",
+      "lines": [
+        "abcdefghijklmnopqrstuvwxyz0123456789"
+      ],
+      "keys": "2\"a3d2l",
+      "expect": {
+        "text": [
+          "mnopqrstuvwxyz0123456789"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcdefghijkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_one_shot_paste",
+      "lines": [
+        "one two three",
+        "line2 a",
+        "line3 b"
+      ],
+      "keys": "j\"ayyki<C-o>\"ap<Esc>",
+      "expect": {
+        "text": [
+          "one two three",
+          "line2 a",
+          "line2 a",
+          "line3 b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line2 a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "reg_one_shot_count_yank",
+      "lines": [
+        "one two three",
+        "line2 a",
+        "line3 b"
+      ],
+      "keys": "ji<C-o>2\"ayy<Esc>\"aP",
+      "expect": {
+        "text": [
+          "one two three",
+          "line2 a",
+          "line3 b",
+          "line2 a",
+          "line3 b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "line2 a\nline3 b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "n_count",
+      "lines": [
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6"
+      ],
+      "keys": "/a<CR>3nx",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3",
+          "a4",
+          "5",
+          "a6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "N_count",
+      "lines": [
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6"
+      ],
+      "keys": "/a<CR>G2Nx",
+      "expect": {
+        "text": [
+          "a1",
+          "a2",
+          "a3",
+          "4",
+          "a5",
+          "a6"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "n_under_d_exclusive_linewise",
+      "lines": [
+        "foo bar",
+        "x",
+        "foo"
+      ],
+      "keys": "/foo<CR>ggdn",
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar\nx\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "n_under_c",
+      "lines": [
+        "foo",
+        "foo"
+      ],
+      "keys": "/foo<CR>ggcnZ<Esc>",
+      "expect": {
+        "text": [
+          "Z",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "n_under_d_count",
+      "lines": [
+        "a b a b a b a"
+      ],
+      "keys": "/a<CR>0d2n",
+      "expect": {
+        "text": [
+          "a b a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a b a b ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "n_under_d_op_count",
+      "lines": [
+        "a b a b a b a"
+      ],
+      "keys": "/a<CR>02dn",
+      "expect": {
+        "text": [
+          "a b a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a b a b ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "N_under_d",
+      "lines": [
+        "a b a b a b a"
+      ],
+      "keys": "/a<CR>$dN",
+      "expect": {
+        "text": [
+          "a b a b a"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "a b ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "n_under_y_paste",
+      "lines": [
+        "a b a b a b a"
+      ],
+      "keys": "/a<CR>0ynP",
+      "expect": {
+        "text": [
+          "a b a b a b a b a"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "a b ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a b ",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "n_under_gU",
+      "lines": [
+        "a b a b a b a"
+      ],
+      "keys": "/a<CR>0gUn",
+      "expect": {
+        "text": [
+          "A B a b a b a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gn_under_gU",
+      "lines": [
+        "a b a b a b a"
+      ],
+      "keys": "/b<CR>0gUgn",
+      "expect": {
+        "text": [
+          "a B a b a b a"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gn_under_gU_dot",
+      "lines": [
+        "a b a b a b a"
+      ],
+      "keys": "/b<CR>0gUgn.",
+      "expect": {
+        "text": [
+          "a B a B a b a"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gn_under_d_op_count",
+      "lines": [
+        "a b a b a b a"
+      ],
+      "keys": "/b<CR>02dgn",
+      "expect": {
+        "text": [
+          "a b a  a b a"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_gU",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "gU/bar<CR>",
+      "expect": {
+        "text": [
+          "FOO bar baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_toggle",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "g~/baz<CR>",
+      "expect": {
+        "text": [
+          "FOO BAR baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_shift",
+      "lines": [
+        "a",
+        "qq",
+        "b"
+      ],
+      "keys": ">/qq<CR>",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a",
+          "qq",
+          "b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_shift_count",
+      "lines": [
+        "a",
+        "qq",
+        "b"
+      ],
+      "keys": "2>/b<CR>",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    a",
+          "    qq",
+          "b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "mark_under_gU_charwise",
+      "lines": [
+        "foo bar",
+        "baz qux"
+      ],
+      "keys": "jmakgU`a",
+      "expect": {
+        "text": [
+          "FOO BAR",
+          "baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "gn_under_shift",
+      "lines": [
+        "a",
+        "b x",
+        "c"
+      ],
+      "keys": "/x<CR>gg>gn",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "a",
+          "    b x",
+          "c"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "doubled_format_g_form",
+      "lines": [
+        "word word word word word word word word word word word word word word word word word word word word word word word word"
+      ],
+      "keys": "gqgq",
+      "expect": {
+        "text": [
+          "word word word word word word word word word word word word word word word word",
+          "word word word word word word word word"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "mark_under_format_linewise",
+      "lines": [
+        "word word word word word word word word word word word word word word word word word word word word word word word word",
+        "x"
+      ],
+      "keys": "jmakgq'a",
+      "expect": {
+        "text": [
+          "word word word word word word word word word word word word word word word word",
+          "word word word word word word word word x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_format",
+      "lines": [
+        "word word word word word word word word word word word word word word word word word word word word word word word word",
+        "end"
+      ],
+      "keys": "gq/end<CR>",
+      "expect": {
+        "text": [
+          "word word word word word word word word word word word word word word word word",
+          "word word word word word word word word",
+          "end"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_insert_ctrl_v_esc",
+      "lines": [
+        "x"
+      ],
+      "keys": "3i<C-v>65<Esc>",
+      "expect": {
+        "text": [
+          "AAAx"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_insert_text_ctrl_v_esc",
+      "lines": [
+        "x"
+      ],
+      "keys": "3iab<C-v>65<Esc>",
+      "expect": {
+        "text": [
+          "abAabAabAx"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ctrl_v_then_ctrl_a",
+      "lines": [
+        "x"
+      ],
+      "keys": "ihi<Esc>i<C-v>65<C-a><Esc>",
+      "expect": {
+        "text": [
+          "hAhiix"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "cnt_insert_ctrl_a",
+      "lines": [
+        "x"
+      ],
+      "keys": "ihi<Esc>3iab<C-a><Esc>",
+      "expect": {
+        "text": [
+          "habhiabhiabhiix"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "op_d_space_wraps",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "l2d<Space>",
+      "expect": {
+        "text": [
+          "a",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "op_d_bs_wraps",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jd2<BS>",
+      "expect": {
+        "text": [
+          "acd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "op_d_count_del_edits_count",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "d23<Del>w",
+      "expect": {
+        "text": [
+          "baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "abort_d_then_X",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "$dX",
+      "expect": {
+        "text": [
+          "foo bar baz qux"
+        ],
+        "cursor": [
+          1,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

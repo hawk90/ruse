@@ -284,6 +284,25 @@ fn plan_search_char(
     if hi <= lo {
         return nop(cur, st.view.mode);
     }
+    // Vim's exclusive-linewise rule (`:help exclusive-linewise`): an exclusive span ending at column 0 of a
+    // later line becomes linewise when it starts at/before its first non-blank, else it pulls back one byte
+    // (`d/foo` and `dn` landing on a line start). The `e` offset is inclusive, so it is exempt.
+    let (lo, hi) = if matches!(offset, SearchOffset::End(_)) {
+        (lo, hi)
+    } else {
+        let (lo2, hi2, linewise) = exclusive_linewise(b, lo, hi);
+        if linewise {
+            let (first, last) = (crate::pos::line_of(b, lo2), crate::pos::line_of(b, hi2 - 1));
+            return plan_search_lines(st, b, cur, op, first, last, hint);
+        }
+        (lo2, hi2)
+    };
+    if hi <= lo {
+        return nop(cur, st.view.mode);
+    }
+    if let Some(span_op) = op.span_op() {
+        return plan_op_over_span(st, b, cur, span_op, lo, hi, false, hint);
+    }
     let reg = captured(b, lo, hi, false);
     match op {
         SearchOp::Delete => edit_yank(one(Edit::delete(lo, hi - lo)), lo, st.view.mode, hint, reg),
@@ -298,7 +317,11 @@ fn plan_search_char(
             set_anchor: None,
             set_mark: None,
         },
-        SearchOp::Move => unreachable!("Move handled above"),
+        SearchOp::Move
+        | SearchOp::Case(_)
+        | SearchOp::Shift { .. }
+        | SearchOp::Reindent
+        | SearchOp::Format { .. } => unreachable!("handled above"),
     }
 }
 
@@ -342,8 +365,26 @@ fn plan_search_line(
     // Linewise over the cursor's line .. target line (inclusive), regardless of search direction.
     let cur_line = crate::pos::line_of(b, cur);
     let (first, last) = (cur_line.min(target_line), cur_line.max(target_line));
+    plan_search_lines(st, b, cur, op, first, last, hint)
+}
+
+/// A search operator applied LINEWISE over lines `first..=last` — a line-offset search (`d/pat/+1`) and an
+/// exclusive search span promoted by Vim's exclusive-linewise rule (`dn` landing at column 0, #799).
+fn plan_search_lines(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    op: &SearchOp,
+    first: usize,
+    last: usize,
+    hint: GroupHint,
+) -> Plan {
     let first_ls = crate::pos::nth_line_start(b, first);
     let last_content_end = line_end(b, crate::pos::nth_line_start(b, last));
+    if let Some(span_op) = op.span_op() {
+        let last_ls = crate::pos::nth_line_start(b, last);
+        return plan_op_over_span(st, b, cur, span_op, first_ls, last_ls, true, hint);
+    }
     if matches!(op, SearchOp::Change) {
         return plan_linewise_change(b, first_ls, last_content_end, hint);
     }
@@ -381,7 +422,12 @@ fn plan_search_line(
             set_anchor: None,
             set_mark: None,
         },
-        SearchOp::Move | SearchOp::Change => unreachable!("handled above"),
+        SearchOp::Move
+        | SearchOp::Change
+        | SearchOp::Case(_)
+        | SearchOp::Shift { .. }
+        | SearchOp::Reindent
+        | SearchOp::Format { .. } => unreachable!("handled above"),
     }
 }
 
@@ -392,6 +438,95 @@ fn whole_line_span_end(b: &[u8], content_end: usize) -> usize {
         content_end + 1
     } else {
         content_end
+    }
+}
+
+/// Apply a span operator over `[lo, hi)` — the cursor..mark span of [`Command::OpToMark`], and the case /
+/// shift / reindent / format forms of a search ([`SearchOp::span_op`]) and of `gn` (#800). `linewise` widens
+/// the span to the whole lines of `lo` and `hi` (the `'` mark form, a line-offset search); otherwise it is
+/// charwise-EXCLUSIVE, so for the line operators an end resting at column 0 of the far line does NOT pull that
+/// line in (Vim's exclusive-motion rule — the same reduction `ShiftMotion`/`Reindent` apply to a motion).
+#[allow(clippy::too_many_arguments)]
+fn plan_op_over_span(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    op: MarkOp,
+    lo: usize,
+    hi: usize,
+    linewise: bool,
+    hint: GroupHint,
+) -> Plan {
+    // Shift (`>`), reindent (`=`) and format (`gq`/`gw`) operate on whole LINES regardless of the charwise /
+    // linewise form (Vim: they are linewise even over a charwise motion), so dispatch them on the touched line
+    // range before the span split the others share. They reuse the SAME planners as over a motion.
+    if matches!(
+        op,
+        MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. }
+    ) {
+        let (first, last) = if linewise {
+            (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi))
+        } else if lo >= hi {
+            return nop(cur, st.view.mode);
+        } else {
+            (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi - 1))
+        };
+        return match op {
+            MarkOp::Shift { left } => {
+                let lines = (last - first + 1) as u32;
+                plan_shift(st, line_start(b, lo), lines, !left, hint)
+            }
+            MarkOp::Reindent => plan_reindent(st, first, last, hint),
+            MarkOp::Format { keep } => {
+                let start = crate::pos::nth_line_start(b, first);
+                let end = line_end(b, crate::pos::nth_line_start(b, last));
+                plan_format_lines(st, cur, start, end, keep, hint)
+            }
+            _ => unreachable!("guarded by matches! above"),
+        };
+    }
+    let (s, e) = if linewise {
+        let start = line_start(b, lo);
+        let le = line_end(b, hi);
+        (start, if le < b.len() { le + 1 } else { le })
+    } else {
+        (lo, hi)
+    };
+    let reg = captured(b, s, e, linewise);
+    match op {
+        MarkOp::Yank => Plan {
+            action: Action::Nop,
+            cursor: s,
+            mode: Mode::Normal,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: Some(RegWrite::Yank(reg, (s, e))),
+            set_anchor: None,
+            set_mark: None,
+        },
+        MarkOp::Delete if s < e => {
+            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
+        }
+        MarkOp::Change if s < e => {
+            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+        }
+        MarkOp::Change => nop(s, Mode::Insert),
+        MarkOp::Delete => nop(s, Mode::Normal),
+        // Recase the span, reusing `CaseMotion`'s recase path; an all-non-letter span is just a cursor move to
+        // the span start (Vim).
+        MarkOp::Case(case) if s < e => {
+            let src = std::str::from_utf8(&b[s..e]).expect("operator span is on char boundaries");
+            let recased = recase(src, case).into_bytes();
+            if recased == b[s..e] {
+                nop(s, st.view.mode)
+            } else {
+                edit(one(Edit::replace(s, e - s, recased)), s, st.view.mode, hint)
+            }
+        }
+        MarkOp::Case(_) => nop(s, st.view.mode),
+        MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } => {
+            unreachable!("handled above")
+        }
     }
 }
 
@@ -467,6 +602,14 @@ fn plan_search_object(
                 set_anchor: None,
                 set_mark: None,
             }
+        }
+        // `gUgn`, `>gn`, `gqgn`, ...: the shared span-operator planner over the match.
+        SearchOp::Case(_)
+        | SearchOp::Shift { .. }
+        | SearchOp::Reindent
+        | SearchOp::Format { .. } => {
+            let span_op = op.span_op().expect("a span op");
+            plan_op_over_span(st, b, cur, span_op, s, e, false, hint)
         }
     }
 }
@@ -1642,75 +1785,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             };
             let mark = mark.min(b.len());
             let (lo, hi) = (cur.min(mark), cur.max(mark));
-            // Shift (`` >`a ``) and reindent (`` =`a ``) operate on whole LINES regardless of the `` ` ``/`'`
-            // form (Vim: `>`/`<`/`=` are linewise even over a charwise motion), so dispatch them on the line
-            // range spanning cursor..mark before the charwise/linewise span split the others share. Reuse the
-            // SAME planners `>`/`=` over a motion use — no duplicated shift math or reindent logic. The
-            // charwise (`` ` ``) form uses the EXCLUSIVE `[lo, hi)` span (`line_of(hi - 1)`), so a mark or
-            // cursor resting at column 0 of the far line does NOT pull that line in (Vim exclusive-motion
-            // rule) — exactly as `ShiftMotion`/`Reindent` reduce a charwise motion's line range. The linewise
-            // (`'`) form covers both endpoint lines outright.
-            if matches!(op, MarkOp::Shift { .. } | MarkOp::Reindent) {
-                let (first, last) = if *linewise {
-                    (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi))
-                } else if lo >= hi {
-                    return nop(cur, st.view.mode);
-                } else {
-                    (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi - 1))
-                };
-                return match op {
-                    MarkOp::Shift { left } => {
-                        let lines = (last - first + 1) as u32;
-                        plan_shift(st, line_start(b, lo), lines, !*left, hint)
-                    }
-                    MarkOp::Reindent => plan_reindent(st, first, last, hint),
-                    _ => unreachable!("guarded by matches! above"),
-                };
-            }
-            let (s, e) = if *linewise {
-                let start = line_start(b, lo);
-                let le = line_end(b, hi);
-                (start, if le < b.len() { le + 1 } else { le })
-            } else {
-                (lo, hi)
-            };
-            let reg = captured(b, s, e, *linewise);
-            match op {
-                MarkOp::Yank => Plan {
-                    action: Action::Nop,
-                    cursor: s,
-                    mode: Mode::Normal,
-                    is_edit: false,
-                    effects: Vec::new(),
-                    set_register: Some(RegWrite::Yank(reg, (s, e))),
-                    set_anchor: None,
-                    set_mark: None,
-                },
-                MarkOp::Delete if s < e => {
-                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
-                }
-                MarkOp::Change if s < e => {
-                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
-                }
-                MarkOp::Change => nop(s, Mode::Insert),
-                MarkOp::Delete => nop(s, Mode::Normal),
-                // `` g~`a ``/`` gu`a ``/`` gU`a `` — recase the span, reusing `CaseMotion`'s recase path.
-                // Charwise (`` ` ``) or linewise (`'`) per the flag, like `d`; an all-non-letter span is
-                // just a cursor move to the span start (Vim).
-                MarkOp::Case(case) if s < e => {
-                    let src =
-                        std::str::from_utf8(&b[s..e]).expect("operator span is on char boundaries");
-                    let recased = recase(src, *case).into_bytes();
-                    if recased == b[s..e] {
-                        nop(s, st.view.mode)
-                    } else {
-                        edit(one(Edit::replace(s, e - s, recased)), s, st.view.mode, hint)
-                    }
-                }
-                MarkOp::Case(_) => nop(s, st.view.mode),
-                // Shift/reindent returned above.
-                MarkOp::Shift { .. } | MarkOp::Reindent => unreachable!("handled above"),
-            }
+            plan_op_over_span(st, b, cur, *op, lo, hi, *linewise, hint)
         }
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
         // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
@@ -2813,8 +2888,28 @@ fn plan_format(
     if s >= e {
         return nop(cur, st.view.mode);
     }
-    let start = line_start(b, s);
-    let end = line_end(b, e - 1); // through the last touched line (exclusive of its trailing newline)
+    // Through the last touched line (exclusive of its trailing newline).
+    plan_format_lines(
+        st,
+        cur,
+        line_start(b, s),
+        line_end(b, e - 1),
+        keep_cursor,
+        hint,
+    )
+}
+
+/// Reflow the whole lines `[start, end)` (`start` a line start, `end` a line's content end) — the shared
+/// tail of `gq`/`gw` over a motion, a search, a `gn` match or a mark.
+fn plan_format_lines(
+    st: &EditorState,
+    cur: usize,
+    start: usize,
+    end: usize,
+    keep_cursor: bool,
+    hint: GroupHint,
+) -> Plan {
+    let b = st.bytes();
     let Ok(block) = std::str::from_utf8(&b[start..end]) else {
         return nop(cur, Mode::Normal);
     };
