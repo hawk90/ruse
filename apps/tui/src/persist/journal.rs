@@ -5,16 +5,22 @@
 //! header, partial payload, or a bad CRC — exactly what a crash mid-append leaves) is discarded and
 //! the prior valid record stands. A durable save deletes the journal (the work is now on disk).
 //!
-//! Frame: `[u32 len LE][u32 crc32 LE][payload]`, CRC over the payload. This is the MVP-minimal
+//! Frame: `[magic "RJS0"][u32 len LE][u32 crc32 LE][payload]`, CRC over the length bytes and the payload,
+//! so a zero-filled tail (a known outcome of power loss) is never a valid record. Before the first append in
+//! a process, a torn tail is cut off, and a failed append is rolled back, so new records never land behind
+//! bytes that replay stops at. Journals written before the magic existed are not read. This is the MVP-minimal
 //! journal — whole-buffer snapshots, throttled by the caller. The design doc's per-transaction
 //! incremental records + schema version + inverse-edits are the post-MVP C-PERSIST elaboration; the
 //! frame layout here is forward-compatible (a versioned header can prefix the file later).
 
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
-const HEADER: usize = 8; // u32 len + u32 crc
+const MAGIC: [u8; 4] = *b"RJS0"; // Snapshot journal v0; the target per-transaction format is `RJ01`.
+const HEADER: usize = 12; // magic + u32 len + u32 crc
 
 /// The journal path for a document (or `.ruse-journal` for an unnamed buffer).
 pub fn journal_path(doc: Option<&Path>) -> PathBuf {
@@ -31,20 +37,48 @@ pub fn journal_path(doc: Option<&Path>) -> PathBuf {
 /// Encode one framed record.
 pub fn frame(payload: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(HEADER + payload.len());
-    out.extend_from_slice(&(payload.len() as u32).to_le_bytes());
-    out.extend_from_slice(&crc32(payload).to_le_bytes());
+    let len = (payload.len() as u32).to_le_bytes();
+    out.extend_from_slice(&MAGIC);
+    out.extend_from_slice(&len);
+    out.extend_from_slice(&frame_crc(len, payload).to_le_bytes());
     out.extend_from_slice(payload);
     out
 }
 
-/// Append a recovery record. Creates the journal if absent; never truncates existing records.
+fn frame_crc(len: [u8; 4], payload: &[u8]) -> u32 {
+    let mut bytes = Vec::with_capacity(4 + payload.len());
+    bytes.extend_from_slice(&len);
+    bytes.extend_from_slice(payload);
+    crc32(&bytes)
+}
+
+/// Append a recovery record. Creates the journal if absent and never drops a valid record. The first
+/// append to a journal in this process cuts off any torn tail first; a failed append is rolled back.
 pub fn append(doc: Option<&Path>, payload: &[u8]) -> io::Result<()> {
+    static CHECKED: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+    let path = journal_path(doc);
     let mut f = OpenOptions::new()
         .create(true)
+        .read(true)
         .append(true)
-        .open(journal_path(doc))?;
-    f.write_all(&frame(payload))?;
-    f.sync_all()
+        .open(&path)?;
+    let first = CHECKED
+        .lock()
+        .map(|mut set| set.get_or_insert_with(HashSet::new).insert(path.clone()))
+        .unwrap_or(true);
+    if first {
+        let raw = fs::read(&path)?;
+        let valid = valid_prefix(&raw);
+        if valid < raw.len() {
+            f.set_len(valid as u64)?;
+        }
+    }
+    let before = f.metadata()?.len();
+    let written = f.write_all(&frame(payload)).and_then(|()| f.sync_all());
+    if written.is_err() {
+        let _ = f.set_len(before);
+    }
+    written
 }
 
 /// Remove the journal — called after a durable save, when there is no unsaved work to recover.
@@ -55,24 +89,38 @@ pub fn clear(doc: Option<&Path>) {
 /// The payload of the last VALID frame in a raw journal, or `None` if there is no intact record.
 /// Stops at the first torn/corrupt frame, so a crash mid-append costs at most the final record.
 pub fn replay_bytes(raw: &[u8]) -> Option<Vec<u8>> {
-    let mut last: Option<Vec<u8>> = None;
+    frames(raw)
+        .last()
+        .map(|&(start, end)| raw[start..end].to_vec())
+}
+
+/// The length of the leading run of valid frames; everything after it is a torn or corrupt tail.
+fn valid_prefix(raw: &[u8]) -> usize {
+    frames(raw).last().map_or(0, |&(_, end)| end)
+}
+
+/// Payload spans of the valid frames, in order, stopping at the first torn or corrupt frame.
+fn frames(raw: &[u8]) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
     let mut i = 0;
     while i + HEADER <= raw.len() {
-        let len = u32::from_le_bytes([raw[i], raw[i + 1], raw[i + 2], raw[i + 3]]) as usize;
-        let want_crc = u32::from_le_bytes([raw[i + 4], raw[i + 5], raw[i + 6], raw[i + 7]]);
+        if raw[i..i + 4] != MAGIC {
+            break; // not a frame: zero fill, garbage, or a pre-magic journal
+        }
+        let len = [raw[i + 4], raw[i + 5], raw[i + 6], raw[i + 7]];
+        let want_crc = u32::from_le_bytes([raw[i + 8], raw[i + 9], raw[i + 10], raw[i + 11]]);
         let start = i + HEADER;
-        let end = match start.checked_add(len) {
+        let end = match start.checked_add(u32::from_le_bytes(len) as usize) {
             Some(e) if e <= raw.len() => e,
             _ => break, // payload runs past EOF — torn tail
         };
-        let payload = &raw[start..end];
-        if crc32(payload) != want_crc {
+        if frame_crc(len, &raw[start..end]) != want_crc {
             break; // corrupt frame — torn tail
         }
-        last = Some(payload.to_vec());
+        spans.push((start, end));
         i = end;
     }
-    last
+    spans
 }
 
 /// Read the last recoverable buffer from a document's journal, if any.
@@ -136,7 +184,7 @@ mod tests {
     #[test]
     fn torn_header_tail_is_discarded() {
         let mut j = frame(b"complete");
-        j.extend_from_slice(&[0x03, 0x00]); // 2 stray bytes — an incomplete 8-byte header
+        j.extend_from_slice(&[0x03, 0x00]); // 2 stray bytes — an incomplete header
         assert_eq!(replay_bytes(&j).as_deref(), Some(&b"complete"[..]));
     }
 
@@ -154,6 +202,42 @@ mod tests {
     fn empty_or_garbage_journal_yields_nothing() {
         assert_eq!(replay_bytes(b""), None);
         assert_eq!(replay_bytes(&[0xFF, 0x00, 0x12]), None); // too short for even a header
+    }
+
+    /// #845: zeros left by power loss are not a record, even though crc32 of nothing is 0.
+    #[test]
+    fn zero_filled_tail_is_not_a_record() {
+        let mut j = frame(b"GOOD UNSAVED WORK\n");
+        j.extend(vec![0u8; 4096]);
+        assert_eq!(
+            replay_bytes(&j).as_deref(),
+            Some(&b"GOOD UNSAVED WORK\n"[..])
+        );
+        assert_eq!(replay_bytes(&[0u8; 64]), None);
+    }
+
+    /// An emptied buffer is still a real record.
+    #[test]
+    fn empty_payload_is_a_record() {
+        let mut j = frame(b"before");
+        j.extend(frame(b""));
+        assert_eq!(replay_bytes(&j).as_deref(), Some(&b""[..]));
+    }
+
+    /// #844: records appended after a torn tail must be replayed.
+    #[test]
+    fn append_after_a_torn_tail_is_replayed() {
+        let dir = std::env::temp_dir().join(format!("ruse-journal-torn-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("f.txt");
+        let mut j = frame(b"older recovered\n");
+        let torn = frame(b"cut off by the crash");
+        j.extend_from_slice(&torn[..torn.len() - 5]);
+        fs::write(journal_path(Some(&doc)), &j).unwrap();
+        append(Some(&doc), b"new work\n").unwrap();
+        append(Some(&doc), b"newer work\n").unwrap();
+        assert_eq!(replay(Some(&doc)).as_deref(), Some(&b"newer work\n"[..]));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -28,11 +28,12 @@ related:
 
 # ruse Persistence, Crash Recovery & the Undo Journal
 
-> **Shipped v0.** The journal is `<file>.ruse-journal`, whole-buffer snapshots in `[u32 len LE][u32 crc32
-> LE][payload]` frames, with no file header or schema version (`apps/tui/src/persist/journal.rs`). Undo is
-> in-memory (`crates/core/src/undo.rs`). The rest of this doc, including the per-transaction `RJ01` format, is the
-> target; the status of each save and recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008. Open journal
-> bugs include #844, #845, #858, #859, #862 and #873.
+> **Shipped v0.** The journal is `<file>.ruse-journal`, whole-buffer snapshots in `["RJS0"][u32 len LE][u32
+> crc32 LE][payload]` frames, CRC over length and payload, with no file header or schema version. A torn tail is
+> cut off before the first append in a process, and a failed append is rolled back
+> (`apps/tui/src/persist/journal.rs`). Undo is in-memory (`crates/core/src/undo.rs`). The rest of this doc,
+> including the per-transaction `RJ01` format, is the target; the status of each save and recovery surface is in [PRD.yaml](../../spec/PRD.yaml) F-008. Open journal
+> bugs include #858, #859, #862 and #873.
 
 > This doc **resolves [D-005](../../spec/DECISIONS.md)** (was `open`): journal format details, incremental-
 > journal thresholds for large files, and undo-grouping boundaries. It is the normative specification behind
