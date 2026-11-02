@@ -1,11 +1,10 @@
 //! Parity comparison harness — replays the Neovim fixture corpus through ruse's REAL input engine +
 //! core and reports, per fixture, whether ruse's observable state matches the pinned oracle.
 //!
-//! CONTRACT (spec/parity/upstreams.yaml): a divergence is a FINDING, not a test failure. ruse is
-//! early and many ops legitimately differ from Vim; the value of this harness is the verified/divergent
-//! TALLY, not a green/red assertion per op. So this test hard-asserts ONLY that the harness ran (the
-//! corpus loaded, every fixture drove without panicking). Whether ruse == nvim is printed, never
-//! asserted. The oracle's own non-corruption gate (`oracle.py --selftest`) is the only hard gate.
+//! RATCHET (#883): a divergence is allowed only when the fixture is named in the committed
+//! `tests/parity/vim/known-divergences.txt`. The test fails on any other divergent fixture (a regression
+//! or an unmatched new fixture) and on a listed fixture that now verifies, so the list can only shrink.
+//! See `parity_ratchet/mod.rs`. The oracle's own non-corruption gate is `oracle.py --selftest`.
 //!
 //! The corpus is `tests/parity/vim/fixtures/corpus.yaml` — JSON-in-YAML (a subset of YAML 1.2),
 //! captured by `tools/parity/oracle.py`. Run with `-- --nocapture` to see the tally.
@@ -14,6 +13,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{apply_command, EditorState};
 use ruse_tui::input::{Feed, InputEngine};
 use serde_json::Value;
+
+mod parity_ratchet;
 
 /// Tokenize a fixture key string into key events, matching `nvim_replace_termcodes` for the few
 /// special tokens the corpus uses (`<Esc>`, `<CR>`, `<BS>`, `<Tab>`, `<Space>`). Everything else is a
@@ -149,15 +150,67 @@ fn as_str_vec(v: &Value) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn parity_ruse_vs_neovim_oracle() {
+/// Replay one fixture through ruse and list every observable that differs from the oracle's `expect`.
+fn fixture_diffs(fx: &Value) -> Vec<String> {
+    let keys = fx["keys"].as_str().expect("keys");
+    let lines = as_str_vec(&fx["lines"]);
+    let expect = &fx["expect"];
+
+    let st = drive_ruse(&lines, keys);
+
+    // ruse observables.
+    let r_text = ruse_text(&st);
+    let (r_row, r_col) = ruse_cursor(st.bytes(), st.cursor());
+    let (r_reg_text, r_reg_type) = ruse_reg(&st);
+    let (r_reg0_text, r_reg0_type) = ruse_reg0(&st);
+
+    // oracle observables.
+    let e_text = as_str_vec(&expect["text"]);
+    let e_cur = expect["cursor"].as_array().expect("cursor");
+    let (e_row, e_col) = (
+        e_cur[0].as_i64().expect("row"),
+        e_cur[1].as_i64().expect("col"),
+    );
+    let e_reg_text = expect["reg_unnamed"]["text"].as_str().expect("reg text");
+    let e_reg_type = expect["reg_unnamed"]["type"].as_str().expect("reg type");
+    let e_reg0_text = expect["reg0"]["text"].as_str().expect("reg0 text");
+    let e_reg0_type = expect["reg0"]["type"].as_str().expect("reg0 type");
+
+    let mut diffs: Vec<String> = Vec::new();
+    if r_text != e_text {
+        diffs.push(format!("text {r_text:?} != {e_text:?}"));
+    }
+    if (r_row, r_col) != (e_row, e_col) {
+        diffs.push(format!("cursor [{r_row},{r_col}] != [{e_row},{e_col}]"));
+    }
+    if (r_reg_text.as_str(), r_reg_type.as_str()) != (e_reg_text, e_reg_type) {
+        diffs.push(format!(
+            "reg {:?}/{} != {:?}/{}",
+            r_reg_text, r_reg_type, e_reg_text, e_reg_type
+        ));
+    }
+    if (r_reg0_text.as_str(), r_reg0_type.as_str()) != (e_reg0_text, e_reg0_type) {
+        diffs.push(format!(
+            "reg0 {:?}/{} != {:?}/{}",
+            r_reg0_text, r_reg0_type, e_reg0_text, e_reg0_type
+        ));
+    }
+    diffs
+}
+
+fn load_corpus() -> Value {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/parity/vim/fixtures/corpus.yaml"
     );
     let raw = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("cannot read fixture corpus {path}: {e}"));
-    let corpus: Value = serde_json::from_str(&raw).expect("corpus is JSON-in-YAML");
+    serde_json::from_str(&raw).expect("corpus is JSON-in-YAML")
+}
+
+#[test]
+fn parity_ruse_vs_neovim_oracle() {
+    let corpus = load_corpus();
 
     let oracle_version = corpus["oracle"]["nvim_version"].as_str().unwrap_or("?");
     let fixtures = corpus["fixtures"].as_array().expect("fixtures array");
@@ -172,48 +225,7 @@ fn parity_ruse_vs_neovim_oracle() {
     for fx in fixtures {
         let name = fx["name"].as_str().expect("name");
         let keys = fx["keys"].as_str().expect("keys");
-        let lines = as_str_vec(&fx["lines"]);
-        let expect = &fx["expect"];
-
-        let st = drive_ruse(&lines, keys);
-
-        // ruse observables.
-        let r_text = ruse_text(&st);
-        let (r_row, r_col) = ruse_cursor(st.bytes(), st.cursor());
-        let (r_reg_text, r_reg_type) = ruse_reg(&st);
-        let (r_reg0_text, r_reg0_type) = ruse_reg0(&st);
-
-        // oracle observables.
-        let e_text = as_str_vec(&expect["text"]);
-        let e_cur = expect["cursor"].as_array().expect("cursor");
-        let (e_row, e_col) = (
-            e_cur[0].as_i64().expect("row"),
-            e_cur[1].as_i64().expect("col"),
-        );
-        let e_reg_text = expect["reg_unnamed"]["text"].as_str().expect("reg text");
-        let e_reg_type = expect["reg_unnamed"]["type"].as_str().expect("reg type");
-        let e_reg0_text = expect["reg0"]["text"].as_str().expect("reg0 text");
-        let e_reg0_type = expect["reg0"]["type"].as_str().expect("reg0 type");
-
-        let mut diffs: Vec<String> = Vec::new();
-        if r_text != e_text {
-            diffs.push(format!("text {r_text:?} != {e_text:?}"));
-        }
-        if (r_row, r_col) != (e_row, e_col) {
-            diffs.push(format!("cursor [{r_row},{r_col}] != [{e_row},{e_col}]"));
-        }
-        if (r_reg_text.as_str(), r_reg_type.as_str()) != (e_reg_text, e_reg_type) {
-            diffs.push(format!(
-                "reg {:?}/{} != {:?}/{}",
-                r_reg_text, r_reg_type, e_reg_text, e_reg_type
-            ));
-        }
-        if (r_reg0_text.as_str(), r_reg0_type.as_str()) != (e_reg0_text, e_reg0_type) {
-            diffs.push(format!(
-                "reg0 {:?}/{} != {:?}/{}",
-                r_reg0_text, r_reg0_type, e_reg0_text, e_reg0_type
-            ));
-        }
+        let diffs = fixture_diffs(fx);
 
         if diffs.is_empty() {
             verified += 1;
@@ -233,16 +245,69 @@ fn parity_ruse_vs_neovim_oracle() {
         divergent_names.len()
     );
     if !divergent_names.is_empty() {
-        println!(
-            "divergent (findings, not failures): {}",
-            divergent_names.join(", ")
-        );
+        println!("divergent: {}", divergent_names.join(", "));
     }
 
-    // The ONLY hard assertion: the harness ran end to end. Divergence is data, not a failure.
-    assert_eq!(
-        verified + divergent_names.len(),
-        total,
-        "every fixture must have been compared"
+    let names: Vec<&str> = fixtures
+        .iter()
+        .map(|fx| fx["name"].as_str().expect("name"))
+        .collect();
+    parity_ratchet::enforce(
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/parity/vim/known-divergences.txt"
+        ),
+        &names,
+        &divergent_names,
+    );
+}
+
+/// Negative self-test: the comparator must notice a planted mismatch, or the ratchet guards nothing.
+#[test]
+fn comparator_detects_a_planted_mismatch() {
+    let corpus = load_corpus();
+    let fx = corpus["fixtures"]
+        .as_array()
+        .expect("fixtures array")
+        .iter()
+        .find(|fx| fixture_diffs(fx).is_empty())
+        .expect("at least one fixture verifies")
+        .clone();
+    let mut text = fx.clone();
+    text["expect"]["text"][0] = Value::from("planted mismatch");
+    assert!(
+        !fixture_diffs(&text).is_empty(),
+        "a wrong text went unnoticed"
+    );
+    let mut cursor = fx.clone();
+    let row = cursor["expect"]["cursor"][0].as_i64().expect("row");
+    cursor["expect"]["cursor"][0] = Value::from(row + 1);
+    assert!(
+        !fixture_diffs(&cursor).is_empty(),
+        "a wrong cursor went unnoticed"
+    );
+    let mut reg = fx;
+    reg["expect"]["reg_unnamed"]["text"] = Value::from("planted mismatch");
+    assert!(
+        !fixture_diffs(&reg).is_empty(),
+        "a wrong register went unnoticed"
+    );
+}
+
+#[test]
+fn ratchet_rejects_new_stale_and_unknown_entries() {
+    let fixtures = ["a", "b", "c"];
+    let allowed = parity_ratchet::parse("a # known\n\n# comment\n").expect("parses");
+    assert_eq!(allowed, vec!["a".to_string()]);
+    assert!(parity_ratchet::check(&allowed, &fixtures, &["a".into()]).is_ok());
+    let new = parity_ratchet::check(&allowed, &fixtures, &["a".into(), "b".into()]).unwrap_err();
+    assert!(new.contains("NEW DIVERGENCE `b`"), "{new}");
+    let stale = parity_ratchet::check(&allowed, &fixtures, &[]).unwrap_err();
+    assert!(stale.contains("STALE ENTRY `a`"), "{stale}");
+    let unknown = parity_ratchet::check(&["z".into()], &fixtures, &[]).unwrap_err();
+    assert!(unknown.contains("UNKNOWN ENTRY `z`"), "{unknown}");
+    assert!(
+        parity_ratchet::parse("a\na\n").is_err(),
+        "duplicates are rejected"
     );
 }

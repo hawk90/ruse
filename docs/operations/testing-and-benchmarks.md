@@ -351,9 +351,12 @@ generalize to any oracle:
 - **Config-dependent ops** (indent `>>`, etc.) carry a per-fixture `setup` ex-command so nvim runs under
   ruse's defaults (e.g. `set shiftwidth=4 expandtab`) — cross-default comparison is invalid; match config or
   the fixture lies.
-- **A divergence is a FINDING, not a test failure.** `apps/tui/tests/parity_compare.rs` replays each fixture
-  through ruse and reports verified-vs-divergent; it stays green so ruse can be early. Divergences are the
-  work-list.
+- **A divergence is allowed only when it is listed (#883).** `apps/tui/tests/parity_compare.rs` (and
+  `emacs_parity_compare.rs`) replays each fixture through ruse and reports verified-vs-divergent, then
+  checks the run against the committed `tests/parity/<editor>/known-divergences.txt`. It FAILS on a
+  divergent fixture that is not listed (a regression, or a new fixture ruse does not match yet) and on a
+  listed fixture that now verifies (delete the line), so the list only shrinks. The list is the work-list;
+  adding to it is a reviewed change with a reason, never a way to silence a regression.
 
 **Fixture taxonomy — ATOMIC then COMPOSITE (do both):**
 

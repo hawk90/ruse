@@ -35,8 +35,10 @@ The Emacs command-semantics oracle (`tools/parity/emacs_oracle.py`, #152), its s
 (`apps/tui/tests/emacs_parity_compare.rs`, #154) together form the Emacs half of the parity evidence layer
 (D-043). The comparator replays each fixture's Emacs command NAMES through ruse's real M-x registry
 (`emacs_command_by_name`) + core and compares `{text, point, mark, kill}` to what the pinned Emacs
-([upstreams.yaml](../../spec/parity/upstreams.yaml)) produced. Its contract — identical to the Neovim comparator — is that **a divergence is a finding, not a
-failure**: the harness only asserts it ran, and it prints the current tally. The rounds below record the tallies
+([upstreams.yaml](../../spec/parity/upstreams.yaml)) produced. It prints the current tally. When the rounds below were written, its contract was that **a
+divergence is a finding, not a failure**; since #883 it fails on any divergence not listed in
+`tests/parity/emacs/known-divergences.txt` and on a listed fixture that now verifies, like the Neovim
+comparator. The rounds below record the tallies
 at the time of each slice, on a corpus that has grown since.
 
 Those divergences are an oracle-backed specification of where ruse's Emacs profile was not

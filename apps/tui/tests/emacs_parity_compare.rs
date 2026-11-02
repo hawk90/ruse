@@ -2,13 +2,11 @@
 //! registry + core and reports, per fixture, whether ruse's observable state matches the pinned Emacs
 //! oracle (tools/parity/emacs_oracle.py).
 //!
-//! CONTRACT (spec/parity/upstreams.yaml): a divergence is a FINDING, not a test failure — identical to the
-//! Neovim comparator (apps/tui/tests/parity_compare.rs). ruse's Emacs profile is early and legitimately
-//! differs from Emacs on several commands (e.g. Emacs `beginning-of-buffer` PUSHES the mark and `yank` SETS
-//! it; ruse does neither yet). The value of this harness is the verified/divergent TALLY, not a green/red
-//! assertion per command. So this test hard-asserts ONLY that the harness ran (the corpus loaded, every
-//! fixture drove without panicking, every op name resolved). Whether ruse == Emacs is printed, never
-//! asserted. The oracle's own non-corruption gate (`emacs_oracle.py --selftest`) is the only hard gate.
+//! RATCHET (#883), identical to the Neovim comparator (apps/tui/tests/parity_compare.rs): a divergence is
+//! allowed only when the fixture is named in the committed `tests/parity/emacs/known-divergences.txt`. The
+//! test fails on any other divergent fixture (a regression, an unresolved op name, or an unmatched new
+//! fixture) and on a listed fixture that now verifies, so the list can only shrink. See
+//! `parity_ratchet/mod.rs`. The oracle's own non-corruption gate is `emacs_oracle.py --selftest`.
 //!
 //! HOW IT BRIDGES THE TWO EDITORS: a fixture's `ops` are Emacs command NAMES. The oracle ran them in Emacs
 //! via `call-interactively`; here the SAME names resolve through `emacs_command_by_name` — the very registry
@@ -22,6 +20,8 @@
 use ruse_core::{apply_command, CaretGravity, EditorState};
 use ruse_tui::input::emacs_command_by_name;
 use serde_json::Value;
+
+mod parity_ratchet;
 
 /// Drive ruse: home the cursor to the fixture's start, then resolve each Emacs command name through the M-x
 /// registry and apply it to the core. Mirrors the M-x execution path in `input::feed_cmdline`. Returns the
@@ -178,10 +178,7 @@ fn parity_ruse_vs_emacs_oracle() {
         divergent_names.len()
     );
     if !divergent_names.is_empty() {
-        println!(
-            "divergent (findings, not failures): {}",
-            divergent_names.join(", ")
-        );
+        println!("divergent: {}", divergent_names.join(", "));
     }
     if !all_unknown.is_empty() {
         println!(
@@ -190,10 +187,16 @@ fn parity_ruse_vs_emacs_oracle() {
         );
     }
 
-    // The ONLY hard assertion: the harness ran end to end. Divergence is data, not a failure.
-    assert_eq!(
-        verified + divergent_names.len(),
-        total,
-        "every fixture must have been compared"
+    let names: Vec<&str> = fixtures
+        .iter()
+        .map(|fx| fx["name"].as_str().expect("name"))
+        .collect();
+    parity_ratchet::enforce(
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/parity/emacs/known-divergences.txt"
+        ),
+        &names,
+        &divergent_names,
     );
 }

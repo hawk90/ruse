@@ -1,0 +1,6 @@
+# Fixtures in fixtures/corpus.yaml that ruse is ALLOWED to diverge on today (#883).
+# apps/tui/tests/parity_compare.rs fails on any divergent fixture NOT listed here, and on any listed
+# fixture that now verifies (delete its line). One fixture name per line, then `# reason`.
+# Add a line only for a new fixture ruse does not match yet, never to silence a regression.
+
+dat_tag_multiline  # Vim makes `dat` over a whole-line tag block linewise; ruse yanks it charwise (#443 follow-up)
