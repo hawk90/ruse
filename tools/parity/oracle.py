@@ -687,6 +687,46 @@ FIXTURES: list[dict] = [
     {"name": "ctrl_o_dd_delete_line", "lines": ["alpha", "beta"], "keys": "A<C-o>ddX<Esc>"},
     {"name": "ctrl_o_j_rides_to_append", "lines": ["ab", "cd"], "keys": "A<C-o>jX<Esc>"},
     {"name": "ctrl_o_zero_resets_append", "lines": ["alpha", "beta"], "keys": "A<C-o>0X<Esc>"},
+    #     DOT-REPEAT around i_CTRL-O (#795): CTRL-O ENDS the insert for redo (Vim's ins_esc), the one-shot
+    #     command is classified as a Normal command, and text typed after the return starts a FRESH `i`
+    #     change (Vim's stop_arrow resets the redo buffer to `1i`); the entry count is dropped.
+    {"name": "dot_ctrl_o_motion_then_text", "lines": ["x", "y"], "keys": "iab<C-o>0cd<Esc>j."},
+    # (`iab<C-o>ucd<Esc>j.` is pinned in apps/tui/tests/dot_repeat.rs: set_lines is not an undo boundary.)
+    {"name": "dot_ctrl_o_count_dropped", "lines": ["x"], "keys": "3iab<C-o>hcd<Esc>"},
+    {"name": "dot_ctrl_o_no_text_keeps_insert", "lines": ["x", "y"], "keys": "iab<C-o>0<Esc>j."},
+    {"name": "dot_ctrl_o_append_then_text", "lines": ["abc", "def"], "keys": "Aab<C-o>0cd<Esc>j."},
+    {"name": "dot_ctrl_o_x_then_text", "lines": ["abc", "def"], "keys": "iab<C-o>xcd<Esc>j."},
+    {"name": "dot_ctrl_o_x_is_last_change", "lines": ["abc", "def"], "keys": "iab<C-o>x<Esc>j."},
+    {"name": "dot_ctrl_o_change_kept", "lines": ["abc", "def"], "keys": "ciwZ<C-o>0<Esc>j."},
+    {"name": "dot_ctrl_o_twice", "lines": ["abc", "def"], "keys": "iab<C-o>0cd<C-o>0ef<Esc>j0."},
+    {"name": "dot_ctrl_o_count_on_dot", "lines": ["abc", "def"], "keys": "2iab<C-o>0cd<Esc>j03."},
+    {"name": "dot_ctrl_g_u_keeps_one_change", "lines": ["abc", "def"], "keys": "iab<C-g>ucd<Esc>j0."},
+    #     DOT-REPEAT of commands that fell into the change_kind / with_count wildcards (#793).
+    {"name": "dot_search_delete", "lines": ["aXbXcXdXe"], "keys": "xd/X<CR>."},
+    {"name": "dot_search_change", "lines": ["aXbXcXdXe"], "keys": "c/X<CR>Q<Esc>l."},
+    {"name": "dot_op_to_mark_char", "lines": ["abcdefghij"], "keys": "xlmalld`all."},
+    {"name": "dot_op_to_mark_line", "lines": ["a", "b", "c", "d", "e", "f"], "keys": "majj>'ajj.",
+     "setup": "set shiftwidth=4 expandtab startofline"},
+    {"name": "dot_change_to_mark", "lines": ["foo bar baz qux"], "keys": "mawwc`aZ<Esc>."},
+    {"name": "dot_replace_mode", "lines": ["abcdef", "ghijkl"], "keys": "xRXY<Esc>j0."},
+    {"name": "dot_gi_insert", "lines": ["abc", "def"], "keys": "iX<Esc>jgiY<Esc>j."},
+    {"name": "dot_count_join", "lines": ["a", "b", "c", "d", "e", "f", "g"], "keys": "J3."},
+    {"name": "dot_count_join_nospace", "lines": ["a", "b", "c", "d", "e", "f", "g"], "keys": "gJ3."},
+    {"name": "dot_count_increment", "lines": ["1 x"], "keys": "<C-a>5."},
+    {"name": "dot_count_decrement", "lines": ["9 x"], "keys": "<C-x>5."},
+    #     DOT-REPEAT of a Visual change (#794): `.` re-applies the operator to the same AMOUNT of text at the
+    #     cursor (`:help visual-repeat`): same char count within a line, same line count linewise, same
+    #     line count + end column for multi-line charwise. A count on `.` is ignored.
+    {"name": "dot_visual_delete", "lines": ["abcdefgh"], "keys": "vld."},
+    {"name": "dot_visual_line_delete", "lines": ["a", "b", "c", "d", "e"], "keys": "Vd."},
+    {"name": "dot_visual_change", "lines": ["abcdefgh"], "keys": "vlcX<Esc>l."},
+    {"name": "dot_visual_replace_char", "lines": ["abcdefgh"], "keys": "vlrxll."},
+    {"name": "dot_visual_upcase", "lines": ["abcdefgh"], "keys": "vlUll."},
+    {"name": "dot_visual_toggle_case", "lines": ["abcdefgh"], "keys": "vl~ll."},
+    {"name": "dot_visual_multiline_char", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "lvjd."},
+    {"name": "dot_visual_block_delete", "lines": ["abcd", "efgh", "ijkl", "mnop"], "keys": "l<C-v>jld."},
+    {"name": "dot_visual_count_ignored", "lines": ["abcdefghijklmnop"], "keys": "vlld3."},
+    {"name": "dot_visual_line_count_ignored", "lines": ["a", "b", "c", "d", "e", "f", "g", "h"], "keys": "Vjd2."},
     #     MIXED realistic refactors (navigate then edit; find-delimiter then change-inner) ---------------
     {"name": "refactor_2word_change_end", "lines": ["aa bb cc dd"], "keys": "2wceHELLO<Esc>0"},
     {"name": "refactor_find_paren_change_inner", "lines": ["foo(bar)baz"], "keys": "f(ci(X<Esc>"},

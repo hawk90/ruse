@@ -227,6 +227,9 @@ struct InsertState {
     /// engine cancels the submode. A one-key expectation local to Insert; ALWAYS separate from the Emacs
     /// profile's `C-x` prefix (`emacs_prefix`), which lives on the non-modal `feed` path.
     ctrl_x: bool,
+    /// Insert resumed after an `i_CTRL-O` one-shot ended the previous change (#795): the next edit opens
+    /// a fresh `i` dot-repeat change. Vim's `arrow_used`/`stop_arrow` pair. Local to Insert.
+    resumed: bool,
 }
 
 /// One in-flight insert-mode keyword-completion session (`i_CTRL-N` / `i_CTRL-P`). The candidate list is
@@ -1187,6 +1190,18 @@ impl InputEngine {
         self.normal.op.is_some()
     }
 
+    /// Whether the Normal grammar is mid-construct — an armed operator, a key expectation (`f`/`r`/`m`/
+    /// `"`/`g`/`'`…), a forced wise, the Native leader — so the next key is that construct's argument. A
+    /// bare count does NOT count: nvim's `2q` still stops a recording. The macro layer checks this so a
+    /// `q`/`@` typed as an argument (`fq`, `"qyy`, `gqq`, `dq`) never stops or arms a macro (#680).
+    #[must_use]
+    pub fn normal_construct_pending(&self) -> bool {
+        self.normal.op.is_some()
+            || self.normal.awaiting != Awaiting::Nothing
+            || self.normal.forced_wise.is_some()
+            || self.leader
+    }
+
     /// The OPERATOR form of the viewport-resolved screen motions `H`/`M`/`L` (`dH`/`yL`/`c2M`/`>H`/`gUL`…):
     /// compose the pending operator (if any) over `GotoLine` to the ABSOLUTE 1-based `line` the frontend
     /// resolved from the viewport, then clear the transient state. These motions are LINEWISE under an
@@ -1516,10 +1531,27 @@ impl InputEngine {
         // The command-line namespace owns the keystream while open (F-026); its typing is not a
         // dot-repeatable change, so it bypasses the recorder.
         if self.cmdline.is_some() {
-            return self.feed_cmdline(key);
+            let out = self.feed_cmdline(key);
+            // ...except the operator a search line completes: `d/pat<CR>` / `c/pat<CR>` is a change, and
+            // `.` must replay IT, not an older one (#793). A bare `/pat<CR>` classifies as no change.
+            if matches!(out, Feed::Cmd(Command::Search { .. })) && mode != Mode::Insert {
+                self.record(&out, mode);
+            }
+            return out;
         }
+        // An `i_CTRL-O` one-shot borrows the Normal grammar while the core mode still reads Insert; the
+        // command it completes is a NORMAL command for dot-repeat, never part of the insert body (#795).
+        let one_shot = mode == Mode::Insert && self.in_one_shot();
         let out = self.feed_impl(key, mode);
-        self.record(&out, mode);
+        if !one_shot {
+            self.record(&out, mode);
+        } else if !self.in_one_shot() {
+            self.record(&out, Mode::Normal);
+            // A one-shot that itself opened a change (`<C-o>cw`) owns the following text.
+            if self.recording.is_some() {
+                self.insert.resumed = false;
+            }
+        }
         // Count-on-insert (VIM-CNT-INS): a count-prefixed insert session that just closed on `<Esc>`
         // stages its extra repeats + trailing `EnterNormal` here — return them as one `Feed::Replay` in
         // place of the bare `EnterNormal` so the whole `3ihello` collapses into a single undo group.
@@ -1644,7 +1676,21 @@ impl InputEngine {
         let Feed::Cmd(cmd) = out else {
             return;
         };
-        if mode == Mode::Insert {
+        // Replace / Virtual Replace (`R`/`gR`) are insert sessions too: their overwrites are the body.
+        if matches!(mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace) {
+            // Insert resumed after an `i_CTRL-O` one-shot: the first edit opens a FRESH `i` change (Vim's
+            // `stop_arrow` resets the redo buffer to `1i`); `<Esc>` with nothing typed keeps the old one.
+            if std::mem::take(&mut self.insert.resumed)
+                && self.recording.is_none()
+                && *cmd != Command::EnterNormal
+            {
+                self.recording = Some(ChangeIntent {
+                    lead: Command::EnterInsert,
+                    insert: Vec::new(),
+                    register: None,
+                    entry_count: 1,
+                });
+            }
             if let Some(rec) = self.recording.as_mut() {
                 rec.insert.push(cmd.clone());
                 // The `<Esc>` that leaves Insert (recorded here so replay leaves Insert too) closes the change.
@@ -1672,7 +1718,12 @@ impl InputEngine {
         match change_kind(cmd) {
             ChangeKind::InsertEntering => {
                 self.recording = Some(ChangeIntent {
-                    lead: cmd.clone(),
+                    // `gi` repeats as a plain `i` at the NEW cursor (Vim's `nv_edit` turns `gi` into `i`
+                    // after jumping to the `'^` mark), not as another jump to the last-insert spot.
+                    lead: match cmd {
+                        Command::InsertAtLastInsert => Command::EnterInsert,
+                        other => other.clone(),
+                    },
                     insert: Vec::new(),
                     register: self.pending_record_register.take(),
                     // The count a pure insert-entry captured (`3i`); `0` (→ 1) for a count-less or
@@ -1692,6 +1743,22 @@ impl InputEngine {
             // A non-change (motion, mode switch, yank) forgets a dangling register selection.
             ChangeKind::NotAChange => self.pending_record_register = None,
         }
+    }
+
+    /// `i_CTRL-O` ENDS the in-flight insert change for dot-repeat, exactly as `<Esc>` would (Vim's
+    /// `ins_ctrl_o` runs `ins_esc`): the typed text so far becomes `last_change` and the `".` text. An entry
+    /// count's LIVE repetition is dropped (Vim zeroes it — `3iab<C-o>h` inserts `ab` once), though `.` of
+    /// the ended change still repeats it (`3iab<C-o>0<Esc>j.` inserts `ababab`, nvim). The one-shot
+    /// command then classifies as a Normal command, and the first edit after the return opens a fresh `i`
+    /// change
+    /// (`InsertState::resumed`, consumed in [`record`](Self::record)).
+    fn end_insert_change_for_one_shot(&mut self) {
+        if let Some(mut rec) = self.recording.take() {
+            rec.insert.push(Command::EnterNormal);
+            self.last_inserted = rec.insert_body().to_vec();
+            self.last_change = Some(rec);
+        }
+        self.insert.resumed = true;
     }
 
     /// Feed one key given the current mode.
@@ -1851,6 +1918,7 @@ impl InputEngine {
             // resumes. Core mode stays Insert throughout. Reset first so the one-shot begins from a clean
             // count/operator/awaiting state (the pop is a no-op — the stack is empty here).
             self.reset();
+            self.end_insert_change_for_one_shot();
             self.activations.push(Suspended { resume: Ns::Insert });
             return Feed::Pending;
         }

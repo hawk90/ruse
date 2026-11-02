@@ -108,9 +108,24 @@ impl MacroState {
     /// Vim records `@x`, not its expansion); `normal` is whether the focused view is in Normal mode with no
     /// command-line open (the `q`/`@` prefixes only arm there).
     pub fn step(&mut self, key: KeyEvent, from_replay: bool, normal: bool) -> Step {
+        self.step_with(key, from_replay, normal, normal)
+    }
+
+    /// [`step`](Self::step) with the `q` context split from the `@`/`Q` one: `q_cmd` is whether a typed
+    /// `q` is the record COMMAND here — Normal or Visual with no command-line and no pending construct
+    /// (`fq`, `"q`, `gq`, `dq`). Anywhere else (Insert, the command
+    /// line, a char argument) `q` is an ordinary key: it neither stops nor arms a recording (#680,
+    /// matches nvim v0.12.6). `normal` still gates `@`/`Q`, which stay Normal-only.
+    pub fn step_with(
+        &mut self,
+        key: KeyEvent,
+        from_replay: bool,
+        normal: bool,
+        q_cmd: bool,
+    ) -> Step {
         // A typed bare `q` STOPS a live recording — unless it is the register-name for a pending `q`/`@`
         // (e.g. `@q` while recording runs macro q; it must not be read as a stop).
-        if !from_replay && !self.pending_q && !self.pending_at {
+        if q_cmd && !from_replay && !self.pending_q && !self.pending_at {
             if let Some((reg, buf)) = self.recording.as_ref() {
                 if is_bare(key, 'q') {
                     let bytes = encode_all(buf);
@@ -175,7 +190,7 @@ impl MacroState {
             };
         }
         // Arm the prefixes (Normal only). `q` only arms when NOT recording (a recording `q` stopped above).
-        if normal && self.recording.is_none() && is_bare(key, 'q') {
+        if q_cmd && self.recording.is_none() && is_bare(key, 'q') {
             self.pending_q = true;
             return Step::Consumed;
         }

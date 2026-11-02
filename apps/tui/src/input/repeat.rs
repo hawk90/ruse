@@ -2,7 +2,7 @@
 //! engine captures and replays. Split out of `input/mod.rs` as a self-contained data definition; the
 //! `InputEngine::record` builder that constructs it stays in the engine core.
 
-use ruse_core::{Command, OpKind, SearchOp};
+use ruse_core::{Command, MarkOp, OpKind, SearchOp};
 
 /// A recorded **change-intent** for Vim dot-repeat (D-025 / D-047): the buffer-modifying command that
 /// began the change, plus — for changes that enter Insert — the exact commands typed until `<Esc>`.
@@ -145,6 +145,10 @@ pub(crate) enum ChangeKind {
 
 /// Classify a completed command for dot-repeat. Per Vim, yank is NOT dot-repeatable; delete/change/put/
 /// replace/shift/`~`/join and the insert-entries ARE.
+///
+/// The match is EXHAUSTIVE on purpose (#793): a wildcard silently filed every new `Command` as
+/// `NotAChange`, so `.` replayed an OLDER change after `d/pat`, `` d`a ``, `R`, `gi`. Adding a variant
+/// now forces a decision here.
 pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
     use Command as C;
     match cmd {
@@ -156,6 +160,12 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::AppendLineEnd
         | C::OpenBelow
         | C::OpenAbove
+        // `gi` — recorded as a plain `i` (Vim's `nv_edit` rewrites `gi` to `i` after the jump), see
+        // `InputEngine::record`.
+        | C::InsertAtLastInsert
+        // `R` / `gR`: the typed overwrites are the change body, replayed at the new cursor.
+        | C::EnterReplace
+        | C::EnterVirtualReplace
         | C::Change(..)
         | C::ChangeSelection
         | C::ReplaceSelection(_)
@@ -168,6 +178,15 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::BlockInsert(_)
         | C::OpForced {
             op: OpKind::Change, ..
+        }
+        // `c/pat<CR>`, `` c`a ``: the change re-searches / re-resolves the mark from the new cursor.
+        | C::Search {
+            op: SearchOp::Change,
+            ..
+        }
+        | C::OpToMark {
+            op: MarkOp::Change,
+            ..
         }
         // `cgn`/`cgN` — the gn idiom: dot replays the change (re-searching from the new cursor), so `n.`
         // (or bare `.`) walks the change through every match. This is why gn matters.
@@ -214,13 +233,117 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::OpForced {
             op: OpKind::Delete, ..
         }
+        // `d/pat<CR>` — the search motion is re-run from the new cursor.
+        | C::Search {
+            op: SearchOp::Delete,
+            ..
+        }
+        // `` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a `` — the mark is re-resolved on replay.
+        | C::OpToMark {
+            op: MarkOp::Delete | MarkOp::Case(_) | MarkOp::Shift { .. } | MarkOp::Reindent,
+            ..
+        }
         // `dgn`/`dgN` — delete the match; dot-repeatable to sweep the next match.
         | C::SearchObject {
             op: SearchOp::Delete,
             ..
         } => ChangeKind::Immediate,
-        // Everything else (motions, mode switches, yank incl. forced yank, search, undo/redo) is not a change.
-        _ => ChangeKind::NotAChange,
+        // Not a change: yanks (incl. forced, search and mark yanks), motions and jumps, mode switches,
+        // searches, undo/redo, marks/registers, info displays, `&`/`g&` (Vim does not dot-repeat them),
+        // and the insert-session-only commands — those reach the recorder only inside Insert/Replace,
+        // where they are appended to the open change's body instead of being classified here.
+        C::Yank(..)
+        | C::YankSelection
+        | C::OpForced {
+            op: OpKind::Yank, ..
+        }
+        | C::Search {
+            op: SearchOp::Move | SearchOp::Yank,
+            ..
+        }
+        | C::SearchObject {
+            op: SearchOp::Move | SearchOp::Yank,
+            ..
+        }
+        | C::OpToMark {
+            op: MarkOp::Yank,
+            ..
+        }
+        | C::Move(..)
+        | C::MoveLeft
+        | C::MoveRight
+        | C::MoveUp
+        | C::MoveDown
+        | C::MoveLineStart
+        | C::MoveLineEnd
+        | C::EnterNormal
+        | C::EnterTerminal
+        | C::EnterTerminalNormal
+        | C::EnterVisual { .. }
+        | C::EnterSelect { .. }
+        | C::ReselectVisual
+        | C::SwapSelectionEnds
+        | C::ReplaceType(_)
+        | C::ReplaceBackspace
+        | C::VirtualReplaceType(_)
+        | C::InsertChar(_)
+        | C::InsertRegister(_)
+        | C::InsertEval(_)
+        | C::InsertDeleteWordBack
+        | C::InsertDeleteToLineStart
+        | C::CompleteWord { .. }
+        | C::InsertIndent
+        | C::InsertDedent
+        | C::InsertTab
+        | C::InsertNewline
+        | C::OpenLineIndent { .. }
+        | C::InsertCloser { .. }
+        | C::BreakUndo
+        | C::SetIndents { .. }
+        | C::GotoLastChange
+        | C::GotoLastChangeLine
+        | C::GotoChangeMarkStart
+        | C::GotoChangeMarkEnd
+        | C::GotoChangeMarkStartLine
+        | C::GotoChangeMarkEndLine
+        | C::GotoVisualMarkStart
+        | C::GotoVisualMarkEnd
+        | C::GotoVisualMarkStartLine
+        | C::GotoVisualMarkEndLine
+        | C::GotoContextMark
+        | C::GotoContextMarkLine
+        | C::GotoOlderChange
+        | C::GotoNewerChange
+        | C::GotoOlderJump
+        | C::GotoNewerJump
+        | C::AsciiInfo
+        | C::FileInfo
+        | C::CursorInfo
+        | C::SetNamedMark(_)
+        | C::GotoNamedMark(_)
+        | C::GotoNamedMarkLine(_)
+        | C::SetRegister(_)
+        | C::SetExprRegister(_)
+        | C::SearchNext(_)
+        | C::SearchPrev(_)
+        | C::SearchWordUnder { .. }
+        | C::RepeatSubstituteGlobal
+        | C::RepeatSubstituteLine
+        | C::GotoDeclaration { .. }
+        | C::GotoFirstMatch(_)
+        | C::ShowKeywordLines { .. }
+        | C::Undo
+        | C::Redo
+        | C::UndoOlder
+        | C::UndoNewer
+        | C::Save
+        | C::Quit
+        | C::SetMark
+        | C::KillRegion
+        | C::CopyRegion
+        | C::ExchangePointMark
+        | C::EmacsBufferEdge { .. }
+        | C::EmacsMarkWord => ChangeKind::NotAChange,
     }
 }
 
@@ -269,6 +392,158 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
             count: n,
             move_after: *move_after,
         },
-        other => other.clone(),
+        C::JoinLines(_) => C::JoinLines(n),
+        C::JoinLinesNoSpace(_) => C::JoinLinesNoSpace(n),
+        // `CTRL-A`/`CTRL-X` carry the count as a signed delta; `5.` keeps the direction.
+        C::IncrementNumber(d) => {
+            C::IncrementNumber(if *d < 0 { -i64::from(n) } else { i64::from(n) })
+        }
+        C::PasteIndent { after, .. } => C::PasteIndent {
+            after: *after,
+            count: n,
+        },
+        C::Format {
+            motion,
+            keep_cursor,
+            ..
+        } => C::Format {
+            count: n,
+            motion: *motion,
+            keep_cursor: *keep_cursor,
+        },
+        C::Search {
+            op,
+            pattern,
+            backward,
+            offset,
+            ..
+        } => C::Search {
+            op: *op,
+            count: n,
+            pattern: pattern.clone(),
+            backward: *backward,
+            offset: *offset,
+        },
+        C::SearchObject {
+            op,
+            pattern,
+            backward,
+            ..
+        } => C::SearchObject {
+            op: *op,
+            count: n,
+            pattern: pattern.clone(),
+            backward: *backward,
+        },
+        // No count to rewrite. Listed (not a wildcard) so a new counted variant cannot silently drop
+        // `N.` (#793). The Visual-selection changes are here by design: nvim ignores a count on `.` of a
+        // Visual change (the repeat re-covers the recorded AMOUNT of text, `:help visual-repeat`).
+        C::MoveLeft
+        | C::MoveRight
+        | C::MoveUp
+        | C::MoveDown
+        | C::MoveLineStart
+        | C::MoveLineEnd
+        | C::EnterInsert
+        | C::EnterInsertAfter
+        | C::EnterNormal
+        | C::EnterTerminal
+        | C::EnterTerminalNormal
+        | C::InsertLineStart
+        | C::InsertColumnZero
+        | C::AppendLineEnd
+        | C::OpenBelow
+        | C::OpenAbove
+        | C::EnterReplace
+        | C::ReplaceType(..)
+        | C::ReplaceBackspace
+        | C::EnterVirtualReplace
+        | C::VirtualReplaceType(..)
+        | C::InsertChar(..)
+        | C::InsertRegister(..)
+        | C::InsertEval(..)
+        | C::InsertDeleteWordBack
+        | C::InsertDeleteToLineStart
+        | C::CompleteWord { .. }
+        | C::InsertIndent
+        | C::InsertDedent
+        | C::InsertTab
+        | C::InsertNewline
+        | C::OpenLineIndent { .. }
+        | C::InsertCloser { .. }
+        | C::DeleteBack
+        | C::ReplaceSelectionChar(..)
+        | C::CaseSelection(..)
+        | C::IncrementSelection { .. }
+        | C::GotoLastChange
+        | C::GotoLastChangeLine
+        | C::GotoChangeMarkStart
+        | C::GotoChangeMarkEnd
+        | C::GotoChangeMarkStartLine
+        | C::GotoChangeMarkEndLine
+        | C::GotoVisualMarkStart
+        | C::GotoVisualMarkEnd
+        | C::GotoVisualMarkStartLine
+        | C::GotoVisualMarkEndLine
+        | C::GotoContextMark
+        | C::GotoContextMarkLine
+        | C::GotoOlderChange
+        | C::GotoNewerChange
+        | C::GotoOlderJump
+        | C::GotoNewerJump
+        | C::InsertAtLastInsert
+        | C::AsciiInfo
+        | C::FileInfo
+        | C::CursorInfo
+        | C::SetNamedMark(..)
+        | C::GotoNamedMark(..)
+        | C::GotoNamedMarkLine(..)
+        | C::OpToMark { .. }
+        | C::BreakUndo
+        | C::SetIndents { .. }
+        | C::PasteSelection { .. }
+        | C::SetRegister(..)
+        | C::SetExprRegister(..)
+        | C::EnterVisual { .. }
+        | C::EnterSelect { .. }
+        | C::DeleteSelection
+        | C::YankSelection
+        | C::ChangeSelection
+        | C::ReselectVisual
+        | C::SwapSelectionEnds
+        | C::ReplaceSelection(..)
+        | C::BlockInsert(..)
+        | C::SearchNext(..)
+        | C::SearchPrev(..)
+        | C::SearchWordUnder { .. }
+        | C::RepeatSubstituteGlobal
+        | C::RepeatSubstituteLine
+        | C::GotoDeclaration { .. }
+        | C::GotoFirstMatch(..)
+        | C::ShowKeywordLines { .. }
+        | C::Undo
+        | C::Redo
+        | C::UndoOlder
+        | C::UndoNewer
+        | C::Save
+        | C::Quit
+        | C::SetMark
+        | C::KillRegion
+        | C::CopyRegion
+        | C::ExchangePointMark
+        | C::EmacsYank { .. }
+        | C::EmacsBufferEdge { .. }
+        | C::EmacsKillLine
+        | C::EmacsTransposeChars
+        | C::EmacsTransposeWords
+        | C::EmacsKillWord { .. }
+        | C::EmacsBackwardKillWord { .. }
+        | C::EmacsCaseWord { .. }
+        | C::EmacsHorizontalSpace { .. }
+        | C::EmacsOpenLine
+        | C::EmacsMarkWord
+        | C::EmacsKillWholeLine
+        | C::EmacsCaseRegion { .. }
+        | C::EmacsDeleteIndentation => cmd.clone(),
     }
 }

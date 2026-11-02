@@ -731,10 +731,16 @@ impl Session {
         };
         // Run the key through the macro state machine (capture / stop / `q`|`@` prefixes). Only a
         // `Dispatch` falls through to the normal engine + intercepts; the rest are handled here.
-        let macro_normal = matches!(ws.focused().view.mode(), Mode::Normal)
-            && engine.cmdline().is_none()
-            && engine.cmdwin().is_none();
-        let key = match macros.step(raw_key, from_replay, macro_normal) {
+        // `q`/`@` are commands only at a clean Normal (or, for `q`, Visual) base: never as a char argument
+        // (`fq`, `"q`, `f@`), under an operator, or in Insert / the command line (#680). (`<C-w>q` and the
+        // confirm/picker overlays are #851: letting `<C-w>q` through needs its unsaved-buffer check first.)
+        let macro_base = engine.cmdline().is_none()
+            && engine.cmdwin().is_none()
+            && !engine.normal_construct_pending();
+        let focus_mode = ws.focused().view.mode();
+        let macro_normal = macro_base && matches!(focus_mode, Mode::Normal);
+        let macro_q = macro_base && matches!(focus_mode, Mode::Normal | Mode::Visual { .. });
+        let key = match macros.step_with(raw_key, from_replay, macro_normal, macro_q) {
             crate::keys::Step::Dispatch(k) => k,
             crate::keys::Step::Consumed => return,
             // `q:` / `q/` / `q?` — open the command-line window (`:help cmdwin`) over that history ring.
@@ -745,6 +751,7 @@ impl Session {
             crate::keys::Step::Store(reg, bytes) => {
                 let n = bytes.len();
                 ws.set_register_raw(Some(reg), bytes);
+                engine.take_count(); // the stopping `q` consumes a count typed before it (`2q`, nvim)
                 *status = format!("recorded @{reg} ({n} keys)");
                 return;
             }

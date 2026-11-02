@@ -198,6 +198,9 @@ pub struct View {
     /// (issued with no anchor on `.`) reads it. `None` until the first block insert; survives leaving Insert
     /// (unlike [`Self::block_insert`]) so it is available to a later `.`. See [`BlockGeom`].
     last_block_geom: Option<BlockGeom>,
+    /// The amount of text the last Visual-selection operator covered, for its dot-repeat (#794). See
+    /// [`VisualOpGeom`]; set and read by [`prepare_selection_op`].
+    last_visual_op: Option<VisualOpGeom>,
     /// Whether the current Insert session opened a line with AUTO-INDENT and nothing non-blank has been
     /// typed on it since (Vim). While true, leaving Insert (`<Esc>`) on an all-whitespace line removes the
     /// auto-inserted indent so `o<Esc>` never leaves trailing whitespace. Set/cleared in [`apply_command`]
@@ -333,6 +336,7 @@ impl View {
             replace_stack: Vec::new(),
             block_insert: None,
             last_block_geom: None,
+            last_visual_op: None,
             auto_indent_pending: false,
             indent: IndentConfig {
                 tab_width: 4,
@@ -677,6 +681,89 @@ struct BlockGeom {
     kind: BlockInsertKind,
     /// `$`-ragged append (`$A`): append at each row's own line-end rather than a fixed column. Only with `A`.
     to_eol: bool,
+}
+
+/// The AMOUNT of text the last Visual-selection operator covered, kept so dot-repeat (`.`) can rebuild an
+/// equivalent selection at the caret (`:help visual-repeat`, #794): the same number of lines; within one
+/// line the same number of chars; for a multi-line charwise selection the same end column on the last
+/// line; for a block the same width. Columns are CHAR columns, like [`block_rows`](range::block_rows).
+#[derive(Clone, Copy, Debug)]
+struct VisualOpGeom {
+    kind: SelectKind,
+    /// Lines spanned (>= 1).
+    lines: usize,
+    /// Charwise one-line: char count. Charwise multi-line: the end's char column. Blockwise: width.
+    cols: usize,
+    /// `$` extended the selection (curswant at MAXCOL): the repeat runs to each line's end.
+    to_eol: bool,
+}
+
+/// Whether `cmd` operates on the live Visual/Select selection — the commands whose dot-repeat (issued in
+/// Normal, with no selection) rebuilds one from [`VisualOpGeom`]. Block `I`/`A`/`c` has its own
+/// [`BlockGeom`] path in the planner.
+fn is_selection_op(cmd: &Command) -> bool {
+    matches!(
+        cmd,
+        Command::DeleteSelection
+            | Command::ChangeSelection
+            | Command::ReplaceSelection(_)
+            | Command::ReplaceSelectionChar(_)
+            | Command::CaseSelection(_)
+            | Command::PasteSelection { .. }
+            | Command::IncrementSelection { .. }
+    )
+}
+
+/// Before a selection operator runs: record the live selection's geometry, or — for a dot-repeat, which
+/// arrives in Normal with no selection — rebuild one of the recorded size starting at the caret, so the
+/// operator then plans exactly as if the user had re-selected that text (Vim's `redo_VIsual`).
+fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
+    if !is_selection_op(cmd) {
+        return;
+    }
+    let b = st.doc.bytes();
+    let cur = st.view.cursor;
+    match (st.view.mode.selection(), st.view.anchor) {
+        (Some(kind), Some(anchor)) => {
+            let (lo, hi) = (anchor.min(cur), anchor.max(cur));
+            let lines = crate::pos::line_of(b, hi) - crate::pos::line_of(b, lo) + 1;
+            let col = |p: usize| col_of(b, line_start(b, p), p);
+            let cols = match kind {
+                SelectKind::Charwise if lines == 1 => col(hi) - col(lo) + 1,
+                SelectKind::Charwise => col(hi),
+                SelectKind::Linewise => 0,
+                SelectKind::Blockwise => col(anchor).abs_diff(col(cur)) + 1,
+            };
+            st.view.last_visual_op = Some(VisualOpGeom {
+                kind,
+                lines,
+                cols,
+                to_eol: st.view.curswant == range::MAXCOL,
+            });
+        }
+        (None, _) => {
+            let Some(g) = st.view.last_visual_op else {
+                return;
+            };
+            let ls = line_start(b, cur);
+            let start_col = col_of(b, ls, cur);
+            let end_ls = crate::pos::nth_line_start(b, crate::pos::line_of(b, cur) + g.lines - 1);
+            let end = match g.kind {
+                _ if g.to_eol => line_end(b, end_ls),
+                SelectKind::Charwise if g.lines == 1 => at_col(b, ls, start_col + g.cols - 1),
+                SelectKind::Charwise => at_col(b, end_ls, g.cols),
+                SelectKind::Linewise => end_ls,
+                SelectKind::Blockwise => at_col(b, end_ls, start_col + g.cols - 1),
+            };
+            st.view.mode = Mode::Visual { kind: g.kind };
+            st.view.anchor = Some(cur);
+            st.view.cursor = end;
+            if g.to_eol {
+                st.view.curswant = range::MAXCOL;
+            }
+        }
+        (Some(_), None) => {}
+    }
 }
 
 /// How a committed command should route its captured text into the register store. A `Yank` additionally
@@ -2255,6 +2342,7 @@ fn is_jump(cmd: &Command) -> bool {
 pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     // A jump records the position it LEAVES onto the jumplist (Vim), so `CTRL-O` can return there.
     let jump_from = is_jump(cmd).then_some(st.view.cursor);
+    prepare_selection_op(st, cmd);
     let p = plan(st, cmd);
     let effects = commit(st, p);
     if let Some(from) = jump_from {

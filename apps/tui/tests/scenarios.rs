@@ -1397,6 +1397,37 @@ fn q_uses_the_most_recently_recorded_register() {
     );
 }
 
+/// #680: a `q` typed as TEXT or as an argument does not stop a recording — only a `q` at a clean Normal or
+/// Visual base does. Every expectation is nvim v0.12.6 (`nvim_feedkeys(…, 'xt')`, typed keys).
+#[test]
+fn q_stops_a_recording_only_as_a_normal_or_visual_command() {
+    let cases: &[(&str, &str, &str)] = &[
+        // Insert: `q` is text; the recording ends at the Normal `q`, and `@a` replays `iq1<Esc>`.
+        ("x", "qaiquick<Esc>q", "quickx"),
+        ("x", "qaiq1<Esc>q@a", "qq11x"),
+        // The command line: `/q<CR>` searches for `q`.
+        ("ab q def", "qa/q<CR>xq", "ab  def"),
+        // A char argument (`f`, `m`) and an operator-pending `q` (`dq` aborts the `d`, as nvim beeps).
+        ("ab q def q", "qafqxq", "ab  def q"),
+        ("abc", "qamqxq", "bc"),
+        ("abc", "qadqxq", "bc"),
+        // A bare count does not shield it: `2q` stops, then `x` runs outside the recording.
+        ("abc", "qa2qx", "bc"),
+        // Visual: `q` stops the recording and the selection stays live for `d`.
+        ("abc", "qavlqd", "c"),
+    ];
+    for &(text, keys, want) in cases {
+        let mut h = session(text);
+        feed_str(&mut h, keys);
+        assert_eq!(buf(&h), want, "keys {keys:?}");
+    }
+    // `fq` with nothing recording: the `q` is the find target, not the start of `qx…` (which would
+    // swallow the `x` as a register name).
+    let mut h = session("abqc");
+    feed_str(&mut h, "fqx");
+    assert_eq!(buf(&h), "abc");
+}
+
 #[test]
 fn q_with_no_recording_is_a_noop_end_to_end() {
     let mut h = session("hello\nworld");
