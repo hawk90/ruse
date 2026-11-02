@@ -19,6 +19,11 @@ jobs:
       # When the generator (D-022) exists: python3 tools/spec-build.py && git diff --exit-code
       - name: docs hygiene (anchors / frontmatter / normative leak)
         run: python3 tools/ruse.py docs check
+      # The `gov-check` step of spec/verification.yaml: waiver expiry (FIT-WAIVERS-EXPIRED), ratchet
+      # ceilings, parity_oracle corpus integrity, prd_cfg, perf baselines, ... (#882). Without it they were
+      # enforced only by the optional local lefthook. No nvim/emacs here, so parity_oracle skips its selftest.
+      - name: governance checkers (gov check)
+        run: python3 tools/ruse.py gov check
       - name: change-workflow toolchain tests
         run: python3 -m unittest discover -s tools/tests -t .
       # Workflow files are code too: an invalid expression fails the run before any step executes
