@@ -147,6 +147,9 @@ impl Regex {
     pub fn find_at(&self, hay: &str, from: usize) -> Option<Match> {
         let from = from.min(hay.len());
         let caps = self.inner.captures_at(hay, from)?;
+        if phantom_line(hay, &caps) {
+            return None; // the only thing left to match is the slot past the last line
+        }
         Some(self.report(&caps))
     }
 
@@ -164,6 +167,9 @@ impl Regex {
         let mut out: Vec<Match> = Vec::new();
         let mut trailing_empty_at_eol = false;
         for caps in self.inner.captures_iter(hay) {
+            if phantom_line(hay, &caps) {
+                break; // it can only be the last candidate
+            }
             let whole = caps.get(0).expect("group 0 always present");
             trailing_empty_at_eol = whole.start() == whole.end() && whole.end() == hay.len();
             out.push(self.report(&caps));
@@ -194,6 +200,16 @@ impl Regex {
         let end = marker(&self.ze).unwrap_or(whole.end()).max(start);
         Match { start, end }
     }
+}
+
+/// Is this match the empty slot after a haystack's final `\n`? A whole-buffer haystack ends in "\n", and
+/// the position after it is not a line in Vim: `^`, `$`, `\_$`, `x*` must not match there (nvim:
+/// `/^$` on "abc\ndef\n" is E486, and `/^` wraps instead of landing past the end). A match that STARTS
+/// there can only be zero-width, so dropping it never hides a real match. A haystack that does not end
+/// in "\n" (one line, an empty buffer) is unaffected.
+fn phantom_line(hay: &str, caps: &regex::Captures) -> bool {
+    let whole = caps.get(0).expect("group 0 always present");
+    !hay.is_empty() && whole.start() == hay.len() && hay.ends_with('\n')
 }
 
 /// Vim's `pat_has_uppercase` (search.c): does the pattern contain an uppercase letter for `'smartcase'`?
@@ -634,7 +650,9 @@ impl Parser<'_> {
         if !is_multi(op) {
             return Ok(atom.rust);
         }
-        if atom.marker {
+        // Vim's `re_mult_next` refuses only the REPEATING multis (`*` `+` `\{`) on `\zs`/`\ze`; `\=`
+        // `\?` (and `\@`) are accepted.
+        if atom.marker && matches!(op, Tok::Op('*' | '+' | '{')) {
             return Err(syntax("E888: cannot repeat \\zs / \\ze"));
         }
         self.lx.skip();
@@ -741,8 +759,13 @@ impl Parser<'_> {
             Tok::End => return Err(syntax("E865: Regexp end encountered prematurely")),
             Tok::Op('^') => "(?m:^)".to_string(),
             Tok::Op('$') => "(?m:$)".to_string(),
-            // Start/end of word. Vim's word is 'iskeyword' (plus character-class changes for wide
-            // characters); Rust's Unicode word boundary agrees on ASCII and Latin letters.
+            // Start/end of word — an APPROXIMATION, knowingly kept. Rust's Unicode word boundary
+            // agrees with Vim between a word and a non-word character for ASCII and Latin letters.
+            // It does NOT see Vim's other boundary: a change of `utf_class` between two word
+            // characters (Latin to Hangul/CJK/kana/emoji), so `\<한` on "abc한글" is nvim (3,6) but
+            // ruse no match. It also differs on Latin-1 × ÷ (keyword characters in Vim, not in
+            // Unicode `\w`). Expressing the class change needs a look-behind at the previous
+            // character, which the wrapped engine lacks; the owned engine is post-MVP.
             Tok::Op('<') => r"\b{start}".to_string(),
             Tok::Op('>') => r"\b{end}".to_string(),
             Tok::Op('_') => match self.lx.get().ch() {
@@ -875,6 +898,10 @@ impl Parser<'_> {
         let endp = skip_anyof(s, start);
         if s.get(endp) != Some(&']') {
             return Ok(None);
+        }
+        if let Some(class) = recognized_class(s, start, endp, extra, self.ci) {
+            self.lx.seek(endp + 1);
+            return Ok(Some(class));
         }
         let mut set = CollSet::default();
         let mut i = start;
@@ -1064,8 +1091,10 @@ fn coll_element_at(s: &[char], p: usize) -> Option<(char, usize)> {
     .then(|| (s[p + 2], 5))
 }
 
-/// A `[:name:]` class: its Rust class body (valid inside `[...]`) and whether it is case-sensitive
-/// under `'ignorecase'` (Vim keeps `[:upper:]`/`[:lower:]` exact).
+/// A `[:name:]` class: its Rust class body (valid inside `[...]`) and whether it must stay exact under
+/// `'ignorecase'`. Vim tests a named class without case folding (`check_char_class`), so `[:upper:]`
+/// does not match `a`, and no class that holds letters may pick up Rust's Unicode folds (KELVIN SIGN
+/// U+212A for `k`, LONG S U+017F for `s`, ...). Letter-free classes fold to themselves either way.
 #[derive(Clone, Copy)]
 struct NamedClass {
     body: &'static str,
@@ -1078,19 +1107,19 @@ fn char_class_at(s: &[char], p: usize) -> Option<(NamedClass, usize)> {
         return None;
     }
     const TABLE: &[(&str, &str, bool)] = &[
-        ("alnum", "0-9A-Za-z", false),
-        ("alpha", "A-Za-z", false),
+        ("alnum", "0-9A-Za-z", true),
+        ("alpha", "A-Za-z", true),
         ("backspace", r"\x{8}", false),
         ("blank", r"\x{20}\t", false),
         ("cntrl", r"\x{1}-\x{9}\x{B}-\x{1F}\x{7F}", false),
         ("digit", "0-9", false),
         ("escape", r"\x{1B}", false),
-        ("fname", F_BODY, false),
-        ("graph", r"\x{21}-\x{7E}", false),
-        ("ident", I_BODY, false),
-        ("keyword", K_BODY, false),
+        ("fname", F_BODY, true),
+        ("graph", r"\x{21}-\x{7E}", true),
+        ("ident", I_BODY, true),
+        ("keyword", K_BODY, true),
         ("lower", r"\p{Ll}", true),
-        ("print", P_BODY, false),
+        ("print", P_BODY, true),
         (
             "punct",
             r"\x{21}-\x{2F}\x{3A}-\x{40}\x{5B}-\x{60}\x{7B}-\x{7E}",
@@ -1100,7 +1129,7 @@ fn char_class_at(s: &[char], p: usize) -> Option<(NamedClass, usize)> {
         ("space", r"\t\x{B}-\x{D}\x{20}", false),
         ("tab", r"\t", false),
         ("upper", r"\p{Lu}", true),
-        ("xdigit", "0-9A-Fa-f", false),
+        ("xdigit", "0-9A-Fa-f", true),
     ];
     let rest = &s[p + 2..];
     TABLE.iter().find_map(|&(name, body, case_sensitive)| {
@@ -1159,7 +1188,7 @@ impl CollSet {
         if negated {
             if split_exact {
                 return Err(RegexError::Unsupported(
-                    "negated collection mixing [:upper:]/[:lower:] with 'ignorecase'",
+                    "negated collection holding a letter class ([:alpha:], [:upper:], ...) under 'ignorecase'",
                 ));
             }
             let body = format!("{}{}", self.items, self.exact);
@@ -1273,17 +1302,92 @@ fn class_atom(c: char, newline: bool, ci: bool) -> String {
         'l' | 'L' => ("a-z".into(), c == 'L'),
         _ => ("A-Z".into(), c == 'U'), // 'u' | 'U'
     };
+    exact_class(&body, negated, newline, ci)
+}
+
+/// A class over `body` (negated or not, with or without the line break), kept EXACT under
+/// `'ignorecase'`: Vim never case-folds a class atom (`\a`, `\w` do not match KELVIN SIGN U+212A or
+/// LONG S U+017F; `\u` does not match `a`), so the class is wrapped in `(?-i:…)` when folding is on.
+fn exact_class(body: &str, negated: bool, newline: bool, ci: bool) -> String {
     let class = match (negated, newline) {
         (false, false) => format!("[{body}]"),
         (false, true) => format!(r"[{body}\n]"),
         (true, false) => format!(r"[^{body}\n]"),
         (true, true) => format!("[^{body}]"),
     };
-    if ci && matches!(c, 'l' | 'L' | 'u' | 'U') {
+    if ci {
         format!("(?-i:{class})")
     } else {
         class
     }
+}
+
+/// Vim's `nfa_recognize_char_class`: a collection spelled exactly as a set of the ranges `0-9` `0-7`
+/// `a-z` `A-Z` `a-f` `A-F`, `_` and `\n` (e.g. `[a-z]`, `[^0-9]`, `[A-Za-z_]`, `[0-9a-fA-F]`) is
+/// compiled as the matching class atom, which is ASCII-only under `'ignorecase'` — `[a-z]` then
+/// matches `a-zA-Z` but not KELVIN SIGN, while a collection that is not recognised (`[a-y]`,
+/// `[a-z0-9]`) folds like a literal and does. `None`: not one of those spellings.
+fn recognized_class(
+    s: &[char],
+    start: usize,
+    endp: usize,
+    extra: bool,
+    ci: bool,
+) -> Option<String> {
+    const O9: u8 = 1;
+    const O7: u8 = 2;
+    const LZ: u8 = 4;
+    const UZ: u8 = 8;
+    const LF: u8 = 16;
+    const UF: u8 = 32;
+    const US: u8 = 64;
+    let mut p = start;
+    let negated = s.get(p) == Some(&'^');
+    if negated {
+        p += 1;
+    }
+    let mut newline = extra;
+    let mut config = 0u8;
+    while p < endp {
+        if p + 2 < endp && s[p + 1] == '-' {
+            config |= match (s[p], s[p + 2]) {
+                ('0', '9') => O9,
+                ('0', '7') => O7,
+                ('a', 'z') => LZ,
+                ('a', 'f') => LF,
+                ('A', 'Z') => UZ,
+                ('A', 'F') => UF,
+                _ => return None,
+            };
+            p += 3;
+        } else if p + 1 < endp && s[p] == '\\' && s[p + 1] == 'n' {
+            newline = true;
+            p += 2;
+        } else if s[p] == '_' {
+            config |= US;
+            p += 1;
+        } else if s[p] == '\n' {
+            newline = true;
+            p += 1;
+        } else {
+            return None;
+        }
+    }
+    let body = match config {
+        O9 => "0-9",
+        x if x == LF | UF | O9 => "0-9A-Fa-f",
+        O7 => "0-7",
+        x if x == LZ | UZ | O9 | US => "0-9A-Za-z_",
+        x if x == LZ | UZ | US => "A-Za-z_",
+        x if x == LZ | UZ => "A-Za-z",
+        // `\l` / `\u` with Vim's `_IC` twist: under 'ignorecase' they take both ASCII cases.
+        LZ if ci => "A-Za-z",
+        LZ => "a-z",
+        UZ if ci => "A-Za-z",
+        UZ => "A-Z",
+        _ => return None,
+    };
+    Some(exact_class(body, negated, newline, ci))
 }
 
 #[cfg(test)]
@@ -1332,6 +1436,22 @@ mod tests {
 
     /// `\zs` resets the reported match START; `\ze` the END. The context still has to match, but the
     /// reported span is only the middle — the atom with no PCRE equivalent (design §4).
+    #[test]
+    fn no_match_in_the_slot_after_the_final_newline() {
+        let re = Regex::compile("^", Options::default()).unwrap();
+        let hay = "abc\ndef\n";
+        assert_eq!(re.find_at(hay, 1).map(|m| m.start), Some(4));
+        assert_eq!(re.find_at(hay, 5), None);
+        let starts: Vec<usize> = re.find_all(hay).iter().map(|m| m.start).collect();
+        assert_eq!(starts, vec![0, 4]);
+        let re = Regex::compile("^$", Options::default()).unwrap();
+        assert_eq!(re.find_at(hay, 0), None);
+        assert_eq!(re.find_at("abc\n\ndef\n", 5), None);
+        // A haystack without a final newline (one line, an empty buffer) keeps its end match.
+        assert_eq!(re.find_at("", 0), Some(Match { start: 0, end: 0 }));
+        assert_eq!(find("$", "abc"), Some((3, 3)));
+    }
+
     #[test]
     fn zs_ze_boundary_override() {
         // `foo\zsbar` reports only `bar`, but only when preceded by `foo`.

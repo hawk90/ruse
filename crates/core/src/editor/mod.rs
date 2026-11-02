@@ -824,7 +824,13 @@ impl EditorState {
         let bytes = self.doc.bytes();
         let hay = std::str::from_utf8(bytes)
             .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
-        let lines = line_spans(hay); // (start, end-excluding-newline) per line
+        let mut lines = line_spans(hay); // (start, end-excluding-newline) per line
+                                         // The empty span after a final newline is not a line in Vim; a zero-width pattern (`^`, `$`, `x*`)
+                                         // must not substitute on it (`:%s/^/#/` on "abc\ndef\n" would append a "#" line). An empty or
+                                         // non-`\n`-terminated buffer keeps its last span (as in `global_marks`).
+        if hay.ends_with('\n') {
+            lines.pop();
+        }
         let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = match range {
             SubRange::CurrentLine => (cursor_line, cursor_line),

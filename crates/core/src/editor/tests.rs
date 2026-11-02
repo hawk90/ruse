@@ -5101,6 +5101,41 @@ mod search_tests {
         }
     }
 
+    /// #692 review: `^` / `$` are line anchors in a whole-buffer search, but the empty slot after the
+    /// buffer's final "\n" is not a line. nvim: `/^$` on "abc\ndef\n" is E486 (cursor stays); `/^` + `n`
+    /// wraps 4 → 0 → 4; on "abc\n\ndef\n" `/^$` + `n` stays on the one empty line (4, 4).
+    #[test]
+    fn line_anchors_never_match_past_the_final_newline() {
+        // (`n` = `SearchNext`, which goes through `search_fwd`; the `/pat` motion skips zero-width
+        // matches altogether, see `match_spans`.)
+        let next = |p: &str| Command::SearchNext(p.into());
+        let st = run("abc\ndef\n", &[next("^$")]);
+        assert_eq!(st.cursor(), 0, "no empty line: the search fails");
+        let st = run("abc\ndef\n", &[next("^$"), next("^$")]);
+        assert_eq!(st.cursor(), 0);
+
+        let st = run("abc\ndef\n", &[next("^")]);
+        assert_eq!(st.cursor(), 4);
+        let st = run("abc\ndef\n", &[next("^"), next("^")]);
+        assert_eq!(st.cursor(), 0, "wraps instead of landing past the end");
+        let st = run("abc\ndef\n", &[next("^"), next("^"), next("^")]);
+        assert_eq!(st.cursor(), 4);
+
+        let st = run("abc\n\ndef\n", &[next("^$")]);
+        assert_eq!(st.cursor(), 4);
+        let st = run("abc\n\ndef\n", &[next("^$"), next("^$")]);
+        assert_eq!(st.cursor(), 4);
+
+        for pat in ["$", r"\_$", "x*"] {
+            let st = run("abc\ndef\n", &[next(pat), next(pat), next(pat), next(pat)]);
+            assert!(
+                st.cursor() < 8,
+                "{pat}: cursor {} is past the last line",
+                st.cursor()
+            );
+        }
+    }
+
     /// F-009 #3: `/pat` is a Vim-REGEX search now (not literal). `a\+` matches one-or-more `a`; the
     /// cursor lands on the start of the next match.
     #[test]
@@ -5770,6 +5805,26 @@ mod substitute_tests {
         );
         assert_eq!(st.as_str().unwrap(), "bar foo\nfoo");
         assert_eq!((out.replacements, out.lines), (1, 1));
+    }
+
+    /// #692 review: `:%s/^/#/` on "abc\ndef\n" prefixes the two lines and adds no "#" line for the
+    /// empty slot after the final newline (nvim: "#abc\n#def\n", 2 substitutions). An empty buffer is
+    /// still one (empty) line.
+    #[test]
+    fn substitute_skips_the_slot_after_the_final_newline() {
+        let (st, out) = sub(
+            "abc\ndef\n",
+            SubRange::WholeFile,
+            "^",
+            "#",
+            SubFlags::default(),
+        );
+        assert_eq!(st.as_str().unwrap(), "#abc\n#def\n");
+        assert_eq!((out.replacements, out.lines), (2, 2));
+        let (st, _) = sub("abc\n", SubRange::WholeFile, "$", ";", SubFlags::default());
+        assert_eq!(st.as_str().unwrap(), "abc;\n");
+        let (st, _) = sub("", SubRange::WholeFile, "^", "#", SubFlags::default());
+        assert_eq!(st.as_str().unwrap(), "#");
     }
 
     /// F-009 #2: the `g` flag replaces ALL matches on each line.
