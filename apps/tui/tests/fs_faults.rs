@@ -196,8 +196,15 @@ fn edit_of_hostile_paths_reports_and_keeps_the_session() {
 fn round_trips(dir: &Scratch, name: &Path) {
     let file = dir.0.join(name);
     let mut ed = Editor::start(dir, &[name]);
+    ed.settle();
     ed.keys(&format!("ix{ESC}:w\r"));
-    let on_disk = std::fs::read(&file).unwrap();
+    // Bounded poll: on a loaded CI runner the write can land after the output went quiet.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut on_disk = std::fs::read(&file).unwrap();
+    while on_disk != b"xorig\n" && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+        on_disk = std::fs::read(&file).unwrap();
+    }
     if on_disk != b"xorig\n" {
         let shown = ed.screen_bytes();
         let tail: String = shown
