@@ -69,8 +69,10 @@ pub enum Step {
     OpenCmdWin(char),
 }
 
+/// `key` is the plain char `c`. `SHIFT` is allowed: a terminal reports an uppercase letter with it (crossterm
+/// sets `SHIFT` on `Q`), and the char already says it is uppercase.
 fn is_bare(key: KeyEvent, c: char) -> bool {
-    key.code == KeyCode::Char(c) && key.modifiers.is_empty()
+    key.code == KeyCode::Char(c) && (key.modifiers - KeyModifiers::SHIFT).is_empty()
 }
 
 impl MacroState {
@@ -760,6 +762,15 @@ mod tests {
             Step::Replay('b'),
             "Q repeats the last RECORDED register (b), not the last played (a)"
         );
+    }
+
+    #[test]
+    fn q_replays_when_the_terminal_reports_shift() {
+        // A real terminal delivers `Q` as `Char('Q')` + SHIFT; it must still replay.
+        let mut m = MacroState::new();
+        record(&mut m, 'a', &[ch('x')]);
+        let shifted_q = KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::SHIFT);
+        assert_eq!(m.step(shifted_q, false, true), Step::Replay('a'));
     }
 
     #[test]
