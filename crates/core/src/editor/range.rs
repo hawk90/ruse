@@ -270,7 +270,11 @@ pub(crate) fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usiz
             // Extend through `count-1` further word-ends (Vim `c{n}w`).
             let mut e = end;
             for _ in 1..count.max(1) {
-                e = motion::word_end_excl(b, e.saturating_sub(1), big);
+                let next = motion::word_end_excl(b, e.saturating_sub(1), big);
+                if next == e {
+                    break; // a fixpoint (buffer end): a hostile count must not spin (#907)
+                }
+                e = next;
             }
             return (cur, e);
         }

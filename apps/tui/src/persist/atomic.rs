@@ -54,8 +54,16 @@ fn resolve_write_target(path: &Path) -> io::Result<PathBuf> {
 /// litters. Returns only after the bytes (and, on Unix, the rename) are on stable storage.
 pub fn save(target: &Path, bytes: &[u8]) -> io::Result<()> {
     let target = resolve_write_target(target)?;
+    let existing = fs::metadata(&target).ok();
+    // The rename would REPLACE a FIFO, socket or device node with a regular file (#907): refuse instead.
+    if existing.as_ref().is_some_and(|m| !m.is_file()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{}: is not a regular file", target.display()),
+        ));
+    }
     // The existing file's permissions (None for a new file → the platform default, i.e. umask on Unix).
-    let perms = fs::metadata(&target).ok().map(|m| m.permissions());
+    let perms = existing.map(|m| m.permissions());
     let tmp = temp_path(&target);
     if let Err(e) = write_and_sync(&tmp, bytes, perms) {
         let _ = fs::remove_file(&tmp);
@@ -225,5 +233,26 @@ mod tests {
         std::os::unix::fs::symlink(&b, &a).unwrap();
         std::os::unix::fs::symlink(&a, &b).unwrap();
         assert!(save(&a, b"x").is_err());
+    }
+
+    /// #907: saving over a FIFO (or a directory) refuses, rather than renaming a regular file over the node.
+    #[cfg(unix)]
+    #[test]
+    fn non_regular_target_is_refused_and_kept() {
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::FileTypeExt;
+        let dir = tmpdir();
+        let fifo = dir.join("p");
+        let c = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `c` is a valid NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        let e = save(&fifo, b"x").unwrap_err();
+        assert!(e.to_string().contains("is not a regular file"), "{e}");
+        assert!(fs::metadata(&fifo).unwrap().file_type().is_fifo());
+        assert!(!temp_path(&fifo).exists());
+        let sub = dir.join("sub");
+        fs::create_dir(&sub).unwrap();
+        assert!(save(&sub, b"x").is_err());
+        assert!(sub.is_dir());
     }
 }

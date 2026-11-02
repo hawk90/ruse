@@ -1737,6 +1737,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     }
     let mut c = cur0;
     for _ in 0..n {
+        let prev = c;
         c = match m {
             Motion::Left => prev_boundary(b, c),
             Motion::Right => next_boundary(b, c),
@@ -1810,6 +1811,26 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             | Motion::Tag { .. }
             | Motion::Line => c,
         };
+        // Every step is a pure function of `(b, c)`, so a step that did not move never will: stop. Without
+        // this a hostile count (`emacs_kill_word 4294967295` in a trace, or a huge `C-u` prefix) spun for
+        // minutes at the buffer edge (#907).
+        if c == prev {
+            break;
+        }
+    }
+    c
+}
+
+/// Apply the pure step `f` up to `n` times from `start`, stopping early at a fixpoint: a step that did not
+/// move never will, so a hostile count costs at most one step per byte instead of `n` steps (#907).
+fn repeat_step(n: u32, start: usize, f: impl Fn(usize) -> usize) -> usize {
+    let mut c = start;
+    for _ in 0..n {
+        let next = f(c);
+        if next == c {
+            break;
+        }
+        c = next;
     }
     c
 }
@@ -1861,21 +1882,11 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // inclusive end-of-word (Vim `de` / `dE`).
         Motion::WordEnd | Motion::BigWordEnd => {
             let big = m == Motion::BigWordEnd;
-            let mut e = cur;
-            for _ in 0..n {
-                e = word_end_excl(b, e, big);
-            }
-            (cur, e)
+            (cur, repeat_step(n, cur, |e| word_end_excl(b, e, big)))
         }
         // Emacs `kill-word` (`M-d`): `[cursor, emacs_word_fwd)` — the two-class forward-word span, which
         // (unlike Vim `de`) skips a leading non-word run and stops at `_`/punctuation boundaries.
-        Motion::EmacsWordFwd => {
-            let mut e = cur;
-            for _ in 0..n {
-                e = emacs_word_fwd(b, e);
-            }
-            (cur, e)
-        }
+        Motion::EmacsWordFwd => (cur, repeat_step(n, cur, |e| emacs_word_fwd(b, e))),
         // backward / leftward → [target, cursor)
         Motion::Left
         | Motion::WordBack
@@ -1886,10 +1897,7 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // and including the cursor char (Vim `dge` on `r` of "foo bar" → "fo").
         Motion::WordEndBack | Motion::BigWordEndBack => {
             let big = m == Motion::BigWordEndBack;
-            let mut e = cur;
-            for _ in 0..n {
-                e = prev_boundary(b, prev_word_end_excl(b, e, big));
-            }
+            let e = repeat_step(n, cur, |e| prev_boundary(b, prev_word_end_excl(b, e, big)));
             (e, next_boundary(b, cur))
         }
         // `^` / `|` / `go` / `gM` are exclusive and can point either way (indent / column / byte / line-%,

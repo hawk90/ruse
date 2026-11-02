@@ -204,8 +204,16 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let fmt = persist::encoding::FileFormat::detect(&raw);
     let disk = fmt.to_buffer(&raw);
     // A crash may have left an append-only journal of unsaved work; offer it, never auto-apply it.
-    let recovered = persist::journal::replay(path.as_deref());
+    // A journal that exists but cannot be read is reported on the status line, never silently skipped (#897).
+    let (recovered, journal_error) = match persist::journal::replay_checked(path.as_deref()) {
+        Ok(r) => (r, None),
+        Err(e) => (
+            None,
+            Some(persist::journal::unreadable_note(path.as_deref(), &e)),
+        ),
+    };
     let recovery = persist::assess_recovery(&disk, recovered.as_deref());
+    let stale = path.as_deref().is_some_and(persist::journal::is_stale);
 
     // Syntax highlighting lives in the frontend (core stays dep-free); one highlighter PER file buffer is
     // built below in the `files` seed / on `:e`, keyed by DocumentId (F-007 multi-buffer).
@@ -218,11 +226,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 
     let guard = TermGuard::enter()?;
     let mut out = io::stdout();
+    // Create crossterm's event source now, so its SIGWINCH registration exists before a fatal signal can
+    // arrive: the signal handler wakes a blocked read through it (#857). Installed before the recovery
+    // prompt, so a signal there also unwinds through the guard (#897).
+    let _ = event::poll(std::time::Duration::ZERO);
+    crate::signals::install();
 
     // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
+    let stale_note = stale.then_some(persist::journal::STALE_NOTE);
     let (initial, mut status) = match recovery {
         persist::Recovery::Available(rec) => {
-            match prompt_recovery(&mut out, "q: quit and keep them")? {
+            match prompt_recovery(&mut out, "q: quit and keep them", stale_note)? {
                 RecoveryChoice::Recover => (
                     rec,
                     String::from("ruse — recovered unsaved changes (:w to save)"),
@@ -237,7 +251,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 RecoveryChoice::Quit => return Ok(()), // the journal stays for the next start
             }
         }
-        persist::Recovery::None => (disk, String::from("ruse — :q to quit")),
+        persist::Recovery::None => match journal_error {
+            Some(note) => (disk, format!("ruse — {note}")),
+            None => (disk, String::from("ruse — :q to quit")),
+        },
     };
 
     // F-007: the frontend now drives a Workspace (buffers + views + windows), not a single
@@ -281,6 +298,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let mut recorded: Vec<Command> = Vec::new();
     // Per-buffer journal throttles (#858): a frame is appended only after the buffer actually changed.
     let mut journal_throttle: HashMap<DocumentId, persist::journal::Throttle> = HashMap::new();
+    // Buffers whose last journal append failed, so the E303 warning shows once per failing run (#907).
+    let mut journal_failed: std::collections::HashSet<DocumentId> =
+        std::collections::HashSet::new();
     // `ruse` with no file: the start buffer has no path, but its journal (`.ruse-journal`) is what the next
     // pathless start replays, so a crash rescues it there (#856). Not throttle-journaled: it can never be
     // saved, so a periodic journal would outlive every `:q!`.
@@ -385,10 +405,6 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let trusted = crate::trust::workspace_trusted(&cwd);
     let mut lsp = LspCoordinator::new(cwd, trusted);
 
-    // Create crossterm's event source now, so its SIGWINCH registration exists before a fatal signal can
-    // arrive: the signal handler wakes a blocked read through it (#857).
-    let _ = event::poll(std::time::Duration::ZERO);
-    crate::signals::install();
     // The key half of a Vim-profile Alt chord, delivered on the next turn after its `<Esc>` (see below).
     let mut meta_tail: Option<KeyEvent> = None;
 
@@ -471,7 +487,22 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     .or_default()
                     .tick(rev, dirty, JOURNAL_THROTTLE)
                 {
-                    let _ = persist::journal::append(Some(bf.path.as_path()), doc.bytes());
+                    // A failed append (read-only or vanished directory, full disk) is shown once per
+                    // failing run, as Neovim's E303 is, rather than silently leaving the work unprotected.
+                    match persist::journal::append(Some(bf.path.as_path()), doc.bytes()) {
+                        Ok(()) => {
+                            journal_failed.remove(id);
+                        }
+                        Err(e) => {
+                            if journal_failed.insert(*id) {
+                                tracing::warn!(event = "journal.failed", path = %bf.path.display(), error = %e);
+                                status = format!(
+                                    "E303: unable to write the recovery journal for \"{}\": {e}",
+                                    bf.path.display()
+                                );
+                            }
+                        }
+                    }
                 }
                 entries.push(recover::Entry {
                     path: Some(bf.path.clone()),
@@ -1755,7 +1786,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     Ex::EditReload => {
                         let id = ws.focused_buffer();
                         match files.get(&id).map(|bf| bf.path.clone()) {
-                            Some(path) => match std::fs::read(&path) {
+                            Some(path) => match persist::read_file(&path) {
                                 Ok(raw) => {
                                     let fmt = persist::encoding::FileFormat::detect(&raw);
                                     ws.reload_focused(fmt.to_buffer(&raw));
@@ -1780,16 +1811,18 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // is IMPURE (fs / process); core only splices the resulting bytes. The cursor lands on the
                     // FIRST inserted line for a file read, the LAST for a command read (nvim v0.12.4 quirk).
                     Ex::Read { addr, source } => match source {
-                        ReadSource::File(path) => match std::fs::read(&path) {
-                            Ok(raw) => {
-                                // Strip the read file's own BOM / CRLF as opening it would; the target
-                                // buffer's format is applied on save (#860).
-                                let clean = persist::encoding::FileFormat::normalize(&raw);
-                                let n = ws.read_lines(addr, &clean, false);
-                                status = format!("\"{path}\" {n}L, {}B", raw.len());
+                        ReadSource::File(path) => {
+                            match persist::read_file(std::path::Path::new(&path)) {
+                                Ok(raw) => {
+                                    // Strip the read file's own BOM / CRLF as opening it would; the target
+                                    // buffer's format is applied on save (#860).
+                                    let clean = persist::encoding::FileFormat::normalize(&raw);
+                                    let n = ws.read_lines(addr, &clean, false);
+                                    status = format!("\"{path}\" {n}L, {}B", raw.len());
+                                }
+                                Err(e) => status = format!("E484: can't open {path}: {e}"),
                             }
-                            Err(e) => status = format!("E484: can't open {path}: {e}"),
-                        },
+                        }
                         ReadSource::Command(cmd) => match crate::shell::capture(&cmd) {
                             Ok(out) => {
                                 let n = ws.read_lines(addr, out.text.as_bytes(), true);

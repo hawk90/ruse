@@ -139,3 +139,137 @@ fn parse_header(line: &str) -> Result<(u32, u64), TraceError> {
     }
     Ok((version.ok_or_else(bad)?, hash.ok_or_else(bad)?))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Every verb the trace codec knows, scraped from `Command::from_line`'s match arms so new verbs are
+    /// fuzzed without editing this list.
+    fn verbs() -> Vec<String> {
+        include_str!("command.rs")
+            .lines()
+            .filter_map(|l| {
+                let rest = l.trim_start().strip_prefix('"')?;
+                let (verb, tail) = rest.split_once('"')?;
+                let ok = tail.trim_start().starts_with("=>")
+                    && !verb.is_empty()
+                    && verb.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+                ok.then(|| verb.to_string())
+            })
+            .collect()
+    }
+
+    /// Every motion token, scraped from the body of `motion_token`.
+    fn motions() -> Vec<String> {
+        let src = include_str!("command.rs");
+        let start = src.find("fn motion_token").unwrap();
+        let end = src[start..].find("fn motion_from_token").unwrap() + start;
+        src[start..end]
+            .lines()
+            .filter_map(|l| {
+                let (_, rhs) = l.split_once("=> \"")?;
+                Some(rhs.split('"').next()?.to_string())
+            })
+            .collect()
+    }
+
+    /// A hostile argument: huge, negative, empty, non-numeric, non-ASCII or control-laden.
+    fn hostile_arg() -> impl Strategy<Value = String> {
+        prop_oneof![
+            Just(String::new()),
+            Just("0".to_string()),
+            Just("-1".to_string()),
+            Just("4294967295".to_string()),
+            Just("18446744073709551616".to_string()),
+            Just("1114112".to_string()),
+            Just("55296".to_string()),
+            "[0-9]{1,3}",
+            "[ -~]{0,12}",
+            any::<String>().prop_map(|s| s.chars().take(12).collect()),
+        ]
+    }
+
+    /// #907: a trace line with a maximal count (`emacs_kill_word 4294967295`, `change 4294967295 word_fwd`)
+    /// replays in bounded time. Motion steps stopped only after `count` iterations, so such a line spun for
+    /// minutes on a four-byte buffer; they now stop at the first step that does not move.
+    #[test]
+    fn maximal_counts_replay_in_bounded_time() {
+        let mut args: Vec<String> = ["4294967295", "4294967295 4294967295"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        for m in motions() {
+            for pre in ["", "left ", "right "] {
+                args.push(format!("{pre}4294967295 {m}"));
+                args.push(format!("{pre}{m} 4294967295"));
+            }
+        }
+        let started = std::time::Instant::now();
+        let mut slow = Vec::new();
+        for v in verbs() {
+            for a in &args {
+                let line = format!("{v} {a}");
+                if let Ok(c) = Command::from_line(&line) {
+                    let t = std::time::Instant::now();
+                    let _ = Trace::record(b"ab\nc d", vec![c]).replay(b"ab\nc d");
+                    if t.elapsed() > std::time::Duration::from_millis(500) {
+                        slow.push(format!("{line:?}: {:?}", t.elapsed()));
+                    }
+                }
+            }
+        }
+        assert!(slow.is_empty(), "slow replays: {slow:#?}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    }
+
+    #[test]
+    fn verb_scrape_finds_the_codec() {
+        let v = verbs();
+        assert!(v.len() > 50, "verb scrape found only {}", v.len());
+        assert!(v.iter().any(|x| x == "insert_char"));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(512))]
+
+        /// Arbitrary text never panics the trace parser: it is a trace or a typed error.
+        #[test]
+        fn from_text_never_panics_on_arbitrary_text(s in any::<String>()) {
+            let _ = Trace::from_text(&s);
+            let _ = Trace::from_text(&format!("# ruse-trace v1 doc_hash=0\n{s}"));
+        }
+
+        /// Arbitrary bytes, lossily decoded the way a reader of a corrupt file would see them.
+        #[test]
+        fn from_text_never_panics_on_arbitrary_bytes(b in proptest::collection::vec(any::<u8>(), 0..512)) {
+            let _ = Trace::from_text(&String::from_utf8_lossy(&b));
+        }
+
+        /// Every known verb with a hostile argument parses or errors; whatever parses re-serializes to a
+        /// line that parses back to the same command, and survives replay on a small document.
+        #[test]
+        fn known_verbs_with_hostile_args_never_panic(
+            picks in proptest::collection::vec((any::<proptest::sample::Index>(), hostile_arg()), 1..8),
+            initial in "[a-c \n]{0,24}",
+        ) {
+            let verbs = verbs();
+            let mut text = format!("# ruse-trace v1 doc_hash={:016x}\n", doc_hash(initial.as_bytes()));
+            for (i, arg) in &picks {
+                text.push_str(&format!("{} {}\n", verbs[i.index(verbs.len())], arg));
+            }
+            // Parse line by line so one bad line does not hide the rest.
+            let mut cmds = Vec::new();
+            for line in text.lines().skip(1) {
+                if let Ok(c) = Command::from_line(line) {
+                    let again = Command::from_line(&c.to_line());
+                    prop_assert_eq!(again.as_ref(), Ok(&c), "line {:?}", line);
+                    cmds.push(c);
+                }
+            }
+            let _ = Trace::from_text(&text);
+            let _ = Trace::record(initial.as_bytes(), cmds).replay(initial.as_bytes());
+        }
+    }
+}

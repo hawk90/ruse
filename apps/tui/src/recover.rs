@@ -155,10 +155,43 @@ mod tests {
         );
     }
 
+    /// Serialises the tests that use the process-global store.
+    static STORE_TEST: Mutex<()> = Mutex::new(());
+
+    /// #897: the installed panic hook itself journals the store before the panic unwinds. There is no way to
+    /// make the shipped binary panic on purpose (and no production trigger should exist), so this is the
+    /// panic path's coverage, below the process boundary.
+    #[test]
+    fn panic_hook_journals_modified_buffers_then_unwinds() {
+        use crate::persist::journal::{journal_path, replay};
+        let _serial = STORE_TEST.lock().unwrap_or_else(PoisonError::into_inner);
+        let dir = std::env::temp_dir().join(format!("ruse-recover-hook-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("p.txt");
+        let _ = std::fs::remove_file(journal_path(Some(&doc)));
+        sync(vec![Entry {
+            path: Some(doc.clone()),
+            bytes: Arc::new(b"work at the panic\n".to_vec()),
+            modified: true,
+        }]);
+        install_hook();
+        // A panicking thread, not `catch_unwind` (STAB-6): the hook runs, the thread unwinds, join reports it.
+        let unwound = std::thread::spawn(|| panic!("injected test panic")).join();
+        drop(std::panic::take_hook()); // back to the default hook for the rest of the run
+        sync(Vec::new());
+        assert!(unwound.is_err(), "the hook chains on and the panic unwinds");
+        assert_eq!(
+            replay(Some(&doc)).as_deref(),
+            Some(&b"work at the panic\n"[..])
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// #856: a crash journals every modified buffer in the store, not only the focused one, and skips the
-    /// clean ones. The store is process-global, so this is the only test that touches it.
+    /// clean ones.
     #[test]
     fn rescue_journals_every_modified_buffer() {
+        let _serial = STORE_TEST.lock().unwrap_or_else(PoisonError::into_inner);
         use crate::persist::journal::{journal_path, replay};
         let dir = std::env::temp_dir().join(format!("ruse-recover-all-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

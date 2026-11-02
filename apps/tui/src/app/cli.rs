@@ -148,7 +148,7 @@ pub fn run() -> ExitCode {
     // Raw on-disk bytes (BOM/CRLF intact); session run() detects the format and normalises for the buffer.
     // Only a missing file is a new buffer. Any other read error must not open blank: `:w` would then replace
     // the unread file.
-    let raw = match path.as_ref().map(fs::read) {
+    let raw = match path.as_deref().map(crate::persist::read_file) {
         None => Vec::new(),
         Some(Ok(bytes)) => bytes,
         Some(Err(e)) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
@@ -159,6 +159,8 @@ pub fn run() -> ExitCode {
         }
     };
     let result = session_run(path, raw);
+    // From here this thread ends the process; the signal watchdog stands down (#897).
+    let _exiting = crate::signals::begin_exit();
     // The terminal guard has already restored the terminal. A fatal signal or an I/O error ended the session
     // with unsaved work possibly unjournaled (#857): write every modified buffer's journal. A normal quit
     // (including `:q!`, which discards on purpose) leaves nothing to rescue.
