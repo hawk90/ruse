@@ -252,11 +252,41 @@ impl Editor {
             if i > 0 {
                 std::thread::sleep(CHUNK_GAP);
             }
-            // A write error means the child already exited; `exit_status` reports that outcome.
-            let _ = self.master.write_all(chunk);
-            let _ = self.master.flush();
+            self.write_bounded(chunk);
         }
         self.settle();
+    }
+
+    /// Write `bytes` to the child's terminal, failing the test instead of blocking forever when the child
+    /// stops reading. Small writes go in one piece (so a short sequence lands in one read); large ones in
+    /// `PIECE`-byte pieces, each after a bounded wait for room in the PTY input queue.
+    fn write_bounded(&mut self, bytes: &[u8]) {
+        use std::os::unix::io::AsRawFd;
+        const PIECE: usize = 256;
+        let start = Instant::now();
+        for piece in bytes.chunks(PIECE) {
+            let mut pfd = libc::pollfd {
+                fd: self.master.as_raw_fd(),
+                events: libc::POLLOUT,
+                revents: 0,
+            };
+            loop {
+                // SAFETY: `pfd` is a valid, initialised pollfd; poll touches only that one struct.
+                let ready = unsafe { libc::poll(&mut pfd, 1, 50) };
+                if ready > 0 {
+                    break;
+                }
+                if !self.is_running() {
+                    return; // `exit_status` reports the outcome.
+                }
+                assert!(start.elapsed() < MAX_WAIT, "ruse stopped reading its input");
+            }
+            // A write error means the child already exited; `exit_status` reports that outcome.
+            if self.master.write_all(piece).is_err() {
+                return;
+            }
+        }
+        let _ = self.master.flush();
     }
 }
 
