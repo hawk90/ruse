@@ -167,6 +167,16 @@ fn resolve_tree_aware(
     }
 }
 
+/// The status line after a `:r !cmd` / filter: nvim shows `shell returned {n}` ahead of the line count when
+/// the command failed (#861).
+fn with_shell_failure(out: &crate::shell::ShellOutput, lines: String) -> String {
+    match (out.failure(), lines.is_empty()) {
+        (Some(note), true) => note,
+        (Some(note), false) => format!("{note}; {lines}"),
+        (None, _) => lines,
+    }
+}
+
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // F-008: detect the original encoding/line-ending once, edit in clean LF, restore it on save.
     let fmt = persist::encoding::FileFormat::detect(&raw);
@@ -1713,27 +1723,31 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         },
                         ReadSource::Command(cmd) => match crate::shell::capture(&cmd) {
                             Ok(out) => {
-                                let n = ws.read_lines(addr, out.as_bytes(), true);
-                                status = if n == 1 {
+                                let n = ws.read_lines(addr, out.text.as_bytes(), true);
+                                let lines = if n == 1 {
                                     "1 more line".to_string()
                                 } else {
                                     format!("{n} more lines")
                                 };
+                                status = with_shell_failure(&out, lines);
                             }
                             Err(e) => status = e.to_string(),
                         },
                     },
                     // `:{range}!{cmd}` — FILTER: pipe the range's lines through the shell command and replace
-                    // them with its stdout. Pull the range text out FIRST (read-only), shell out, then splice.
+                    // them with its output. Pull the range text out FIRST (read-only), shell out, then splice.
+                    // As in nvim the output (stdout + stderr) replaces the range even when the command fails,
+                    // and the status line says `shell returned {n}` (#861).
                     Ex::Filter { range, cmd } => match ws.range_text(range) {
                         Some(input) => match crate::shell::filter(&cmd, &input) {
                             Ok(out) => {
-                                let n = ws.filter_lines(range, out.as_bytes());
-                                status = if n <= 1 {
+                                let n = ws.filter_lines(range, out.text.as_bytes());
+                                let lines = if n <= 1 {
                                     String::new()
                                 } else {
                                     format!("{n} lines filtered")
                                 };
+                                status = with_shell_failure(&out, lines);
                             }
                             Err(e) => status = e.to_string(),
                         },
@@ -1744,11 +1758,15 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // follow-up); an empty result echoes the command so the user sees it ran.
                     Ex::Shell(cmd) => match crate::shell::capture(&cmd) {
                         Ok(out) => {
-                            let joined = out.trim_end_matches('\n').replace('\n', " | ");
-                            status = if joined.is_empty() {
+                            let joined = out.text.trim_end_matches('\n').replace('\n', " | ");
+                            let shown = if joined.is_empty() {
                                 format!(":!{cmd}")
                             } else {
                                 joined
+                            };
+                            status = match out.failure() {
+                                Some(note) => format!("{shown} | {note}"),
+                                None => shown,
                             };
                         }
                         Err(e) => status = e.to_string(),

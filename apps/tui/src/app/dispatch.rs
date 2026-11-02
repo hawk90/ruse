@@ -1201,7 +1201,7 @@ mod dispatch_tests {
         };
         let input = ws.range_text(range).expect("range has text");
         let out = crate::shell::filter(&cmd, &input).expect("shell filter runs");
-        ws.filter_lines(range, out.as_bytes());
+        ws.filter_lines(range, out.text.as_bytes());
 
         let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
         (bytes, ws.focused().view.cursor())

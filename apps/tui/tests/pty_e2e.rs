@@ -228,6 +228,20 @@ fn filter_of_a_large_buffer_does_not_deadlock() {
     assert!(std::fs::read(&file).unwrap() == body.as_bytes());
 }
 
+/// #861: a failing filter's stderr is filtered in with its stdout, and the status line says it failed.
+/// nvim v0.12.6 writes `out\nerr\n` and shows `shell returned 3` for the same command.
+#[test]
+fn failing_filter_keeps_its_stderr_and_reports_the_exit_code() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"one\ntwo\n");
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
+    ed.keys(":%!echo out; echo err >&2; exit 3\r");
+    assert!(ed.screen_bytes().contains("shell returned 3"));
+    ed.keys(":wq\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"out\nerr\n");
+}
+
 /// Open `start` bytes in a fresh editor, type `keys`, then `:wq`; returns the saved bytes.
 fn edit_and_save(start: &[u8], keys: &str) -> Vec<u8> {
     let dir = Scratch::new();

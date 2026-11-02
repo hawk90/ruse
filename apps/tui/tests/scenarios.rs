@@ -127,7 +127,7 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
                 }
                 ReadSource::Command(cmd) => {
                     if let Ok(out) = ruse_tui::shell::capture(&cmd) {
-                        ws.read_lines(addr, out.as_bytes(), true);
+                        ws.read_lines(addr, out.text.as_bytes(), true);
                     }
                 }
             },
@@ -135,7 +135,7 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
             Ex::Filter { range, cmd } => {
                 if let Some(input) = ws.range_text(range) {
                     if let Ok(out) = ruse_tui::shell::filter(&cmd, &input) {
-                        ws.filter_lines(range, out.as_bytes());
+                        ws.filter_lines(range, out.text.as_bytes());
                     }
                 }
             }
@@ -314,7 +314,7 @@ fn ex_zero_read_inserts_at_the_top() {
 #[test]
 fn ex_filter_sorts_the_whole_file() {
     // `:%!sort` filters every line through the real `sort`. Skip gracefully if it is not on PATH.
-    if ruse_tui::shell::capture("command -v sort").map_or(true, |s| s.trim().is_empty()) {
+    if ruse_tui::shell::capture("command -v sort").map_or(true, |s| s.text.trim().is_empty()) {
         eprintln!("skipping: `sort` not on PATH");
         return;
     }
@@ -329,7 +329,7 @@ fn ex_filter_sorts_the_whole_file() {
 
 #[test]
 fn ex_filter_uppercases_a_line_range() {
-    if ruse_tui::shell::capture("command -v tr").map_or(true, |s| s.trim().is_empty()) {
+    if ruse_tui::shell::capture("command -v tr").map_or(true, |s| s.text.trim().is_empty()) {
         eprintln!("skipping: `tr` not on PATH");
         return;
     }
