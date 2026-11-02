@@ -60,3 +60,27 @@ fn quit_restores_the_terminal() {
         "leaves the alt screen"
     );
 }
+
+/// #842: a failed write must keep the editor, and the unsaved edit, alive.
+#[test]
+fn wq_stays_open_when_the_write_fails() {
+    use std::os::unix::fs::PermissionsExt;
+    // SAFETY: geteuid has no preconditions. Root ignores the directory mode, so the write would succeed.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let dir = Scratch::new();
+    let locked = dir.path("locked");
+    std::fs::create_dir(&locked).unwrap();
+    let file = locked.join("f.txt");
+    std::fs::write(&file, b"orig\n").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+    let mut ed = Editor::start(&dir, &[&file]);
+    ed.keys(&format!("inew {ESC}:wq\r"));
+    let running = ed.is_running();
+    drop(ed);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(running, ":wq must not exit after a failed write");
+    assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
+}

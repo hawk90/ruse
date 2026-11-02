@@ -275,7 +275,9 @@ pub(crate) fn run_ex(
     fixeol: bool,
 ) {
     match ex {
-        Ex::Save => save(ws, files, status, fixeol),
+        Ex::Save => {
+            save(ws, files, status, fixeol);
+        }
         // `:q` refuses when the focused buffer has unsaved changes (Vim E37); `:q!` discards them.
         Ex::Quit => {
             if ws.focused().doc.is_modified() {
@@ -286,10 +288,8 @@ pub(crate) fn run_ex(
         }
         Ex::QuitForce => *quit = true,
         Ex::SaveQuit => {
-            // `:wq`/`:x` on a buffer with no file errors (save declines) and does NOT quit — matching Vim.
-            let had_file = files.contains_key(&ws.focused_buffer());
-            save(ws, files, status, fixeol);
-            if had_file {
+            // `:wq`/`:x` quit only after a successful save: no file, or a failed write, keeps the editor open.
+            if save(ws, files, status, fixeol) {
                 *quit = true;
             }
         }
@@ -592,7 +592,9 @@ pub(crate) fn apply_effect(
     match eff {
         // A command-driven write (e.g. `ZZ`) always byte-preserves; `:set fixeol` is honored only on the
         // `:w`/`:wq` ex path (which threads the session flag), matching where the opt-in is documented.
-        Effect::Save => save(ws, files, status, false),
+        Effect::Save => {
+            save(ws, files, status, false);
+        }
         Effect::Quit => *quit = true,
         Effect::Status(s) => *status = s,
     }
@@ -626,12 +628,13 @@ fn needs_final_newline(buf: &[u8], fixeol: bool) -> bool {
     fixeol && !buf.is_empty() && buf.last() != Some(&b'\n')
 }
 
-pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeol: bool) {
+/// Returns whether the focused buffer reached disk.
+pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeol: bool) -> bool {
     // Multi-buffer honesty (F-007): only a buffer WITH a file writes. A scratch buffer (`:enew`) has no
     // registry entry, so `:w` declines rather than clobbering another buffer's file.
     let Some(bf) = files.get(&ws.focused_buffer()) else {
         *status = "E32: No file name".into();
-        return;
+        return false;
     };
     // `:set fixeol` (opt-in) ADDS a trailing `\n` when the buffer lacks one. Append it to the SOURCE bytes
     // BEFORE `to_disk` so the encoding step (BOM/CRLF re-application) treats the newline like any other —
@@ -660,11 +663,13 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
                 line_count(&source),
                 bytes.len()
             );
+            true
         }
         Err(e) => {
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
             tracing::warn!(event = "save.failed", path = %bf.path.display(), error = %e);
             *status = format!("write failed: {e}");
+            false
         }
     }
 }
