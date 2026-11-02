@@ -330,6 +330,20 @@ pub enum Command {
     /// recorder does not capture the expression string, so `.` does not replay the insert (a documented
     /// divergence).
     InsertEval(String),
+    /// A bracketed paste in Insert (`:help paste`, #600): splice `text` at the caret LITERALLY, staying in
+    /// the current mode with the caret after it. One edit however large the text, and none of the
+    /// insert-time rewrites a typed key gets (no autoindent, no abbreviation, no auto-pair): the frontend
+    /// never rewrites this command. Recorded in the insert session, so `.` replays the pasted text. Line
+    /// endings are already normalised to `\n` by the frontend.
+    InsertPaste(String),
+    /// A bracketed paste in Replace mode (`R`): overwrite as many characters of the current line as the
+    /// text holds (newlines excluded), then splice the text, as nvim's `vim.paste` does. The caret lands
+    /// after the text. A replace-mode `<BS>` does not restore what the paste overwrote.
+    ReplacePaste(String),
+    /// A bracketed paste under the Emacs profile (Emacs 31.1 `xterm-paste` with the default
+    /// `xterm-store-paste-on-kill-ring`): put `text` on the kill ring, then yank it — insert at point,
+    /// point after the text, mark at its start.
+    EmacsPaste(String),
     /// `i_CTRL-W` — delete the word before the caret, staying in Insert (Vim). Deletes `[word-back, caret)`
     /// on the current line (does not cross the line start). A no-op at column 0.
     InsertDeleteWordBack,
@@ -1189,6 +1203,34 @@ fn arg_word_case(arg: Option<&str>, line: &str) -> Result<WordCase, CommandParse
     }
 }
 
+/// Lowercase hex of `text`'s UTF-8 bytes, for a trace argument that may hold any character.
+fn hex_encode(text: &str) -> String {
+    let mut s = String::with_capacity(text.len() * 2);
+    for b in text.bytes() {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+/// The inverse of [`hex_encode`]: an odd length, a non-hex digit, or bytes that are not UTF-8 are errors.
+fn hex_decode(arg: &str, line: &str) -> Result<String, CommandParseError> {
+    let bad = || CommandParseError::BadArgument(line.to_string());
+    let digits = arg.as_bytes();
+    if !digits.len().is_multiple_of(2) {
+        return Err(bad());
+    }
+    let bytes = digits
+        .chunks(2)
+        .map(|p| {
+            std::str::from_utf8(p)
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+                .ok_or_else(bad)
+        })
+        .collect::<Result<Vec<u8>, _>>()?;
+    String::from_utf8(bytes).map_err(|_| bad())
+}
+
 impl Command {
     /// The stable single-line serialization of this command (used by the trace format). A `char` argument
     /// is encoded as its decimal Unicode scalar value so whitespace/newlines never need escaping.
@@ -1225,6 +1267,10 @@ impl Command {
             Command::InsertRegister(c) => format!("insert_register {}", *c as u32),
             // The expression text is the untrimmed remainder (it may contain spaces), like `search_next`.
             Command::InsertEval(e) => format!("insert_eval {e}"),
+            // Pasted text may hold any byte (newlines, spaces), so it is hex-encoded to stay one line.
+            Command::InsertPaste(t) => format!("insert_paste {}", hex_encode(t)),
+            Command::ReplacePaste(t) => format!("replace_paste {}", hex_encode(t)),
+            Command::EmacsPaste(t) => format!("emacs_paste {}", hex_encode(t)),
             Command::InsertDeleteWordBack => "insert_delete_word_back".into(),
             Command::InsertDeleteToLineStart => "insert_delete_to_line_start".into(),
             // `back` then the candidate text (the untrimmed remainder, like `insert_eval`; a keyword has no
@@ -1562,6 +1608,9 @@ impl Command {
             }
             // The expression is the untrimmed remainder (may contain spaces), like `search_next`.
             "insert_eval" => Command::InsertEval(raw.to_string()),
+            "insert_paste" => Command::InsertPaste(hex_decode(arg.unwrap_or(""), line)?),
+            "replace_paste" => Command::ReplacePaste(hex_decode(arg.unwrap_or(""), line)?),
+            "emacs_paste" => Command::EmacsPaste(hex_decode(arg.unwrap_or(""), line)?),
             "insert_delete_word_back" => Command::InsertDeleteWordBack,
             "insert_delete_to_line_start" => Command::InsertDeleteToLineStart,
             "complete_word" => {
@@ -2468,6 +2517,10 @@ mod tests {
             Command::SetExprRegister(String::new()),
             Command::InsertEval("3.0/2".into()),
             Command::InsertEval("'n='.5".into()),
+            Command::InsertPaste("dd:q!\n  x y\t한\u{1b}".into()),
+            Command::InsertPaste(String::new()),
+            Command::ReplacePaste("a b\nc".into()),
+            Command::EmacsPaste("kill\nring".into()),
             Command::EnterVisual {
                 kind: SelectKind::Charwise,
             },

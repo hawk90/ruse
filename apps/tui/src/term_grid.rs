@@ -60,6 +60,9 @@ pub struct Grid {
     /// wraps first (so writing exactly `cols` chars does not scroll until char `cols+1`).
     wrap_next: bool,
     cursor_visible: bool,
+    /// The child turned bracketed paste on (`CSI ? 2004 h`): a paste forwarded to it is wrapped in
+    /// `CSI 200 ~` / `CSI 201 ~` (#600).
+    bracketed_paste: bool,
 }
 
 /// The saved main-screen state during alternate-screen mode.
@@ -88,6 +91,7 @@ impl Grid {
             scroll_bottom: rows - 1,
             wrap_next: false,
             cursor_visible: true,
+            bracketed_paste: false,
         }
     }
 
@@ -103,6 +107,11 @@ impl Grid {
 
     pub fn cursor_visible(&self) -> bool {
         self.cursor_visible
+    }
+
+    /// Whether the child enabled bracketed paste (DEC private mode 2004).
+    pub fn bracketed_paste(&self) -> bool {
+        self.bracketed_paste
     }
 
     /// The cell at `(row, col)` as `(text, style)`, or `None` for a continuation cell or out of bounds — the
@@ -385,6 +394,7 @@ impl Grid {
         self.scroll_bottom = self.rows - 1;
         self.wrap_next = false;
         self.cursor_visible = true;
+        self.bracketed_paste = false;
         for cell in &mut self.cells {
             *cell = GridCell::blank(CellStyle::default());
         }
@@ -509,6 +519,10 @@ impl Perform for Grid {
         let first = ps.first().copied().unwrap_or(0);
         let n = first.max(1);
         let private = intermediates.first() == Some(&b'?');
+        // Mode 2004 may share a DECSET/DECRST with other modes (`CSI ? 1049 ; 2004 h`).
+        if private && matches!(action, 'h' | 'l') && ps.contains(&2004) {
+            self.bracketed_paste = action == 'h';
+        }
         match action {
             'H' | 'f' => {
                 let row = ps.first().copied().unwrap_or(1).max(1);

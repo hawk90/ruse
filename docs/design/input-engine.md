@@ -401,11 +401,19 @@ Paste arrives as a **distinct event**, never as KeyEvents ([TERM-PASTE-1](../par
 - **Bypasses INPUT-RESOLVE and the mode axes entirely** — no keymap, no operator-pending consumption, no
   count. A pasted `d` is the letter `d`, not the delete operator.
 - Routes the payload as a **single text-insert Command** (one Transaction) at the cursor in an insert-capable
-  mode, or into the command-line/search buffer if that is focused.
+  mode, or into the command-line/search buffer if that is focused. Per mode, as nvim v0.12.6's `vim.paste`
+  (#600, `InputEngine::paste`): Insert → `Command::InsertPaste`, part of the insert session (one undo step,
+  `.` replays it); Replace → `Command::ReplacePaste` (overwrite); Normal → `a{text}<Esc>`, recorded as that
+  change; Visual/Select → delete the selection, insert where it was, back to Normal; command line → the first
+  line only; Terminal → the PTY child (bracketed only if the child set mode 2004); Emacs →
+  `Command::EmacsPaste` (`xterm-paste`: kill-new + yank). CRLF and lone CR become LF. A picker or `:s///c`
+  loop declines a paste with a message; a paste is not captured by a macro recording.
 - Treats the payload as **untrusted**: escape sequences inside it are stripped/neutralized by C-TERMINAL
   before the event reaches C-INPUT ([TERM-PASTE-2](../parity/terminal.md), SEC-5) — some terminals leak `ESC`
   through the brackets, so C-INPUT additionally never re-interprets paste text as events even if it contains
-  control bytes.
+  control bytes. Today `input::paste_text` drops ESC and the C1 controls (U+0080–U+009F) from every paste
+  (nvim inserts them literally; ruse's renderer still writes buffer control bytes raw). A read holding only
+  the ESC of `CSI 200 ~` still decodes as the Esc key: that needs the key timeout of #629.
 
 ### IME composition — no transitions mid-compose {#ime}
 

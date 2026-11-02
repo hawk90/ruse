@@ -827,6 +827,9 @@ enum RegWrite {
     /// when it follows another kill the captured text is PREPENDED onto the current entry (Emacs
     /// `kill-append` with `before=t`), since a backward kill takes text that precedes the prior kill.
     KillPrepend(Register),
+    /// A plain write of new text into the unnamed slot (Emacs `kill-new`, for a pasted text): never
+    /// accumulates onto a previous kill and is not itself a kill.
+    Write(Register),
 }
 
 /// How a committed command updates the Emacs mark (D-027 depth-1). `None` on a plan leaves the mark
@@ -2317,6 +2320,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             }
             st.view.last_was_kill = true;
         }
+        Some(RegWrite::Write(reg)) => st.view.registers.write(st.view.pending_register, reg),
         None => {}
     }
     // Maintain the selection anchor: set it when entering a selection mode (Visual/Select; the fixed end

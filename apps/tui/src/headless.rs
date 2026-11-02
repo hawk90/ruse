@@ -127,6 +127,21 @@ impl Headless {
         flow == Flow::Continue
     }
 
+    /// Deliver a bracketed paste of `text`, as the binary does for a terminal's `CSI 200 ~ … CSI 201 ~`.
+    /// Returns whether the session is still running.
+    pub fn paste(&mut self, text: &str) -> bool {
+        if self.s.quit {
+            return false;
+        }
+        if self.stale {
+            self.frame = Headless::settle(&mut self.s, self.cols, self.rows);
+            self.stale = false;
+        }
+        let flow = self.s.on_paste(text, &self.frame);
+        self.frame = Headless::settle(&mut self.s, self.cols, self.rows);
+        flow == Flow::Continue
+    }
+
     /// Feed keys written in Vim notation (see [`parse_keys`]).
     pub fn keys(&mut self, notation: &str) -> &mut Headless {
         for k in parse_keys(notation) {

@@ -679,6 +679,80 @@ impl Session {
         }
     }
 
+    /// Route one bracketed paste (#600, `:help paste`). The text never becomes keys, so no mapping, macro
+    /// prefix, session prefix or chord sees it. Line endings are normalised first (CRLF and CR become LF,
+    /// as nvim's TUI pastes). A terminal buffer forwards it to its child (bracketed if the child asked);
+    /// a picker or a `:s///c` confirm loop declines it with a message; everything else goes through
+    /// [`InputEngine::paste`]. A paste does not end a macro recording and is not recorded into it.
+    pub(crate) fn on_paste(&mut self, raw: &str, frame: &FrameCtx) -> Flow {
+        let text = crate::input::paste_text(raw);
+        if text.is_empty() {
+            return Flow::Continue;
+        }
+        self.lsp.clear_hover();
+        self.prefix = Prefix::None;
+        self.meta_tail = None;
+        if self.overlay_open() {
+            self.status = "paste ignored: close the picker first".to_string();
+            return Flow::Continue;
+        }
+        let mode = self.ws.focused().view.mode();
+        #[cfg(unix)]
+        if matches!(mode, Mode::Terminal | Mode::TerminalNormal) {
+            if let Some(t) = self.terminals.get_mut(&self.ws.focused_buffer()) {
+                t.paste(&text);
+                return Flow::Continue;
+            }
+        }
+        let visual_append = self.visual_paste_appends(mode, &frame.snapshot);
+        let out = self.engine.paste(&text, mode, visual_append);
+        let Session {
+            ws,
+            files,
+            recorded,
+            status,
+            quit,
+            ..
+        } = self;
+        match out {
+            Feed::Cmd(cmd) => run_cmd(cmd, ws, files, recorded, status, quit),
+            Feed::Replay(cmds) => {
+                for cmd in cmds {
+                    run_cmd(cmd, ws, files, recorded, status, quit);
+                }
+            }
+            _ => {}
+        }
+        if self.quit {
+            Flow::Quit
+        } else {
+            Flow::Continue
+        }
+    }
+
+    /// For a paste over a charwise or blockwise Visual/Select selection: whether deleting it leaves the
+    /// caret past the end of its line, so the text must be appended (`a`) rather than inserted (`i`) to
+    /// land where the selection began, as nvim does. A linewise selection inserts at the caret.
+    fn visual_paste_appends(&self, mode: Mode, bytes: &[u8]) -> bool {
+        let (Mode::Visual { kind } | Mode::Select { kind }) = mode else {
+            return false;
+        };
+        let view = &self.ws.focused().view;
+        let span = match kind {
+            ruse_core::SelectKind::Charwise => view.selection_span(bytes),
+            ruse_core::SelectKind::Blockwise => view
+                .block_spans(bytes)
+                .and_then(|rows| rows.first().copied()),
+            ruse_core::SelectKind::Linewise => None,
+        };
+        let Some((s, e)) = span else {
+            return false;
+        };
+        let at_line_start = s == 0 || bytes.get(s - 1) == Some(&b'\n');
+        let rest_empty = matches!(bytes.get(e), None | Some(b'\n'));
+        !at_line_start && rest_empty
+    }
+
     /// Whether a modal overlay owns the keystream: a `:s///c` confirm loop or an open picker. The macro
     /// layer must not take its `q`/`@` (#851).
     fn overlay_open(&self) -> bool {
@@ -2540,22 +2614,24 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         let (raw_key, from_replay) = match s.next_queued() {
             Some(queued) => queued,
             None => {
-                let k = if let Some(ms) = s.poll_ms() {
+                let ev = if let Some(ms) = s.poll_ms() {
                     if event::poll(std::time::Duration::from_millis(ms))? {
-                        match event::read()? {
-                            Event::Key(k) => k,
-                            _ => continue,
-                        }
+                        event::read()?
                     } else {
                         continue; // timed out: re-render freshly-drained async output
                     }
                 } else {
-                    match event::read()? {
-                        Event::Key(k) => k,
-                        _ => continue,
-                    }
+                    event::read()?
                 };
-                (k, false)
+                match ev {
+                    Event::Key(k) => (k, false),
+                    // A bracketed paste (mode 2004) arrives as one event and never as keys (#600).
+                    Event::Paste(text) => {
+                        s.on_paste(&text, &frame);
+                        continue;
+                    }
+                    _ => continue,
+                }
             }
         };
         s.on_key(raw_key, from_replay, &frame);

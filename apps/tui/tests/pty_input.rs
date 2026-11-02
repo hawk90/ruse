@@ -131,44 +131,113 @@ fn paste(body: &[u8]) -> Vec<u8> {
     [&b"\x1b[200~"[..], body, b"\x1b[201~"].concat()
 }
 
-// Bracketed paste. ruse enables mode 2004 but drops the decoded paste (#600), so the buffer is unchanged.
-// What these tests hold beyond that bug: the paste is decoded as ONE unit however it is chunked, so none of
-// its bytes run as keys (here the payload would delete the line or quit), and the key after it is a key.
-// When #600 lands, the expected bytes become the pasted text.
+// Bracketed paste (#600). The paste is decoded as ONE unit however it is chunked, so none of its bytes run
+// as keys (the payloads would delete the line or quit), its text reaches the buffer, and the key after it is
+// a key. A Normal-mode paste is `a{text}<Esc>` (nvim): after a payload ending in a newline the cursor rests
+// on the next line's first char, which the trailing `x` deletes. CRLF and a lone CR become one newline.
 
 #[test]
 fn paste_in_one_read_runs_none_of_its_bytes() {
     let p = paste(b"dd:q!\r");
-    assert_eq!(vim(b"abc\n", &[&p, b"x"]), b"bc\n");
+    assert_eq!(vim(b"abc\n", &[&p, b"x"]), b"add:q!\nc\n");
 }
 
 #[test]
 fn paste_with_split_start_and_end_codes() {
     // Cut inside `CSI 200 ~`, inside the body, and inside `CSI 201 ~`.
     let chunks: &[&[u8]] = &[b"\x1b[20", b"0~dd:q!", b"\r\x1b[2", b"01", b"~x"];
-    assert_eq!(vim(b"abc\n", chunks), b"bc\n");
+    assert_eq!(vim(b"abc\n", chunks), b"add:q!\nc\n");
 }
 
 #[test]
 fn paste_across_a_64_byte_boundary_with_crlf() {
-    // The first read ends 64 bytes in, between CR and LF.
+    // The first read ends 64 bytes in, between CR and LF: the pair is still one newline.
     let mut first = b"\x1b[200~".to_vec();
     first.resize(63, b'd');
     first.push(b'\r');
     assert_eq!(first.len(), 64);
-    assert_eq!(vim(b"abc\n", &[&first, b"\ndd\r\n\x1b[201~x"]), b"bc\n");
+    let body = "d".repeat(63 - 6);
+    assert_eq!(
+        vim(b"abc\n", &[&first, b"\ndd\r\n\x1b[201~x"]),
+        format!("a{body}\ndd\nc\n").as_bytes()
+    );
 }
 
 #[test]
 fn a_large_paste_burst_is_one_unit() {
     // 24 KiB: many decoder reads (crossterm reads 1 KiB at a time) and more than one PTY buffer.
-    let p = paste(&b"dd:q!\r\n".repeat(24 * 1024 / 7));
-    assert_eq!(vim(b"abc\n", &[&p, b"x"]), b"bc\n");
+    let n = 24 * 1024 / 7;
+    let p = paste(&b"dd:q!\r\n".repeat(n));
+    let mut want = b"a".to_vec();
+    want.extend_from_slice(&b"dd:q!\n".repeat(n));
+    want.extend_from_slice(b"c\n");
+    assert_eq!(vim(b"abc\n", &[&p, b"x"]), want);
 }
 
 #[test]
-fn paste_in_insert_mode_inserts_nothing_yet() {
-    // #600: nvim inserts `PP` here; ruse drops it. The `Esc` after the paste still leaves Insert.
+fn paste_in_insert_mode_inserts_the_text() {
+    // nvim inserts `PP` before the caret; the `Esc` after the paste still leaves Insert.
     let p = paste(b"PP");
-    assert_eq!(vim(b"abc\n", &[b"i", &p, b"\x1b"]), b"abc\n");
+    assert_eq!(vim(b"abc\n", &[b"i", &p, b"\x1b"]), b"PPabc\n");
+}
+
+#[test]
+fn paste_start_cut_after_its_esc_is_not_a_paste_yet() {
+    // KNOWN GAP (#629): with no `ttimeoutlen`, a read holding only the ESC of `CSI 200 ~` decodes as the
+    // Esc key at once, so the rest of the start code and the payload run as keys (`~` upcases `a`, `PP`
+    // puts an empty register). nvim waits `ttimeoutlen` (50 ms) for the rest and inserts `PP`. Terminals
+    // write the start code in one write, so this takes a slow link cutting right after the ESC. When the
+    // key timeout lands this becomes `aPPbc\n`.
+    assert_eq!(vim(b"abc\n", &[b"\x1b", b"[200~PP\x1b[201~"]), b"Abc\n");
+}
+
+/// In a `:terminal` (the child is `/bin/sh`), run `cmd` writing `out.txt`, paste `body`, end the input with
+/// `CTRL-D CTRL-D`, and return what the child wrote.
+fn terminal_paste(cmd: &str, body: &[u8]) -> Vec<u8> {
+    let dir = Scratch::new();
+    let out = dir.path("out.txt");
+    let mut ed = Editor::start(&dir, &[]);
+    // A live terminal never goes quiet, so each settle runs to the harness's limit: two, not three.
+    ed.keys(&format!(":terminal\r{cmd} > out.txt\r"));
+    ed.raw_chunks(&[&paste(body), b"\x04\x04"]);
+    let start = std::time::Instant::now();
+    loop {
+        let got = std::fs::read(&out).unwrap_or_default();
+        if !got.is_empty() || start.elapsed() > std::time::Duration::from_secs(10) {
+            return got;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn terminal_mode_paste_goes_to_the_child_without_escapes() {
+    // nvim's `terminal_paste`: ESC is dropped, lines end in `\n`, and no bracket unless the child asked.
+    assert_eq!(
+        terminal_paste("cat", b"one\x1b[31mX\r\ntwo\n"),
+        b"one[31mX\ntwo\n"
+    );
+}
+
+#[test]
+fn terminal_paste_is_bracketed_when_the_child_enabled_it() {
+    // The child turns on mode 2004 first; the paste then arrives wrapped (the wrapper is the only ESC).
+    assert_eq!(
+        terminal_paste("printf '\\033[?2004h'; cat", b"a\x1b[2Jb\n"),
+        b"\x1b[200~a[2Jb\n\x1b[201~"
+    );
+}
+
+#[test]
+fn a_pasted_control_sequence_never_reaches_the_buffer() {
+    // TERM-PASTE-2: ESC and C1 controls are dropped (nvim inserts them; ruse would render them raw).
+    let p = paste("i\u{1b}]52;c;eA==\u{7}\u{9b}2J".as_bytes());
+    assert_eq!(vim(b"abc\n", &[&p]), "ai]52;c;eA==\u{7}2Jbc\n".as_bytes());
+}
+
+#[test]
+fn emacs_paste_inserts_at_point() {
+    // `C-x C-c` inside the payload is text, not save-buffers-kill-terminal.
+    let p = paste(b"\x18\x03X\r\nY");
+    assert_eq!(emacs(b"abc\n", &[&p]), b"\x18\x03X\nYabc\n");
 }

@@ -42,6 +42,37 @@ fn plain(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
 
+/// Whether `c` can open a terminal control sequence: ESC or a C1 control (U+0080..=U+009F, CSI and OSC
+/// among them). A paste never carries one (TERM-PASTE-2, SEC-5).
+#[must_use]
+pub fn opens_control_sequence(c: char) -> bool {
+    c == '\u{1b}' || ('\u{80}'..='\u{9f}').contains(&c)
+}
+
+/// A bracketed paste's text as ruse inserts it. Line endings are normalised the way nvim's TUI pastes
+/// (`nvim_paste(data, crlf = true)`): CRLF and a lone CR both become LF. ESC and the C1 controls are
+/// dropped (TERM-PASTE-2): nvim inserts them literally, but ruse's renderer still writes buffer control
+/// bytes to the terminal raw, so a pasted sequence would run there. One pass, linear in the length.
+#[must_use]
+pub fn paste_text(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw
+        .chars()
+        .filter(|&c| !opens_control_sequence(c))
+        .peekable();
+    while let Some(c) = chars.next() {
+        if c == '\r' {
+            if chars.peek() == Some(&'\n') {
+                chars.next();
+            }
+            out.push('\n');
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// The outcome of feeding one key to the engine.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Feed {
@@ -1186,6 +1217,7 @@ impl InputEngine {
                 Command::InsertChar('\r') | Command::InsertNewline => out.push('\n'),
                 Command::InsertChar(c) => out.push(*c),
                 Command::InsertTab => out.push('\t'),
+                Command::InsertPaste(t) | Command::ReplacePaste(t) => out.push_str(t),
                 Command::DeleteBack => {
                     out.pop();
                 }
@@ -1193,6 +1225,83 @@ impl InputEngine {
             }
         }
         Some(out)
+    }
+
+    /// A bracketed paste (`:help paste`, #600) in core mode `mode`. The text is never read as keys: no
+    /// mapping, count, operator or abbreviation applies, and a pending prefix (`CTRL-R`, `CTRL-V`, a count,
+    /// an operator, an Emacs `C-x` or `ESC`) is dropped. `text` has `\n` line endings ([`paste_text`]).
+    /// Per nvim v0.12.6's `vim.paste`:
+    /// - command line (and the Emacs minibuffer): the first line is inserted literally;
+    /// - Insert: the text is inserted at the caret, part of the insert session (one undo step, `.`);
+    /// - Replace: the text overwrites ([`Command::ReplacePaste`]);
+    /// - Normal: `a{text}<Esc>`, recorded as that change for `.`;
+    /// - Visual/Select: the selection is deleted, then the text inserted where it was and Normal resumes.
+    ///   The engine has no buffer, so `visual_append` (the caller's answer to "did the deletion leave the
+    ///   caret past the end of its line") picks `a` over `i`. `.` repeats it as the Normal paste.
+    ///
+    /// The command-line window ignores a paste.
+    pub fn paste(&mut self, text: &str, mode: Mode, visual_append: bool) -> Feed {
+        if self.cmdline.is_some() {
+            let line = text.split('\n').next().unwrap_or("");
+            self.cmdline_splice(line);
+            return Feed::Pending;
+        }
+        if self.input_profile == InputProfile::Emacs {
+            self.emacs_meta = false;
+            self.emacs_prefix = None;
+            self.emacs_arg = None;
+            return Feed::Cmd(Command::EmacsPaste(text.to_string()));
+        }
+        if self.cmdwin.is_some() {
+            return Feed::Ignored;
+        }
+        let paste = Command::InsertPaste(text.to_string());
+        match mode {
+            Mode::Insert | Mode::Replace | Mode::VirtualReplace => {
+                self.insert.ctrl_g = false;
+                self.insert.ctrl_r = false;
+                self.insert.ctrl_x = false;
+                self.insert.digraph = None;
+                self.insert.literal = None;
+                self.insert.completion = None;
+                // nvim drops a paste in Virtual Replace (`vim.paste` has no `Rv` branch); overwriting like
+                // `R` keeps the text instead of losing it.
+                let out = Feed::Cmd(if mode == Mode::Insert {
+                    paste
+                } else {
+                    Command::ReplacePaste(text.to_string())
+                });
+                self.record(&out, mode);
+                out
+            }
+            Mode::Normal | Mode::Visual { .. } | Mode::Select { .. } => {
+                self.reset();
+                self.leader = false;
+                self.pending_record_register = None;
+                let change = ChangeIntent {
+                    lead: Command::EnterInsertAfter,
+                    insert: vec![paste.clone(), Command::EnterNormal],
+                    register: None,
+                    entry_count: 1,
+                };
+                self.last_inserted = change.insert_body().to_vec();
+                self.last_change = Some(change);
+                let mut cmds = Vec::with_capacity(4);
+                if mode != Mode::Normal {
+                    cmds.push(Command::DeleteSelection);
+                }
+                cmds.push(if mode == Mode::Normal || visual_append {
+                    Command::EnterInsertAfter
+                } else {
+                    Command::EnterInsert
+                });
+                cmds.push(paste);
+                cmds.push(Command::EnterNormal);
+                Feed::Replay(cmds)
+            }
+            // A terminal buffer's paste goes to its child; the session routes it before the engine.
+            Mode::Terminal | Mode::TerminalNormal => Feed::Ignored,
+        }
     }
 
     /// End the current Normal-grammar sequence: the Normal-family layer drops its OWN transient state

@@ -1428,6 +1428,58 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let n = bytes.len();
             edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
         }
+        // A bracketed paste (#600): one literal splice at the caret, mode unchanged.
+        Command::InsertPaste(text) => {
+            if text.is_empty() {
+                return nop(cur, st.view.mode);
+            }
+            let n = text.len();
+            edit(
+                one(Edit::insert(cur, text.as_bytes().to_vec())),
+                cur + n,
+                st.view.mode,
+                hint,
+            )
+        }
+        // A Replace-mode paste: overwrite one char of the current line per pasted char (newlines excluded,
+        // as nvim's `vim.paste` counts them), then splice the text. nvim counts BYTES and can split a
+        // multi-byte char; this counts characters.
+        Command::ReplacePaste(text) => {
+            if text.is_empty() {
+                return nop(cur, st.view.mode);
+            }
+            let nchars = text.chars().filter(|&c| c != '\n').count();
+            let le = line_end(b, cur);
+            let end = std::str::from_utf8(&b[cur..le]).map_or(le, |rest| {
+                rest.char_indices().nth(nchars).map_or(le, |(i, _)| cur + i)
+            });
+            let n = text.len();
+            edit(
+                one(Edit::replace(cur, end - cur, text.as_bytes().to_vec())),
+                cur + n,
+                st.view.mode,
+                hint,
+            )
+        }
+        // Emacs `xterm-paste`: kill-new the text, then yank it (point after, mark at the start).
+        Command::EmacsPaste(text) => {
+            if text.is_empty() {
+                return nop(cur, st.view.mode);
+            }
+            let n = text.len();
+            Plan {
+                set_register: Some(RegWrite::Write(Register::charwise(
+                    text.as_bytes().to_vec(),
+                ))),
+                set_mark: Some(MarkWrite::Set(cur)),
+                ..edit(
+                    one(Edit::insert(cur, text.as_bytes().to_vec())),
+                    cur + n,
+                    st.view.mode,
+                    hint,
+                )
+            }
+        }
         // `i_CTRL-W` — delete the word before the caret (within the current line), staying in Insert.
         Command::InsertDeleteWordBack => {
             let ls = line_start(b, cur);

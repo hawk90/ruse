@@ -320,6 +320,9 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::InsertChar(_)
         | C::InsertRegister(_)
         | C::InsertEval(_)
+        | C::InsertPaste(_)
+        | C::ReplacePaste(_)
+        | C::EmacsPaste(_)
         | C::InsertDeleteWordBack
         | C::InsertDeleteToLineStart
         | C::CompleteWord { .. }
@@ -493,6 +496,9 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::InsertChar(..)
         | C::InsertRegister(..)
         | C::InsertEval(..)
+        | C::InsertPaste(..)
+        | C::ReplacePaste(..)
+        | C::EmacsPaste(..)
         | C::InsertDeleteWordBack
         | C::InsertDeleteToLineStart
         | C::CompleteWord { .. }

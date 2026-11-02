@@ -45,6 +45,12 @@ impl Terminal {
         }
     }
 
+    /// Forward a bracketed paste (`\n` line endings) to the child: see [`paste_bytes`].
+    pub fn paste(&mut self, text: &str) {
+        let bytes = paste_bytes(text, self.grid.bracketed_paste());
+        self.send(&bytes);
+    }
+
     /// Drain all pending output into the grid via the VT parser. Returns `true` if anything changed (new
     /// output or the child just exited) so the caller knows to re-render.
     pub fn drain(&mut self) -> bool {
@@ -86,9 +92,49 @@ impl Terminal {
     }
 }
 
+/// The bytes a paste of `text` sends to a terminal child, as nvim's `terminal_paste` does for ESC: ESC and
+/// the C1 controls are dropped, so the payload can neither end the child's paste bracket early nor inject a
+/// control sequence, and lines are joined with `\n`. Wrapped in `CSI 200 ~` / `CSI 201 ~` when the child
+/// enabled bracketed paste (`bracketed`).
+#[must_use]
+pub fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len() + 12);
+    if bracketed {
+        out.extend_from_slice(b"\x1b[200~");
+    }
+    let mut buf = [0u8; 4];
+    for c in text
+        .chars()
+        .filter(|&c| !crate::input::opens_control_sequence(c))
+    {
+        out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+    }
+    if bracketed {
+        out.extend_from_slice(b"\x1b[201~");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_paste_is_bracketed_only_when_the_child_asked_and_carries_no_escape() {
+        assert_eq!(paste_bytes("ls\nx", false), b"ls\nx");
+        assert_eq!(
+            paste_bytes("a\u{1b}[201~rm\u{9b}b", true),
+            b"\x1b[200~a[201~rmb\x1b[201~"
+        );
+        let mut grid = Grid::new(4, 10);
+        let mut parser = Parser::new();
+        parser.advance(&mut grid, b"\x1b[?1049;2004h");
+        assert!(grid.bracketed_paste());
+        parser.advance(&mut grid, b"\x1b[?2004l");
+        assert!(!grid.bracketed_paste());
+        parser.advance(&mut grid, b"\x1b[?2004h\x1bc");
+        assert!(!grid.bracketed_paste(), "RIS resets the mode");
+    }
 
     fn grid_contains(grid: &Grid, needle: &str) -> bool {
         let (rows, cols) = grid.size();
