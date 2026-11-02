@@ -58,8 +58,8 @@ pub fn filter(cmd: &str, input: &str) -> Result<String, ShellError> {
     run(cmd, Some(input))
 }
 
-/// The shared unix `sh -c` runner: spawn the shell, optionally write `input` to stdin (dropping it to send
-/// EOF), wait, and return captured stdout. A non-zero exit is still returned as `Ok(stdout)` — Vim inserts /
+/// The shared unix `sh -c` runner: spawn the shell, optionally feed `input` to stdin from a writer thread
+/// (dropping it to send EOF) while stdout is drained, wait, and return captured stdout. A non-zero exit is still returned as `Ok(stdout)` — Vim inserts /
 /// filters whatever the command produced regardless of its status — unless the shell could not be spawned.
 #[cfg(unix)]
 fn run(cmd: &str, input: Option<&str>) -> Result<String, ShellError> {
@@ -74,15 +74,25 @@ fn run(cmd: &str, input: Option<&str>) -> Result<String, ShellError> {
         .stdout(Stdio::piped())
         .spawn()
         .map_err(ShellError::Spawn)?;
-    if let Some(text) = input {
-        if let Some(mut stdin) = child.stdin.take() {
-            // A broken pipe (the command exited before reading all input, e.g. `head`) is not an error.
-            let _ = stdin.write_all(text.as_bytes());
-            // Dropping `stdin` here closes it, sending EOF so the command can finish.
+    // Feed stdin from a thread while this thread drains stdout: writing all of it first deadlocks once the
+    // input outgrows the pipe buffers, because a command like `cat` blocks writing output nobody reads (#854).
+    let feeder = match (input, child.stdin.take()) {
+        (Some(text), Some(mut stdin)) => {
+            let bytes = text.as_bytes().to_vec();
+            Some(std::thread::spawn(move || {
+                // A broken pipe (the command exited before reading all input, e.g. `head`) is not an error.
+                let _ = stdin.write_all(&bytes);
+                // Dropping `stdin` closes it, sending EOF so the command can finish.
+            }))
         }
+        _ => None,
+    };
+    let out = child.wait_with_output().map_err(ShellError::Wait);
+    if let Some(handle) = feeder {
+        // The writer returns once its input is written or the pipe is closed; it holds no result.
+        let _ = handle.join();
     }
-    let out = child.wait_with_output().map_err(ShellError::Wait)?;
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    Ok(String::from_utf8_lossy(&out?.stdout).into_owned())
 }
 
 #[cfg(not(unix))]
@@ -132,6 +142,27 @@ mod tests {
         }
         let out = filter("tr a-z A-Z", "one\ntwo\n").expect("tr runs");
         assert_eq!(out, "ONE\nTWO\n");
+    }
+
+    /// #854: input larger than the pipe buffers must not deadlock against a command that streams output.
+    #[test]
+    fn filter_streams_input_larger_than_the_pipe_buffers() {
+        if !has("cat") {
+            eprintln!("skipping: `cat` not on PATH");
+            return;
+        }
+        let input = "0123456789abcdef\n".repeat(64 * 1024); // 1 MiB
+        let (tx, rx) = std::sync::mpsc::channel();
+        let sent = input.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(filter("cat", &sent).map_err(|e| e.to_string()));
+        });
+        let out = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("`cat` filter of 1 MiB deadlocked")
+            .expect("cat runs");
+        assert_eq!(out.len(), input.len());
+        assert!(out == input);
     }
 
     #[test]

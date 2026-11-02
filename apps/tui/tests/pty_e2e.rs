@@ -216,6 +216,18 @@ fn close_keeps_a_modified_buffer_and_q_refuses() {
     assert_eq!(std::fs::read(&b).unwrap(), b"wo\n");
 }
 
+/// #854: `:%!cat` on input larger than the pipe buffers must finish, not deadlock the editor.
+#[test]
+fn filter_of_a_large_buffer_does_not_deadlock() {
+    let dir = Scratch::new();
+    let body = "0123456789abcdef\n".repeat(16 * 1024); // 256 KiB
+    let file = dir.file("f.txt", body.as_bytes());
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
+    ed.keys(":%!cat\r:wq\r");
+    assert_eq!(ed.exit_status(), 0, ":wq runs once the filter finishes");
+    assert!(std::fs::read(&file).unwrap() == body.as_bytes());
+}
+
 /// Open `start` bytes in a fresh editor, type `keys`, then `:wq`; returns the saved bytes.
 fn edit_and_save(start: &[u8], keys: &str) -> Vec<u8> {
     let dir = Scratch::new();
