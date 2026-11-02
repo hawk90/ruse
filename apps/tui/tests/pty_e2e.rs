@@ -158,3 +158,30 @@ fn recovery_prompt_needs_an_explicit_choice() {
     assert!(!journal.exists());
     assert_eq!(std::fs::read(&file).unwrap(), b"on disk\n");
 }
+
+/// #847: the palette's Quit must not discard unsaved changes.
+#[test]
+fn palette_quit_refuses_a_dirty_buffer() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"orig\n");
+    // A relative path keeps the status message on screen (#831 pushes it off after a long name).
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
+    ed.keys(&format!("iUNSAVED{ESC}\u{10}quit\r"));
+    assert!(
+        ed.is_running(),
+        "palette Quit must refuse while a buffer is dirty"
+    );
+    let screen = ed.screen_bytes();
+    let tail: String = screen
+        .chars()
+        .rev()
+        .take(600)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    assert!(screen.contains("E162"), "{tail:?}");
+    ed.keys(":w\r\u{10}quit\r");
+    assert_eq!(ed.exit_status(), 0, "palette Quit exits once saved");
+    assert_eq!(std::fs::read(&file).unwrap(), b"UNSAVEDorig\n");
+}

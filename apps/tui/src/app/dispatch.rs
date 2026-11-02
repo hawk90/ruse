@@ -595,7 +595,14 @@ pub(crate) fn apply_effect(
         Effect::Save => {
             save(ws, files, status, false);
         }
-        Effect::Quit => *quit = true,
+        // The palette's Quit, Emacs `C-x C-c` and Native `q` end the whole editor, so any modified buffer
+        // blocks them, as Vim's `:qa` does (E162).
+        Effect::Quit => match ws.buffers().into_iter().find(|b| b.modified) {
+            Some(b) => {
+                *status = format!("E162: No write since last change for buffer \"{}\"", b.name);
+            }
+            None => *quit = true,
+        },
         Effect::Status(s) => *status = s,
     }
 }
