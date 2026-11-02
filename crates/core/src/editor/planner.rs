@@ -2,13 +2,16 @@ use super::*;
 
 /// Enter a blockwise insert-replicate session (`CTRL-V` `I`/`A`/`c`): compute the top-row insert point
 /// and, for `c`, the block-delete edits + captured blockwise register. The typed text is replicated down
-/// the block by [`block_replicate`] when the session's `<Esc>` closes it.
+/// the block by [`block_replicate`] when the session's `<Esc>` closes it. `seed` is text already typed into
+/// the session: blockwise Select's replace-selection policy (`g CTRL-H` then a printable key) is a block `c`
+/// whose first char is the key, so it replicates with the rest of the run.
 fn plan_block_insert(
     st: &EditorState,
     b: &[u8],
     cur: usize,
     hint: GroupHint,
     kind: &BlockInsertKind,
+    seed: &[u8],
 ) -> Plan {
     let append = matches!(kind, BlockInsertKind::Append);
     let change = matches!(kind, BlockInsertKind::Change);
@@ -50,8 +53,10 @@ fn plan_block_insert(
             text.extend_from_slice(&b[s..e]);
         }
         reg = Some(Register::blockwise(text));
-        for &(s, e) in &rows {
-            if e > s {
+        for (i, &(s, e)) in rows.iter().enumerate() {
+            if i == 0 && !seed.is_empty() {
+                edits.push(Edit::replace(s, e - s, seed.to_vec()));
+            } else if e > s {
                 edits.push(Edit::delete(s, e - s));
             }
         }
@@ -91,13 +96,128 @@ fn plan_block_insert(
             hint,
             session,
         },
-        cursor: insert_start,
+        cursor: insert_start + seed.len(),
         mode: Mode::Insert,
         is_edit,
         effects: Vec::new(),
         set_register: reg.map(RegWrite::Edit),
         set_anchor: None,
         set_mark: None,
+    }
+}
+
+/// Visual `d`/`c`/`y` over a charwise (`line == false`) or linewise selection `anchor`..`cur`; also the
+/// linewise uppercase forms `D`/`X`/`Y`/`C`/`S`/`R` ([`VisualOp::Lines`]), which force `line`.
+fn plan_selection_span(
+    st: &EditorState,
+    b: &[u8],
+    anchor: usize,
+    cur: usize,
+    op: OpKind,
+    line: bool,
+    hint: GroupHint,
+) -> Plan {
+    let (s, e) = selection_range(b, anchor, cur, line);
+    // Visual-LINEWISE change (`V…c`) behaves exactly like `cc` over the selected line range:
+    // keep the first line's indent, replace the rest with ONE empty line, and — crucially — KEEP
+    // the trailing separator to the following line (never merge the next line in). Route it through
+    // the shared cc-logic; `selection_range` gives whole lines incl. the trailing '\n', so drop
+    // that one byte to get the CONTENT end the helper expects. Charwise/blockwise change stays the
+    // delete-then-Insert path below.
+    if line && op == OpKind::Change && s < e {
+        let content_end = if e > s && b[e - 1] == b'\n' { e - 1 } else { e };
+        return plan_linewise_change(b, s, content_end, hint);
+    }
+    let reg = captured(b, s, e, line);
+    match op {
+        // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal.
+        OpKind::Yank => Plan {
+            action: Action::Nop,
+            cursor: s,
+            mode: Mode::Normal,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: Some(RegWrite::Yank(reg, (s, e))),
+            set_anchor: None,
+            set_mark: None,
+        },
+        OpKind::Delete if s < e => {
+            // A linewise delete keeps the wanted column on the line that moves up under the cursor (nvim's
+            // `nostartofline`: `lVjd` lands on column 1); `at_col` clamps it to that line's end.
+            // Lines through the end of the buffer also take the newline before them (no blank line is left
+            // behind) and the cursor moves up onto the new last line.
+            let (s, cursor) = if !line {
+                (s, s)
+            } else if e < b.len() || b[e - 1] == b'\n' {
+                (s, at_col(b, e, st.view.curswant) - (e - s))
+            } else if s > 0 {
+                (s - 1, at_col(b, line_start(b, s - 1), st.view.curswant))
+            } else {
+                (s, s)
+            };
+            edit_yank(one(Edit::delete(s, e - s)), cursor, Mode::Normal, hint, reg)
+        }
+        OpKind::Change if s < e => {
+            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+        }
+        // Empty selection: just leave Visual (Change still opens Insert).
+        OpKind::Change => nop(s, Mode::Insert),
+        OpKind::Delete => nop(s, Mode::Normal),
+    }
+}
+
+/// [`Command::VisualOp`]: a line-oriented Visual operator over the live selection, leaving it (to Normal,
+/// or Insert for the changes). Outside a selection it is a clean no-op back to Normal.
+fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: GroupHint) -> Plan {
+    let (Some(kind), Some(anchor)) = (st.view.mode.selection(), st.view.anchor) else {
+        return nop(cur, Mode::Normal);
+    };
+    let (lo, hi) = (anchor.min(cur), anchor.max(cur));
+    let (first, last) = (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi));
+    let lines = (last - first + 1) as u32;
+    // The shared line planners keep the mode they were called in; a Visual operator ends the selection.
+    let normal = |p: Plan| Plan {
+        mode: Mode::Normal,
+        ..p
+    };
+    match op {
+        VisualOp::Lines(k) => plan_selection_span(st, b, anchor, cur, k, true, hint),
+        VisualOp::BlockToEol(k) if kind == SelectKind::Blockwise => {
+            block_op(b, anchor, cur, k, hint, true)
+        }
+        VisualOp::BlockToEol(k) => plan_selection_span(st, b, anchor, cur, k, true, hint),
+        VisualOp::Shift { left, count } => normal(plan_shift_times(
+            st,
+            line_start(b, lo),
+            lines,
+            !left,
+            count.max(1),
+            hint,
+        )),
+        VisualOp::Join { spaces } => plan_join(b, lo, lines.max(2), Mode::Normal, hint, !spaces),
+        VisualOp::Reindent => normal(plan_reindent(st, first, last, hint)),
+        VisualOp::Format => normal(plan_format_lines(
+            st,
+            cur,
+            line_start(b, lo),
+            line_end(b, hi),
+            false,
+            hint,
+        )),
+        // Block `O`: the cursor takes the anchor's column on its own row, the anchor the cursor's column on
+        // its row — the other corner of the same rectangle, horizontally. Charwise/linewise `O` is `o`.
+        VisualOp::OtherCorner if kind == SelectKind::Blockwise => {
+            let col = |p: usize| col_of(b, line_start(b, p), p);
+            let (a_col, c_col) = (col(anchor), col(cur));
+            Plan {
+                set_anchor: Some(at_col(b, line_start(b, anchor), c_col)),
+                ..nop(at_col(b, line_start(b, cur), a_col), st.view.mode)
+            }
+        }
+        VisualOp::OtherCorner => Plan {
+            set_anchor: Some(cur),
+            ..nop(anchor, st.view.mode)
+        },
     }
 }
 
@@ -1954,7 +2074,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // Forced blockwise (`d<C-v>j`): the cursor and the motion target are the block's two corners.
             if *wise == ForcedWise::Blockwise {
                 let target = motion::target(b, cur, *motion, *count);
-                return block_op(b, cur, target, *op, hint);
+                return block_op(b, cur, target, *op, hint, false);
             }
             let (s, e, linewise) = forced_span(b, cur, *motion, *count, *wise);
             match op {
@@ -2103,8 +2223,13 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         },
         Command::EnterVisual { kind } => nop(cur, Mode::Visual { kind: *kind }),
         // CTRL-G toggle: enter Select over the same selection. The anchor is preserved because both are
-        // selection modes, so `commit` keeps it (see the (true, true) arm there).
-        Command::EnterSelect { kind } => nop(cur, Mode::Select { kind: *kind }),
+        // selection modes, so `commit` keeps it (see the (true, true) arm there). Outside a selection it is
+        // inert: `gh` enters Visual first, and the `v_CTRL-O` return lands after a command that may have
+        // ended the selection (nvim returns to Select only while Visual is still active).
+        Command::EnterSelect { kind } if st.view.mode.selection().is_some() => {
+            nop(cur, Mode::Select { kind: *kind })
+        }
+        Command::EnterSelect { .. } => nop(cur, st.view.mode),
         Command::ReselectVisual => match st.view.last_visual {
             // Restore the remembered selection: re-enter Visual with the stored kind, put the cursor on the
             // active end, and install the stored anchor (via `set_anchor`, which `commit` applies after its
@@ -2123,7 +2248,13 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         },
         Command::ReplaceSelection(c) => {
             // Select's `open/replace-selection`: delete the selection, insert the char, enter Insert.
-            // Blockwise Select-replace is out of scope for this slice; a block here is treated charwise.
+            let mut buf = [0u8; 4];
+            // A block is a block `c` whose first typed char is this one, so `<Esc>` replicates the whole run
+            // down the block (nvim: `g CTRL-H` + `<S-Down>` + `X` leaves `X` on both rows).
+            if st.view.mode.selection() == Some(SelectKind::Blockwise) && st.view.anchor.is_some() {
+                let seed = c.encode_utf8(&mut buf).as_bytes();
+                return plan_block_insert(st, b, cur, hint, &BlockInsertKind::Change, seed);
+            }
             let line = matches!(
                 st.view.mode,
                 Mode::Visual {
@@ -2132,15 +2263,15 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     kind: SelectKind::Linewise
                 }
             );
-            let mut buf = [0u8; 4];
             let ins = c.encode_utf8(&mut buf).as_bytes().to_vec();
             let n = ins.len();
             match st.view.anchor {
                 Some(anchor) => {
                     let (s, e) = selection_range(b, anchor, cur, line);
                     if s < e {
-                        // The removed span fills the unnamed register, as a Visual/Normal delete does.
-                        let reg = captured(b, s, e, line);
+                        // The removed span fills the unnamed register, as a Visual/Normal delete does —
+                        // charwise even for whole lines, as nvim stores it (`gHX` leaves `"abc\n"`, `v`).
+                        let reg = captured(b, s, e, false);
                         edit_yank(
                             one(Edit::replace(s, e - s, ins)),
                             s + n,
@@ -2156,7 +2287,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 None => edit(one(Edit::insert(cur, ins)), cur + n, Mode::Insert, hint),
             }
         }
-        Command::BlockInsert(kind) => plan_block_insert(st, b, cur, hint, kind),
+        Command::BlockInsert(kind) => plan_block_insert(st, b, cur, hint, kind, &[]),
         Command::SwapSelectionEnds => {
             // Visual/Select `o`: exchange the two ends. The cursor jumps to the anchor; the anchor becomes
             // the old cursor (`set_anchor`, which `commit` installs). The SAME text stays selected, but a
@@ -2182,44 +2313,24 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     Command::ChangeSelection => OpKind::Change,
                     _ => OpKind::Delete,
                 };
-                return block_op(b, anchor, cur, op, hint);
+                return block_op(
+                    b,
+                    anchor,
+                    cur,
+                    op,
+                    hint,
+                    st.view.curswant == crate::editor::range::MAXCOL,
+                );
             }
             let line = st.view.mode.selection() == Some(SelectKind::Linewise);
-            let (s, e) = selection_range(b, anchor, cur, line);
-            // Visual-LINEWISE change (`V…c`) behaves exactly like `cc` over the selected line range:
-            // keep the first line's indent, replace the rest with ONE empty line, and — crucially — KEEP
-            // the trailing separator to the following line (never merge the next line in). Route it through
-            // the shared cc-logic; `selection_range` gives whole lines incl. the trailing '\n', so drop
-            // that one byte to get the CONTENT end the helper expects. Charwise/blockwise change stays the
-            // delete-then-Insert path below.
-            if line && matches!(cmd, Command::ChangeSelection) && s < e {
-                let content_end = if e > s && b[e - 1] == b'\n' { e - 1 } else { e };
-                return plan_linewise_change(b, s, content_end, hint);
-            }
-            let reg = captured(b, s, e, line);
-            match cmd {
-                // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal.
-                Command::YankSelection => Plan {
-                    action: Action::Nop,
-                    cursor: s,
-                    mode: Mode::Normal,
-                    is_edit: false,
-                    effects: Vec::new(),
-                    set_register: Some(RegWrite::Yank(reg, (s, e))),
-                    set_anchor: None,
-                    set_mark: None,
-                },
-                Command::DeleteSelection if s < e => {
-                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
-                }
-                Command::ChangeSelection if s < e => {
-                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
-                }
-                // Empty selection: just leave Visual (Change still opens Insert).
-                Command::ChangeSelection => nop(s, Mode::Insert),
-                _ => nop(s, Mode::Normal),
-            }
+            let op = match cmd {
+                Command::YankSelection => OpKind::Yank,
+                Command::ChangeSelection => OpKind::Change,
+                _ => OpKind::Delete,
+            };
+            plan_selection_span(st, b, anchor, cur, op, line, hint)
         }
+        Command::VisualOp(op) => plan_visual_op(st, b, cur, *op, hint),
         // Visual `u`/`U`/`~` — recase the selection in place, cursor at its start, back to Normal.
         Command::CaseSelection(case) => {
             let (s, e, _line) = match visual_span(st, b, cur) {
@@ -2902,7 +3013,7 @@ fn plan_format(
 }
 
 /// Reflow the whole lines `[start, end)` (`start` a line start, `end` a line's content end) — the shared
-/// tail of `gq`/`gw` over a motion, a search, a `gn` match or a mark.
+/// tail of `gq`/`gw` over a motion, a search, a `gn` match or a mark, and of Visual `gq`.
 fn plan_format_lines(
     st: &EditorState,
     cur: usize,
@@ -3014,6 +3125,18 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
 }
 
 fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: GroupHint) -> Plan {
+    plan_shift_times(st, cur, count, right, 1, hint)
+}
+
+/// [`plan_shift`] by `times` indent levels (Visual `3>` shifts the selected lines three levels).
+fn plan_shift_times(
+    st: &EditorState,
+    cur: usize,
+    count: u32,
+    right: bool,
+    times: u32,
+    hint: GroupHint,
+) -> Plan {
     let b = st.bytes();
     let first_ls = line_start(b, cur);
     let first_le = line_end(b, first_ls);
@@ -3030,9 +3153,9 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
         let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
         // Vim indents a whitespace-only line but never a truly EMPTY one (`ls == le`).
         let want = if right {
-            (ls < le).then(|| st.indent_whitespace(cols + sw))
+            (ls < le).then(|| st.indent_whitespace(cols + sw * times as usize))
         } else {
-            Some(st.indent_whitespace(cols.saturating_sub(sw)))
+            Some(st.indent_whitespace(cols.saturating_sub(sw * times as usize)))
         };
         if let Some(want) = want {
             if i == 0 {
@@ -3096,8 +3219,14 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
 /// which is verified against nvim to match Visual-block change byte-for-byte. Dot-repeat of the
 /// operator-forced block change is NOT yet wired (the same open gap as Visual-block-insert dot-repeat) and
 /// is intentionally not oracle-tested; the replicate + single-undo-unit ARE.
-fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint) -> Plan {
-    let (rows, col_lo, col_hi) = block_rows(b, c1, c2);
+fn block_op(b: &[u8], c1: usize, c2: usize, op: OpKind, hint: GroupHint, to_eol: bool) -> Plan {
+    let (mut rows, col_lo, col_hi) = block_rows(b, c1, c2);
+    // `$` (curswant at MAXCOL) or blockwise `D`/`C`: every row runs to its own line end (ragged block).
+    if to_eol {
+        for row in &mut rows {
+            row.1 = line_end(b, row.0);
+        }
+    }
     let top_left = rows.first().map_or(c1.min(c2), |&(s, _)| s);
     // The blockwise register: each row's slice, joined by '\n' (ragged rows, no trailing newline).
     let mut text: Vec<u8> = Vec::new();

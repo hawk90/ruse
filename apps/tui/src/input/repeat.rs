@@ -2,7 +2,7 @@
 //! engine captures and replays. Split out of `input/mod.rs` as a self-contained data definition; the
 //! `InputEngine::record` builder that constructs it stays in the engine core.
 
-use ruse_core::{Command, MarkOp, OpKind, SearchOp};
+use ruse_core::{Command, MarkOp, OpKind, SearchOp, VisualOp};
 
 /// A recorded **change-intent** for Vim dot-repeat (D-025 / D-047): the buffer-modifying command that
 /// began the change, plus — for changes that enter Insert — the exact commands typed until `<Esc>`.
@@ -169,6 +169,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::Change(..)
         | C::ChangeSelection
         | C::ReplaceSelection(_)
+        // Visual `C`/`S`/`R` (linewise) and block `C` (to end of line): the change plus the typed text.
+        | C::VisualOp(VisualOp::Lines(OpKind::Change) | VisualOp::BlockToEol(OpKind::Change))
         // Visual-block `I`/`A`/`c` (`CTRL-V` then the key): the change is the block-insert entry plus the
         // text typed until `<Esc>`. On replay the block has no live selection, so the planner rebuilds an
         // equivalent block (stored WIDTH x HEIGHT) at the caret — nvim repeats a block insert over the same
@@ -230,6 +232,15 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::EmacsOpenLine
         | C::DeleteSelection
         | C::PasteSelection { .. }
+        // Visual `D`/`X`, `>`/`<`, `J`/`gJ`, `=`, `gq` — the repeat re-covers the recorded amount of text.
+        | C::VisualOp(
+            VisualOp::Lines(OpKind::Delete)
+            | VisualOp::BlockToEol(OpKind::Delete)
+            | VisualOp::Shift { .. }
+            | VisualOp::Join { .. }
+            | VisualOp::Reindent
+            | VisualOp::Format,
+        )
         | C::OpForced {
             op: OpKind::Delete, ..
         }
@@ -269,6 +280,11 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         // where they are appended to the open change's body instead of being classified here.
         C::Yank(..)
         | C::YankSelection
+        | C::VisualOp(
+            VisualOp::Lines(OpKind::Yank)
+            | VisualOp::BlockToEol(OpKind::Yank)
+            | VisualOp::OtherCorner,
+        )
         | C::OpForced {
             op: OpKind::Yank, ..
         }
@@ -527,6 +543,7 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::ReselectVisual
         | C::SwapSelectionEnds
         | C::ReplaceSelection(..)
+        | C::VisualOp(..)
         | C::BlockInsert(..)
         | C::SearchNext(..)
         | C::SearchPrev(..)

@@ -302,6 +302,10 @@ features:
     # `gv` depth-1 restore of the previous selection's anchor AND shape, and the Select open/replace policy
     # are all implemented + oracle/unit tested. The full C-ANCHOR position history (mark ring/jumplist/
     # multi-selection) is a carve-out (READY-WITH-SCOPE), not an F-025 acceptance criterion.
+    # #606/#792: Select is entered by `gh`/`gH`/`g CTRL-H` too; every printable key (incl. the keys Visual
+    # binds) replaces the selection, `<BS>`/`CTRL-H`/`<Del>` delete it, `CTRL-O` borrows one Visual command;
+    # Visual gained `:`/`!` on `'<,'>`, the linewise `D`/`X`/`Y`/`C`/`S`/`R`, `>`/`<`/`=`/`J`/`gJ`/`gq`, block `O`.
+    # Census rows stay unclassified (the mode_key.visual whole-surface lock); Visual `K`/`CTRL-]` remain open.
     status: done
     depends_on: [C-INPUT, C-ANCHOR]
     summary: Two namespaces over one selection state, separated by opposite unmatched-key policies.

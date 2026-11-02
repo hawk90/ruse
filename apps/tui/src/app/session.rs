@@ -1279,10 +1279,8 @@ impl Session {
         let normal = matches!(ws.focused().view.mode(), Mode::Normal)
             && engine.cmdline().is_none()
             && engine.cmdwin().is_none();
-        let visual = matches!(
-            ws.focused().view.mode(),
-            Mode::Visual { .. } | Mode::Select { .. }
-        );
+        // Visual only: in Select a typed `z` replaces the selection (#792).
+        let visual = matches!(ws.focused().view.mode(), Mode::Visual { .. });
         // What the engine is waiting for decides who owns this key (#679, #850). The session's own Normal
         // keys below (`z`, `C-w`, `&`, the scroll chords, the pickers, `K`) fire only at a command boundary;
         // while the engine waits for an argument (`fz`, `rz`, `mz`, `"z`, `gM`, `]M`, a leader key) the key is
@@ -1827,6 +1825,8 @@ impl Session {
             *last_shell = Some(cmd.clone());
             Ok(cmd)
         };
+        // `'<,'>` (Visual `:`) resolves to the last selection's line numbers (`:help v_:`).
+        let text = crate::app::dispatch::expand_visual_range(&text, ws);
         let ex = match parse_ex(&text) {
             Ex::Edit(file) => expand(&file).map(Ex::Edit),
             Ex::Read {

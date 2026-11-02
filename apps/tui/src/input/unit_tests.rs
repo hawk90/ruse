@@ -2990,7 +2990,8 @@ mod tests {
 
     #[test]
     fn visual_o_swaps_selection_ends() {
-        // In Visual/Select, `o` emits SwapSelectionEnds (in Normal it is OpenBelow).
+        // In Visual, `o` emits SwapSelectionEnds (in Normal it is OpenBelow; in Select a typed `o` replaces
+        // the selection, #792).
         let mut e = InputEngine::new();
         assert_eq!(
             e.feed(
@@ -3008,7 +3009,7 @@ mod tests {
                     kind: SelectKind::Linewise
                 }
             ),
-            Feed::Cmd(Command::SwapSelectionEnds)
+            Feed::Cmd(Command::ReplaceSelection('o'))
         );
         // Sanity: `o` in Normal is still OpenBelow.
         assert_eq!(feed("o"), Feed::Cmd(Command::OpenBelow));
@@ -3146,26 +3147,192 @@ mod tests {
     }
 
     #[test]
-    fn select_operators_and_motions_match_visual() {
+    fn select_printable_keys_replace_and_movement_extends() {
+        // nvim v0.12.6 (`:help Select-mode`, #792): every printable key replaces the selection — the keys
+        // Visual binds (`d`, `l`, `w`), the shared initiators (`f`, `g`, `"`, `m`, `` ` ``), digits and `:`.
         let sel = Mode::Select {
             kind: SelectKind::Charwise,
         };
+        for c in [
+            'd', 'y', 'c', 'l', 'w', 'f', 'g', 'G', '"', 'm', '`', '5', '0', ':', ' ', 'z', 'J',
+        ] {
+            let mut e = InputEngine::new();
+            assert_eq!(
+                e.feed(k(c), sel),
+                Feed::Cmd(Command::ReplaceSelection(c)),
+                "Select {c:?}"
+            );
+            assert!(e.normal.is_clean(), "Select {c:?} left grammar state");
+        }
         let mut e = InputEngine::new();
-        // d/y/c act on the selection, exactly as in Visual.
-        assert_eq!(e.feed(k('d'), sel), Feed::Cmd(Command::DeleteSelection));
-        assert_eq!(e.feed(k('y'), sel), Feed::Cmd(Command::YankSelection));
-        assert_eq!(e.feed(k('c'), sel), Feed::Cmd(Command::ChangeSelection));
-        // A motion extends the selection (a bare Move; the frontend re-plans it against the anchor).
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        // `<CR>` and `CTRL-J` replace with a line break; `<BS>`, `<Del>` and `CTRL-H` delete.
+        let nl = Feed::Cmd(Command::ReplaceSelection('\n'));
+        assert_eq!(e.feed(key(KeyCode::Enter), sel), nl);
+        assert_eq!(e.feed(ctrl('j'), sel), nl);
+        for k in [key(KeyCode::Backspace), key(KeyCode::Delete), ctrl('h')] {
+            assert_eq!(e.feed(k, sel), Feed::Cmd(Command::DeleteSelection));
+        }
+        // Non-printable movement extends the selection (a bare Move the core re-plans against the anchor).
         assert_eq!(
-            e.feed(k('l'), sel),
+            e.feed(key(KeyCode::Right), sel),
             Feed::Cmd(Command::Move(1, Motion::Right))
         );
         assert_eq!(
-            e.feed(k('w'), sel),
-            Feed::Cmd(Command::Move(1, Motion::WordFwd))
+            e.feed(ctrl('n'), sel),
+            Feed::Cmd(Command::Move(1, Motion::Down))
         );
+        // `<Tab>` is not printable here: nothing happens (nvim beeps).
+        assert_eq!(e.feed(key(KeyCode::Tab), sel), Feed::Ignored);
         // Esc leaves the selection.
         assert_eq!(e.feed(esc(), sel), Feed::Cmd(Command::EnterNormal));
+    }
+
+    #[test]
+    fn select_ctrl_o_runs_one_visual_command() {
+        // `v_CTRL-O`: Visual for one command; one that keeps the selection returns to Select, one that
+        // ends it (a change) runs plain so `.` records it.
+        let sel = Mode::Select {
+            kind: SelectKind::Charwise,
+        };
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        let mut e = InputEngine::new();
+        assert_eq!(
+            e.feed(ctrl('o'), sel),
+            Feed::Cmd(Command::EnterVisual {
+                kind: SelectKind::Charwise
+            })
+        );
+        assert_eq!(e.feed(k('2'), vis), Feed::Pending);
+        assert_eq!(
+            e.feed(k('e'), vis),
+            Feed::Replay(vec![
+                Command::Move(2, Motion::WordEnd),
+                Command::EnterSelect {
+                    kind: SelectKind::Charwise
+                }
+            ])
+        );
+        // The shot is spent: the next Visual key is plain Visual.
+        assert_eq!(
+            e.feed(k('l'), vis),
+            Feed::Cmd(Command::Move(1, Motion::Right))
+        );
+        // A change ends the selection and is not wrapped.
+        e.feed(ctrl('o'), sel);
+        assert_eq!(e.feed(k('d'), vis), Feed::Cmd(Command::DeleteSelection));
+        // A shape switch returns to Select in the new shape.
+        e.feed(ctrl('o'), sel);
+        assert_eq!(
+            e.feed(k('V'), vis),
+            Feed::Replay(vec![
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise
+                },
+                Command::EnterSelect {
+                    kind: SelectKind::Linewise
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn g_h_family_enters_select() {
+        // `gh` / `gH` / `g CTRL-H` start Select charwise / linewise / blockwise; a count extends it.
+        for (key, kind) in [
+            (k('h'), SelectKind::Charwise),
+            (k('H'), SelectKind::Linewise),
+            (ctrl('h'), SelectKind::Blockwise),
+        ] {
+            let mut e = InputEngine::new();
+            e.feed(k('g'), Mode::Normal);
+            assert_eq!(
+                e.feed(key, Mode::Normal),
+                Feed::Replay(vec![
+                    Command::EnterVisual { kind },
+                    Command::EnterSelect { kind }
+                ])
+            );
+        }
+        let mut e = InputEngine::new();
+        for c in "2g".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(
+            e.feed(k('H'), Mode::Normal),
+            Feed::Replay(vec![
+                Command::EnterVisual {
+                    kind: SelectKind::Linewise
+                },
+                Command::Move(1, Motion::Down),
+                Command::EnterSelect {
+                    kind: SelectKind::Linewise
+                }
+            ])
+        );
+        // `gV` from Normal does nothing; `dgh` is not an operator form.
+        let mut e = InputEngine::new();
+        e.feed(k('g'), Mode::Normal);
+        assert_eq!(e.feed(k('V'), Mode::Normal), Feed::Ignored);
+        assert!(e.normal.is_clean());
+    }
+
+    #[test]
+    fn visual_line_operators_and_command_entry() {
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        let block = Mode::Visual {
+            kind: SelectKind::Blockwise,
+        };
+        let op = |c| Feed::Cmd(Command::VisualOp(c));
+        let one = |key: KeyEvent, mode: Mode| InputEngine::new().feed(key, mode);
+        assert_eq!(one(k('D'), vis), op(VisualOp::Lines(OpKind::Delete)));
+        assert_eq!(one(k('X'), vis), op(VisualOp::Lines(OpKind::Delete)));
+        assert_eq!(one(k('Y'), vis), op(VisualOp::Lines(OpKind::Yank)));
+        for c in ['C', 'S', 'R'] {
+            assert_eq!(one(k(c), vis), op(VisualOp::Lines(OpKind::Change)));
+        }
+        assert_eq!(one(k('D'), block), op(VisualOp::BlockToEol(OpKind::Delete)));
+        assert_eq!(one(k('C'), block), op(VisualOp::BlockToEol(OpKind::Change)));
+        assert_eq!(one(k('X'), block), Feed::Cmd(Command::DeleteSelection));
+        assert_eq!(one(k('Y'), block), Feed::Cmd(Command::YankSelection));
+        assert_eq!(one(k('S'), block), op(VisualOp::Lines(OpKind::Change)));
+        assert_eq!(one(k('O'), block), op(VisualOp::OtherCorner));
+        assert_eq!(one(k('O'), vis), Feed::Cmd(Command::SwapSelectionEnds));
+        assert_eq!(one(k('J'), vis), op(VisualOp::Join { spaces: true }));
+        assert_eq!(one(k('='), vis), op(VisualOp::Reindent));
+        assert_eq!(
+            one(k('<'), vis),
+            op(VisualOp::Shift {
+                left: true,
+                count: 1
+            })
+        );
+        let mut e = InputEngine::new();
+        e.feed(k('3'), vis);
+        assert_eq!(
+            e.feed(k('>'), vis),
+            op(VisualOp::Shift {
+                left: false,
+                count: 3
+            })
+        );
+        let mut e = InputEngine::new();
+        e.feed(k('g'), vis);
+        assert_eq!(e.feed(k('J'), vis), op(VisualOp::Join { spaces: false }));
+        let mut e = InputEngine::new();
+        e.feed(k('g'), vis);
+        assert_eq!(e.feed(k('q'), vis), op(VisualOp::Format));
+        // `:` / `!` leave Visual and open the command line on the selection's range.
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k(':'), vis), Feed::Cmd(Command::EnterNormal));
+        assert_eq!(e.cmdline(), Some((':', "'<,'>", 5)));
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('!'), vis), Feed::Cmd(Command::EnterNormal));
+        assert_eq!(e.cmdline(), Some((':', "'<,'>!", 6)));
     }
 
     #[test]

@@ -7,7 +7,7 @@
 
 use crate::command::{
     BlockInsertKind, Command, ForcedWise, MarkOp, OpKind, OpenKind, SearchOffset, SearchOp,
-    SelectKind, WordCase,
+    SelectKind, VisualOp, WordCase,
 };
 use crate::document::{Document, DocumentId};
 use crate::edit::{Edit, EditList};
@@ -753,6 +753,7 @@ fn is_selection_op(cmd: &Command) -> bool {
             | Command::CaseSelection(_)
             | Command::PasteSelection { .. }
             | Command::IncrementSelection { .. }
+            | Command::VisualOp(_)
     )
 }
 
@@ -1241,6 +1242,12 @@ impl EditorState {
         if end == start {
             return 0;
         }
+        // The deleted lines fill the unnamed register (and shift the numbered ring) linewise, as `dd` does
+        // (`:help :d`); `Register::linewise` terminates an unterminated last line.
+        let lines_text = bytes[fs..le].to_vec();
+        self.view
+            .registers
+            .delete(None, Register::linewise(lines_text));
         let list = EditList::new(vec![Edit::delete(start, end - start)])
             .expect("a single line-range delete is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)

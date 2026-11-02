@@ -368,6 +368,30 @@ pub(crate) fn may_quit(ws: &Workspace, status: &mut String, abandon_focused: boo
     }
 }
 
+/// Resolve a leading `'<,'>` (or a lone `'<` / `'>`) range of an ex line to the 1-based line numbers of
+/// the focused view's last Visual selection, so the numeric range parser sees `N,M` (`:help v_:`). The line
+/// is returned unchanged when it has no such range or no selection has ended yet.
+pub(crate) fn expand_visual_range(line: &str, ws: &Workspace) -> String {
+    let pane = ws.focused();
+    let Some((s, e, _)) = pane.view.last_visual_bounds() else {
+        return line.to_string();
+    };
+    let bytes = pane.doc.bytes();
+    let first = ruse_core::pos::line_of(bytes, s) + 1;
+    let last = ruse_core::pos::line_of(bytes, e) + 1;
+    let rest = line.trim_start_matches([' ', ':']);
+    for (mark, lines) in [
+        ("'<,'>", format!("{first},{last}")),
+        ("'<", first.to_string()),
+        ("'>", last.to_string()),
+    ] {
+        if let Some(tail) = rest.strip_prefix(mark) {
+            return format!("{lines}{tail}");
+        }
+    }
+    line.to_string()
+}
+
 // The ex-line dispatcher legitimately needs the full editor context (buffer, file identity+format,
 // the trace baseline+recording, and the status/quit sinks); grouping them into a struct would only
 // move the wiring, not reduce it.

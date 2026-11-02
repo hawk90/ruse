@@ -235,7 +235,8 @@ impl Headless {
 /// Literal characters stand for themselves (an uppercase letter carries `SHIFT`, as crossterm reports
 /// it). Bracketed names, case-insensitive: `<Esc>`, `<CR>`/`<Enter>`/`<Return>`, `<BS>`, `<Tab>`,
 /// `<Space>`, `<lt>`, `<Del>`, `<Up>`/`<Down>`/`<Left>`/`<Right>`, `<Home>`/`<End>`, `<C-x>` (control),
-/// `<M-x>`/`<A-x>` (meta, i.e. `ESC x`), and combinations such as `<M-C-x>` or `<M-BS>`. Control keys
+/// `<M-x>`/`<A-x>` (meta, i.e. `ESC x`), `<S-Right>` (shift on a special key, as crossterm reports a
+/// shifted arrow/`<Home>`/`<End>`), and combinations such as `<M-C-x>` or `<M-BS>`. Control keys
 /// fold as the terminal folds them: `<C-Space>`/`<C-@>` is `CTRL-Space`, `<C-\>`/`<C-]>`/`<C-^>`/`<C-_>`
 /// arrive as `CTRL-4`…`CTRL-7`, `<C-[>` is `Esc`, `<C-i>` is `Tab` and `<C-m>` is `Enter`. A `<` that does
 /// not open a known name is a literal `<`.
@@ -311,17 +312,24 @@ fn base_key(name: &str, modified: bool) -> Option<KeyEvent> {
 
 /// A bracketed name, with any `C-`/`M-`/`A-` prefixes applied as a legacy terminal encodes them.
 fn named_key(name: &str) -> Option<KeyEvent> {
-    let (mut ctrl, mut meta, mut rest) = (false, false, name);
+    let (mut ctrl, mut meta, mut shift, mut rest) = (false, false, false, name);
     loop {
         let lower = rest.get(..2).map(str::to_ascii_lowercase);
         match lower.as_deref() {
             Some("c-") if rest.len() > 2 => ctrl = true,
             Some("m-" | "a-") if rest.len() > 2 => meta = true,
+            // Only a special key carries SHIFT this way; `<S-a>` stays unknown (a literal `<`).
+            Some("s-") if rest.len() > 3 => shift = true,
             _ => break,
         }
         rest = &rest[2..];
     }
     let base = base_key(rest, ctrl || meta)?;
+    let base = if shift {
+        KeyEvent::new(base.code, base.modifiers | KeyModifiers::SHIFT)
+    } else {
+        base
+    };
     let key = if ctrl { control(base, name) } else { base };
     Some(if meta {
         KeyEvent::new(key.code, key.modifiers | KeyModifiers::ALT)

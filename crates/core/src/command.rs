@@ -197,6 +197,28 @@ pub enum MarkOp {
     },
 }
 
+/// A Visual operator beyond `d`/`c`/`y`/`p`/`r`/case ([`Command::VisualOp`]). Each acts on the live
+/// selection: most treat it as WHOLE LINES whatever its shape (`:help v_D`, `v_>`, `v_J`, `v_=`, `v_gq`).
+/// Ground truth is nvim v0.12.6 (the `v_*`/`vb_*` oracle fixtures).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VisualOp {
+    /// `D`/`X` (delete), `Y` (yank), `C`/`S`/`R` (change): the operator over every selected line, as a
+    /// linewise span. Blockwise `S`/`R` are linewise too; blockwise `X`/`Y` are plain block `d`/`y`.
+    Lines(OpKind),
+    /// Blockwise `D`/`C`: the block from its left column to the END of every row (`:help v_b_D`).
+    BlockToEol(OpKind),
+    /// `>`/`<`: shift every selected line `count` indent levels (`left` for `<`).
+    Shift { left: bool, count: u32 },
+    /// `J` (`spaces`) / `gJ`: join the selected lines; a one-line selection joins it with the next.
+    Join { spaces: bool },
+    /// `=`: reindent the selected lines.
+    Reindent,
+    /// `gq`: reflow the selected lines.
+    Format,
+    /// Blockwise `O`: move to the other corner on the SAME row (the anchor takes the cursor's column).
+    OtherCorner,
+}
+
 /// A motion's forced wise-ness (Vim `o_v` / `o_V` / `o_CTRL-V`): the operator applies the motion but
 /// overrides whether the removed span is charwise, linewise, or blockwise. `Charwise` also toggles the
 /// motion's exclusive/inclusive edge (Vim's rule for `v`). `Blockwise` treats the cursor and the motion
@@ -589,6 +611,9 @@ pub enum Command {
     /// Select's `open/replace-selection` policy: a printable key deletes the selection, inserts the char,
     /// and enters Insert. The one behaviour that distinguishes Select from Visual over identical state.
     ReplaceSelection(char),
+    /// A line-oriented (or block-to-end-of-line) Visual operator over the live selection: `D`/`X`/`Y`/
+    /// `C`/`S`/`R`, `>`/`<`, `J`/`gJ`, `=`, `gq`, and block `O`. See [`VisualOp`].
+    VisualOp(VisualOp),
     /// Blockwise Visual `I`/`A`/`c`: enter Insert on the block's top row, arming a replicate session — on
     /// `<Esc>` the text typed on the top row is inserted at the same column on every other row of the block.
     BlockInsert(BlockInsertKind),
@@ -1023,6 +1048,48 @@ fn mark_op_from_token(s: &str) -> Option<MarkOp> {
     })
 }
 
+/// The trace-codec argument of a [`Command::VisualOp`] line (`visual_op <arg>`).
+fn visual_op_token(op: VisualOp) -> String {
+    match op {
+        VisualOp::Lines(k) => format!("lines {}", op_kind_token(k)),
+        VisualOp::BlockToEol(k) => format!("block_eol {}", op_kind_token(k)),
+        VisualOp::Shift { left, count } => {
+            format!("shift {} {count}", if left { "left" } else { "right" })
+        }
+        VisualOp::Join { spaces: true } => "join".into(),
+        VisualOp::Join { spaces: false } => "join_raw".into(),
+        VisualOp::Reindent => "reindent".into(),
+        VisualOp::Format => "format".into(),
+        VisualOp::OtherCorner => "other_corner".into(),
+    }
+}
+
+fn visual_op_from_token(s: &str) -> Option<VisualOp> {
+    let mut it = s.split_whitespace();
+    let op = match it.next()? {
+        "lines" => VisualOp::Lines(op_kind_from_token(it.next()?)?),
+        "block_eol" => VisualOp::BlockToEol(op_kind_from_token(it.next()?)?),
+        "shift" => {
+            let left = match it.next()? {
+                "left" => true,
+                "right" => false,
+                _ => return None,
+            };
+            VisualOp::Shift {
+                left,
+                count: it.next()?.parse().ok()?,
+            }
+        }
+        "join" => VisualOp::Join { spaces: true },
+        "join_raw" => VisualOp::Join { spaces: false },
+        "reindent" => VisualOp::Reindent,
+        "format" => VisualOp::Format,
+        "other_corner" => VisualOp::OtherCorner,
+        _ => return None,
+    };
+    it.next().is_none().then_some(op)
+}
+
 fn forced_wise_token(w: ForcedWise) -> &'static str {
     match w {
         ForcedWise::Charwise => "charwise",
@@ -1328,6 +1395,7 @@ impl Command {
                 let _ = write!(s, "{}", *c as u32);
                 s
             }
+            Command::VisualOp(op) => format!("visual_op {}", visual_op_token(*op)),
             Command::BlockInsert(kind) => match kind {
                 BlockInsertKind::Insert => "block_insert".into(),
                 BlockInsertKind::Append => "block_append".into(),
@@ -1852,6 +1920,10 @@ impl Command {
                     .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
                 Command::ReplaceSelection(c)
             }
+            "visual_op" => Command::VisualOp(
+                arg.and_then(visual_op_from_token)
+                    .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?,
+            ),
             "block_insert" => Command::BlockInsert(BlockInsertKind::Insert),
             "block_append" => Command::BlockInsert(BlockInsertKind::Append),
             "block_change" => Command::BlockInsert(BlockInsertKind::Change),
@@ -2422,6 +2494,22 @@ mod tests {
             Command::ReplaceSelection('z'),
             Command::ReplaceSelection('가'),
             Command::ReplaceSelection('🎉'),
+            Command::VisualOp(VisualOp::Lines(OpKind::Delete)),
+            Command::VisualOp(VisualOp::Lines(OpKind::Yank)),
+            Command::VisualOp(VisualOp::BlockToEol(OpKind::Change)),
+            Command::VisualOp(VisualOp::Shift {
+                left: true,
+                count: 3,
+            }),
+            Command::VisualOp(VisualOp::Shift {
+                left: false,
+                count: 1,
+            }),
+            Command::VisualOp(VisualOp::Join { spaces: true }),
+            Command::VisualOp(VisualOp::Join { spaces: false }),
+            Command::VisualOp(VisualOp::Reindent),
+            Command::VisualOp(VisualOp::Format),
+            Command::VisualOp(VisualOp::OtherCorner),
             Command::BlockInsert(BlockInsertKind::Insert),
             Command::BlockInsert(BlockInsertKind::Append),
             Command::BlockInsert(BlockInsertKind::Change),

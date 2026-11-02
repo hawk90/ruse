@@ -4737,10 +4737,14 @@ mod select_tests {
 
     #[test]
     fn motion_extends_the_select_selection() {
-        // A bare motion in Select moves the cursor and keeps the anchor — exactly as in Visual.
+        // A bare motion in Select moves the cursor and keeps the anchor — exactly as in Visual. (`gh` is
+        // `EnterVisual` then `EnterSelect`; `EnterSelect` alone only toggles an existing selection.)
         let st = run(
             "hello",
             &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
                 Command::EnterSelect {
                     kind: SelectKind::Charwise,
                 },
@@ -4755,6 +4759,20 @@ mod select_tests {
             }
         );
         assert_eq!(st.selection_span(), Some((0, 3)));
+    }
+
+    #[test]
+    fn enter_select_outside_a_selection_is_inert() {
+        // The `v_CTRL-O` return appends `EnterSelect` after the borrowed command; when that command ended
+        // the selection (`y`, `<Esc>`), Select must not start a fresh one at the cursor.
+        let st = run(
+            "hello",
+            &[Command::EnterSelect {
+                kind: SelectKind::Charwise,
+            }],
+        );
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.selection_span(), None);
     }
 
     #[test]
@@ -7837,5 +7855,196 @@ mod substitute_case_modifier_tests {
         st.substitute(SubRange::CurrentLine, r".*", r"\U&", SubFlags::default())
             .expect("compiles");
         assert_eq!(st.as_str().unwrap(), "HELLO WORLD");
+    }
+}
+
+/// #606 / #792: Visual line operators ([`Command::VisualOp`]) and Select replace, against nvim v0.12.6
+/// (the `v_*`/`vb_*`/`s_*` oracle fixtures carry the same cases through the real key path).
+#[cfg(test)]
+mod visual_op_tests {
+    use crate::editor::*;
+    use crate::VisualOp;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    fn visual(kind: SelectKind) -> Command {
+        Command::EnterVisual { kind }
+    }
+
+    const CHAR: SelectKind = SelectKind::Charwise;
+    const BLOCK: SelectKind = SelectKind::Blockwise;
+
+    #[test]
+    fn lines_delete_is_linewise_and_keeps_the_column() {
+        // `lvjD` on abcd/efgh/ijkl: both lines go, the cursor keeps column 1 (nvim `nostartofline`).
+        let st = run(
+            "abcd\nefgh\nijkl",
+            &[
+                Command::MoveRight,
+                visual(CHAR),
+                Command::MoveDown,
+                Command::VisualOp(VisualOp::Lines(OpKind::Delete)),
+            ],
+        );
+        assert_eq!(text(&st), "ijkl");
+        assert_eq!(st.cursor(), 1);
+        assert_eq!(st.mode(), Mode::Normal);
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"abcd\nefgh\n");
+    }
+
+    #[test]
+    fn lines_delete_through_the_end_takes_the_newline_before() {
+        // `jvj$D`: no blank line is left; the cursor rides `$` onto the new last line's end.
+        let st = run(
+            "abcd\nefgh\nijkl",
+            &[
+                Command::MoveDown,
+                visual(CHAR),
+                Command::MoveDown,
+                Command::Move(1, Motion::LineEnd),
+                Command::VisualOp(VisualOp::Lines(OpKind::Delete)),
+            ],
+        );
+        assert_eq!(text(&st), "abcd");
+        assert_eq!(st.cursor(), 3);
+        assert_eq!(st.register().text(), b"efgh\nijkl\n");
+    }
+
+    #[test]
+    fn block_to_eol_delete_runs_to_each_row_end() {
+        // `l<C-v>jjD` on abcd/e/ijkl → a/e/i, register `bcd\n\njkl` blockwise.
+        let st = run(
+            "abcd\ne\nijkl",
+            &[
+                Command::MoveRight,
+                visual(BLOCK),
+                Command::MoveDown,
+                Command::MoveDown,
+                Command::VisualOp(VisualOp::BlockToEol(OpKind::Delete)),
+            ],
+        );
+        assert_eq!(text(&st), "a\ne\ni");
+        assert_eq!(st.register().text(), b"bcd\n\njkl");
+        assert!(st.register().is_blockwise());
+    }
+
+    #[test]
+    fn shift_moves_the_selected_lines_count_levels() {
+        // `vj2>` with shiftwidth 4: two lines, eight columns; cursor on the first line's first non-blank.
+        let st = run(
+            "a\nb\nc",
+            &[
+                visual(CHAR),
+                Command::MoveDown,
+                Command::VisualOp(VisualOp::Shift {
+                    left: false,
+                    count: 2,
+                }),
+            ],
+        );
+        assert_eq!(text(&st), "        a\n        b\nc");
+        assert_eq!(st.cursor(), 8);
+        assert_eq!(st.mode(), Mode::Normal);
+        let st = run(
+            "            a\nb",
+            &[
+                visual(CHAR),
+                Command::VisualOp(VisualOp::Shift {
+                    left: true,
+                    count: 2,
+                }),
+            ],
+        );
+        assert_eq!(text(&st), "    a\nb");
+    }
+
+    #[test]
+    fn join_covers_the_selected_lines_and_a_single_line_joins_the_next() {
+        let st = run(
+            "a\nb\nc\nd",
+            &[
+                visual(SelectKind::Linewise),
+                Command::MoveDown,
+                Command::MoveDown,
+                Command::VisualOp(VisualOp::Join { spaces: true }),
+            ],
+        );
+        assert_eq!(text(&st), "a b c\nd");
+        assert_eq!(st.cursor(), 3);
+        let st = run(
+            "a\n  b\nc",
+            &[
+                visual(CHAR),
+                Command::VisualOp(VisualOp::Join { spaces: false }),
+            ],
+        );
+        assert_eq!(text(&st), "a  b\nc");
+    }
+
+    #[test]
+    fn other_corner_stays_on_the_row_in_a_block() {
+        // `l<C-v>jlO`: cursor (row 1, col 2) → (row 1, col 1); anchor (row 0, col 1) → (row 0, col 2).
+        let st = run(
+            "abcd\nefgh",
+            &[
+                Command::MoveRight,
+                visual(BLOCK),
+                Command::MoveDown,
+                Command::MoveRight,
+                Command::VisualOp(VisualOp::OtherCorner),
+            ],
+        );
+        assert_eq!(st.cursor(), 6);
+        assert_eq!(st.view.anchor, Some(2));
+    }
+
+    #[test]
+    fn select_replace_of_whole_lines_is_charwise_in_the_register() {
+        // `gHX`: the line and its newline go, `X` starts the next line; nvim stores `abc\n` charwise.
+        let st = run(
+            "abc\ndef",
+            &[
+                visual(SelectKind::Linewise),
+                Command::EnterSelect {
+                    kind: SelectKind::Linewise,
+                },
+                Command::ReplaceSelection('X'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "Xdef");
+        assert_eq!(st.register().text(), b"abc\n");
+        assert!(!st.register().is_linewise());
+    }
+
+    #[test]
+    fn select_replace_of_a_block_replicates_the_typed_run() {
+        // `g<C-h>` + extend + `XY<Esc>`: a block change whose first char is the key.
+        let st = run(
+            "abc\ndef",
+            &[
+                visual(BLOCK),
+                Command::EnterSelect { kind: BLOCK },
+                Command::MoveDown,
+                Command::MoveRight,
+                Command::ReplaceSelection('X'),
+                Command::InsertChar('Y'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(text(&st), "XYc\nXYf");
+        assert!(st.register().is_blockwise());
+        assert_eq!(st.register().text(), b"ab\nde");
     }
 }

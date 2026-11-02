@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::keymap::{Resolved, UnmatchedKey};
+use ruse_core::VisualOp;
 use ruse_core::{
     BlockInsertKind, Command, EditorOption, ForcedWise, GlobalCmd, LineAddr, MarkOp, Mode, Motion,
     OpKind, SearchOffset, SearchOp, SelectKind, SubFlags, SubRange, WordCase,
@@ -494,6 +495,9 @@ pub struct InputEngine {
     /// resuming Insert. Empty in steady state. A stack rather than a bool so it records *whence* and
     /// nests for free (the general form; `i_CTRL-O` is its depth-1 case, `t_CTRL-\ CTRL-O` its second).
     activations: Vec<Suspended>,
+    /// `v_CTRL-O` from Select: the next complete Visual command returns to Select if the selection is
+    /// still live (nvim's `restart_VIsual_select`). Set by `CTRL-O` in Select, consumed by the command.
+    select_shot: bool,
     /// The command-line namespace (F-026): while `Some`, keys are routed into its owned line buffer
     /// rather than the Normal grammar. `None` = not on the command line. This is the engine owning the
     /// line, not an ad-hoc text buffer on the UI (anti-pattern command-line P2).
@@ -591,6 +595,7 @@ impl InputEngine {
             pending_search: None,
             insert: InsertState::default(),
             activations: Vec::new(),
+            select_shot: false,
             cmdline: None,
             cmdwin: None,
             ex_history: CmdHistory::new(history::DEFAULT_CAP),
@@ -1453,6 +1458,24 @@ impl InputEngine {
         Feed::Cmd(cmd)
     }
 
+    /// `gh`/`gH`/`g CTRL-H`: enter Visual of `kind` then switch it to Select, so the anchor is set as for
+    /// `v`. A count selects that many chars (`3gh`) or lines (`2gH`), as nvim does with no prior Visual.
+    fn enter_select(&mut self, kind: SelectKind) -> Feed {
+        let extra = self.mcount() - 1;
+        self.reset();
+        let mut cmds = vec![Command::EnterVisual { kind }];
+        if extra > 0 {
+            let motion = if kind == SelectKind::Linewise {
+                Motion::Down
+            } else {
+                Motion::Right
+            };
+            cmds.push(Command::Move(extra, motion));
+        }
+        cmds.push(Command::EnterSelect { kind });
+        Feed::Replay(cmds)
+    }
+
     /// Dispatch a PURE insert-entry (`i`/`a`/`I`/`A`/`o`/`O`), capturing the leading count for
     /// count-on-insert repetition (VIM-CNT-INS) BEFORE [`action`](Self::action) resets the axes. The
     /// captured count is stashed in `pending_insert_count`; [`record`](Self::record) folds it into the
@@ -1672,7 +1695,27 @@ impl InputEngine {
         let interrupt = mode == Mode::Insert
             && key.code == KeyCode::Char('c')
             && key.modifiers.contains(KeyModifiers::CONTROL);
+        // `v_CTRL-O`: the Select one-shot lives only while the borrowed Visual command is being typed.
+        let select_shot = std::mem::take(&mut self.select_shot);
         let out = self.feed_impl(key, mode);
+        // A command that kept the selection (a motion, `o`, a shape switch) returns to Select. A change
+        // ended it and runs as a plain command so `.` records it; `EnterSelect` is inert in the core once
+        // the selection is gone (after `y`, `<Esc>`, `:`), so only "is this a change" needs deciding here.
+        let select_return = match (select_shot, mode, &out) {
+            (true, Mode::Visual { .. }, Feed::Pending) => {
+                self.select_shot = true;
+                None
+            }
+            (true, Mode::Visual { kind }, Feed::Cmd(cmd))
+                if matches!(change_kind(cmd), ChangeKind::NotAChange) =>
+            {
+                Some(match cmd {
+                    Command::EnterVisual { kind } => *kind,
+                    _ => kind,
+                })
+            }
+            _ => None,
+        };
         if !one_shot {
             self.record(&out, mode);
         } else if !self.in_one_shot() {
@@ -1707,7 +1750,10 @@ impl InputEngine {
                 return Feed::Replay(cmds);
             }
         }
-        out
+        match (select_return, out) {
+            (Some(kind), Feed::Cmd(cmd)) => Feed::Replay(vec![cmd, Command::EnterSelect { kind }]),
+            (_, out) => out,
+        }
     }
 
     /// The Emacs profile's dispatch (F-012, minimal slice). Non-modal: the global-map's `C-` motions
@@ -2435,10 +2481,21 @@ impl InputEngine {
             '[' => self.feed_base(plain(KeyCode::Esc), mode),
             'm' => self.feed_base(plain(KeyCode::Enter), mode),
             // Motions (`:help CTRL-H`, `CTRL-J`, `CTRL-N`, `CTRL-P`): `<C-h>` = `h`, `<C-j>`/`<C-n>` = `j`,
-            // `<C-p>` = `k`, with a count and under an operator (`d<C-j>` = `dj`). Select mode binds none.
-            'h' if !select => self.motion(Motion::Left),
-            'j' | 'n' if !select => self.motion(Motion::Down),
-            'p' if !select => self.motion(Motion::Up),
+            // `<C-p>` = `k`, with a count and under an operator (`d<C-j>` = `dj`). In Select, `CTRL-H` deletes
+            // the selection like `<BS>` and `CTRL-J` (`<NL>`) replaces it like `<CR>`; `CTRL-N`/`CTRL-P` still
+            // extend it (non-printable movement, `:help Select-mode`).
+            'h' if select => self.action(Command::DeleteSelection),
+            'j' if select => self.action(Command::ReplaceSelection('\n')),
+            'h' => self.motion(Motion::Left),
+            'j' | 'n' => self.motion(Motion::Down),
+            'p' => self.motion(Motion::Up),
+            // `v_CTRL-O` in Select: run ONE Visual command, then return to Select (see `feed`).
+            'o' if select => {
+                let kind = selection.expect("Select is a selection mode");
+                let out = self.action(Command::EnterVisual { kind });
+                self.select_shot = true;
+                out
+            }
             // `CTRL-V` (and its alias `CTRL-Q`): blockwise Visual; in a selection it switches the shape (the
             // same key again leaves it); under an operator it forces the motion blockwise (`d<C-v>j`).
             'v' | 'q' => match selection {
@@ -2513,6 +2570,21 @@ impl InputEngine {
             match key.code {
                 KeyCode::Left => return self.motion(Motion::WordBack),
                 KeyCode::Right => return self.motion(Motion::WordFwd),
+                _ => {}
+            }
+        }
+        // Select (`:help Select-mode`): EVERY printable key — letters, digits, `"`, `:`, space, all the keys
+        // Visual binds — replaces the selection and enters Insert, so it must win before the shared
+        // initiators below (#792). `<CR>` replaces it with a line break, `<BS>`/`<Del>` delete it. The
+        // non-printable keys (arrows, `<Home>`/`<End>`, `<Esc>`) fall through to Visual's handling, so
+        // movement extends the selection.
+        if let Mode::Select { .. } = mode {
+            match key.code {
+                KeyCode::Char(c) => return self.action(Command::ReplaceSelection(c)),
+                KeyCode::Enter => return self.action(Command::ReplaceSelection('\n')),
+                KeyCode::Backspace | KeyCode::Delete => {
+                    return self.action(Command::DeleteSelection)
+                }
                 _ => {}
             }
         }
@@ -2693,6 +2765,49 @@ impl InputEngine {
                 // `o` swaps the selection's ends (cursor <-> anchor); the SAME text stays selected but a
                 // later motion extends the other end. In Normal `o` is OpenBelow — here it is the swap.
                 KeyCode::Char('o') => return self.action(Command::SwapSelectionEnds),
+                // `O`: in a block, the other corner on the same row; otherwise the same as `o`.
+                KeyCode::Char('O') if is_block => {
+                    return self.action(Command::VisualOp(VisualOp::OtherCorner))
+                }
+                KeyCode::Char('O') => return self.action(Command::SwapSelectionEnds),
+                // `:` leaves Visual (setting `'<`/`'>`) and opens the command line on `'<,'>`; `!` opens it
+                // on `'<,'>!`, the filter over the selected lines (`:help v_:`, `v_!`).
+                KeyCode::Char(c @ (':' | '!')) => {
+                    let out = self.action(Command::EnterNormal);
+                    self.open_filter_cmdline(if c == ':' { "'<,'>" } else { "'<,'>!" });
+                    return out;
+                }
+                // Line operators over the selection (`:help v_>`, `v_J`, `v_=`): `{count}>` shifts `count`
+                // levels. The uppercase forms work on whole lines; in a block `D`/`C` run to each line's end
+                // and `X`/`Y` are the block `d`/`y` (nvim v0.12.6).
+                KeyCode::Char(c @ ('>' | '<')) => {
+                    return self.action(Command::VisualOp(VisualOp::Shift {
+                        left: c == '<',
+                        count: self.mcount(),
+                    }))
+                }
+                KeyCode::Char('=') => return self.action(Command::VisualOp(VisualOp::Reindent)),
+                KeyCode::Char('J') => {
+                    return self.action(Command::VisualOp(VisualOp::Join { spaces: true }))
+                }
+                KeyCode::Char(c @ ('D' | 'C')) if is_block => {
+                    let op = if c == 'D' {
+                        OpKind::Delete
+                    } else {
+                        OpKind::Change
+                    };
+                    return self.action(Command::VisualOp(VisualOp::BlockToEol(op)));
+                }
+                KeyCode::Char('X') if is_block => return self.action(Command::DeleteSelection),
+                KeyCode::Char('Y') if is_block => return self.action(Command::YankSelection),
+                KeyCode::Char(c @ ('D' | 'X' | 'Y' | 'C' | 'S' | 'R')) => {
+                    let op = match c {
+                        'D' | 'X' => OpKind::Delete,
+                        'Y' => OpKind::Yank,
+                        _ => OpKind::Change,
+                    };
+                    return self.action(Command::VisualOp(VisualOp::Lines(op)));
+                }
                 // In a selection, `i`/`a` always begin a text object (there is no insert here); the next key
                 // is its selector. The completed object re-spans the selection (see the core's `Move` arm).
                 KeyCode::Char('i') => {
@@ -3015,6 +3130,7 @@ impl InputEngine {
                 let g_chord = match key.code {
                     KeyCode::Char('g') => true,
                     KeyCode::Char('a' | 'x') => matches!(mode, Mode::Visual { .. }),
+                    KeyCode::Char('h') => mode == Mode::Normal,
                     _ => false,
                 };
                 if is_chord(key) && matches!(key.code, KeyCode::Char(_)) && !(ctrl && g_chord) {
@@ -3056,6 +3172,31 @@ impl InputEngine {
                     // `!ctrl` keeps it distinct from the Visual `g CTRL-A` sequence-increment arm below.
                     KeyCode::Char('a') if !ctrl => self.action(Command::AsciiInfo),
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
+                    // `gh` / `gH` / `g CTRL-H` — start Select charwise / linewise / blockwise (`:help gh`).
+                    KeyCode::Char(c @ ('h' | 'H'))
+                        if mode == Mode::Normal && self.normal.op.is_none() =>
+                    {
+                        self.enter_select(if ctrl {
+                            SelectKind::Blockwise
+                        } else if c == 'H' {
+                            SelectKind::Linewise
+                        } else {
+                            SelectKind::Charwise
+                        })
+                    }
+                    // `gV` only matters after a mapping that reselects in Select mode; from Normal it does
+                    // nothing (nvim v0.12.6).
+                    KeyCode::Char('V') if mode == Mode::Normal && self.normal.op.is_none() => {
+                        self.reset();
+                        Feed::Ignored
+                    }
+                    // Visual `gJ` / `gq` — join the selected lines without spaces / reflow them.
+                    KeyCode::Char('J') if matches!(mode, Mode::Visual { .. }) => {
+                        self.action(Command::VisualOp(VisualOp::Join { spaces: false }))
+                    }
+                    KeyCode::Char('q') if matches!(mode, Mode::Visual { .. }) => {
+                        self.action(Command::VisualOp(VisualOp::Format))
+                    }
                     // `ge` / `gE` — backward to the end of the previous word / WORD (operator-aware via
                     // `motion`, so `dge` deletes back through the previous word-end).
                     KeyCode::Char('e') => self.motion(Motion::WordEndBack),
