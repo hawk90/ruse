@@ -60,6 +60,16 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         run: cargo test --workspace
+      # Install smoke (#896): `cargo install` the binary and run it from the install prefix. `--debug` with the
+      # shared target dir reuses the test build, so this costs about a second; the release profile is left to
+      # the release workflow.
+      - name: install smoke
+        if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
+        run: |
+          root="$RUNNER_TEMP/ruse-install"
+          cargo install --locked --debug --path apps/tui --root "$root" --target-dir target
+          "$root/bin/ruse" --version | grep -E '^ruse [0-9]+\.[0-9]+\.[0-9]+'
+          "$root/bin/ruse" --help | grep '^usage: ruse' >/dev/null
       - if: steps.detect.outputs.have == '1' && steps.detect.outputs.rust == '1'
         uses: ./.github/actions/setup-python-yaml
       - name: dependency direction + cycle check

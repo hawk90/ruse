@@ -66,8 +66,9 @@ fn cstring(bytes: &[u8]) -> CString {
 }
 
 impl Editor {
-    /// Start `ruse <args>` in `scratch`, and wait until its first frame has been drawn.
-    pub fn start(scratch: &Scratch, args: &[&Path]) -> Self {
+    /// Start `ruse <args>` in `scratch` with `env` (`NAME=value`) ahead of the defaults, so it can override
+    /// them, and wait until its first frame has been drawn.
+    pub fn start_env(scratch: &Scratch, args: &[&Path], env: &[&str]) -> Self {
         // Build everything in the PARENT: nothing may allocate between fork and exec.
         let exe = cstring(env!("CARGO_BIN_EXE_ruse").as_bytes());
         let mut arg_store = vec![exe.clone()];
@@ -75,16 +76,18 @@ impl Editor {
         let mut argv: Vec<*const libc::c_char> = arg_store.iter().map(|a| a.as_ptr()).collect();
         argv.push(ptr::null());
         let home = scratch.0.join("home");
-        let env_store: Vec<CString> = [
-            b"TERM=xterm-256color".to_vec(),
-            b"LANG=C.UTF-8".to_vec(),
-            [b"HOME=".as_slice(), home.as_os_str().as_bytes()].concat(),
-            [b"XDG_STATE_HOME=".as_slice(), home.as_os_str().as_bytes()].concat(),
-            [b"XDG_CONFIG_HOME=".as_slice(), home.as_os_str().as_bytes()].concat(),
-        ]
-        .iter()
-        .map(|e| cstring(e))
-        .collect();
+        let env_store: Vec<CString> = env
+            .iter()
+            .map(|e| e.as_bytes().to_vec())
+            .chain([
+                b"TERM=xterm-256color".to_vec(),
+                b"LANG=C.UTF-8".to_vec(),
+                [b"HOME=".as_slice(), home.as_os_str().as_bytes()].concat(),
+                [b"XDG_STATE_HOME=".as_slice(), home.as_os_str().as_bytes()].concat(),
+                [b"XDG_CONFIG_HOME=".as_slice(), home.as_os_str().as_bytes()].concat(),
+            ])
+            .map(|e| cstring(&e))
+            .collect();
         let mut envp: Vec<*const libc::c_char> = env_store.iter().map(|e| e.as_ptr()).collect();
         envp.push(ptr::null());
         let cwd = cstring(scratch.0.as_os_str().as_bytes());
@@ -230,4 +233,103 @@ impl Drop for Editor {
             }
         }
     }
+}
+
+/// Gap between raw chunks: long enough that the child reads each one separately, so a sequence split
+/// across chunks reaches the decoder split.
+const CHUNK_GAP: Duration = Duration::from_millis(40);
+
+impl Editor {
+    /// Start `ruse <args>` in `scratch` with the default environment.
+    pub fn start(scratch: &Scratch, args: &[&Path]) -> Self {
+        Self::start_env(scratch, args, &[])
+    }
+
+    /// Write each chunk as its own read for the child (pausing between them), then settle. Unlike
+    /// [`Editor::keys`], nothing is split at ESC: the bytes arrive exactly as chunked here.
+    pub fn raw_chunks(&mut self, chunks: &[&[u8]]) {
+        for (i, chunk) in chunks.iter().enumerate() {
+            if i > 0 {
+                std::thread::sleep(CHUNK_GAP);
+            }
+            // A write error means the child already exited; `exit_status` reports that outcome.
+            let _ = self.master.write_all(chunk);
+            let _ = self.master.flush();
+        }
+        self.settle();
+    }
+}
+
+/// The outcome of a run of the binary with no terminal: exit status and stderr.
+pub struct Detached {
+    pub status: i32,
+    pub stdout: Vec<u8>,
+    pub stderr: String,
+}
+
+/// Run `ruse <args>` with `stdin` and `stdout` as given, bounded in time (killed after `MAX_WAIT`).
+/// Nothing is drawn, so this suits the paths that exit before entering the terminal.
+pub fn run_detached(
+    args: &[&str],
+    stdin: std::process::Stdio,
+    stdout: std::process::Stdio,
+) -> Detached {
+    use std::process::{Command, Stdio};
+    let scratch = Scratch::new();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ruse"))
+        .args(args)
+        .current_dir(&scratch.0)
+        .env_clear()
+        .env("TERM", "xterm-256color")
+        .env("HOME", scratch.0.join("home"))
+        .env("XDG_STATE_HOME", scratch.0.join("home"))
+        .stdin(stdin)
+        .stdout(stdout)
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn ruse");
+    let start = Instant::now();
+    let status = loop {
+        if let Some(s) = child.try_wait().expect("wait ruse") {
+            break s;
+        }
+        if start.elapsed() > MAX_WAIT {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("ruse {args:?} did not exit");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let mut stdout = Vec::new();
+    if let Some(mut o) = child.stdout.take() {
+        let _ = o.read_to_end(&mut stdout);
+    }
+    let mut stderr = String::new();
+    if let Some(mut e) = child.stderr.take() {
+        let _ = e.read_to_string(&mut stderr);
+    }
+    Detached {
+        status: status.code().unwrap_or(-1),
+        stdout,
+        stderr,
+    }
+}
+
+/// A fresh pseudo-terminal, as (master, slave). The slave can stand in as a child's stdin or stdout, so a
+/// test can give the binary a terminal on one side only.
+pub fn open_pty() -> (File, File) {
+    let (mut master, mut slave) = (-1, -1);
+    // SAFETY: both out-pointers are valid; name, termios and winsize may be NULL.
+    let rc = unsafe {
+        libc::openpty(
+            &mut master,
+            &mut slave,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, 0, "openpty failed");
+    // SAFETY: openpty returned two fresh fds that nothing else owns.
+    unsafe { (File::from_raw_fd(master), File::from_raw_fd(slave)) }
 }

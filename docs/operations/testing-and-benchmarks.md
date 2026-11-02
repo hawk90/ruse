@@ -501,12 +501,20 @@ dropped to **Normal** mode instead of returning to Insert — the undo/redo comm
 `crates/core/src/editor/` `undo_via_insert_one_shot_returns_to_insert` + `undo_from_normal_stays_in_normal`.
 This is the loop working as intended — the fuzzer found a real parity edge and it was closed.
 
-**Honest gap (still MANUAL):** the *live-terminal* path — the raw-key event loop, raw-mode, and the render
-diff painting to an actual tty — has **no automated coverage**. `--replay` bypasses the input engine
-(it replays `Command`s), and the e2e test drives the engine below the terminal, so the crossterm read
-loop + screen flush in `apps/tui/src/app/session.rs::run` is verified only by hand. A PTY-driven harness (§1.7 TUI golden)
-is the eventual home for it; it is deliberately not built yet (a flaky screen-scraping harness would cost
-more than the thin glue it covers). Recorded here so the boundary is visible, not assumed.
+**PTY layer (#896):** the *live-terminal* path runs the real binary on a pseudo-terminal
+(`apps/tui/tests/support/mod.rs`: scratch `HOME`, explicit environment, bounded waits). It asserts on disk
+contents, exit status and terminal teardown, not on screen scraping:
+
+- **`apps/tui/tests/pty_e2e.rs`** — edit/save/quit, failed writes, recovery prompts, signals.
+- **`apps/tui/tests/pty_input.rs`** — raw input decoding: escape sequences and UTF-8 split across reads,
+  ESC-as-Alt (Vim: `<M-x>` = `<Esc>x`; Emacs: ESC is the meta prefix), kitty keyboard keys and release events,
+  and bracketed paste chunked at the start/stop codes, a 64-byte boundary, CRLF and a 24 KiB burst.
+- **`apps/tui/tests/cli_startup.rs`** — `--help`, `--version`, usage errors (exit 2), `--`, and the
+  one-line refusal without a terminal on stdin or stdout (exit 1).
+
+The TERM/COLORTERM capability matrix is a pure unit test of the detection order
+(`terminal/capabilities.rs`, env passed as a function). CI also `cargo install`s the binary and runs
+`--version` from the install prefix. Still manual: the rendered screen itself (§1.7 TUI golden).
 
 ### 1.10 Deterministic replay — `tests/replay/`
 

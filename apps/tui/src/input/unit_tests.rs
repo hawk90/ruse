@@ -2026,6 +2026,44 @@ mod tests {
     }
 
     #[test]
+    fn emacs_esc_is_the_meta_prefix() {
+        // #896: `ESC u` = `M-u` (Emacs 31.1 `esc-map`), wherever the read boundary falls.
+        let mut e = InputEngine::emacs();
+        let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(e.feed(esc, Mode::Insert), Feed::Pending);
+        let want = InputEngine::emacs().feed(meta('u'), Mode::Insert);
+        assert!(matches!(want, Feed::Cmd(_)), "M-u is bound: {want:?}");
+        assert_eq!(e.feed(k('u'), Mode::Insert), want);
+        // Consumed by one key: the next plain key inserts.
+        assert_eq!(
+            e.feed(k('u'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('u'))
+        );
+        // A `C-u` count survives the prefix: `C-u 3 ESC d` = `C-u 3 M-d`.
+        let mut e = InputEngine::emacs();
+        let ctrl_u = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL);
+        e.feed(ctrl_u, Mode::Insert);
+        e.feed(k('3'), Mode::Insert);
+        e.feed(esc, Mode::Insert);
+        let mut fresh = InputEngine::emacs();
+        fresh.feed(ctrl_u, Mode::Insert);
+        fresh.feed(k('3'), Mode::Insert);
+        assert_eq!(
+            e.feed(k('d'), Mode::Insert),
+            fresh.feed(meta('d'), Mode::Insert)
+        );
+        // `C-x` owns its next key: `C-x ESC` does not arm the prefix.
+        let mut e = InputEngine::emacs();
+        let ctrl_x = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL);
+        e.feed(ctrl_x, Mode::Insert);
+        assert_eq!(e.feed(esc, Mode::Insert), Feed::Ignored);
+        assert_eq!(
+            e.feed(k('u'), Mode::Insert),
+            Feed::Cmd(Command::InsertChar('u'))
+        );
+    }
+
+    #[test]
     fn emacs_meta_tier_word_motions_and_buffer_ends() {
         // F-012: the Meta (`M-`, Alt) tier — word motions and buffer ends. Word motions honour the prefix
         // count; `M-<`/`M->` (buffer ends) ignore it. A plain `f` still self-inserts (no Alt, no C-).

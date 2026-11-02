@@ -398,6 +398,10 @@ pub struct InputEngine {
     /// depth-1 case of the multi-key dispatch the nine-tier stack generalises; more prefixes (`C-c`, `C-h`)
     /// slot in by tag. Always `None` under the Vim profile.
     emacs_prefix: Option<char>,
+    /// A bare `ESC` was typed under the Emacs profile: ESC is the meta prefix (`esc-map`), so the NEXT key is
+    /// read as Meta-modified whenever it arrives (`ESC u` = `M-u`, Emacs 31.1). This is what makes Meta
+    /// work when the terminal's ESC and the key reach ruse in separate reads (#896).
+    emacs_meta: bool,
     /// The Emacs profile's nine-tier keymap (F-012 / D-045). Built once; consulted only on the Emacs path.
     /// Present regardless of profile, mirroring `profile: VimProfile` — both are cheap to build.
     emacs: EmacsProfile,
@@ -465,6 +469,7 @@ impl InputEngine {
             lang_active: false,
             emacs_arg: None,
             emacs_prefix: None,
+            emacs_meta: false,
             emacs: EmacsProfile::new(),
             leader: false,
         }
@@ -1514,11 +1519,21 @@ impl InputEngine {
     /// `C-x` prefix maps, the kill ring and the mark ring layer on from here (RFC-0014). Motions work while
     /// the buffer stays editable because a `Move*` command keeps the current mode and only moves the cursor,
     /// so "move + insert in one state" needs no new mode.
-    fn feed_emacs(&mut self, key: KeyEvent) -> Feed {
+    fn feed_emacs(&mut self, mut key: KeyEvent) -> Feed {
         // The `M-x` minibuffer owns the keystream while open (F-026 command-line namespace), reused verbatim
         // from the Vim `:`-line handler — its `<CR>` resolves the command NAME (the `cl.mx` branch).
         if self.cmdline.is_some() {
             return self.feed_cmdline(key);
+        }
+        // ESC is the meta prefix: the key after a bare ESC is that key with Meta held, however much later it
+        // arrives (`ESC u` = `M-u`). Not while a `C-x` prefix is pending: that prefix owns its next key.
+        if self.emacs_prefix.is_none() {
+            if std::mem::take(&mut self.emacs_meta) {
+                key.modifiers |= KeyModifiers::ALT;
+            } else if key.code == KeyCode::Esc && key.modifiers.is_empty() {
+                self.emacs_meta = true;
+                return Feed::Pending;
+            }
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         // A pending prefix key owns the NEXT keystroke: resolve it in that prefix's map before any global

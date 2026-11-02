@@ -1,0 +1,173 @@
+//! Raw input decoding through a real PTY (#896): the bytes a terminal sends, split across reads the way a
+//! slow link or a big paste splits them, decoded by the real binary. Results are read from disk.
+//!
+//! Each chunk passed to `raw_chunks` reaches the editor as its own read. Expected bytes are nvim v0.12.6's
+//! (Vim profile) or Emacs 31.1's (Emacs profile) for the same input, except where a test says otherwise.
+
+#![cfg(unix)]
+
+mod support;
+
+use std::path::Path;
+
+use support::{Editor, Scratch};
+
+/// Start on `f.txt` holding `start` with `env`, feed `chunks`, then quit with `quit`; return the file.
+fn run(env: &[&str], start: &[u8], chunks: &[&[u8]], quit: &[u8]) -> Vec<u8> {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", start);
+    let mut ed = Editor::start_env(&dir, &[Path::new("f.txt")], env);
+    ed.raw_chunks(chunks);
+    ed.raw_chunks(&[quit]);
+    assert_eq!(ed.exit_status(), 0, "exits cleanly after {chunks:?}");
+    std::fs::read(&file).unwrap()
+}
+
+fn vim(start: &[u8], chunks: &[&[u8]]) -> Vec<u8> {
+    run(&[], start, chunks, b":wq\r")
+}
+
+/// `C-x C-s` then `C-x C-c`.
+const EMACS_SAVE_QUIT: &[u8] = b"\x18\x13\x18\x03";
+
+fn emacs(start: &[u8], chunks: &[&[u8]]) -> Vec<u8> {
+    run(&["RUSE_PROFILE=emacs"], start, chunks, EMACS_SAVE_QUIT)
+}
+
+#[test]
+fn a_csi_key_split_across_reads_decodes_as_one_key() {
+    // Down arrow (`CSI B`, and the SS3 form) cut after its introducer, then `x`. (A `CSI 3 ~` split would
+    // test parameters too, but Normal-mode <Del> is not bound yet: #605.)
+    for down in [&b"\x1b["[..], b"\x1bO"] {
+        assert_eq!(vim(b"abc\ndef\n", &[down, b"Bx"]), b"abc\nef\n", "{down:?}");
+    }
+    // A cut inside the parameters of a modified arrow (Shift-Down, `CSI 1 ; 2 B`).
+    assert_eq!(vim(b"abc\ndef\n", &[b"\x1b[1;", b"2B", b"x"]), b"abc\nef\n");
+}
+
+#[test]
+fn a_utf8_char_split_across_reads_is_one_char() {
+    // `한` is ED 95 9C. ruse waits for the rest of the character; nvim gives up after its timeout, so the
+    // expected bytes here are the typed text, not nvim's.
+    assert_eq!(
+        vim(b"abc\n", &[b"i\xed", b"\x95\x9c", b"\x1b"]),
+        "한abc\n".as_bytes()
+    );
+}
+
+#[test]
+fn vim_alt_key_is_esc_then_the_key() {
+    // `ESC 0` in one read decodes as Alt-0; nvim treats an unmapped `<M-0>` as `<Esc>0`.
+    assert_eq!(
+        vim(b"abc\n", &[b"iX", b"\x1b0", b"iY", b"\x1b"]),
+        b"YXabc\n"
+    );
+    // The common case: `<Esc>:w` typed fast enough to share a read must not insert a `:`.
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"abc\n");
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.raw_chunks(&[b"iX", b"\x1b:wq\r"]);
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"Xabc\n");
+}
+
+#[test]
+fn emacs_meta_key_in_one_read() {
+    // `M-u` upcase-word, `M-d` kill-word.
+    assert_eq!(emacs(b"one two\n", &[b"\x1bu"]), b"ONE two\n");
+    assert_eq!(emacs(b"one two\n", &[b"\x1bd"]), b" two\n");
+}
+
+#[test]
+fn emacs_esc_is_the_meta_prefix_across_reads() {
+    // Emacs 31.1 binds `ESC u` to upcase-word: ESC is a prefix, so the key may come in a later read.
+    assert_eq!(emacs(b"one two\n", &[b"\x1b", b"u"]), b"ONE two\n");
+    assert_eq!(emacs(b"one two\n", &[b"\x1b", b"d", b"\x1bu"]), b" TWO\n");
+    // `ESC x` is M-x: the minibuffer reads a command name.
+    assert_eq!(
+        emacs(b"one two\n", &[b"\x1b", b"x", b"upcase-word\r"]),
+        b"ONE two\n"
+    );
+    // The prefix is consumed by one key: plain text after it inserts again.
+    assert_eq!(emacs(b"ab\n", &[b"\x1b", b"f", b"Z"]), b"abZ\n");
+}
+
+const KITTY: &[&str] = &["TERM=xterm-kitty"];
+
+#[test]
+fn kitty_protocol_is_pushed_and_its_keys_decode() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"abc\n");
+    let mut ed = Editor::start_env(&dir, &[Path::new("f.txt")], KITTY);
+    assert!(
+        ed.screen_bytes().contains("\u{1b}[>3u"),
+        "TERM=xterm-kitty pushes the kitty flags"
+    );
+    // Esc arrives as `CSI 27 u`; a key release (`:3`) is not a second keypress.
+    ed.raw_chunks(&[b"ix\x1b[120;1:3u", b"\x1b[27u", b":wq\r"]);
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"xabc\n");
+    ed.settle();
+    assert!(ed.screen_bytes().contains("\u{1b}[<u"), "pops them on exit");
+}
+
+#[test]
+fn kitty_alt_key_is_esc_then_the_key() {
+    // Alt-0 as `CSI 48 ; 3 u`.
+    assert_eq!(
+        run(
+            KITTY,
+            b"abc\n",
+            &[b"iX", b"\x1b[48;3u", b"iY\x1b[27u"],
+            b":wq\r"
+        ),
+        b"YXabc\n"
+    );
+}
+
+/// A bracketed paste of `body`, as one byte string.
+fn paste(body: &[u8]) -> Vec<u8> {
+    [&b"\x1b[200~"[..], body, b"\x1b[201~"].concat()
+}
+
+// Bracketed paste. ruse enables mode 2004 but drops the decoded paste (#600), so the buffer is unchanged.
+// What these tests hold beyond that bug: the paste is decoded as ONE unit however it is chunked, so none of
+// its bytes run as keys (here the payload would delete the line or quit), and the key after it is a key.
+// When #600 lands, the expected bytes become the pasted text.
+
+#[test]
+fn paste_in_one_read_runs_none_of_its_bytes() {
+    let p = paste(b"dd:q!\r");
+    assert_eq!(vim(b"abc\n", &[&p, b"x"]), b"bc\n");
+}
+
+#[test]
+fn paste_with_split_start_and_end_codes() {
+    // Cut inside `CSI 200 ~`, inside the body, and inside `CSI 201 ~`.
+    let chunks: &[&[u8]] = &[b"\x1b[20", b"0~dd:q!", b"\r\x1b[2", b"01", b"~x"];
+    assert_eq!(vim(b"abc\n", chunks), b"bc\n");
+}
+
+#[test]
+fn paste_across_a_64_byte_boundary_with_crlf() {
+    // The first read ends 64 bytes in, between CR and LF.
+    let mut first = b"\x1b[200~".to_vec();
+    first.resize(63, b'd');
+    first.push(b'\r');
+    assert_eq!(first.len(), 64);
+    assert_eq!(vim(b"abc\n", &[&first, b"\ndd\r\n\x1b[201~x"]), b"bc\n");
+}
+
+#[test]
+fn a_large_paste_burst_is_one_unit() {
+    // 24 KiB: many decoder reads (crossterm reads 1 KiB at a time) and more than one PTY buffer.
+    let p = paste(&b"dd:q!\r\n".repeat(24 * 1024 / 7));
+    assert_eq!(vim(b"abc\n", &[&p, b"x"]), b"bc\n");
+}
+
+#[test]
+fn paste_in_insert_mode_inserts_nothing_yet() {
+    // #600: nvim inserts `PP` here; ruse drops it. The `Esc` after the paste still leaves Insert.
+    let p = paste(b"PP");
+    assert_eq!(vim(b"abc\n", &[b"i", &p, b"\x1b"]), b"abc\n");
+}

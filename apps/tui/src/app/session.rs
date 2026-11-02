@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::PathBuf;
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal as ct_terminal;
 
 use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Workspace};
@@ -377,6 +377,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // arrive: the signal handler wakes a blocked read through it (#857).
     let _ = event::poll(std::time::Duration::ZERO);
     crate::signals::install();
+    // The key half of a Vim-profile Alt chord, delivered on the next turn after its `<Esc>` (see below).
+    let mut meta_tail: Option<KeyEvent> = None;
 
     while !quit {
         // SIGTERM / SIGHUP (#857): end the session; the caller journals every modified buffer and the
@@ -701,30 +703,47 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
         // Macro replay (D-055): drain the replay queue before reading the terminal, so `@{reg}`'s decoded
         // keys flow through the same dispatch as if re-typed. A key from the queue is `from_replay`.
-        let (raw_key, from_replay) = match macros.next_replay() {
-            Some(k) => (k, true),
-            None => {
-                let k = if let Some(ms) = poll_ms {
-                    if event::poll(std::time::Duration::from_millis(ms))? {
+        let (raw_key, from_replay) = match meta_tail.take() {
+            Some(k) => (k, false),
+            None => match macros.next_replay() {
+                Some(k) => (k, true),
+                None => {
+                    let k = if let Some(ms) = poll_ms {
+                        if event::poll(std::time::Duration::from_millis(ms))? {
+                            match event::read()? {
+                                Event::Key(k) => k,
+                                _ => continue,
+                            }
+                        } else {
+                            continue; // timed out: re-render freshly-drained async output
+                        }
+                    } else {
                         match event::read()? {
                             Event::Key(k) => k,
                             _ => continue,
                         }
-                    } else {
-                        continue; // timed out: re-render freshly-drained async output
-                    }
-                } else {
-                    match event::read()? {
-                        Event::Key(k) => k,
-                        _ => continue,
-                    }
-                };
-                (k, false)
-            }
+                    };
+                    (k, false)
+                }
+            },
         };
         if raw_key.kind == KeyEventKind::Release {
             continue;
         }
+        // An Alt/Meta key under the Vim profile is `<Esc>` then the key, as in nvim v0.12.6 for an unmapped
+        // `<M-x>` (ruse has no Alt mappings in Vim). Typing `<Esc>x` fast, or over a slow link, delivers both
+        // bytes in one read, which the terminal decoder reports as Alt-x (#896).
+        let raw_key = if !from_replay
+            && profile_name == "vim"
+            && raw_key.modifiers.contains(KeyModifiers::ALT)
+        {
+            let mut tail = raw_key;
+            tail.modifiers -= KeyModifiers::ALT;
+            meta_tail = Some(tail);
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+        } else {
+            raw_key
+        };
         // Run the key through the macro state machine (capture / stop / `q`|`@` prefixes). Only a
         // `Dispatch` falls through to the normal engine + intercepts; the rest are handled here.
         let macro_normal = matches!(ws.focused().view.mode(), Mode::Normal)
