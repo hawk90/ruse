@@ -51,8 +51,8 @@ pub fn opens_control_sequence(c: char) -> bool {
 
 /// A bracketed paste's text as ruse inserts it. Line endings are normalised the way nvim's TUI pastes
 /// (`nvim_paste(data, crlf = true)`): CRLF and a lone CR both become LF. ESC and the C1 controls are
-/// dropped (TERM-PASTE-2): nvim inserts them literally, but ruse's renderer still writes buffer control
-/// bytes to the terminal raw, so a pasted sequence would run there. One pass, linear in the length.
+/// dropped (TERM-PASTE-2, SEC-5: a paste is untrusted and never carries a control sequence); nvim inserts
+/// them literally. One pass, linear in the length.
 #[must_use]
 pub fn paste_text(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());

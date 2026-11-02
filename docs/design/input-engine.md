@@ -412,7 +412,7 @@ Paste arrives as a **distinct event**, never as KeyEvents ([TERM-PASTE-1](../par
   before the event reaches C-INPUT ([TERM-PASTE-2](../parity/terminal.md), SEC-5) — some terminals leak `ESC`
   through the brackets, so C-INPUT additionally never re-interprets paste text as events even if it contains
   control bytes. Today `input::paste_text` drops ESC and the C1 controls (U+0080–U+009F) from every paste
-  (nvim inserts them literally; ruse's renderer still writes buffer control bytes raw). A read holding only
+  (nvim inserts them literally). A read holding only
   the ESC of `CSI 200 ~` still decodes as the Esc key: that needs the key timeout of #629.
 
 ### IME composition — no transitions mid-compose {#ime}

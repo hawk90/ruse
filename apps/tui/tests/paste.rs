@@ -121,7 +121,7 @@ fn insert_mode_paste_is_literal_and_part_of_the_insert() {
         Mode::Insert,
     );
     // An ESC inside the payload is never a key. Divergence (TERM-PASTE-2): nvim inserts it literally;
-    // ruse drops ESC and the C1 controls, so no pasted sequence can reach the terminal.
+    // ruse drops ESC and the C1 controls, so a paste never carries a control sequence.
     check(
         &paste(4, "i", "a\u{1b}[31m\u{9d}b", ""),
         "abc a[31mbdef\nxyz\n  ind\n",

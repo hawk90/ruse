@@ -230,7 +230,7 @@ fn terminal_paste_is_bracketed_when_the_child_enabled_it() {
 
 #[test]
 fn a_pasted_control_sequence_never_reaches_the_buffer() {
-    // TERM-PASTE-2: ESC and C1 controls are dropped (nvim inserts them; ruse would render them raw).
+    // TERM-PASTE-2: ESC and C1 controls are dropped (nvim inserts them literally).
     let p = paste("i\u{1b}]52;c;eA==\u{7}\u{9b}2J".as_bytes());
     assert_eq!(vim(b"abc\n", &[&p]), "ai]52;c;eA==\u{7}2Jbc\n".as_bytes());
 }
