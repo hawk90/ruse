@@ -185,3 +185,14 @@ fn palette_quit_refuses_a_dirty_buffer() {
     assert_eq!(ed.exit_status(), 0, "palette Quit exits once saved");
     assert_eq!(std::fs::read(&file).unwrap(), b"UNSAVEDorig\n");
 }
+
+/// #849: `:w` with no edit must not rewrite the line endings of a mixed file.
+#[test]
+fn write_keeps_mixed_line_endings() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"a\r\nb\r\nc\n");
+    let mut ed = Editor::start(&dir, &[&file]);
+    ed.keys(":w\r:q\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"a\r\nb\r\nc\n");
+}

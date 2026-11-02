@@ -32,8 +32,9 @@ pub struct FileFormat {
 const BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
 
 impl FileFormat {
-    /// Read the style of the original file. EOL is decided by majority so a stray lone `\n` in an
-    /// otherwise-CRLF file does not flip the verdict (and vice-versa). A new/empty file is `Lf`.
+    /// Read the style of the original file. Like Vim's `fileformats=unix,dos`, a file is CRLF only when
+    /// every line break is `\r\n`; one bare `\n` makes it LF, with each `\r` kept as buffer text, so a save
+    /// without edits writes the same bytes (#849). A new/empty file is `Lf`.
     pub fn detect(raw: &[u8]) -> FileFormat {
         let bom = raw.starts_with(&BOM);
         let body = if bom { &raw[BOM.len()..] } else { raw };
@@ -41,7 +42,11 @@ impl FileFormat {
         // Bare `\n` = total `\n` minus those that are part of a `\r\n`.
         let lf_total = body.iter().filter(|&&b| b == b'\n').count();
         let bare_lf = lf_total.saturating_sub(crlf);
-        let eol = if crlf > bare_lf { Eol::Crlf } else { Eol::Lf };
+        let eol = if crlf > 0 && bare_lf == 0 {
+            Eol::Crlf
+        } else {
+            Eol::Lf
+        };
         FileFormat { eol, bom }
     }
 
@@ -133,6 +138,16 @@ mod tests {
         let fmt = FileFormat::detect(raw);
         assert_eq!(fmt.eol, Eol::Lf);
         assert_eq!(fmt.to_buffer(raw), raw); // untouched
+    }
+
+    /// #849: a mixed file is LF, so a save without edits leaves every byte as it was.
+    #[test]
+    fn mixed_line_endings_round_trip_unchanged() {
+        for raw in [&b"a\r\nb\r\nc\n"[..], b"a\nb\r\n", b"a\r\nb\nc\r\n"] {
+            let fmt = FileFormat::detect(raw);
+            assert_eq!(fmt.eol, Eol::Lf, "{raw:?}");
+            assert_eq!(fmt.to_disk(&fmt.to_buffer(raw)), raw);
+        }
     }
 
     #[test]
