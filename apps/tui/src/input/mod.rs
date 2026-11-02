@@ -78,6 +78,23 @@ pub enum Feed {
     Ignored,
 }
 
+/// What the engine holds between two keys, as the session's frontend intercepts see it (#679, #850, #851).
+/// The session resolves a few Normal keys itself (`z`, `C-w`, `&`, `H`/`M`/`L`, the scroll chords, the
+/// pickers, the macro `q`/`@`/`Q`); each may take a key only when the engine is not waiting for it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Pending {
+    /// A command boundary: a new command may start here. A count may be accumulating
+    /// ([`InputEngine::take_count`] consumes it).
+    Base,
+    /// An operator is armed (`d`, `gu`, `dv`, …) and waits for its motion, with no key expectation.
+    Operator,
+    /// `[` (`open`) or `]` waits for its second key. The session resolves `[z`/`]z` (fold moves) itself.
+    Bracket { open: bool },
+    /// The next key is an argument the engine owns: a find, replace, mark or register char, a text-object
+    /// selector, the second key of `g`, a Native leader key, an Emacs prefix key, or command-line input.
+    Argument,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Op {
     Delete,
@@ -1248,16 +1265,28 @@ impl InputEngine {
         self.normal.op.is_some()
     }
 
-    /// Whether the Normal grammar is mid-construct — an armed operator, a key expectation (`f`/`r`/`m`/
-    /// `"`/`g`/`'`…), a forced wise, the Native leader — so the next key is that construct's argument. A
-    /// bare count does NOT count: nvim's `2q` still stops a recording. The macro layer checks this so a
-    /// `q`/`@` typed as an argument (`fq`, `"qyy`, `gqq`, `dq`) never stops or arms a macro (#680).
+    /// What the engine is waiting for, WITHOUT consuming anything: the one query every session intercept
+    /// and the macro layer consult before taking a key (#679, #680). A key expectation wins over an armed
+    /// operator (`df` waits for the find char, not a motion). A bare count is still `Base`: nvim's `2q`
+    /// stops a recording and `5zz` is a scroll.
     #[must_use]
-    pub fn normal_construct_pending(&self) -> bool {
-        self.normal.op.is_some()
-            || self.normal.awaiting != Awaiting::Nothing
-            || self.normal.forced_wise.is_some()
+    pub fn pending(&self) -> Pending {
+        if self.cmdline.is_some()
+            || self.cmdwin.is_some()
             || self.leader
+            || self.emacs_prefix.is_some()
+            || self.emacs_meta
+        {
+            return Pending::Argument;
+        }
+        match self.normal.awaiting {
+            Awaiting::Nothing if self.normal.op.is_some() || self.normal.forced_wise.is_some() => {
+                Pending::Operator
+            }
+            Awaiting::Nothing => Pending::Base,
+            Awaiting::BracketPrefix { open_bracket } => Pending::Bracket { open: open_bracket },
+            _ => Pending::Argument,
+        }
     }
 
     /// The OPERATOR form of the viewport-resolved screen motions `H`/`M`/`L` (`dH`/`yL`/`c2M`/`>H`/`gUL`…):
@@ -1472,6 +1501,20 @@ impl InputEngine {
         };
         self.reset();
         Feed::Cmd(cmd)
+    }
+
+    /// Emit the LINEWISE reflow for a doubled `gq` (`gqq`/`gqgq`): format the current `count` lines.
+    fn format_linewise(&mut self) -> Feed {
+        let count = match self.normal.op {
+            Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
+            None => unreachable!("format_linewise called without an armed operator"),
+        };
+        self.reset();
+        Feed::Cmd(Command::Format {
+            count,
+            motion: Motion::Line,
+            keep_cursor: false,
+        })
     }
 
     /// Arm an operator, or emit its linewise form when doubled (`dd`/`cc`/`yy`). `linewise` builds the
@@ -2726,6 +2769,13 @@ impl InputEngine {
             {
                 self.case_linewise()
             }
+            // `gqq` — the doubled reflow operator formats the current `count` lines (reachable now that the
+            // session's macro layer leaves a `q` to an armed operator, #679).
+            KeyCode::Char('q')
+                if matches!(self.normal.op, Some(OpPending { op: Op::Format, .. })) =>
+            {
+                self.format_linewise()
+            }
             KeyCode::Char('u') => self.action(Command::Undo),
             KeyCode::Tab => self.action(Command::GotoNewerJump),
             KeyCode::Char('r') => {
@@ -3014,7 +3064,12 @@ impl InputEngine {
                     }
                     KeyCode::Char('?') if self.normal.op.is_none() => self.arm_case_op(Op::Rot13),
                     // `gq` / `gw` — arm the reflow operator over the next motion (`gqap`, `gwj`). Normal
-                    // only; the doubled `gqq`/`gqgq` line form is deferred (it collides with macro `q`).
+                    // only. `gqgq` is the doubled line form (`gqq` is in the base tier).
+                    KeyCode::Char('q')
+                        if matches!(self.normal.op, Some(OpPending { op: Op::Format, .. })) =>
+                    {
+                        self.format_linewise()
+                    }
                     KeyCode::Char('q') if matches!(mode, Mode::Normal) => {
                         self.arm_case_op(Op::Format)
                     }

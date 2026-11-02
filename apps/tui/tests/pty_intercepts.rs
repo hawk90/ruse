@@ -77,17 +77,20 @@ fn ctrl_w_in_insert_deletes_a_word_not_a_window_prefix() {
     assert_eq!(edit("one two\n", &format!("A{CTRL_W}{ESC}")), "one \n");
 }
 
-/// Known divergence #851: the macro layer takes the `q` of `C-w q` as a recording prefix, so the window
-/// command never runs, and the window prefix stays armed for the key after. Neovim quits on the last window.
+/// #851: the `q` of `C-w q` reaches the window command, so on the last window it quits, as in Neovim. A
+/// modified buffer refuses it (E37) first, and `:q!` still quits after that.
 #[test]
-fn ctrl_w_q_is_taken_by_the_macro_layer() {
+fn ctrl_w_q_quits_on_the_last_window() {
     let dir = Scratch::new();
     dir.file("f.txt", b"a\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys(&format!("{CTRL_W}q"));
-    assert!(ed.is_running());
-    // The first ESC aborts the armed macro register prompt, the second is eaten by the window prefix.
-    ed.keys(&format!("{ESC}{ESC}:q\r"));
+    assert_eq!(ed.exit_status(), 0);
+
+    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    ed.keys(&format!("x{CTRL_W}q"));
+    assert!(ed.is_running(), "`C-w q` dropped unsaved changes");
+    ed.keys(":q!\r");
     assert_eq!(ed.exit_status(), 0);
 }
 
@@ -184,11 +187,28 @@ fn bracket_p_still_reaches_the_engine() {
     assert_eq!(edit("a\nb\n", "yyj]p"), "a\nb\na\n");
 }
 
-/// Known divergence #679: the `[` given to `r` also arms the session's bracket prefix, so the first `z` of
-/// `zz` is read as `[z` and the second arms `z`, which then eats the `x`. Neovim gives `bc`.
+/// #679: the `[` given to `r` is only its argument, so `zz` recenters and `x` deletes the `[`, as in Neovim.
 #[test]
-fn r_bracket_arms_the_bracket_prefix() {
-    assert_eq!(edit("abc\n", "r[zzx"), "[bc\n");
+fn r_bracket_does_not_arm_the_bracket_prefix() {
+    assert_eq!(edit("abc\n", "r[zzx"), "bc\n");
+}
+
+/// #679: an intercepted letter that is the argument of a pending command reaches it. `dfL` once deleted
+/// the whole buffer (`L` ran as `dL`); `fq` armed a macro prefix that ate the `:w` after it.
+#[test]
+fn pending_arguments_are_not_intercepted() {
+    assert_eq!(edit("abLdef\nline2\nline3\n", "dfL"), "def\nline2\nline3\n");
+    assert_eq!(edit("abqcq\n", "fqx"), "abcq\n");
+    assert_eq!(edit("abc\n", "\"qyy\"qP"), "abc\nabc\n");
+}
+
+/// #850: `5zz` goes to line 5 and its count does not leak into the `x` after it.
+#[test]
+fn counted_zz_drops_its_count() {
+    assert_eq!(
+        edit("alpha beta\n".repeat(6).as_str(), "5zzx"),
+        "alpha beta\n".repeat(4) + "lpha beta\nalpha beta\n"
+    );
 }
 
 // ---- Normal chords resolved in the session -----------------------------------------------------------

@@ -4,19 +4,3 @@
 # Add a line only for a new fixture ruse does not match yet, never to silence a regression.
 
 dat_tag_multiline  # Vim makes `dat` over a whole-line tag block linewise; ruse yanks it charwise (#443 follow-up)
-
-# Exposed when parity_compare moved from calling InputEngine::feed directly to the session's real key path
-# (#895). Not regressions: the binary has always behaved this way. Each is #679, a session intercept that
-# fires while the engine is still waiting for the key (the argument of `r`, the second key of `g`/`[`/`]`).
-r_replace_char              # `z` of `rz` arms the session's `z` prefix (#679)
-count_r                     # `3rz`: the same (#679)
-gM_middle_char              # `M` of `gM` is the session's `M` (middle of window) (#679)
-gM_from_eol                 # (#679)
-gM_count_25_percent         # (#679)
-gM_count_100_percent        # (#679)
-gM_odd_length               # (#679)
-dgM_operator_to_middle      # `dgM` runs `dM`, deleting linewise to the window middle (#679)
-method_end_fwd_bare         # `M` of `]M` is the session's `M` (#679)
-method_end_back_from_inside # `[M` (#679)
-d_method_end_back_charwise  # `d[M` (#679)
-y_method_end_fwd            # `y]M` (#679)

@@ -2557,6 +2557,59 @@ mod tests {
     }
 
     #[test]
+    fn pending_reports_what_the_next_key_belongs_to() {
+        // #679: the session's intercepts consult this before taking a key.
+        let mut e = InputEngine::new();
+        assert_eq!(e.pending(), Pending::Base);
+        e.feed(k('3'), Mode::Normal);
+        assert_eq!(e.pending(), Pending::Base, "a count is still a boundary");
+        e.feed(k('d'), Mode::Normal);
+        assert_eq!(e.pending(), Pending::Operator);
+        e.feed(k('f'), Mode::Normal);
+        assert_eq!(
+            e.pending(),
+            Pending::Argument,
+            "the find char wins over the operator"
+        );
+        e.feed(k('z'), Mode::Normal);
+        assert_eq!(e.pending(), Pending::Base);
+        e.feed(k('['), Mode::Normal);
+        assert_eq!(e.pending(), Pending::Bracket { open: true });
+        e.take_count();
+        for arg in ['r', 'm', '"', '\'', '`', 'g'] {
+            e.feed(k(arg), Mode::Normal);
+            assert_eq!(e.pending(), Pending::Argument, "after {arg:?}");
+            e.take_count();
+        }
+        e.feed(k(':'), Mode::Normal);
+        assert_eq!(
+            e.pending(),
+            Pending::Argument,
+            "the command line owns its keys"
+        );
+    }
+
+    #[test]
+    fn gqq_and_gqgq_format_count_lines() {
+        let fmt = |count| {
+            Feed::Cmd(Command::Format {
+                count,
+                motion: Motion::Line,
+                keep_cursor: false,
+            })
+        };
+        let mut e = InputEngine::new();
+        for c in "2gq".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(e.feed(k('q'), Mode::Normal), fmt(2));
+        e.feed(k('g'), Mode::Normal);
+        e.feed(k('q'), Mode::Normal);
+        e.feed(k('g'), Mode::Normal);
+        assert_eq!(e.feed(k('q'), Mode::Normal), fmt(1));
+    }
+
+    #[test]
     fn semicolon_repeats_comma_reverses() {
         let mut e = InputEngine::new();
         e.feed(k('f'), Mode::Normal);

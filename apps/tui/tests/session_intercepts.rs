@@ -58,15 +58,32 @@ fn ctrl_w_in_insert_deletes_a_word_not_a_window_prefix() {
     assert_eq!(edit("one two\n", "A<C-w><Esc>"), "one \n");
 }
 
-/// Known divergence #851: the macro layer takes the `q` of `C-w q` as a recording prefix, so the window
-/// command never runs, and the window prefix stays armed for the key after. Neovim quits on the last window.
+/// #851: the `q` of `C-w q` reaches the window command, not the macro layer. On the last window it quits.
 #[test]
-fn ctrl_w_q_is_taken_by_the_macro_layer() {
+fn ctrl_w_q_quits_on_the_last_clean_window() {
     let mut h = Headless::vim("a\n");
     h.keys("<C-w>q");
-    assert!(!h.quit());
-    h.keys("<Esc><Esc>:q<CR>");
     assert!(h.quit());
+}
+
+/// `C-w q` on the last window is `:quit`, so unsaved changes refuse it with E37, as in Neovim.
+#[test]
+fn ctrl_w_q_refuses_a_modified_last_window() {
+    let mut h = Headless::vim("a\n");
+    h.keys("x<C-w>q");
+    assert!(!h.quit());
+    assert!(h.status().starts_with("E37"), "status {:?}", h.status());
+    // Nothing is left armed: the next key is an ordinary command.
+    h.keys("ib<Esc>");
+    assert_eq!(h.text(), "b\n");
+}
+
+#[test]
+fn ctrl_w_q_closes_a_split_without_quitting() {
+    let mut h = Headless::vim("a\n");
+    h.keys("x<C-w>s<C-w>q");
+    assert!(!h.quit());
+    assert_eq!(h.workspace().window_count(), 1);
 }
 
 // ---- `z` scroll prefix (observed through `H`/`M`/`L`, which read the viewport) ---------------------------
@@ -174,11 +191,146 @@ fn bracket_p_still_reaches_the_engine() {
     assert_eq!(edit("a\nb\n", "yyj]p"), "a\nb\na\n");
 }
 
-/// Known divergence #679: the `[` given to `r` also arms the session's bracket prefix, so the first `z` of
-/// `zz` is read as `[z` and the second arms `z`, which then eats the `x`. Neovim gives `bc`.
+/// #679: the `[` given to `r` is only its argument, so `zz` recenters and `x` deletes the `[`, as in Neovim.
 #[test]
-fn r_bracket_arms_the_bracket_prefix() {
-    assert_eq!(edit("abc\n", "r[zzx"), "[bc\n");
+fn r_bracket_does_not_arm_the_bracket_prefix() {
+    assert_eq!(edit("abc\n", "r[zzx"), "bc\n");
+}
+
+// ---- Keys the engine is waiting for are never intercepted (#679) ---------------------------------------
+
+#[test]
+fn intercept_letters_reach_a_pending_find_or_replace() {
+    let line = "abc [z zHLq&@ xyz\nnext\n";
+    for (keys, want) in [
+        ("fzx", "abc [ zHLq&@ xyz\nnext\n"),
+        ("fHx", "abc [z zLq&@ xyz\nnext\n"),
+        ("fLx", "abc [z zHq&@ xyz\nnext\n"),
+        ("fqx", "abc [z zHL&@ xyz\nnext\n"),
+        ("f@x", "abc [z zHLq& xyz\nnext\n"),
+        ("f&x", "abc [z zHLq@ xyz\nnext\n"),
+        ("rz", "zbc [z zHLq&@ xyz\nnext\n"),
+        ("rM", "Mbc [z zHLq&@ xyz\nnext\n"),
+        ("rq", "qbc [z zHLq&@ xyz\nnext\n"),
+    ] {
+        assert_eq!(edit(line, keys), want, "keys {keys:?}");
+    }
+}
+
+#[test]
+fn an_argument_q_leaves_nothing_armed() {
+    // After `rq`/`fq` the macro layer holds no `q` prefix, so `:q` still quits.
+    let mut h = Headless::vim("abq\n");
+    h.keys("rqfq:q!<CR>");
+    assert!(h.quit());
+}
+
+#[test]
+fn marks_and_registers_named_z_and_q_work() {
+    assert_eq!(edit("abc def\n", "mzw`zx"), "bc def\n");
+    assert_eq!(edit("abc\n", "\"qyy\"qP"), "abc\nabc\n");
+    assert_eq!(edit("abc\n", "\"zyy\"zp"), "abc\nabc\n");
+}
+
+#[test]
+fn the_second_key_of_g_reaches_the_engine() {
+    assert_eq!(edit("aa\nbb\ncc\n", "gqj"), "aa bb\ncc\n");
+    assert_eq!(edit("aa\nbb\ncc\n", "2gqq"), "aa bb\ncc\n");
+    assert_eq!(edit("a a\na a\n", ":s/a/b/g<CR>g&"), "b b\nb b\n");
+}
+
+#[test]
+fn native_leader_q_quits() {
+    let mut h = Headless::new(ruse_tui::headless::Profile::Native, "a\n");
+    h.keys("<Space>q");
+    assert!(h.quit());
+}
+
+// ---- Intercepts consume their count and cancel an armed operator (#850) ---------------------------------
+
+#[test]
+fn counted_z_goes_to_the_line_and_drops_the_count() {
+    let ab = "alpha beta\n".repeat(10);
+    let line5 = |s: &str| {
+        let mut v: Vec<&str> = vec!["alpha beta"; 10];
+        v[4] = s;
+        v.iter().map(|l| format!("{l}\n")).collect::<String>()
+    };
+    assert_eq!(edit(&ab, "5zzx"), line5("lpha beta"));
+    assert_eq!(edit(&ab, "lll5zzx"), line5("alpa beta"));
+    assert_eq!(edit(&ab, "4jlll5ztx"), line5("alpa beta"));
+}
+
+#[test]
+fn session_chords_do_not_leak_their_count() {
+    let ab = "alpha beta\n";
+    for keys in [
+        "3&x",
+        "3<C-w>wx",
+        "2<C-l><Esc>x",
+        "2<C-p><Esc>x",
+        "2<C-b><Esc>x",
+        "2<C-f><Esc>x",
+    ] {
+        assert_eq!(edit(ab, keys), "lpha beta\n", "keys {keys:?}");
+    }
+}
+
+#[test]
+fn session_chords_cancel_an_armed_operator() {
+    let text = numbered(5);
+    for keys in [
+        "dzzj", "dztj", "d<C-l>j", "d<C-w>wj", "d<C-e>j", "d<C-d>j", "d&j",
+    ] {
+        assert_eq!(edit(&text, keys), text, "keys {keys:?}");
+    }
+}
+
+#[test]
+fn counted_ampersand_substitutes_count_lines_and_rejects_a_range_past_the_end() {
+    assert_eq!(edit("a a\na a\na a\n", ":s/a/b/<CR>j2&"), "b a\nb a\nb a\n");
+    let mut h = Headless::vim("a a\na a\na a\n");
+    h.keys(":s/a/b/<CR>j5&");
+    assert_eq!(h.status(), "E16: Invalid range");
+    assert_eq!(h.text(), "b a\na a\na a\n");
+}
+
+// ---- The macro layer never takes a key another layer owns (#851) ----------------------------------------
+
+#[test]
+fn confirm_loop_q_ends_the_loop() {
+    let mut h = Headless::vim("a\na\na\n");
+    h.keys(":%s/a/b/gc<CR>yq");
+    assert_eq!(h.status(), "1 substitutions on 1 lines");
+    h.keys("x");
+    assert_eq!(
+        h.text(),
+        "\na\na\n",
+        "the next key is a command, not a register name"
+    );
+}
+
+#[test]
+fn picker_query_takes_q_and_at() {
+    assert_eq!(edit("aaa\nqq@u\nccc\n", "<C-l>qq@u<CR>dd"), "aaa\nccc\n");
+}
+
+#[test]
+fn recording_q_is_text_in_insert_and_a_find_target() {
+    let mut h = Headless::vim("abqcq\n");
+    h.keys("qqfqxq");
+    assert_eq!(h.text(), "abcq\n");
+    assert_eq!(h.status(), "recorded @q (3 keys)");
+    let mut h = Headless::vim("alpha\n");
+    h.keys("qaiq<Esc>q");
+    assert_eq!(h.text(), "qalpha\n");
+    assert_eq!(h.status(), "recorded @a (3 keys)");
+}
+
+#[test]
+fn counted_q_drops_the_count() {
+    assert_eq!(edit("foo bar baz\n", "3qaxq"), "oo bar baz\n");
+    assert_eq!(edit("foo bar baz\n", "3qa<Esc>qx"), "oo bar baz\n");
 }
 
 // ---- Normal chords resolved in the session -----------------------------------------------------------

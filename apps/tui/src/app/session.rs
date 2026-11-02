@@ -15,7 +15,7 @@ use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Wor
 
 use crate::app::dispatch::{is_ctrl, open_file_into_buffer, run_cmd, run_ex, BufferFile, Files};
 use crate::app::lsp_coordinator::LspCoordinator;
-use crate::input::{parse_ex, Ex, Feed, InputEngine, ReadSource};
+use crate::input::{parse_ex, Ex, Feed, InputEngine, Pending, ReadSource};
 use crate::terminal::guard::TermGuard;
 use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
@@ -54,15 +54,16 @@ enum Prefix {
     None,
     /// `C-w` (Normal mode): the next key is a window command (F-007).
     Window,
-    /// `z` (Normal or Visual): the next key is a scroll or fold verb (`zz`/`zt`/`zb`/`zf`/`zo`…).
-    Z,
+    /// `z` (Normal or Visual): the next key is a scroll or fold verb (`zz`/`zt`/`zb`/`zf`/`zo`…). Holds the
+    /// count typed before `z` (0 = none): `{count}zt` puts line `count` at the top (#850).
+    Z(u32),
     /// `zf` in Normal mode awaits a {motion}: the keys typed after `zf` (an optional count and a linewise
     /// motion, e.g. `3j`/`gg`/`ip`), buffered until they parse to a range for the reindent seam. Empty just
     /// after `zf`.
     Zf(String),
-    /// `[` (`true`) or `]` (`false`) awaits its second key. Only `[z`/`]z` (fold nav) are handled here; every
-    /// other bracket command (`]p`/`[p`, …) is armed in the engine too, so this observes without shadowing it.
-    Bracket(bool),
+    /// A `z` or `C-w` typed under an armed operator cancelled it (Vim's `checkclearop`); the key it would
+    /// have taken next is swallowed without effect, as in Vim.
+    Swallow,
     /// Terminal mode `CTRL-\` awaits `CTRL-N`, the Terminal → Terminal-Normal escape (F-011).
     #[cfg(unix)]
     TermEscape,
@@ -670,7 +671,26 @@ impl Session {
         }
     }
 
+    /// Whether a modal overlay owns the keystream: a `:s///c` confirm loop or an open picker. The macro
+    /// layer must not take its `q`/`@` (#851).
+    fn overlay_open(&self) -> bool {
+        self.confirm.is_some()
+            || self.palette.is_some()
+            || self.line_picker.is_some()
+            || self.buffer_picker.is_some()
+            || self.file_picker.is_some()
+            || self.ref_picker.is_some()
+            || self.action_picker.is_some()
+            || self.diag_picker.is_some()
+            || self.reg_picker.is_some()
+            || self.digraph_picker.is_some()
+            || self.keyword_lines_picker.is_some()
+            || self.marks_picker.is_some()
+            || self.pos_picker.is_some()
+    }
+
     fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
+        let overlay = self.overlay_open();
         let Session {
             ws,
             files,
@@ -730,17 +750,29 @@ impl Session {
             raw_key
         };
         // Run the key through the macro state machine (capture / stop / `q`|`@` prefixes). Only a
-        // `Dispatch` falls through to the normal engine + intercepts; the rest are handled here.
-        // `q`/`@` are commands only at a clean Normal (or, for `q`, Visual) base: never as a char argument
-        // (`fq`, `"q`, `f@`), under an operator, or in Insert / the command line (#680). (`<C-w>q` and the
-        // confirm/picker overlays are #851: letting `<C-w>q` through needs its unsaved-buffer check first.)
-        let macro_base = engine.cmdline().is_none()
-            && engine.cmdwin().is_none()
-            && !engine.normal_construct_pending();
-        let focus_mode = ws.focused().view.mode();
-        let macro_normal = macro_base && matches!(focus_mode, Mode::Normal);
-        let macro_q = macro_base && matches!(focus_mode, Mode::Normal | Mode::Visual { .. });
-        let key = match macros.step_with(raw_key, from_replay, macro_normal, macro_q) {
+        // `Dispatch` falls through to the normal engine + intercepts; the rest are handled here. `q`, `@`
+        // and `Q` are commands only at a command boundary (#679, #680, #851): not while an overlay or a
+        // session prefix (`C-w`, `z`, …) owns the key, not in Insert or on the command line, and not while
+        // the engine waits for one (`fq`, `"q`, `gq`, `dq`, a Native leader key), where the `q` or `@` is
+        // that key. `q` also records and stops from Visual; `@`/`Q` are Normal-only.
+        let boundary =
+            !overlay && matches!(prefix, Prefix::None) && engine.pending() == Pending::Base;
+        let mode = ws.focused().view.mode();
+        let macro_normal = boundary && matches!(mode, Mode::Normal);
+        let macro_q = boundary && matches!(mode, Mode::Normal | Mode::Visual { .. });
+        let step = macros.step_gated(raw_key, from_replay, macro_normal, macro_q);
+        // A count typed before `q` (record or stop), `Q` with nothing recorded, or an aborted register name
+        // is discarded, as in nvim (`3qaxq` deletes one char); only an armed `@` keeps it for its replay.
+        if matches!(
+            step,
+            crate::keys::Step::Consumed
+                | crate::keys::Step::Store(..)
+                | crate::keys::Step::OpenCmdWin(_)
+        ) && !macros.awaits_replay_register()
+        {
+            engine.take_count();
+        }
+        let key = match step {
             crate::keys::Step::Dispatch(k) => k,
             crate::keys::Step::Consumed => return,
             // `q:` / `q/` / `q?` — open the command-line window (`:help cmdwin`) over that history ring.
@@ -751,7 +783,6 @@ impl Session {
             crate::keys::Step::Store(reg, bytes) => {
                 let n = bytes.len();
                 ws.set_register_raw(Some(reg), bytes);
-                engine.take_count(); // the stopping `q` consumes a count typed before it (`2q`, nvim)
                 *status = format!("recorded @{reg} ({n} keys)");
                 return;
             }
@@ -1058,9 +1089,15 @@ impl Session {
         // `z` scroll prefix: the second key recenters the view on the cursor line (`zz`/`z.` center,
         // `zt`/`z<CR>` top, `zb`/`z-` bottom). Only `top` moves; the per-frame scroll pass then applies
         // `scrolloff`, so `zt`/`zb` land the line `scrolloff` rows inside the edge, as in Vim.
-        if matches!(prefix, Prefix::Z) {
+        if matches!(prefix, Prefix::Swallow) {
             *prefix = Prefix::None;
-            // Scroll-align verbs (zz/zt/zb/z./z-/z<CR>) — unchanged.
+            return;
+        }
+        if let Prefix::Z(count) = *prefix {
+            *prefix = Prefix::None;
+            // Scroll-align verbs (zz/zt/zb/z./z-/z<CR>). `{count}` first moves the cursor to line `count`
+            // (clamped to the last line): `zz`/`zt`/`zb` keep its column, `z.`/`z<CR>`/`z-` put it on the
+            // first non-blank, with or without a count (`:help z<CR>`). Neither is a jump.
             let to = match key.code {
                 KeyCode::Char('z' | '.') => Some(viewport::RecenterTo::Center),
                 KeyCode::Char('t') | KeyCode::Enter => Some(viewport::RecenterTo::Top),
@@ -1068,7 +1105,44 @@ impl Session {
                 _ => None,
             };
             if let Some(to) = to {
-                let row = line_idx.line_of(ws.focused().view.cursor());
+                let cur = line_idx.line_of(ws.focused().view.cursor());
+                let last = line_idx.line_of(snapshot.len().saturating_sub(1));
+                let row = if count > 0 {
+                    (count as usize - 1).min(last)
+                } else {
+                    cur
+                };
+                if matches!(key.code, KeyCode::Char('z' | 't' | 'b')) {
+                    if row != cur {
+                        let (n, m) = if row > cur {
+                            (row - cur, ruse_core::Motion::Down)
+                        } else {
+                            (cur - row, ruse_core::Motion::Up)
+                        };
+                        run_cmd(
+                            Command::Move(n as u32, m),
+                            ws,
+                            files,
+                            recorded,
+                            status,
+                            quit,
+                        );
+                    }
+                } else {
+                    let start = line_idx.nth_line_start(row);
+                    let blank = snapshot[start.min(snapshot.len())..]
+                        .iter()
+                        .take_while(|b| matches!(b, b' ' | b'\t'))
+                        .count();
+                    // An all-blank line keeps the cursor on its last blank, not on the newline.
+                    let at_eol = matches!(snapshot.get(start + blank), Some(b'\n') | None);
+                    let off = if at_eol {
+                        blank.saturating_sub(1)
+                    } else {
+                        blank
+                    };
+                    ws.place_focused_cursor(start + off);
+                }
                 ws.set_top(ws.focus(), viewport::recenter(row, focused_h, to));
                 return;
             }
@@ -1093,9 +1167,8 @@ impl Session {
                     } else {
                         // Normal mode: begin `zf{motion}`. Seed the buffer with any count typed before `z`
                         // (e.g. `3zfj`); further count digits typed after `f` are appended by the handler.
-                        let seed = engine.take_count();
-                        *prefix = Prefix::Zf(if seed > 0 {
-                            seed.to_string()
+                        *prefix = Prefix::Zf(if count > 0 {
+                            count.to_string()
                         } else {
                             String::new()
                         });
@@ -1121,7 +1194,7 @@ impl Session {
                 // here (verified: `zj` lands at col 0 even with `startofline` on). Landing inside a closed
                 // fold is snapped onto its summary row by the per-frame fold reconcile.
                 KeyCode::Char('j') | KeyCode::Char('k') => {
-                    let n = engine.take_count().max(1);
+                    let n = count.max(1);
                     let down = matches!(key.code, KeyCode::Char('j'));
                     let mut line = cur_line;
                     let mut moved = false;
@@ -1189,7 +1262,7 @@ impl Session {
         // F-003's keymap router will absorb it into a proper layer.
         if matches!(prefix, Prefix::Window) {
             *prefix = Prefix::None;
-            dispatch_window(key, ws, quit);
+            dispatch_window(key, ws, quit, status);
             return;
         }
         // The command-line window (`q:`/`q/`/`q?`) owns the keystream while open, like the `:` line: suppress
@@ -1198,15 +1271,26 @@ impl Session {
         let normal = matches!(ws.focused().view.mode(), Mode::Normal)
             && engine.cmdline().is_none()
             && engine.cmdwin().is_none();
-        // A `[`/`]` prefix is in flight (armed below AND in the engine). Only the fold-nav second key `z`
-        // (`[z`/`]z`) is a frontend view move; anything else falls through to the engine, which still holds
-        // its `BracketPrefix` and resolves `]p`/`[p`/… normally. `[z` → the current fold's START, `]z` → its
-        // END (Vim's "current open fold"); non-overlapping slice-1 folds make `fold_at` the innermost one.
-        // No fold at the cursor → no-op (Vim beeps). Count is ignored (Vim: `[z`/`]z` take none), so consume
-        // it via `take_count`, which also resets the engine's dangling `BracketPrefix`.
-        if let Prefix::Bracket(open) = *prefix {
-            *prefix = Prefix::None;
-            if normal && key.code == KeyCode::Char('z') {
+        let visual = matches!(
+            ws.focused().view.mode(),
+            Mode::Visual { .. } | Mode::Select { .. }
+        );
+        // What the engine is waiting for decides who owns this key (#679, #850). The session's own Normal
+        // keys below (`z`, `C-w`, `&`, the scroll chords, the pickers, `K`) fire only at a command boundary;
+        // while the engine waits for an argument (`fz`, `rz`, `mz`, `"z`, `gM`, `]M`, a leader key) the key is
+        // that argument and goes to the engine. None of them is a motion, so under an armed operator they
+        // cancel it and do nothing (Vim's `checkclearop`), and the count typed before them is theirs, never
+        // the next command's.
+        let pending = engine.pending();
+        let chord = normal && pending == Pending::Base;
+        let cancels_op = normal && pending == Pending::Operator;
+        // `[z` / `]z` — the engine holds `[`/`]` as a `BracketPrefix`; only the fold-nav second key `z` is a
+        // frontend view move, everything else (`]p`, `[M`, …) stays the engine's. `[z` → the current fold's
+        // START, `]z` → its END (Vim's "current open fold"); non-overlapping slice-1 folds make `fold_at` the
+        // innermost one. No fold at the cursor → no-op (Vim beeps). Count is ignored (Vim: `[z`/`]z` take
+        // none), so consume it via `take_count`, which also resets the engine's `BracketPrefix`.
+        if let Pending::Bracket { open } = pending {
+            if normal && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
                 engine.take_count();
                 let buf = ws.focused_buffer();
                 let cur_line = line_idx.line_of(ws.focused().view.cursor());
@@ -1218,83 +1302,94 @@ impl Session {
                 }
                 return;
             }
-            // Not `z`: fall through so the engine's still-armed BracketPrefix consumes this key.
         }
-        // Arm the `[`/`]` fold-nav prefix while STILL letting the key reach the engine (below), which arms
-        // its own BracketPrefix for `]p`/`[p`. We only add the `z` follow-up; everything else is unchanged.
-        if normal
-            && key.modifiers.is_empty()
-            && matches!(key.code, KeyCode::Char('[') | KeyCode::Char(']'))
-        {
-            *prefix = Prefix::Bracket(key.code == KeyCode::Char('['));
-            // no `continue`: fall through to `engine.feed` so BracketPrefix is armed for non-`z` seconds.
+        let plain_z = key.code == KeyCode::Char('z') && key.modifiers.is_empty();
+        let session_chord = plain_z
+            || (key.code == KeyCode::Char('&') && key.modifiers.is_empty())
+            || ['w', 'p', 'l', 'b', 'f', 'd', 'u', 'e', 'y']
+                .iter()
+                .any(|&c| is_ctrl(key, c));
+        if cancels_op && session_chord {
+            engine.take_count();
+            if plain_z || is_ctrl(key, 'w') {
+                *prefix = Prefix::Swallow;
+            }
+            return;
         }
-        if normal && is_ctrl(key, 'w') {
+        if chord && is_ctrl(key, 'w') {
+            engine.take_count();
             *prefix = Prefix::Window;
             return;
         }
         // F-014: `K` = hover, `<C-]>` = goto-definition (when the focused buffer has a live server; else
         // both fall through, unbound in the grammar). The coordinator sends the request.
-        if lsp.on_normal_key(key, normal, ws, files, snapshot) {
+        if lsp.on_normal_key(key, chord, ws, files, snapshot) {
+            engine.take_count();
             return;
         }
         // `C-p` opens the command palette (F-004 #2), context-filtered to the focused view.
-        if normal && is_ctrl(key, 'p') {
+        if chord && is_ctrl(key, 'p') {
+            engine.take_count();
             *palette = Some(palette::open(&focused_context(ws), engine));
             return;
         }
         // `C-l` opens the buffer-line fuzzy picker (F-013 NAT-3). Normal-only, so the Emacs profile's
         // non-modal C-l (recenter) is unaffected; C-l is unbound in the Vim/Native Normal grammar.
-        if normal && is_ctrl(key, 'l') {
+        if chord && is_ctrl(key, 'l') {
+            engine.take_count();
             *line_picker = Some(line_picker::open(ws.focused().doc.bytes()));
             return;
         }
         // `C-b` opens the buffer picker (F-013 NAT-3). Normal-only, so the Emacs profile's non-modal C-b
         // (backward-char) is unaffected; C-b is unbound in the Vim/Native Normal grammar (no page-scroll).
-        if normal && is_ctrl(key, 'b') {
+        if chord && is_ctrl(key, 'b') {
+            engine.take_count();
             *buffer_picker = Some(buffer_picker::open(ws));
             return;
         }
         // `C-f` opens the fuzzy file finder (F-013 NAT-3). Normal-only, so the Emacs non-modal C-f
         // (forward-char) is unaffected; in the Vim/Native Normal grammar the plain `f` find-char has no
         // ctrl, so intercepting ctrl-f shadows nothing reachable.
-        if normal && is_ctrl(key, 'f') {
+        if chord && is_ctrl(key, 'f') {
+            engine.take_count();
             *file_picker = Some(file_picker::open());
             return;
         }
-        // `z` arms the scroll/fold prefix. In Normal (scroll + fold verbs) and Visual (so `zf` folds the
-        // selection); plain `z` (no ctrl), never on the command line.
-        let visual = matches!(
-            ws.focused().view.mode(),
-            Mode::Visual { .. } | Mode::Select { .. }
-        );
-        if (normal || visual) && key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
-            *prefix = Prefix::Z;
+        // `z` arms the scroll/fold prefix with the count typed before it. In Normal (scroll + fold verbs) and
+        // Visual (so `zf` folds the selection); plain `z` (no ctrl), never on the command line.
+        if (chord || (visual && pending == Pending::Base)) && plain_z {
+            *prefix = Prefix::Z(engine.take_count());
             return;
         }
-        // `&` repeats the last `:s` on the CURRENT line. Vim drops the previous flags here — a widely
-        // cited wart (it silently reverts `g` to first-match-only), which is exactly why Vim itself later
-        // added `:&&`/`g&` to KEEP them. ruse keeps the flags (i.e. `&` == `:&&`), the behavior almost
-        // everyone actually wants; the flag-dropping rationale is historical only. No-op before any `:s`.
-        if normal && key.code == KeyCode::Char('&') && key.modifiers.is_empty() {
+        // `&` repeats the last `:s` on the CURRENT line, keeping its flags: nvim's default mapping is
+        // `nnoremap & :&&<CR>`, so `{count}&` is `:.,.+{count-1}&&`. A range past the last line is E16, as
+        // there. No-op before any `:s`.
+        if chord && key.code == KeyCode::Char('&') && key.modifiers.is_empty() {
+            let count = engine.take_count().max(1) as usize;
+            let bytes = ws.focused().doc.bytes();
+            let first = ruse_core::pos::line_of(bytes, ws.focused().view.cursor()) + 1;
+            let lines = bytes.split(|b| *b == b'\n').count() - usize::from(bytes.ends_with(b"\n"));
+            let last = first + count - 1;
             *status = match &last_substitute {
-                Some((pat, rep, flags)) => match ws.substitute(
-                    ruse_core::SubRange::CurrentLine,
-                    pat,
-                    rep,
-                    *flags, // ruse keeps the previous flags (unlike Vim's `&`, like `:&&`)
-                ) {
-                    Ok(out) if out.replacements == 0 => format!("E486: pattern not found: {pat}"),
-                    Ok(out) => format!("{} substitutions on {} lines", out.replacements, out.lines),
-                    Err(e) => crate::app::dispatch::regex_error_msg(&e),
-                },
+                Some(_) if last > lines.max(1) => "E16: Invalid range".to_string(),
+                Some((pat, rep, flags)) => {
+                    match ws.substitute(ruse_core::SubRange::Lines(first, last), pat, rep, *flags) {
+                        Ok(out) if out.replacements == 0 => {
+                            format!("E486: pattern not found: {pat}")
+                        }
+                        Ok(out) => {
+                            format!("{} substitutions on {} lines", out.replacements, out.lines)
+                        }
+                        Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                    }
+                }
                 None => "no previous substitute".to_string(),
             };
             return;
         }
         // `C-d` / `C-u` scroll a half page: move the cursor half the pane down / up (column preserved via
         // the core Move), and the per-frame scroll pass follows it. `C-f`/`C-b` are taken by the pickers.
-        if normal && (is_ctrl(key, 'd') || is_ctrl(key, 'u')) {
+        if chord && (is_ctrl(key, 'd') || is_ctrl(key, 'u')) {
             engine.take_count(); // consume any pending count so it can't leak onto the next command
             let half = (focused_h / 2).max(1) as u32;
             let m = if is_ctrl(key, 'd') {
@@ -1307,7 +1402,7 @@ impl Session {
         }
         // `C-e` / `C-y` scroll the view one line down / up, nudging the cursor only if it would leave the
         // scrolloff band. Frontend-only (viewport concern); `{count}` scrolls that many lines.
-        if normal && (is_ctrl(key, 'e') || is_ctrl(key, 'y')) {
+        if chord && (is_ctrl(key, 'e') || is_ctrl(key, 'y')) {
             let n = engine.take_count().max(1) as usize;
             let last_line = line_idx.line_of(snapshot.len());
             let cursor_row = line_idx.line_of(ws.focused().view.cursor());
@@ -1399,8 +1494,9 @@ impl Session {
         // (not a distinct crossterm mode), so `normal` is still true after `d`/`c`/`y`/… and this intercept
         // fires for the operator case too — `screen_op` returns the operator command when armed, else the bare
         // move, preserving plain `H`/`M`/`L`. Under an operator `GotoLine` is LINEWISE in core (`:help H`), and
-        // its range is `[min,max]` of the cursor and target lines, so direction is handled for free.
-        if normal
+        // its range is `[min,max]` of the cursor and target lines, so direction is handled for free. While the
+        // engine waits for an argument (`fH`, `rL`, `gM`, `]M`) the letter is that argument instead (#679).
+        if (chord || cancels_op)
             && !key
                 .modifiers
                 .contains(crossterm::event::KeyModifiers::CONTROL)
@@ -2443,7 +2539,12 @@ fn sync_special_registers(
 /// Dispatch the key after a `C-w` prefix (F-007 MVP window commands): `w`/`C-w` focus next, `s` split
 /// horizontally, `v` split vertically, `c` close focused, `q` close (or quit on the last window). An
 /// unrecognised key is ignored (Vim beeps). The full `C-w` family is post-MVP.
-fn dispatch_window(key: crossterm::event::KeyEvent, ws: &mut Workspace, quit: &mut bool) {
+fn dispatch_window(
+    key: crossterm::event::KeyEvent,
+    ws: &mut Workspace,
+    quit: &mut bool,
+    status: &mut String,
+) {
     match key.code {
         KeyCode::Char('w') => ws.focus_next(),
         KeyCode::Char('s') => {
@@ -2455,8 +2556,11 @@ fn dispatch_window(key: crossterm::event::KeyEvent, ws: &mut Workspace, quit: &m
         KeyCode::Char('c') => {
             ws.close_focused();
         }
-        // `C-w q`: close the focused window, or quit if it was the last one.
-        KeyCode::Char('q') => *quit = !ws.close_focused(),
+        // `C-w q` is `:quit`: close the focused window (its buffer stays loaded, hidden, as with nvim's
+        // default 'hidden'), or on the last window quit through the same unsaved-changes check (E37/E162).
+        KeyCode::Char('q') if !ws.close_focused() => {
+            *quit = crate::app::dispatch::may_quit(ws, status);
+        }
         _ => {}
     }
 }

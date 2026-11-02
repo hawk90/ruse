@@ -104,19 +104,27 @@ impl MacroState {
         enqueue_macro(&mut self.queue, &mut self.budget, bytes)
     }
 
-    /// Process one key. `from_replay` is true for a key drained from the replay queue (never re-recorded —
-    /// Vim records `@x`, not its expansion); `normal` is whether the focused view is in Normal mode with no
-    /// command-line open (the `q`/`@` prefixes only arm there).
-    pub fn step(&mut self, key: KeyEvent, from_replay: bool, normal: bool) -> Step {
-        self.step_with(key, from_replay, normal, normal)
+    /// Whether `@` is armed and the next key names the register to replay. The session keeps the count typed
+    /// before `@` for that replay; every other key the macro layer consumes discards it (#850).
+    #[must_use]
+    pub fn awaits_replay_register(&self) -> bool {
+        self.pending_at
     }
 
-    /// [`step`](Self::step) with the `q` context split from the `@`/`Q` one: `q_cmd` is whether a typed
-    /// `q` is the record COMMAND here — Normal or Visual with no command-line and no pending construct
-    /// (`fq`, `"q`, `gq`, `dq`). Anywhere else (Insert, the command
-    /// line, a char argument) `q` is an ordinary key: it neither stops nor arms a recording (#680,
-    /// matches nvim v0.12.6). `normal` still gates `@`/`Q`, which stay Normal-only.
-    pub fn step_with(
+    /// [`step_gated`](Self::step_gated) where `normal` gates both `@`/`Q` and the `q` command.
+    pub fn step(&mut self, key: KeyEvent, from_replay: bool, normal: bool) -> Step {
+        self.step_gated(key, from_replay, normal, normal)
+    }
+
+    /// Process one key. `from_replay` is true for a key drained from the replay queue (never re-recorded —
+    /// Vim records `@x`, not its expansion). The session derives both gates from one command-boundary test
+    /// (`InputEngine::pending() == Pending::Base`, no command line, overlay or session prefix owning the
+    /// key; #679, #680, #851):
+    /// - `normal`: that boundary in Normal mode. `@` and `Q` arm only here.
+    /// - `q_cmd`: that boundary in Normal or Visual mode. A typed `q` is the record command only here: it
+    ///   arms a recording or stops the live one. Anywhere else (Insert, the command line, a char argument
+    ///   like `fq`/`"q`, an armed operator like `gq`/`dq`) it is an ordinary key (matches nvim v0.12.6).
+    pub fn step_gated(
         &mut self,
         key: KeyEvent,
         from_replay: bool,
@@ -594,6 +602,30 @@ mod tests {
             MACRO_KEY_CAP - 2,
             "budget decremented by keys pushed"
         );
+    }
+
+    #[test]
+    fn a_q_off_the_command_boundary_is_captured_not_a_stop() {
+        // #679/#851: while recording, a `q` in Insert or after `f` is text or an argument, not a stop.
+        let mut m = MacroState::new();
+        assert_eq!(m.step(ch('q'), false, true), Step::Consumed);
+        assert_eq!(m.step(ch('a'), false, true), Step::Consumed);
+        assert_eq!(
+            m.step_gated(ch('q'), false, false, false),
+            Step::Dispatch(ch('q'))
+        );
+        assert!(m.is_recording());
+        // Off the boundary nothing arms either.
+        assert_eq!(
+            m.step_gated(ch('@'), false, false, false),
+            Step::Dispatch(ch('@'))
+        );
+        assert!(!m.awaits_replay_register());
+        // Back at the boundary (Visual may stop but not arm) the `q` stops the recording.
+        assert!(matches!(
+            m.step_gated(ch('q'), false, false, true),
+            Step::Store('a', _)
+        ));
     }
 
     #[test]

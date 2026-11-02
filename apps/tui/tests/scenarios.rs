@@ -705,7 +705,6 @@ fn ampersand_with_no_previous_substitute_is_a_noop() {
 
 /// Contrast guard: `g&` KEEPS the flags and runs over the WHOLE FILE, so the two forms stay distinct.
 #[test]
-#[ignore = "#679: the session's `&` intercept takes the `&` of `g&`, so it repeats on the current line only"]
 fn g_ampersand_keeps_flags_over_the_whole_file() {
     let mut h = session("aaa aaa\nbbb aaa\n");
     feed_str(&mut h, ":s/a/X/g<CR>"); // record a global `:s`

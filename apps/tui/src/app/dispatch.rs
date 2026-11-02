@@ -346,6 +346,20 @@ fn drive_feed(
     }
 }
 
+/// The unsaved-changes check of `:q` and `C-w q` on the last window: refuse with E37 when the focused
+/// buffer is modified, or E162 when a hidden one is (quitting ends the editor). Returns whether to quit.
+pub(crate) fn may_quit(ws: &Workspace, status: &mut String) -> bool {
+    if ws.focused().doc.is_modified() {
+        *status = "E37: No write since last change (add ! to override)".into();
+        false
+    } else if let Some(b) = ws.buffers().into_iter().find(|b| b.modified) {
+        *status = format!("E162: No write since last change for buffer \"{}\"", b.name);
+        false
+    } else {
+        true
+    }
+}
+
 // The ex-line dispatcher legitimately needs the full editor context (buffer, file identity+format,
 // the trace baseline+recording, and the status/quit sinks); grouping them into a struct would only
 // move the wiring, not reduce it.
@@ -367,15 +381,7 @@ pub(crate) fn run_ex(
         }
         // `:q` refuses when the focused buffer has unsaved changes (Vim E37); `:q!` discards them.
         // `:q` ends the editor, so a modified hidden buffer blocks it too (Vim E162).
-        Ex::Quit => {
-            if ws.focused().doc.is_modified() {
-                *status = "E37: No write since last change (add ! to override)".into();
-            } else if let Some(b) = ws.buffers().into_iter().find(|b| b.modified) {
-                *status = format!("E162: No write since last change for buffer \"{}\"", b.name);
-            } else {
-                *quit = true;
-            }
-        }
+        Ex::Quit => *quit = may_quit(ws, status),
         Ex::QuitForce => *quit = true,
         Ex::SaveQuit => {
             // `:wq`/`:x` quit only after a successful save: no file, or a failed write, keeps the editor open.
