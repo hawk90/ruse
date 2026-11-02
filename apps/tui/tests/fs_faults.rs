@@ -197,7 +197,26 @@ fn round_trips(dir: &Scratch, name: &Path) {
     let file = dir.0.join(name);
     let mut ed = Editor::start(dir, &[name]);
     ed.keys(&format!("ix{ESC}:w\r"));
-    assert_eq!(std::fs::read(&file).unwrap(), b"xorig\n", "{name:?}");
+    let on_disk = std::fs::read(&file).unwrap();
+    if on_disk != b"xorig\n" {
+        let shown = ed.screen_bytes();
+        let tail: String = shown
+            .chars()
+            .rev()
+            .take(1500)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let listing: Vec<_> = std::fs::read_dir(&dir.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        panic!(
+            "{name:?}: disk {on_disk:?}, running {}, files {listing:?}, screen tail {tail:?}",
+            ed.is_running()
+        );
+    }
     ed.keys(&format!("iy{ESC}"));
     ed.signal(libc::SIGTERM);
     assert_eq!(ed.exit_status(), -libc::SIGTERM);
