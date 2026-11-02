@@ -778,13 +778,37 @@ fn skip_unescaped(s: &str, from: usize, delim: char, n: usize) -> Option<usize> 
     None
 }
 
+/// Why a cmdline-special expansion ([`expand_bang`], [`expand_filename`]) failed. `Display` is nvim's
+/// message, shown on the status line.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExpandError {
+    /// A `!` with no previous shell command (`E34`).
+    NoPreviousCommand,
+    /// A `%` (or `#`) that names no file (`E499`).
+    EmptyFileName,
+    /// A `#` with no alternate file (`E194`).
+    NoAlternateFile,
+}
+
+impl std::fmt::Display for ExpandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ExpandError::NoPreviousCommand => "E34: No previous command",
+            ExpandError::EmptyFileName => {
+                "E499: Empty file name for '%' or '#', only works with \":p:h\""
+            }
+            ExpandError::NoAlternateFile => "E194: No alternate file name to substitute for '#'",
+        })
+    }
+}
+
 /// Expand the `!` in a shell command (`:!`, `:{range}!`, `:r !`): each unescaped `!` becomes the previous
 /// shell command (`:help :!`), so `:!!` repeats it; `\!` is a literal `!`. With no previous command a `!`
 /// is `E34`.
 ///
 /// # Errors
-/// `E34: No previous command` when `cmd` holds an unescaped `!` and `prev` is `None`.
-pub fn expand_bang(cmd: &str, prev: Option<&str>) -> Result<String, String> {
+/// [`ExpandError::NoPreviousCommand`] when `cmd` holds an unescaped `!` and `prev` is `None`.
+pub fn expand_bang(cmd: &str, prev: Option<&str>) -> Result<String, ExpandError> {
     let mut out = String::with_capacity(cmd.len());
     let mut chars = cmd.chars().peekable();
     while let Some(c) = chars.next() {
@@ -793,7 +817,7 @@ pub fn expand_bang(cmd: &str, prev: Option<&str>) -> Result<String, String> {
                 out.push('!');
                 chars.next();
             }
-            '!' => out.push_str(prev.ok_or_else(|| "E34: No previous command".to_string())?),
+            '!' => out.push_str(prev.ok_or(ExpandError::NoPreviousCommand)?),
             _ => out.push(c),
         }
     }
@@ -805,9 +829,13 @@ pub fn expand_bang(cmd: &str, prev: Option<&str>) -> Result<String, String> {
 /// (`%:p`, `%:h`, …) and `#{n}` buffer numbers are not modeled: a `#` before a digit stays literal.
 ///
 /// # Errors
-/// `E499` when `%` (or `#`) names no file, `E194` when there is no alternate file for `#`.
-pub fn expand_filename(arg: &str, cur: Option<&str>, alt: Option<&str>) -> Result<String, String> {
-    const E499: &str = "E499: Empty file name for '%' or '#', only works with \":p:h\"";
+/// [`ExpandError::EmptyFileName`] when `%` names no file, [`ExpandError::NoAlternateFile`] when there is no
+/// alternate file for `#`.
+pub fn expand_filename(
+    arg: &str,
+    cur: Option<&str>,
+    alt: Option<&str>,
+) -> Result<String, ExpandError> {
     let mut out = String::with_capacity(arg.len());
     let mut chars = arg.chars().peekable();
     while let Some(c) = chars.next() {
@@ -815,11 +843,9 @@ pub fn expand_filename(arg: &str, cur: Option<&str>, alt: Option<&str>) -> Resul
             '\\' if matches!(chars.peek(), Some('%' | '#')) => {
                 out.extend(chars.next());
             }
-            '%' => out.push_str(cur.ok_or_else(|| E499.to_string())?),
+            '%' => out.push_str(cur.ok_or(ExpandError::EmptyFileName)?),
             '#' if !chars.peek().is_some_and(char::is_ascii_digit) => {
-                out.push_str(alt.ok_or_else(|| {
-                    "E194: No alternate file name to substitute for '#'".to_string()
-                })?)
+                out.push_str(alt.ok_or(ExpandError::NoAlternateFile)?)
             }
             _ => out.push(c),
         }
@@ -1833,10 +1859,7 @@ mod bar_and_expansion_tests {
         assert_eq!(expand_bang("! | wc", Some("ls")), Ok("ls | wc".into()));
         assert_eq!(expand_bang(r"echo a\!b", None), Ok("echo a!b".into()));
         assert_eq!(expand_bang("echo hi", None), Ok("echo hi".into()));
-        assert_eq!(
-            expand_bang("!", None),
-            Err("E34: No previous command".into())
-        );
+        assert_eq!(expand_bang("!", None), Err(ExpandError::NoPreviousCommand));
         // `:!!` parses as a shell run of `!`, which the session expands.
         assert_eq!(parse_ex("!!"), Ex::Shell("!".into()));
     }
@@ -1852,11 +1875,21 @@ mod bar_and_expansion_tests {
         );
         assert_eq!(expand_filename(r"a\%b\#", cur, alt), Ok("a%b#".into()));
         assert_eq!(expand_filename("#2", cur, alt), Ok("#2".into()));
-        assert!(expand_filename("%", None, alt)
-            .unwrap_err()
-            .starts_with("E499"));
-        assert!(expand_filename("#", cur, None)
-            .unwrap_err()
-            .starts_with("E194"));
+        assert_eq!(
+            expand_filename("%", None, alt),
+            Err(ExpandError::EmptyFileName)
+        );
+        assert_eq!(
+            expand_filename("#", cur, None),
+            Err(ExpandError::NoAlternateFile)
+        );
+        assert!(ExpandError::EmptyFileName.to_string().starts_with("E499:"));
+        assert!(ExpandError::NoAlternateFile
+            .to_string()
+            .starts_with("E194:"));
+        assert_eq!(
+            ExpandError::NoPreviousCommand.to_string(),
+            "E34: No previous command"
+        );
     }
 }

@@ -1822,7 +1822,7 @@ impl Session {
             crate::input::expand_filename(arg, cur_name.as_deref(), alt_name.as_deref())
         };
         // A shell command: `%`/`#` first, then `!` → the previous command; remembered for the next `!`.
-        let mut shell_cmd = |cmd: &str| -> Result<String, String> {
+        let mut shell_cmd = |cmd: &str| -> Result<String, crate::input::ExpandError> {
             let cmd = crate::input::expand_bang(&expand(cmd)?, last_shell.as_deref())?;
             *last_shell = Some(cmd.clone());
             Ok(cmd)
@@ -1850,7 +1850,7 @@ impl Session {
         let ex = match ex {
             Ok(ex) => ex,
             Err(e) => {
-                *status = e;
+                *status = e.to_string();
                 return;
             }
         };
