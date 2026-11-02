@@ -215,3 +215,35 @@ fn close_keeps_a_modified_buffer_and_q_refuses() {
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&b).unwrap(), b"wo\n");
 }
+
+/// Open `start` bytes in a fresh editor, type `keys`, then `:wq`; returns the saved bytes.
+fn edit_and_save(start: &[u8], keys: &str) -> Vec<u8> {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", start);
+    let mut ed = Editor::start(&dir, &[&file]);
+    ed.keys(keys);
+    ed.keys(&format!("{ESC}:wq\r"));
+    assert_eq!(ed.exit_status(), 0, "ruse exited cleanly after {keys:?}");
+    std::fs::read(&file).unwrap()
+}
+
+/// #691: after `:g/x/d` the cursor is on the next line, not a stale offset inside a character.
+#[test]
+fn global_delete_leaves_the_cursor_on_a_character() {
+    let ko = "a\nx\n한글한\n".as_bytes();
+    assert_eq!(edit_and_save(ko, "Gl:g/x/d\rx"), "a\n글한\n".as_bytes());
+    assert_eq!(edit_and_save(ko, "Gl:g/x/d\r~"), "a\n한글한\n".as_bytes());
+    assert_eq!(
+        edit_and_save(b"abc\nx\ndef\n", "G:g/x/d\riZ"),
+        b"abc\nZdef\n"
+    );
+}
+
+/// #691: a mark left past a shrinking Ex edit is snapped onto a character boundary.
+#[test]
+fn ex_delete_snaps_marks_onto_characters() {
+    let ko = "a\n한글한\n".as_bytes();
+    assert_eq!(edit_and_save(ko, "jlmagg:1d\rd`a"), "글한\n".as_bytes());
+    let out = edit_and_save(ko, "jlmagg:1d\rg~`a");
+    assert!(std::str::from_utf8(&out).is_ok(), "{out:?}");
+}

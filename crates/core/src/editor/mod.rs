@@ -271,6 +271,49 @@ pub struct EditorState {
 }
 
 impl View {
+    /// Clamp and snap every stored offset (change list, marks, `gi`, `gv`, `[`/`]`, jumps) into `bytes`, so an
+    /// edit that shrank the buffer or split a character under one can never make a later jump slice out of
+    /// bounds or inside a UTF-8 sequence.
+    pub(crate) fn snap_offsets(&mut self, bytes: &[u8]) {
+        let len = bytes.len();
+        for c in self.changes.iter_mut() {
+            *c = snap(bytes, (*c).min(len));
+        }
+        // Named marks (`m{a-z}`) snap into range too, so an edit that shrank the buffer under a mark can never
+        // make a later `` `{a-z} `` jump out of bounds.
+        for m in self.named_marks.iter_mut().flatten() {
+            *m = snap(bytes, (*m).min(len));
+        }
+        // The last-insert position (`gi`) snaps the same way.
+        if let Some(li) = self.last_insert {
+            self.last_insert = Some(snap(bytes, li.min(len)));
+        }
+        // The last-visual store (behind `gv` and the `<`/`>` marks) snaps both ends into range so an edit that
+        // shrank the buffer under a remembered selection can never make a later `gv`/`` `< ``/`` `> `` slice out
+        // of bounds. (Vim keeps the raw columns; snapping only clamps out-of-buffer offsets, never in-range ones.)
+        if let Some((a, e, kind)) = self.last_visual {
+            self.last_visual = Some((snap(bytes, a.min(len)), snap(bytes, e.min(len)), kind));
+        }
+        // The `[`/`]` change marks, an in-flight Insert-session start, the Visual anchor and the Emacs mark
+        // snap into range too.
+        for p in [
+            &mut self.anchor,
+            &mut self.mark,
+            &mut self.change_start,
+            &mut self.change_end,
+            &mut self.insert_start,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            *p = snap(bytes, (*p).min(len));
+        }
+        // Jumplist entries snap into range too (a buffer-resizing edit under a jump keeps it valid).
+        for j in self.jumps.iter_mut() {
+            *j = snap(bytes, (*j).min(len));
+        }
+    }
+
     /// A fresh view over `doc`: cursor at the start, Normal mode, empty registers/sessions. Config
     /// fields hold the schema defaults (spec/config-schema.yaml: editor.tab_width=4,
     /// editor.indent_style=space); runtime config wiring is deferred (as with editor.scrolloff).
@@ -875,6 +918,7 @@ impl EditorState {
             let nb = self.doc.bytes();
             self.view.cursor = crate::pos::nth_line_start(nb, li).min(nb.len());
         }
+        self.settle_offsets();
         SubOutcome {
             replacements,
             lines: lines_seen.len(),
@@ -974,8 +1018,21 @@ impl EditorState {
                     .with_hint(GroupHint::BreakBefore);
                 self.doc.apply(txn).expect("global-delete applies cleanly");
                 self.view.last_was_edit = true;
+                // Like Vim, the cursor lands on the line that followed the last deleted one (the last line if
+                // that was the end), at its first non-blank.
+                let last = marked[marked.len() - 1] + 1 - marked.len();
                 let nb = self.doc.bytes();
-                self.view.cursor = self.view.cursor.min(nb.len());
+                let line_start = crate::pos::nth_line_start(nb, last).min(nb.len());
+                let line_start = if line_start == nb.len() && nb.ends_with(b"\n") {
+                    nb[..nb.len() - 1]
+                        .iter()
+                        .rposition(|&c| c == b'\n')
+                        .map_or(0, |i| i + 1)
+                } else {
+                    line_start
+                };
+                self.view.cursor = motion::first_non_blank(nb, line_start);
+                self.settle_offsets();
                 Ok(marked.len())
             }
             GlobalCmd::Substitute {
@@ -1049,6 +1106,7 @@ impl EditorState {
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = start.min(nb.len());
+        self.settle_offsets();
         last - first + 1
     }
 
@@ -1227,6 +1285,7 @@ impl EditorState {
         self.doc.apply(txn).expect("line relocate applies cleanly");
         self.view.last_was_edit = true;
         self.view.cursor = cursor.min(self.doc.bytes().len());
+        self.settle_offsets();
         Some(count)
     }
 
@@ -1312,6 +1371,7 @@ impl EditorState {
         // Vim leaves the cursor on the first non-blank of the last inserted line.
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
+        self.settle_offsets();
         count
     }
 
@@ -1390,6 +1450,7 @@ impl EditorState {
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
+        self.settle_offsets();
         count
     }
 
@@ -1492,6 +1553,7 @@ impl EditorState {
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
+        self.settle_offsets();
         input_count
     }
 
@@ -1584,6 +1646,7 @@ impl EditorState {
         self.doc.apply(txn).expect("sort applies cleanly");
         self.view.last_was_edit = true;
         self.view.cursor = cursor.min(self.doc.bytes().len());
+        self.settle_offsets();
         removed
     }
 
@@ -1617,7 +1680,16 @@ impl EditorState {
             self.view.last_was_edit = true;
             let clamped = self.view.cursor.min(self.doc.bytes().len());
             self.set_cursor(clamped);
+            self.settle_offsets();
         }
+    }
+
+    /// After an edit applied outside [`commit`]: snap the cursor and every stored offset into the new
+    /// buffer (#691). Ex edits bypass `commit`, so without this they leave offsets mid-character.
+    fn settle_offsets(&mut self) {
+        let bytes = self.doc.bytes();
+        self.view.cursor = snap(bytes, self.view.cursor);
+        self.view.snap_offsets(bytes);
     }
 
     /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
@@ -2038,44 +2110,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             });
         }
     }
-    let len = st.doc.bytes().len();
-    for c in st.view.changes.iter_mut() {
-        *c = snap(st.doc.bytes(), (*c).min(len));
-    }
-    // Named marks (`m{a-z}`) snap into range too, so an edit that shrank the buffer under a mark can never
-    // make a later `` `{a-z} `` jump out of bounds.
-    for m in st.view.named_marks.iter_mut().flatten() {
-        *m = snap(st.doc.bytes(), (*m).min(len));
-    }
-    // The last-insert position (`gi`) snaps the same way.
-    if let Some(li) = st.view.last_insert {
-        st.view.last_insert = Some(snap(st.doc.bytes(), li.min(len)));
-    }
-    // The last-visual store (behind `gv` and the `<`/`>` marks) snaps both ends into range so an edit that
-    // shrank the buffer under a remembered selection can never make a later `gv`/`` `< ``/`` `> `` slice out
-    // of bounds. (Vim keeps the raw columns; snapping only clamps out-of-buffer offsets, never in-range ones.)
-    if let Some((a, e, kind)) = st.view.last_visual {
-        st.view.last_visual = Some((
-            snap(st.doc.bytes(), a.min(len)),
-            snap(st.doc.bytes(), e.min(len)),
-            kind,
-        ));
-    }
-    // The `[`/`]` change marks (and an in-flight Insert-session start) snap into range too.
-    for p in [
-        &mut st.view.change_start,
-        &mut st.view.change_end,
-        &mut st.view.insert_start,
-    ]
-    .into_iter()
-    .flatten()
-    {
-        *p = snap(st.doc.bytes(), (*p).min(len));
-    }
-    // Jumplist entries snap into range too (a buffer-resizing edit under a jump keeps it valid).
-    for j in st.view.jumps.iter_mut() {
-        *j = snap(st.doc.bytes(), (*j).min(len));
-    }
+    st.view.snap_offsets(st.doc.bytes());
     // The `<BS>`-restore history lives only while a replace session is active; drop it on any exit.
     if !matches!(st.view.mode, Mode::Replace | Mode::VirtualReplace) {
         st.view.replace_stack.clear();
