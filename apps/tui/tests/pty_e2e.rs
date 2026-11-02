@@ -247,3 +247,45 @@ fn ex_delete_snaps_marks_onto_characters() {
     let out = edit_and_save(ko, "jlmagg:1d\rg~`a");
     assert!(std::str::from_utf8(&out).is_ok(), "{out:?}");
 }
+
+/// #848: `:e` on a file that is already open focuses its buffer instead of loading a second Document that
+/// a later `:w` would use to overwrite the first one's saved edits.
+#[test]
+fn reopening_an_open_file_reuses_its_buffer() {
+    for spelling in ["f.txt", "./f.txt"] {
+        let dir = Scratch::new();
+        let file = dir.file("f.txt", b"orig\n");
+        let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
+        ed.keys(&format!(":e {spelling}\riA{ESC}:w\r:b 1\riB{ESC}:w\r:q\r"));
+        assert_eq!(ed.exit_status(), 0, ":e {spelling}");
+        assert_eq!(std::fs::read(&file).unwrap(), b"BAorig\n", ":e {spelling}");
+    }
+}
+
+/// #859: a buffer opened with `:e` gets the startup recovery offer. `q` cancels the open and keeps the
+/// journal; `r` loads the recovered text as an unsaved change, which `:w` then saves.
+#[test]
+fn edit_offers_recovery_for_a_journaled_file() {
+    let dir = Scratch::new();
+    dir.file("a.txt", b"a\n");
+    let b = dir.file("b.txt", b"on disk\n");
+    ruse_tui::persist::journal::append(Some(&b), b"UNSAVED B\n").unwrap();
+    let journal = ruse_tui::persist::journal::journal_path(Some(&b));
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("a.txt")]);
+    let before = ed.screen_bytes().len();
+    ed.keys(":e b.txt\r");
+    assert!(
+        ed.screen_bytes()[before..].contains("recovered from a previous session"),
+        ":e must offer recovery"
+    );
+    ed.keys("q:e b.txt\r");
+    assert!(ed.is_running());
+    assert!(journal.exists(), "q keeps the journal");
+    assert_eq!(std::fs::read(&b).unwrap(), b"on disk\n");
+    ed.keys("r:q\r");
+    assert!(ed.is_running(), "the recovered text is an unsaved change");
+    ed.keys(":w\r:q\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&b).unwrap(), b"UNSAVED B\n");
+    assert!(!journal.exists(), "the save made the journal redundant");
+}

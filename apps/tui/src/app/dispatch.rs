@@ -4,47 +4,127 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{Command, DocumentId, Effect, Mode, SplitDir, SubRange, Trace, Workspace};
+use ruse_core::{
+    Command, DocumentId, Effect, Mode, SplitDir, SubRange, Trace, TransactionOrigin, Workspace,
+};
 
 use crate::highlight;
 use crate::input::{BufTarget, Ex, Feed, InputEngine};
 use crate::persist;
-use crate::ui::prompts::Confirm;
+use crate::ui::prompts::{prompt_recovery, Confirm, RecoveryChoice};
 
 /// The per-buffer syntax-highlighter registry (F-007 / F-015), keyed by [`DocumentId`]. Shared by the
 /// session loop and the LSP coordinator (both open buffers that need a highlighter).
 pub(crate) type Highlighters = HashMap<DocumentId, highlight::CachedHighlight>;
 
-/// Open `file` into a NEW buffer, focus it, register its file identity + highlighter, and return a status
-/// line. Shared by the file picker / `:e` (session) and goto/rename/references (LSP coordinator). `E484`
-/// on a read error.
+/// What [`open_file_into_buffer`] did: the status line to show, and the buffer now focused on `file`
+/// (`None` when nothing was opened — a read error, or the user kept a recovery journal and backed out).
+pub(crate) struct Opened {
+    pub(crate) status: String,
+    pub(crate) id: Option<DocumentId>,
+}
+
+/// The buffer already holding `path`, matched on the canonical path so `f.txt`, `./f.txt` and an
+/// absolute spelling name one file (#848). A path that no longer resolves compares as written.
+pub(crate) fn buffer_for_path(files: &Files, path: &Path) -> Option<DocumentId> {
+    let canon = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let target = canon(path);
+    files
+        .iter()
+        .filter(|(_, bf)| canon(&bf.path) == target)
+        .map(|(id, _)| *id)
+        .min_by_key(|id| id.0)
+}
+
+/// Open `file` and focus it, register its file identity + highlighter, and return a status line. Shared
+/// by the file picker / `:e` (session) and goto/rename/references (LSP coordinator). `E484` on a read
+/// error.
+///
+/// A file that is already open is NOT read again: its existing buffer is focused, as in Neovim (#848),
+/// so two Documents never shadow one file and overwrite each other on `:w`. A file with a crash journal
+/// that differs from disk gets the same recovery prompt as the startup file (#859); keeping the journal
+/// (`q`) cancels the open, so the journal is never cleared by a later `:w` the user did not choose.
 pub(crate) fn open_file_into_buffer(
     file: &str,
     ws: &mut Workspace,
     files: &mut Files,
     highlighters: &mut Highlighters,
-) -> String {
+) -> Opened {
     let p = PathBuf::from(file);
-    match fs::read(&p) {
-        Ok(raw) => {
-            let f = persist::encoding::FileFormat::detect(&raw);
-            let clean = f.to_buffer(&raw);
-            let id = ws.add_buffer(clean, Some(file.to_string()));
-            ws.focus_buffer(id);
-            if let Some(h) = p
-                .extension()
-                .and_then(|e| e.to_str())
-                .and_then(highlight::CachedHighlight::for_ext)
-            {
-                highlighters.insert(id, h);
+    if let Some(id) = buffer_for_path(files, &p) {
+        ws.focus_buffer(id);
+        return Opened {
+            status: format!("\"{file}\" (already open)"),
+            id: Some(id),
+        };
+    }
+    let raw = match fs::read(&p) {
+        Ok(raw) => raw,
+        Err(e) => {
+            return Opened {
+                status: format!("E484: can't open {file}: {e}"),
+                id: None,
             }
-            files.insert(id, BufferFile { path: p, fmt: f });
-            format!("\"{file}\" {} bytes", raw.len())
         }
-        Err(e) => format!("E484: can't open {file}: {e}"),
+    };
+    let f = persist::encoding::FileFormat::detect(&raw);
+    let disk = f.to_buffer(&raw);
+    let recovered =
+        match persist::assess_recovery(&disk, persist::journal::replay(Some(&p)).as_deref()) {
+            persist::Recovery::None => None,
+            persist::Recovery::Available(rec) => {
+                match prompt_recovery(&mut io::stdout(), "q: cancel the open and keep them") {
+                    Ok(RecoveryChoice::Recover) => Some(rec),
+                    Ok(RecoveryChoice::Discard) => {
+                        persist::journal::clear(Some(&p)); // discarded on the user's say-so
+                        None
+                    }
+                    Ok(RecoveryChoice::Quit) | Err(_) => {
+                        return Opened {
+                            status: format!(
+                                "\"{file}\" not opened: recovery journal kept ({})",
+                                persist::journal::journal_path(Some(&p)).display()
+                            ),
+                            id: None,
+                        }
+                    }
+                }
+            }
+        };
+    let id = ws.add_buffer(disk, Some(file.to_string()));
+    ws.focus_buffer(id);
+    let status = match recovered {
+        Some(rec) => {
+            // Apply the recovered text as an edit over the disk version, so the buffer is modified (a
+            // `:q` refuses) and `u` returns to what is on disk. Non-UTF-8 bytes cannot travel through
+            // a text edit; load them as the buffer instead, as the startup path does.
+            match String::from_utf8(rec) {
+                Ok(text) => {
+                    let len = ws.focused().doc.bytes().len();
+                    ws.apply_edits(&[(0, len, text)], TransactionOrigin::UserInput);
+                }
+                Err(e) => ws.reload_focused(e.into_bytes()),
+            }
+            ws.place_focused_cursor(0);
+            format!("\"{file}\" recovered unsaved changes (:w to save)")
+        }
+        None => format!("\"{file}\" {} bytes", raw.len()),
+    };
+    if let Some(h) = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .and_then(highlight::CachedHighlight::for_ext)
+    {
+        highlighters.insert(id, h);
+    }
+    files.insert(id, BufferFile { path: p, fmt: f });
+    Opened {
+        status,
+        id: Some(id),
     }
 }
 

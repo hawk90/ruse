@@ -189,20 +189,22 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 
     // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
     let (initial, mut status) = match recovery {
-        persist::Recovery::Available(rec) => match prompt_recovery(&mut out)? {
-            RecoveryChoice::Recover => (
-                rec,
-                String::from("ruse — recovered unsaved changes (:w to save)"),
-            ),
-            RecoveryChoice::Discard => {
-                persist::journal::clear(path.as_deref()); // discarded on the user's say-so
-                (
-                    disk,
-                    String::from("ruse — recovery discarded; opened disk version"),
-                )
+        persist::Recovery::Available(rec) => {
+            match prompt_recovery(&mut out, "q: quit and keep them")? {
+                RecoveryChoice::Recover => (
+                    rec,
+                    String::from("ruse — recovered unsaved changes (:w to save)"),
+                ),
+                RecoveryChoice::Discard => {
+                    persist::journal::clear(path.as_deref()); // discarded on the user's say-so
+                    (
+                        disk,
+                        String::from("ruse — recovery discarded; opened disk version"),
+                    )
+                }
+                RecoveryChoice::Quit => return Ok(()), // the journal stays for the next start
             }
-            RecoveryChoice::Quit => return Ok(()), // the journal stays for the next start
-        },
+        }
         persist::Recovery::None => (disk, String::from("ruse — :q to quit")),
     };
 
@@ -589,6 +591,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // F-031 3b-2c: read each visible image's pixel dimensions (IHDR only) so render can size it to its
         // natural aspect and centre it. Cheap — only the 24-byte header, only when graphics are on.
         let image_dims = read_image_dims(has_graphics, virt_lines);
+        // A mid-session recovery prompt (#859) cleared the terminal: repaint every cell this frame.
+        if crate::ui::prompts::take_screen_clobbered() {
+            prev_frame = screen::Screen::new(0, 0);
+        }
         let images = render(
             &mut out,
             &ws,
@@ -794,7 +800,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                         &mut ws,
                         &mut files,
                         &mut highlighters,
-                    );
+                    )
+                    .status;
                 }
             }
             if !matches!(outcome, PickOutcome::Continue) {
@@ -808,23 +815,21 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         if let Some(outcome) = ref_picker.as_mut().map(|p| p.on_key(key)) {
             if let PickOutcome::Accept = outcome {
                 if let Some((uri, l, c)) = ref_picker.as_ref().and_then(|p| p.selected().cloned()) {
+                    // The open helper focuses the buffer already holding this file (#848), so the
+                    // current file and another open file both move without a second Document.
                     let path = crate::lsp::uri_to_path(&uri);
                     let target = std::fs::canonicalize(&path).unwrap_or(path);
-                    let cur_path = files
-                        .get(&ws.focused_buffer())
-                        .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
-                    if cur_path.as_deref() == Some(target.as_path()) {
+                    let opened = open_file_into_buffer(
+                        &target.display().to_string(),
+                        &mut ws,
+                        &mut files,
+                        &mut highlighters,
+                    );
+                    if opened.id.is_some() {
                         let bytes = ws.focused().doc.bytes().to_vec();
                         ws.place_focused_cursor(crate::lsp::model::lsp_pos_to_byte(&bytes, l, c));
                     } else {
-                        open_file_into_buffer(
-                            &target.display().to_string(),
-                            &mut ws,
-                            &mut files,
-                            &mut highlighters,
-                        );
-                        let bytes = ws.focused().doc.bytes().to_vec();
-                        ws.place_focused_cursor(crate::lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                        status = opened.status;
                     }
                 }
             }
@@ -1667,7 +1672,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     // `:e {file}` opens a file into a new buffer (F-007) — shared with the file picker.
                     Ex::Edit(file) => {
                         status =
-                            open_file_into_buffer(&file, &mut ws, &mut files, &mut highlighters);
+                            open_file_into_buffer(&file, &mut ws, &mut files, &mut highlighters)
+                                .status;
                     }
                     // `:e!` reloads the focused buffer's file from disk, discarding unsaved changes.
                     Ex::EditReload => {

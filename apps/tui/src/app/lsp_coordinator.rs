@@ -460,9 +460,14 @@ impl LspCoordinator {
             if cur_path.as_deref() == Some(target.as_path()) {
                 ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(snapshot, l, c));
             } else {
-                open_file_into_buffer(&target.display().to_string(), ws, files, highlighters);
-                let bytes = ws.focused().doc.bytes().to_vec();
-                ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                let opened =
+                    open_file_into_buffer(&target.display().to_string(), ws, files, highlighters);
+                if opened.id.is_some() {
+                    let bytes = ws.focused().doc.bytes().to_vec();
+                    ws.place_focused_cursor(lsp::model::lsp_pos_to_byte(&bytes, l, c));
+                } else {
+                    *status = opened.status;
+                }
             }
         }
         // Format edits: one Lsp-origin undo group.
@@ -833,17 +838,12 @@ fn apply_workspace_edit(
     for (uri, ledits) in edit {
         let path = lsp::uri_to_path(&uri);
         let target = std::fs::canonicalize(&path).unwrap_or(path);
-        let existing = files.iter().find_map(|(id, bf)| {
-            (std::fs::canonicalize(&bf.path).ok().as_deref() == Some(target.as_path()))
-                .then_some(*id)
-        });
-        match existing {
-            Some(id) => {
-                ws.focus_buffer(id);
-            }
-            None => {
-                open_file_into_buffer(&target.display().to_string(), ws, files, highlighters);
-            }
+        // The open helper reuses a buffer already holding the file (#848). A file it could not open
+        // (read error, or a recovery journal the user kept) is skipped rather than having its edits
+        // land in whatever buffer happens to be focused.
+        let opened = open_file_into_buffer(&target.display().to_string(), ws, files, highlighters);
+        if opened.id.is_none() {
+            continue;
         }
         let bytes = ws.focused().doc.bytes().to_vec();
         let byte_edits: Vec<(usize, usize, String)> = ledits

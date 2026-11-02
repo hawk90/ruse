@@ -2,6 +2,7 @@
 //! `:s///c` interactive confirm loop (F-009 #2).
 
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::style::Print;
@@ -35,16 +36,32 @@ pub(crate) fn recovery_choice(key: KeyEvent) -> Option<RecoveryChoice> {
     }
 }
 
+/// Set when a full-screen prompt has painted over the editor, so the next frame repaints every cell
+/// instead of diffing against a screen the terminal no longer shows.
+static SCREEN_CLOBBERED: AtomicBool = AtomicBool::new(false);
+
+/// Whether a prompt painted over the editor since the last call (and reset the flag).
+pub(crate) fn take_screen_clobbered() -> bool {
+    SCREEN_CLOBBERED.swap(false, Ordering::Relaxed)
+}
+
 /// Ask what to do with recovered unsaved changes (F-008 #3). Renders a minimal full-screen prompt and
-/// blocks until a key maps to a choice. The original file is never touched here (#4).
-pub(crate) fn prompt_recovery(out: &mut io::Stdout) -> io::Result<RecoveryChoice> {
+/// blocks until a key maps to a choice. The original file is never touched here (#4). `quit_label`
+/// describes `q`: quitting the editor at startup, cancelling the open for a file opened later (#859).
+pub(crate) fn prompt_recovery(
+    out: &mut io::Stdout,
+    quit_label: &str,
+) -> io::Result<RecoveryChoice> {
+    SCREEN_CLOBBERED.store(true, Ordering::Relaxed);
     queue!(
         out,
         terminal::Clear(ClearType::All),
         cursor::MoveTo(0, 0),
         Print("ruse: unsaved changes were recovered from a previous session."),
         cursor::MoveTo(0, 1),
-        Print("r: recover them   d: delete them and open the on-disk file   q: quit and keep them"),
+        Print(format!(
+            "r: recover them   d: delete them and open the on-disk file   {quit_label}"
+        )),
     )?;
     out.flush()?;
     loop {
