@@ -1,5 +1,5 @@
-//! Parity comparison harness — replays the Neovim fixture corpus through ruse's REAL input engine +
-//! core and reports, per fixture, whether ruse's observable state matches the pinned oracle.
+//! Parity comparison harness — replays the Neovim fixture corpus through ruse's REAL key path (the
+//! headless session over `Session::on_key`, #895) and reports, per fixture, whether ruse's observable state matches the pinned oracle.
 //!
 //! RATCHET (#883): a divergence is allowed only when the fixture is named in the committed
 //! `tests/parity/vim/known-divergences.txt`. The test fails on any other divergent fixture (a regression
@@ -9,137 +9,29 @@
 //! The corpus is `tests/parity/vim/fixtures/corpus.yaml` — JSON-in-YAML (a subset of YAML 1.2),
 //! captured by `tools/parity/oracle.py`. Run with `-- --nocapture` to see the tally.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{apply_command, EditorState};
-use ruse_tui::input::{Feed, InputEngine};
+use ruse_tui::headless::Headless;
 use serde_json::Value;
 
 mod parity_ratchet;
 
-/// Tokenize a fixture key string into key events, matching `nvim_replace_termcodes` for the few
-/// special tokens the corpus uses (`<Esc>`, `<CR>`, `<BS>`, `<Tab>`, `<Space>`). Everything else is a
-/// literal character key. Case-insensitive on the token name, as Vim's notation is.
-fn tokenize(keys: &str) -> Vec<KeyEvent> {
-    let ev = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
-    let mut out = Vec::new();
-    let chars: Vec<char> = keys.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i] == '<' {
-            if let Some(end) = chars[i + 1..].iter().position(|&c| c == '>') {
-                let name: String = chars[i + 1..i + 1 + end].iter().collect();
-                let lower = name.to_ascii_lowercase();
-                let code = match lower.as_str() {
-                    "esc" => Some(KeyCode::Esc),
-                    "cr" | "enter" => Some(KeyCode::Enter),
-                    "bs" => Some(KeyCode::Backspace),
-                    "tab" => Some(KeyCode::Tab),
-                    "space" => Some(KeyCode::Char(' ')),
-                    _ => None,
-                };
-                if let Some(code) = code {
-                    out.push(ev(code));
-                    i += end + 2;
-                    continue;
-                }
-                // `<C-x>` — a CTRL-modified key (e.g. `<C-o>`, `<C-g>`), matching nvim_replace_termcodes.
-                // The name is `c-<char>`; emit the base char with the CONTROL modifier so the input
-                // engine's ctrl checks (CTRL-O one-shot, CTRL-G undo-break) fire.
-                if let Some(rest) = lower.strip_prefix("c-") {
-                    let rc: Vec<char> = rest.chars().collect();
-                    if rc.len() == 1 {
-                        out.push(KeyEvent::new(KeyCode::Char(rc[0]), KeyModifiers::CONTROL));
-                        i += end + 2;
-                        continue;
-                    }
-                }
-            }
-        }
-        out.push(ev(KeyCode::Char(chars[i])));
-        i += 1;
-    }
-    out
+/// Drive ruse: open the fixture's lines in a headless session and type the fixture's keys (Vim notation,
+/// as `nvim_replace_termcodes` reads it) through the real key path: the session's intercepts, the input
+/// engine and the Ex dispatch, exactly as the binary routes them (#895). The oracle runs `-u NONE`, so the
+/// session uses Vim's factory search case, not ruse's shipped smartcase.
+fn drive_ruse(lines: &[String], keys: &str) -> Headless {
+    let mut h = Headless::vim(&lines.join("\n")).vanilla_search_case();
+    h.keys(keys);
+    h
 }
 
-/// Drive ruse: feed each key through the input engine at the current mode, applying any completed
-/// command to the core. This mirrors the frontend loop in `main.rs`.
-fn drive_ruse(lines: &[String], keys: &str) -> EditorState {
-    let mut st = EditorState::new(lines.join("\n").into_bytes());
-    let mut engine = InputEngine::new();
-    let events = tokenize(keys);
-    let mut i = 0;
-    while i < events.len() {
-        let key = events[i];
-        let mode = st.mode();
-        match engine.feed(key, mode) {
-            Feed::Cmd(cmd) => {
-                apply_command(&mut st, &cmd);
-            }
-            // `.` (dot-repeat) expands to the recorded change's command list; apply each in turn.
-            Feed::Replay(cmds) => {
-                for cmd in cmds {
-                    apply_command(&mut st, &cmd);
-                }
-            }
-            // `/` opens the command-line namespace (F-026); the engine now OWNS the pattern buffer, so
-            // the subsequent pattern chars and the terminating `<CR>` are fed straight through
-            // `engine.feed` — the Enter yields the folded `Feed::Cmd(Search…)` (or `Feed::ExecuteEx`
-            // for a `:`-line, of which the corpus has none). No manual pattern collection needed.
-            Feed::ExecuteEx(_)
-            | Feed::CmdlineInsertUnder { .. }
-            | Feed::FilterMotion { .. }
-            | Feed::Pending
-            | Feed::Ignored => {}
-        }
-        i += 1;
-    }
-    st
+fn ruse_text(h: &Headless) -> Vec<String> {
+    h.text().split('\n').map(str::to_string).collect()
 }
 
-/// ruse's byte-offset cursor as Neovim's (row 1-based, col 0-based byte) — the oracle's cursor shape.
-fn ruse_cursor(bytes: &[u8], off: usize) -> (i64, i64) {
-    let off = off.min(bytes.len());
-    let mut row = 1i64;
-    let mut line_start = 0usize;
-    for (i, &b) in bytes.iter().enumerate().take(off) {
-        if b == b'\n' {
-            row += 1;
-            line_start = i + 1;
-        }
-    }
-    (row, (off - line_start) as i64)
-}
-
-fn ruse_text(st: &EditorState) -> Vec<String> {
-    st.as_str()
-        .expect("fixture buffers are valid UTF-8")
-        .split('\n')
-        .map(str::to_string)
-        .collect()
-}
-
-fn reg_shape(r: &ruse_core::Register) -> (String, String) {
-    let ty = if r.is_empty() {
-        ""
-    } else if r.is_linewise() {
-        "linewise"
-    } else if r.is_blockwise() {
-        "blockwise"
-    } else {
-        "charwise"
-    };
-    (
-        String::from_utf8_lossy(r.text()).into_owned(),
-        ty.to_string(),
-    )
-}
-
-fn ruse_reg(st: &EditorState) -> (String, String) {
-    reg_shape(st.register())
-}
-
-fn ruse_reg0(st: &EditorState) -> (String, String) {
-    reg_shape(st.registers().yank0())
+/// ruse's register `name` as the oracle's `(text, type)`.
+fn ruse_reg(h: &mut Headless, name: char) -> (String, String) {
+    let (text, kind) = h.register(name);
+    (text, kind.to_string())
 }
 
 fn as_str_vec(v: &Value) -> Vec<String> {
@@ -156,13 +48,14 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     let lines = as_str_vec(&fx["lines"]);
     let expect = &fx["expect"];
 
-    let st = drive_ruse(&lines, keys);
+    let mut h = drive_ruse(&lines, keys);
 
     // ruse observables.
-    let r_text = ruse_text(&st);
-    let (r_row, r_col) = ruse_cursor(st.bytes(), st.cursor());
-    let (r_reg_text, r_reg_type) = ruse_reg(&st);
-    let (r_reg0_text, r_reg0_type) = ruse_reg0(&st);
+    let r_text = ruse_text(&h);
+    let (r_row, r_col) = h.cursor_row_col();
+    let (r_row, r_col) = (r_row as i64, r_col as i64);
+    let (r_reg_text, r_reg_type) = ruse_reg(&mut h, '"');
+    let (r_reg0_text, r_reg0_type) = ruse_reg(&mut h, '0');
 
     // oracle observables.
     let e_text = as_str_vec(&expect["text"]);

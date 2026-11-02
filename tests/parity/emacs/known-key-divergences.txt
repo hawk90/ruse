@@ -1,0 +1,37 @@
+# Fixtures in fixtures/corpus.yaml that ruse is ALLOWED to diverge on when the commands are TYPED through
+# the real key path (#895): apps/tui/tests/emacs_parity_compare.rs `parity_emacs_corpus_through_real_keys`
+# types each command's default Emacs binding into a headless Emacs-profile session. Same ratchet as
+# known-divergences.txt: a divergent fixture not listed fails, and so does a listed one that now verifies.
+#
+# Every entry below is #604: the Emacs view stays in Mode::Normal, so the session's Normal-mode intercepts
+# (C-f/C-b file and buffer pickers, C-p palette, C-l line picker, C-e/C-y scroll, C-d/C-u half-page, C-w
+# window prefix) run before the Emacs keymap.
+
+forward_char                    # C-f opens the file picker (#604)
+forward_char_twice              # C-f (#604)
+backward_char                   # C-b opens the buffer picker (#604)
+move_end_of_line                # C-e scrolls (#604)
+previous_line                   # C-p opens the command palette (#604)
+delete_char                     # C-d scrolls half a page (#604)
+kill_region                     # C-f, C-w window prefix (#604)
+kill_region_word                # C-w window prefix (#604)
+copy_region_keeps_text          # C-f (#604)
+exchange_point_and_mark         # C-f (#604)
+kill_word_then_yank             # C-e, C-y scroll (#604)
+copy_region_then_yank           # C-e, C-y (#604)
+kill_region_then_yank_at_end    # C-f, C-w, C-e, C-y (#604)
+kill_accumulate_breaks_on_move  # C-f (#604)
+delete_char_at_eol              # C-d (#604)
+delete_char_twice               # C-d (#604)
+end_of_line_multiline           # C-e (#604)
+next_line_then_end              # C-e (#604)
+kill_region_backward            # C-b, C-w (#604)
+kill_line_then_yank_at_bol      # C-y (#604)
+upcase_region                   # the C-u of C-x C-u scrolls half a page (#604)
+downcase_region                 # the C-l of C-x C-l opens the line picker (#604)
+kill_two_words_then_yank        # C-e, C-y (#604)
+kill_line_mid_then_yank         # C-y (#604)
+copy_region_then_upcase_region  # C-x C-u (#604)
+exchange_point_and_mark_twice   # C-f (#604)
+end_of_line_on_empty_line       # C-e (#604)
+end_of_line_from_bol            # C-e (#604)

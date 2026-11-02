@@ -351,8 +351,10 @@ generalize to any oracle:
 - **Config-dependent ops** (indent `>>`, etc.) carry a per-fixture `setup` ex-command so nvim runs under
   ruse's defaults (e.g. `set shiftwidth=4 expandtab`) — cross-default comparison is invalid; match config or
   the fixture lies.
-- **A divergence is allowed only when it is listed (#883).** `apps/tui/tests/parity_compare.rs` (and
-  `emacs_parity_compare.rs`) replays each fixture through ruse and reports verified-vs-divergent, then
+- **A divergence is allowed only when it is listed (#883).** `apps/tui/tests/parity_compare.rs` types each
+  fixture's keys into the headless session (the real key path, #895), `emacs_parity_compare.rs` resolves
+  each command by name and also types its default binding (ratcheted separately in
+  `tests/parity/emacs/known-key-divergences.txt`); each reports verified-vs-divergent, then
   checks the run against the committed `tests/parity/<editor>/known-divergences.txt`. It FAILS on a
   divergent fixture that is not listed (a regression, or a new fixture ruse does not match yet) and on a
   listed fixture that now verifies (delete the line), so the list only shrinks. The list is the work-list;
@@ -480,15 +482,22 @@ Two layers now drive the whole vertical, not just in-library units:
   F-027 vertical the inline `feed` unit tests cannot reach (translated edits on a real document,
   dot-repeat replaying the translated char, and the adversarial "and to nothing else" boundary at the
   document level).
+- **`ruse_tui::headless::Headless`** (#895) is a terminal-free session over the binary's real key path: it
+  owns the same `Session` `app/session.rs::run` drives and feeds keys through `Session::on_key` (macro layer,
+  session prefixes and chords, pickers, `H`/`M`/`L`, the input engine, the Ex dispatch), running the per-frame
+  work (`pre_frame`, `post_render`) before every key, macro-replayed keys included. Keys are Vim notation,
+  decoded as crossterm decodes a legacy terminal (`<C-\>` is `CTRL-4`, uppercase carries `SHIFT`). Tests read
+  the buffer, cursor, mode, mark, registers and status message. `apps/tui/tests/session_intercepts.rs`
+  repeats the `pty_intercepts.rs` cases through it in microseconds; the PTY file stays as the check that the
+  binary wires the same path.
 - **`apps/tui/tests/session_fuzz.rs`** is the **full-stack keystroke fuzzer**: random Vim keystroke
-  sessions (up to 140 keys) driven through the real engine with the mode following the REAL editor state,
-  applied to the core. It asserts the load-bearing kernel invariants after EVERY key (valid UTF-8, cursor
+  sessions (up to 140 keys) driven through the headless session, so every key takes the real key path. It asserts the load-bearing kernel invariants after EVERY key (valid UTF-8, cursor
   on a char boundary) and that a full undo of any session restores the initial buffer; a separate
   monotonic-alphabet variant (no in-session `u`/CTRL-R) asserts the full undo↔redo round trip. This is the
   first test to fuzz the COMPOSED stack over long sessions — where mode × operator × register × dot ×
   undo-grouping interactions live. (It already surfaced one finding — see below.)
-- **`apps/tui/tests/scenarios.rs`** is a curated set of realistic multi-step sessions with exact
-  end-states — dot-repeat × count, named-register yank/paste, visual + operator, search → change → `n` →
+- **`apps/tui/tests/scenarios.rs`** is a curated set of realistic multi-step sessions, typed through the
+  headless session (no hand mirror of `session.rs`), with exact end-states — dot-repeat × count, named-register yank/paste, visual + operator, search → change → `n` →
   `.`, substitute + undo grouping, blockwise-insert replication + undo, and multi-window buffer sharing —
   each a readable regression guard for a known-tricky cross-feature interaction. All pass, i.e. the
   compound behaviours match Vim, not just the single ops the oracle corpus covers.
@@ -506,6 +515,8 @@ This is the loop working as intended — the fuzzer found a real parity edge and
 contents, exit status and terminal teardown, not on screen scraping:
 
 - **`apps/tui/tests/pty_e2e.rs`** — edit/save/quit, failed writes, recovery prompts, signals.
+- **`apps/tui/tests/pty_intercepts.rs`** — the session's key intercepts end to end (the same cases run
+  headless in `session_intercepts.rs`).
 - **`apps/tui/tests/pty_input.rs`** — raw input decoding: escape sequences and UTF-8 split across reads,
   ESC-as-Alt (Vim: `<M-x>` = `<Esc>x`; Emacs: ESC is the meta prefix), kitty keyboard keys and release events,
   and bracketed paste chunked at the start/stop codes, a 64-byte boundary, CRLF and a 24 KiB burst.

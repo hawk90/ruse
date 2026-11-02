@@ -104,7 +104,8 @@ impl Headless {
         frame
     }
 
-    /// Feed one key event, then drain any macro replay it queued, a frame per key, as the binary does.
+    /// Feed one key event, then drain the keys it queued (a split Alt chord's tail, a macro replay), a
+    /// frame per key, as the binary does.
     /// Keys after the session quit are ignored. Returns whether the session is still running.
     pub fn key(&mut self, key: KeyEvent) -> bool {
         if self.s.quit {
@@ -117,10 +118,10 @@ impl Headless {
         let mut flow = self.s.on_key(key, false, &self.frame);
         self.frame = Headless::settle(&mut self.s, self.cols, self.rows);
         while flow == Flow::Continue {
-            let Some(k) = self.s.next_replay() else {
+            let Some((k, from_replay)) = self.s.next_queued() else {
                 break;
             };
-            flow = self.s.on_key(k, true, &self.frame);
+            flow = self.s.on_key(k, from_replay, &self.frame);
             self.frame = Headless::settle(&mut self.s, self.cols, self.rows);
         }
         flow == Flow::Continue

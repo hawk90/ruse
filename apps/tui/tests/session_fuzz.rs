@@ -1,8 +1,9 @@
 //! Full-stack keystroke FUZZER (testing-and-benchmarks.md §1.2 property + §1.9 e2e): the layer the
 //! micro suites miss. The oracle corpus checks short single ops; the core property tests fuzz `Command`
 //! streams; the input-engine property test fuzzes random (key, mode) pairs. NONE of them drive the
-//! COMPOSED stack — keystroke -> real input engine (mode following the REAL editor state, as
-//! `main.rs::run` does) -> Command -> edit -> undo — over a long realistic session, which is exactly
+//! COMPOSED stack — keystroke -> the session's real key path (`Session::on_key` through the headless
+//! harness, #895: macro layer, intercepts, input engine, Ex dispatch) -> Command -> edit -> undo — over a
+//! long realistic session, which is exactly
 //! where a modal editor's state-interaction bugs live (mode transitions × operators × counts × registers
 //! × dot-repeat × undo grouping). A failure here is a real defect; proptest shrinks to a minimal repro.
 //!
@@ -18,8 +19,8 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use proptest::prelude::*;
-use ruse_core::{apply_command, Command, EditorState};
-use ruse_tui::input::{Feed, InputEngine};
+use ruse_core::{Command, Workspace};
+use ruse_tui::headless::Headless;
 
 /// A realistic Vim keystroke alphabet: motions, operators, mode switches, edits, counts, find/search,
 /// registers, dot-repeat, and the multi-key control prefixes. Uniform selection over this set builds
@@ -79,26 +80,6 @@ fn clamp_count_runs(mut keys: Vec<KeyEvent>) -> Vec<KeyEvent> {
     keys
 }
 
-/// Apply whatever the engine emitted, exactly as `main.rs::run` routes it (minus the frontend-only
-/// ex/window commands, which this single-window fuzzer does not drive).
-fn apply_feed(st: &mut EditorState, out: Feed) {
-    match out {
-        Feed::Cmd(cmd) => {
-            apply_command(st, &cmd);
-        }
-        Feed::Replay(cmds) => {
-            for c in &cmds {
-                apply_command(st, c);
-            }
-        }
-        Feed::ExecuteEx(_)
-        | Feed::CmdlineInsertUnder { .. }
-        | Feed::FilterMotion { .. }
-        | Feed::Pending
-        | Feed::Ignored => {}
-    }
-}
-
 /// Upper bound on the fuzzed buffer size, enforced by `run_session`. Yank-whole-buffer -> paste is
 /// legitimate, unbounded Vim behavior (`ggVGyp` / `ggyGp` doubles the buffer every repeat), so a random
 /// session that happens to compose it repeatedly grows the buffer *exponentially* — reaching multiple GB
@@ -111,41 +92,61 @@ fn apply_feed(st: &mut EditorState, out: Feed) {
 /// suite fast and seed-independent (a larger cap lets rare seeds spend seconds memcpying multi-MB buffers).
 const MAX_FUZZ_BUFFER_BYTES: usize = 256 * 1024;
 
-/// Drive `keys` through a fresh engine+state, asserting the per-keystroke UTF-8 / cursor-boundary
-/// invariants along the way, and return the final state (Normal mode, any insert session closed).
-fn run_session(init: &[u8], keys: &[KeyEvent]) -> Result<EditorState, TestCaseError> {
-    let mut engine = InputEngine::new();
-    let mut st = EditorState::new(init.to_vec());
+/// Drive `keys` through a fresh headless session, asserting the per-keystroke UTF-8 / cursor-boundary
+/// invariants along the way, and return the final session (Normal mode, any insert session closed). A
+/// random `ZZ`/`ZQ` may end the session early; the keys after it are then ignored, as in the binary.
+fn run_session(init: &[u8], keys: &[KeyEvent]) -> Result<Headless, TestCaseError> {
+    let init = std::str::from_utf8(init).expect("the generator builds UTF-8");
+    let mut h = Headless::vim(init);
     for key in keys {
-        let out = engine.feed(*key, st.mode());
-        apply_feed(&mut st, out);
+        h.key(*key);
+        let ws = h.workspace();
+        let (bytes, cursor) = (ws.focused().doc.bytes(), ws.focused().view.cursor());
 
-        let s = std::str::from_utf8(st.bytes());
+        let s = std::str::from_utf8(bytes);
         prop_assert!(s.is_ok(), "buffer became invalid UTF-8 after {key:?}");
         let s = s.expect("just checked ok");
         prop_assert!(
-            st.cursor() <= s.len(),
+            cursor <= s.len(),
             "cursor {} past end {} after {key:?}",
-            st.cursor(),
+            cursor,
             s.len()
         );
         prop_assert!(
-            s.is_char_boundary(st.cursor()),
+            s.is_char_boundary(cursor),
             "cursor {} off a char boundary after {key:?} (buffer {s:?})",
-            st.cursor()
+            cursor
         );
 
         // Bound exponential yank+paste growth (see `MAX_FUZZ_BUFFER_BYTES`): the invariants above have been
         // checked for this key; once the buffer is huge we stop feeding further keys rather than let a
         // doubling session balloon to gigabytes. The round-trip is still exercised over every applied op.
-        if st.bytes().len() > MAX_FUZZ_BUFFER_BYTES {
+        if bytes.len() > MAX_FUZZ_BUFFER_BYTES {
             break;
         }
     }
     // Close any open insert/visual session so a dangling change is committed to undo history.
-    let esc = engine.feed(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), st.mode());
-    apply_feed(&mut st, esc);
-    Ok(st)
+    h.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    Ok(h)
+}
+
+/// Apply `cmd` to the core until `more` says the history is exhausted; `None` if it does not terminate.
+fn exhaust(ws: &mut Workspace, cmd: &Command, more: fn(&Workspace) -> bool) -> Option<()> {
+    for _ in 0..100_000 {
+        if !more(ws) {
+            return Some(());
+        }
+        ws.apply(cmd);
+    }
+    None
+}
+
+fn can_undo(ws: &Workspace) -> bool {
+    ws.focused().doc.can_undo()
+}
+
+fn can_redo(ws: &Workspace) -> bool {
+    ws.focused().doc.can_redo()
 }
 
 proptest! {
@@ -159,16 +160,12 @@ proptest! {
         keys in prop::collection::vec(proptest::sample::select(alphabet(true)), 0..140)
             .prop_map(clamp_count_runs),
     ) {
-        let mut st = run_session(&init, &keys)?;
+        let mut h = run_session(&init, &keys)?;
+        let ws = h.workspace_mut();
 
-        let mut guard = 0u32;
-        while st.doc.can_undo() {
-            apply_command(&mut st, &Command::Undo);
-            guard += 1;
-            prop_assert!(guard < 100_000, "undo did not terminate");
-        }
+        prop_assert!(exhaust(ws, &Command::Undo, can_undo).is_some(), "undo did not terminate");
         prop_assert_eq!(
-            st.bytes(),
+            ws.focused().doc.bytes(),
             init.as_slice(),
             "full undo of a keystroke session must restore the initial buffer"
         );
@@ -183,23 +180,14 @@ proptest! {
         keys in prop::collection::vec(proptest::sample::select(alphabet(false)), 0..140)
             .prop_map(clamp_count_runs),
     ) {
-        let mut st = run_session(&init, &keys)?;
-        let edited = st.bytes().to_vec();
+        let mut h = run_session(&init, &keys)?;
+        let ws = h.workspace_mut();
+        let edited = ws.focused().doc.bytes().to_vec();
 
-        let mut guard = 0u32;
-        while st.doc.can_undo() {
-            apply_command(&mut st, &Command::Undo);
-            guard += 1;
-            prop_assert!(guard < 100_000, "undo did not terminate");
-        }
-        prop_assert_eq!(st.bytes(), init.as_slice(), "full undo must restore the initial buffer");
+        prop_assert!(exhaust(ws, &Command::Undo, can_undo).is_some(), "undo did not terminate");
+        prop_assert_eq!(ws.focused().doc.bytes(), init.as_slice(), "full undo must restore the initial buffer");
 
-        guard = 0;
-        while st.doc.can_redo() {
-            apply_command(&mut st, &Command::Redo);
-            guard += 1;
-            prop_assert!(guard < 100_000, "redo did not terminate");
-        }
-        prop_assert_eq!(st.bytes(), edited.as_slice(), "full redo must restore the edited buffer");
+        prop_assert!(exhaust(ws, &Command::Redo, can_redo).is_some(), "redo did not terminate");
+        prop_assert_eq!(ws.focused().doc.bytes(), edited.as_slice(), "full redo must restore the edited buffer");
     }
 }
