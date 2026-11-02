@@ -38,10 +38,17 @@ pub fn run() -> ExitCode {
     }
     let path = args.first().map(PathBuf::from);
     // Raw on-disk bytes (BOM/CRLF intact); session run() detects the format and normalises for the buffer.
-    let raw = path
-        .as_ref()
-        .and_then(|p| fs::read(p).ok())
-        .unwrap_or_default();
+    // Only a missing file is a new buffer. Any other read error must not open blank: `:w` would then replace
+    // the unread file.
+    let raw = match path.as_ref().map(fs::read) {
+        None => Vec::new(),
+        Some(Ok(bytes)) => bytes,
+        Some(Err(e)) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Some(Err(e)) => {
+            eprintln!("ruse: {}: {e}", args[0]);
+            return ExitCode::FAILURE;
+        }
+    };
     match session_run(path, raw) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

@@ -84,3 +84,33 @@ fn wq_stays_open_when_the_write_fails() {
     assert!(running, ":wq must not exit after a failed write");
     assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
 }
+
+/// #843: a file that exists but cannot be read must not open as an empty buffer that `:w` then overwrites.
+#[test]
+fn unreadable_file_refuses_to_open() {
+    use std::os::unix::fs::PermissionsExt;
+    // SAFETY: geteuid has no preconditions. Root ignores the file mode, so the read would succeed.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"precious\n");
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let mut ed = Editor::start(&dir, &[&file]);
+    let status = ed.exit_status();
+    let shown = ed.screen_bytes();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(status, 1);
+    assert!(shown.contains("ruse: "), "names the failure: {shown:?}");
+    assert_eq!(std::fs::read(&file).unwrap(), b"precious\n");
+}
+
+/// #843: a directory argument is a read error too.
+#[test]
+fn directory_argument_refuses_to_open() {
+    let dir = Scratch::new();
+    let sub = dir.path("sub");
+    std::fs::create_dir(&sub).unwrap();
+    let mut ed = Editor::start(&dir, &[&sub]);
+    assert_eq!(ed.exit_status(), 1);
+}
