@@ -4,11 +4,17 @@
 # Rust-relevant path changed — the skip still reports success.
 # `rust-macos` is advisory (not required): clippy + test on macOS, because platform-specific code
 # (pty/forkpty, terminal) can be clean on Linux and broken on macOS. Same Rust-relevance gate.
+# `rust-release` is advisory (not required) and NOT run on PRs: `cargo test --workspace --release` on push
+# to main, weekly, and on demand (#899) — shipped binaries are built with the release profile, so its
+# codegen (optimiser; `debug_assertions` and `overflow-checks` off) must be tested too.
 # Security (docs/operations/ci-cd-and-release.md §11): actions pinned by SHA, least-privilege token.
 name: ci
 on:
   pull_request:
   push: { branches: [main] }
+  schedule:
+    - cron: "0 5 * * 1"   # weekly, Monday ~05:00 UTC — the release-profile suite (rust-release)
+  workflow_dispatch: {}
 permissions: { contents: read }
 concurrency:
   group: ci-${{ github.ref }}
@@ -88,3 +94,16 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+  rust-release:
+    # Release-profile test suite (#899). Never on pull_request, so it can neither block nor slow a PR.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with: { cache: false, build-warnings: allow }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with: { key: release }
+      - run: cargo test --workspace --release

@@ -10,7 +10,7 @@ use crate::ui::picker::{PickItem, Picker};
 /// viewers ([`crate::ui::pos_picker`]).
 pub(crate) fn line_col_text(bytes: &[u8], pos: usize) -> (usize, usize, String) {
     let pos = pos.min(bytes.len());
-    let line = bytes[..pos].iter().filter(|&&b| b == b'\n').count() + 1;
+    let line = ruse_core::pos::count_newlines(&bytes[..pos]) + 1;
     let start = bytes[..pos]
         .iter()
         .rposition(|&b| b == b'\n')

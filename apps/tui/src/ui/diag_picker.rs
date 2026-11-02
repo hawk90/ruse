@@ -35,7 +35,7 @@ pub(crate) fn open(diags: &[Diag], bytes: &[u8]) -> Picker<usize> {
 /// enough for a picker label; the jump uses the exact byte offset).
 fn line_col(bytes: &[u8], off: usize) -> (usize, usize) {
     let off = off.min(bytes.len());
-    let line = bytes[..off].iter().filter(|&&b| b == b'\n').count() + 1;
+    let line = ruse_core::pos::count_newlines(&bytes[..off]) + 1;
     let line_start = bytes[..off]
         .iter()
         .rposition(|&b| b == b'\n')

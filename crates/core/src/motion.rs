@@ -1641,7 +1641,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     // `{count}%`: the count is a PERCENTAGE — go to line `(count*line_count + 99)/100` (Vim), first
     // non-blank. `line_count` follows the terminator model (a trailing `\n` is not a new line).
     if m == Motion::GotoPercent {
-        let nl = b.iter().filter(|&&c| c == b'\n').count();
+        let nl = crate::pos::count_newlines(b);
         let line_count = if b.is_empty() {
             1
         } else if b.last() == Some(&b'\n') {

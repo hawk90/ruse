@@ -130,7 +130,7 @@ fn line_count(bytes: &[u8]) -> usize {
     if bytes.is_empty() {
         return 0;
     }
-    let nl = bytes.iter().filter(|&&b| b == b'\n').count();
+    let nl = crate::pos::count_newlines(bytes);
     if bytes.last() == Some(&b'\n') {
         nl
     } else {

@@ -121,13 +121,22 @@ pub fn byte_to_cell(text: &str, b: BytePos, tab_width: usize) -> CellCol {
 // breaks are `\n`, columns are the caller's business — byte vs char vs cell) so both the core and the
 // frontend share ONE implementation instead of each re-scanning for newlines.
 
+/// The number of `\n` in `bytes` — the one home for the newline count the core and frontend share.
+/// Written as a WRAPPING fold rather than `filter(..).count()`: under `overflow-checks` (#899 measured
+/// release with them on) `count()`'s checked running sum blocks vectorisation and made
+/// `line_math/line_of_end` ~2.7x slower. The total is bounded by `bytes.len()`, so the wrapping add can
+/// never actually wrap — the same count in every profile, minus the impossible-overflow branch.
+#[must_use]
+pub fn count_newlines(bytes: &[u8]) -> usize {
+    bytes
+        .iter()
+        .fold(0usize, |n, &b| n.wrapping_add(usize::from(b == b'\n')))
+}
+
 /// The 0-based row of `byte` — the number of `\n` before it.
 #[must_use]
 pub fn line_of(bytes: &[u8], byte: usize) -> usize {
-    bytes[..byte.min(bytes.len())]
-        .iter()
-        .filter(|&&b| b == b'\n')
-        .count()
+    count_newlines(&bytes[..byte.min(bytes.len())])
 }
 
 /// The byte offset where the line CONTAINING `byte` starts (just after the previous `\n`, or 0).

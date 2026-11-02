@@ -40,7 +40,7 @@ impl FileFormat {
         let body = if bom { &raw[BOM.len()..] } else { raw };
         let crlf = body.windows(2).filter(|w| w == b"\r\n").count();
         // Bare `\n` = total `\n` minus those that are part of a `\r\n`.
-        let lf_total = body.iter().filter(|&&b| b == b'\n').count();
+        let lf_total = ruse_core::pos::count_newlines(body);
         let bare_lf = lf_total.saturating_sub(crlf);
         let eol = if crlf > 0 && bare_lf == 0 {
             Eol::Crlf

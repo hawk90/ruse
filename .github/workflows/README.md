@@ -8,7 +8,7 @@ verified artifact.
 | --- | --- | --- | --- |
 | [`spec-check.yml`](spec-check.yml) | PR / push | `spec validate`, docs hygiene, `gov check` (waivers, ratchet, parity corpus, perf baselines…), toolchain unit tests, **actionlint** over these workflows | `spec-validate` |
 | [`change-policy.yml`](change-policy.yml) | PR | merge gate: re-derives change kind + blast radius from the diff vs the `ruse-gate:v1` block in the PR body (`dependabot[bot]` / `renovate[bot]` are auto-declared) | `gate` |
-| [`ci.yml`](ci.yml) | PR / push | Rust: fmt · clippy `-D warnings` · test · `arch deps`; heavy steps self-skip on PRs with no Rust-relevant change. `rust-macos` (advisory) repeats clippy + test on macOS | `rust` |
+| [`ci.yml`](ci.yml) | PR / push / weekly / manual | Rust: fmt · clippy `-D warnings` · test · `arch deps`; heavy steps self-skip on PRs with no Rust-relevant change. `rust-macos` (advisory) repeats clippy + test on macOS. `rust-release` (advisory, **never on PRs** — push to `main`, weekly, `workflow_dispatch`) runs `cargo test --workspace --release`, the profile shipped binaries use (#899) | `rust` |
 | [`security.yml`](security.yml) | PR / push / weekly | `rustsec` advisory scan (PRs only when a Cargo manifest changed); CodeQL + secret scanning live in repo settings | — |
 | [`labeler.yml`](labeler.yml) | PR | path-based `area/*` labels via [`.github/labeler.yml`](../labeler.yml) | — |
 | [`perf.yml`](perf.yml) | nightly / manual | benches vs `spec/perf-baseline.yaml`; trend + warn only, never fails on regressions (D-019) | — |

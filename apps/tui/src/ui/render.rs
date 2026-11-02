@@ -42,12 +42,17 @@ fn paint_grid(cur: &mut screen::Screen, rect: Rect, grid: &crate::term_grid::Gri
 /// ([`line_byte_at_col`]), so the three can never drift. `col` is relative to the line's left edge; a tab
 /// expands to the next `TAB_WIDTH` stop, every other cluster advances by its display width. Conceal and
 /// virt_text are handled in [`paint_pane`]'s walk (skip / inject), so this stays the pure column rule.
+///
+/// The column SATURATES at `u16::MAX` (#899): a line wider than 65535 cells (a minified file, a long log
+/// line) is legal buffer text, and plain `+` overflowed there — a panic in debug, a wrapped caret column
+/// in release. Every cell past the terminal's width is clipped anyway, so pinning at the ceiling is exact
+/// for painting and keeps the caret off-screen-right rather than wrapping it back to the left.
 #[inline]
 pub(crate) fn advance_col(col: u16, g: &str) -> u16 {
     if g == "\t" {
-        col + (TAB_WIDTH - (col % TAB_WIDTH))
+        col.saturating_add(TAB_WIDTH - (col % TAB_WIDTH))
     } else {
-        col + screen::cluster_width(g)
+        col.saturating_add(screen::cluster_width(g))
     }
 }
 
@@ -627,7 +632,7 @@ pub(crate) fn render(
                 h: text_rows,
             });
             let arow = frect.y + crow;
-            let acol = frect.x + ccol;
+            let acol = frect.x.saturating_add(ccol); // ccol saturates on a >u16 line (#899)
             let box_w = iw as u16 + 2; // + side borders
             let left = acol.min(cols.saturating_sub(box_w));
             // Prefer below the cursor; flip above if the box (content + 2 borders) would overflow the text.
@@ -756,7 +761,7 @@ pub(crate) fn render(
             line_idx,
         );
         let screen_row = (frect.y + row).min(rows.saturating_sub(1));
-        let screen_col = (frect.x + col).min(cols.saturating_sub(1));
+        let screen_col = frect.x.saturating_add(col).min(cols.saturating_sub(1)); // #899
         queue!(out, cursor::MoveTo(screen_col, screen_row), cursor::Show)?;
     }
     out.flush()?;
@@ -935,6 +940,29 @@ mod render_tests {
             let (_row, col) = cursor_cell(s.as_bytes(), pos, 0, &[], &[], &li(s.as_bytes()));
             assert_eq!(col, want, "caret column for {s:?} at byte {pos}");
         }
+    }
+
+    /// #899: a line wider than `u16::MAX` cells overflowed the column arithmetic (a debug panic, a wrapped
+    /// caret column in release). The column now saturates at the ceiling — for plain and tab-expanded text,
+    /// at the caret and in the inverse map.
+    #[test]
+    fn caret_column_saturates_on_a_line_wider_than_u16() {
+        let wide = "x".repeat(70_000);
+        let (_row, col) = cursor_cell(
+            wide.as_bytes(),
+            wide.len(),
+            0,
+            &[],
+            &[],
+            &li(wide.as_bytes()),
+        );
+        assert_eq!(col, u16::MAX);
+        let tabs = "\t".repeat(20_000); // 80000 cells
+        assert_eq!(line_display_col(&tabs, tabs.len()), u16::MAX);
+        assert_eq!(advance_col(u16::MAX, "\t"), u16::MAX);
+        assert_eq!(advance_col(u16::MAX - 1, "가"), u16::MAX);
+        // The inverse still terminates and lands inside the line.
+        assert!(line_byte_at_col(&wide, u16::MAX) <= wide.len());
     }
 
     /// The faces channel reaches the cell grid: a byte carrying a bold / italic face paints a bold /

@@ -1567,8 +1567,9 @@ items:
       - DR-OPS-1
     source:
       - design-requirements.md §18 CI/CD Additions
-    notes: ci.yml skips the Rust job on non-Rust diffs (fail-safe) and `ruse impact` exists; no merge_group trigger, no scheduled
-      full run.
+    notes: ci.yml skips the Rust job on non-Rust diffs (fail-safe) and `ruse impact` exists; ci.yml also runs weekly
+      (schedule) — the full debug suite on Linux + macOS plus the release-profile suite (`rust-release`, #899). No
+      merge_group trigger.
   - id: OPS-002
     title: Release artifact built once; rollback re-publishes a verified artifact
     area: ops

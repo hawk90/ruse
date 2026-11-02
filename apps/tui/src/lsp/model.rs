@@ -89,7 +89,7 @@ pub fn lsp_pos_to_byte(bytes: &[u8], line: u32, character: u32) -> usize {
 /// hover / goto requests.
 pub fn byte_to_lsp_pos(bytes: &[u8], byte: usize) -> (u32, u32) {
     let byte = byte.min(bytes.len());
-    let line = bytes[..byte].iter().filter(|&&b| b == b'\n').count() as u32;
+    let line = ruse_core::pos::count_newlines(&bytes[..byte]) as u32;
     let line_start = bytes[..byte]
         .iter()
         .rposition(|&b| b == b'\n')

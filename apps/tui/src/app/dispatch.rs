@@ -704,7 +704,7 @@ fn line_count(buf: &[u8]) -> usize {
     if buf.is_empty() {
         return 1;
     }
-    buf.iter().filter(|&&b| b == b'\n').count() + usize::from(buf.last() != Some(&b'\n'))
+    ruse_core::pos::count_newlines(buf) + usize::from(buf.last() != Some(&b'\n'))
 }
 
 /// The write-report suffix flagging a missing final newline: `" [noeol]"` when `buf` is non-empty and does

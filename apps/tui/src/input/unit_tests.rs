@@ -25,6 +25,30 @@ mod tests {
         assert_eq!(feed("l"), Feed::Cmd(Command::Move(1, Motion::Right)));
     }
 
+    /// #899: a long count used to overflow `u32` (`saturating_mul(10) + d`, and `op * motion`) — a panic
+    /// in debug, a silent wrap in release. Counts now clamp at Neovim's 999999999, which is what
+    /// `nvim --clean` reports as `v:count` for both `99999999999Q` and `99999y99999Q` (v0.12.6).
+    #[test]
+    fn huge_counts_clamp_to_the_neovim_ceiling() {
+        assert_eq!(
+            feed("99999999999w"),
+            Feed::Cmd(Command::Move(MAX_COUNT, Motion::WordFwd))
+        );
+        assert_eq!(
+            feed("4294967299w"),
+            Feed::Cmd(Command::Move(MAX_COUNT, Motion::WordFwd))
+        );
+        assert_eq!(
+            feed("99999d99999w"),
+            Feed::Cmd(Command::Delete(MAX_COUNT, Motion::WordFwd))
+        );
+        // A `0` digit at the ceiling (the `count > 0` arm) also stays clamped.
+        assert_eq!(
+            feed("9999999990w"),
+            Feed::Cmd(Command::Move(MAX_COUNT, Motion::WordFwd))
+        );
+    }
+
     #[test]
     fn substitute_char_s_is_change_right() {
         // `s` = `cl`: change one char rightward; `3s` changes three. `cl` produces the same command.

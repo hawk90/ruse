@@ -11,6 +11,22 @@ use ruse_core::{
     OpKind, SearchOffset, SearchOp, SelectKind, SubFlags, SubRange, WordCase,
 };
 
+/// Neovim's count ceiling: a typed count, and an operator count times a motion count (`3d2w` = 6), clamp
+/// here (`normal.c` — `99999999999w` and `99999y99999w` both report `v:count` = 999999999). Clamping also
+/// keeps the `u32` arithmetic below from overflowing (#899), which would panic in debug and silently wrap
+/// in a build without overflow checks.
+pub(crate) const MAX_COUNT: u32 = 999_999_999;
+
+/// Append decimal digit `d` to a count being typed, clamped to [`MAX_COUNT`].
+fn push_count_digit(count: u32, d: u32) -> u32 {
+    count.saturating_mul(10).saturating_add(d).min(MAX_COUNT)
+}
+
+/// Compose an operator count with a motion count (`3d2w` = 6), clamped to [`MAX_COUNT`].
+fn compose_count(op: u32, motion: u32) -> u32 {
+    op.max(1).saturating_mul(motion).min(MAX_COUNT)
+}
+
 /// The outcome of feeding one key to the engine.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Feed {
@@ -908,7 +924,7 @@ impl InputEngine {
             None => SearchOp::Move,
         };
         let count = match self.normal.op {
-            Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+            Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
             None => self.mcount(),
         };
         self.pending_search = Some((op, count));
@@ -1043,7 +1059,7 @@ impl InputEngine {
     /// a bare move; the composition itself lives in [`op_over_motion`](Self::op_over_motion).
     fn motion(&mut self, m: Motion) -> Feed {
         let total = match self.normal.op {
-            Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+            Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
             None => self.mcount(),
         };
         self.op_over_motion(m, total)
@@ -1157,7 +1173,7 @@ impl InputEngine {
     /// intercept resolves its target line from this, then hands the line to [`screen_op`](Self::screen_op).
     pub fn screen_count(&self) -> u32 {
         match self.normal.op {
-            Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+            Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
             None => self.normal.count,
         }
     }
@@ -1346,7 +1362,7 @@ impl InputEngine {
             // No operator (or a non-d/c/y one that gn does not accept): the bare, Visual-selecting form.
             _ => SearchOp::Move,
         };
-        let count = self.normal.op.map_or(1, |p| p.count.max(1)) * self.mcount();
+        let count = compose_count(self.normal.op.map_or(1, |p| p.count), self.mcount());
         self.reset();
         Feed::Cmd(Command::SearchObject {
             op,
@@ -1374,7 +1390,7 @@ impl InputEngine {
             Some(OpPending { op, count }) => {
                 let case = op.case().expect("a case operator is armed");
                 Command::CaseMotion {
-                    count: count.max(1) * self.mcount(),
+                    count: compose_count(count, self.mcount()),
                     motion: Motion::Line,
                     case,
                 }
@@ -2346,11 +2362,11 @@ impl InputEngine {
         }
         match key.code {
             KeyCode::Char(d @ '1'..='9') => {
-                self.normal.count = self.normal.count.saturating_mul(10) + (d as u32 - '0' as u32);
+                self.normal.count = push_count_digit(self.normal.count, d as u32 - '0' as u32);
                 Feed::Pending
             }
             KeyCode::Char('0') if self.normal.count > 0 => {
-                self.normal.count = self.normal.count.saturating_mul(10);
+                self.normal.count = push_count_digit(self.normal.count, 0);
                 Feed::Pending
             }
             KeyCode::Char('0') => self.motion(Motion::LineStart),
@@ -2400,7 +2416,7 @@ impl InputEngine {
                 if matches!(self.normal.op, Some(OpPending { op: Op::Filter, .. })) =>
             {
                 let count = match self.normal.op {
-                    Some(OpPending { count, .. }) => count.max(1) * self.mcount(),
+                    Some(OpPending { count, .. }) => compose_count(count, self.mcount()),
                     None => unreachable!("Op::Filter is armed"),
                 };
                 self.reset();

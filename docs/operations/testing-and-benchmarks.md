@@ -696,6 +696,10 @@ transformation pipeline stays dumpable (§3.2).
   ([stability-and-observability.md §2.1,§11.1](../design/stability-and-observability.md)).
 - **Quarantine carries an expiry + owner** ([ci-cd-and-release.md §13](ci-cd-and-release.md)); a muted test
   is a tracked debt, not a silent skip.
+- **Integer overflow is a bug in every profile.** Release builds wrap silently (no `overflow-checks`), so
+  arithmetic on user-sized inputs (counts, columns, offsets) saturates or checks explicitly rather than
+  relying on the debug-only panic; the suite also runs under `--release` on `main`/weekly (`rust-release`,
+  [ci-cd-and-release.md §1](ci-cd-and-release.md), #899).
 - **Golden/protocol payloads are frozen once published** — a changed byte is a signal, reviewed as a
   breaking change, not silently re-recorded.
 

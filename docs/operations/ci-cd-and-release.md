@@ -36,6 +36,17 @@ The workflow set, triggers and required checks are listed in
 [`.github/workflows/README.md`](../../.github/workflows/README.md), including the planned `ci-full`,
 `compatibility` and `nightly` workflows. `release.yml` is a stub. The sections below describe the target pipeline.
 
+### Release-profile tests (#899)
+Shipped binaries are built with `[profile.release]`, so the suite also runs under it: the advisory
+`rust-release` job in `ci.yml` runs `cargo test --workspace --release` on push to `main`, weekly and on
+`workflow_dispatch` — never on a PR, and never a required check (a release-only failure is fixed forward
+on `main`, not used to block unrelated PRs). Release keeps Cargo's default **`overflow-checks = false`** for
+now, so this job is what exercises the wrapping arithmetic that ships. Turning the checks on (a panic then
+triggers the journal rescue of every dirty buffer, #1054, instead of a silent wrap) was measured in #899 and
+held back: it costs ~4% on `highlight_incremental` at 100–1000 lines, above the 3% bar for a per-keystroke
+path. Arithmetic on user-sized values (counts, columns, offsets) must therefore saturate or check
+explicitly rather than rely on the debug-only panic.
+
 ### Fast PR CI (5–10 min)
 `format → lint → compile → unit tests → core property tests → changed-component tests`.
 Base platforms: **Linux x86_64, Windows x86_64, macOS ARM64**. WSL is hard to reproduce on hosted runners —
