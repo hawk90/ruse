@@ -18,7 +18,7 @@ use crate::input::{parse_ex, Ex, Feed, InputEngine, ReadSource};
 use crate::terminal::guard::TermGuard;
 use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
-use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm};
+use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm, RecoveryChoice};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{
     action_picker, buffer_picker, diag_picker, file_picker,
@@ -189,17 +189,20 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 
     // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
     let (initial, mut status) = match recovery {
-        persist::Recovery::Available(rec) if prompt_recovery(&mut out)? => (
-            rec,
-            String::from("ruse — recovered unsaved changes (:w to save)"),
-        ),
-        persist::Recovery::Available(_) => {
-            persist::journal::clear(path.as_deref()); // discarded on the user's say-so
-            (
-                disk,
-                String::from("ruse — recovery discarded; opened disk version"),
-            )
-        }
+        persist::Recovery::Available(rec) => match prompt_recovery(&mut out)? {
+            RecoveryChoice::Recover => (
+                rec,
+                String::from("ruse — recovered unsaved changes (:w to save)"),
+            ),
+            RecoveryChoice::Discard => {
+                persist::journal::clear(path.as_deref()); // discarded on the user's say-so
+                (
+                    disk,
+                    String::from("ruse — recovery discarded; opened disk version"),
+                )
+            }
+            RecoveryChoice::Quit => return Ok(()), // the journal stays for the next start
+        },
         persist::Recovery::None => (disk, String::from("ruse — :q to quit")),
     };
 

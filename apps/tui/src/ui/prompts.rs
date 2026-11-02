@@ -3,24 +3,48 @@
 
 use std::io::{self, Write};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::style::Print;
 use crossterm::terminal::{self, ClearType};
 use crossterm::{cursor, queue};
 
 use ruse_core::Workspace;
 
-/// Ask the user whether to load recovered unsaved changes (F-008 #3). Renders a minimal full-screen
-/// prompt and blocks for one key: `y`/`r` = recover, anything else = discard and open the disk file.
-/// The original file is never touched here — the choice only decides the initial BUFFER (#4).
-pub(crate) fn prompt_recovery(out: &mut io::Stdout) -> io::Result<bool> {
+/// The user's answer at the open-time recovery prompt (F-008 #3).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum RecoveryChoice {
+    /// Load the recovered changes into the buffer.
+    Recover,
+    /// Delete the journal and open the on-disk file.
+    Discard,
+    /// Leave without opening anything; the journal stays.
+    Quit,
+}
+
+/// Map one key press to a recovery choice. Deleting the journal, the only copy of the work, takes an
+/// explicit `d`; Esc, `q` and Ctrl-C leave it in place; any other key is ignored.
+pub(crate) fn recovery_choice(key: KeyEvent) -> Option<RecoveryChoice> {
+    match key.code {
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            Some(RecoveryChoice::Quit)
+        }
+        KeyCode::Char('r' | 'R' | 'y') => Some(RecoveryChoice::Recover),
+        KeyCode::Char('d' | 'D') => Some(RecoveryChoice::Discard),
+        KeyCode::Char('q') | KeyCode::Esc => Some(RecoveryChoice::Quit),
+        _ => None,
+    }
+}
+
+/// Ask what to do with recovered unsaved changes (F-008 #3). Renders a minimal full-screen prompt and
+/// blocks until a key maps to a choice. The original file is never touched here (#4).
+pub(crate) fn prompt_recovery(out: &mut io::Stdout) -> io::Result<RecoveryChoice> {
     queue!(
         out,
         terminal::Clear(ClearType::All),
         cursor::MoveTo(0, 0),
         Print("ruse: unsaved changes were recovered from a previous session."),
         cursor::MoveTo(0, 1),
-        Print("Press 'r' to RECOVER them, or any other key to open the on-disk file."),
+        Print("r: recover them   d: delete them and open the on-disk file   q: quit and keep them"),
     )?;
     out.flush()?;
     loop {
@@ -28,10 +52,9 @@ pub(crate) fn prompt_recovery(out: &mut io::Stdout) -> io::Result<bool> {
             if k.kind == KeyEventKind::Release {
                 continue; // act on the press, not its release (kitty/Windows send both)
             }
-            return Ok(matches!(
-                k.code,
-                KeyCode::Char('r') | KeyCode::Char('y') | KeyCode::Char('R')
-            ));
+            if let Some(choice) = recovery_choice(k) {
+                return Ok(choice);
+            }
         }
     }
 }

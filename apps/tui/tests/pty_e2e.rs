@@ -114,3 +114,47 @@ fn directory_argument_refuses_to_open() {
     let mut ed = Editor::start(&dir, &[&sub]);
     assert_eq!(ed.exit_status(), 1);
 }
+
+/// Start on `file` with a journal of unsaved work, so the recovery prompt shows.
+fn start_with_journal(dir: &Scratch) -> (Editor, std::path::PathBuf, std::path::PathBuf) {
+    let file = dir.file("f.txt", b"on disk\n");
+    ruse_tui::persist::journal::append(Some(&file), b"unsaved work\n").unwrap();
+    let journal = ruse_tui::persist::journal::journal_path(Some(&file));
+    let ed = Editor::start(dir, &[&file]);
+    (ed, file, journal)
+}
+
+/// #846: Esc, q and Ctrl-C leave the prompt without deleting the only copy of the work.
+#[test]
+fn recovery_prompt_quit_keys_keep_the_journal() {
+    for key in [ESC, "q", "\u{3}"] {
+        let dir = Scratch::new();
+        let (mut ed, file, journal) = start_with_journal(&dir);
+        ed.keys(key);
+        assert_eq!(ed.exit_status(), 0, "key {key:?} quits");
+        assert!(journal.exists(), "key {key:?} must keep the journal");
+        assert_eq!(std::fs::read(&file).unwrap(), b"on disk\n");
+    }
+}
+
+/// #846: other keys are ignored, `d` deletes, and `r` recovers.
+#[test]
+fn recovery_prompt_needs_an_explicit_choice() {
+    let dir = Scratch::new();
+    let (mut ed, file, journal) = start_with_journal(&dir);
+    ed.keys("x\r");
+    assert!(
+        ed.is_running() && journal.exists(),
+        "unmapped keys do nothing"
+    );
+    ed.keys("r:w\r:q\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&file).unwrap(), b"unsaved work\n");
+
+    let dir = Scratch::new();
+    let (mut ed, file, journal) = start_with_journal(&dir);
+    ed.keys("d:q\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert!(!journal.exists());
+    assert_eq!(std::fs::read(&file).unwrap(), b"on disk\n");
+}
