@@ -289,3 +289,11 @@ fn info_commands_print_to_the_status_line() {
     h.keys("lga");
     assert_eq!(h.status(), "<i>  105,  Hex 69,  Octal 151");
 }
+
+#[test]
+fn alt_key_in_the_vim_profile_is_escape_then_the_key() {
+    // `<M-x>` (`ESC x` read as one Alt chord, #896) leaves Insert, then `x` deletes the char under the cursor.
+    let mut h = Headless::vim("\n");
+    h.keys("ihello<M-x>");
+    assert_eq!(h.text(), "hell\n");
+}
