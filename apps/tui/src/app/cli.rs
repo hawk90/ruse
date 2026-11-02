@@ -49,7 +49,22 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match session_run(path, raw) {
+    let result = session_run(path, raw);
+    // The terminal guard has already restored the terminal. A fatal signal or an I/O error ended the session
+    // with unsaved work possibly unjournaled (#857): write every modified buffer's journal. A normal quit
+    // (including `:q!`, which discards on purpose) leaves nothing to rescue.
+    let signal = crate::signals::pending();
+    if signal.is_some() || result.is_err() {
+        crate::recover::rescue_on_exit(if signal.is_some() {
+            "signal"
+        } else {
+            "io_error"
+        });
+    }
+    if let Some(sig) = signal {
+        crate::signals::reraise(sig);
+    }
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("ruse: {e}");

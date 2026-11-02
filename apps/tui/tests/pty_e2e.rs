@@ -346,3 +346,50 @@ fn edit_offers_recovery_for_a_journaled_file() {
     assert_eq!(std::fs::read(&b).unwrap(), b"UNSAVED B\n");
     assert!(!journal.exists(), "the save made the journal redundant");
 }
+
+/// #857: a fatal signal journals a short unsaved edit, restores the terminal, and exits as killed by it.
+fn signal_rescues_the_edit(sig: libc::c_int) {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"orig\n");
+    let mut ed = Editor::start(&dir, &[&file]);
+    ed.keys(&format!("iabcde{ESC}"));
+    ed.signal(sig);
+    assert_eq!(ed.exit_status(), -sig, "exits as killed by signal {sig}");
+    ed.settle();
+    assert!(
+        ed.screen_bytes().contains("\u{1b}[?1049l"),
+        "leaves the alt screen on signal {sig}"
+    );
+    assert_eq!(
+        ruse_tui::persist::journal::replay(Some(&file)).as_deref(),
+        Some(&b"abcdeorig\n"[..]),
+        "journal holds the edit after signal {sig}"
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), b"orig\n");
+}
+
+#[test]
+fn sigterm_journals_the_edit_and_restores_the_terminal() {
+    signal_rescues_the_edit(libc::SIGTERM);
+}
+
+#[test]
+fn sighup_journals_the_edit_and_restores_the_terminal() {
+    signal_rescues_the_edit(libc::SIGHUP);
+}
+
+/// #856: the rescue covers every modified buffer, not only the focused one.
+#[test]
+fn signal_journals_every_modified_buffer() {
+    let dir = Scratch::new();
+    let a = dir.file("a.txt", b"a\n");
+    let b = dir.file("b.txt", b"b\n");
+    let mut ed = Editor::start(&dir, &[&a]);
+    ed.keys(&format!("iAA{ESC}:e b.txt\r"));
+    ed.keys(&format!("iBB{ESC}:b 1\r"));
+    ed.signal(libc::SIGTERM);
+    assert_eq!(ed.exit_status(), -libc::SIGTERM);
+    let replay = ruse_tui::persist::journal::replay;
+    assert_eq!(replay(Some(&a)).as_deref(), Some(&b"AAa\n"[..]));
+    assert_eq!(replay(Some(&b)).as_deref(), Some(&b"BBb\n"[..]));
+}

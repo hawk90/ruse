@@ -205,6 +205,16 @@ impl Editor {
         }
     }
 
+    /// Send `sig` to this harness's own child (only while it is unreaped, so the pid cannot be reused).
+    pub fn signal(&mut self, sig: libc::c_int) {
+        if self.try_status().is_none() {
+            // SAFETY: `pid` is this harness's own child, not yet reaped.
+            unsafe {
+                libc::kill(self.pid, sig);
+            }
+        }
+    }
+
     pub fn is_running(&mut self) -> bool {
         self.try_status().is_none()
     }

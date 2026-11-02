@@ -9,11 +9,12 @@
 //! so a zero-filled tail (a known outcome of power loss) is never a valid record. Before the first append in
 //! a process, a torn tail is cut off, and a failed append is rolled back, so new records never land behind
 //! bytes that replay stops at. Journals written before the magic existed are not read. This is the MVP-minimal
-//! journal — whole-buffer snapshots, throttled by the caller. The design doc's per-transaction
+//! journal — whole-buffer snapshots, throttled by the caller ([`Throttle`]) and compacted to one frame once
+//! [`MAX_FRAMES`] accumulate, so it stays bounded. The design doc's per-transaction
 //! incremental records + schema version + inverse-edits are the post-MVP C-PERSIST elaboration; the
 //! frame layout here is forward-compatible (a versioned header can prefix the file later).
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -52,38 +53,117 @@ fn frame_crc(len: [u8; 4], payload: &[u8]) -> u32 {
     crc32(&bytes)
 }
 
+/// The most frames a journal holds before the next append compacts it (#858). Replay only ever reads the
+/// last frame, so the earlier ones are history kept only as a fallback against a torn final write.
+pub const MAX_FRAMES: usize = 4;
+
+/// Frames known to be in each journal this process has appended to. A path enters on its first append
+/// (after its torn tail is cut) and leaves on [`clear`], so a journal is read back at most once per
+/// process instead of on every append.
+static KNOWN: Mutex<Option<HashMap<PathBuf, usize>>> = Mutex::new(None);
+
 /// Append a recovery record. Creates the journal if absent and never drops a valid record. The first
 /// append to a journal in this process cuts off any torn tail first; a failed append is rolled back.
+/// A journal already holding [`MAX_FRAMES`] frames is compacted: it is atomically replaced by one frame
+/// with this payload, so the file stays bounded however long the session runs.
 pub fn append(doc: Option<&Path>, payload: &[u8]) -> io::Result<()> {
-    static CHECKED: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+    append_with(doc, payload, false)
+}
+
+/// [`append`] for a crash path (panic hook, fatal signal): always re-reads the journal and cuts a torn tail,
+/// because the failure being rescued may have interrupted an append mid-write in this same process.
+pub fn append_fresh(doc: Option<&Path>, payload: &[u8]) -> io::Result<()> {
+    append_with(doc, payload, true)
+}
+
+fn append_with(doc: Option<&Path>, payload: &[u8], verify: bool) -> io::Result<()> {
     let path = journal_path(doc);
+    // `try_lock`, never `lock`: a crash path may run on a thread that panicked while holding this lock.
+    // When the count is unavailable the file itself is the source of truth (re-read below).
+    let known = if verify {
+        None
+    } else {
+        KNOWN
+            .try_lock()
+            .ok()
+            .and_then(|map| map.as_ref().and_then(|m| m.get(&path).copied()))
+    };
     let mut f = OpenOptions::new()
         .create(true)
         .read(true)
         .append(true)
         .open(&path)?;
-    let first = CHECKED
-        .lock()
-        .map(|mut set| set.get_or_insert_with(HashSet::new).insert(path.clone()))
-        .unwrap_or(true);
-    if first {
-        let raw = fs::read(&path)?;
-        let valid = valid_prefix(&raw);
-        if valid < raw.len() {
-            f.set_len(valid as u64)?;
+    let count = match known {
+        Some(n) => n,
+        None => {
+            let raw = fs::read(&path)?;
+            let spans = frames(&raw);
+            let valid = spans.last().map_or(0, |&(_, end)| end);
+            if valid < raw.len() {
+                f.set_len(valid as u64)?;
+            }
+            spans.len()
         }
+    };
+    let result = if count >= MAX_FRAMES {
+        drop(f);
+        // Temp + fsync + rename: a crash mid-compaction leaves the old journal intact.
+        super::atomic::save(&path, &frame(payload)).map(|()| 1)
+    } else {
+        let before = f.metadata()?.len();
+        let written = f.write_all(&frame(payload)).and_then(|()| f.sync_all());
+        if written.is_err() {
+            let _ = f.set_len(before);
+        }
+        written.map(|()| count + 1)
+    };
+    let now = *result.as_ref().unwrap_or(&count);
+    if let Ok(mut map) = KNOWN.try_lock() {
+        map.get_or_insert_with(HashMap::new).insert(path, now);
     }
-    let before = f.metadata()?.len();
-    let written = f.write_all(&frame(payload)).and_then(|()| f.sync_all());
-    if written.is_err() {
-        let _ = f.set_len(before);
-    }
-    written
+    result.map(|_| ())
 }
 
 /// Remove the journal — called after a durable save, when there is no unsaved work to recover.
 pub fn clear(doc: Option<&Path>) {
-    let _ = fs::remove_file(journal_path(doc));
+    let path = journal_path(doc);
+    let _ = fs::remove_file(&path);
+    if let Ok(mut map) = KNOWN.lock() {
+        if let Some(m) = map.as_mut() {
+            m.remove(&path);
+        }
+    }
+}
+
+/// Decides when the main loop appends a journal frame for one buffer (#858). Only a change of the
+/// buffer's revision counts: idle ticks, cursor motion and re-renders never write. A frame is written
+/// once `every` changes have accumulated since the last one, so a hard kill loses at most that many
+/// changes; a panic or fatal signal journals the exact latest bytes separately (`crate::recover`).
+#[derive(Debug, Default)]
+pub struct Throttle {
+    seen: Option<u64>,
+    pending: u32,
+}
+
+impl Throttle {
+    /// Observe the buffer at `revision`; returns whether to append a frame now. A clean buffer (saved, or
+    /// never edited) resets the count, since its journal was cleared or never needed.
+    pub fn tick(&mut self, revision: u64, modified: bool, every: u32) -> bool {
+        let changed = self.seen.is_some_and(|r| r != revision);
+        self.seen = Some(revision);
+        if !modified {
+            self.pending = 0;
+            return false;
+        }
+        if changed {
+            self.pending += 1;
+        }
+        if self.pending >= every.max(1) {
+            self.pending = 0;
+            return true;
+        }
+        false
+    }
 }
 
 /// The payload of the last VALID frame in a raw journal, or `None` if there is no intact record.
@@ -92,11 +172,6 @@ pub fn replay_bytes(raw: &[u8]) -> Option<Vec<u8>> {
     frames(raw)
         .last()
         .map(|&(start, end)| raw[start..end].to_vec())
-}
-
-/// The length of the leading run of valid frames; everything after it is a torn or corrupt tail.
-fn valid_prefix(raw: &[u8]) -> usize {
-    frames(raw).last().map_or(0, |&(_, end)| end)
 }
 
 /// Payload spans of the valid frames, in order, stopping at the first torn or corrupt frame.
@@ -238,6 +313,73 @@ mod tests {
         append(Some(&doc), b"newer work\n").unwrap();
         assert_eq!(replay(Some(&doc)).as_deref(), Some(&b"newer work\n"[..]));
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// #858: however many appends, the journal holds a few frames at most and replays the latest.
+    #[test]
+    fn journal_stays_bounded_across_many_appends() {
+        const BOUND: usize = 8; // "a few snapshots", independent of the tunable constant
+        const _: () = assert!(MAX_FRAMES <= BOUND);
+        let dir = std::env::temp_dir().join(format!("ruse-journal-bound-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("big.txt");
+        let payload = vec![b'x'; 4096];
+        for i in 0..50u8 {
+            let mut p = payload.clone();
+            p.push(i);
+            append(Some(&doc), &p).unwrap();
+            let raw = fs::read(journal_path(Some(&doc))).unwrap();
+            assert!(frames(&raw).len() <= BOUND, "append {i}: unbounded");
+            assert_eq!(frames(&raw).last().map(|&(_, e)| e), Some(raw.len()));
+        }
+        let mut last = payload;
+        last.push(49);
+        assert_eq!(replay(Some(&doc)), Some(last));
+        let len = fs::metadata(journal_path(Some(&doc))).unwrap().len() as usize;
+        assert!(len <= BOUND * (HEADER + 4097), "journal is {len} bytes");
+        clear(Some(&doc));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The crash-path append re-checks the tail even after this process has appended before.
+    #[test]
+    fn fresh_append_cuts_a_torn_tail_left_mid_process() {
+        let dir = std::env::temp_dir().join(format!("ruse-journal-fresh-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("f.txt");
+        append(Some(&doc), b"one\n").unwrap();
+        let torn = frame(b"interrupted by the panic");
+        let mut f = OpenOptions::new()
+            .append(true)
+            .open(journal_path(Some(&doc)))
+            .unwrap();
+        f.write_all(&torn[..torn.len() - 3]).unwrap();
+        drop(f);
+        append_fresh(Some(&doc), b"rescued\n").unwrap();
+        assert_eq!(replay(Some(&doc)).as_deref(), Some(&b"rescued\n"[..]));
+        clear(Some(&doc));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// #858: idle ticks and cursor motion (same revision) never ask for a frame; edits do, every Nth.
+    #[test]
+    fn throttle_counts_revision_changes_not_ticks() {
+        let mut t = Throttle::default();
+        assert!(
+            !t.tick(5, true, 2),
+            "first sight of a buffer is not a change"
+        );
+        for _ in 0..100 {
+            assert!(!t.tick(5, true, 2), "an unchanged buffer must not journal");
+        }
+        assert!(!t.tick(6, true, 2));
+        assert!(t.tick(7, true, 2), "the 2nd change journals");
+        for _ in 0..100 {
+            assert!(!t.tick(7, true, 2), "nothing changed since the last frame");
+        }
+        assert!(!t.tick(8, false, 2), "a clean buffer never journals");
+        assert!(!t.tick(9, true, 2));
+        assert!(t.tick(10, true, 2));
     }
 
     #[test]

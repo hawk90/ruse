@@ -32,8 +32,9 @@ use crate::{pty, term_buffer};
 /// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
 const SCROLLOFF: usize = 3;
 
-/// Append a recovery-journal frame every Nth modified command — a coarse hard-kill safety net (a
-/// panic captures the exact latest state separately). Full incremental journaling is post-MVP.
+/// Append a recovery-journal frame after every Nth change (revision bump) of a file buffer — a coarse
+/// hard-kill safety net. Idle ticks never write (#858). A panic, fatal signal or I/O error journals every
+/// modified buffer's exact latest state separately (`recover`). Full incremental journaling is post-MVP.
 const JOURNAL_THROTTLE: u32 = 8;
 
 /// F-011: when a terminal is live the event loop polls for a key with this timeout (≈30fps) instead of
@@ -257,7 +258,12 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
     }
     let mut recorded: Vec<Command> = Vec::new();
-    let mut journal_ticks: u32 = 0; // throttle: append the recovery journal every Nth modified frame
+    // Per-buffer journal throttles (#858): a frame is appended only after the buffer actually changed.
+    let mut journal_throttle: HashMap<DocumentId, persist::journal::Throttle> = HashMap::new();
+    // `ruse` with no file: the start buffer has no path, but its journal (`.ruse-journal`) is what the next
+    // pathless start replays, so a crash rescues it there (#856). Not throttle-journaled: it can never be
+    // saved, so a periodic journal would outlive every `:q!`.
+    let unnamed_start = path.is_none().then_some(file_buf);
 
     // Profile selection (F-012 / F-013): no config loader exists yet, so `RUSE_PROFILE` picks the profile
     // (the same env-override seam as the terminal caps). `emacs` = Emacs, `native` = Native, else Vim.
@@ -367,14 +373,23 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let trusted = crate::trust::workspace_trusted(&cwd);
     let mut lsp = LspCoordinator::new(cwd, trusted);
 
+    // Create crossterm's event source now, so its SIGWINCH registration exists before a fatal signal can
+    // arrive: the signal handler wakes a blocked read through it (#857).
+    let _ = event::poll(std::time::Duration::ZERO);
+    crate::signals::install();
+
     while !quit {
-        // The FOCUSED buffer is the file on disk (splits share it; MVP is single-file). Snapshot it
-        // once for the panic-rescue mirror, the recovery journal, and the highlight parse. `text_arc()` is
-        // an Arc refcount bump (not an O(buffer) copy): a committed edit builds a fresh Arc, so this handle
+        // SIGTERM / SIGHUP (#857): end the session; the caller journals every modified buffer and the
+        // guard restores the terminal. The handler's wake-up lands here via a resize event.
+        if crate::signals::pending().is_some() {
+            break;
+        }
+        // Snapshot the FOCUSED buffer once for the frame (line index, folds, highlight parse). `text_arc()`
+        // is an Arc refcount bump (not an O(buffer) copy): a committed edit builds a fresh Arc, so this handle
         // keeps pointing at the bytes captured here even after the later `&mut ws` borrows edit the doc.
-        let (revision, modified, snapshot) = {
+        let (revision, snapshot) = {
             let f = ws.focused();
-            (f.doc.revision(), f.doc.is_modified(), f.doc.text_arc())
+            (f.doc.revision(), f.doc.text_arc())
         };
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
@@ -426,22 +441,39 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             }
             fold_lines.insert(buf, nlines);
         }
-        // Panic-rescue mirror + recovery journal are keyed to the FOCUSED buffer's own file path (F-007):
-        // a hard kill while editing ANY file-backed buffer (incl. a `:e`-opened one) persists it — the
-        // journal is recovered by reopening that file. A scratch buffer (no `files` entry) is skipped so
-        // its bytes never land in some file's recovery. `save()` already clears the focused buffer's
-        // journal by path, so this stays consistent. (Full incremental journal design is post-MVP.)
-        if let Some(bf) = files.get(&ws.focused_buffer()) {
-            // Keep the in-memory snapshot current so a core panic can rescue unsaved work (§6/§8).
-            recover::update(Some(&bf.path), &snapshot, modified);
-            // Throttle an append-only journal frame so a hard kill (not just a panic) loses at most a few
-            // edits. Cleared on a durable save.
-            if modified {
-                journal_ticks += 1;
-                if journal_ticks.is_multiple_of(JOURNAL_THROTTLE) {
-                    let _ = persist::journal::append(Some(bf.path.as_path()), &snapshot);
+        // Crash-rescue store + recovery journal cover EVERY recoverable buffer, not just the focused one
+        // (#856): each file-backed buffer (keyed by its own path, F-007; incl. `:e`-opened ones) and the
+        // pathless start buffer. A scratch buffer (`:enew`) is skipped so its bytes never land in some
+        // file's recovery. `save()` clears a buffer's journal by path, so this stays consistent.
+        {
+            let mut entries = Vec::with_capacity(files.len() + 1);
+            for (id, bf) in &files {
+                let Some(doc) = ws.document(*id) else {
+                    continue;
+                };
+                let (rev, dirty) = (doc.revision().0, doc.is_modified());
+                if journal_throttle
+                    .entry(*id)
+                    .or_default()
+                    .tick(rev, dirty, JOURNAL_THROTTLE)
+                {
+                    let _ = persist::journal::append(Some(bf.path.as_path()), doc.bytes());
                 }
+                entries.push(recover::Entry {
+                    path: Some(bf.path.clone()),
+                    bytes: doc.text_arc(),
+                    modified: dirty,
+                });
             }
+            if let Some(doc) = unnamed_start.and_then(|id| ws.document(id)) {
+                entries.push(recover::Entry {
+                    path: None,
+                    bytes: doc.text_arc(),
+                    modified: doc.is_modified(),
+                });
+            }
+            journal_throttle.retain(|id, _| files.contains_key(id) && ws.doc_is_live(*id));
+            recover::sync(entries);
         }
         // During a `:s///c` confirm, follow the current match so the viewport scrolls it into view.
         if let Some(c) = &confirm {

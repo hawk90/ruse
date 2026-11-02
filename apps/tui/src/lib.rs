@@ -45,6 +45,8 @@ pub(crate) mod recover;
 // F-017 remote runtime (slice 1): client↔agent transport foundation — a versioned, capability-negotiated
 // framed protocol over a `ruse agent` subprocess (local pipe today; SSH later). Structurally mirrors `lsp/`.
 pub mod remote;
+// SIGTERM / SIGHUP: journal unsaved work, restore the terminal, exit with the signal's status (#857).
+pub(crate) mod signals;
 #[cfg(unix)]
 pub(crate) mod term_buffer;
 #[cfg(unix)]

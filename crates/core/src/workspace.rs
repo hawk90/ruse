@@ -890,6 +890,14 @@ impl Workspace {
             .is_some_and(Option::is_some)
     }
 
+    /// The document of buffer `id`, or `None` for a retired slot. Read-only, so a frontend can observe an
+    /// unfocused buffer (e.g. to journal its unsaved bytes) without focusing it.
+    #[must_use]
+    pub fn document(&self, id: DocumentId) -> Option<&Document> {
+        let slot = (id.0 as usize).checked_sub(1)?;
+        self.docs.get(slot).and_then(Option::as_ref)
+    }
+
     /// The `DocumentId` of the buffer the FOCUSED window currently shows.
     #[must_use]
     pub fn focused_buffer(&self) -> DocumentId {
