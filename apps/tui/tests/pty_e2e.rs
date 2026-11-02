@@ -242,6 +242,37 @@ fn failing_filter_keeps_its_stderr_and_reports_the_exit_code() {
     assert_eq!(std::fs::read(&file).unwrap(), b"out\nerr\n");
 }
 
+/// #860: `:r` strips the read file's CRLF and BOM, so the save uses the target buffer's format only.
+/// Expected bytes are nvim v0.12.6's for the same files and keys.
+#[test]
+fn read_file_takes_the_target_buffers_line_endings() {
+    let cases: [(&[u8], &[u8], &[u8]); 2] = [
+        (
+            b"one\r\ntwo\r\n",
+            b"X\r\nY\r\n",
+            b"one\r\nX\r\nY\r\ntwo\r\n",
+        ),
+        (
+            b"one\ntwo\n",
+            b"\xEF\xBB\xBFX\r\nY\r\n",
+            b"one\nX\nY\ntwo\n",
+        ),
+    ];
+    for (start, ins, want) in cases {
+        let dir = Scratch::new();
+        let file = dir.file("f.txt", start);
+        dir.file("ins.txt", ins);
+        let mut ed = Editor::start(&dir, &[std::path::Path::new("f.txt")]);
+        ed.keys(":r ins.txt\r:wq\r");
+        assert_eq!(ed.exit_status(), 0);
+        assert_eq!(
+            std::fs::read(&file).unwrap(),
+            want,
+            "{ins:?} into {start:?}"
+        );
+    }
+}
+
 /// Open `start` bytes in a fresh editor, type `keys`, then `:wq`; returns the saved bytes.
 fn edit_and_save(start: &[u8], keys: &str) -> Vec<u8> {
     let dir = Scratch::new();

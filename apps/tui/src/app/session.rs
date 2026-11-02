@@ -1716,7 +1716,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     Ex::Read { addr, source } => match source {
                         ReadSource::File(path) => match std::fs::read(&path) {
                             Ok(raw) => {
-                                let n = ws.read_lines(addr, &raw, false);
+                                // Strip the read file's own BOM / CRLF as opening it would; the target
+                                // buffer's format is applied on save (#860).
+                                let clean = persist::encoding::FileFormat::normalize(&raw);
+                                let n = ws.read_lines(addr, &clean, false);
                                 status = format!("\"{path}\" {n}L, {}B", raw.len());
                             }
                             Err(e) => status = format!("E484: can't open {path}: {e}"),

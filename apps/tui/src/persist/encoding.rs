@@ -76,6 +76,13 @@ impl FileFormat {
         }
     }
 
+    /// Clean editor bytes for text read INTO an existing buffer (`:r {file}`): detect the read file's own
+    /// style and strip it, as opening the file would, so the target buffer's format applies on save. Like
+    /// Vim's `:r` with `fileformats=unix,dos`, a CRLF file loses its `\r` and a leading BOM is dropped (#860).
+    pub fn normalize(raw: &[u8]) -> Vec<u8> {
+        FileFormat::detect(raw).to_buffer(raw)
+    }
+
     /// Restore the original style for writing to disk: re-expand `\n` → `\r\n` for a CRLF file and
     /// re-prepend the BOM. The inverse of [`to_buffer`].
     pub fn to_disk(self, buffer: &[u8]) -> Vec<u8> {
@@ -161,5 +168,20 @@ mod tests {
             }
         );
         assert_eq!(fmt.to_disk(b""), b"");
+    }
+
+    /// #860: `:r` text is cleaned by its own format, so the target buffer's save adds exactly one `\r`.
+    #[test]
+    fn normalize_strips_the_read_files_own_format() {
+        assert_eq!(FileFormat::normalize(b"X\r\nY\r\n"), b"X\nY\n");
+        assert_eq!(FileFormat::normalize(b"\xEF\xBB\xBFX\r\nY\r\n"), b"X\nY\n");
+        assert_eq!(FileFormat::normalize(b"\xEF\xBB\xBFX\nY\n"), b"X\nY\n");
+        // A mixed file is LF: its `\r` is text, as on open.
+        assert_eq!(FileFormat::normalize(b"X\r\nY\n"), b"X\r\nY\n");
+        let crlf = FileFormat::detect(b"one\r\n");
+        assert_eq!(
+            crlf.to_disk(&FileFormat::normalize(b"X\r\nY\r\n")),
+            b"X\r\nY\r\n"
+        );
     }
 }

@@ -122,7 +122,8 @@ fn step(e: &mut InputEngine, ws: &mut Workspace, key: KeyEvent) {
             Ex::Read { addr, source } => match source {
                 ReadSource::File(path) => {
                     if let Ok(raw) = std::fs::read(&path) {
-                        ws.read_lines(addr, &raw, false);
+                        let clean = ruse_tui::persist::encoding::FileFormat::normalize(&raw);
+                        ws.read_lines(addr, &clean, false);
                     }
                 }
                 ReadSource::Command(cmd) => {
