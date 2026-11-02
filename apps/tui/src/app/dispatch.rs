@@ -73,28 +73,32 @@ pub(crate) fn open_file_into_buffer(
     };
     let f = persist::encoding::FileFormat::detect(&raw);
     let disk = f.to_buffer(&raw);
-    let recovered =
-        match persist::assess_recovery(&disk, persist::journal::replay(Some(&p)).as_deref()) {
-            persist::Recovery::None => None,
-            persist::Recovery::Available(rec) => {
-                match prompt_recovery(&mut io::stdout(), "q: cancel the open and keep them") {
-                    Ok(RecoveryChoice::Recover) => Some(rec),
-                    Ok(RecoveryChoice::Discard) => {
-                        persist::journal::clear(Some(&p)); // discarded on the user's say-so
-                        None
-                    }
-                    Ok(RecoveryChoice::Quit) | Err(_) => {
-                        return Opened {
-                            status: format!(
-                                "\"{file}\" not opened: recovery journal kept ({})",
-                                persist::journal::journal_path(Some(&p)).display()
-                            ),
-                            id: None,
-                        }
+    let (journaled, journal_error) = match persist::journal::replay_checked(Some(&p)) {
+        Ok(r) => (r, None),
+        Err(e) => (None, Some(persist::journal::unreadable_note(Some(&p), &e))),
+    };
+    let recovered = match persist::assess_recovery(&disk, journaled.as_deref()) {
+        persist::Recovery::None => None,
+        persist::Recovery::Available(rec) => {
+            let note = persist::journal::is_stale(&p).then_some(persist::journal::STALE_NOTE);
+            match prompt_recovery(&mut io::stdout(), "q: cancel the open and keep them", note) {
+                Ok(RecoveryChoice::Recover) => Some(rec),
+                Ok(RecoveryChoice::Discard) => {
+                    persist::journal::clear(Some(&p)); // discarded on the user's say-so
+                    None
+                }
+                Ok(RecoveryChoice::Quit) | Err(_) => {
+                    return Opened {
+                        status: format!(
+                            "\"{file}\" not opened: recovery journal kept ({})",
+                            persist::journal::journal_path(Some(&p)).display()
+                        ),
+                        id: None,
                     }
                 }
             }
-        };
+        }
+    };
     let id = ws.add_buffer(disk, Some(file.to_string()));
     ws.focus_buffer(id);
     let status = match recovered {
@@ -112,7 +116,10 @@ pub(crate) fn open_file_into_buffer(
             ws.place_focused_cursor(0);
             format!("\"{file}\" recovered unsaved changes (:w to save)")
         }
-        None => format!("\"{file}\" {} bytes", raw.len()),
+        None => match journal_error {
+            Some(note) => format!("\"{file}\" {note}"),
+            None => format!("\"{file}\" {} bytes", raw.len()),
+        },
     };
     if let Some(h) = p
         .extension()

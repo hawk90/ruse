@@ -50,6 +50,8 @@ pub fn run() -> ExitCode {
         }
     };
     let result = session_run(path, raw);
+    // From here this thread ends the process; the signal watchdog stands down (#897).
+    let _exiting = crate::signals::begin_exit();
     // The terminal guard has already restored the terminal. A fatal signal or an I/O error ended the session
     // with unsaved work possibly unjournaled (#857): write every modified buffer's journal. A normal quit
     // (including `:q!`, which discards on purpose) leaves nothing to rescue.

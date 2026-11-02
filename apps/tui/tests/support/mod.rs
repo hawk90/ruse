@@ -59,6 +59,10 @@ pub struct Editor {
     pid: libc::pid_t,
     output: Arc<Mutex<Vec<u8>>>,
     status: Option<i32>,
+    /// Asks the reader thread to stop and drop its duplicate of the master, so [`Editor::hang_up`] can close
+    /// every master handle.
+    reader_stop: Arc<std::sync::atomic::AtomicBool>,
+    reader: Option<std::thread::JoinHandle<()>>,
 }
 
 fn cstring(bytes: &[u8]) -> CString {
@@ -113,14 +117,26 @@ impl Editor {
         let output = Arc::new(Mutex::new(Vec::new()));
         let mut reader = master.try_clone().expect("clone master fd");
         let sink = Arc::clone(&output);
-        std::thread::spawn(move || {
+        let reader_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop = Arc::clone(&reader_stop);
+        let reader = std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
-            // Linux reports EIO, not EOF, after the child exits; both end the stream.
-            while let Ok(n) = reader.read(&mut buf) {
-                if n == 0 {
-                    break;
+            let mut pfd = libc::pollfd {
+                fd: std::os::unix::io::AsRawFd::as_raw_fd(&reader),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // Poll with a timeout rather than block in read, so a stop request is seen (`hang_up`).
+            while !stop.load(Ordering::SeqCst) {
+                // SAFETY: `pfd` is a valid pollfd for an fd this thread owns.
+                if unsafe { libc::poll(&mut pfd, 1, 20) } <= 0 {
+                    continue; // timeout or EINTR
                 }
-                sink.lock().unwrap().extend_from_slice(&buf[..n]);
+                // Linux reports EIO, not EOF, after the child exits; both end the stream.
+                match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => sink.lock().unwrap().extend_from_slice(&buf[..n]),
+                }
             }
         });
         let mut editor = Editor {
@@ -128,6 +144,8 @@ impl Editor {
             pid,
             output,
             status: None,
+            reader_stop,
+            reader: Some(reader),
         };
         editor.wait_for_first_frame();
         editor
@@ -228,6 +246,25 @@ impl Drop for Editor {
                 libc::kill(self.pid, libc::SIGKILL);
                 libc::waitpid(self.pid, ptr::null_mut(), 0);
             }
+        }
+    }
+}
+
+impl Editor {
+    /// Close the terminal from the outside, as closing a terminal window does (#897): every master handle
+    /// goes, so the kernel hangs up the child's session with SIGHUP. Keys can no longer be sent afterwards;
+    /// the output read so far stays readable.
+    pub fn hang_up(&mut self) {
+        use std::os::unix::io::AsRawFd;
+        self.reader_stop.store(true, Ordering::SeqCst);
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join(); // drops the reader's duplicate of the master
+        }
+        let null = File::open("/dev/null").expect("open /dev/null");
+        // SAFETY: the master fd is this harness's own and nothing else uses it now; dup2 closes the master
+        // and leaves the fd pointing at /dev/null, so later writes and the final drop stay harmless.
+        unsafe {
+            libc::dup2(null.as_raw_fd(), self.master.as_raw_fd());
         }
     }
 }

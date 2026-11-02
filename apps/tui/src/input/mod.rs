@@ -2610,6 +2610,21 @@ impl InputEngine {
             self.leader = true;
             return Feed::Pending;
         }
+        // `CTRL-C` is Vim's interrupt (`:help CTRL-C`): it cancels whatever is pending (count, operator,
+        // awaited key) and leaves Visual / Select; in a clean Normal it does nothing. It must never reach the
+        // bare-key arms, where it decoded as the `c` operator, so `<C-c><C-c>` was `cc` (#897).
+        if normal_family
+            && !self.in_one_shot()
+            && key.code == KeyCode::Char('c')
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            self.reset();
+            return if mode == Mode::Normal {
+                Feed::Ignored
+            } else {
+                self.action(Command::EnterNormal)
+            };
+        }
         // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
         match self.normal.awaiting {
             Awaiting::FindTarget { forward, till } => {

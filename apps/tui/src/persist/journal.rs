@@ -200,8 +200,39 @@ fn frames(raw: &[u8]) -> Vec<(usize, usize)> {
 
 /// Read the last recoverable buffer from a document's journal, if any.
 pub fn replay(doc: Option<&Path>) -> Option<Vec<u8>> {
-    let raw = fs::read(journal_path(doc)).ok()?;
-    replay_bytes(&raw)
+    replay_checked(doc).ok().flatten()
+}
+
+/// [`replay`] for the open-time offer (#897): a missing journal is `Ok(None)`, but one that exists and cannot
+/// be read is an error, so the caller can say so instead of opening as if there were nothing to recover.
+pub fn replay_checked(doc: Option<&Path>) -> io::Result<Option<Vec<u8>>> {
+    match fs::read(journal_path(doc)) {
+        Ok(raw) => Ok(replay_bytes(&raw)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Whether `doc` was modified on disk after its journal was last written (#897), so recovering would replace
+/// a newer file. nvim warns the same way ("NEWER than swap file!"). False when either time is unknown.
+pub fn is_stale(doc: &Path) -> bool {
+    let mtime = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
+    matches!(
+        (mtime(doc), mtime(&journal_path(Some(doc)))),
+        (Some(file), Some(journal)) if file > journal
+    )
+}
+
+/// The open-time recovery prompt's warning line for a stale journal ([`is_stale`]).
+pub const STALE_NOTE: &str =
+    "note: the file on disk is NEWER than these changes; recovering replaces it in the buffer";
+
+/// The status line when a journal exists but [`replay_checked`] could not read it (#897).
+pub fn unreadable_note(doc: Option<&Path>, err: &io::Error) -> String {
+    format!(
+        "recovery journal {} unreadable ({err}); not offered",
+        journal_path(doc).display()
+    )
 }
 
 /// Standard CRC-32 (IEEE 802.3), table computed once. No external crate; correctness over speed

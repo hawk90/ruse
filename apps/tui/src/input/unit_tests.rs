@@ -4937,6 +4937,29 @@ mod binding_label_tests {
         KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
     }
 
+    /// #897: Normal `<C-c>` is an interrupt, not the `c` operator: `<C-c><C-c>` was `cc`. It cancels a
+    /// pending operator or awaited key, and leaves Visual (nvim v0.12.6).
+    #[test]
+    fn normal_ctrl_c_interrupts_instead_of_changing() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(ctrl_c(), Mode::Normal), Feed::Ignored);
+        assert_eq!(e.feed(ctrl_c(), Mode::Normal), Feed::Ignored);
+        assert_eq!(e.feed(k('d'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(ctrl_c(), Mode::Normal), Feed::Ignored);
+        assert_eq!(
+            e.feed(k('d'), Mode::Normal),
+            Feed::Pending,
+            "the cancelled d is gone"
+        );
+        assert_eq!(e.feed(ctrl_c(), Mode::Normal), Feed::Ignored);
+        assert_eq!(e.feed(k('f'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(ctrl_c(), Mode::Normal), Feed::Ignored);
+        let vis = Mode::Visual {
+            kind: SelectKind::Charwise,
+        };
+        assert_eq!(e.feed(ctrl_c(), vis), Feed::Cmd(Command::EnterNormal));
+    }
+
     #[test]
     fn cmdwin_cr_executes_the_selected_ex_line_and_closes() {
         let mut e = InputEngine::new();

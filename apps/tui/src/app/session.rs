@@ -204,8 +204,16 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let fmt = persist::encoding::FileFormat::detect(&raw);
     let disk = fmt.to_buffer(&raw);
     // A crash may have left an append-only journal of unsaved work; offer it, never auto-apply it.
-    let recovered = persist::journal::replay(path.as_deref());
+    // A journal that exists but cannot be read is reported on the status line, never silently skipped (#897).
+    let (recovered, journal_error) = match persist::journal::replay_checked(path.as_deref()) {
+        Ok(r) => (r, None),
+        Err(e) => (
+            None,
+            Some(persist::journal::unreadable_note(path.as_deref(), &e)),
+        ),
+    };
     let recovery = persist::assess_recovery(&disk, recovered.as_deref());
+    let stale = path.as_deref().is_some_and(persist::journal::is_stale);
 
     // Syntax highlighting lives in the frontend (core stays dep-free); one highlighter PER file buffer is
     // built below in the `files` seed / on `:e`, keyed by DocumentId (F-007 multi-buffer).
@@ -218,11 +226,17 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 
     let guard = TermGuard::enter()?;
     let mut out = io::stdout();
+    // Create crossterm's event source now, so its SIGWINCH registration exists before a fatal signal can
+    // arrive: the signal handler wakes a blocked read through it (#857). Installed before the recovery
+    // prompt, so a signal there also unwinds through the guard (#897).
+    let _ = event::poll(std::time::Duration::ZERO);
+    crate::signals::install();
 
     // Open-time crash recovery (F-008 #3/#4): the user picks; the original file is never touched.
+    let stale_note = stale.then_some(persist::journal::STALE_NOTE);
     let (initial, mut status) = match recovery {
         persist::Recovery::Available(rec) => {
-            match prompt_recovery(&mut out, "q: quit and keep them")? {
+            match prompt_recovery(&mut out, "q: quit and keep them", stale_note)? {
                 RecoveryChoice::Recover => (
                     rec,
                     String::from("ruse — recovered unsaved changes (:w to save)"),
@@ -237,7 +251,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                 RecoveryChoice::Quit => return Ok(()), // the journal stays for the next start
             }
         }
-        persist::Recovery::None => (disk, String::from("ruse — :q to quit")),
+        persist::Recovery::None => match journal_error {
+            Some(note) => (disk, format!("ruse — {note}")),
+            None => (disk, String::from("ruse — :q to quit")),
+        },
     };
 
     // F-007: the frontend now drives a Workspace (buffers + views + windows), not a single
@@ -384,11 +401,6 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     let cwd = std::env::current_dir().unwrap_or_default();
     let trusted = crate::trust::workspace_trusted(&cwd);
     let mut lsp = LspCoordinator::new(cwd, trusted);
-
-    // Create crossterm's event source now, so its SIGWINCH registration exists before a fatal signal can
-    // arrive: the signal handler wakes a blocked read through it (#857).
-    let _ = event::poll(std::time::Duration::ZERO);
-    crate::signals::install();
 
     while !quit {
         // SIGTERM / SIGHUP (#857): end the session; the caller journals every modified buffer and the
