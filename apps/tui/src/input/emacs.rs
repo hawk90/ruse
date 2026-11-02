@@ -232,14 +232,14 @@ impl EmacsProfile {
             EmacsKey::ctrl('f'),
             EmacsBinding::Directional {
                 bare: Command::MoveRight,
-                motion: Motion::Right,
+                motion: Motion::EmacsCharFwd,
             },
         )
         .bind(
             EmacsKey::ctrl('b'),
             EmacsBinding::Directional {
                 bare: Command::MoveLeft,
-                motion: Motion::Left,
+                motion: Motion::EmacsCharBack,
             },
         )
         .bind(

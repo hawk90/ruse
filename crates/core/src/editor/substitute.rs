@@ -28,6 +28,28 @@ pub enum LineAddr {
     Last,
     /// `:m .` — after the current (cursor) line.
     Current,
+    /// `:m +N` / `:m .-N` — after the line `N` lines below (negative: above) the cursor's line.
+    CurrentOffset(isize),
+    /// `:m $-N` — after the line `N` lines above the last one.
+    LastOffset(isize),
+}
+
+impl LineAddr {
+    /// The 0-based insert index in `0..=nlines` for a buffer of `nlines` lines with the cursor on 0-based
+    /// line `cursor_line`. A relative address that lands outside the buffer is `None` (Vim E16); an
+    /// absolute `Line` past the end clamps to the end.
+    #[must_use]
+    pub fn insert_index(self, cursor_line: usize, nlines: usize) -> Option<usize> {
+        let offset =
+            |base: usize, d: isize| base.checked_add_signed(d).filter(|&ins| ins <= nlines);
+        match self {
+            LineAddr::Line(n) => Some(n.min(nlines)),
+            LineAddr::Last => Some(nlines),
+            LineAddr::Current => Some((cursor_line + 1).min(nlines)),
+            LineAddr::CurrentOffset(d) => offset(cursor_line + 1, d),
+            LineAddr::LastOffset(d) => offset(nlines, d),
+        }
+    }
 }
 
 /// The `:s///` flags this MVP honors (F-009 #2). `c` (confirm) is an interactive frontend loop, not a

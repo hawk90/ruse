@@ -187,6 +187,8 @@ enum Awaiting {
     /// so far — `]p`/`]P`/`[p`/`[P` ([`Command::PasteIndent`]). `open` records which bracket started it (`]`
     /// pastes below like `p`, `[` above like `P`, before the second key's own `p`/`P` refines it).
     BracketPrefix { open_bracket: bool },
+    /// After `Z`: `ZZ` (`:x`, write when modified and close the window) or `ZQ` (`:q!`). Any other key aborts.
+    ZSecond,
 }
 
 /// The Normal-grammar layer's OWNED state (KL-OBL-4): the three orthogonal transient axes of the
@@ -1903,6 +1905,24 @@ impl InputEngine {
         Feed::Replay(cmds)
     }
 
+    /// An Insert-mode cursor key (`i_<Left>`, `i_<Home>`, …). Vim treats it as the end of one insert and
+    /// the start of another (verified vs nvim v0.12.6): the undo sequence breaks, so `u` undoes only what
+    /// was typed after the move, and `.` repeats only that text as a plain `i`. The in-flight recording is
+    /// therefore restarted here, which also drops a count-on-insert (`3ix<Left>y` inserts `y` once). The
+    /// move itself is not recorded: it travels in the recorder-bypassing [`Feed::Replay`].
+    fn insert_cursor_move(&mut self, cmd: Command) -> Feed {
+        self.reset();
+        if self.recording.is_some() {
+            self.recording = Some(ChangeIntent {
+                lead: Command::EnterInsert,
+                insert: Vec::new(),
+                register: None,
+                entry_count: 1,
+            });
+        }
+        Feed::Replay(vec![Command::BreakUndo, cmd])
+    }
+
     fn feed_insert(&mut self, key: KeyEvent) -> Feed {
         // Any key reaching `feed_insert` is NOT a completion-cycle key (`CTRL-N`/`CTRL-P` are intercepted by
         // the frontend before `feed`), so it ACCEPTS the current candidate and ends the cycle (Vim). The
@@ -2107,6 +2127,21 @@ impl InputEngine {
         if key.code == KeyCode::Tab {
             return self.action(Command::InsertTab);
         }
+        // The unmodified cursor and editing keys (`:help ins-special-special`). A modified one (`<S-Left>`,
+        // `<C-Home>`) is a different command and stays unbound here.
+        if key.modifiers.is_empty() {
+            if let Some(cmd) = insert_cursor_command(key.code) {
+                return self.insert_cursor_move(cmd);
+            }
+            match key.code {
+                // `i_<Del>`: delete the char under the caret; at the end of a line, join the next one. It is
+                // part of the insert: one undo step with the typed text, and `.` replays it.
+                KeyCode::Delete => return self.action(Command::DeleteForward(1)),
+                // `i_<Insert>`: toggle to Replace (`<Insert>` in Replace toggles back).
+                KeyCode::Insert => return self.action(Command::EnterReplace),
+                _ => {}
+            }
+        }
         if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Insert).resolve(&key.code) {
             let cmd = value.clone();
             self.reset();
@@ -2293,6 +2328,10 @@ impl InputEngine {
             KeyCode::Char('j' | 'm') if ctrl => plain(KeyCode::Enter),
             _ => key,
         };
+        // `<Insert>` in Replace toggles to Insert (`:help i_<Insert>`).
+        if key.code == KeyCode::Insert && key.modifiers.is_empty() && mode == Mode::Replace {
+            return self.action(Command::EnterInsert);
+        }
         if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Replace).resolve(&key.code) {
             let cmd = value.clone();
             return self.action(cmd);
@@ -2611,6 +2650,10 @@ impl InputEngine {
                 KeyCode::Char('0') if self.normal.count > 0 => {}
                 KeyCode::Char('0') => return self.motion(Motion::LineStart),
                 _ if motion_key(key.code).is_some() => {}
+                // `<Space>`/`<BS>` extend a Visual selection like `l`/`h`, wrapping across lines. In Select
+                // they stay with the namespace policy (a typed space replaces the selection).
+                KeyCode::Char(' ') | KeyCode::Backspace
+                    if matches!(mode, Mode::Visual { .. }) && key.modifiers.is_empty() => {}
                 _ => {
                     let ns = if matches!(mode, Mode::Select { .. }) {
                         Ns::Select
@@ -2727,6 +2770,27 @@ impl InputEngine {
             KeyCode::Char('o') => self.insert_entry(Command::OpenBelow),
             KeyCode::Char('O') => self.insert_entry(Command::OpenAbove),
             KeyCode::Char('x') => self.action(Command::DeleteUnder(self.mcount())),
+            // `X` = `dh`: delete `count` chars before the cursor, never past the line's first char.
+            KeyCode::Char('X') if self.normal.op.is_none() => {
+                self.action(Command::Delete(self.mcount(), Motion::Left))
+            }
+            // `<Space>` / `<BS>` move like `l` / `h` but wrap across lines (nvim's default 'whichwrap' is
+            // `b,s`); under an operator see [`Motion::WrapRight`] / [`Motion::WrapLeft`].
+            KeyCode::Char(' ') if key.modifiers.is_empty() => self.motion(Motion::WrapRight),
+            KeyCode::Backspace if key.modifiers.is_empty() => self.motion(Motion::WrapLeft),
+            // `{count}<Del>` drops the count's last digit (`:help N<Del>`); a bare `<Del>` is `x`.
+            KeyCode::Delete if self.normal.count > 0 => {
+                self.normal.count /= 10;
+                Feed::Pending
+            }
+            KeyCode::Delete if self.normal.op.is_none() => self.action(Command::DeleteUnder(1)),
+            // `<Insert>` = `i`.
+            KeyCode::Insert if self.normal.op.is_none() => self.insert_entry(Command::EnterInsert),
+            // `Z` arms `ZZ` / `ZQ`.
+            KeyCode::Char('Z') if self.normal.op.is_none() => {
+                self.normal.awaiting = Awaiting::ZSecond;
+                Feed::Pending
+            }
             // Doubled case operators (`guu` / `gUU` / `g~~`): the second key repeats the operator to make
             // it linewise. These guards must precede the plain `u`/`~` handlers.
             KeyCode::Char('u')
@@ -3163,6 +3227,26 @@ impl InputEngine {
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
+            // `ZZ` / `ZQ` are exactly `:x` / `:q!` (`:help ZZ`), so they run the same Ex quit policy: one
+            // place decides window-close versus editor exit and the unsaved-changes refusals (E37/E162).
+            Awaiting::ZSecond => {
+                self.normal.awaiting = Awaiting::Nothing;
+                let line = match key.code {
+                    KeyCode::Char('Z')
+                        if key.modifiers - KeyModifiers::SHIFT == KeyModifiers::NONE =>
+                    {
+                        "x"
+                    }
+                    KeyCode::Char('Q')
+                        if key.modifiers - KeyModifiers::SHIFT == KeyModifiers::NONE =>
+                    {
+                        "q!"
+                    }
+                    _ => return self.unmatched(Ns::OperatorPending, key),
+                };
+                self.reset();
+                return Feed::ExecuteEx(line.to_string());
+            }
             Awaiting::MarkJump => {
                 self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
@@ -3362,6 +3446,21 @@ pub(crate) use ex::{parse_substitute, GlobalSpec, SubSpec};
 /// for the empty-pattern repeat: a bare `/<CR>` (no delimiter) reuses the last offset, whereas `//<CR>`
 /// (a typed delimiter, empty offset) explicitly resets to NO offset — matching nvim (`/foo/e` then `//`
 /// lands on the match start, but then `/<CR>` reuses `e`).
+/// The command an unmodified Insert-mode cursor key moves by. None of them leaves the line sideways:
+/// `<Left>` stops at the first char and `<Right>` after the last ('whichwrap' has no `[`/`]` by default);
+/// `<End>` rests after the last char and keeps that column wanted for `<Up>`/`<Down>`.
+fn insert_cursor_command(code: KeyCode) -> Option<Command> {
+    Some(match code {
+        KeyCode::Left => Command::Move(1, Motion::Left),
+        KeyCode::Right => Command::Move(1, Motion::Right),
+        KeyCode::Up => Command::Move(1, Motion::Up),
+        KeyCode::Down => Command::Move(1, Motion::Down),
+        KeyCode::Home => Command::MoveLineStart,
+        KeyCode::End => Command::MoveLineEnd,
+        _ => return None,
+    })
+}
+
 fn split_search_offset(line: &str, delim: char) -> (String, Option<SearchOffset>) {
     let bytes = line.as_bytes();
     let dl = delim as u8; // both `/` and `?` are single ASCII bytes

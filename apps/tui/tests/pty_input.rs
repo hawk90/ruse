@@ -36,11 +36,12 @@ fn emacs(start: &[u8], chunks: &[&[u8]]) -> Vec<u8> {
 
 #[test]
 fn a_csi_key_split_across_reads_decodes_as_one_key() {
-    // Down arrow (`CSI B`, and the SS3 form) cut after its introducer, then `x`. (A `CSI 3 ~` split would
-    // test parameters too, but Normal-mode <Del> is not bound yet: #605.)
+    // Down arrow (`CSI B`, and the SS3 form) cut after its introducer, then `x`.
     for down in [&b"\x1b["[..], b"\x1bO"] {
         assert_eq!(vim(b"abc\ndef\n", &[down, b"Bx"]), b"abc\nef\n", "{down:?}");
     }
+    // Normal-mode <Del> (`CSI 3 ~`, bound since #605) cut inside its parameters.
+    assert_eq!(vim(b"abc\n", &[b"\x1b[3", b"~"]), b"bc\n");
     // A cut inside the parameters of a modified arrow (Shift-Down, `CSI 1 ; 2 B`).
     assert_eq!(vim(b"abc\ndef\n", &[b"\x1b[1;", b"2B", b"x"]), b"abc\nef\n");
 }

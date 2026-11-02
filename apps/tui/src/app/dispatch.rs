@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{
@@ -346,13 +347,20 @@ fn drive_feed(
     }
 }
 
-/// The unsaved-changes check of `:q` and `C-w q` on the last window: refuse with E37 when the focused
-/// buffer is modified, or E162 when a hidden one is (quitting ends the editor). Returns whether to quit.
-pub(crate) fn may_quit(ws: &Workspace, status: &mut String) -> bool {
-    if ws.focused().doc.is_modified() {
+/// The unsaved-changes check of every quit that would end the editor (`:q`, `C-w q`, `:wq`/`:x`, `ZZ`/`ZQ`
+/// on the last window, `:qa`): refuse with E37 when the focused buffer is modified, or E162 when another
+/// (hidden) one is. `abandon_focused` (`:q!`, `ZQ`) skips only the focused buffer's check; a modified
+/// hidden buffer still refuses, as in nvim. Returns whether to quit.
+pub(crate) fn may_quit(ws: &Workspace, status: &mut String, abandon_focused: bool) -> bool {
+    let focused = ws.focused_buffer();
+    if !abandon_focused && ws.focused().doc.is_modified() {
         *status = "E37: No write since last change (add ! to override)".into();
         false
-    } else if let Some(b) = ws.buffers().into_iter().find(|b| b.modified) {
+    } else if let Some(b) = ws
+        .buffers()
+        .into_iter()
+        .find(|b| b.modified && b.id != focused)
+    {
         *status = format!("E162: No write since last change for buffer \"{}\"", b.name);
         false
     } else {
@@ -379,14 +387,29 @@ pub(crate) fn run_ex(
         Ex::Save => {
             save(ws, files, status, fixeol);
         }
-        // `:q` refuses when the focused buffer has unsaved changes (Vim E37); `:q!` discards them.
-        // `:q` ends the editor, so a modified hidden buffer blocks it too (Vim E162).
-        Ex::Quit => *quit = may_quit(ws, status),
-        Ex::QuitForce => *quit = true,
+        Ex::Quit => quit_window(ws, status, quit, false),
+        Ex::QuitForce => quit_window(ws, status, quit, true),
+        // `:wq` / `:x` close the window only after a successful save (#842): no file, or a failed write,
+        // keeps it open. `:x` writes only a modified buffer.
         Ex::SaveQuit => {
-            // `:wq`/`:x` quit only after a successful save: no file, or a failed write, keeps the editor open.
             if save(ws, files, status, fixeol) {
-                *quit = true;
+                quit_window(ws, status, quit, false);
+            }
+        }
+        Ex::ExitWrite => {
+            if !ws.focused().doc.is_modified() || save(ws, files, status, fixeol) {
+                quit_window(ws, status, quit, false);
+            }
+        }
+        Ex::QuitAll { force: true } => *quit = true,
+        Ex::QuitAll { force: false } => *quit = may_quit(ws, status, false),
+        Ex::CQuit(code) => {
+            EXIT_STATUS.store(*code, Ordering::Relaxed);
+            *quit = true;
+        }
+        Ex::Hide => {
+            if !ws.close_focused() {
+                *status = "E444: Cannot close last window".into();
             }
         }
         // F-007 window commands: split the focused window onto the same buffer, or close it.
@@ -400,7 +423,7 @@ pub(crate) fn run_ex(
         }
         Ex::Close => {
             if !ws.close_focused() {
-                *status = "cannot close last window (:q to quit)".into();
+                *status = "E444: Cannot close last window".into();
             }
         }
         Ex::Only => {
@@ -486,6 +509,9 @@ pub(crate) fn run_ex(
             };
         }
         // `:[range]m {addr}` — move the range's lines to after the destination line.
+        Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, *dest) => {
+            *status = "E16: Invalid range".into();
+        }
         Ex::Move(range, dest) => {
             *status = match ws.move_lines(*range, *dest) {
                 Some(1) => "1 line moved".into(),
@@ -678,6 +704,35 @@ pub(crate) fn regex_error_msg(e: &ruse_core::RegexError) -> String {
     }
 }
 
+/// The process exit status a `:cquit` asked for; 0 otherwise. Read by the CLI once the session returns.
+static EXIT_STATUS: AtomicU8 = AtomicU8::new(0);
+
+/// The exit status the session should end with (`:cq [N]` sets it; a normal quit leaves it 0).
+pub(crate) fn exit_status() -> u8 {
+    EXIT_STATUS.load(Ordering::Relaxed)
+}
+
+/// Whether a `:m`/`:t` destination lands inside the focused buffer. A relative one (`:m+5`, `:m$-9`) can
+/// fall off either end, which Vim refuses with E16 rather than clamping.
+fn dest_in_range(ws: &Workspace, dest: ruse_core::LineAddr) -> bool {
+    let b = ws.focused().doc.bytes();
+    let cursor = ws.focused().view.cursor().min(b.len());
+    let cursor_line = b[..cursor].iter().filter(|&&c| c == b'\n').count();
+    let nlines = b.split(|&c| c == b'\n').count() - usize::from(b.ends_with(b"\n"));
+    dest.insert_index(cursor_line, nlines).is_some()
+}
+
+/// `:q` (Vim `:quit`): with other windows open, close the focused one — its buffer stays loaded and
+/// hidden even when modified (#736; nvim's 'hidden' is on by default). On the last window, end the editor
+/// through [`may_quit`]. `force` (`:q!`, `ZQ`) lets the FOCUSED buffer's changes go; a modified hidden
+/// buffer still refuses, as in nvim, so `:q!` can never silently drop work the user cannot see.
+pub(crate) fn quit_window(ws: &mut Workspace, status: &mut String, quit: &mut bool, force: bool) {
+    if ws.close_focused() {
+        return;
+    }
+    *quit = may_quit(ws, status, force);
+}
+
 pub(crate) fn apply_effect(
     eff: Effect,
     ws: &mut Workspace,
@@ -819,6 +874,151 @@ mod dispatch_tests {
         assert!(status.starts_with("E37"), "E37 surfaced: {status}");
         let (_, quit) = run(&Ex::QuitForce, &mut ws);
         assert!(quit, ":q! discards changes and quits");
+    }
+
+    /// Run one ex line against `ws`, returning `(status, quit)`.
+    fn ex_run(ws: &mut Workspace, line: &str) -> (String, bool) {
+        let files = Files::new();
+        let mut status = String::new();
+        let mut quit = false;
+        run_ex(
+            &crate::input::parse_ex(line),
+            ws,
+            &files,
+            b"",
+            &[],
+            &mut status,
+            &mut quit,
+            &mut None,
+            false,
+        );
+        (status, quit)
+    }
+
+    /// A workspace with a.txt focused and a MODIFIED b.txt loaded but hidden (`:split`, `:e b.txt`, `x`,
+    /// `:close` in nvim).
+    fn ws_with_hidden_modified() -> Workspace {
+        let mut ws = Workspace::new(b"a\n".to_vec());
+        ws.set_focused_buffer_name("a.txt");
+        let b = ws.add_buffer(b"b\n".to_vec(), Some("b.txt".into()));
+        ws.split(SplitDir::Horizontal);
+        ws.focus_buffer(b);
+        ws.apply(&Command::DeleteUnder(1));
+        assert!(ws.close_focused());
+        assert!(!ws.focused().doc.is_modified());
+        ws
+    }
+
+    /// #611, verified against nvim v0.12.6: `:q` / `:q!` in a split close only the focused window, even
+    /// when its buffer is modified (that buffer stays loaded, hidden); `:close`/`:hide` refuse the last
+    /// window with E444.
+    #[test]
+    fn quit_in_a_split_closes_the_window_only() {
+        for line in ["q", "quit", "q!"] {
+            let mut ws = Workspace::new(b"a\n".to_vec());
+            ws.split(SplitDir::Horizontal);
+            ws.apply(&Command::DeleteUnder(1));
+            let (status, quit) = ex_run(&mut ws, line);
+            assert!(!quit, ":{line} in a split must not end the editor");
+            assert_eq!(ws.window_count(), 1, ":{line} closes the focused window");
+            assert!(ws.focused().doc.is_modified(), "the edit survives");
+            assert_eq!(status, "");
+        }
+        for line in ["close", "close!", "hide"] {
+            let mut ws = Workspace::new(b"a\n".to_vec());
+            let (status, quit) = ex_run(&mut ws, line);
+            assert!(!quit);
+            assert_eq!(status, "E444: Cannot close last window", ":{line}");
+        }
+    }
+
+    /// #611: on the last window, every quit that does not say "all" refuses while a HIDDEN buffer is
+    /// modified — `:q`, `:q!`, `:wq`, `:x` (nvim reports E37 for each; ruse names the buffer, E162).
+    /// `:qa` refuses too; only `:qa!` abandons it.
+    #[test]
+    fn last_window_quits_refuse_over_a_modified_hidden_buffer() {
+        for line in ["q", "q!", "x", "qa", "qall", "quitall"] {
+            let mut ws = ws_with_hidden_modified();
+            let (status, quit) = ex_run(&mut ws, line);
+            assert!(!quit, ":{line} must not drop b.txt's change");
+            assert_eq!(
+                status, "E162: No write since last change for buffer \"b.txt\"",
+                ":{line}"
+            );
+        }
+        let mut ws = ws_with_hidden_modified();
+        assert!(ex_run(&mut ws, "qa!").1, ":qa! abandons every change");
+    }
+
+    /// `:qa` names the FOCUSED buffer first (E37) when it is the modified one.
+    #[test]
+    fn quit_all_refuses_a_modified_focused_buffer_with_e37() {
+        let mut ws = Workspace::new(b"a\n".to_vec());
+        ws.apply(&Command::DeleteUnder(1));
+        let (status, quit) = ex_run(&mut ws, "qa");
+        assert!(!quit);
+        assert!(status.starts_with("E37"), "{status}");
+        assert!(ex_run(&mut ws, "quitall!").1);
+    }
+
+    /// `:x` (and `ZZ`) writes only when modified: a clean unnamed buffer quits without a write attempt,
+    /// while a modified one with no file name fails to write and stays open (#842).
+    #[test]
+    fn exit_write_writes_only_a_modified_buffer() {
+        let mut ws = Workspace::new(b"a\n".to_vec());
+        assert!(ex_run(&mut ws, "x").1, "clean: quits, nothing to write");
+        let mut ws = Workspace::new(b"a\n".to_vec());
+        ws.apply(&Command::DeleteUnder(1));
+        let (_, quit) = ex_run(&mut ws, "x");
+        assert!(!quit, "a failed write keeps the editor open");
+        let (_, quit) = ex_run(&mut ws, "wq");
+        assert!(!quit, ":wq likewise");
+    }
+
+    /// `:cq [N]` quits at once, even over unsaved changes, and records the exit status (default 1).
+    #[test]
+    fn cquit_quits_with_a_status() {
+        let mut ws = Workspace::new(b"a\n".to_vec());
+        ws.apply(&Command::DeleteUnder(1));
+        assert!(ex_run(&mut ws, "cq 3").1);
+        assert_eq!(exit_status(), 3);
+        assert!(ex_run(&mut ws, "cquit").1);
+        assert_eq!(exit_status(), 1);
+        EXIT_STATUS.store(0, Ordering::Relaxed);
+    }
+
+    /// #601: `:m`/`:t` destinations relative to the cursor line, verified against nvim v0.12.6. Before the
+    /// fix `+1` parsed as the ABSOLUTE line 1, so `:m+1` on line 2 was a silent no-op.
+    #[test]
+    fn move_and_copy_take_relative_addresses() {
+        let run = |cursor_line: usize, line: &str| {
+            let mut ws = Workspace::new(b"1\n2\n3\n4\n".to_vec());
+            ws.place_focused_cursor(cursor_line * 2);
+            let (status, _) = ex_run(&mut ws, line);
+            (
+                String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap(),
+                status,
+            )
+        };
+        assert_eq!(run(1, "m+1").0, "1\n3\n2\n4\n");
+        assert_eq!(run(1, "m +1").0, "1\n3\n2\n4\n");
+        assert_eq!(run(1, "m+").0, "1\n3\n2\n4\n");
+        assert_eq!(run(2, "m-2").0, "1\n3\n2\n4\n");
+        assert_eq!(run(1, "m.+2").0, "1\n3\n4\n2\n");
+        assert_eq!(run(0, "m$-1").0, "2\n3\n1\n4\n");
+        assert_eq!(run(0, "m1+2").0, "2\n3\n1\n4\n");
+        assert_eq!(run(1, "t+1").0, "1\n2\n3\n2\n4\n");
+        assert_eq!(run(1, "t-1").0, "1\n2\n2\n3\n4\n");
+        assert_eq!(run(3, "t-3").0, "1\n4\n2\n3\n4\n");
+        // Off the buffer: E16, nothing moves.
+        assert_eq!(
+            run(1, "m+5"),
+            ("1\n2\n3\n4\n".into(), "E16: Invalid range".into())
+        );
+        assert_eq!(
+            run(1, "t-3"),
+            ("1\n2\n3\n4\n".into(), "E16: Invalid range".into())
+        );
     }
 
     /// The `:w` line count matches Vim across the edge cases: empty buffer = 1 line, a trailing newline

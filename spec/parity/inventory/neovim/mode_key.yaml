@@ -838,7 +838,8 @@ items:
   - D
   tag: <BS>
   moves_cursor: true
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.c_H
   surface: mode_key.normal
   key: CTRL-H
@@ -1120,7 +1121,8 @@ items:
   - D
   tag: <Space>
   moves_cursor: true
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x21x7bmotionx7dx7bfilterx7d
   surface: mode_key.normal
   key: '!{motion}{filter}'
@@ -1798,7 +1800,8 @@ items:
   - D
   tag: X
   undoable: true
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx22xx5dY
   surface: mode_key.normal
   key: '["x]Y'
@@ -1815,7 +1818,8 @@ items:
   attestation:
   - D
   tag: ZZ
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.ZQ
   surface: mode_key.normal
   key: ZQ
@@ -1823,7 +1827,8 @@ items:
   attestation:
   - D
   tag: ZQ
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x5bx7bcharx7d
   surface: mode_key.normal
   key: '[{char}'
@@ -2391,7 +2396,8 @@ items:
   - D
   tag: <Del>
   undoable: true
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.x7bcountx7dDel
   surface: mode_key.normal
   key: '{count}<Del>'
@@ -2399,7 +2405,8 @@ items:
   attestation:
   - D
   tag: N<Del>
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.Down
   surface: mode_key.normal
   key: <Down>
@@ -2418,7 +2425,8 @@ items:
   - D
   tag: <End>
   moves_cursor: true
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.F1
   surface: mode_key.normal
   key: <F1>
@@ -2443,7 +2451,8 @@ items:
   - D
   tag: <Home>
   moves_cursor: true
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.Insert
   surface: mode_key.normal
   key: <Insert>
@@ -2452,7 +2461,8 @@ items:
   - D
   tag: <Insert>
   undoable: true
-  status: deferred
+  status: targeted
+  family: FAM-EDIT-VIM-GRAMMAR
 - id: nvim.key.normal.Left
   surface: mode_key.normal
   key: <Left>

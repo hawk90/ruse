@@ -1762,9 +1762,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // is no next word), pull back onto the last char. Restricted to these motions — `^` on an
             // all-blank line legitimately rests at the line end, and the Emacs word motions are separate
             // variants (`EmacsWord*`) with between-char gravity. Insert/Visual keep the past-end column.
+            // `l` stops ON the last char too. Visual may reach the newline (`vl` at the end selects it, as
+            // nvim does) and Insert rests after the last char.
             let target = if matches!(
                 m,
-                Motion::Up | Motion::Down | Motion::WordFwd | Motion::BigWordFwd
+                Motion::Up | Motion::Down | Motion::WordFwd | Motion::BigWordFwd | Motion::Right
             ) && matches!(st.view.mode, Mode::Normal)
             {
                 let ls = line_start(b, target);

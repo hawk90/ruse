@@ -980,6 +980,75 @@ FIXTURES: list[dict] = [
     {"name": "icpt_record_find_q", "lines": ["abqcq"], "keys": "qqfqxq"},
     {"name": "icpt_record_insert_q", "lines": ["alpha"], "keys": "qaiq<Esc>q"},
     {"name": "icpt_record_stop_in_visual", "lines": ["alpha beta"], "keys": "qavlqx"},
+    # --- #605 Normal-mode special keys: X, <Del>, <Home>/<End>, <Space>/<BS> ('whichwrap' b,s), <Insert>.
+    #     `X` = `dh` into the unnamed + small-delete registers; it never crosses to the previous line.
+    #     `{count}<Del>` drops the last count digit; a bare `<Del>` is `x`. `<Space>`/`<BS>` wrap across lines
+    #     as bare motions (nvim's default 'whichwrap' is "b,s"); under an operator `<Space>` stays on the line
+    #     like `l` while `<BS>` crosses the newline (`d<BS>` at column 0 joins). -------------------------------
+    #     `h`/`l` never leave the line (only `<Space>`/`<BS>` are in nvim's default 'whichwrap'): a count past
+    #     the edge stops there, and under an operator the span is clamped to the line. -------------------------
+    {"name": "l_stops_at_last_char", "lines": ["abc", "def"], "keys": "lll"},
+    {"name": "count_l_stops_at_last_char", "lines": ["abc", "def"], "keys": "l5l"},
+    {"name": "h_stops_at_col0", "lines": ["abc", "def"], "keys": "jh"},
+    {"name": "count_h_stops_at_col0", "lines": ["abc", "def"], "keys": "jl5h"},
+    {"name": "dh_at_col0_noop", "lines": ["abc", "def"], "keys": "jdh"},
+    {"name": "d_count_l_stays_on_line", "lines": ["abc", "def"], "keys": "ld3l"},
+    {"name": "count_s_stays_on_line", "lines": ["abc", "def"], "keys": "l3sX<Esc>"},
+    {"name": "v_l_stops_at_last_char", "lines": ["abc", "def"], "keys": "vllld"},
+    {"name": "X_delete_before", "lines": ["abcdef"], "keys": "3lX"},
+    {"name": "X_count", "lines": ["abcdef"], "keys": "3l2X"},
+    {"name": "X_count_past_bol", "lines": ["abcdef"], "keys": "3l9X"},
+    {"name": "X_at_col0_noop", "lines": ["abcdef"], "keys": "X"},
+    {"name": "X_no_line_cross", "lines": ["abc", "def"], "keys": "jX"},
+    {"name": "X_dot", "lines": ["abcdef"], "keys": "3lX."},
+    {"name": "del_is_x", "lines": ["abcdef"], "keys": "3l<Del>"},
+    {"name": "del_drops_count_digit", "lines": ["abcdef"], "keys": "l23<Del>x"},
+    {"name": "del_drops_only_digit", "lines": ["abcdef"], "keys": "l3<Del>x"},
+    {"name": "del_dot", "lines": ["abcdef"], "keys": "3l<Del>."},
+    {"name": "home_is_0", "lines": ["  abc"], "keys": "4l<Home>"},
+    {"name": "end_is_dollar", "lines": ["abc def"], "keys": "l<End>"},
+    {"name": "end_count", "lines": ["abc", "def", "ghi"], "keys": "l2<End>"},
+    {"name": "dollar_count", "lines": ["abc", "def", "ghi"], "keys": "l2$"},
+    {"name": "d_dollar_count", "lines": ["abc", "def", "ghi"], "keys": "ld2$"},
+    {"name": "d_dollar_count_past_eof", "lines": ["abc", "def"], "keys": "ld5$"},
+    {"name": "dollar_count_past_eof", "lines": ["abc", "def"], "keys": "l5$"},
+    {"name": "d_end", "lines": ["abcdef"], "keys": "3ld<End>"},
+    {"name": "d_home", "lines": ["abcdef"], "keys": "3ld<Home>"},
+    {"name": "space_wraps", "lines": ["abc", "def"], "keys": "2l<Space>"},
+    {"name": "space_count_wraps", "lines": ["abc", "def"], "keys": "l3<Space>"},
+    {"name": "space_last_char_stays", "lines": ["abc", "def"], "keys": "j2l<Space>"},
+    {"name": "d_space_stays_on_line", "lines": ["abc", "def"], "keys": "2ld<Space>"},
+    {"name": "d_count_space_stays_on_line", "lines": ["abc", "def"], "keys": "ld3<Space>"},
+    {"name": "bs_wraps", "lines": ["abc", "def"], "keys": "j<BS>"},
+    {"name": "bs_count_wraps", "lines": ["abc", "def"], "keys": "jl3<BS>"},
+    {"name": "bs_at_bof_stays", "lines": ["abc", "def"], "keys": "<BS>"},
+    {"name": "d_bs_joins", "lines": ["abc", "def"], "keys": "jd<BS>"},
+    {"name": "d_count_bs_crosses", "lines": ["abc", "def"], "keys": "jld3<BS>"},
+    {"name": "insert_key_enters_insert", "lines": ["abcdef"], "keys": "3l<Insert>X<Esc>"},
+    # --- #607 Insert-mode cursor keys. Arrows/<Home>/<End> move without leaving Insert, never wrap, BREAK
+    #     the undo sequence and START a new insert (so `.` repeats only what was typed after the move; the
+    #     undo half is unit-tested, since the oracle's own `nvim_buf_set_lines` is undoable).
+    #     <Up>/<Down> keep the wanted column. <Del> deletes under the caret, joining at end of line, and
+    #     stays part of the insert (one undo step, replayed by `.`). <Insert> toggles Insert<->Replace. ------
+    {"name": "i_right", "lines": ["abc"], "keys": "lix<Right>y<Esc>"},
+    {"name": "i_left", "lines": ["abc"], "keys": "lix<Left>y<Esc>"},
+    {"name": "i_right_dot_repeats_tail", "lines": ["abc"], "keys": "lix<Right>y<Esc>."},
+    {"name": "i_end", "lines": ["abc"], "keys": "lix<End>y<Esc>"},
+    {"name": "i_home", "lines": ["abc"], "keys": "lix<Home>y<Esc>"},
+    {"name": "i_down_short_line", "lines": ["abcdef", "ab", "abcdef"], "keys": "4li<Down>x<Esc>"},
+    {"name": "i_down_keeps_column", "lines": ["abcdef", "ab", "abcdef"], "keys": "4li<Down><Down>x<Esc>"},
+    {"name": "i_up_short_line", "lines": ["abcdef", "ab", "abcdef"], "keys": "jj4li<Up>x<Esc>"},
+    {"name": "i_del", "lines": ["abc", "def"], "keys": "li<Del>x<Esc>"},
+    {"name": "a_del_joins_at_eol", "lines": ["abc", "def"], "keys": "lla<Del>x<Esc>"},
+    {"name": "a_del_twice", "lines": ["abc", "def"], "keys": "lla<Del><Del>x<Esc>"},
+    {"name": "a_del_dot", "lines": ["abc", "def"], "keys": "llax<Del><Esc>."},
+    {"name": "i_right_stops_at_eol", "lines": ["abc"], "keys": "lli<Right><Right>x<Esc>"},
+    {"name": "i_left_stops_at_bol", "lines": ["abc"], "keys": "i<Left>x<Esc>"},
+    {"name": "i_left_no_wrap", "lines": ["abc", "def"], "keys": "ji<Left>x<Esc>"},
+    {"name": "a_right_no_wrap", "lines": ["abc", "def"], "keys": "lla<Right>x<Esc>"},
+    {"name": "i_insert_toggles_replace", "lines": ["abc"], "keys": "i<Insert>XY<Esc>"},
+    {"name": "i_insert_toggles_back", "lines": ["abc"], "keys": "i<Insert>XY<Insert>Z<Esc>"},
+    {"name": "R_insert_toggles_insert", "lines": ["abc"], "keys": "RX<Insert>Y<Esc>"},
 ]
 
 

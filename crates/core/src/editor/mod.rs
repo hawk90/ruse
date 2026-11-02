@@ -1340,12 +1340,8 @@ impl EditorState {
         // not, so clamp to the vec.
         let last = last.min(nlines - 1);
         let first = first.min(last);
-        // Destination as a 0-based insert index in `0..=nlines`.
-        let ins = match dest {
-            LineAddr::Line(n) => n.min(nlines),
-            LineAddr::Last => nlines,
-            LineAddr::Current => (cursor_line + 1).min(nlines),
-        };
+        // Destination as a 0-based insert index in `0..=nlines`; a relative one off the buffer declines.
+        let ins = dest.insert_index(cursor_line, nlines)?;
         // A move whose destination is inside/adjacent to the source is a no-op (Vim errors; we decline).
         if !copy && ins >= first && ins <= last + 1 {
             return None;
@@ -1435,10 +1431,8 @@ impl EditorState {
         // Destination as a 0-based insert index in `0..=nlines` (Vim `:put N` = "after line N", `:0put` =
         // top; a bare `:put` = after the cursor's line).
         let cursor_line = crate::pos::line_of(buf, self.view.cursor);
-        let ins = match addr {
-            LineAddr::Line(n) => n.min(nlines),
-            LineAddr::Last => nlines,
-            LineAddr::Current => (cursor_line + 1).min(nlines),
+        let Some(ins) = addr.insert_index(cursor_line, nlines) else {
+            return 0; // a relative address off the buffer inserts nothing
         };
         let count = ins_lines.len();
         for (k, line) in ins_lines.into_iter().enumerate() {
@@ -1516,10 +1510,8 @@ impl EditorState {
         };
         let nlines = buf_lines.len();
         let cursor_line = crate::pos::line_of(buf, self.view.cursor);
-        let ins = match addr {
-            LineAddr::Line(n) => n.min(nlines),
-            LineAddr::Last => nlines,
-            LineAddr::Current => (cursor_line + 1).min(nlines),
+        let Some(ins) = addr.insert_index(cursor_line, nlines) else {
+            return 0; // a relative address off the buffer inserts nothing
         };
         let count = ins_lines.len();
         for (k, line) in ins_lines.into_iter().enumerate() {
@@ -2384,7 +2376,9 @@ fn update_curswant(st: &mut EditorState, cmd: &Command) {
         Command::Move(_, Motion::Up)
         | Command::Move(_, Motion::Down)
         | Command::MoveUp
-        | Command::MoveDown => {} // keep the sticky column
+        | Command::MoveDown
+        // An undo break moves nothing: `i_<Down><Down>` (a break before each move) keeps the column.
+        | Command::BreakUndo => {} // keep the sticky column
         // `$`/`<End>` and `A` (append) want the line's end.
         Command::Move(_, Motion::LineEnd) | Command::MoveLineEnd | Command::AppendLineEnd => {
             st.view.curswant = MAXCOL

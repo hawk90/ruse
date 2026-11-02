@@ -21,7 +21,9 @@ pub(crate) fn motion_key(code: KeyCode) -> Option<Motion> {
         KeyCode::Char('W') => Motion::BigWordFwd,
         KeyCode::Char('B') => Motion::BigWordBack,
         KeyCode::Char('E') => Motion::BigWordEnd,
-        KeyCode::Char('$') => Motion::LineEnd,
+        KeyCode::Char('$') | KeyCode::End => Motion::LineEnd,
+        // `<Home>` is `0` (never a count digit, so it can live here).
+        KeyCode::Home => Motion::LineStart,
         KeyCode::Char('^') => Motion::LineFirstNonBlank,
         // `+` / `<CR>` — count lines down to the first non-blank; `-` — count lines up; `_` — count-1 down
         // (`_` alone == `^`). All linewise under an operator (`d+`, `d-`, `d_`==`dd`).

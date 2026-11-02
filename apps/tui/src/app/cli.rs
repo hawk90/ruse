@@ -176,7 +176,8 @@ pub fn run() -> ExitCode {
         crate::signals::reraise(sig);
     }
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        // `:cq [N]` ends the session normally but asks for a failing exit status (default 1).
+        Ok(()) => ExitCode::from(crate::app::dispatch::exit_status()),
         Err(e) => {
             eprintln!("ruse: {e}");
             ExitCode::FAILURE

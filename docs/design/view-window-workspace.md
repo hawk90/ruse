@@ -671,8 +671,10 @@ projection keyed by the focused/hosted `DocumentId`, not a separate store.
   rather than producing negative/zero-invalid rectangles; a split that cannot fit even at min is refused
   with a typed `ErrorCode::NoRoomForWindow` (INV-ERR-CLASS), matching Vim's `E36`.
 - **Closing the last window of a tab / of the workspace** — closing the last leaf of a tab closes the tab;
-  closing the last window of the last tab triggers the quit-policy (prompt if any modified/hidden buffer
-  has unsaved work; save-preflight, stability §13). Never silent loss.
+  closing the last window of the last tab triggers the quit-policy: refuse while any modified buffer,
+  focused or hidden, has unsaved work (Vim E37/E162 — `:q!` waives only the focused buffer), unless the
+  user abandons it explicitly (`:qa!`, `:cq`); save-preflight, stability §13. Never silent loss. Shipped
+  for the MVP flat layout in #611; no interactive prompt yet.
 - **Closing a modified buffer's last window** — does **not** unload it; becomes a hidden/listed background
   buffer with a live journal (§3). Explicit `:bdelete!`/`kill-buffer` on modified content goes through
   save-preflight.

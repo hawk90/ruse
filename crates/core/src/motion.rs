@@ -11,8 +11,23 @@ use unicode_segmentation::GraphemeCursor;
 /// A motion in the editing grammar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Motion {
+    /// Vim `h` / `<Left>`: one char left, never past the line's first char (a count stops there).
     Left,
+    /// Vim `l` / `<Right>`: one char right, never past the line end. A bare Normal-mode move is pulled back
+    /// onto the last char by the planner; Insert may rest after it, and an operator span ends at the newline.
     Right,
+    /// Vim `<BS>` with nvim's default `'whichwrap'` `b`: like `h`, but from the first char of a line it
+    /// continues on the previous line's last char. Under an operator the newline itself is one step, so
+    /// `d<BS>` at column 0 joins the line onto the one above.
+    WrapLeft,
+    /// Vim `<Space>` with nvim's default `'whichwrap'` `s`: like `l`, but from the last char of a line it
+    /// continues on the next line's first char. Under an operator it stays on the line, exactly like `l`.
+    WrapRight,
+    /// Emacs `backward-char` with a count (`C-u 3 C-b`): one char back per step, the newline included, so
+    /// it crosses lines (Emacs point is between chars, D-050).
+    EmacsCharBack,
+    /// Emacs `forward-char` with a count (`C-u 3 C-f`): one char forward per step, crossing lines.
+    EmacsCharFwd,
     Up,
     Down,
     LineStart,
@@ -1735,12 +1750,22 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
         let idx = ((n as usize) * chars / 100).min(chars - 1);
         return at_col(b, ls, idx);
     }
+    // `{count}$` / `{count}<End>`: the end of the line `count - 1` lines down (stopping at the last line).
+    if m == Motion::LineEnd && n > 1 {
+        return target(b, lines_down(b, cur0, n - 1), m, 1);
+    }
     let mut c = cur0;
     for _ in 0..n {
         let prev = c;
         c = match m {
-            Motion::Left => prev_boundary(b, c),
-            Motion::Right => next_boundary(b, c),
+            // `h`/`l` are bounded by the line; the count stops at its edge.
+            Motion::Left if c > line_start(b, c) => prev_boundary(b, c),
+            Motion::Right if c < line_end(b, c) => next_boundary(b, c),
+            Motion::Left | Motion::Right => c,
+            Motion::WrapLeft => wrap_left(b, c),
+            Motion::WrapRight => wrap_right(b, c),
+            Motion::EmacsCharBack => prev_boundary(b, c),
+            Motion::EmacsCharFwd => next_boundary(b, c),
             Motion::Up => up(b, c),
             Motion::Down => down(b, c),
             Motion::LineStart => line_start(b, c),
@@ -1748,7 +1773,8 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             // when the line is all blank). Count-agnostic — repeating stays on the same line.
             Motion::LineFirstNonBlank => first_non_blank(b, line_start(b, c)),
             // A bare `$` lands ON the last char of the line (Vim never rests the cursor past it in Normal),
-            // unlike the `d$` operator span which reaches the line end — see `char_span`.
+            // unlike the `d$` operator span which reaches the line end — see `char_span`. `{count}$` is the
+            // end of the line `count - 1` below (resolved by the early return above).
             Motion::LineEnd => {
                 let ls = line_start(b, c);
                 let le = line_end(b, c);
@@ -1821,6 +1847,52 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     c
 }
 
+/// The start of the line `n` lines below `pos`'s line, stopping at the last line. A trailing newline
+/// does not open a further line (the terminator model).
+fn lines_down(b: &[u8], pos: usize, n: u32) -> usize {
+    let mut ls = line_start(b, pos);
+    for _ in 0..n {
+        let le = line_end(b, ls);
+        if le + 1 >= b.len() {
+            break;
+        }
+        ls = le + 1;
+    }
+    ls
+}
+
+/// One bare `<Space>` step (`'whichwrap'` `s`): the next char on the line, else the first char of the next
+/// line (an empty line is a stop of its own). The buffer's last char stays put.
+fn wrap_right(b: &[u8], c: usize) -> usize {
+    let le = line_end(b, c);
+    let n = next_boundary(b, c);
+    if n < le {
+        n
+    } else if le + 1 < b.len() {
+        le + 1
+    } else {
+        c
+    }
+}
+
+/// One bare `<BS>` step (`'whichwrap'` `b`): the previous char on the line, else the last char of the
+/// previous line (its newline when that line is empty). The buffer's first char stays put.
+fn wrap_left(b: &[u8], c: usize) -> usize {
+    let ls = line_start(b, c);
+    if c > ls {
+        return prev_boundary(b, c);
+    }
+    if ls == 0 {
+        return c;
+    }
+    let prev_nl = ls - 1;
+    if prev_nl > line_start(b, prev_nl) {
+        prev_boundary(b, prev_nl)
+    } else {
+        prev_nl
+    }
+}
+
 /// Apply the pure step `f` up to `n` times from `start`, stopping early at a fixpoint: a step that did not
 /// move never will, so a hostile count costs at most one step per byte instead of `n` steps (#907).
 fn repeat_step(n: u32, start: usize, f: impl Fn(usize) -> usize) -> usize {
@@ -1842,8 +1914,11 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
     let cur = cursor.min(b.len());
     let n = count.max(1);
     match m {
-        // forward / rightward → [cursor, target)
-        Motion::Right => (cur, target(b, cur, m, n)),
+        // forward / rightward → [cursor, target). `d<Space>` stays on the line exactly like `dl` (nvim).
+        Motion::Right | Motion::WrapRight => (cur, target(b, cur, Motion::Right, n)),
+        Motion::EmacsCharFwd => (cur, target(b, cur, m, n)),
+        // `d<BS>` counts the newline as one step, so at column 0 it joins onto the line above (nvim).
+        Motion::WrapLeft => (repeat_step(n, cur, |c| prev_boundary(b, c)), cur),
         // `dw`/`dW`: Vim does NOT let an `w`/`W` operator cross the line's newline. When the motion would
         // land on a later line, the operated text ends at the END OF THIS LINE — through any trailing
         // whitespace, but before the newline — so `dw` on the last word EMPTIES the line instead of joining
@@ -1855,7 +1930,8 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             (cur, if t > le { le } else { t })
         }
         // `d$` reaches the line end (deletes the last char too), unlike the bare `$` move which stops on it.
-        Motion::LineEnd => (cur, line_end(b, cur)),
+        // `d{count}$` reaches the end of the line `count - 1` below.
+        Motion::LineEnd => (cur, line_end(b, lines_down(b, cur, n - 1))),
         // Paragraph motions as a charwise span (`c}` / a Visual `}` extend): forward → [cursor, target),
         // backward → [target, cursor). The operator's exclusive-linewise reshaping lives in `editor::op_span`.
         Motion::ParagraphFwd => (cur, target(b, cur, m, n)),
@@ -1889,6 +1965,7 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         Motion::EmacsWordFwd => (cur, repeat_step(n, cur, |e| emacs_word_fwd(b, e))),
         // backward / leftward → [target, cursor)
         Motion::Left
+        | Motion::EmacsCharBack
         | Motion::WordBack
         | Motion::EmacsWordBack
         | Motion::BigWordBack

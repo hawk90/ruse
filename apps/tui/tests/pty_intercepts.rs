@@ -38,7 +38,8 @@ fn edit(text: &str, keys: &str) -> String {
     let file = dir.file("f.txt", text.as_bytes());
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys(keys);
-    ed.keys(&format!("{ESC}:w\r:q!\r"));
+    // `:qa!`, not `:q!`: with a split left open, `:q!` closes only the focused window (#611, as in nvim).
+    ed.keys(&format!("{ESC}:w\r:qa!\r"));
     assert_eq!(ed.exit_status(), 0, "keys {keys:?} left ruse running");
     String::from_utf8(std::fs::read(&file).unwrap()).unwrap()
 }

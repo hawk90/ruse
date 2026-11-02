@@ -303,6 +303,7 @@ fn base_key(name: &str, modified: bool) -> Option<KeyEvent> {
         "right" => KeyCode::Right,
         "home" => KeyCode::Home,
         "end" => KeyCode::End,
+        "insert" => KeyCode::Insert,
         _ => return None,
     };
     Some(plain(code))

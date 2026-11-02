@@ -2537,8 +2537,8 @@ fn sync_special_registers(
 }
 
 /// Dispatch the key after a `C-w` prefix (F-007 MVP window commands): `w`/`C-w` focus next, `s` split
-/// horizontally, `v` split vertically, `c` close focused, `q` close (or quit on the last window). An
-/// unrecognised key is ignored (Vim beeps). The full `C-w` family is post-MVP.
+/// horizontally, `v` split vertically, `c` close focused, `q` = `:quit`. An unrecognised key is ignored
+/// (Vim beeps). The full `C-w` family is post-MVP.
 fn dispatch_window(
     key: crossterm::event::KeyEvent,
     ws: &mut Workspace,
@@ -2554,13 +2554,13 @@ fn dispatch_window(
             ws.split(SplitDir::Vertical);
         }
         KeyCode::Char('c') => {
-            ws.close_focused();
+            if !ws.close_focused() {
+                *status = "E444: Cannot close last window".into();
+            }
         }
         // `C-w q` is `:quit`: close the focused window (its buffer stays loaded, hidden, as with nvim's
         // default 'hidden'), or on the last window quit through the same unsaved-changes check (E37/E162).
-        KeyCode::Char('q') if !ws.close_focused() => {
-            *quit = crate::app::dispatch::may_quit(ws, status);
-        }
+        KeyCode::Char('q') => crate::app::dispatch::quit_window(ws, status, quit, false),
         _ => {}
     }
 }

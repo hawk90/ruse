@@ -4,11 +4,25 @@ use super::*;
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Ex {
     Save,
-    /// `:q`/`:quit` — quit, refusing with E37 when the focused buffer has unsaved changes.
+    /// `:q`/`:quit` — close the focused window; on the last window quit the editor, refusing with E37 when
+    /// the focused buffer has unsaved changes and E162 when a hidden one does.
     Quit,
-    /// `:q!`/`:quit!` — quit, discarding unsaved changes.
+    /// `:q!`/`:quit!` — as `:q`, but the focused buffer's changes do not block it. A modified hidden buffer
+    /// still does (nvim); `:qa!` is the way to abandon every change.
     QuitForce,
+    /// `:wq` — write the focused buffer, then `:q`.
     SaveQuit,
+    /// `:x`/`:xit`/`:exit` (and Normal `ZZ`) — like `:wq`, but write only when the buffer is modified.
+    ExitWrite,
+    /// `:qa`/`:qall`/`:quitall` (`force` with `!`) — quit the editor whatever the window layout. Without
+    /// `!` any modified buffer refuses (E37 for the focused one, E162 for another).
+    QuitAll {
+        force: bool,
+    },
+    /// `:cq[uit][!] [N]` — quit at once without writing, exiting with status `N` (default 1).
+    CQuit(u8),
+    /// `:hide` — close the focused window, keeping its buffer loaded (hidden).
+    Hide,
     SaveTrace(String),
     /// `:split`/`:sp` — split the focused window horizontally onto the same buffer (F-007).
     Split,
@@ -668,13 +682,19 @@ pub fn parse_ex(line: &str) -> Ex {
     let line = line.trim();
     match line {
         "w" => Ex::Save,
-        "q" | "quit" => Ex::Quit,
-        "q!" | "quit!" => Ex::QuitForce,
-        "wq" | "x" => Ex::SaveQuit,
+        "q" | "qu" | "qui" | "quit" => Ex::Quit,
+        "q!" | "qu!" | "qui!" | "quit!" => Ex::QuitForce,
+        "wq" => Ex::SaveQuit,
+        "x" | "xi" | "xit" | "exi" | "exit" => Ex::ExitWrite,
+        "qa" | "qal" | "qall" | "quita" | "quital" | "quitall" => Ex::QuitAll { force: false },
+        "qa!" | "qal!" | "qall!" | "quita!" | "quital!" | "quitall!" => Ex::QuitAll { force: true },
+        "hid" | "hide" => Ex::Hide,
         "split" | "sp" => Ex::Split,
         "vsplit" | "vsp" | "vs" => Ex::VSplit,
-        "close" | "clo" => Ex::Close,
-        "only" | "on" => Ex::Only,
+        // `!` forces past a buffer that would be abandoned; buffers here always stay loaded (hidden), so
+        // the bang forms behave the same as the plain ones (as in nvim, whose 'hidden' is on by default).
+        "close" | "clos" | "clo" | "close!" | "clos!" | "clo!" => Ex::Close,
+        "only" | "onl" | "on" | "only!" | "onl!" | "on!" => Ex::Only,
         "terminal" | "term" => Ex::Terminal,
         "fmt" | "format" => Ex::Format,
         "references" | "refs" | "ref" => Ex::References,
@@ -701,6 +721,8 @@ pub fn parse_ex(line: &str) -> Ex {
         // returns `None`/falls through to the next so an unrecognised line lands on `Ex::Unknown`.
         _ => {
             if let Some(ex) = parse_lmap(line) {
+                ex
+            } else if let Some(ex) = parse_cquit(line) {
                 ex
             } else if let Some(ex) = parse_buffer(line) {
                 ex
@@ -788,6 +810,20 @@ fn parse_normal(raw: &str) -> Option<Ex> {
     })
 }
 
+/// Parse `:cq[uit][!] [N]` into the exit status (`N`, default 1). `None` unless the line is a `:cquit` with
+/// a status that fits a process exit code.
+fn parse_cquit(line: &str) -> Option<Ex> {
+    let rest = ["cquit", "cqui", "cqu", "cq"]
+        .into_iter()
+        .find_map(|v| line.strip_prefix(v))?;
+    let rest = rest.strip_prefix('!').unwrap_or(rest);
+    if rest.is_empty() {
+        return Some(Ex::CQuit(1));
+    }
+    let status = rest.strip_prefix(char::is_whitespace)?.trim();
+    Some(Ex::CQuit(status.parse().ok()?))
+}
+
 /// Parse `:rename {new}` / `:rn {new}` (F-014) — the trimmed new name, or `None` when the verb is absent or
 /// the name is empty. The name is a single token; internal whitespace makes it invalid (the server validates).
 fn parse_rename(line: &str) -> Option<String> {
@@ -812,14 +848,51 @@ fn parse_range_verb_dest(line: &str, verbs: &[&str]) -> Option<(SubRange, LineAd
     Some((range, dest))
 }
 
-/// Parse a `:m`/`:t` destination address: `0`/`N` (after line N, 0 = top), `$` (last line), `.` (current).
+/// Parse a `:m`/`:t` destination address (`:help {address}`): a base of `N` (after line N, 0 = top), `$`
+/// (the last line) or `.` (the cursor's line), followed by any number of `+N`/`-N` offsets, where a bare
+/// `+`/`-` means 1 and a leading offset implies `.` (`:m+1` = `:m .+1`, `:m-2` = `:m .-2`). Anything else
+/// is not an address. (Before #601 `+1` parsed as the absolute line 1, so `:m+1` acted on the wrong line.)
 fn parse_line_addr(s: &str) -> Option<LineAddr> {
-    match s {
-        "" => None, // `:m`/`:t` require a destination
-        "$" => Some(LineAddr::Last),
-        "." => Some(LineAddr::Current),
-        _ => s.parse::<usize>().ok().map(LineAddr::Line),
+    enum Base {
+        Abs(usize),
+        Current,
+        Last,
     }
+    let digits = |s: &str| s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+    let (base, mut rest) = match s.chars().next()? {
+        '$' => (Base::Last, &s[1..]),
+        '.' => (Base::Current, &s[1..]),
+        '+' | '-' => (Base::Current, s),
+        '0'..='9' => {
+            let end = digits(s);
+            (Base::Abs(s[..end].parse().ok()?), &s[end..])
+        }
+        _ => return None, // `:m`/`:t` require a destination
+    };
+    let mut delta: isize = 0;
+    while let Some(sign) = rest.chars().next() {
+        let sign: isize = match sign {
+            '+' => 1,
+            '-' => -1,
+            _ => return None,
+        };
+        rest = &rest[1..];
+        let end = digits(rest);
+        let n: isize = if end == 0 {
+            1
+        } else {
+            rest[..end].parse().ok()?
+        };
+        delta = delta.checked_add(sign.checked_mul(n)?)?;
+        rest = &rest[end..];
+    }
+    Some(match base {
+        Base::Abs(n) => LineAddr::Line(n.checked_add_signed(delta)?),
+        Base::Current if delta == 0 => LineAddr::Current,
+        Base::Current => LineAddr::CurrentOffset(delta),
+        Base::Last if delta == 0 => LineAddr::Last,
+        Base::Last => LineAddr::LastOffset(delta),
+    })
 }
 
 /// Split a `:[range]<verb>` line into its parsed [`SubRange`] and the trimmed verb, if the verb (after the

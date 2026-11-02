@@ -183,13 +183,20 @@ features:
     # belong to F-009; the C-INPUT LANG-ARG re-dispatch and the full C-POSHIST position history
     # (marks/jumplist) are pending-concept carve-outs (READY-WITH-SCOPE), like F-025.
     # Census gap logged: `>>`/`>{motion}` have no upstream-extracted row (only `<<`/`<{motion}` present).
+    # #605 (oracle-verified vs nvim v0.12.6): `X` was listed above but had no binding until #605; it now
+    # deletes before the cursor without leaving the line, and `h`/`l` (with a count or under an operator)
+    # no longer cross lines either. Also bound: `<Del>` (= `x`; `{count}<Del>` drops a count digit),
+    # `<Space>`/`<BS>` (wrap across lines, nvim's default 'whichwrap' b,s), `<Home>`/`<End>` (`0`/`$`;
+    # `{count}$` now reaches the end of the line count-1 below), `<Insert>` (= `i`), and `ZZ`/`ZQ` (= `:x`
+    # / `:q!`, sharing F-007's quit policy). Still open in #605: `U` line-undo, page scroll
+    # (PageUp/PageDown, CTRL-F/B, CTRL-D/U counts), the Shift/Ctrl arrow aliases and the small g/z keys.
     status: done
     depends_on: [C-INPUT, C-EDITLANG, C-POSHIST]
     summary: Operator x count x motion composition and dot-repeat (census surface mode_key.normal + operator_pending).
     trace:
       # repointed off legacy VIM-OP-*/VIM-MOT-*/VIM-REPEAT-DOT onto the mode_key.normal + operator_pending
       # census (D-043); only implemented+accepted grammar cited (see status carve-outs). vim.md rows retired.
-      parity: [nvim.key.normal.x5bx22xx5ddx7bmotionx7d, nvim.key.normal.x5bx22xx5ddd, nvim.key.normal.x5bx22xx5dcx7bmotionx7d, nvim.key.normal.x5bx22xx5dcc, nvim.key.normal.x5bx22xx5dyx7bmotionx7d, nvim.key.normal.x5bx22xx5dyy, nvim.key.normal.x5bx22xx5dx, nvim.key.normal.x5bx22xx5dD, nvim.key.normal.x5bx22xx5dC, nvim.key.normal.x5bx22xx5dY, nvim.key.normal.x5bx22xx5dS, nvim.key.normal.empty, nvim.key.normal.h, nvim.key.normal.l, nvim.key.normal.0, nvim.key.normal.x24, nvim.key.normal.w, nvim.key.normal.W, nvim.key.normal.b, nvim.key.normal.B, nvim.key.normal.e, nvim.key.normal.E, nvim.key.normal.fx7bcharx7d, nvim.key.normal.Fx7bcharx7d, nvim.key.normal.tx7bcharx7d, nvim.key.normal.Tx7bcharx7d, nvim.key.normal.x3b, nvim.key.normal.x2c, nvim.key.normal.G, nvim.key.normal.x25, nvim.key.normal.x7b, nvim.key.normal.x7d, nvim.key.normal.j, nvim.key.normal.k, nvim.key.normal.1, nvim.key.normal.2, nvim.key.normal.3, nvim.key.normal.4, nvim.key.normal.5, nvim.key.normal.6, nvim.key.normal.7, nvim.key.normal.8, nvim.key.normal.9, nvim.key.normal.., nvim.key.operator_pending.v, nvim.key.operator_pending.V, nvim.key.operator_pending.c_V]
+      parity: [nvim.key.normal.x5bx22xx5ddx7bmotionx7d, nvim.key.normal.x5bx22xx5ddd, nvim.key.normal.x5bx22xx5dcx7bmotionx7d, nvim.key.normal.x5bx22xx5dcc, nvim.key.normal.x5bx22xx5dyx7bmotionx7d, nvim.key.normal.x5bx22xx5dyy, nvim.key.normal.x5bx22xx5dx, nvim.key.normal.x5bx22xx5dD, nvim.key.normal.x5bx22xx5dC, nvim.key.normal.x5bx22xx5dY, nvim.key.normal.x5bx22xx5dS, nvim.key.normal.empty, nvim.key.normal.h, nvim.key.normal.l, nvim.key.normal.0, nvim.key.normal.x24, nvim.key.normal.w, nvim.key.normal.W, nvim.key.normal.b, nvim.key.normal.B, nvim.key.normal.e, nvim.key.normal.E, nvim.key.normal.fx7bcharx7d, nvim.key.normal.Fx7bcharx7d, nvim.key.normal.tx7bcharx7d, nvim.key.normal.Tx7bcharx7d, nvim.key.normal.x3b, nvim.key.normal.x2c, nvim.key.normal.G, nvim.key.normal.x25, nvim.key.normal.x7b, nvim.key.normal.x7d, nvim.key.normal.j, nvim.key.normal.k, nvim.key.normal.1, nvim.key.normal.2, nvim.key.normal.3, nvim.key.normal.4, nvim.key.normal.5, nvim.key.normal.6, nvim.key.normal.7, nvim.key.normal.8, nvim.key.normal.9, nvim.key.normal.., nvim.key.normal.x5bx22xx5dX, nvim.key.normal.x5bx22xx5dDel, nvim.key.normal.x7bcountx7dDel, nvim.key.normal.Space, nvim.key.normal.BS, nvim.key.normal.Home, nvim.key.normal.End, nvim.key.normal.Insert, nvim.key.normal.ZZ, nvim.key.normal.ZQ, nvim.key.operator_pending.v, nvim.key.operator_pending.V, nvim.key.operator_pending.c_V]
       contract: [../spec/parity/contracts/vim-style.yaml]
       design: [../docs/design/editing-language.md, ../docs/design/positions-history.md]
       verify: [../tests/parity/vim/operator-motion.yaml]
@@ -260,6 +267,12 @@ features:
     # done: printable-insert (AC1), i_CTRL-O one-shot return (#79, AC2), i_CTRL-G u undo-break
     # (#79, AC3), and the overwrite policy R (#77) + Virtual Replace gR (#89, tab-aware) with
     # <BS> restore (AC4) are all implemented + oracle-verified (corpus 143/143, 0 divergent).
+    # #607: the unmodified cursor keys <Left>/<Right>/<Up>/<Down>/<Home>/<End> move without leaving
+    # Insert (never wrapping sideways), break the undo sequence and restart the `.` record, as in nvim;
+    # <Del> deletes under the caret (joining at end of line) inside the insert; <Insert> toggles
+    # Insert<->Replace. The mode_key.insert census surface stays unclassified (namespace-id backing
+    # above); still open in #607: PageUp/PageDown, the Shift/Ctrl arrow variants, CTRL-G j/k/U and the
+    # `0 CTRL-D`/`^ CTRL-D` forms.
     status: done
     depends_on: [C-INPUT, C-UNDO]
     summary: The open/insert namespace — a printable key is text — with one-shot return and undo-group ownership.
@@ -464,6 +477,12 @@ features:
     # (6 core Workspace tests + 3 tiling tests, #102). MVP-minimal per ruse-mvp-minimal-slice: the
     # full recursive layout tree / tab pages / resize / folds / session persistence / global-registers-
     # across-views are the post-MVP C-WORKSPACE elaboration (design-code-ack in view-window-workspace.md).
+    # #611 quit semantics (nvim v0.12.6, 'hidden' on): `:q`/`:q!`/`:wq`/`:x`/`ZZ`/`ZQ`/`C-w q` close the
+    # focused window and end the editor only on the last one; there a modified buffer refuses (E37 for
+    # the focused one, E162 for a hidden one — also under `:q!`); `:qa[ll]`/`:quita[ll]` quit from any
+    # layout (`!` abandons every change), `:cq [N]` exits with status N, `:hide` and the `!` forms of
+    # `:close`/`:only` are accepted. A buffer is never unloaded by a window close, so `:q!` in a split
+    # keeps a hidden buffer's changes (nvim discards them) — the conservative side of #736.
     status: done
     depends_on: [C-VIEW, C-WORKSPACE]
     summary: Same buffer openable in multiple views; view-local state stays in the view.

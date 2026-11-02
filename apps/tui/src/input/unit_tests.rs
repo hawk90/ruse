@@ -1938,7 +1938,7 @@ mod tests {
         assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
         assert_eq!(
             e.feed(ctrl('f'), Mode::Insert),
-            Feed::Cmd(Command::Move(4, Motion::Right))
+            Feed::Cmd(Command::Move(4, Motion::EmacsCharFwd))
         );
 
         // Explicit decimal: `C-u 3 7 C-b` moves left 37.
@@ -1947,7 +1947,7 @@ mod tests {
         assert_eq!(e.feed(k('7'), Mode::Insert), Feed::Pending);
         assert_eq!(
             e.feed(ctrl('b'), Mode::Insert),
-            Feed::Cmd(Command::Move(37, Motion::Left))
+            Feed::Cmd(Command::Move(37, Motion::EmacsCharBack))
         );
 
         // `C-u C-u` → 16: a self-insert repeats sixteen times (Replay, not a single Cmd).
