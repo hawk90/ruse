@@ -23,6 +23,8 @@ pub mod caps;
 pub mod clipboard;
 pub mod folds;
 pub mod graphics;
+// #895: a terminal-free session over the real key path, for tests (`Headless`).
+pub mod headless;
 pub mod highlight;
 pub mod input;
 pub mod keys;

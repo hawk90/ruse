@@ -503,6 +503,13 @@ impl View {
         self.cursor
     }
 
+    /// The Emacs mark's byte offset, or `None` when no mark is set — view-local (see
+    /// [`EditorState::mark`]).
+    #[must_use]
+    pub fn mark(&self) -> Option<usize> {
+        self.mark
+    }
+
     /// Place the cursor at byte offset `pos` (the frontend uses this to follow a `:s///c` match; the
     /// caller passes an on-boundary offset). View-local; does not touch the document.
     pub fn set_cursor(&mut self, pos: usize) {

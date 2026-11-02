@@ -1,7 +1,8 @@
-//! The event-loop hub: `run` drives the whole editor session — the `while !quit` loop that snapshots
-//! the focused buffer, scrolls each pane, highlights the viewport, renders the frame, reads one key,
-//! and routes it (confirm loop / overlays / window prefix / the input engine). Plus the two small
-//! frontend intercepts it calls: `is_ctrl` and the `C-w` window-command dispatch.
+//! The event-loop hub (#878). [`Session`] owns the editor state; `run` owns the terminal and drives the
+//! `while !quit` loop: [`Session::pre_frame`] snapshots the focused buffer and scrolls each pane, `run`
+//! highlights the viewport and renders the frame, [`Session::post_render`] applies deferred LSP results,
+//! then `run` reads one key and [`Session::on_key`] routes it (macro layer / confirm loop / overlays /
+//! session prefixes / the input engine). `crate::headless` drives the same methods without a terminal.
 
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -2377,7 +2378,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
 /// [`Command::FileInfo`], `g CTRL-G` → [`Command::CursorInfo`]) into its status-line message against the
 /// focused buffer, or `None` for any other command. These print only — the buffer is never mutated — so the
 /// run loop just sets `status` and skips dispatch. Splitting this out keeps the whole
-/// keystroke→Command→message path unit-testable (the run loop itself needs a live terminal).
+/// keystroke→Command→message path unit-testable without a session.
 fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
     match cmd {
         Command::AsciiInfo => {

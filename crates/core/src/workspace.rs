@@ -313,6 +313,24 @@ impl Workspace {
         effects
     }
 
+    /// Place the FOCUSED view's cursor at byte offset `pos` the way [`EditorState::set_cursor`] does:
+    /// clamped, snapped to a char boundary, and seeding the sticky column, so a following vertical move
+    /// aims at `pos`'s column (the swap-trick). For homing a test fixture's start point;
+    /// [`Workspace::place_focused_cursor`] leaves the sticky column alone.
+    pub fn set_focused_cursor(&mut self, pos: usize) {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let mut st = EditorState::from_parts(doc, view);
+        st.set_cursor(pos);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+    }
+
     /// Store raw macro bytes into a named register of the FOCUSED view (D-055; the swap-trick). Shares the
     /// a-z slots with yank/paste, so a recorded macro pastes as text and yanked text runs as a macro.
     pub fn set_register_raw(&mut self, name: Option<char>, bytes: Vec<u8>) {
