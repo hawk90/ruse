@@ -896,7 +896,7 @@ later multi-client/remote work extends them without a break.
 | `last_was_edit` | **`View`** today | the grouping bit is a buffer fact; not moved yet |
 | `cursor`, `mode`, `anchor`, `last_visual`, `curswant`, `block_insert`, `replace_stack`, `pending_register`, viewport `top` | **`View`** (per-View, `ViewId`) | INV-DOC-VIEW: two Views of one buffer have independent cursors/selection/mode |
 | `registers` | **`View`** today; **Workspace** by D-057 | Vim registers are global, not per-buffer or per-view |
-| `tab_width`, `indent_style` | **`View`** today (`IndentConfig`); Workspace/config is the target | editor config, not view or buffer |
+| `tab_width` (tabstop), `shift_width`, `indent_style` | **`View`** today (`IndentConfig`); Workspace/config is the target | editor config, not view or buffer |
 
 `apply_command` keeps its `EditorState` signature. To run a command, the focused `(Document, View)` pair is
 swapped out of its arena slots into an `EditorState`, the pipeline runs, and the pair is swapped back

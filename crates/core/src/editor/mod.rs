@@ -78,20 +78,28 @@ pub enum EditorOption {
     IgnoreCase(bool),
     /// `'smartcase'` (`scs`).
     SmartCase(bool),
-    /// `'shiftwidth'` (`sw`) — one indent level's width (also drives `editor.tab_width` here).
+    /// `'shiftwidth'` (`sw`) — one indent level's width (`editor.shift_width`). `0` follows `'tabstop'`
+    /// (Vim's `sw=0`).
     ShiftWidth(usize),
+    /// `'tabstop'` (`ts`) — the columns a `<Tab>` character spans (`editor.tab_width`): rendering, virtual
+    /// columns, `<Tab>` insertion stops and the tabs+spaces mix of a `noexpandtab` indent. Clamped to `1..`.
+    TabStop(usize),
     /// `'expandtab'` (`et`) — indent with spaces (`true`) vs a tab (`false`).
     ExpandTab(bool),
     /// `'textwidth'` (`tw`) — the width `gq`/`gw` wrap to; `0` means use the 79-column fallback.
     TextWidth(usize),
 }
 
-/// The indent config a shift/indent operator (`>>`/`<<`) reads: `editor.tab_width` +
-/// `editor.indent_style`. Grouped so the "config" concern is one field on [`View`], not four loose ones.
+/// The indent config a shift/indent operator (`>>`/`<<`) reads: `editor.tab_width` (`'tabstop'`),
+/// `editor.shift_width` (`'shiftwidth'`) and `editor.indent_style` (`'expandtab'`). Grouped so the "config"
+/// concern is one field on [`View`], not four loose ones.
 #[derive(Clone, Copy)]
 struct IndentConfig {
-    /// `editor.tab_width` — one indent level's width in columns/spaces. Schema default 4.
+    /// `editor.tab_width` / `'tabstop'` — the columns one `\t` spans. Schema default 4. Always `>= 1`.
     tab_width: usize,
+    /// `editor.shift_width` / `'shiftwidth'` — one indent level's width in columns. `0` follows
+    /// [`IndentConfig::tab_width`], as Vim's `sw=0` does. Schema default 4.
+    shift_width: usize,
     /// `editor.indent_style` — whether an indent level is spaces or a tab. Schema default `space`.
     style: IndentStyle,
 }
@@ -102,6 +110,31 @@ struct IndentConfig {
 struct SearchCase {
     ignore: bool,
     smart: bool,
+}
+
+impl IndentConfig {
+    /// The effective shiftwidth: `shift_width`, or the tabstop when it is `0` (Vim's `sw=0`).
+    fn shift_width(self) -> usize {
+        if self.shift_width == 0 {
+            self.tab_width.max(1)
+        } else {
+            self.shift_width
+        }
+    }
+
+    /// The leading whitespace that spans `cols` columns in this style: `cols` spaces (`expandtab`), else as
+    /// many `\t` as fit at this tabstop plus a spaces remainder (Vim's `noexpandtab` indent).
+    fn whitespace(self, cols: usize) -> Vec<u8> {
+        match self.style {
+            IndentStyle::Space => vec![b' '; cols],
+            IndentStyle::Tab => {
+                let ts = self.tab_width.max(1);
+                let mut v = vec![b'\t'; cols / ts];
+                v.extend(std::iter::repeat_n(b' ', cols % ts));
+                v
+            }
+        }
+    }
 }
 
 impl Mode {
@@ -340,6 +373,7 @@ impl View {
             auto_indent_pending: false,
             indent: IndentConfig {
                 tab_width: 4,
+                shift_width: 4,
                 style: IndentStyle::Space,
             },
             text_width: 0,
@@ -532,12 +566,20 @@ impl View {
         self.mode
     }
 
-    /// This View's indent width in columns (`editor.tab_width`, the `:set shiftwidth`/`tabstop` knob). A
-    /// read-only config accessor: the frontend reads it to compute `foldmethod=indent` levels (folds stay a
-    /// frontend concern — core exposes the number, never the folds; INV-DOC-VIEW).
+    /// This View's `'tabstop'` in columns (`editor.tab_width`, `:set tabstop`): how wide a `\t` renders. A
+    /// read-only config accessor: the frontend reads it to paint tabs and place the caret, and with
+    /// [`View::shift_width`] to compute `foldmethod=indent` levels (folds stay a frontend concern — core
+    /// exposes the numbers, never the folds; INV-DOC-VIEW).
     #[must_use]
     pub fn tab_width(&self) -> usize {
         self.indent.tab_width
+    }
+
+    /// This View's effective `'shiftwidth'` in columns (`editor.shift_width`, `:set shiftwidth`): one indent
+    /// level. A `shiftwidth` of `0` resolves to the tabstop (Vim's `sw=0`), so this is always `>= 1`.
+    #[must_use]
+    pub fn shift_width(&self) -> usize {
+        self.indent.shift_width()
     }
 
     /// This View's scroll position (first visible buffer row). Maintained by the frontend.
@@ -840,9 +882,11 @@ impl EditorState {
 
     /// Set the indentation config the shift operators (`>>`/`<<`) use. Runtime config loading is deferred;
     /// until it lands this is the seam a loader (or a test) uses to install `editor.tab_width` /
-    /// `editor.indent_style`. No new schema key — both are existing keys (spec/config-schema.yaml).
+    /// `editor.indent_style`. Sets the tabstop AND the shiftwidth to `tab_width` (the common `ts=sw` case);
+    /// `:set shiftwidth`/`:set tabstop` ([`EditorState::set_option`]) set them apart.
     pub fn set_indent(&mut self, tab_width: usize, indent_style: IndentStyle) {
         self.view.indent.tab_width = tab_width.max(1);
+        self.view.indent.shift_width = tab_width.max(1);
         self.view.indent.style = indent_style;
     }
 
@@ -859,7 +903,8 @@ impl EditorState {
         match opt {
             EditorOption::IgnoreCase(v) => self.view.search_case.ignore = v,
             EditorOption::SmartCase(v) => self.view.search_case.smart = v,
-            EditorOption::ShiftWidth(n) => self.view.indent.tab_width = n.max(1),
+            EditorOption::ShiftWidth(n) => self.view.indent.shift_width = n,
+            EditorOption::TabStop(n) => self.view.indent.tab_width = n.max(1),
             EditorOption::ExpandTab(v) => {
                 self.view.indent.style = if v {
                     IndentStyle::Space
@@ -1256,6 +1301,10 @@ impl EditorState {
             Command::JoinLines(count)
         };
         apply_command(self, &cmd);
+        // Unlike `J` (cursor on the join seam), Vim's `:join` leaves the cursor on the FIRST NON-BLANK of the
+        // joined line (`ex_join` → `beginline(BL_WHITE)`; nvim v0.12.6). The join keeps `first`'s start.
+        let b = self.doc.bytes();
+        self.view.cursor = motion::first_non_blank(b, lines[first].0);
         count.max(2) as usize
     }
 
@@ -1784,12 +1833,22 @@ impl EditorState {
         self.view.snap_offsets(bytes);
     }
 
-    /// One indent level as bytes: `tab_width` spaces (space style) or a single `\t` (tab style).
-    fn indent_unit(&self) -> Vec<u8> {
-        match self.view.indent.style {
-            IndentStyle::Space => vec![b' '; self.view.indent.tab_width],
-            IndentStyle::Tab => vec![b'\t'],
-        }
+    /// The leading whitespace for an indent of `level` shiftwidths, in the configured style (spaces, or
+    /// tabs at the tabstop plus a spaces remainder) — Vim's `set_indent(level * sw)`.
+    fn indent_for_level(&self, level: usize) -> Vec<u8> {
+        self.view
+            .indent
+            .whitespace(level * self.view.indent.shift_width())
+    }
+
+    /// The leading whitespace spanning `cols` columns in the configured style.
+    fn indent_whitespace(&self, cols: usize) -> Vec<u8> {
+        self.view.indent.whitespace(cols)
+    }
+
+    /// The effective shiftwidth in columns (see [`View::shift_width`]).
+    fn shift_width(&self) -> usize {
+        self.view.indent.shift_width()
     }
 
     /// The unnamed register's current contents (for tests / a future `:registers`).

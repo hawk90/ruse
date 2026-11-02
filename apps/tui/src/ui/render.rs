@@ -11,8 +11,15 @@ use ruse_core::{Command, Mode, SelectKind, SplitDir, Workspace};
 use crate::ui::layout::Rect;
 use crate::{graphics, highlight, screen};
 
-/// One indent level's width in display columns — matches the editor's `editor.tab_width` default.
+/// The schema default tabstop (`editor.tab_width`), in display columns — the fixed width the renderer
+/// tests paint at. Live painting reads each View's own `'tabstop'` through [`view_tab`].
+#[cfg(test)]
 pub(crate) const TAB_WIDTH: u16 = 4;
+
+/// A View's `'tabstop'` (`:set ts`) as a display width: the column rule's tab stop (#601).
+pub(crate) fn view_tab(view: &ruse_core::View) -> u16 {
+    u16::try_from(view.tab_width()).unwrap_or(u16::MAX).max(1)
+}
 
 /// The terminal grids the renderer may paint (F-011), keyed by their placeholder buffer id. Unix-only; on
 /// other targets it is an empty map (there are no terminals) so `render`'s signature stays platform-neutral.
@@ -40,7 +47,7 @@ fn paint_grid(cur: &mut screen::Screen, rect: Rect, grid: &crate::term_grid::Gri
 /// Advance a display column past one grapheme cluster `g` — the ONE column rule shared by painting
 /// ([`paint_pane`]), the caret ([`cursor_cell`] via [`line_display_col`]), and the inverse
 /// ([`line_byte_at_col`]), so the three can never drift. `col` is relative to the line's left edge; a tab
-/// expands to the next `TAB_WIDTH` stop, every other cluster advances by its display width. Conceal and
+/// expands to the next `tab` stop, every other cluster advances by its display width. Conceal and
 /// virt_text are handled in [`paint_pane`]'s walk (skip / inject), so this stays the pure column rule.
 ///
 /// The column SATURATES at `u16::MAX` (#899): a line wider than 65535 cells (a minified file, a long log
@@ -48,9 +55,10 @@ fn paint_grid(cur: &mut screen::Screen, rect: Rect, grid: &crate::term_grid::Gri
 /// in release. Every cell past the terminal's width is clipped anyway, so pinning at the ceiling is exact
 /// for painting and keeps the caret off-screen-right rather than wrapping it back to the left.
 #[inline]
-pub(crate) fn advance_col(col: u16, g: &str) -> u16 {
+pub(crate) fn advance_col(col: u16, g: &str, tab: u16) -> u16 {
     if g == "\t" {
-        col.saturating_add(TAB_WIDTH - (col % TAB_WIDTH))
+        let tab = tab.max(1);
+        col.saturating_add(tab - (col % tab))
     } else {
         col.saturating_add(screen::cluster_width(g))
     }
@@ -59,14 +67,14 @@ pub(crate) fn advance_col(col: u16, g: &str) -> u16 {
 /// The display column (0-based, from the line's left edge) of the grapheme boundary at byte offset
 /// `line_byte` within a single line `line` (no trailing `\n`). `line_byte` past the end clamps to the
 /// end. The caret's column ([`cursor_cell`]) and the P1/P2 coordinate tests go through here.
-pub(crate) fn line_display_col(line: &str, line_byte: usize) -> u16 {
+pub(crate) fn line_display_col(line: &str, line_byte: usize, tab: u16) -> u16 {
     use unicode_segmentation::UnicodeSegmentation;
     let mut col: u16 = 0;
     for (i, g) in line.grapheme_indices(true) {
         if i >= line_byte {
             break;
         }
-        col = advance_col(col, g);
+        col = advance_col(col, g, tab);
     }
     col
 }
@@ -76,14 +84,14 @@ pub(crate) fn line_display_col(line: &str, line_byte: usize) -> u16 {
 /// it now; a later slice wires it into mouse/click resolution (`byte_of(row, col)`), so it is the seam's
 /// other half kept beside its forward map rather than being introduced late.
 #[allow(dead_code)] // exercised by the P1 test now; the click/byte_of path lands in a later F-031 slice
-pub(crate) fn line_byte_at_col(line: &str, col: u16) -> usize {
+pub(crate) fn line_byte_at_col(line: &str, col: u16, tab: u16) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
     let mut cur: u16 = 0;
     for (i, g) in line.grapheme_indices(true) {
         if cur >= col {
             return i;
         }
-        cur = advance_col(cur, g);
+        cur = advance_col(cur, g, tab);
     }
     line.len()
 }
@@ -113,6 +121,7 @@ pub(crate) fn paint_pane(
     graphics_on: bool,
     image_dims: &std::collections::HashMap<String, (u32, u32)>,
     folds: &[crate::folds::Fold],
+    tab: u16,
 ) {
     use crossterm::style::Color;
     use unicode_segmentation::UnicodeSegmentation;
@@ -229,7 +238,7 @@ pub(crate) fn paint_pane(
         let base = byte_style.get(i).copied().unwrap_or_default();
         let underlined = underline.iter().any(|&(s, e)| i >= s && i < e); // F-014 diagnostic range
         if g == "\t" {
-            for _ in 0..(advance_col(scol - x0, "\t") - (scol - x0)) {
+            for _ in 0..(advance_col(scol - x0, "\t", tab) - (scol - x0)) {
                 if scol >= x1 {
                     break;
                 }
@@ -577,6 +586,7 @@ pub(crate) fn render(
             graphics_on,
             image_dims,
             pane_folds,
+            view_tab(p.view),
         );
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
@@ -624,6 +634,7 @@ pub(crate) fn render(
                 virt_lines,
                 folds,
                 line_idx,
+                view_tab(focus.view),
             );
             let frect = rects.get(ws.focus()).copied().unwrap_or(Rect {
                 x: 0,
@@ -759,6 +770,7 @@ pub(crate) fn render(
             virt_lines,
             folds,
             line_idx,
+            view_tab(focus.view),
         );
         let screen_row = (frect.y + row).min(rows.saturating_sub(1));
         let screen_col = frect.x.saturating_add(col).min(cols.saturating_sub(1)); // #899
@@ -857,6 +869,7 @@ pub(crate) fn cursor_cell(
     virt: &[highlight::VirtLine],
     folds: &[crate::folds::Fold],
     line_idx: &crate::line_index::LineIndex,
+    tab: u16,
 ) -> (u16, u16) {
     let pos = pos.min(bytes.len());
     // Row + line-start from the revision-cached index (O(log n)) rather than O(pos) newline scans; this runs
@@ -868,7 +881,7 @@ pub(crate) fn cursor_cell(
     // `line` runs from its start up to `pos`, so the caret column is the full display width of that
     // slice — computed by the SHARED column rule, not a private re-derivation (F-031 slice 0).
     let line = std::str::from_utf8(&bytes[line_start..pos]).unwrap_or("");
-    let col = line_display_col(line, line.len());
+    let col = line_display_col(line, line.len(), tab);
     // Virtual rows inserted for lines in `[top, disp_row)` push the caret down (F-031 slice 3a); rows
     // collapsed by closed folds above it pull the caret up (manual folds).
     let virt_above: u16 = virt
@@ -914,12 +927,12 @@ mod render_tests {
                 .collect();
             let mut prev = 0u16;
             for &b in &boundaries {
-                let c = line_display_col(&line, b);
+                let c = line_display_col(&line, b, TAB_WIDTH);
                 prop_assert!(c >= prev, "P2: column decreased at byte {}", b); // monotonic
                 prev = c;
-                let back = line_byte_at_col(&line, c);
+                let back = line_byte_at_col(&line, c, TAB_WIDTH);
                 // P1: col -> byte -> col lands on the same column (robust to zero-width clusters).
-                prop_assert_eq!(line_display_col(&line, back), c, "P1: round-trip diverged at byte {}", b);
+                prop_assert_eq!(line_display_col(&line, back, TAB_WIDTH), c, "P1: round-trip diverged at byte {}", b);
             }
         }
     }
@@ -937,9 +950,52 @@ mod render_tests {
             ("e\u{0301}z", 3, 1), // 'e' + combining acute = one cluster, width 1
         ];
         for &(s, pos, want) in cases {
-            let (_row, col) = cursor_cell(s.as_bytes(), pos, 0, &[], &[], &li(s.as_bytes()));
+            let (_row, col) =
+                cursor_cell(s.as_bytes(), pos, 0, &[], &[], &li(s.as_bytes()), TAB_WIDTH);
             assert_eq!(col, want, "caret column for {s:?} at byte {pos}");
         }
+    }
+
+    /// #601: tabs paint and place the caret at the View's own `'tabstop'`, not a fixed 4 — `:set ts=8`
+    /// widens a tab to the next multiple of 8 in both the caret column and the painted cells.
+    #[test]
+    fn tabs_follow_the_view_tabstop() {
+        for (tab, want) in [(8u16, 8u16), (2, 2), (3, 3)] {
+            let (_row, col) = cursor_cell(b"\tx", 1, 0, &[], &[], &li(b"\tx"), tab);
+            assert_eq!(col, want, "caret after a leading tab at ts={tab}");
+        }
+        assert_eq!(line_display_col("ab\tc", 3, 8), 8);
+        assert_eq!(line_byte_at_col("ab\tc", 8, 8), 3);
+        // The painted row: `x` lands in the ninth cell at ts=8.
+        let mut scr = screen::Screen::new(12, 1);
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 1,
+        };
+        let no_dims = std::collections::HashMap::new();
+        paint_pane(
+            &mut scr,
+            rect,
+            b"\tx",
+            &[],
+            0,
+            None,
+            None,
+            &[],
+            &[],
+            &[],
+            0,
+            &[],
+            &mut Vec::new(),
+            false,
+            &no_dims,
+            &[],
+            8,
+        );
+        assert_eq!(scr.cell(0, 8).content, screen::Content::Cluster("x".into()));
+        assert_eq!(scr.cell(0, 4).content, screen::Content::Cluster(" ".into()));
     }
 
     /// #899: a line wider than `u16::MAX` cells overflowed the column arithmetic (a debug panic, a wrapped
@@ -955,14 +1011,15 @@ mod render_tests {
             &[],
             &[],
             &li(wide.as_bytes()),
+            TAB_WIDTH,
         );
         assert_eq!(col, u16::MAX);
         let tabs = "\t".repeat(20_000); // 80000 cells
-        assert_eq!(line_display_col(&tabs, tabs.len()), u16::MAX);
-        assert_eq!(advance_col(u16::MAX, "\t"), u16::MAX);
-        assert_eq!(advance_col(u16::MAX - 1, "가"), u16::MAX);
+        assert_eq!(line_display_col(&tabs, tabs.len(), TAB_WIDTH), u16::MAX);
+        assert_eq!(advance_col(u16::MAX, "\t", TAB_WIDTH), u16::MAX);
+        assert_eq!(advance_col(u16::MAX - 1, "가", TAB_WIDTH), u16::MAX);
         // The inverse still terminates and lands inside the line.
-        assert!(line_byte_at_col(&wide, u16::MAX) <= wide.len());
+        assert!(line_byte_at_col(&wide, u16::MAX, TAB_WIDTH) <= wide.len());
     }
 
     /// The faces channel reaches the cell grid: a byte carrying a bold / italic face paints a bold /
@@ -1005,6 +1062,7 @@ mod render_tests {
             false,
             &std::collections::HashMap::new(),
             &[],
+            TAB_WIDTH,
         );
         assert!(cur.cell(0, 0).style.bold, "byte 0 paints bold");
         assert!(cur.cell(0, 1).style.italic, "byte 1 paints italic");
@@ -1027,6 +1085,7 @@ mod render_tests {
             false,
             &std::collections::HashMap::new(),
             &[],
+            TAB_WIDTH,
         );
         let c = sel.cell(0, 0);
         assert!(
@@ -1071,6 +1130,7 @@ mod render_tests {
             false,
             &std::collections::HashMap::new(),
             &[],
+            TAB_WIDTH,
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1102,6 +1162,7 @@ mod render_tests {
             false,
             &std::collections::HashMap::new(),
             &[],
+            TAB_WIDTH,
         );
         assert_eq!(
             s2.cell(0, 0).content,
@@ -1143,6 +1204,7 @@ mod render_tests {
             false,
             &std::collections::HashMap::new(),
             &[],
+            TAB_WIDTH,
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1173,9 +1235,15 @@ mod render_tests {
             path: None,
         }];
         // Caret on line 2 ('c' at byte 4): row 2 + 2 virtual rows above = screen row 4.
-        assert_eq!(cursor_cell(bytes, 4, 0, &virt, &[], &li(bytes)).0, 4);
+        assert_eq!(
+            cursor_cell(bytes, 4, 0, &virt, &[], &li(bytes), TAB_WIDTH).0,
+            4
+        );
         // Caret on line 0 ('a' at byte 0): nothing above, row 0.
-        assert_eq!(cursor_cell(bytes, 0, 0, &virt, &[], &li(bytes)).0, 0);
+        assert_eq!(
+            cursor_cell(bytes, 0, 0, &virt, &[], &li(bytes), TAB_WIDTH).0,
+            0
+        );
     }
 
     /// Manual folds: a closed fold collapses its interior lines — its START row shows the summary and the
@@ -1215,6 +1283,7 @@ mod render_tests {
             false,
             &std::collections::HashMap::new(),
             &folds,
+            TAB_WIDTH,
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1240,7 +1309,7 @@ mod render_tests {
     fn paint_pane_collapses_computed_indent_folds() {
         // 0:a0  1:·b  2:··c  3:··d  4:·e  5:f  (sw=4). Folds: outer [1,4] L1, inner [2,3] L2.
         let bytes = b"a0\n    b\n        c\n        d\n    e\nf";
-        let mut folds = crate::folds::compute_indent_folds(bytes, 4);
+        let mut folds = crate::folds::compute_indent_folds(bytes, 4, 4);
         crate::folds::apply_foldlevel(&mut folds, 0); // foldlevel=0 → close all outermost
         let no_style: &[screen::CellStyle] = &[];
         let rect = Rect {
@@ -1267,6 +1336,7 @@ mod render_tests {
             false,
             &std::collections::HashMap::new(),
             &folds,
+            TAB_WIDTH,
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1321,6 +1391,7 @@ mod render_tests {
             false,
             &std::collections::HashMap::new(),
             &[],
+            TAB_WIDTH,
         );
         assert_eq!(
             s.cell(0, 0).content,
@@ -1376,6 +1447,7 @@ mod render_tests {
             true,                              // graphics ON, but the image can't be loaded
             &std::collections::HashMap::new(), // no dims recorded → treated as not-found
             &[],
+            TAB_WIDTH,
         );
         // Row 1 (just below line 0) begins the fallback band with the "[image:" text.
         assert_eq!(

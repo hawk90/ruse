@@ -309,6 +309,9 @@ pub(crate) struct Session {
     /// The last executed Ex command-line (WITHOUT the leading `:`) — Vim's `":` register (`:help quote_:`),
     /// read by `C-r :`. Recorded on every `Feed::ExecuteEx`.
     last_ex_line: Option<String>,
+    /// The last shell command run by `:!`, `:{range}!` or `:r !` (after expansion) — what a `!` in the next
+    /// one expands to, so `:!!` repeats it (`:help :!`).
+    last_shell: Option<String>,
     /// The modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads: command
     /// palette (`C-p`), buffer-line jump (`C-l`), buffer switch (`C-b`), file finder (`C-f`). At most one is open.
     pub(crate) palette: Option<Picker<Command>>,
@@ -434,6 +437,7 @@ impl Session {
             fixeol_on: false,
             last_substitute: None,
             last_ex_line: None,
+            last_shell: None,
             palette: None,
             line_picker: None,
             buffer_picker: None,
@@ -498,8 +502,12 @@ impl Session {
                 // za/zo/zc toggle on edit — an honest first slice; foldlevel drives closed state between
                 // edits (zr/zm/zR/zM and :set foldlevel re-apply immediately, below).
                 if fold_rev.get(&buf) != Some(&revision) {
-                    let tw = ws.focused().view.tab_width();
-                    let mut computed = crate::folds::compute_indent_folds(&snapshot, tw);
+                    let view = &ws.focused().view;
+                    let mut computed = crate::folds::compute_indent_folds(
+                        &snapshot,
+                        view.tab_width(),
+                        view.shift_width(),
+                    );
                     let en = foldenable.get(&buf).copied().unwrap_or(true);
                     let fdl = if en {
                         foldlevel.get(&buf).copied().unwrap_or(0)
@@ -1746,8 +1754,25 @@ impl Session {
         }
     }
 
-    /// Run a finished `:`-line (F-026): the Ex commands that need session state beyond `run_ex`'s.
+    /// Run a finished `:`-line (F-026): split it at its `|` separators (`:help :bar`) and run each command
+    /// in turn. As in Vim, a command that fails (an `E…:` status, an unknown command) drops the rest of the
+    /// line, and so do a quit and an interactive `:s///c` (which owns the keys until it ends).
     fn execute_ex(&mut self, text: String, frame: &FrameCtx) {
+        // Record the executed command-line for Vim's `":` register (`:help quote_:`), without the
+        // leading `:` (the engine already strips it). Read by `C-r :` / `":p` / `@:`.
+        self.last_ex_line = Some(text.clone());
+        for cmd in crate::input::split_bar(&text) {
+            self.status.clear();
+            self.execute_ex_one(cmd, frame);
+            if self.quit || self.confirm.is_some() || is_ex_error(&self.status) {
+                break;
+            }
+        }
+    }
+
+    /// Run ONE Ex command (a `|`-free piece of the typed line): the Ex commands that need session state
+    /// beyond `run_ex`'s.
+    fn execute_ex_one(&mut self, text: String, frame: &FrameCtx) {
         let Session {
             ws,
             files,
@@ -1770,7 +1795,7 @@ impl Session {
             incsearch_on,
             fixeol_on,
             last_substitute,
-            last_ex_line,
+            last_shell,
             diag_picker,
             reg_picker,
             digraph_picker,
@@ -1784,10 +1809,52 @@ impl Session {
         } = self;
         let (cols, text_rows) = (frame.cols, frame.text_rows);
         let (snapshot, rects) = (&frame.snapshot, &frame.rects);
-        // Record the executed command-line for Vim's `":` register (`:help quote_:`), without the
-        // leading `:` (the engine already strips it). Read by `C-r :` / `":p`.
-        *last_ex_line = Some(text.clone());
-        match parse_ex(&text) {
+        // The current and alternate file names, for `%` / `#` in a file argument or shell command.
+        let file_name = |id: Option<DocumentId>| {
+            id.and_then(|id| files.get(&id))
+                .map(|bf| bf.path.to_string_lossy().into_owned())
+        };
+        let (cur_name, alt_name) = (
+            file_name(Some(ws.focused_buffer())),
+            file_name(ws.alternate()),
+        );
+        let expand = |arg: &str| {
+            crate::input::expand_filename(arg, cur_name.as_deref(), alt_name.as_deref())
+        };
+        // A shell command: `%`/`#` first, then `!` → the previous command; remembered for the next `!`.
+        let mut shell_cmd = |cmd: &str| -> Result<String, String> {
+            let cmd = crate::input::expand_bang(&expand(cmd)?, last_shell.as_deref())?;
+            *last_shell = Some(cmd.clone());
+            Ok(cmd)
+        };
+        let ex = match parse_ex(&text) {
+            Ex::Edit(file) => expand(&file).map(Ex::Edit),
+            Ex::Read {
+                addr,
+                source: ReadSource::File(path),
+            } => expand(&path).map(|p| Ex::Read {
+                addr,
+                source: ReadSource::File(p),
+            }),
+            Ex::Read {
+                addr,
+                source: ReadSource::Command(cmd),
+            } => shell_cmd(&cmd).map(|c| Ex::Read {
+                addr,
+                source: ReadSource::Command(c),
+            }),
+            Ex::Filter { range, cmd } => shell_cmd(&cmd).map(|cmd| Ex::Filter { range, cmd }),
+            Ex::Shell(cmd) => shell_cmd(&cmd).map(Ex::Shell),
+            ex => Ok(ex),
+        };
+        let ex = match ex {
+            Ok(ex) => ex,
+            Err(e) => {
+                *status = e;
+                return;
+            }
+        };
+        match ex {
             Ex::NoHighlight => *search_hl = None, // `:noh` clears the search highlight (F-009 #1)
             // `:set (no)hlsearch/incsearch` — frontend render toggles (behavior stays on by default).
             Ex::SetHlSearch(on) => {
@@ -2005,34 +2072,23 @@ impl Session {
                 }
                 *status = format!("{n} change(s) {}", if older { "earlier" } else { "later" });
             }
-            // `:e {file}` opens a file into a new buffer (F-007) — shared with the file picker.
+            // `:e {file}` opens a file into a new buffer (F-007) — shared with the file picker. Naming the
+            // focused buffer's own file (`:e %`) re-edits it, as in nvim: re-read from disk when unmodified,
+            // `E37` when it has unsaved changes (`:e!` discards them).
             Ex::Edit(file) => {
-                *status = open_file_into_buffer(&file, ws, files, highlighters).status;
+                let focused = ws.focused_buffer();
+                let own = crate::app::dispatch::buffer_for_path(files, std::path::Path::new(&file))
+                    == Some(focused);
+                *status = if !own {
+                    open_file_into_buffer(&file, ws, files, highlighters).status
+                } else if ws.focused().doc.is_modified() {
+                    "E37: No write since last change (add ! to override)".into()
+                } else {
+                    reload_focused_file(ws, files)
+                };
             }
             // `:e!` reloads the focused buffer's file from disk, discarding unsaved changes.
-            Ex::EditReload => {
-                let id = ws.focused_buffer();
-                match files.get(&id).map(|bf| bf.path.clone()) {
-                    Some(path) => match persist::read_file(&path) {
-                        Ok(raw) => {
-                            let fmt = persist::encoding::FileFormat::detect(&raw);
-                            ws.reload_focused(fmt.to_buffer(&raw));
-                            files.insert(
-                                id,
-                                BufferFile {
-                                    path: path.clone(),
-                                    fmt,
-                                },
-                            );
-                            *status = format!("\"{}\" reloaded", path.display());
-                        }
-                        Err(e) => {
-                            *status = format!("E484: can't open {}: {e}", path.display());
-                        }
-                    },
-                    None => *status = "E32: No file name".into(),
-                }
-            }
+            Ex::EditReload => *status = reload_focused_file(ws, files),
             // `:[addr]r {file}` / `:[addr]r !{cmd}` — read a file's contents (pure IO) or a shell
             // command's stdout below the addressed line. Done HERE (not in `run_ex`) because the read
             // is IMPURE (fs / process); core only splices the resulting bytes. The cursor lands on the
@@ -2156,6 +2212,40 @@ impl Session {
             }
         }
     }
+}
+
+/// Re-read the focused buffer's file from disk, replacing its text (unsaved changes are dropped): `:e!`, and
+/// `:e %` on an unmodified buffer. Returns the status line.
+fn reload_focused_file(ws: &mut Workspace, files: &mut Files) -> String {
+    let id = ws.focused_buffer();
+    let Some(path) = files.get(&id).map(|bf| bf.path.clone()) else {
+        return "E32: No file name".into();
+    };
+    match persist::read_file(&path) {
+        Ok(raw) => {
+            let fmt = persist::encoding::FileFormat::detect(&raw);
+            ws.reload_focused(fmt.to_buffer(&raw));
+            files.insert(
+                id,
+                BufferFile {
+                    path: path.clone(),
+                    fmt,
+                },
+            );
+            format!("\"{}\" reloaded", path.display())
+        }
+        Err(e) => format!("E484: can't open {}: {e}", path.display()),
+    }
+}
+
+/// Whether an Ex command's status reports a failure that ends a `|`-chained line (`:help :bar`): a Vim
+/// error (`E{n}: …`) or an unknown command.
+fn is_ex_error(status: &str) -> bool {
+    let digits = status
+        .strip_prefix('E')
+        .map(|r| r.bytes().take_while(u8::is_ascii_digit).count());
+    matches!(digits, Some(n) if n > 0 && status[1 + n..].starts_with(':'))
+        || status.starts_with("unknown command")
 }
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
@@ -2509,12 +2599,12 @@ fn info_status(cmd: &Command, ws: &Workspace) -> Option<String> {
         }
         Command::CursorInfo => {
             let pane = ws.focused();
-            // ruse renders tabs at `render::TAB_WIDTH` columns (not nvim's 8), so the `Col` vcol reflects
-            // the on-screen layout the user actually sees.
+            // The `Col` vcol uses the View's `'tabstop'` (ruse's default is 4, not nvim's 8) — the same width
+            // the renderer paints tabs at, so it reflects the on-screen layout the user actually sees.
             Some(ruse_core::cursor_pos_info(
                 pane.doc.bytes(),
                 pane.view.cursor(),
-                crate::ui::render::TAB_WIDTH as usize,
+                pane.view.tab_width(),
             ))
         }
         _ => None,

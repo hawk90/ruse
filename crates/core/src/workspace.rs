@@ -1506,8 +1506,9 @@ mod tests {
         let mut w = Workspace::new(b"foo\nbar\nbaz\n".to_vec());
         assert_eq!(w.join_lines(SubRange::CurrentLine, false), 2);
         assert_eq!(w.focused().doc.bytes(), b"foo bar\nbaz\n");
-        // The cursor rests on the join seam (the inserted space), exactly like normal `J`.
-        assert_eq!(w.focused().view.cursor(), 3);
+        // Unlike normal `J` (cursor on the join seam), `:j` leaves the cursor on the joined line's first
+        // non-blank (`ex_join` → `beginline`; re-probed on nvim v0.12.6, parity `ex_join_cursor_first_non_blank`).
+        assert_eq!(w.focused().view.cursor(), 0);
         // One undo restores both lines (single group).
         w.apply(&Command::Undo);
         assert_eq!(w.focused().doc.bytes(), b"foo\nbar\nbaz\n");

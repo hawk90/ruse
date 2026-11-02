@@ -1127,6 +1127,44 @@ FIXTURES: list[dict] = [
     {"name": "op_d_bs_wraps", "lines": ["ab", "cd"], "keys": "jd2<BS>"},
     {"name": "op_d_count_del_edits_count", "lines": ["foo bar baz qux"], "keys": "d23<Del>w"},
     {"name": "abort_d_then_X", "lines": ["foo bar baz qux"], "keys": "$dX"},
+    # --- #601 `|` chains Ex commands: `:s` splits only after its flags (a `|` in the pattern/replacement is
+    #     literal), and a failing command drops the rest of the line. -----------------------------------
+    {"name": "bar_sub_then_delete", "lines": ["a a", "a a", "x"], "keys": ":s/a/b/|d<CR>"},
+    {"name": "bar_sub_flags_then_join", "lines": ["a a", "a a", "x"], "keys": ":s/a/b/g|j<CR>"},
+    {"name": "bar_sub_spaced", "lines": ["a a", "a a", "x"], "keys": ":s/a/b/ | j<CR>"},
+    {"name": "bar_sub_chain", "lines": ["a a", "a a", "x"], "keys": ":s/a/b/|s/a/c/<CR>"},
+    {"name": "bar_whole_file_sub_then_join", "lines": ["a a", "a a", "x"], "keys": ":%s/a/b/|j<CR>"},
+    {"name": "bar_failed_sub_drops_the_rest", "lines": ["a a", "a a", "x"], "keys": ":s/z/b/|d<CR>"},
+    {"name": "bar_in_sub_pattern_is_literal", "lines": ["a|b a", "a a"], "keys": ":s/a|b/X/<CR>"},
+    # `:j` (unlike `J`) leaves the cursor on the joined line's first non-blank.
+    {"name": "ex_join_cursor_first_non_blank", "lines": ["  a b", "c"], "keys": "w:j<CR>"},
+    {"name": "bar_in_sub_replacement_is_literal", "lines": ["a a", "a a"], "keys": ":s/a/X|Y/<CR>"},
+    # --- #601 `:sig` is `:sign` in Vim (E471 here), never `:s` with the flags `ig`. -----------------------
+    {"name": "sig_is_not_repeat_substitute", "lines": ["a a", "a a", "x"], "keys": ":s/a/b/<CR>j:sig<CR>"},
+    {"name": "si_repeats_substitute_ignoring_case", "lines": ["a a", "A a", "x"], "keys": ":s/a/b/<CR>j:si<CR>"},
+    # --- #601 `tabstop` and `shiftwidth` are distinct. The options are set in the KEYS (not `setup`) so ruse,
+    #     whose defaults are ts=sw=4 + expandtab, runs the same configuration; `startofline` only pins nvim's
+    #     `>>` cursor rule to ruse's. ---------------------------------------------------------------------
+    {"name": "ts_sw_apart_shift_noet_once", "lines": ["x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>>>", "setup": "set startofline"},
+    {"name": "ts_sw_apart_shift_noet_twice", "lines": ["x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>>>>>", "setup": "set startofline"},
+    {"name": "ts_sw_apart_shift_et_expands_tab", "lines": ["\tx"], "keys": ":set ts=8<CR>:set sw=4<CR>:set et<CR>>>", "setup": "set startofline"},
+    {"name": "ts_sw_apart_unshift_tab", "lines": ["\tx"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR><<", "setup": "set startofline"},
+    {"name": "set_ts_keeps_shiftwidth", "lines": ["x"], "keys": ":set sw=4<CR>:set ts=8<CR>:set et<CR>>>", "setup": "set startofline"},
+    {"name": "sw_zero_follows_tabstop", "lines": ["x"], "keys": ":set ts=2<CR>:set sw=0<CR>:set et<CR>>>", "setup": "set startofline"},
+    {"name": "ts_sw_bar_chain_shift", "lines": ["x"], "keys": ":set ts=8|set sw=4|set noet<CR>>>>>", "setup": "set startofline"},
+    {"name": "ts_sw_apart_shift_motion", "lines": ["a", "\tb"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>>j", "setup": "set startofline"},
+    {"name": "ts_sw_apart_ex_shift_twice", "lines": ["x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>:>><CR>", "setup": "set startofline"},
+    {"name": "ts_sw_apart_reindent", "lines": ["{", "a", "}"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>=G"},
+    {"name": "i_tab_smarttab_indent_et", "lines": ["x"], "keys": ":set ts=3<CR>:set sw=2<CR>:set et<CR>i<Tab>y<Esc>"},
+    {"name": "i_tab_smarttab_indent_noet", "lines": ["x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>i<Tab>y<Esc>"},
+    {"name": "i_tab_smarttab_twice_noet", "lines": ["x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>i<Tab><Tab>y<Esc>"},
+    {"name": "a_tab_midline_uses_tabstop_et", "lines": ["ab"], "keys": ":set ts=3<CR>:set sw=8<CR>:set et<CR>A<Tab>y<Esc>"},
+    {"name": "a_tab_midline_noet_is_hard_tab", "lines": ["ab"], "keys": ":set ts=3<CR>:set sw=8<CR>:set noet<CR>A<Tab>y<Esc>"},
+    {"name": "i_ctrl_t_rounds_to_shiftwidth", "lines": ["  x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>A<C-t>y<Esc>"},
+    {"name": "i_ctrl_t_twice_makes_a_tab", "lines": ["  x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>A<C-t><C-t>y<Esc>"},
+    {"name": "i_ctrl_d_rounds_to_shiftwidth", "lines": ["      x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set noet<CR>A<C-d>y<Esc>"},
+    {"name": "i_ctrl_t_caret_in_indent", "lines": ["    x"], "keys": ":set ts=8<CR>:set sw=4<CR>:set et<CR>lli<C-t>y<Esc>"},
+    {"name": "gr_over_tab_at_ts8", "lines": ["a\tb"], "keys": ":set ts=8<CR>:set noet<CR>lgRXY<Esc>"},
 ]
 
 

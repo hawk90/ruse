@@ -1364,43 +1364,68 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 hint,
             )
         }
-        // `i_CTRL-T` — indent the current line by one shiftwidth; the caret rides right with the text.
+        // `i_CTRL-T` — indent the current line to the NEXT multiple of the shiftwidth (Vim rounds: 2 cols at
+        // sw=4 → 4); the caret rides right with the text. The leading whitespace is rebuilt at the new width
+        // in the configured style (Vim's `change_indent`).
         Command::InsertIndent => {
             let ls = line_start(b, cur);
-            let unit = st.indent_unit();
-            edit(
-                one(Edit::insert(ls, unit.clone())),
-                cur + unit.len(),
-                Mode::Insert,
-                hint,
-            )
+            let le = line_end(b, ls);
+            let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
+            let sw = st.shift_width();
+            let want = st.indent_whitespace((cols / sw + 1) * sw);
+            let cursor = reindented_caret(cur, ls, ws, want.len());
+            edit(one(Edit::replace(ls, ws, want)), cursor, Mode::Insert, hint)
         }
         // `i_CTRL-D` — dedent the current line by one shiftwidth; the caret rides left (never before the line
         // start). A no-op when there is no leading whitespace.
         Command::InsertDedent => {
             let ls = line_start(b, cur);
             let le = line_end(b, ls);
-            let remove = shift_left_remove(b, ls, le, st.view.indent.tab_width);
-            if remove == 0 {
+            let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
+            if ws == 0 {
                 return nop(cur, Mode::Insert);
             }
-            let cursor = cur.saturating_sub(remove).max(ls);
-            edit(one(Edit::delete(ls, remove)), cursor, Mode::Insert, hint)
+            // Down to the PREVIOUS multiple of the shiftwidth (Vim rounds: 6 cols at sw=4 → 4).
+            let sw = st.shift_width();
+            let want = st.indent_whitespace(cols.saturating_sub(1) / sw * sw);
+            let cursor = reindented_caret(cur, ls, ws, want.len());
+            edit(one(Edit::replace(ls, ws, want)), cursor, Mode::Insert, hint)
         }
-        // `<Tab>` in Insert: insert whitespace at the caret to the next tabstop. Space style (`expandtab`)
-        // inserts `tab_width - (vcol % tab_width)` spaces so the caret lands on a tabstop column even when
-        // it started mid-line; tab style inserts one `\t`. Unlike `i_CTRL-T` this is caret-relative.
+        // `<Tab>` in Insert: insert whitespace at the caret to the next stop. Space style (`expandtab`)
+        // inserts spaces up to the next tabstop column even when it started mid-line; tab style inserts one
+        // `\t`. Within the line's leading whitespace the stop is the SHIFTWIDTH instead ('smarttab', on by
+        // default in nvim): spaces under `expandtab`, else the leading whitespace is rebuilt as tabs + spaces
+        // at the new width. With `ts == sw` both rules agree. Unlike `i_CTRL-T` this is caret-relative.
         Command::InsertTab => {
-            let ins: Vec<u8> = match st.view.indent.style {
-                IndentStyle::Tab => vec![b'\t'],
-                IndentStyle::Space => {
-                    let ts = st.view.indent.tab_width.max(1);
-                    let vcol = crate::motion::vcol_of(b, line_start(b, cur), cur, ts);
-                    vec![b' '; ts - (vcol % ts)]
+            let ls = line_start(b, cur);
+            let ts = st.view.indent.tab_width.max(1);
+            let sw = st.shift_width();
+            let in_indent = b[ls..cur].iter().all(|&x| x == b' ' || x == b'\t');
+            let vcol = crate::motion::vcol_of(b, ls, cur, ts);
+            match st.view.indent.style {
+                IndentStyle::Tab if in_indent && sw != ts => {
+                    let want = st.indent_whitespace(vcol + sw - (vcol % sw));
+                    let cursor = ls + want.len();
+                    edit(
+                        one(Edit::replace(ls, cur - ls, want)),
+                        cursor,
+                        Mode::Insert,
+                        hint,
+                    )
                 }
-            };
-            let cursor = cur + ins.len();
-            edit(one(Edit::insert(cur, ins)), cursor, Mode::Insert, hint)
+                IndentStyle::Tab => edit(
+                    one(Edit::insert(cur, vec![b'\t'])),
+                    cur + 1,
+                    Mode::Insert,
+                    hint,
+                ),
+                IndentStyle::Space => {
+                    let stop = if in_indent { sw } else { ts };
+                    let ins = vec![b' '; stop - (vcol % stop)];
+                    let cursor = cur + ins.len();
+                    edit(one(Edit::insert(cur, ins)), cursor, Mode::Insert, hint)
+                }
+            }
         }
         Command::InsertNewline => edit(
             one(Edit::insert(cur, b"\n".to_vec())),
@@ -1413,13 +1438,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // line above); `Below`/`Split` insert `\n<indent>` (cursor on the new line below / after the split).
         // `level: 0` degrades to a plain open, so this also serves as the non-tree fallback.
         Command::OpenLineIndent { kind, level } => {
-            let unit = st.indent_unit();
-            let pad: Vec<u8> = unit
-                .iter()
-                .cycle()
-                .take(unit.len() * level)
-                .copied()
-                .collect();
+            let pad = st.indent_for_level(*level);
             let (at, mut ins, cursor) = match kind {
                 OpenKind::Above => {
                     let ls = line_start(b, cur);
@@ -2715,27 +2734,12 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
     }
 }
 
-/// How many leading whitespace bytes one `<<` removes from the line at `ls`: a single leading tab, else up
-/// to `tab_width` leading spaces — one indent level, never crossing a non-blank char or the line end
-/// (`le`). Style-agnostic on purpose: a space-configured buffer that happens to start with a tab still
-/// unindents by that tab, matching Vim's "remove one shiftwidth of indent" for the common cases ruse models.
-fn shift_left_remove(b: &[u8], ls: usize, le: usize, tab_width: usize) -> usize {
-    if ls < le && b[ls] == b'\t' {
-        return 1;
-    }
-    let mut n = 0;
-    while n < tab_width && ls + n < le && b[ls + n] == b' ' {
-        n += 1;
-    }
-    n
-}
-
 /// Plan a linewise shift (`>>` / `<<`) over `count` lines from the cursor's line down. `right` adds one
 /// indent level to each line; `!right` removes up to one. Empty lines are never indented (Vim); the cursor
 /// lands on the first non-blank of the cursor's (first) line, exactly as Vim leaves it. The register is
 /// untouched. Edits are one-per-line at distinct line starts, so the [`EditList`] is disjoint by construction.
 /// `=` reindent (bracket-depth model): set each line in `[first_line, last_line]` (0-based, inclusive) to
-/// `depth × indent_unit`, where `depth` is the net unclosed `([{` before the line; a line whose first
+/// `depth × shiftwidth` of indent, where `depth` is the net unclosed `([{` before the line; a line whose first
 /// non-blank is a closer dedents one level, and blank lines are left empty. Structural / language-agnostic:
 /// brackets inside strings or comments are NOT excluded (documented). One transaction (edits are disjoint,
 /// ascending line starts). Cursor → the first reindented line's new first-non-blank.
@@ -2764,7 +2768,7 @@ fn matching_opener_pad(b: &[u8], cur: usize, open: u8, close: u8) -> Option<Vec<
 }
 
 /// Apply explicit indent `levels` (one per line from `first_line`) to `[first_line, last_line]`: each
-/// non-blank line's leading whitespace becomes `levels[i] × indent_unit`; blank lines are emptied. One
+/// non-blank line's leading whitespace becomes `levels[i] × shiftwidth`; blank lines are emptied. One
 /// transaction. The frontend supplies tree-derived levels (tree-aware `=`); the core stays view-free.
 fn plan_set_indents(
     st: &EditorState,
@@ -2774,7 +2778,6 @@ fn plan_set_indents(
     hint: GroupHint,
 ) -> Plan {
     let b = st.bytes();
-    let unit = st.indent_unit();
     let mut line_starts: Vec<usize> = vec![0];
     for (i, &c) in b.iter().enumerate() {
         if c == b'\n' {
@@ -2793,8 +2796,7 @@ fn plan_set_indents(
         let want: Vec<u8> = if fnb >= le {
             Vec::new() // blank line → no indent
         } else {
-            let n = unit.len() * levels.get(li - first).copied().unwrap_or(0);
-            unit.iter().cycle().take(n).copied().collect()
+            st.indent_for_level(levels.get(li - first).copied().unwrap_or(0))
         };
         if li == first {
             first_cursor = ls + want.len();
@@ -2945,7 +2947,6 @@ fn plan_format_lines(
 
 fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: GroupHint) -> Plan {
     let b = st.bytes();
-    let unit = st.indent_unit();
     // Per-line start offset, and the net bracket depth AT each line's start.
     let mut line_starts: Vec<usize> = Vec::new();
     let mut depth_at: Vec<i32> = Vec::new();
@@ -2966,11 +2967,10 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
         i += 1;
     }
 
-    // Target indent (in bytes) for line `li`: `level × unit`, level from depth (closer-first dedents one).
-    let indent_len = |li: usize, fnb: usize, ls: usize| -> usize {
+    // Target indent LEVEL for line `li`, from depth (a closer-first line dedents one).
+    let indent_level = |li: usize, fnb: usize, ls: usize| -> usize {
         let closer = ls < b.len() && fnb < b.len() && matches!(b[fnb], b')' | b']' | b'}');
-        let level = (depth_at[li] - i32::from(closer)).max(0) as usize;
-        unit.len() * level
+        (depth_at[li] - i32::from(closer)).max(0) as usize
     };
 
     let mut edits: Vec<Edit> = Vec::new();
@@ -2986,8 +2986,7 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
         let want: Vec<u8> = if fnb >= le {
             Vec::new() // blank line → no indent
         } else {
-            let n = indent_len(li, fnb, ls);
-            unit.iter().cycle().take(n).copied().collect()
+            st.indent_for_level(indent_level(li, fnb, ls))
         };
         if li == first_line {
             first_cursor = ls + want.len();
@@ -3018,26 +3017,29 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
     let b = st.bytes();
     let first_ls = line_start(b, cur);
     let first_le = line_end(b, first_ls);
-    let old_fnb = motion::first_non_blank(b, first_ls);
-    let unit = st.indent_unit();
+    let sw = st.shift_width();
 
+    // Each line's leading whitespace is REBUILT at its new width (`cols ± sw`, floored at 0) in the
+    // configured style — Vim's `shift_line` → `set_indent`: under `noexpandtab` the result is tabs at the
+    // tabstop plus a spaces remainder, under `expandtab` all spaces (a leading tab becomes spaces).
     let mut edits: Vec<Edit> = Vec::new();
-    let mut first_removed = 0usize;
+    let mut first_new_ws = 0usize;
     let mut ls = first_ls;
     for i in 0..count.max(1) {
         let le = line_end(b, ls);
-        if right {
-            // Vim indents a whitespace-only line but never a truly EMPTY one (`ls == le`).
-            if ls < le {
-                edits.push(Edit::insert(ls, unit.clone()));
-            }
+        let (cols, ws) = indent_cols(&b[ls..le], st.view.indent.tab_width);
+        // Vim indents a whitespace-only line but never a truly EMPTY one (`ls == le`).
+        let want = if right {
+            (ls < le).then(|| st.indent_whitespace(cols + sw))
         } else {
-            let remove = shift_left_remove(b, ls, le, st.view.indent.tab_width);
+            Some(st.indent_whitespace(cols.saturating_sub(sw)))
+        };
+        if let Some(want) = want {
             if i == 0 {
-                first_removed = remove;
+                first_new_ws = want.len();
             }
-            if remove > 0 {
-                edits.push(Edit::delete(ls, remove));
+            if b[ls..ls + ws] != want[..] {
+                edits.push(Edit::replace(ls, ws, want));
             }
         }
         if le >= b.len() {
@@ -3046,18 +3048,14 @@ fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: Group
         ls = le + 1;
     }
 
-    // Cursor: first non-blank of the FIRST shifted line, computed against the POST-edit buffer. Prepending
-    // `unit` (all blanks) shifts that line's first non-blank right by `unit.len()`; a `<<` shifts it left by
-    // the bytes removed. An empty line got no indent, so the cursor stays at its start. The all-blank-line
-    // case (fnb past the last char) is pulled back onto the last char by `commit`'s Normal-mode clamp.
-    let cursor = if right {
-        if first_ls < first_le {
-            old_fnb + unit.len()
-        } else {
-            first_ls
-        }
+    // Cursor: first non-blank of the FIRST shifted line, computed against the POST-edit buffer: the rebuilt
+    // whitespace replaces the old, so the first non-blank moves to `ls + new_ws` (an empty line got no indent,
+    // so the cursor stays at its start). The all-blank-line case (fnb past the last char) is pulled back onto
+    // the last char by `commit`'s Normal-mode clamp.
+    let cursor = if right && first_ls >= first_le {
+        first_ls
     } else {
-        old_fnb - first_removed
+        first_ls + first_new_ws
     };
 
     if edits.is_empty() {
@@ -3370,6 +3368,13 @@ fn paste_block(b: &[u8], cur: usize, reg: &Register, after: bool, count: usize) 
         set_anchor: None,
         set_mark: None,
     }
+}
+
+/// Where an Insert caret at `cur` lands after its line's leading whitespace (`old_ws` bytes from `ls`) is
+/// rebuilt as `new_ws` bytes: it moves by the change in length (riding with the text, nvim also inside the
+/// indent), never before the line start.
+fn reindented_caret(cur: usize, ls: usize, old_ws: usize, new_ws: usize) -> usize {
+    (cur + new_ws).saturating_sub(old_ws).max(ls)
 }
 
 /// Leading-whitespace measure of a single line (no trailing `\n`): its indent width in display COLUMNS

@@ -293,8 +293,8 @@ fn parse_time_travel(line: &str) -> Option<Ex> {
 }
 
 /// Parse `:set {option}` for the options this MVP honors: `ignorecase`/`ic`, `smartcase`/`scs`,
-/// `expandtab`/`et` (each with a `no` prefix to turn off), and `shiftwidth`/`sw`/`tabstop`/`ts`/
-/// `textwidth`/`tw` `=N`.
+/// `expandtab`/`et` (each with a `no` prefix to turn off), and `shiftwidth`/`sw`, `tabstop`/`ts` and
+/// `textwidth`/`tw` `=N`. `tabstop` and `shiftwidth` are distinct options (#601); `sw=0` follows `ts`.
 /// An unknown option returns `None` (→ `Unknown`); a bare `:set` (no option) is not handled here.
 fn parse_set(line: &str) -> Option<Ex> {
     let opt = line
@@ -340,7 +340,8 @@ fn parse_set(line: &str) -> Option<Ex> {
             }
             let n: usize = v.parse().ok()?;
             match k {
-                "shiftwidth" | "sw" | "tabstop" | "ts" => EditorOption::ShiftWidth(n),
+                "shiftwidth" | "sw" => EditorOption::ShiftWidth(n),
+                "tabstop" | "ts" => EditorOption::TabStop(n),
                 "textwidth" | "tw" => EditorOption::TextWidth(n),
                 _ => return None,
             }
@@ -526,6 +527,12 @@ fn parse_repeat_substitute(line: &str, gdefault: bool) -> Option<Ex> {
     let after_verb = rest
         .strip_prefix("substitute")
         .or_else(|| rest.strip_prefix('s'))?;
+    // Vim reads `:si` followed by `g`/`l`/`m` as another command's abbreviation (`:sig[n]`, `:sil[ent]`,
+    // `:sim[alt]`), never as `:s` with flags (`find_ex_command`), so `:sig` is not a repeat-substitute (#601).
+    // Only the unspaced form: `:s ig` is still `:s` with the flags `ig`.
+    if rest.starts_with("si") && !rest.starts_with("substitute") && after_verb.starts_with("ig") {
+        return None;
+    }
     let flag_run = after_verb.trim();
     if !flag_run.chars().all(|c| REPEAT_SUB_FLAG_CHARS.contains(&c)) {
         return None;
@@ -669,6 +676,155 @@ fn parse_sub_range(s: &str) -> Option<SubRange> {
             Some(SubRange::Lines(n, n))
         }
     }
+}
+
+/// Split a typed `:`-line into the commands its `|` separators chain (`:help :bar`), in order. Each piece
+/// has its leading whitespace and `:` stripped. As in Vim:
+/// - `:g`/`:v`, `:normal`, and the `!` shell forms (`:!`, `:{range}!`, `:r !`) see the `|` as part of their
+///   argument, so the rest of the line is theirs;
+/// - `:s/pat/rep/` splits only after its flags: a `|` inside the pattern or replacement is literal;
+/// - `\|` never splits. Unlike Vim the backslash is KEPT, so a regex alternation in a `:sort /a\|b/`
+///   pattern survives (Vim drops it for commands that do not parse their own `|`).
+///
+/// A line without a separator comes back as one piece, unchanged.
+#[must_use]
+pub fn split_bar(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = line;
+    loop {
+        let cmd = rest.trim_start_matches(|c: char| c.is_whitespace() || c == ':');
+        let (piece, next) = split_first_command(cmd);
+        out.push(piece.to_string());
+        match next {
+            Some(n) => rest = n,
+            None => return out,
+        }
+    }
+}
+
+/// One step of [`split_bar`]: the first command of `cmd` and the text after its separating `|`, if any.
+fn split_first_command(cmd: &str) -> (&str, Option<&str>) {
+    // Skip the range prefix (line numbers, `.`/`$`/`%`, `,`/`;`, relative `+`/`-` offsets, `'x` marks).
+    let bytes = cmd.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'0'..=b'9' | b',' | b';' | b'%' | b'.' | b'$' | b'+' | b'-' | b' ' | b'\t' => i += 1,
+            b'\'' if i + 1 < bytes.len() => i += 2,
+            _ => break,
+        }
+    }
+    let after_range = &cmd[i..];
+    let verb_len = after_range
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(after_range.len());
+    let verb = &after_range[..verb_len];
+    let arg = &after_range[verb_len..];
+    let whole = || (cmd, None);
+    // Commands whose argument runs to the end of the line, `|` included.
+    let is_prefix = |full: &str, min: usize| verb.len() >= min && full.starts_with(verb);
+    if verb.is_empty() && arg.starts_with('!')
+        || is_prefix("global", 1)
+        || is_prefix("vglobal", 1)
+        || is_prefix("normal", 4)
+        || (is_prefix("read", 1) && arg.trim_start().starts_with('!'))
+    {
+        return whole();
+    }
+    // `:s/pat/rep/flags` — scan past the pattern and the replacement first.
+    let mut scan_from = i;
+    if is_prefix("substitute", 1) {
+        if let Some(delim) = arg.chars().next() {
+            if delim.is_ascii_punctuation() && !matches!(delim, '\\' | '"' | '|') {
+                let body_start = i + verb_len + delim.len_utf8();
+                match skip_unescaped(cmd, body_start, delim, 2) {
+                    Some(end) => scan_from = end,
+                    None => return whole(), // an unterminated pattern/replacement owns the `|`
+                }
+            }
+        }
+    }
+    let mut chars = cmd[scan_from..].char_indices();
+    while let Some((j, c)) = chars.next() {
+        match c {
+            '\\' => {
+                chars.next(); // an escaped char (`\|` included) never separates
+            }
+            '|' => {
+                let at = scan_from + j;
+                return (&cmd[..at], Some(&cmd[at + 1..]));
+            }
+            _ => {}
+        }
+    }
+    (cmd, None)
+}
+
+/// The byte offset just past the `n`-th unescaped `delim` in `s` from `from` (a `\` escapes the next char),
+/// or `None` when fewer than `n` delimiters follow.
+fn skip_unescaped(s: &str, from: usize, delim: char, n: usize) -> Option<usize> {
+    let mut seen = 0;
+    let mut chars = s[from..].char_indices();
+    while let Some((j, c)) = chars.next() {
+        if c == '\\' {
+            chars.next();
+        } else if c == delim {
+            seen += 1;
+            if seen == n {
+                return Some(from + j + c.len_utf8());
+            }
+        }
+    }
+    None
+}
+
+/// Expand the `!` in a shell command (`:!`, `:{range}!`, `:r !`): each unescaped `!` becomes the previous
+/// shell command (`:help :!`), so `:!!` repeats it; `\!` is a literal `!`. With no previous command a `!`
+/// is `E34`.
+///
+/// # Errors
+/// `E34: No previous command` when `cmd` holds an unescaped `!` and `prev` is `None`.
+pub fn expand_bang(cmd: &str, prev: Option<&str>) -> Result<String, String> {
+    let mut out = String::with_capacity(cmd.len());
+    let mut chars = cmd.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if chars.peek() == Some(&'!') => {
+                out.push('!');
+                chars.next();
+            }
+            '!' => out.push_str(prev.ok_or_else(|| "E34: No previous command".to_string())?),
+            _ => out.push(c),
+        }
+    }
+    Ok(out)
+}
+
+/// Expand the cmdline-special file names in a file argument or shell command (`:help cmdline-special`):
+/// `%` is the current file name and `#` the alternate one; `\%` and `\#` are literal. File-name modifiers
+/// (`%:p`, `%:h`, …) and `#{n}` buffer numbers are not modeled: a `#` before a digit stays literal.
+///
+/// # Errors
+/// `E499` when `%` (or `#`) names no file, `E194` when there is no alternate file for `#`.
+pub fn expand_filename(arg: &str, cur: Option<&str>, alt: Option<&str>) -> Result<String, String> {
+    const E499: &str = "E499: Empty file name for '%' or '#', only works with \":p:h\"";
+    let mut out = String::with_capacity(arg.len());
+    let mut chars = arg.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if matches!(chars.peek(), Some('%' | '#')) => {
+                out.extend(chars.next());
+            }
+            '%' => out.push_str(cur.ok_or_else(|| E499.to_string())?),
+            '#' if !chars.peek().is_some_and(char::is_ascii_digit) => {
+                out.push_str(alt.ok_or_else(|| {
+                    "E194: No alternate file name to substitute for '#'".to_string()
+                })?)
+            }
+            _ => out.push(c),
+        }
+    }
+    Ok(out)
 }
 
 /// Parse the text typed after `:` (without the leading colon).
@@ -1609,5 +1765,98 @@ mod set_hlsearch_incsearch_tests {
         assert_eq!(parse_ex("set nofoldenable"), Ex::SetFoldEnable(false));
         assert_eq!(parse_ex("set fen"), Ex::SetFoldEnable(true));
         assert_eq!(parse_ex("set nofen"), Ex::SetFoldEnable(false));
+    }
+}
+
+/// #601: `|` chaining, `:sig`, and the `!` / `%` / `#` expansions. Behaviour probed against nvim v0.12.6.
+#[cfg(test)]
+mod bar_and_expansion_tests {
+    use super::*;
+
+    fn split(line: &str) -> Vec<String> {
+        split_bar(line)
+    }
+
+    #[test]
+    fn bar_separates_commands() {
+        assert_eq!(split("s/a/b/|d"), ["s/a/b/", "d"]);
+        assert_eq!(split("s/a/b/g|d"), ["s/a/b/g", "d"]);
+        assert_eq!(split("s/a/b/ | d"), ["s/a/b/ ", "d"]);
+        assert_eq!(
+            split("set ts=8|set sw=4|:set noet"),
+            ["set ts=8", "set sw=4", "set noet"]
+        );
+        assert_eq!(split("%s/a/b/|d"), ["%s/a/b/", "d"]);
+        assert_eq!(split("w"), ["w"]);
+    }
+
+    #[test]
+    fn substitute_keeps_a_bar_in_its_pattern_and_replacement() {
+        assert_eq!(split("s/a|b/X/"), ["s/a|b/X/"]);
+        assert_eq!(split("s/a/X|Y/"), ["s/a/X|Y/"]);
+        assert_eq!(split("s/a/X|Y/|d"), ["s/a/X|Y/", "d"]);
+        // An unterminated replacement runs to the end of the line, `|` included.
+        assert_eq!(split("s/a/X|Y"), ["s/a/X|Y"]);
+        // A regex alternation `\|` is never a separator, and keeps its backslash.
+        assert_eq!(split(r"s/a\|b/X/|d"), [r"s/a\|b/X/", "d"]);
+        assert_eq!(split(r"sort /a\|b/"), [r"sort /a\|b/"]);
+    }
+
+    #[test]
+    fn global_normal_and_shell_own_the_rest_of_the_line() {
+        assert_eq!(split("g/a/d|d"), ["g/a/d|d"]);
+        assert_eq!(split("v/a/s/x/y/|d"), ["v/a/s/x/y/|d"]);
+        assert_eq!(split("normal ix|y"), ["normal ix|y"]);
+        assert_eq!(split("!ls | wc -l"), ["!ls | wc -l"]);
+        assert_eq!(split("%!sort | uniq"), ["%!sort | uniq"]);
+        assert_eq!(split("r !ls | wc"), ["r !ls | wc"]);
+        // `:r {file}` is an ordinary command.
+        assert_eq!(split("r f.txt|d"), ["r f.txt", "d"]);
+    }
+
+    #[test]
+    fn sig_is_not_a_repeat_substitute() {
+        // nvim reads `:sig` as `:sign` (E471), `:sil`/`:sim` as `:silent`/`:simalt`.
+        assert!(matches!(parse_ex("sig"), Ex::Unknown(_)));
+        // The other `:s` + flag shorthands still repeat.
+        for line in ["si", "sg", "sgi", "sI", "s ig"] {
+            assert!(
+                matches!(parse_ex(line), Ex::RepeatSubstitute { .. }),
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn bang_expands_to_the_previous_command() {
+        assert_eq!(expand_bang("!", Some("ls -l")), Ok("ls -l".into()));
+        assert_eq!(expand_bang("! | wc", Some("ls")), Ok("ls | wc".into()));
+        assert_eq!(expand_bang(r"echo a\!b", None), Ok("echo a!b".into()));
+        assert_eq!(expand_bang("echo hi", None), Ok("echo hi".into()));
+        assert_eq!(
+            expand_bang("!", None),
+            Err("E34: No previous command".into())
+        );
+        // `:!!` parses as a shell run of `!`, which the session expands.
+        assert_eq!(parse_ex("!!"), Ex::Shell("!".into()));
+    }
+
+    #[test]
+    fn percent_and_hash_expand_to_the_file_names() {
+        let (cur, alt) = (Some("src/a.rs"), Some("b.txt"));
+        assert_eq!(expand_filename("%", cur, alt), Ok("src/a.rs".into()));
+        assert_eq!(expand_filename("#", cur, alt), Ok("b.txt".into()));
+        assert_eq!(
+            expand_filename("cat % #", cur, alt),
+            Ok("cat src/a.rs b.txt".into())
+        );
+        assert_eq!(expand_filename(r"a\%b\#", cur, alt), Ok("a%b#".into()));
+        assert_eq!(expand_filename("#2", cur, alt), Ok("#2".into()));
+        assert!(expand_filename("%", None, alt)
+            .unwrap_err()
+            .starts_with("E499"));
+        assert!(expand_filename("#", cur, None)
+            .unwrap_err()
+            .starts_with("E194"));
     }
 }

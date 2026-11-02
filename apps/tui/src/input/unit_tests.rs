@@ -706,6 +706,9 @@ mod tests {
             parse_ex("set shiftwidth=8"),
             Ex::Set(EditorOption::ShiftWidth(8))
         );
+        // `tabstop` is its own option, not an alias of `shiftwidth` (#601).
+        assert_eq!(parse_ex("set ts=8"), Ex::Set(EditorOption::TabStop(8)));
+        assert_eq!(parse_ex("set tabstop=2"), Ex::Set(EditorOption::TabStop(2)));
         // Unknown option → not a Set (falls through to Unknown).
         assert!(matches!(parse_ex("set bogus"), Ex::Unknown(_)));
         assert!(matches!(parse_ex("set"), Ex::Unknown(_)));

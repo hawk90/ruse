@@ -3465,7 +3465,10 @@ mod ex;
 pub(crate) use ex::reuse_last_search;
 // `GlobalPayload` is referenced by the non-test dispatch/run-loop (routing `:g/pat/normal` vs `d`/`s`) and
 // by the integration scenarios that drive `:g` directly, so it is part of the input surface like `Ex`.
-pub use ex::{parse_ex, BufTarget, Ex, FoldMethod, GlobalPayload, ReadSource};
+pub use ex::{
+    expand_bang, expand_filename, parse_ex, split_bar, BufTarget, Ex, FoldMethod, GlobalPayload,
+    ReadSource,
+};
 #[cfg(test)]
 pub(crate) use ex::{parse_substitute, GlobalSpec, SubSpec};
 

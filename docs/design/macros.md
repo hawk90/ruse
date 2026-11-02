@@ -93,7 +93,7 @@ register I/O, which lives in the core `Workspace`:
 ## 5. Scope
 
 **Shipped:** §4, the codec above, the core accessor, the recursion guard, and `:reg`/`:registers`, except for the
-open bugs #680 and #787.
+open bug #787.
 
 **Deferred:** Fn/Alt/Shift keys (#812), running a macro inside `:g`, and cross-session persistence (which would promote
 the byte encoding to a persisted-format contract — see D-055 *Re-evaluate if*).

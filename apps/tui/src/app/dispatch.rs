@@ -1262,10 +1262,14 @@ mod dispatch_tests {
 
     #[test]
     fn ex_join_drives_end_to_end_like_nvim() {
-        // `:j` joins the current line + next on a single space; cursor rests on the join seam.
+        // `:j` joins the current line + next on a single space; unlike `J` the cursor rests on the joined
+        // line's first non-blank (nvim v0.12.6), not on the join seam.
         let (bytes, cur) = run_ex_oracle("foo\nbar\nbaz\n", 0, "j");
         assert_eq!(bytes, "foo bar\nbaz\n");
-        assert_eq!(cur, 3);
+        assert_eq!(cur, 0);
+        let (bytes, cur) = run_ex_oracle("x\n  foo\nbar\n", 3, "j");
+        assert_eq!(bytes, "x\n  foo bar\n");
+        assert_eq!(cur, 4);
         // `:j!` raw-concatenates (like `gJ`).
         let (bytes, _) = run_ex_oracle("foo\nbar\nbaz\n", 0, "j!");
         assert_eq!(bytes, "foobar\nbaz\n");
