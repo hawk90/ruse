@@ -249,13 +249,13 @@ fn insert_ctrl_n_completes_a_keyword() {
     );
 }
 
-/// Known divergence #602: the LSP coordinator swallows `CTRL-X`, so the submode never arms and `CTRL-L`
-/// inserts a plain `l`. Neovim completes the whole line `line3`.
+/// Known divergence #602: the LSP coordinator swallows `CTRL-X`, so the submode never arms and the lone
+/// `CTRL-L` is unbound, inserting nothing (it typed `l` before #599). Neovim completes the whole line `line3`.
 #[test]
 fn insert_ctrl_x_ctrl_l_does_not_complete() {
     assert_eq!(
         edit(&numbered(3), "Goli\u{18}\u{c}"),
-        "line1\nline2\nline3\nlil\n"
+        "line1\nline2\nline3\nli\n"
     );
 }
 

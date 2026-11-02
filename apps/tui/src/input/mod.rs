@@ -27,6 +27,25 @@ fn compose_count(op: u32, motion: u32) -> u32 {
     op.max(1).saturating_mul(motion).min(MAX_COUNT)
 }
 
+/// Whether `key` is a chord: it carries a command modifier (CTRL, ALT, SUPER, HYPER or META). A chord never
+/// matches an arm written for the bare key (#598, #599, #1059): `<C-s>` is not `s`. SHIFT is not a chord
+/// modifier, because a real terminal reports an uppercase letter as SHIFT + `Q` (#681).
+pub(crate) fn is_chord(key: KeyEvent) -> bool {
+    key.modifiers.intersects(
+        KeyModifiers::CONTROL
+            | KeyModifiers::ALT
+            | KeyModifiers::SUPER
+            | KeyModifiers::HYPER
+            | KeyModifiers::META,
+    )
+}
+
+/// An unmodified key, for the CTRL aliases Vim resolves to another key (`<C-[>` = `<Esc>`, `<C-h>` =
+/// `<BS>` in Insert). A legacy terminal sends some of them as that key already; the kitty protocol does not.
+fn plain(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, KeyModifiers::NONE)
+}
+
 /// The outcome of feeding one key to the engine.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Feed {
@@ -746,6 +765,17 @@ impl InputEngine {
         let Some(cl) = self.cmdline.as_mut() else {
             return Feed::Ignored;
         };
+        // CTRL aliases (nvim v0.12.6): `c_CTRL-C` and `<C-[>` abandon the line like `<Esc>`, `c_CTRL-H` is
+        // `<BS>`, `c_CTRL-J`/`<C-m>` run it like `<CR>`. The Emacs `M-x` minibuffer shares this editor, so it
+        // keeps its own quit key (`C-g`) and leaves `C-c`/`C-h`/`C-u`/`C-w` to the swallow below.
+        let key = match key.code {
+            KeyCode::Char('[') if ctrl => plain(KeyCode::Esc),
+            KeyCode::Char('c') if ctrl && !cl.mx => plain(KeyCode::Esc),
+            KeyCode::Char('g') if ctrl && cl.mx => plain(KeyCode::Esc),
+            KeyCode::Char('h') if ctrl && !cl.mx => plain(KeyCode::Backspace),
+            KeyCode::Char('j' | 'm') if ctrl => plain(KeyCode::Enter),
+            _ => key,
+        };
         match key.code {
             KeyCode::Esc => {
                 self.cmdline = None;
@@ -759,6 +789,33 @@ impl InputEngine {
                 cl.walk = history::HistWalk::default();
                 Feed::Pending
             }
+            // `c_CTRL-U` — delete everything before the caret (the caret is end-anchored, so the whole line).
+            KeyCode::Char('u') if ctrl && !cl.mx => {
+                cl.buffer.clear();
+                cl.cursor = 0;
+                cl.walk = history::HistWalk::default();
+                Feed::Pending
+            }
+            // `c_CTRL-W` — delete the word before the caret: trailing blanks, then one run of keyword or of
+            // non-keyword chars (`ex_getln.c`): `:ab cd<C-w>` leaves `ab `, `:a.b<C-w>` leaves `a.`.
+            KeyCode::Char('w') if ctrl && !cl.mx => {
+                let word = |c: char| c.is_alphanumeric() || c == '_';
+                let kept = cl.buffer.trim_end_matches([' ', '\t']).len();
+                let class = cl.buffer[..kept].chars().next_back().map(word);
+                let start = cl.buffer[..kept]
+                    .char_indices()
+                    .rev()
+                    .take_while(|&(_, c)| c != ' ' && c != '\t' && Some(word(c)) == class)
+                    .last()
+                    .map_or(kept, |(i, _)| i);
+                cl.buffer.truncate(start);
+                cl.cursor = cl.buffer.chars().count();
+                cl.walk = history::HistWalk::default();
+                Feed::Pending
+            }
+            // Any other chord is unbound here and never appends its letter (#599). nvim appends some of them
+            // (`<C-g>`, `<C-o>`, `<C-t>`, …) as a raw control character; ruse appends nothing.
+            KeyCode::Char(_) if is_chord(key) => Feed::Pending,
             KeyCode::Char(c) => {
                 cl.buffer.push(c);
                 cl.cursor = cl.buffer.chars().count();
@@ -874,7 +931,8 @@ impl InputEngine {
             UnmatchedKey::Insert => {
                 self.reset();
                 match key.code {
-                    KeyCode::Char(c) => Feed::Cmd(Command::InsertChar(c)),
+                    // An unbound chord inserts nothing, never its letter (#599).
+                    KeyCode::Char(c) if !is_chord(key) => Feed::Cmd(Command::InsertChar(c)),
                     // `open/insert` is about PRINTABLE keys; a non-printable unmatched key does
                     // nothing, which is not the same statement as `closed/ignore`.
                     _ => Feed::Ignored,
@@ -889,7 +947,7 @@ impl InputEngine {
                 match key.code {
                     // Vim Select: a printable key deletes the selection, inserts the char, enters Insert.
                     // The core (`Command::ReplaceSelection`) performs all three as one edit.
-                    KeyCode::Char(c) => Feed::Cmd(Command::ReplaceSelection(c)),
+                    KeyCode::Char(c) if !is_chord(key) => Feed::Cmd(Command::ReplaceSelection(c)),
                     // `open/replace-selection` is about PRINTABLE keys; a non-printable unmatched key
                     // does nothing (it is NOT `closed/ignore`, but the observable result here matches).
                     _ => Feed::Ignored,
@@ -1542,6 +1600,11 @@ impl InputEngine {
         // An `i_CTRL-O` one-shot borrows the Normal grammar while the core mode still reads Insert; the
         // command it completes is a NORMAL command for dot-repeat, never part of the insert body (#795).
         let one_shot = mode == Mode::Insert && self.in_one_shot();
+        // `i_CTRL-C` leaves Insert like `<Esc>` but is an interrupt, so it drops a count's repeats: nvim's
+        // `3iab<C-c>` inserts `ab` once.
+        let interrupt = mode == Mode::Insert
+            && key.code == KeyCode::Char('c')
+            && key.modifiers.contains(KeyModifiers::CONTROL);
         let out = self.feed_impl(key, mode);
         if !one_shot {
             self.record(&out, mode);
@@ -1556,7 +1619,9 @@ impl InputEngine {
         // stages its extra repeats + trailing `EnterNormal` here — return them as one `Feed::Replay` in
         // place of the bare `EnterNormal` so the whole `3ihello` collapses into a single undo group.
         if let Some(tail) = self.pending_insert_replay.take() {
-            return Feed::Replay(tail);
+            if !interrupt {
+                return Feed::Replay(tail);
+            }
         }
         out
     }
@@ -1867,7 +1932,9 @@ impl InputEngine {
             return match key.code {
                 // `action` clears the transient axes (like every other completed key), so no partial
                 // Normal state can survive an Insert key.
-                KeyCode::Char('u') | KeyCode::Char('U') => self.action(Command::BreakUndo),
+                KeyCode::Char('u') | KeyCode::Char('U') if !is_chord(key) => {
+                    self.action(Command::BreakUndo)
+                }
                 _ => {
                     self.reset();
                     Feed::Ignored
@@ -1881,7 +1948,8 @@ impl InputEngine {
         // also leaves Insert; here it only cancels the digraph). On the second char the pair is looked up;
         // an unknown pair falls back to inserting the SECOND char literally, matching Vim.
         if let Some(pending) = self.insert.digraph {
-            let KeyCode::Char(c) = key.code else {
+            // A chord is not a digraph char either: it aborts like a non-`Char` key.
+            let (KeyCode::Char(c), false) = (key.code, is_chord(key)) else {
                 self.insert.digraph = None;
                 self.reset();
                 return Feed::Ignored;
@@ -1949,8 +2017,9 @@ impl InputEngine {
             return Feed::Pending;
         }
         // `i_CTRL-V` — arm literal / numeric char entry; the next key(s) select the form and code
-        // (Normal-mode `CTRL-V` is blockwise Visual — a separate path; this only fires in Insert).
-        if ctrl && key.code == KeyCode::Char('v') {
+        // (Normal-mode `CTRL-V` is blockwise Visual — a separate path; this only fires in Insert). `i_CTRL-Q`
+        // is the same key (`:help i_CTRL-Q`), for terminals that take `CTRL-V` for themselves.
+        if ctrl && matches!(key.code, KeyCode::Char('v' | 'q')) {
             self.reset();
             self.insert.literal = Some(LiteralEntry::AwaitFirst);
             return Feed::Pending;
@@ -1979,6 +2048,16 @@ impl InputEngine {
         if ctrl && matches!(key.code, KeyCode::Char('@') | KeyCode::Char(' ')) {
             return self.insert_prev_text(true);
         }
+        // CTRL aliases for keys the Insert layer binds (nvim v0.12.6): `i_CTRL-C` and `<C-[>` leave Insert
+        // like `<Esc>` (`feed` drops a count's repeats for `CTRL-C`), `i_CTRL-H` is `<BS>`, `i_CTRL-J` and
+        // `<C-m>` are `<CR>`, `i_CTRL-I` is `<Tab>`. Any other unbound chord inserts nothing (`unmatched`).
+        let key = match key.code {
+            KeyCode::Char('c' | '[') if ctrl => plain(KeyCode::Esc),
+            KeyCode::Char('h') if ctrl => plain(KeyCode::Backspace),
+            KeyCode::Char('j' | 'm') if ctrl => plain(KeyCode::Enter),
+            KeyCode::Char('i') if ctrl => plain(KeyCode::Tab),
+            _ => key,
+        };
         // `<Tab>` inserts whitespace to the next tabstop (spaces under `expandtab`, else a hard tab). Without
         // this, Tab falls through to the Insert unmatched policy, which only emits for `Char` keys — so a raw
         // `KeyCode::Tab` would silently do nothing.
@@ -2162,6 +2241,15 @@ impl InputEngine {
     /// resolve through the Replace LAYER; an unmatched printable key hits the layer's declared overwrite
     /// policy (KL-OBL-2), applied as the mode-appropriate overwrite command (tab-aware in Virtual Replace).
     fn feed_replace(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        // The Insert-family CTRL aliases (see `feed_insert`): `CTRL-C`/`<C-[>` = `<Esc>`, `CTRL-H` = `<BS>`,
+        // `CTRL-J`/`<C-m>` = `<CR>`. Any other chord is unbound and overwrites nothing (#599).
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let key = match key.code {
+            KeyCode::Char('c' | '[') if ctrl => plain(KeyCode::Esc),
+            KeyCode::Char('h') if ctrl => plain(KeyCode::Backspace),
+            KeyCode::Char('j' | 'm') if ctrl => plain(KeyCode::Enter),
+            _ => key,
+        };
         if let Resolved::Bound { value, .. } = self.profile.stack(Ns::Replace).resolve(&key.code) {
             let cmd = value.clone();
             return self.action(cmd);
@@ -2179,6 +2267,7 @@ impl InputEngine {
         );
         self.reset();
         match key.code {
+            KeyCode::Char(_) if is_chord(key) => Feed::Ignored,
             KeyCode::Char(c) if mode == Mode::VirtualReplace => {
                 Feed::Cmd(Command::VirtualReplaceType(c))
             }
@@ -2187,25 +2276,105 @@ impl InputEngine {
         }
     }
 
+    /// A CONTROL/ALT chord in the Normal family (Normal, Visual, Select, operator-pending, an `i_CTRL-O`
+    /// one-shot), reached only with `awaiting == Nothing`. Only the chords below are bound; every other one
+    /// takes its namespace's unmatched policy and never decodes as the bare letter (#598, #1059). Ground
+    /// truth is nvim v0.12.6 (the table in `input/chord_tests.rs` pins it). `<C-c>` is handled
+    /// in `feed_impl`; the chords the frontend owns in Normal (`<C-w>`, `<C-d>`/`<C-u>`, `<C-e>`/`<C-y>`,
+    /// `<C-b>`/`<C-f>`/`<C-l>`/`<C-p>`, `<C-]>`) are taken before the engine sees them.
+    fn feed_chord(&mut self, key: KeyEvent, mode: Mode) -> Feed {
+        let selection = match mode {
+            Mode::Visual { kind } | Mode::Select { kind } => Some(kind),
+            _ => None,
+        };
+        let select = matches!(mode, Mode::Select { .. });
+        let op = self.normal.op.is_some();
+        let only_ctrl = key.modifiers - KeyModifiers::SHIFT == KeyModifiers::CONTROL;
+        let c = match key.code {
+            KeyCode::Char(c) if only_ctrl => c,
+            _ => '\0', // an ALT/SUPER/… chord: nothing is bound
+        };
+        match c {
+            // `CTRL-G` toggles Visual<->Select over the SAME selection; in Normal it is file info (name /
+            // [Modified] / line count / cursor percent), resolved + status-surfaced by the frontend.
+            'g' if !op => match mode {
+                Mode::Visual { kind } => self.action(Command::EnterSelect { kind }),
+                Mode::Select { kind } => self.action(Command::EnterVisual { kind }),
+                Mode::Normal => self.action(Command::FileInfo),
+                _ => self.unmatched(Ns::Normal, key),
+            },
+            // `<C-[>` is `<Esc>`, `<C-m>` is `<CR>` (the kitty protocol sends them as chords).
+            '[' => self.feed_base(plain(KeyCode::Esc), mode),
+            'm' => self.feed_base(plain(KeyCode::Enter), mode),
+            // Motions (`:help CTRL-H`, `CTRL-J`, `CTRL-N`, `CTRL-P`): `<C-h>` = `h`, `<C-j>`/`<C-n>` = `j`,
+            // `<C-p>` = `k`, with a count and under an operator (`d<C-j>` = `dj`). Select mode binds none.
+            'h' if !select => self.motion(Motion::Left),
+            'j' | 'n' if !select => self.motion(Motion::Down),
+            'p' if !select => self.motion(Motion::Up),
+            // `CTRL-V` (and its alias `CTRL-Q`): blockwise Visual; in a selection it switches the shape (the
+            // same key again leaves it); under an operator it forces the motion blockwise (`d<C-v>j`).
+            'v' | 'q' => match selection {
+                Some(SelectKind::Blockwise) => self.action(Command::EnterNormal),
+                Some(_) => self.action(Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                }),
+                None if op => {
+                    self.normal.forced_wise = Some(ForcedWise::Blockwise);
+                    Feed::Pending
+                }
+                None => self.action(Command::EnterVisual {
+                    kind: SelectKind::Blockwise,
+                }),
+            },
+            // `CTRL-A` / `CTRL-X` — add ±count to the number under-or-after the cursor, or to the first
+            // number on every selected line.
+            'a' | 'x' if !op => {
+                let delta = i64::from(self.mcount());
+                let delta = if c == 'a' { delta } else { -delta };
+                if selection.is_some() {
+                    self.action(Command::IncrementSelection {
+                        delta,
+                        sequential: false,
+                    })
+                } else {
+                    self.action(Command::IncrementNumber(delta))
+                }
+            }
+            // `CTRL-O` / `CTRL-I` walk the jumplist back / forward; `CTRL-R` redoes. Normal only.
+            'o' if !op && selection.is_none() => self.action(Command::GotoOlderJump),
+            'i' if !op && selection.is_none() => self.action(Command::GotoNewerJump),
+            'r' if !op && selection.is_none() => self.action(Command::Redo),
+            _ => {
+                let ns = if op {
+                    Ns::OperatorPending
+                } else if select {
+                    Ns::Select
+                } else if selection.is_some() {
+                    Ns::Visual
+                } else {
+                    Ns::Normal
+                };
+                self.unmatched(ns, key)
+            }
+        }
+    }
+
     /// The base Normal-family dispatch, reached only with `awaiting == Nothing` (the tier above
     /// returned for the pending cases). Shared char-search initiators, then the count/operator/motion
     /// grammar and the mode-specific keys.
     fn feed_base(&mut self, key: KeyEvent, mode: Mode) -> Feed {
-        // `CTRL-G` toggles Visual<->Select over the SAME selection (Vim's documented behaviour). Handled
-        // here, before the shared `g` initiator below, so it is never mistaken for the start of `gg`. In
-        // Normal it is Vim's file-info command (name / [Modified] / line count / cursor percent), resolved
-        // + status-surfaced by the frontend. In any other non-selection mode nothing is bound (inert, NOT
-        // the start of `gg`).
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('g') {
-            return match mode {
-                Mode::Visual { kind } => self.action(Command::EnterSelect { kind }),
-                Mode::Select { kind } => self.action(Command::EnterVisual { kind }),
-                Mode::Normal => self.action(Command::FileInfo),
-                _ => {
-                    self.reset();
-                    Feed::Ignored
-                }
-            };
+        // A chord resolves in its own table and never reaches the bare-key arms below (#598, #1059).
+        if is_chord(key) && matches!(key.code, KeyCode::Char(_)) {
+            return self.feed_chord(key, mode);
+        }
+        // `<S-Left>`/`<C-Left>` and `<S-Right>`/`<C-Right>` move by word (`b`/`w`), not by char. The other
+        // modified special keys keep their plain meaning.
+        if !key.modifiers.is_empty() {
+            match key.code {
+                KeyCode::Left => return self.motion(Motion::WordBack),
+                KeyCode::Right => return self.motion(Motion::WordFwd),
+                _ => {}
+            }
         }
         // --- Shared initiators (char-search + `;`/`,`): work in Normal and Visual, preserving the operator
         // axis (so `dfx` / `d;` work). Reachable only with `awaiting == Nothing` — the tier above already
@@ -2316,9 +2485,8 @@ impl InputEngine {
         //
         // `gv` (restore the previous selection) IS wired — it re-selects the depth-1 `last_visual` (handled
         // in the `g`-initiator tier above); the full C-ANCHOR position history stays deferred.
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         if let Mode::Visual { kind } | Mode::Select { kind } = mode {
-            // `v`/`V`/`CTRL-V` switch the selection SHAPE: pressing the key of the current shape leaves the
+            // `v`/`V`/`CTRL-V` (`feed_chord`) switch the selection SHAPE: pressing the key of the current shape leaves the
             // namespace (to Normal), any other switches to that shape (F-025 c1). `i`/`a` (lowercase) begin
             // a text object in every shape; blockwise-only `I`/`A` (and block `c`/`s`) arm an insert-
             // replicate session instead of the plain charwise change.
@@ -2332,9 +2500,6 @@ impl InputEngine {
             };
             match key.code {
                 KeyCode::Esc => return self.action(Command::EnterNormal),
-                KeyCode::Char('v') if ctrl => {
-                    return self.action(shape_toggle(SelectKind::Blockwise))
-                }
                 KeyCode::Char('v') => return self.action(shape_toggle(SelectKind::Charwise)),
                 KeyCode::Char('V') => return self.action(shape_toggle(SelectKind::Linewise)),
                 // Blockwise insert-replicate: `I` at the left edge, `A` at the right edge, `c`/`s` delete
@@ -2347,20 +2512,6 @@ impl InputEngine {
                 }
                 KeyCode::Char('c') | KeyCode::Char('s') if is_block => {
                     return self.action(Command::BlockInsert(BlockInsertKind::Change))
-                }
-                // Visual `CTRL-A`/`CTRL-X` — add ±count to the first number on EVERY selected line. Guarded
-                // by `ctrl` and placed BEFORE the plain `x` delete arm so the ctrl-modified key wins.
-                KeyCode::Char('a') if ctrl => {
-                    return self.action(Command::IncrementSelection {
-                        delta: i64::from(self.mcount()),
-                        sequential: false,
-                    })
-                }
-                KeyCode::Char('x') if ctrl => {
-                    return self.action(Command::IncrementSelection {
-                        delta: -i64::from(self.mcount()),
-                        sequential: false,
-                    })
                 }
                 KeyCode::Char('d') | KeyCode::Char('x') => {
                     return self.action(Command::DeleteSelection)
@@ -2441,13 +2592,9 @@ impl InputEngine {
             code if motion_key(code).is_some() => {
                 self.motion(motion_key(code).expect("guarded by is_some"))
             }
-            // With an operator armed, `v`/`V`/`CTRL-V` FORCE the next motion's wise (Vim `o_v`/`o_V`/
-            // `o_CTRL-V`): `dvj`, `dVe`, `d<C-v>j`. They stay operator-pending (the motion still follows);
-            // `motion` emits `OpForced`. Bare (no operator) they enter Visual/Visual-line/Visual-block.
-            KeyCode::Char('v') if self.normal.op.is_some() && ctrl => {
-                self.normal.forced_wise = Some(ForcedWise::Blockwise);
-                Feed::Pending
-            }
+            // With an operator armed, `v`/`V` (and `CTRL-V`, in `feed_chord`) FORCE the next motion's wise
+            // (Vim `o_v`/`o_V`/`o_CTRL-V`): `dvj`, `dVe`, `d<C-v>j`. They stay operator-pending (the motion
+            // still follows); `motion` emits `OpForced`. Bare (no operator) they enter Visual/Visual-line.
             KeyCode::Char('v') if self.normal.op.is_some() => {
                 self.normal.forced_wise = Some(ForcedWise::Charwise);
                 Feed::Pending
@@ -2456,9 +2603,6 @@ impl InputEngine {
                 self.normal.forced_wise = Some(ForcedWise::Linewise);
                 Feed::Pending
             }
-            KeyCode::Char('v') if ctrl => self.action(Command::EnterVisual {
-                kind: SelectKind::Blockwise,
-            }),
             KeyCode::Char('v') => self.action(Command::EnterVisual {
                 kind: SelectKind::Charwise,
             }),
@@ -2525,17 +2669,6 @@ impl InputEngine {
             KeyCode::Char('s') if self.normal.op.is_none() => {
                 self.action(Command::Change(self.mcount(), Motion::Right))
             }
-            // `CTRL-A` / `CTRL-X` — increment / decrement the number under-or-after the cursor by the count.
-            // Placed before the plain `a`/`x` arms so the ctrl-modified keys are not swallowed by them.
-            KeyCode::Char('a') if ctrl => {
-                self.action(Command::IncrementNumber(i64::from(self.mcount())))
-            }
-            KeyCode::Char('x') if ctrl => {
-                self.action(Command::IncrementNumber(-i64::from(self.mcount())))
-            }
-            // `CTRL-O` / `CTRL-I` — walk the jumplist back / forward (before the plain `o`/`i` arms).
-            KeyCode::Char('o') if ctrl => self.action(Command::GotoOlderJump),
-            KeyCode::Char('i') if ctrl => self.action(Command::GotoNewerJump),
             KeyCode::Char('i') if self.normal.op.is_some() => {
                 self.normal.awaiting = Awaiting::TextObjectChar { inner: true };
                 Feed::Pending
@@ -2594,7 +2727,6 @@ impl InputEngine {
                 self.case_linewise()
             }
             KeyCode::Char('u') => self.action(Command::Undo),
-            KeyCode::Char('r') if ctrl => self.action(Command::Redo),
             KeyCode::Tab => self.action(Command::GotoNewerJump),
             KeyCode::Char('r') => {
                 self.normal.awaiting = Awaiting::ReplaceChar;
@@ -2724,6 +2856,15 @@ impl InputEngine {
                 self.action(Command::EnterNormal)
             };
         }
+        // A chord is never the char an awaited key names (`f<C-a>` is not `fa`, `"<C-a>` is not register
+        // `a`): it aborts the pending construct, as in nvim. Only the `g` prefix binds chords of its own.
+        if is_chord(key)
+            && matches!(key.code, KeyCode::Char(_))
+            && !matches!(self.normal.awaiting, Awaiting::Nothing | Awaiting::GSecond)
+        {
+            self.normal.awaiting = Awaiting::Nothing;
+            return self.unmatched(Ns::OperatorPending, key);
+        }
         // --- Top-priority tier: a one-shot key-expectation resolves before any base-key handling. ---
         match self.normal.awaiting {
             Awaiting::FindTarget { forward, till } => {
@@ -2755,6 +2896,16 @@ impl InputEngine {
             Awaiting::GSecond => {
                 self.normal.awaiting = Awaiting::Nothing;
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                // `g CTRL-G` and Visual `g CTRL-A`/`g CTRL-X` are the only `g` chords; any other one aborts
+                // instead of reaching the bare `g{char}` arms (`g<C-e>` is not `ge`).
+                let g_chord = match key.code {
+                    KeyCode::Char('g') => true,
+                    KeyCode::Char('a' | 'x') => matches!(mode, Mode::Visual { .. }),
+                    _ => false,
+                };
+                if is_chord(key) && matches!(key.code, KeyCode::Char(_)) && !(ctrl && g_chord) {
+                    return self.unmatched(Ns::OperatorPending, key);
+                }
                 return match key.code {
                     // `g CTRL-G` — cursor position / buffer counts (Col/Line/Word/[Char]/Byte). Checked
                     // before the bare `g` (=`gg`) arm, since that arm ignores the ctrl modifier. Frontend-
@@ -3182,3 +3333,6 @@ fn split_search_offset(line: &str, delim: char) -> (String, Option<SearchOffset>
 
 #[cfg(test)]
 mod unit_tests;
+
+#[cfg(test)]
+mod chord_tests;

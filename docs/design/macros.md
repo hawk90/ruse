@@ -85,14 +85,15 @@ register I/O, which lives in the core `Workspace`:
   `encode` the buffer and `set_register_raw`. `q:`, `q/` and `q?` open the command-line window instead.
 - **`@` (Normal):** arm `pending_at`; the next key `a`–`z` reads that register, `decode`s it, and pushes the
   keys onto the replay queue. `{count}@{reg}` repeats, `@@` replays the last register, `@:` re-drives the last
-  Ex line, and `Q` is meant to replay the last recorded register (not reachable in a real terminal, #681).
+  Ex line, and `Q` replays the last recorded register. The prefix keys match an unchorded key with SHIFT
+  allowed, since a terminal reports `Q` as SHIFT+`Q` (#681); a chord is never a register name.
 - **Recursion guard:** a cap on total replayed keys per top-level `@` (e.g. 100k) so a self-invoking macro
   terminates with a status line instead of hanging.
 
 ## 5. Scope
 
 **Shipped:** §4, the codec above, the core accessor, the recursion guard, and `:reg`/`:registers`, except for the
-open bugs #680, #681, #787 and #851.
+open bugs #680, #787 and #851.
 
 **Deferred:** Fn/Alt/Shift keys (#812), running a macro inside `:g`, and cross-session persistence (which would promote
 the byte encoding to a persisted-format contract — see D-055 *Re-evaluate if*).

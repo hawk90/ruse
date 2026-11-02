@@ -12687,6 +12687,456 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "chord_normal_c_k_inert",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jl<C-k>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_normal_c_s_inert",
+      "lines": [
+        "abc"
+      ],
+      "keys": "l<C-s>x",
+      "expect": {
+        "text": [
+          "ac"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_normal_c_h_left",
+      "lines": [
+        "abc"
+      ],
+      "keys": "ll<C-h>x",
+      "expect": {
+        "text": [
+          "ac"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_normal_c_j_down",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "<C-j>x",
+      "expect": {
+        "text": [
+          "ab",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_normal_c_n_down",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "2<C-n>x",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "f"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_op_d_c_j_linewise",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "d<C-j>",
+      "expect": {
+        "text": [
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_op_d_c_h",
+      "lines": [
+        "abc"
+      ],
+      "keys": "ld<C-h>",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_op_d_c_k_aborts",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jd<C-k>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_op_d_c_q_blockwise",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "d<C-q>j",
+      "expect": {
+        "text": [
+          "bc",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nd",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_visual_c_k_inert",
+      "lines": [
+        "abcd",
+        "efgh"
+      ],
+      "keys": "jvl<C-k>",
+      "expect": {
+        "text": [
+          "abcd",
+          "efgh"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_visual_c_p_up",
+      "lines": [
+        "abcd",
+        "efgh"
+      ],
+      "keys": "jv<C-p>d",
+      "expect": {
+        "text": [
+          "fgh"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abcd\ne",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_find_c_a_aborts",
+      "lines": [
+        "xa"
+      ],
+      "keys": "f<C-a>",
+      "expect": {
+        "text": [
+          "xa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_g_c_e_aborts",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "$g<C-e>",
+      "expect": {
+        "text": [
+          "ab cd"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_insert_c_h_backspace",
+      "lines": [
+        "x"
+      ],
+      "keys": "iab<C-h>c<Esc>",
+      "expect": {
+        "text": [
+          "acx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_insert_c_j_newline",
+      "lines": [
+        "x"
+      ],
+      "keys": "ia<C-j>b<Esc>",
+      "expect": {
+        "text": [
+          "a",
+          "bx"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_insert_c_s_inert",
+      "lines": [
+        "x"
+      ],
+      "keys": "ia<C-s>b<Esc>",
+      "expect": {
+        "text": [
+          "abx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_insert_c_rbracket_inert",
+      "lines": [
+        "x"
+      ],
+      "keys": "ia<C-]>b<Esc>",
+      "expect": {
+        "text": [
+          "abx"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "chord_insert_c_q_literal",
+      "lines": [
+        "x"
+      ],
+      "keys": "i<C-q>065<Esc>",
+      "expect": {
+        "text": [
+          "Ax"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

@@ -915,6 +915,27 @@ FIXTURES: list[dict] = [
     {"name": "so_d_back_end_inclusive", "lines": ["third foobar line"], "keys": "$d?foobar?e<CR>"},
     {"name": "so_empty_reuse_offset", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>//<CR>"},
     {"name": "so_empty_new_offset", "lines": ["abc foo def foo"], "keys": "/foo/e<CR>//s<CR>"},
+    # Modifier handling (#598, #599, #1059): a CTRL chord is bound or inert, never its bare letter. A chord
+    # nvim BEEPS on also flushes the rest of the fed keys, so those fixtures end at the chord and observe the
+    # cursor (interactively the next typed key would still run).
+    {"name": "chord_normal_c_k_inert", "lines": ["ab", "cd"], "keys": "jl<C-k>"},
+    {"name": "chord_normal_c_s_inert", "lines": ["abc"], "keys": "l<C-s>x"},
+    {"name": "chord_normal_c_h_left", "lines": ["abc"], "keys": "ll<C-h>x"},
+    {"name": "chord_normal_c_j_down", "lines": ["ab", "cd"], "keys": "<C-j>x"},
+    {"name": "chord_normal_c_n_down", "lines": ["ab", "cd", "ef"], "keys": "2<C-n>x"},
+    {"name": "chord_op_d_c_j_linewise", "lines": ["a", "b", "c"], "keys": "d<C-j>"},
+    {"name": "chord_op_d_c_h", "lines": ["abc"], "keys": "ld<C-h>"},
+    {"name": "chord_op_d_c_k_aborts", "lines": ["ab", "cd"], "keys": "jd<C-k>"},
+    {"name": "chord_op_d_c_q_blockwise", "lines": ["abc", "def"], "keys": "d<C-q>j"},
+    {"name": "chord_visual_c_k_inert", "lines": ["abcd", "efgh"], "keys": "jvl<C-k>"},
+    {"name": "chord_visual_c_p_up", "lines": ["abcd", "efgh"], "keys": "jv<C-p>d"},
+    {"name": "chord_find_c_a_aborts", "lines": ["xa"], "keys": "f<C-a>"},
+    {"name": "chord_g_c_e_aborts", "lines": ["ab cd"], "keys": "$g<C-e>"},
+    {"name": "chord_insert_c_h_backspace", "lines": ["x"], "keys": "iab<C-h>c<Esc>"},
+    {"name": "chord_insert_c_j_newline", "lines": ["x"], "keys": "ia<C-j>b<Esc>"},
+    {"name": "chord_insert_c_s_inert", "lines": ["x"], "keys": "ia<C-s>b<Esc>"},
+    {"name": "chord_insert_c_rbracket_inert", "lines": ["x"], "keys": "ia<C-]>b<Esc>"},
+    {"name": "chord_insert_c_q_literal", "lines": ["x"], "keys": "i<C-q>065<Esc>"},
 ]
 
 

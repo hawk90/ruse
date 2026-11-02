@@ -70,9 +70,9 @@ pub enum Step {
 }
 
 /// `key` is the plain char `c`. `SHIFT` is allowed: a terminal reports an uppercase letter with it (crossterm
-/// sets `SHIFT` on `Q`), and the char already says it is uppercase.
+/// sets `SHIFT` on `Q`), and the char already says it is uppercase (#681). A chord never is.
 fn is_bare(key: KeyEvent, c: char) -> bool {
-    key.code == KeyCode::Char(c) && (key.modifiers - KeyModifiers::SHIFT).is_empty()
+    key.code == KeyCode::Char(c) && !crate::input::is_chord(key)
 }
 
 impl MacroState {
@@ -151,7 +151,8 @@ impl MacroState {
         // non-letter aborts the arm.
         if self.pending_q {
             self.pending_q = false;
-            if let KeyCode::Char(c) = key.code {
+            // A chord is not a register name (`q<C-a>` records nothing, as in nvim).
+            if let (KeyCode::Char(c), false) = (key.code, crate::input::is_chord(key)) {
                 if c.is_ascii_alphabetic() {
                     self.recording = Some((c, Vec::new()));
                     return Step::Consumed;
@@ -169,6 +170,7 @@ impl MacroState {
         if self.pending_at {
             self.pending_at = false;
             let target = match key.code {
+                _ if crate::input::is_chord(key) => None, // `@<C-a>` replays nothing
                 KeyCode::Char(c) if c.is_ascii_alphabetic() => Some(c.to_ascii_lowercase()),
                 // `@:` — repeat the last-executed Ex command-line (`:help @:`). Carried as the pseudo
                 // register `:` so a following `@@` (which re-plays `last_played`) repeats it too.
@@ -220,7 +222,8 @@ impl MacroState {
 
 /// Encode one key event to its macro bytes, or `None` for a key outside the slice-1 alphabet (arrows, Fn,
 /// Alt, …) — the recorder simply drops those for now (D-055 defers them). Printable chars encode as UTF-8;
-/// `Ctrl`-`a`..`z` collapse to `0x01`..`0x1a`, matching the control bytes a terminal actually sends.
+/// `Ctrl`-`a`..`z` collapse to `0x01`..`0x1a` and the other C0 chords to their bytes, matching the control
+/// bytes a terminal actually sends.
 pub fn encode(key: KeyEvent) -> Option<Vec<u8>> {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let utf8 = |c: char| {
@@ -231,6 +234,16 @@ pub fn encode(key: KeyEvent) -> Option<Vec<u8>> {
         KeyCode::Char(c) if ctrl && c.to_ascii_lowercase().is_ascii_alphabetic() => {
             vec![c.to_ascii_lowercase() as u8 - b'a' + 1] // C-a=0x01 … C-z=0x1a
         }
+        // The other C0 chords, as a legacy terminal sends them: `C-@`/`C-Space` = NUL, `C-[` = ESC, and
+        // `C-\ C-] C-^ C-_` = 0x1c..0x1f (which crossterm decodes as `Ctrl-4`..`Ctrl-7`). A chord never
+        // records as its plain char, or replaying `i<C-]>` would type `5`; any other chord is dropped.
+        KeyCode::Char(' ' | '@' | '2') if ctrl => vec![0x00],
+        KeyCode::Char('[') if ctrl => vec![0x1b],
+        KeyCode::Char(c @ ('\\' | ']' | '^' | '_' | '4'..='7')) if ctrl => {
+            let i = "\\]^_".find(c).unwrap_or(c as usize - '4' as usize);
+            vec![0x1c + i as u8]
+        }
+        KeyCode::Char(_) if crate::input::is_chord(key) => return None,
         KeyCode::Char(c) => utf8(c),
         KeyCode::Enter => vec![b'\r'],
         KeyCode::Tab => vec![b'\t'],
@@ -373,7 +386,8 @@ pub fn decode(bytes: &[u8]) -> Vec<KeyEvent> {
             b'\t' => out.push(plain(KeyCode::Tab)),
             0x7f | 0x08 => out.push(plain(KeyCode::Backspace)),
             0x01..=0x1a => out.push(ctrl((b - 1 + b'a') as char)), // C-a..C-z (Tab/CR handled above)
-            0x00..=0x1f => {} // other C0 controls not in the alphabet — skip
+            0x00 => out.push(ctrl(' ')), // C-@ / C-Space, as crossterm decodes NUL
+            0x1c..=0x1f => out.push(ctrl((b - 0x1c + b'4') as char)), // C-\ C-] C-^ C-_ = Ctrl-4..7
             0x80 => {
                 // A navigation key: `0x80` + tag. Consume both; an unknown/absent tag is skipped.
                 if let Some(code) = bytes.get(i + 1).copied().and_then(special_from_tag) {
@@ -462,10 +476,49 @@ mod tests {
         assert_eq!(decode(&[0x0d]), vec![key(KeyCode::Enter)]);
     }
 
+    /// The C0 chords outside `C-a..C-z` record as the bytes a terminal sends and replay as the keys crossterm
+    /// decodes from them; no chord records as its plain char (`i<C-]>` replayed as `i5`).
+    #[test]
+    fn other_c0_chords_record_as_control_bytes() {
+        assert_eq!(encode(ctrl(' ')).unwrap(), vec![0x00]);
+        assert_eq!(encode(ctrl('@')).unwrap(), vec![0x00]);
+        assert_eq!(encode(ctrl('[')).unwrap(), vec![0x1b]);
+        assert_eq!(encode(ctrl('\\')).unwrap(), vec![0x1c]);
+        assert_eq!(encode(ctrl(']')).unwrap(), vec![0x1d]);
+        assert_eq!(encode(ctrl('^')).unwrap(), vec![0x1e]);
+        assert_eq!(encode(ctrl('_')).unwrap(), vec![0x1f]);
+        for k in [ctrl(' '), ctrl('4'), ctrl('5'), ctrl('6'), ctrl('7')] {
+            assert_eq!(decode(&encode(k).unwrap()), vec![k], "round-trip {k:?}");
+        }
+        assert_eq!(encode(ctrl('1')), None, "an unencodable chord is dropped");
+        assert_eq!(
+            encode(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT)),
+            None
+        );
+    }
+
+    /// A chord is never a `q`/`@` register name, nor the `q` that stops a recording (#1059). nvim: `q<C-a>`
+    /// and `@<C-a>` do nothing.
+    #[test]
+    fn chords_are_not_register_names() {
+        let mut m = MacroState::new();
+        // `q<C-a>` and `@<C-a>` arm, then drop the chord: no recording, no replay.
+        assert_eq!(m.step(ch('q'), false, true), Step::Consumed);
+        assert_eq!(m.step(ctrl('a'), false, true), Step::Consumed);
+        assert!(!m.is_recording());
+        assert_eq!(m.step(ch('@'), false, true), Step::Consumed);
+        assert_eq!(m.step(ctrl('a'), false, true), Step::Consumed);
+        // `<C-q>` is not the `q` that stops a recording.
+        m.step(ch('q'), false, true);
+        m.step(ch('b'), false, true);
+        assert_eq!(m.step(ctrl('q'), false, true), Step::Dispatch(ctrl('q')));
+        assert!(m.is_recording());
+    }
+
     #[test]
     fn decode_skips_unrecognised_bytes_without_panic() {
-        // A stray 0x00 and an incomplete UTF-8 lead byte are skipped; the surrounding keys survive.
-        let bytes = vec![b'x', 0x00, 0xff, b'y'];
+        // An incomplete UTF-8 lead byte and an unknown navigation tag are skipped; the surrounding keys survive.
+        let bytes = vec![b'x', 0xff, 0x80, b'?', b'y'];
         assert_eq!(decode(&bytes), vec![ch('x'), ch('y')]);
     }
 

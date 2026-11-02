@@ -342,7 +342,9 @@ key-expectation tiers are still engine code ahead of the layer lookup; §Priorit
   mode owner. It carries a *prompt* (`:` ex vs `/`/`?` search) and the line buffer. The caret field stays at the end of the
   line until the line editor lands (#612).
 - **The engine routes it**, like Insert: a `Cmdline` branch turns keys into command-line edits; `<CR>` dispatches
-  the ex/search command; `<Esc>` aborts (`C-c` does not yet, #612, #599). The frontend only renders the prompt + buffer + caret.
+  the ex/search command; `<Esc>` and `C-c` abort, `C-h` deletes back, `C-j` runs the line, `C-u`/`C-w` delete
+  to the start / one word, and no other chord appends its letter (#599; the rest of the line editor is #612).
+  The frontend only renders the prompt + buffer + caret.
 - **Precedence** stays the fixed ladder (input-mode → key-expectation tier → base keys); `Cmdline` sits at
   the input-mode level beside Insert, so it is total and testable by the same no-leak property.
 
