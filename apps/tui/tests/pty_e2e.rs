@@ -196,3 +196,22 @@ fn write_keeps_mixed_line_endings() {
     assert_eq!(ed.exit_status(), 0);
     assert_eq!(std::fs::read(&file).unwrap(), b"a\r\nb\r\nc\n");
 }
+
+/// #736: closing the last window on a modified buffer hides the buffer; it is not freed.
+#[test]
+fn close_keeps_a_modified_buffer_and_q_refuses() {
+    let dir = Scratch::new();
+    dir.file("a.txt", b"one\n");
+    let b = dir.file("b.txt", b"two\n");
+    // Relative paths keep the status message on screen (#831).
+    let mut ed = Editor::start(&dir, &[std::path::Path::new("a.txt")]);
+    ed.keys(":split\r:e b.txt\rx:close\r:q\r");
+    assert!(
+        ed.is_running(),
+        ":q must refuse while the hidden b.txt is modified"
+    );
+    assert!(ed.screen_bytes().contains("E162"));
+    ed.keys(":b 2\r:w\r:q\r");
+    assert_eq!(ed.exit_status(), 0);
+    assert_eq!(std::fs::read(&b).unwrap(), b"wo\n");
+}

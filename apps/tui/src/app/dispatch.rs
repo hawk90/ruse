@@ -279,9 +279,12 @@ pub(crate) fn run_ex(
             save(ws, files, status, fixeol);
         }
         // `:q` refuses when the focused buffer has unsaved changes (Vim E37); `:q!` discards them.
+        // `:q` ends the editor, so a modified hidden buffer blocks it too (Vim E162).
         Ex::Quit => {
             if ws.focused().doc.is_modified() {
                 *status = "E37: No write since last change (add ! to override)".into();
+            } else if let Some(b) = ws.buffers().into_iter().find(|b| b.modified) {
+                *status = format!("E162: No write since last change for buffer \"{}\"", b.name);
             } else {
                 *quit = true;
             }

@@ -838,35 +838,18 @@ impl Workspace {
         new_vid
     }
 
-    /// Close the focused Window (Vim `C-w c`): drop the layout slot, retire its View, and — if no other
-    /// View still names its buffer — retire the shared Document too (F-007 acceptance #3: the buffer
-    /// survives while another View holds it). Refuses to close the LAST Window (returns `false`); an
+    /// Close the focused Window (Vim `C-w c`): drop the layout slot and retire its View. Its buffer stays
+    /// loaded, hidden if no other window shows it (F-007 acceptance #3). Refuses to close the LAST Window (returns `false`); an
     /// app-level `:q` handles quitting. On success returns `true` and focus lands on the neighbour.
     pub fn close_focused(&mut self) -> bool {
         if self.windows.len() <= 1 {
             return false; // never leave zero windows — `:q` is the quit path
         }
         let win = self.windows.remove(self.focus);
-        let did = self.views[win.view.0]
-            .as_ref()
-            .expect("closing view live")
-            .doc();
-        self.views[win.view.0] = None; // retire the View
-
-        // Retire the Document iff no surviving Window's View still names it (refcount-by-scan).
-        let still_held = self.windows.iter().any(|w| {
-            self.views[w.view.0]
-                .as_ref()
-                .is_some_and(|v| v.doc() == did)
-        });
-        if !still_held {
-            self.docs[Self::doc_slot(did)] = None;
-            self.names[Self::doc_slot(did)] = None;
-            self.buffer_order.retain(|&id| id != did);
-            if self.alt == Some(did) {
-                self.alt = None;
-            }
-        }
+        // Retire only the View. The Document stays loaded even when no window shows it any more: it becomes
+        // hidden, still `:ls`-listed and reopenable with `:b`, as with `:only`. Freeing it would drop unsaved
+        // edits (#736).
+        self.views[win.view.0] = None;
 
         if self.focus >= self.windows.len() {
             self.focus = self.windows.len() - 1; // closed the last-in-order pane
