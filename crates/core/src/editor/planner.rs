@@ -202,6 +202,7 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
             line_start(b, lo),
             line_end(b, hi),
             false,
+            false,
             hint,
         )),
         // Block `O`: the cursor takes the anchor's column on its own row, the anchor the cursor's column on
@@ -327,34 +328,53 @@ fn plan_search(
         SearchOffset::Line(n) => {
             plan_search_line(st, b, cur, op, count, pattern, backward, n, hint)
         }
-        _ => plan_search_char(st, b, cur, op, count, pattern, backward, offset, hint),
+        _ => plan_search_char(st, b, cur, cur, op, count, pattern, backward, offset, hint),
     }
 }
 
-/// A charwise search motion with no offset or an `s`/`e`/`b` character offset (`:help search-offset`).
-///
-/// The landing is the offset-applied position of the count-th match found in the search direction. The
-/// match is picked by comparing OFFSET-APPLIED positions against the cursor (`> cursor` forward,
-/// `< cursor` backward, wrapping): this single rule reproduces every nvim case — fresh searches, `n`/`N`,
-/// and retyping — because after any offset search the cursor already sits at the previous landing, so the
-/// same comparison advances past it (even when the offset, e.g. `s-1`, lands the cursor *before* the
-/// match). Under an operator the span is `[cursor, target)` EXCLUSIVE, except an `e` (End) offset makes it
-/// INCLUSIVE through the offset char (Vim: only `e` turns the motion inclusive).
+/// The operator span of a charwise search motion (`d/pat`, `dn`, `d*`), after Vim's exclusive-linewise rule.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum SearchSpan {
+    /// The landing is the cursor itself (`d*` on a word with no other match): an empty exclusive span.
+    Empty,
+    /// The charwise span `[lo, hi)`.
+    Chars { lo: usize, hi: usize },
+    /// Whole lines `first..=last` (the exclusive-linewise promotion).
+    Lines { first: usize, last: usize },
+}
+
+impl SearchSpan {
+    /// The 0-based inclusive LINE range the span covers; an empty span covers the cursor's line (`!*` on a
+    /// lone word opens `:.!`, verified against nvim 0.12.6).
+    fn lines(self, b: &[u8], cur: usize) -> (usize, usize) {
+        match self {
+            SearchSpan::Empty => {
+                let l = crate::pos::line_of(b, cur);
+                (l, l)
+            }
+            SearchSpan::Chars { lo, hi } => {
+                (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi - 1))
+            }
+            SearchSpan::Lines { first, last } => (first, last),
+        }
+    }
+}
+
+/// The offset-applied landing of the `count`-th charwise search match from `origin` (see
+/// [`plan_search_char`] for the rule), or `None` when the pattern has no match.
 #[allow(clippy::too_many_arguments)]
-fn plan_search_char(
+fn search_char_landing(
     st: &EditorState,
     b: &[u8],
-    cur: usize,
-    op: &SearchOp,
+    origin: usize,
     count: u32,
     pattern: &str,
     backward: bool,
     offset: SearchOffset,
-    hint: GroupHint,
-) -> Plan {
+) -> Option<usize> {
     let spans = match_spans(b, pattern, st.view.search_options());
     if spans.is_empty() {
-        return nop(cur, st.view.mode);
+        return None;
     }
     // The offset-applied cursor landing for a match `[s, e)`.
     let landing = |(s, e): (usize, usize)| -> usize {
@@ -366,7 +386,7 @@ fn plan_search_char(
             SearchOffset::Line(_) => unreachable!("line offsets take plan_search_line"),
         }
     };
-    let mut pos = cur;
+    let mut pos = origin;
     let mut landed: Option<usize> = None;
     for _ in 0..count.max(1) {
         let next = if backward {
@@ -386,13 +406,20 @@ fn plan_search_char(
             None => break,
         }
     }
-    let Some(target) = landed else {
-        return nop(cur, st.view.mode);
-    };
-    if matches!(op, SearchOp::Move) {
-        return nop(target, st.view.mode);
-    }
-    // Operator span `[lo, hi)`; `e` extends the high end by one char (inclusive through the offset char).
+    landed
+}
+
+/// The operator span between the cursor and a charwise search `target`, plus whether Vim's
+/// exclusive-linewise rule ADJUSTED its end (`end_adjusted` in nvim's `do_pending_operator`, which moves the
+/// `gq` cursor one line further, #1071). `[cursor, target)` forward, `[target, cursor)` backward; an `e` offset
+/// makes it inclusive through the offset char and exempts it from the rule.
+fn search_char_span(
+    b: &[u8],
+    cur: usize,
+    target: usize,
+    backward: bool,
+    offset: SearchOffset,
+) -> (SearchSpan, bool) {
     let (lo, mut hi) = if backward {
         (target, cur)
     } else {
@@ -400,29 +427,198 @@ fn plan_search_char(
     };
     if matches!(offset, SearchOffset::End(_)) {
         hi = next_boundary(b, hi);
+        return if hi <= lo {
+            (SearchSpan::Empty, false)
+        } else {
+            (SearchSpan::Chars { lo, hi }, false)
+        };
     }
     if hi <= lo {
-        return nop(cur, st.view.mode);
+        return (SearchSpan::Empty, false);
     }
     // Vim's exclusive-linewise rule (`:help exclusive-linewise`): an exclusive span ending at column 0 of a
     // later line becomes linewise when it starts at/before its first non-blank, else it pulls back one byte
-    // (`d/foo` and `dn` landing on a line start). The `e` offset is inclusive, so it is exempt.
-    let (lo, hi) = if matches!(offset, SearchOffset::End(_)) {
-        (lo, hi)
+    // (`d/foo` and `dn` landing on a line start).
+    let (lo2, hi2, linewise) = exclusive_linewise(b, lo, hi);
+    let adjusted = linewise || hi2 != hi;
+    if linewise {
+        let (first, last) = (crate::pos::line_of(b, lo2), crate::pos::line_of(b, hi2 - 1));
+        return (SearchSpan::Lines { first, last }, adjusted);
+    }
+    if hi2 <= lo2 {
+        return (SearchSpan::Empty, adjusted);
+    }
+    (SearchSpan::Chars { lo: lo2, hi: hi2 }, adjusted)
+}
+
+/// The keyword search `*`/`#` (`whole_word`) or `g*`/`g#` runs from the cursor: the keyword's START (Vim moves
+/// there before searching) and its pattern (`\<word\>` for the whole-word form). `None` when the line has
+/// no keyword at or after the cursor (E348).
+pub(crate) fn word_search(b: &[u8], cur: usize, whole_word: bool) -> Option<(usize, String)> {
+    let (s, e) = motion::word_under_cursor(b, cur)?;
+    let word = std::str::from_utf8(&b[s..e]).ok()?;
+    // Keyword chars (alnum/`_`/non-ASCII) are regex-safe; `\<…\>` = whole word.
+    let pattern = if whole_word {
+        format!("\\<{word}\\>")
     } else {
-        let (lo2, hi2, linewise) = exclusive_linewise(b, lo, hi);
-        if linewise {
-            let (first, last) = (crate::pos::line_of(b, lo2), crate::pos::line_of(b, hi2 - 1));
-            return plan_search_lines(st, b, cur, op, first, last, hint);
-        }
-        (lo2, hi2)
+        word.to_string()
     };
-    if hi <= lo {
+    Some((s, pattern))
+}
+
+/// The target line of a line-offset search (`/pat/+N`): the `count`-th match's line moved by `n`, clamped
+/// to the buffer. `None` when a step finds no match.
+#[allow(clippy::too_many_arguments)]
+fn search_line_target(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    count: u32,
+    pattern: &str,
+    backward: bool,
+    n: i32,
+) -> Option<usize> {
+    let opts = st.view.search_options();
+    let mut pos = cur;
+    for _ in 0..count.max(1) {
+        let step = if backward {
+            search_bwd(b, pattern, pos, opts)
+        } else {
+            search_fwd(b, pattern, pos + 1, opts)
+        };
+        pos = step?;
+    }
+    let last_line = crate::pos::line_of(b, b.len());
+    let match_line = crate::pos::line_of(b, pos);
+    Some((match_line as i64 + i64::from(n)).clamp(0, last_line as i64) as usize)
+}
+
+/// The 0-based inclusive LINE range a span command's operator would cover — a search (`/`, `?`, `n`, `N`,
+/// `*`, `#`, `g*`, `g#`), a `gn` match or a mark — or `None` when it has no target (no match, unset mark).
+/// The command's operator is ignored. This is how the `!` filter over those motions numbers its
+/// `:{range}!` line (#800): the frontend gets the command from the engine and asks the planner, so the
+/// filter and every other operator share one span geometry.
+pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usize)> {
+    let b = st.bytes();
+    let cur = st.view.cursor;
+    match cmd {
+        Command::Search {
+            count,
+            pattern,
+            backward,
+            offset: SearchOffset::Line(n),
+            ..
+        } => {
+            let target = search_line_target(st, b, cur, *count, pattern, *backward, *n)?;
+            let cur_line = crate::pos::line_of(b, cur);
+            Some((cur_line.min(target), cur_line.max(target)))
+        }
+        Command::Search {
+            count,
+            pattern,
+            backward,
+            offset,
+            ..
+        } => {
+            let target = search_char_landing(st, b, cur, *count, pattern, *backward, *offset)?;
+            Some(
+                search_char_span(b, cur, target, *backward, *offset)
+                    .0
+                    .lines(b, cur),
+            )
+        }
+        Command::SearchWordUnder {
+            forward,
+            whole_word,
+            count,
+            ..
+        } => {
+            let (origin, pattern) = word_search(b, cur, *whole_word)?;
+            let target = search_char_landing(
+                st,
+                b,
+                origin,
+                *count,
+                &pattern,
+                !forward,
+                SearchOffset::None,
+            )?;
+            Some(
+                search_char_span(b, cur, target, !forward, SearchOffset::None)
+                    .0
+                    .lines(b, cur),
+            )
+        }
+        Command::SearchObject {
+            count,
+            pattern,
+            backward,
+            ..
+        } => {
+            let (s, e) = search_object_match(st, b, cur, *count, pattern, *backward)?;
+            Some((
+                crate::pos::line_of(b, s),
+                crate::pos::line_of(b, prev_boundary(b, e)),
+            ))
+        }
+        Command::OpToMark { name, linewise, .. } => {
+            let mark = st.view.named_mark(*name)?.min(b.len());
+            let (lo, hi) = (cur.min(mark), cur.max(mark));
+            let lines = if *linewise {
+                (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi))
+            } else if lo >= hi {
+                SearchSpan::Empty.lines(b, cur)
+            } else {
+                SearchSpan::Chars { lo, hi }.lines(b, cur)
+            };
+            Some(lines)
+        }
+        _ => None,
+    }
+}
+
+/// A charwise search motion with no offset or an `s`/`e`/`b` character offset (`:help search-offset`).
+///
+/// The landing is the offset-applied position of the count-th match found in the search direction. The
+/// match is picked by comparing OFFSET-APPLIED positions against the cursor (`> cursor` forward,
+/// `< cursor` backward, wrapping): this single rule reproduces every nvim case — fresh searches, `n`/`N`,
+/// and retyping — because after any offset search the cursor already sits at the previous landing, so the
+/// same comparison advances past it (even when the offset, e.g. `s-1`, lands the cursor *before* the
+/// match). Under an operator the span is `[cursor, target)` EXCLUSIVE, except an `e` (End) offset makes it
+/// INCLUSIVE through the offset char (Vim: only `e` turns the motion inclusive). The search runs from
+/// `origin` — the cursor, except `*`/`#`, which start at the keyword's start — while the operator span
+/// always starts at the cursor.
+#[allow(clippy::too_many_arguments)]
+fn plan_search_char(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    origin: usize,
+    op: &SearchOp,
+    count: u32,
+    pattern: &str,
+    backward: bool,
+    offset: SearchOffset,
+    hint: GroupHint,
+) -> Plan {
+    let Some(target) = search_char_landing(st, b, origin, count, pattern, backward, offset) else {
         return nop(cur, st.view.mode);
+    };
+    if matches!(op, SearchOp::Move) {
+        return nop(target, st.view.mode);
     }
-    if let Some(span_op) = op.span_op() {
-        return plan_op_over_span(st, b, cur, span_op, lo, hi, false, hint);
-    }
+    let (lo, hi) = match search_char_span(b, cur, target, backward, offset) {
+        (SearchSpan::Empty, _) => return nop(cur, st.view.mode),
+        (SearchSpan::Lines { first, last }, adjusted) => {
+            return plan_search_lines(st, b, cur, op, first, last, adjusted, hint);
+        }
+        (SearchSpan::Chars { lo, hi }, adjusted) => {
+            if let Some(span_op) = op.span_op() {
+                return plan_op_over_span(st, b, cur, span_op, lo, hi, false, adjusted, hint);
+            }
+            (lo, hi)
+        }
+    };
     let reg = captured(b, lo, hi, false);
     match op {
         SearchOp::Delete => edit_yank(one(Edit::delete(lo, hi - lo)), lo, st.view.mode, hint, reg),
@@ -462,22 +658,9 @@ fn plan_search_line(
     n: i32,
     hint: GroupHint,
 ) -> Plan {
-    let opts = st.view.search_options();
-    let mut pos = cur;
-    for _ in 0..count.max(1) {
-        let step = if backward {
-            search_bwd(b, pattern, pos, opts)
-        } else {
-            search_fwd(b, pattern, pos + 1, opts)
-        };
-        match step {
-            Some(m) => pos = m,
-            None => return nop(cur, st.view.mode),
-        }
-    }
-    let last_line = crate::pos::line_of(b, b.len());
-    let match_line = crate::pos::line_of(b, pos);
-    let target_line = (match_line as i64 + i64::from(n)).clamp(0, last_line as i64) as usize;
+    let Some(target_line) = search_line_target(st, b, cur, count, pattern, backward, n) else {
+        return nop(cur, st.view.mode);
+    };
     if matches!(op, SearchOp::Move) {
         // Column 0 of the target line (snapped/clamped in `commit`).
         return nop(crate::pos::nth_line_start(b, target_line), st.view.mode);
@@ -485,11 +668,13 @@ fn plan_search_line(
     // Linewise over the cursor's line .. target line (inclusive), regardless of search direction.
     let cur_line = crate::pos::line_of(b, cur);
     let (first, last) = (cur_line.min(target_line), cur_line.max(target_line));
-    plan_search_lines(st, b, cur, op, first, last, hint)
+    plan_search_lines(st, b, cur, op, first, last, false, hint)
 }
 
 /// A search operator applied LINEWISE over lines `first..=last` — a line-offset search (`d/pat/+1`) and an
 /// exclusive search span promoted by Vim's exclusive-linewise rule (`dn` landing at column 0, #799).
+/// `end_adjusted` is that promotion (see [`search_char_span`]).
+#[allow(clippy::too_many_arguments)]
 fn plan_search_lines(
     st: &EditorState,
     b: &[u8],
@@ -497,13 +682,24 @@ fn plan_search_lines(
     op: &SearchOp,
     first: usize,
     last: usize,
+    end_adjusted: bool,
     hint: GroupHint,
 ) -> Plan {
     let first_ls = crate::pos::nth_line_start(b, first);
     let last_content_end = line_end(b, crate::pos::nth_line_start(b, last));
     if let Some(span_op) = op.span_op() {
         let last_ls = crate::pos::nth_line_start(b, last);
-        return plan_op_over_span(st, b, cur, span_op, first_ls, last_ls, true, hint);
+        return plan_op_over_span(
+            st,
+            b,
+            cur,
+            span_op,
+            first_ls,
+            last_ls,
+            true,
+            end_adjusted,
+            hint,
+        );
     }
     if matches!(op, SearchOp::Change) {
         return plan_linewise_change(b, first_ls, last_content_end, hint);
@@ -566,6 +762,8 @@ fn whole_line_span_end(b: &[u8], content_end: usize) -> usize {
 /// the span to the whole lines of `lo` and `hi` (the `'` mark form, a line-offset search); otherwise it is
 /// charwise-EXCLUSIVE, so for the line operators an end resting at column 0 of the far line does NOT pull that
 /// line in (Vim's exclusive-motion rule — the same reduction `ShiftMotion`/`Reindent` apply to a motion).
+/// `end_adjusted` says the exclusive-linewise rule moved the span's end (nvim's `oap->end_adjusted`): `gq`
+/// then leaves the cursor on the line BELOW the formatted block (#1071).
 #[allow(clippy::too_many_arguments)]
 fn plan_op_over_span(
     st: &EditorState,
@@ -575,6 +773,7 @@ fn plan_op_over_span(
     lo: usize,
     hi: usize,
     linewise: bool,
+    end_adjusted: bool,
     hint: GroupHint,
 ) -> Plan {
     // Shift (`>`), reindent (`=`) and format (`gq`/`gw`) operate on whole LINES regardless of the charwise /
@@ -600,7 +799,7 @@ fn plan_op_over_span(
             MarkOp::Format { keep } => {
                 let start = crate::pos::nth_line_start(b, first);
                 let end = line_end(b, crate::pos::nth_line_start(b, last));
-                plan_format_lines(st, cur, start, end, keep, hint)
+                plan_format_lines(st, cur, start, end, keep, end_adjusted, hint)
             }
             _ => unreachable!("guarded by matches! above"),
         };
@@ -650,24 +849,18 @@ fn plan_op_over_span(
     }
 }
 
-/// `gn` / `gN` (the search-match text object, Vim `:help gn`). Selects/operates on the WHOLE match under the
-/// cursor, or — when the cursor is not on a match — the next (`gn`) or previous (`gN`) one; `count` advances
-/// that many matches (wrapping). The bare form ([`SearchOp::Move`]) enters charwise Visual with the match
-/// selected; `Delete`/`Change`/`Yank` operate on the match span `[start, end)` directly.
-#[allow(clippy::too_many_arguments)]
-fn plan_search_object(
+/// The match `[start, end)` `gn`/`gN` selects (see [`plan_search_object`]), or `None` with no match.
+fn search_object_match(
     st: &EditorState,
     b: &[u8],
     cur: usize,
-    op: &SearchOp,
     count: u32,
     pattern: &str,
     backward: bool,
-    hint: GroupHint,
-) -> Plan {
+) -> Option<(usize, usize)> {
     let spans = match_spans(b, pattern, st.view.search_options());
     if spans.is_empty() {
-        return nop(cur, st.view.mode);
+        return None;
     }
     let len = spans.len();
     // The match to start from: forward, the first whose end is past the cursor (the one containing it, or
@@ -686,7 +879,27 @@ fn plan_search_object(
     let steps = i64::from(count.max(1)) - 1;
     let delta = if backward { -steps } else { steps };
     let idx = (start_idx as i64 + delta).rem_euclid(len as i64) as usize;
-    let (s, e) = spans[idx];
+    Some(spans[idx])
+}
+
+/// `gn` / `gN` (the search-match text object, Vim `:help gn`). Selects/operates on the WHOLE match under the
+/// cursor, or — when the cursor is not on a match — the next (`gn`) or previous (`gN`) one; `count` advances
+/// that many matches (wrapping). The bare form ([`SearchOp::Move`]) enters charwise Visual with the match
+/// selected; `Delete`/`Change`/`Yank` operate on the match span `[start, end)` directly.
+#[allow(clippy::too_many_arguments)]
+fn plan_search_object(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    op: &SearchOp,
+    count: u32,
+    pattern: &str,
+    backward: bool,
+    hint: GroupHint,
+) -> Plan {
+    let Some((s, e)) = search_object_match(st, b, cur, count, pattern, backward) else {
+        return nop(cur, st.view.mode);
+    };
     match op {
         // Bare `gn`/`gN`: enter charwise Visual with the match selected (anchor at its start, cursor on its
         // last char). `commit` applies `set_anchor` after its enter-selection default, so this span wins.
@@ -729,7 +942,7 @@ fn plan_search_object(
         | SearchOp::Reindent
         | SearchOp::Format { .. } => {
             let span_op = op.span_op().expect("a span op");
-            plan_op_over_span(st, b, cur, span_op, s, e, false, hint)
+            plan_op_over_span(st, b, cur, span_op, s, e, false, false, hint)
         }
     }
 }
@@ -2071,7 +2284,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             };
             let mark = mark.min(b.len());
             let (lo, hi) = (cur.min(mark), cur.max(mark));
-            plan_op_over_span(st, b, cur, *op, lo, hi, *linewise, hint)
+            // `` `a `` is an exclusive charwise motion: a mark at column 0 of a later line adjusts the end.
+            let end_adjusted = !*linewise && lo < hi && hi == line_start(b, hi);
+            plan_op_over_span(st, b, cur, *op, lo, hi, *linewise, end_adjusted, hint)
         }
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
         // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
@@ -2542,9 +2757,28 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             pattern,
             backward,
         } => plan_search_object(st, b, cur, op, *count, pattern, *backward, hint),
-        // `*`/`#` are resolved by the frontend (it reads the word under the cursor from the buffer and
-        // rewrites this to a concrete `SearchNext`/`SearchPrev`), so the pure core never acts on it.
-        Command::SearchWordUnder { .. } => nop(cur, st.view.mode),
+        // `*`/`#`/`g*`/`g#`: a charwise search for the keyword under the cursor, run from the keyword's
+        // start, operator-aware like `/pat` (`d*`, #1071). No keyword on the line → no-op (E348).
+        Command::SearchWordUnder {
+            forward,
+            whole_word,
+            op,
+            count,
+        } => match word_search(b, cur, *whole_word) {
+            Some((origin, pattern)) => plan_search_char(
+                st,
+                b,
+                cur,
+                origin,
+                op,
+                *count,
+                &pattern,
+                !*forward,
+                SearchOffset::None,
+                hint,
+            ),
+            None => nop(cur, st.view.mode),
+        },
         // `gd`/`gD` are resolved by the frontend (it reads the keyword under the cursor from the buffer and
         // rewrites this to a concrete `GotoFirstMatch`), so the pure core never acts on it directly.
         Command::GotoDeclaration { .. } => nop(cur, st.view.mode),
@@ -3126,21 +3360,34 @@ fn plan_format(
         line_start(b, s),
         line_end(b, e - 1),
         keep_cursor,
+        exclusive_end_adjusted(b, cur, motion, count),
         hint,
     )
 }
 
 /// Reflow the whole lines `[start, end)` (`start` a line start, `end` a line's content end) — the shared
-/// tail of `gq`/`gw` over a motion, a search, a `gn` match or a mark, and of Visual `gq`.
+/// tail of `gq`/`gw` over a motion, a search, a `gn` match or a mark, and of Visual `gq`. `below` is nvim's
+/// `end_adjusted` (never set for Visual `gq`): the
+/// exclusive-linewise rule pulled the span's end off the next line, so `gq` lands on the first non-blank of
+/// that next line instead of the last formatted one (nvim `op_format`, #1071). `gw` ignores it.
 fn plan_format_lines(
     st: &EditorState,
     cur: usize,
     start: usize,
     end: usize,
     keep_cursor: bool,
+    below: bool,
     hint: GroupHint,
 ) -> Plan {
     let b = st.bytes();
+    // The cursor on the line after the block, once the block is `new_len` bytes long. Only when that line
+    // is a real buffer line (a trailing newline does not start one).
+    let below_cursor = |new_len: usize| -> Option<usize> {
+        (below && !keep_cursor && end + 1 < b.len()).then(|| {
+            let fnb = motion::first_non_blank(b, end + 1);
+            start + new_len + (fnb - end)
+        })
+    };
     let Ok(block) = std::str::from_utf8(&b[start..end]) else {
         return nop(cur, Mode::Normal);
     };
@@ -3152,12 +3399,14 @@ fn plan_format_lines(
     let new = reflow(block, width);
     if new.as_bytes() == &b[start..end] {
         // Already wrapped — no edit; still move the cursor per gq (Vim) unless gw.
-        let cursor = if keep_cursor { cur } else { start };
+        let cursor = below_cursor(end - start).unwrap_or(if keep_cursor { cur } else { start });
         return nop(cursor, Mode::Normal);
     }
     let new_bytes = new.into_bytes();
     // gw restores the caret (clamped into the resized buffer); gq lands on the last reformatted line's start.
-    let cursor = if keep_cursor {
+    let cursor = if let Some(c) = below_cursor(new_bytes.len()) {
+        c
+    } else if keep_cursor {
         cur.min(start + new_bytes.len())
     } else {
         let last_line_off = new_bytes

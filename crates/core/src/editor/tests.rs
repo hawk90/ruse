@@ -5219,6 +5219,104 @@ mod search_tests {
         assert_eq!(st.as_str().unwrap(), "XYZdef");
     }
 
+    fn word_under(forward: bool, op: SearchOp, count: u32) -> Command {
+        Command::SearchWordUnder {
+            forward,
+            whole_word: true,
+            op,
+            count,
+        }
+    }
+
+    /// #1071: `*`/`#` search from the keyword's START (Vim moves there first), so `*` before a keyword skips
+    /// that keyword and `#` mid-word skips the word itself; under an operator the span starts at the cursor.
+    /// Values from nvim 0.12.6.
+    #[test]
+    fn star_and_hash_search_from_the_keyword_start() {
+        // `*` on the leading blanks of "  foo bar foo" lands on the SECOND foo (10), not the first (2).
+        let st = run("  foo bar foo\n", &[word_under(true, SearchOp::Move, 1)]);
+        assert_eq!(st.cursor(), 10);
+        // `ll#` on "foo bar foo": from the word start (0) backward wraps to the last foo (8).
+        let mut st = EditorState::new(b"foo bar foo\n".to_vec());
+        st.set_cursor(2);
+        apply_command(&mut st, &word_under(false, SearchOp::Move, 1));
+        assert_eq!(st.cursor(), 8);
+        // `ld*` deletes from the cursor (1), not the word start, up to the next foo.
+        let mut st = EditorState::new(b"foo bar foo baz\n".to_vec());
+        st.set_cursor(1);
+        apply_command(&mut st, &word_under(true, SearchOp::Delete, 1));
+        assert_eq!(st.as_str().unwrap(), "ffoo baz\n");
+        // `2*` steps two matches.
+        let st = run("foo bar foo foo\n", &[word_under(true, SearchOp::Move, 2)]);
+        assert_eq!(st.cursor(), 12);
+        // No keyword on the line: nothing happens (the frontend reports E348).
+        let st = run("   \nfoo\n", &[word_under(true, SearchOp::Delete, 1)]);
+        assert_eq!(st.as_str().unwrap(), "   \nfoo\n");
+    }
+
+    /// #800: the `!` filter numbers its `:{range}!` from the span the operator would cover.
+    #[test]
+    fn span_lines_measures_search_mark_and_gn_spans() {
+        let probe = |pattern: &str| Command::Search {
+            op: SearchOp::Yank,
+            count: 1,
+            pattern: pattern.into(),
+            backward: false,
+            offset: SearchOffset::None,
+        };
+        let st = EditorState::new(b"a\nb\nx\n".to_vec());
+        // `!/x` from line 1: the exclusive-linewise rule drops line 3 (`:.,.+1!`).
+        assert_eq!(st.span_lines(&probe("x")), Some((0, 1)));
+        // A mid-line match keeps its line (`:.,$!`).
+        let st = EditorState::new(b"a\nb\nzx\n".to_vec());
+        assert_eq!(st.span_lines(&probe("x")), Some((0, 2)));
+        // No match: no range (nvim E486, no command line).
+        assert_eq!(st.span_lines(&probe("qqq")), None);
+        // A lone keyword: the empty span covers the cursor's line (`:.!`).
+        let st = EditorState::new(b"foo bar\nzz\n".to_vec());
+        assert_eq!(
+            st.span_lines(&word_under(true, SearchOp::Yank, 1)),
+            Some((0, 0))
+        );
+        // `gn` covers the match's lines.
+        let st = EditorState::new(b"foo\nbar\nbaz\n".to_vec());
+        let gn = Command::SearchObject {
+            op: SearchOp::Yank,
+            count: 1,
+            pattern: "baz".into(),
+            backward: false,
+        };
+        assert_eq!(st.span_lines(&gn), Some((2, 2)));
+        // A non-span command has no span.
+        assert_eq!(st.span_lines(&Command::MoveDown), None);
+    }
+
+    /// #1071: after the exclusive-linewise rule adjusted the end, `gq` lands on the line BELOW the
+    /// formatted block (nvim `op_format`); `gw` keeps the cursor. Values from nvim 0.12.6.
+    #[test]
+    fn gq_over_an_adjusted_search_span_lands_below_the_block() {
+        let gq = |keep: bool| Command::Search {
+            op: SearchOp::Format { keep },
+            count: 1,
+            pattern: "end".into(),
+            backward: false,
+            offset: SearchOffset::None,
+        };
+        // `  end` is indented, so the match is mid-line: no adjustment, the whole span is joined.
+        let st = run("aa bb\ncc\n  end\nzz\n", &[gq(false)]);
+        assert_eq!(st.as_str().unwrap(), "aa bb cc end\nzz\n");
+        assert_eq!(st.cursor(), 0);
+        let st = run("aa bb\ncc\nend\nzz\n", &[gq(false)]);
+        assert_eq!(st.as_str().unwrap(), "aa bb cc\nend\nzz\n");
+        assert_eq!(
+            st.cursor(),
+            9,
+            "first non-blank of the line below the block"
+        );
+        let st = run("aa bb\ncc\nend\nzz\n", &[gq(true)]);
+        assert_eq!(st.cursor(), 0, "gw restores the cursor");
+    }
+
     /// F-009: `?pat` lands the cursor on the match STRICTLY BEFORE the cursor. "foo" is at 0 and 8;
     /// from EOL the backward search stops on 8. Verified against nvim v0.12.4.
     #[test]

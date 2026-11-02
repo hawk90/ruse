@@ -26,3 +26,36 @@ fn filter_over_screen_lines_runs_the_shell_command() {
         assert_eq!(std::fs::read(&file).unwrap(), want, "{keys:?}");
     }
 }
+
+/// `!` over a search, `*`, `gn` and a mark: the session measures the span through the planner and opens the
+/// `:{range}!` line (#800; before, these aborted). Expected bytes are nvim v0.12.6's.
+#[test]
+fn filter_over_span_commands_runs_the_shell_command() {
+    let cases: [(&[u8], &str, &[u8]); 4] = [
+        (b"a\nb\nx\n", "!/x\rtr a-z A-Z\r", b"A\nB\nx\n"),
+        (
+            b"foo\nbar\nbaz\nfoo\n",
+            "!*tr a-z A-Z\r",
+            b"FOO\nBAR\nBAZ\nfoo\n",
+        ),
+        (
+            b"foo\nbar\nbaz\nfoo\n",
+            "/baz\rgg!gntr a-z A-Z\r",
+            b"foo\nbar\nBAZ\nfoo\n",
+        ),
+        (
+            b"foo\nbar\nbaz\nfoo\n",
+            "jjmagg!'atr a-z A-Z\r",
+            b"FOO\nBAR\nBAZ\nfoo\n",
+        ),
+    ];
+    for (text, keys, want) in cases {
+        let dir = Scratch::new();
+        let file = dir.file("f.txt", text);
+        let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+        ed.keys(keys);
+        ed.keys(":wq\r");
+        assert_eq!(ed.exit_status(), 0, "{keys:?}");
+        assert_eq!(std::fs::read(&file).unwrap(), want, "{keys:?}");
+    }
+}

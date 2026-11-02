@@ -342,6 +342,7 @@ fn drive_feed(
         Feed::ExecuteEx(_)
         | Feed::CmdlineInsertUnder { .. }
         | Feed::FilterMotion { .. }
+        | Feed::FilterSpan(_)
         | Feed::Pending
         | Feed::Ignored => {}
     }

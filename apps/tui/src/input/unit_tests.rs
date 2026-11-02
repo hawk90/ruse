@@ -213,29 +213,37 @@ mod tests {
             feed("*"),
             Feed::Cmd(Command::SearchWordUnder {
                 forward: true,
-                whole_word: true
+                whole_word: true,
+                op: SearchOp::Move,
+                count: 1
             })
         );
         assert_eq!(
             feed("#"),
             Feed::Cmd(Command::SearchWordUnder {
                 forward: false,
-                whole_word: true
+                whole_word: true,
+                op: SearchOp::Move,
+                count: 1
             })
         );
         // `g*` / `g#` — match anywhere (no word boundaries).
         assert_eq!(
-            feed("g*"),
+            feed("3g*"),
             Feed::Cmd(Command::SearchWordUnder {
                 forward: true,
-                whole_word: false
+                whole_word: false,
+                op: SearchOp::Move,
+                count: 3
             })
         );
         assert_eq!(
             feed("g#"),
             Feed::Cmd(Command::SearchWordUnder {
                 forward: false,
-                whole_word: false
+                whole_word: false,
+                op: SearchOp::Move,
+                count: 1
             })
         );
     }
@@ -805,6 +813,116 @@ mod tests {
                 count: 1,
                 motion: Motion::InnerParagraph
             }
+        );
+    }
+
+    /// #800: `!` over a search, `n`, `*`/`#`, `gn` or a mark hands the span command to the frontend (which
+    /// numbers its lines) instead of aborting; the operator slot is the non-mutating `Yank` placeholder.
+    #[test]
+    fn filter_operator_over_span_commands_emits_filterspan() {
+        let mut e = InputEngine::new();
+        for c in "!/x".chars() {
+            assert_eq!(e.feed(k(c), Mode::Normal), Feed::Pending);
+        }
+        assert_eq!(
+            e.feed(
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                Mode::Normal
+            ),
+            Feed::FilterSpan(Command::Search {
+                op: SearchOp::Yank,
+                count: 1,
+                pattern: "x".into(),
+                backward: false,
+                offset: SearchOffset::None,
+            })
+        );
+        // `n` after that search, with the filter's count folded in.
+        let mut last = Feed::Ignored;
+        for c in "2!n".chars() {
+            last = e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(
+            last,
+            Feed::FilterSpan(Command::Search {
+                op: SearchOp::Yank,
+                count: 2,
+                pattern: "x".into(),
+                backward: false,
+                offset: SearchOffset::None,
+            })
+        );
+        for c in "!g".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::FilterSpan(Command::SearchObject {
+                op: SearchOp::Yank,
+                count: 1,
+                pattern: "x".into(),
+                backward: false,
+            })
+        );
+        assert_eq!(
+            feed("!'a"),
+            Feed::FilterSpan(Command::OpToMark {
+                op: MarkOp::Yank,
+                name: 'a',
+                linewise: true,
+            })
+        );
+        assert_eq!(
+            feed("!#"),
+            Feed::FilterSpan(Command::SearchWordUnder {
+                forward: false,
+                whole_word: true,
+                op: SearchOp::Yank,
+                count: 1,
+            })
+        );
+        // The engine is back at a command boundary: the next key starts a new command.
+        assert_eq!(e.pending(), Pending::Base);
+    }
+
+    /// #1071: `*`/`#`/`g*`/`g#` are operator motions (`d*`, `2c#`, `gUg*`), carrying operator and count.
+    #[test]
+    fn star_and_hash_continue_an_armed_operator() {
+        assert_eq!(
+            feed("2d3*"),
+            Feed::Cmd(Command::SearchWordUnder {
+                forward: true,
+                whole_word: true,
+                op: SearchOp::Delete,
+                count: 6,
+            })
+        );
+        assert_eq!(
+            feed("c#"),
+            Feed::Cmd(Command::SearchWordUnder {
+                forward: false,
+                whole_word: true,
+                op: SearchOp::Change,
+                count: 1,
+            })
+        );
+        assert_eq!(
+            feed("gUg*"),
+            Feed::Cmd(Command::SearchWordUnder {
+                forward: true,
+                whole_word: false,
+                op: SearchOp::Case(WordCase::Upcase),
+                count: 1,
+            })
+        );
+        assert_eq!(
+            feed(">g#"),
+            Feed::Cmd(Command::SearchWordUnder {
+                forward: false,
+                whole_word: false,
+                op: SearchOp::Shift { left: false },
+                count: 1,
+            })
         );
     }
 

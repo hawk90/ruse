@@ -98,6 +98,12 @@ pub enum Feed {
     /// `{first},{last}!` ([`InputEngine::open_filter_cmdline`]); typing the command and pressing `<CR>` runs
     /// the SAME `:{range}!{cmd}` ex filter. `count` is the folded operator × motion count.
     FilterMotion { count: u32, motion: Motion },
+    /// `!` over a span command the engine cannot number either: a search (`!/pat<CR>`, `!n`), `!*`/`!#`,
+    /// `!gn` or a mark (`!'a`, `` !`a ``) — #800. The frontend measures the command's span with
+    /// `Workspace::span_lines` (the planner's own geometry, so `!` covers exactly the lines `d` would) and
+    /// opens the same pre-seeded `{first},{last}!` command line as [`Feed::FilterMotion`]. The command is
+    /// never applied; its operator is a non-mutating `Yank` placeholder.
+    FilterSpan(Command),
     /// The key was consumed but the command is not complete yet (a count digit, a pending operator, or a
     /// keystroke absorbed into the open command-line buffer).
     Pending,
@@ -523,7 +529,7 @@ pub struct InputEngine {
     /// The operator+count armed when `/` opened the search line, held across the minibuffer's pattern entry
     /// so `submit_search` can fold them into the finished command (`d/pat`, `2/pat`). `/` captures this
     /// BEFORE `reset()` wipes the axes; `None` between searches. See [`InputEngine::submit_search`].
-    pending_search: Option<(SearchOp, u32)>,
+    pending_search: Option<(SearchOp, u32, bool)>,
     /// The Insert layer's owned transient state (the `CTRL-G` prefix). Dropped when the active
     /// namespace is not Insert — KL-OBL-4.
     insert: InsertState,
@@ -1119,13 +1125,9 @@ impl InputEngine {
     /// operator/count must survive the minibuffer (`d/pat`, `2?pat`): capture them (op-count × pending
     /// count, as `motion()` folds) BEFORE `reset()` clears the axes, then hand off to the command-line
     /// namespace, which collects the pattern and calls [`Self::submit_search`] to build the command.
-    fn enter_search(&mut self, backward: bool, key: KeyEvent) -> Feed {
-        let Some(op) = self.search_op() else {
-            // `!/pat` — the filter over a search needs a frontend line range this path cannot carry yet;
-            // abort rather than degrade it into a bare move (#800).
-            return self.unmatched(Ns::OperatorPending, key);
-        };
-        self.pending_search = Some((op, self.mcount()));
+    fn enter_search(&mut self, backward: bool) -> Feed {
+        // `!/pat` keeps the filter through the minibuffer: `submit_search` hands the span to the frontend.
+        self.pending_search = Some((self.search_op(), self.mcount(), self.filter_armed()));
         self.reset();
         self.open_cmdline(if backward { '?' } else { '/' }, false);
         Feed::Pending
@@ -1139,7 +1141,10 @@ impl InputEngine {
     /// direction (Vim's `?<CR>` / `/<CR>`); with no prior search it aborts, dropping the armed operator.
     pub fn submit_search(&mut self, line: String, backward: bool) -> Feed {
         self.cmdline = None; // completing a search closes the command-line namespace (F-026)
-        let (op, count) = self.pending_search.take().unwrap_or((SearchOp::Move, 1));
+        let (op, count, filter) = self
+            .pending_search
+            .take()
+            .unwrap_or((SearchOp::Move, 1, false));
         // Split the raw line into `{pattern}` + `{offset}` on the LAST unescaped delimiter (`/` forward,
         // `?` backward) — a `\/` in the pattern is literal (`:help search-offset`). `off` is `None` when
         // no offset part is present (`/foo`, `/foo/`), which distinguishes "reuse the last offset" from
@@ -1158,13 +1163,18 @@ impl InputEngine {
             (raw_pattern, off.unwrap_or(SearchOffset::None))
         };
         self.last_search = Some((pattern.clone(), !backward, offset));
-        Feed::Cmd(Command::Search {
+        let cmd = Command::Search {
             op,
             count,
             pattern,
             backward,
             offset,
-        })
+        };
+        if filter {
+            Feed::FilterSpan(cmd)
+        } else {
+            Feed::Cmd(cmd)
+        }
     }
 
     /// `n` (`opposite = false`) / `N` (`opposite = true`): repeat the last search, REAPPLYING its offset.
@@ -1177,11 +1187,8 @@ impl InputEngine {
                 let backward = if opposite { forward } else { !forward };
                 // `n`/`N` are motions: `3n` steps three matches and `dn`/`cn`/`gUn` operate up to the match
                 // (#799), through the same operator and count model as `/`.
-                let Some(op) = self.search_op() else {
-                    return self.unmatched(Ns::OperatorPending, key);
-                };
-                self.action(Command::Search {
-                    op,
+                self.span_action(Command::Search {
+                    op: self.search_op(),
                     count: self.mcount(),
                     pattern,
                     backward,
@@ -1351,12 +1358,30 @@ impl InputEngine {
         self.normal.typed().max(1)
     }
 
-    /// The armed operator as a search / `gn` operator: [`SearchOp::Move`] with none armed, `None` for an
-    /// operator with no search form (the filter), which the caller aborts.
-    fn search_op(&self) -> Option<SearchOp> {
+    /// The armed operator as a search / `*` / `gn` operator: [`SearchOp::Move`] with none armed. The filter
+    /// has no core form; it yields the non-mutating `Yank` its [`Feed::FilterSpan`] carries.
+    fn search_op(&self) -> SearchOp {
         match self.normal.op {
-            Some(p) => p.op.class().search_op(),
-            None => Some(SearchOp::Move),
+            Some(p) => p.op.class().search_op().unwrap_or(SearchOp::Yank),
+            None => SearchOp::Move,
+        }
+    }
+
+    /// Whether the armed operator is the `!` filter.
+    fn filter_armed(&self) -> bool {
+        self.normal
+            .op
+            .is_some_and(|p| p.op.class() == OpClass::Filter)
+    }
+
+    /// Emit a span command (a search, `n`/`N`, `*`/`#`, `gn`, a mark): applied as usual, or under `!` handed
+    /// to the frontend as a [`Feed::FilterSpan`] to number its lines (#800).
+    fn span_action(&mut self, cmd: Command) -> Feed {
+        if self.filter_armed() {
+            self.reset();
+            Feed::FilterSpan(cmd)
+        } else {
+            self.action(cmd)
         }
     }
 
@@ -1619,17 +1644,18 @@ impl InputEngine {
     /// A named-mark key after `` ` ``/`'`: with an operator pending it OPERATES to the mark
     /// (`` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``, `` gq`a ``); otherwise it JUMPS (`` `a ``/`'a`).
     /// `linewise` is the `'` form (honoured by delete/change/yank/case; the line operators are always
-    /// linewise). The filter has no mark form yet and aborts rather than degrading into a jump (#800).
-    fn mark_op(&mut self, name: char, linewise: bool, key: KeyEvent) -> Feed {
+    /// linewise). The filter (`!'a`) hands the mark span to the frontend ([`Feed::FilterSpan`], #800).
+    fn mark_op(&mut self, name: char, linewise: bool) -> Feed {
         let cmd = match self.normal.op.map(|p| p.op.class()) {
             None if linewise => Command::GotoNamedMarkLine(name),
             None => Command::GotoNamedMark(name),
-            Some(class) => match class.mark_op() {
-                Some(op) => Command::OpToMark { op, name, linewise },
-                None => return self.unmatched(Ns::OperatorPending, key),
+            Some(class) => Command::OpToMark {
+                op: class.mark_op().unwrap_or(MarkOp::Yank),
+                name,
+                linewise,
             },
         };
-        self.action(cmd)
+        self.span_action(cmd)
     }
 
     /// Emit `gn`/`gN` — the search-match text object. Reads the last search pattern and folds in any pending
@@ -1637,21 +1663,29 @@ impl InputEngine {
     /// match in Visual. With no prior search there is nothing to match, so the pending construct aborts
     /// (leaking no state). Emitted as a single [`Command::SearchObject`] with the pattern baked in, so `.`
     /// can replay `cgn`.
-    fn search_object(&mut self, backward: bool, key: KeyEvent) -> Feed {
+    fn search_object(&mut self, backward: bool) -> Feed {
         let Some((pattern, _, _)) = self.last_search.clone() else {
             // No prior search — nothing to match; abort the pending construct, leaking no state.
             self.reset();
             return Feed::Ignored;
         };
-        let Some(op) = self.search_op() else {
-            return self.unmatched(Ns::OperatorPending, key);
-        };
         let count = self.mcount();
-        self.action(Command::SearchObject {
-            op,
+        self.span_action(Command::SearchObject {
+            op: self.search_op(),
             count,
             pattern,
             backward,
+        })
+    }
+
+    /// `*`/`#` (`whole_word`) and `g*`/`g#`: a search motion for the keyword under the cursor, carrying the
+    /// count and any armed operator (`3*`, `d*`, `!#` — #1071). The planner resolves the keyword.
+    fn word_search(&mut self, forward: bool, whole_word: bool) -> Feed {
+        self.span_action(Command::SearchWordUnder {
+            forward,
+            whole_word,
+            op: self.search_op(),
+            count: self.mcount(),
         })
     }
 
@@ -3208,16 +3242,10 @@ impl InputEngine {
             // past the current match even when the offset landed the cursor before it (`s-1`).
             KeyCode::Char('n') => self.repeat_search(false, key),
             KeyCode::Char('N') => self.repeat_search(true, key),
-            // `*`/`#` — search the whole keyword under the cursor forward / backward. The frontend reads
-            // the word from the buffer and rewrites this to a concrete search (the engine has no buffer).
-            KeyCode::Char('*') => self.action(Command::SearchWordUnder {
-                forward: true,
-                whole_word: true,
-            }),
-            KeyCode::Char('#') => self.action(Command::SearchWordUnder {
-                forward: false,
-                whole_word: true,
-            }),
+            // `*`/`#` — search the whole keyword under the cursor forward / backward; operator-aware
+            // (`d*`). The planner reads the keyword from the buffer (the engine has no buffer).
+            KeyCode::Char('*') => self.word_search(true, true),
+            KeyCode::Char('#') => self.word_search(false, true),
             // Dot-repeat: replay the last recorded change at the current cursor (D-047). A leading `N`
             // overrides the change's count (Vim `3.`). `.` itself never rewrites the record, so `..`
             // repeats the same change; with no prior change it is a clean no-op (the Normal namespace's
@@ -3231,11 +3259,11 @@ impl InputEngine {
                     self.unmatched(Ns::Normal, key)
                 }
             }
-            KeyCode::Char('/') => self.enter_search(false, key),
+            KeyCode::Char('/') => self.enter_search(false),
             // `?` — open the BACKWARD search line. Reachable here only when no ROT13 operator is pending
             // (the guarded `g??` arm above wins that case); an armed d/c/y operator is captured so `d?pat`
             // works, exactly like `d/pat`.
-            KeyCode::Char('?') => self.enter_search(true, key),
+            KeyCode::Char('?') => self.enter_search(true),
             KeyCode::Char(':') => {
                 self.reset();
                 self.open_cmdline(':', false);
@@ -3398,7 +3426,20 @@ impl InputEngine {
                     }
                     let g_motion = matches!(
                         c,
-                        'g' | 'e' | 'E' | '_' | 'j' | 'k' | '0' | '$' | '^' | 'o' | 'M' | 'n' | 'N'
+                        'g' | 'e'
+                            | 'E'
+                            | '_'
+                            | 'j'
+                            | 'k'
+                            | '0'
+                            | '$'
+                            | '^'
+                            | 'o'
+                            | 'M'
+                            | 'n'
+                            | 'N'
+                            | '*'
+                            | '#'
                     );
                     if ctrl || !g_motion {
                         return self.unmatched(Ns::OperatorPending, key);
@@ -3483,14 +3524,8 @@ impl InputEngine {
                         self.motion(Motion::MidLine)
                     }
                     // `g*` / `g#` — like `*`/`#` but match the word ANYWHERE (no `\<…\>` boundaries).
-                    KeyCode::Char('*') => self.action(Command::SearchWordUnder {
-                        forward: true,
-                        whole_word: false,
-                    }),
-                    KeyCode::Char('#') => self.action(Command::SearchWordUnder {
-                        forward: false,
-                        whole_word: false,
-                    }),
+                    KeyCode::Char('*') => self.word_search(true, false),
+                    KeyCode::Char('#') => self.word_search(false, false),
                     // `gd` / `gD` — go to the local / global declaration of the keyword under the cursor via
                     // Vim's TEXT heuristic (NOT LSP; ruse's LSP goto is separate). The engine has no buffer,
                     // so — exactly like `*`/`#` — the frontend reads the word and rewrites this to a concrete
@@ -3538,8 +3573,8 @@ impl InputEngine {
                     }
                     // `gn` / `gN` — the search-match text object: select (bare) or operate on (`dgn`/`cgn`/
                     // `ygn`) the next / previous match of the last search pattern. Operator-aware.
-                    KeyCode::Char('n') => self.search_object(false, key),
-                    KeyCode::Char('N') => self.search_object(true, key),
+                    KeyCode::Char('n') => self.search_object(false),
+                    KeyCode::Char('N') => self.search_object(true),
                     // `gJ` — join with the next line WITHOUT inserting a space (Vim `gJ`).
                     KeyCode::Char('J') => self.action(Command::JoinLinesNoSpace(self.mcount())),
                     // `g;` / `g,` — walk the change list to older / newer change positions (Vim).
@@ -3664,7 +3699,7 @@ impl InputEngine {
                     KeyCode::Char('<') => self.action(Command::GotoVisualMarkStart),
                     KeyCode::Char('>') => self.action(Command::GotoVisualMarkEnd),
                     // `` `{a-z} `` — jump to a named mark, or `` d`a ``/`` y`a `` with an operator pending.
-                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, false, key),
+                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, false),
                     // Any other mark name is not wired — abort the pending construct.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
@@ -3697,7 +3732,7 @@ impl InputEngine {
                     KeyCode::Char('<') => self.action(Command::GotoVisualMarkStartLine),
                     KeyCode::Char('>') => self.action(Command::GotoVisualMarkEndLine),
                     // `'{a-z}` — linewise to a named mark's line, or `d'a`/`y'a` with an operator pending.
-                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, true, key),
+                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, true),
                     // Any other mark name is not wired — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };

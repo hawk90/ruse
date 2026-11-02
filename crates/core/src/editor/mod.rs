@@ -1903,6 +1903,14 @@ impl EditorState {
         &self.view.registers
     }
 
+    /// The 0-based inclusive line range the operator span of `cmd` covers — a search, `n`/`N`, `*`/`#`, a
+    /// `gn` match or a mark — or `None` when it has no target or is not a span command. Read-only; the
+    /// command's operator is ignored. The `!` filter numbers its `:{range}!` line from this (#800).
+    #[must_use]
+    pub fn span_lines(&self, cmd: &Command) -> Option<(usize, usize)> {
+        planner::span_lines(self, cmd)
+    }
+
     /// The one-shot register selected by the most recent `"x` and not yet consumed. The
     /// [`Workspace`](crate::Workspace) reads this before applying a command to decide whether that command
     /// touches the system clipboard (`"+`/`"*`).
@@ -2116,6 +2124,7 @@ pub use substitute::{GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange, Substi
 
 mod planner;
 pub use planner::plan;
+pub(crate) use planner::word_search;
 
 /// Apply a plan to the state, returning the effects the frontend must perform.
 /// The `(start, end)` byte span (half-open, POST-edit coordinates) the `[`/`]` change marks bracket for an
@@ -2402,7 +2411,12 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
 fn is_jump(cmd: &Command) -> bool {
     use crate::motion::Motion as M;
     match cmd {
-        Command::SearchNext(_) | Command::SearchPrev(_) | Command::SearchWordUnder { .. } => true,
+        Command::SearchNext(_)
+        | Command::SearchPrev(_)
+        | Command::SearchWordUnder {
+            op: crate::SearchOp::Move,
+            ..
+        } => true,
         // `gd`/`gD` (and the `GotoFirstMatch` they resolve to) are jumps — `CTRL-O` returns.
         Command::GotoDeclaration { .. } | Command::GotoFirstMatch(_) => true,
         Command::GotoLastChange

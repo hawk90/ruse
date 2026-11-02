@@ -1762,6 +1762,16 @@ impl Session {
                     engine.open_filter_cmdline(&format!("{},{}!", first + 1, last + 1));
                 }
             }
+            // `!` over a search, `n`/`N`, `*`/`#`, `gn` or a mark (#800): the planner measures the span the
+            // command's operator would cover; no target (no match, unset mark) opens nothing, as in nvim.
+            Feed::FilterSpan(cmd) => {
+                if !note_word_search(&cmd, ws, engine, search_hl, status) {
+                    return;
+                }
+                if let Some((first, last)) = ws.span_lines(&cmd) {
+                    engine.open_filter_cmdline(&format!("{},{}!", first + 1, last + 1));
+                }
+            }
             Feed::Pending | Feed::Ignored => {}
             Feed::Cmd(cmd) => {
                 // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
@@ -1865,38 +1875,12 @@ impl Session {
                     }
                     return;
                 }
-                // `*`/`#` (word under cursor): the engine has no buffer, so resolve the keyword here, then
-                // rewrite to a concrete search — records the deterministic pattern and drives hlsearch/`n`.
-                let cmd = if let Command::SearchWordUnder {
-                    forward,
-                    whole_word,
-                } = cmd
-                {
-                    match ws.word_under_cursor() {
-                        Some(word) => {
-                            // Keyword chars (alnum/`_`/non-ASCII) are regex-safe; `\<…\>` = whole word.
-                            let pat = if whole_word {
-                                format!("\\<{word}\\>")
-                            } else {
-                                word
-                            };
-                            // Record the direction too, so a following `n`/`N` repeats relative to the
-                            // `*`/`#` that set it (`#` then `n` continues backward).
-                            engine.set_last_search(pat.clone(), forward);
-                            if forward {
-                                Command::SearchNext(pat)
-                            } else {
-                                Command::SearchPrev(pat)
-                            }
-                        }
-                        None => {
-                            *status = "E348: No string under cursor".into();
-                            return;
-                        }
-                    }
-                } else {
-                    cmd
-                };
+                // `*`/`#` (word under cursor): the planner resolves the keyword and searches; record the same
+                // pattern as the last search (direction too, so `#` then `n` continues backward) and for
+                // hlsearch. No keyword on the line → E348 and nothing runs.
+                if !note_word_search(&cmd, ws, engine, search_hl, status) {
+                    return;
+                }
                 // `gd`/`gD` (declaration under cursor, TEXT heuristic — not LSP): like `*`/`#`, the engine
                 // has no buffer, so resolve the keyword here and rewrite to a concrete whole-file first-match
                 // jump. `gd` and `gD` are currently identical (matching nvim v0.12.4). Set the last-search to
@@ -2762,6 +2746,37 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         let _ = out.flush();
     }
     Ok(())
+}
+
+/// For `*`/`#`/`g*`/`g#` ([`Command::SearchWordUnder`]): record the keyword pattern the planner will search
+/// for as the engine's last search (with its direction) and as the hlsearch pattern. `false` (with E348 on
+/// the status line) when the line has no keyword, so the caller runs nothing. Any other command passes.
+fn note_word_search(
+    cmd: &Command,
+    ws: &Workspace,
+    engine: &mut InputEngine,
+    search_hl: &mut Option<String>,
+    status: &mut String,
+) -> bool {
+    let Command::SearchWordUnder {
+        forward,
+        whole_word,
+        ..
+    } = *cmd
+    else {
+        return true;
+    };
+    match ws.word_search_pattern(whole_word) {
+        Some(pat) => {
+            engine.set_last_search(pat.clone(), forward);
+            *search_hl = Some(pat);
+            true
+        }
+        None => {
+            *status = "E348: No string under cursor".into();
+            false
+        }
+    }
 }
 
 /// Resolve a Normal-mode INFO command (`ga`/`:ascii` → [`Command::AsciiInfo`], `CTRL-G` →

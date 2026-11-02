@@ -1149,6 +1149,34 @@ impl Workspace {
         Some((crate::pos::line_of(b, s), crate::pos::line_of(b, e - 1)))
     }
 
+    /// The 0-based inclusive line range of the focused buffer that the operator span of `cmd` covers (a
+    /// search, `n`/`N`, `*`/`#`, a `gn` match or a mark), or `None` when it has no target. See
+    /// [`EditorState::span_lines`]; the frontend numbers the `!{motion}` filter's `:{range}!` line from it.
+    pub fn span_lines(&mut self, cmd: &crate::Command) -> Option<(usize, usize)> {
+        let vid = self.windows[self.focus].view;
+        let view = self.views[vid.0].take().expect("focused view live");
+        let slot = Self::doc_slot(view.doc());
+        let doc = self.docs[slot].take().expect("focused doc live");
+
+        let st = EditorState::from_parts(doc, view);
+        let lines = st.span_lines(cmd);
+        let (doc, view) = st.into_parts();
+
+        self.docs[slot] = Some(doc);
+        self.views[vid.0] = Some(view);
+        lines
+    }
+
+    /// The search pattern `*`/`#` (`whole_word`, `\<word\>`) or `g*`/`g#` (the bare word) builds from the
+    /// keyword under the focused cursor — the same pattern the planner searches for
+    /// [`Command::SearchWordUnder`](crate::Command::SearchWordUnder). `None` when the line has no keyword
+    /// at or after the cursor (E348).
+    #[must_use]
+    pub fn word_search_pattern(&self, whole_word: bool) -> Option<String> {
+        let pane = self.focused();
+        crate::editor::word_search(pane.doc.bytes(), pane.view.cursor(), whole_word).map(|(_, p)| p)
+    }
+
     /// The keyword under (or forward-on-line from) the focused cursor — the pattern source for Vim `*`/`#`.
     /// `None` when the current line has no keyword at/after the cursor.
     #[must_use]

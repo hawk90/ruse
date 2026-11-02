@@ -650,12 +650,17 @@ pub enum Command {
     SearchNext(String),
     SearchPrev(String),
     /// `*`/`#` (and `g*`/`g#`) — search for the keyword under the cursor, forward (`*`) or backward (`#`).
-    /// `whole_word` (`*`/`#`) wraps the pattern in `\<…\>`; `g*`/`g#` match anywhere. The frontend resolves
-    /// the word from the buffer (the input engine has no buffer) and rewrites this to a [`Command::SearchNext`]
-    /// / [`Command::SearchPrev`] with the concrete pattern, so traces record the deterministic search.
+    /// `whole_word` (`*`/`#`) wraps the pattern in `\<…\>`; `g*`/`g#` match anywhere. The planner resolves
+    /// the keyword under (or after, on the line) the cursor and searches from the keyword's START, as Vim
+    /// does (`#` mid-word skips the word itself). Like `/pat` it is a motion: `count` steps that many
+    /// matches and `op` operates over the exclusive span from the cursor (`d*`, `c#`, `gUg*` — #1071). The
+    /// frontend reads the same pattern ([`crate::Workspace::word_search_pattern`]) to record it as the last
+    /// search and for hlsearch.
     SearchWordUnder {
         forward: bool,
         whole_word: bool,
+        op: SearchOp,
+        count: u32,
     },
     /// `g&` — repeat the last `:s` over the WHOLE FILE with its flags (Vim). The core has no substitute
     /// history, so the FRONTEND resolves this against its last-substitute state (like [`SearchWordUnder`]);
@@ -1477,13 +1482,18 @@ impl Command {
             },
             Command::SearchNext(p) => format!("search_next {p}"),
             Command::SearchPrev(p) => format!("search_prev {p}"),
+            // The operator and count trail the direction/scope, so pre-#1071 traces (no op/count) still
+            // parse as the bare `Move` with count 1.
             Command::SearchWordUnder {
                 forward,
                 whole_word,
+                op,
+                count,
             } => format!(
-                "search_word_under {} {}",
+                "search_word_under {} {} {} {count}",
                 if *forward { "fwd" } else { "bwd" },
-                if *whole_word { "whole" } else { "any" }
+                if *whole_word { "whole" } else { "any" },
+                search_op_token(*op),
             ),
             Command::RepeatSubstituteGlobal => "repeat_substitute_global".into(),
             Command::RepeatSubstituteLine => "repeat_substitute_line".into(),
@@ -2025,9 +2035,22 @@ impl Command {
                 let mut it = raw.split_whitespace();
                 let forward = !matches!(it.next(), Some("bwd"));
                 let whole_word = !matches!(it.next(), Some("any"));
+                let op = match it.next() {
+                    None => SearchOp::Move,
+                    Some(t) => search_op_from_token(t)
+                        .ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?,
+                };
+                let count = match it.next() {
+                    None => 1,
+                    Some(c) => c
+                        .parse()
+                        .map_err(|_| CommandParseError::BadArgument(line.to_string()))?,
+                };
                 Command::SearchWordUnder {
                     forward,
                     whole_word,
+                    op,
+                    count,
                 }
             }
             "repeat_substitute_global" => Command::RepeatSubstituteGlobal,
@@ -2142,6 +2165,20 @@ impl Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pre_1071_search_word_under_traces_parse_as_the_bare_move() {
+        assert_eq!(
+            Command::from_line("search_word_under bwd any"),
+            Ok(Command::SearchWordUnder {
+                forward: false,
+                whole_word: false,
+                op: SearchOp::Move,
+                count: 1,
+            })
+        );
+        assert!(Command::from_line("search_word_under fwd whole bogus 1").is_err());
+    }
 
     #[test]
     fn round_trips_every_variant() {
@@ -2765,6 +2802,18 @@ mod tests {
                 pattern: "x y".into(),
                 backward: true,
                 offset: SearchOffset::None,
+            },
+            Command::SearchWordUnder {
+                forward: true,
+                whole_word: true,
+                op: SearchOp::Move,
+                count: 1,
+            },
+            Command::SearchWordUnder {
+                forward: false,
+                whole_word: false,
+                op: SearchOp::Case(WordCase::Upcase),
+                count: 3,
             },
             Command::Undo,
             Command::Redo,

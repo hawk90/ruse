@@ -110,8 +110,9 @@ pub(super) fn continues_op(op: super::Op, key: KeyEvent) -> bool {
             c,
             // char search and its repeats, the `g` / bracket / mark motion prefixes, line jumps
             ' ' | 'f' | 'F' | 't' | 'T' | ';' | ',' | 'g' | 'G' | '%' | ']' | '[' | '`' | '\''
-            // forced wise, text objects, searches (`:` keeps opening the command line, as before)
-            | 'v' | 'V' | 'i' | 'a' | '/' | '?' | 'n' | 'N' | ':'
+            // forced wise, text objects, searches (`:` keeps opening the command line, as before), and
+            // the keyword searches `*`/`#` (`d*`, #1071)
+            | 'v' | 'V' | 'i' | 'a' | '/' | '?' | 'n' | 'N' | ':' | '*' | '#'
         )
 }
 

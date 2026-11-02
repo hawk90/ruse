@@ -195,6 +195,11 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::SearchObject {
             op: SearchOp::Change,
             ..
+        }
+        // `c*` — like `c/pat`; the keyword is re-read at the new cursor (#1071).
+        | C::SearchWordUnder {
+            op: SearchOp::Change,
+            ..
         } => ChangeKind::InsertEntering,
         // Self-contained buffer edits — dot-repeatable as a single command.
         C::Delete(..)
@@ -273,6 +278,16 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
                 | SearchOp::Reindent
                 | SearchOp::Format { .. },
             ..
+        }
+        // `d*`, `gU#`, `>g*` — re-searched for the keyword under the new cursor (nvim `d*.`, #1071).
+        | C::SearchWordUnder {
+            op:
+                SearchOp::Delete
+                | SearchOp::Case(_)
+                | SearchOp::Shift { .. }
+                | SearchOp::Reindent
+                | SearchOp::Format { .. },
+            ..
         } => ChangeKind::Immediate,
         // Not a change: yanks (incl. forced, search and mark yanks), motions and jumps, mode switches,
         // searches, undo/redo, marks/registers, info displays, `&`/`g&` (Vim does not dot-repeat them),
@@ -293,6 +308,10 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
             ..
         }
         | C::SearchObject {
+            op: SearchOp::Move | SearchOp::Yank,
+            ..
+        }
+        | C::SearchWordUnder {
             op: SearchOp::Move | SearchOp::Yank,
             ..
         }
@@ -363,7 +382,6 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::SetExprRegister(_)
         | C::SearchNext(_)
         | C::SearchPrev(_)
-        | C::SearchWordUnder { .. }
         | C::RepeatSubstituteGlobal
         | C::RepeatSubstituteLine
         | C::GotoDeclaration { .. }
@@ -472,6 +490,17 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
             pattern: pattern.clone(),
             backward: *backward,
         },
+        C::SearchWordUnder {
+            forward,
+            whole_word,
+            op,
+            ..
+        } => C::SearchWordUnder {
+            forward: *forward,
+            whole_word: *whole_word,
+            op: *op,
+            count: n,
+        },
         // No count to rewrite. Listed (not a wildcard) so a new counted variant cannot silently drop
         // `N.` (#793). The Visual-selection changes are here by design: nvim ignores a count on `.` of a
         // Visual change (the repeat re-covers the recorded AMOUNT of text, `:help visual-repeat`).
@@ -559,7 +588,6 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::BlockInsert(..)
         | C::SearchNext(..)
         | C::SearchPrev(..)
-        | C::SearchWordUnder { .. }
         | C::RepeatSubstituteGlobal
         | C::RepeatSubstituteLine
         | C::GotoDeclaration { .. }

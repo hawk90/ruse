@@ -28695,6 +28695,1175 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "filter_search",
+      "lines": [
+        "a",
+        "b",
+        "x"
+      ],
+      "keys": "!/x<CR>tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "A",
+          "B",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_search_mid_line",
+      "lines": [
+        "a",
+        "b",
+        "zx"
+      ],
+      "keys": "!/x<CR>tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "A",
+          "B",
+          "ZX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_search_backward",
+      "lines": [
+        "a",
+        "b",
+        "x",
+        "b"
+      ],
+      "keys": "G!?a<CR>tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "A",
+          "B",
+          "X",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_search_count",
+      "lines": [
+        "a",
+        "b",
+        "x",
+        "x"
+      ],
+      "keys": "!2/x<CR>tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "A",
+          "B",
+          "X",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_search_no_match",
+      "lines": [
+        "a",
+        "b",
+        "x"
+      ],
+      "keys": "!/zzz<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_n",
+      "lines": [
+        "foo",
+        "bar",
+        "baz",
+        "foo"
+      ],
+      "keys": "/baz<CR>gg!ntr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO",
+          "BAR",
+          "baz",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_gn",
+      "lines": [
+        "foo",
+        "bar",
+        "baz",
+        "foo"
+      ],
+      "keys": "/baz<CR>gg!gntr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "foo",
+          "bar",
+          "BAZ",
+          "foo"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_mark_line",
+      "lines": [
+        "foo",
+        "bar",
+        "baz",
+        "foo"
+      ],
+      "keys": "jjmagg!'atr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO",
+          "BAR",
+          "BAZ",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_mark_char",
+      "lines": [
+        "foo",
+        "bar",
+        "baz",
+        "foo"
+      ],
+      "keys": "jjlmagg!`atr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO",
+          "BAR",
+          "BAZ",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_mark_char_col0",
+      "lines": [
+        "foo",
+        "bar",
+        "baz",
+        "foo"
+      ],
+      "keys": "jjmagg!`atr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO",
+          "BAR",
+          "baz",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_mark_empty",
+      "lines": [
+        "foo bar",
+        "zz"
+      ],
+      "keys": "ma!`atr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO BAR",
+          "zz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_star",
+      "lines": [
+        "foo",
+        "bar",
+        "baz",
+        "foo"
+      ],
+      "keys": "!*tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO",
+          "BAR",
+          "BAZ",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_hash",
+      "lines": [
+        "foo",
+        "bar",
+        "baz",
+        "foo"
+      ],
+      "keys": "G!#tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO",
+          "BAR",
+          "BAZ",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_g_star",
+      "lines": [
+        "foo",
+        "bar",
+        "baz",
+        "foo"
+      ],
+      "keys": "!g*tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO",
+          "BAR",
+          "BAZ",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "filter_star_lone_word",
+      "lines": [
+        "foo bar",
+        "zz"
+      ],
+      "keys": "!*tr a-z A-Z<CR>",
+      "expect": {
+        "text": [
+          "FOO BAR",
+          "zz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "d*",
+      "expect": {
+        "text": [
+          "foo baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_mid_word",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "ld*",
+      "expect": {
+        "text": [
+          "ffoo baz"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "oo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_lone_word",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "wd*",
+      "expect": {
+        "text": [
+          "foo bar foo baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_whole_word",
+      "lines": [
+        "foo bar foobar baz"
+      ],
+      "keys": "d*",
+      "expect": {
+        "text": [
+          "foo bar foobar baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "hash_under_d",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "wwd#",
+      "expect": {
+        "text": [
+          "foo baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "hash_under_d_wraps_to_self",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "$hd#",
+      "expect": {
+        "text": [
+          "foo bar foo az"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "g_star_under_d",
+      "lines": [
+        "foo bar foobar baz"
+      ],
+      "keys": "dg*",
+      "expect": {
+        "text": [
+          "foobar baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_op_count",
+      "lines": [
+        "foo bar foo baz foo x"
+      ],
+      "keys": "2d*",
+      "expect": {
+        "text": [
+          "foo x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar foo baz ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_motion_count",
+      "lines": [
+        "foo bar foo baz foo x"
+      ],
+      "keys": "d2*",
+      "expect": {
+        "text": [
+          "foo x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar foo baz ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_c",
+      "lines": [
+        "foo bar foo baz foo x"
+      ],
+      "keys": "c*X<Esc>",
+      "expect": {
+        "text": [
+          "Xfoo baz foo x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_y_paste",
+      "lines": [
+        "foo bar foo baz foo x"
+      ],
+      "keys": "y*P",
+      "expect": {
+        "text": [
+          "foo bar foo bar foo baz foo x"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "foo bar ",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "star_under_gU",
+      "lines": [
+        "foo bar foo baz foo x"
+      ],
+      "keys": "gU*",
+      "expect": {
+        "text": [
+          "FOO BAR foo baz foo x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_dot",
+      "lines": [
+        "foo bar foo baz foo x"
+      ],
+      "keys": "d*.",
+      "expect": {
+        "text": [
+          "foo x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo baz ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_then_n",
+      "lines": [
+        "foo bar foo baz"
+      ],
+      "keys": "d*n",
+      "expect": {
+        "text": [
+          "foo baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_multiline",
+      "lines": [
+        "foo bar",
+        "bar foo"
+      ],
+      "keys": "d*",
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar\nbar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_d_exclusive_linewise",
+      "lines": [
+        "foo bar",
+        "foo x"
+      ],
+      "keys": "d*",
+      "expect": {
+        "text": [
+          "foo x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_under_shift",
+      "lines": [
+        "foo bar",
+        "foo x"
+      ],
+      "keys": ">*",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    foo bar",
+          "foo x"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_no_keyword",
+      "lines": [
+        "   ",
+        "foo"
+      ],
+      "keys": "d*",
+      "expect": {
+        "text": [
+          "   ",
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_count",
+      "lines": [
+        "foo bar foo foo"
+      ],
+      "keys": "2*",
+      "expect": {
+        "text": [
+          "foo bar foo foo"
+        ],
+        "cursor": [
+          1,
+          12
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "hash_count",
+      "lines": [
+        "foo bar foo foo"
+      ],
+      "keys": "$2#",
+      "expect": {
+        "text": [
+          "foo bar foo foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "star_before_keyword",
+      "lines": [
+        "  foo bar foo"
+      ],
+      "keys": "*",
+      "expect": {
+        "text": [
+          "  foo bar foo"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "hash_mid_word",
+      "lines": [
+        "foo bar foo"
+      ],
+      "keys": "ll#",
+      "expect": {
+        "text": [
+          "foo bar foo"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_format_pulled_back",
+      "lines": [
+        "aa bb",
+        "cc",
+        "end",
+        "zz"
+      ],
+      "keys": "wgq/end<CR>",
+      "expect": {
+        "text": [
+          "aa bb cc",
+          "end",
+          "zz"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_format_keep",
+      "lines": [
+        "aa bb",
+        "cc",
+        "end",
+        "zz"
+      ],
+      "keys": "gw/end<CR>",
+      "expect": {
+        "text": [
+          "aa bb cc",
+          "end",
+          "zz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_format_end_offset",
+      "lines": [
+        "aa bb",
+        "cc",
+        "end",
+        "zz"
+      ],
+      "keys": "gq/end/e<CR>",
+      "expect": {
+        "text": [
+          "aa bb cc end",
+          "zz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "search_under_format_last_line",
+      "lines": [
+        "aa bb",
+        "cc",
+        "end"
+      ],
+      "keys": "gq/end<CR>",
+      "expect": {
+        "text": [
+          "aa bb cc",
+          "end"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "n_under_format",
+      "lines": [
+        "aa bb",
+        "cc",
+        "end"
+      ],
+      "keys": "/end<CR>gggqn",
+      "expect": {
+        "text": [
+          "aa bb cc",
+          "end"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "mark_under_format_charwise_col0",
+      "lines": [
+        "aa bb",
+        "cc",
+        "end",
+        "zz"
+      ],
+      "keys": "jjmagggq`a",
+      "expect": {
+        "text": [
+          "aa bb cc",
+          "end",
+          "zz"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "paragraph_under_format",
+      "lines": [
+        "aa bb",
+        "cc",
+        "",
+        "zz"
+      ],
+      "keys": "gq}",
+      "expect": {
+        "text": [
+          "aa bb cc",
+          "",
+          "zz"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

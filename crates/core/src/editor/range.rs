@@ -82,32 +82,9 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
             let (s, e) = motion::char_span(b, cur, m, count);
             (s, e, true)
         }
-        // Paragraph motions (`d}`/`d{`) and section motions (`d]]`/`d[[`/`d][`/`d[]`) are exclusive charwise,
-        // but Vim's exclusive-linewise rule can turn them linewise — shared with forced-charwise on a linewise
-        // motion (see `exclusive_linewise`). (nvim quirk NOT reproduced: a section-FORWARD operator that runs
-        // OFF the end of the file — `d]]` with no further `{` — makes delete linewise-through-EOF but yank
-        // charwise; ruse uses one span for d/y, so both stop at the last line's start here. Deliberate v0
-        // divergence, documented in the change record.)
-        Motion::ParagraphFwd
-        | Motion::ParagraphBack
-        | Motion::SectionFwd
-        | Motion::SectionBack
-        | Motion::SectionEndFwd
-        | Motion::SectionEndBack
-        // Unmatched-bracket motions (`d[(`/`d])`/`d[{`/`d]}`) are exclusive charwise and take the same
-        // exclusive-linewise reduction (verified against nvim: `d])` landing on a `)` at column 0 deletes
-        // whole lines; a mid-line landing stays charwise). A no-op target collapses to an empty span.
-        | Motion::UnmatchedParenBack
-        | Motion::UnmatchedParenFwd
-        | Motion::UnmatchedBraceBack
-        | Motion::UnmatchedBraceFwd
-        // Method motions (`d]m`/`d[m`/`d]M`/`d[M`) are exclusive charwise and take the same
-        // exclusive-linewise reduction (verified against nvim: a landing on a `}` at column 0 deletes
-        // whole lines; a mid-line landing stays charwise). A no-op target collapses to an empty span.
-        | Motion::MethodStartFwd
-        | Motion::MethodStartBack
-        | Motion::MethodEndFwd
-        | Motion::MethodEndBack => {
+        // Paragraph, section, unmatched-bracket and method motions: exclusive charwise, reduced by Vim's
+        // exclusive-linewise rule (see `takes_exclusive_linewise`).
+        m if takes_exclusive_linewise(m) => {
             let t = motion::target(b, cur, m, count);
             exclusive_linewise(b, cur.min(t), cur.max(t))
         }
@@ -128,6 +105,53 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
             (s, e, false)
         }
     }
+}
+
+/// Whether `m` is an exclusive charwise motion that takes Vim's exclusive-linewise reduction under an
+/// operator ([`exclusive_linewise`]).
+fn takes_exclusive_linewise(m: Motion) -> bool {
+    matches!(
+        m,
+        // Paragraph motions (`d}`/`d{`) and section motions (`d]]`/`d[[`/`d][`/`d[]`) are exclusive
+        // charwise, but Vim's exclusive-linewise rule can turn them linewise — shared with forced-charwise
+        // on a linewise motion (see `exclusive_linewise`). (nvim quirk NOT reproduced: a section-FORWARD
+        // operator that runs OFF the end of the file — `d]]` with no further `{` — makes delete
+        // linewise-through-EOF but yank charwise; ruse uses one span for d/y, so both stop at the last
+        // line's start here. Deliberate v0 divergence, documented in the change record.)
+        Motion::ParagraphFwd
+            | Motion::ParagraphBack
+            | Motion::SectionFwd
+            | Motion::SectionBack
+            | Motion::SectionEndFwd
+            | Motion::SectionEndBack
+            // Unmatched-bracket motions (`d[(`/`d])`/`d[{`/`d]}`) are exclusive charwise and take the same
+            // exclusive-linewise reduction (verified against nvim: `d])` landing on a `)` at column 0
+            // deletes whole lines; a mid-line landing stays charwise). A no-op target collapses to an empty
+            // span.
+            | Motion::UnmatchedParenBack
+            | Motion::UnmatchedParenFwd
+            | Motion::UnmatchedBraceBack
+            | Motion::UnmatchedBraceFwd
+            // Method motions (`d]m`/`d[m`/`d]M`/`d[M`) are exclusive charwise and take the same
+            // exclusive-linewise reduction (verified against nvim: a landing on a `}` at column 0 deletes
+            // whole lines; a mid-line landing stays charwise). A no-op target collapses to an empty span.
+            | Motion::MethodStartFwd
+            | Motion::MethodStartBack
+            | Motion::MethodEndFwd
+            | Motion::MethodEndBack
+    )
+}
+
+/// Whether the exclusive-linewise rule ADJUSTS the end of `m`'s operator span (nvim's `oap->end_adjusted`):
+/// `m` takes the rule and its exclusive end sits at column 0 of a later line. `gq` then leaves the cursor
+/// on the line below the formatted block (`gq}`, #1071).
+pub(crate) fn exclusive_end_adjusted(b: &[u8], cur: usize, m: Motion, count: u32) -> bool {
+    if !takes_exclusive_linewise(m) {
+        return false;
+    }
+    let t = motion::target(b, cur, m, count);
+    let (lo, hi) = (cur.min(t), cur.max(t));
+    lo < hi && hi == line_start(b, hi)
 }
 
 /// Vim's exclusive-linewise reduction for an EXCLUSIVE charwise span `[lo, hi)`: if the end sits at column

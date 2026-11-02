@@ -4,4 +4,3 @@
 # Add a line only for a new fixture ruse does not match yet, never to silence a regression.
 
 dat_tag_multiline  # Vim makes `dat` over a whole-line tag block linewise; ruse yanks it charwise (#443 follow-up)
-search_under_format  # nvim op_format: after the exclusive-linewise rule pulls the end back (`end_adjusted`), `gq` leaves the cursor one line BELOW the last formatted line; ruse lands on the last formatted line (text matches)
