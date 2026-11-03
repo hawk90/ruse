@@ -3417,6 +3417,13 @@ impl InputEngine {
                     return self.action(Command::VisualOp(VisualOp::OtherCorner))
                 }
                 KeyCode::Char('O') => return self.action(Command::SwapSelectionEnds),
+                // `/` and `?` open the search line; the match it lands on extends the selection, as any
+                // motion does (`v_/`, #1113). In Select a printable key replaces the selection instead.
+                KeyCode::Char(c @ ('/' | '?')) if matches!(mode, Mode::Visual { .. }) => {
+                    return self.enter_search(c == '?')
+                }
+                // `n` / `N` repeat the last search as a motion that extends the selection.
+                KeyCode::Char('n' | 'N') if matches!(mode, Mode::Visual { .. }) => {}
                 // `:` leaves Visual (setting `'<`/`'>`) and opens the command line on `'<,'>`; `!` opens it
                 // on `'<,'>!`, the filter over the selected lines (`:help v_:`, `v_!`).
                 KeyCode::Char(c @ (':' | '!')) => {

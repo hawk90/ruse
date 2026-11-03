@@ -58463,6 +58463,892 @@
       }
     },
     {
+      "name": "cc_tilde_sharp_s",
+      "lines": [
+        "ßa"
+      ],
+      "keys": "~",
+      "expect": {
+        "text": [
+          "ẞa"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_tilde_capital_sharp_s",
+      "lines": [
+        "ẞa"
+      ],
+      "keys": "~",
+      "expect": {
+        "text": [
+          "ßa"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_tilde_count_mixed",
+      "lines": [
+        "ßǅﬁıx"
+      ],
+      "keys": "5~",
+      "expect": {
+        "text": [
+          "ẞǄﬁIX"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_sharp_s",
+      "lines": [
+        "straße"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "STRAẞE"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_guu_capital_sharp_s",
+      "lines": [
+        "STRAẞE"
+      ],
+      "keys": "guu",
+      "expect": {
+        "text": [
+          "straße"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_ligatures_kept",
+      "lines": [
+        "ﬁsh ﬀ ﬆ"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "ﬁSH ﬀ ﬆ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_titlecase",
+      "lines": [
+        "ǅemal ǈ ǋ ǲ"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "ǄEMAL Ǉ Ǌ Ǳ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_guu_titlecase_kept",
+      "lines": [
+        "ǅEMAL ǈ ǋ ǲ"
+      ],
+      "keys": "guu",
+      "expect": {
+        "text": [
+          "ǅemal ǈ ǋ ǲ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_g_tilde_titlecase",
+      "lines": [
+        "ǅx ǆ Ǆ"
+      ],
+      "keys": "g~~",
+      "expect": {
+        "text": [
+          "ǄX Ǆ ǆ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_turkish",
+      "lines": [
+        "ı i İ"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "I I İ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_guu_turkish",
+      "lines": [
+        "İ I ı"
+      ],
+      "keys": "guu",
+      "expect": {
+        "text": [
+          "i i ı"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_g_tilde_turkish",
+      "lines": [
+        "İı"
+      ],
+      "keys": "g~~",
+      "expect": {
+        "text": [
+          "iI"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_long_s_micro",
+      "lines": [
+        "ſµÿ"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "SΜŸ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_guu_greek_sigma",
+      "lines": [
+        "ΟΔΟΣ ΣΑ"
+      ],
+      "keys": "guu",
+      "expect": {
+        "text": [
+          "οδοσ σα"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_greek_final_sigma",
+      "lines": [
+        "οδος"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "ΟΔΟΣ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_iota_subscript",
+      "lines": [
+        "ᾳ ᾀ ΐ ῳ"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "ᾼ ᾈ ΐ ῼ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_guu_iota_subscript",
+      "lines": [
+        "ᾼ ᾈ ῼ"
+      ],
+      "keys": "guu",
+      "expect": {
+        "text": [
+          "ᾳ ᾀ ῳ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_composing_kept",
+      "lines": [
+        "éx i̇"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "ÉX İ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_tilde_composing",
+      "lines": [
+        "éx"
+      ],
+      "keys": "2~",
+      "expect": {
+        "text": [
+          "ÉX"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_armenian_ligature",
+      "lines": [
+        "և ﬓ"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "և ﬓ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_newer_letters",
+      "lines": [
+        "ꟍ ꟑ ꞔ"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "Ꟍ Ꟑ Ꞔ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUU_cherokee",
+      "lines": [
+        "ꭰꭱ"
+      ],
+      "keys": "gUU",
+      "expect": {
+        "text": [
+          "ᎠᎡ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_guu_cherokee",
+      "lines": [
+        "ᎠᎡ"
+      ],
+      "keys": "guu",
+      "expect": {
+        "text": [
+          "ꭰꭱ"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_gUiw_cursor_after_widening",
+      "lines": [
+        "aſb x"
+      ],
+      "keys": "gUiw",
+      "expect": {
+        "text": [
+          "ASB x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_g_question_multibyte",
+      "lines": [
+        "ßa é"
+      ],
+      "keys": "g??",
+      "expect": {
+        "text": [
+          "ßn é"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_visual_U_sharp_s",
+      "lines": [
+        "ßǆ x"
+      ],
+      "keys": "vlU",
+      "expect": {
+        "text": [
+          "ẞǄ x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_visual_u_titlecase",
+      "lines": [
+        "ǅẞ x"
+      ],
+      "keys": "vlu",
+      "expect": {
+        "text": [
+          "ǅß x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_visual_tilde_mixed",
+      "lines": [
+        "ßǅ x"
+      ],
+      "keys": "vl~",
+      "expect": {
+        "text": [
+          "ẞǄ x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_visual_block_U",
+      "lines": [
+        "ßa",
+        "ǆb"
+      ],
+      "keys": "<C-v>jlU",
+      "expect": {
+        "text": [
+          "ẞA",
+          "ǄB"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_sub_upper_sharp_s",
+      "lines": [
+        "straße"
+      ],
+      "keys": ":s/.*/\\U&/<CR>",
+      "expect": {
+        "text": [
+          "STRAẞE"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_sub_upper_one_sharp_s",
+      "lines": [
+        "ßa"
+      ],
+      "keys": ":s/ß/\\u&/<CR>",
+      "expect": {
+        "text": [
+          "ẞa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_sub_lower_capital_sharp_s",
+      "lines": [
+        "ẞA"
+      ],
+      "keys": ":s/.*/\\L&/<CR>",
+      "expect": {
+        "text": [
+          "ßa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_search_ic_no_sharp_s_fold",
+      "lines": [
+        "ß x ẞ"
+      ],
+      "keys": ":set ic<CR>/ẞ<CR>x",
+      "expect": {
+        "text": [
+          "ß x "
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "ẞ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cc_search_ic_kelvin",
+      "lines": [
+        "a K"
+      ],
+      "keys": ":set ic<CR>/k<CR>x",
+      "expect": {
+        "text": [
+          "a "
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "K",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "sc_mb_dw_mixed",
       "lines": [
         "가나 abc 다라"
@@ -68834,6 +69720,247 @@
         ],
         "reg_unnamed": {
           "text": "b cd\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_v_slash_word",
+      "lines": [
+        "ab cd ef"
+      ],
+      "keys": "v/cd<CR>d",
+      "expect": {
+        "text": [
+          "d ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_v_question_back",
+      "lines": [
+        "ab cd ef"
+      ],
+      "keys": "$v?cd<CR>d",
+      "expect": {
+        "text": [
+          "ab "
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "cd ef",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_v_slash_then_n",
+      "lines": [
+        "a x b x c x"
+      ],
+      "keys": "v/x<CR>nd",
+      "expect": {
+        "text": [
+          " c x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a x b x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_v_slash_offset_e",
+      "lines": [
+        "ab cdef gh"
+      ],
+      "keys": "v/cd/e<CR>y$p",
+      "expect": {
+        "text": [
+          "ab cdef ghab cd"
+        ],
+        "cursor": [
+          1,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "ab cd",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "ab cd",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_V_slash_lines",
+      "lines": [
+        "a",
+        "b",
+        "xc",
+        "d"
+      ],
+      "keys": "V/x<CR>d",
+      "expect": {
+        "text": [
+          "d"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\nxc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_ctrl_v_slash_block",
+      "lines": [
+        "abcd",
+        "efgh",
+        "ijkl"
+      ],
+      "keys": "<C-v>/k<CR>d",
+      "expect": {
+        "text": [
+          "d",
+          "h",
+          "l"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\nefg\nijk",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_v_slash_not_found",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "lv/zz<CR>d",
+      "expect": {
+        "text": [
+          "a cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "srx_v_slash_esc_keeps_selection",
+      "lines": [
+        "ab cd"
+      ],
+      "keys": "lvl/cd<Esc>d",
+      "expect": {
+        "text": [
+          "acd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_v_slash_count",
+      "lines": [
+        "a x b x c x"
+      ],
+      "keys": "v2/x<CR>d",
+      "expect": {
+        "text": [
+          " c x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a x b x",
           "type": "charwise"
         },
         "reg0": {

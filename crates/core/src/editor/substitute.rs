@@ -301,16 +301,18 @@ impl CaseState {
         let mut buf = [0u8; 4];
         for ch in s.chars() {
             match self.pending.take().or(self.region) {
-                Some(Case::Upper) => {
-                    for u in ch.to_uppercase() {
-                        out.extend_from_slice(u.encode_utf8(&mut buf).as_bytes());
-                    }
-                }
-                Some(Case::Lower) => {
-                    for l in ch.to_lowercase() {
-                        out.extend_from_slice(l.encode_utf8(&mut buf).as_bytes());
-                    }
-                }
+                // nvim's `do_upper` / `do_lower`: `mb_toupper` / `mb_tolower`, one character to one
+                // (`\U` on `ß` gives `ẞ`, not `SS`).
+                Some(Case::Upper) => out.extend_from_slice(
+                    crate::casemap::vim_toupper(ch)
+                        .encode_utf8(&mut buf)
+                        .as_bytes(),
+                ),
+                Some(Case::Lower) => out.extend_from_slice(
+                    crate::casemap::vim_tolower(ch)
+                        .encode_utf8(&mut buf)
+                        .as_bytes(),
+                ),
                 None => out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes()),
             }
         }

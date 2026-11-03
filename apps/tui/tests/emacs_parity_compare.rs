@@ -11,8 +11,9 @@
 //! HOW IT BRIDGES THE TWO EDITORS: a fixture's `ops` are Emacs command NAMES. The oracle ran them in Emacs
 //! via `call-interactively`; here the SAME names resolve through `emacs_command_by_name` — the very registry
 //! that M-x uses (F-012, #148) — into ruse `Command`s applied to the core. One fixture, one vocabulary, both
-//! editors. Point/mark are 0-based CHARACTER offsets in the corpus; the seed is ASCII so char == byte and
-//! ruse's byte offsets compare directly (see the oracle's scope note).
+//! editors. Point/mark are 0-based CHARACTER offsets in the corpus; ruse addresses bytes, so a fixture's
+//! point is converted to a byte offset going in and ruse's point/mark back to characters coming out (the
+//! case-conversion fixtures of #912 are multibyte).
 //!
 //! The corpus is `tests/parity/emacs/fixtures/corpus.yaml` — JSON-in-YAML (a subset of YAML 1.2), captured
 //! by `tools/parity/emacs_oracle.py`. Run with `-- --nocapture` to see the tally.
@@ -32,7 +33,7 @@ fn drive_ruse(text: &str, ops: &[String], point: usize) -> (EditorState, Vec<Str
     // The Emacs profile rests point BETWEEN characters (D-050 / RFC-0015), the same gravity the frontend
     // installs for `RUSE_PROFILE=emacs`; without it every Emacs edit would be Vim-clamped one column short.
     st.set_caret_gravity(CaretGravity::BetweenChar);
-    st.set_cursor(point); // char offset == byte offset for the ASCII seed corpus
+    st.set_cursor(char_to_byte(text, point));
     let mut unknown = Vec::new();
     for op in ops {
         match emacs_command_by_name(op) {
@@ -43,6 +44,16 @@ fn drive_ruse(text: &str, ops: &[String], point: usize) -> (EditorState, Vec<Str
         }
     }
     (st, unknown)
+}
+
+/// The byte offset of the `n`th character of `text` (its length past the end).
+fn char_to_byte(text: &str, n: usize) -> usize {
+    text.char_indices().nth(n).map_or(text.len(), |(b, _)| b)
+}
+
+/// The number of characters before byte offset `b` of `text`.
+fn byte_to_char(text: &str, b: usize) -> i64 {
+    text.get(..b).map_or(b, |s| s.chars().count()) as i64
 }
 
 fn ruse_text(st: &EditorState) -> Vec<String> {
@@ -134,8 +145,9 @@ fn parity_ruse_vs_emacs_oracle() {
 
         // ruse observables.
         let r_text = ruse_text(&st);
-        let r_point = st.cursor() as i64;
-        let r_mark = st.mark().map(|m| m as i64);
+        let joined = r_text.join("\n");
+        let r_point = byte_to_char(&joined, st.cursor());
+        let r_mark = st.mark().map(|m| byte_to_char(&joined, m));
         let r_kill = ruse_kill(&st);
 
         // oracle observables.
@@ -278,15 +290,17 @@ fn parity_emacs_corpus_through_real_keys() {
         let point = fx.get("point").and_then(Value::as_u64).unwrap_or(0) as usize;
         let expect = &fx["expect"];
 
-        let mut h = Headless::emacs(fx["text"].as_str().expect("text"));
-        h.set_cursor(point);
+        let text = fx["text"].as_str().expect("text");
+        let mut h = Headless::emacs(text);
+        h.set_cursor(char_to_byte(text, point));
         let keys: String = ops.iter().map(|op| emacs_keys(op)).collect();
         h.keys(&keys);
 
         let (kill, _) = h.register('"');
-        let r_text: Vec<String> = h.text().split('\n').map(str::to_string).collect();
-        let r_point = h.cursor() as i64;
-        let r_mark = h.mark().map(|m| m as i64);
+        let joined = h.text();
+        let r_text: Vec<String> = joined.split('\n').map(str::to_string).collect();
+        let r_point = byte_to_char(&joined, h.cursor());
+        let r_mark = h.mark().map(|m| byte_to_char(&joined, m));
         let r_kill = (!kill.is_empty()).then_some(kill);
 
         let mut diffs = Vec::new();
