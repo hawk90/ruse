@@ -174,7 +174,9 @@ class TestStatePaths(unittest.TestCase):
                         "--non-goal", "no rust", "--rfc", "RFC-0021", "--decision", "D-062")
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         c = self._contract("11")
-        self.assertEqual(c["allow_paths"], ["crates/core/", "docs/x.md", "tools/"])
+        # explicit --allow IS the blast radius: --area core must not widen it with crates/core/
+        self.assertEqual(c["allow_paths"], ["docs/x.md", "tools/"])
+        self.assertEqual(c["affected"]["crates"], ["core"])
         self.assertEqual(c["forbid_paths"], ["spec/DECISIONS.md"])
         self.assertEqual(c["affected"]["requirements"], ["C-TRANSACTION"])
         self.assertEqual(c["affected"]["invariants"], ["INV-TXN"])
@@ -191,6 +193,11 @@ class TestStatePaths(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         with open(out, encoding="utf-8") as fh:
             self.assertIn('"docs/x.md"', fh.read())
+
+    def test_start_seeds_allow_from_area_only_without_explicit_allow(self):
+        p = self.r.ruse("change", "start", "--issue", "14", "--kind", "implementation", "--area", "core")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(self._contract("14")["allow_paths"], ["crates/core/"])
 
     def test_change_set_appends_and_replaces(self):
         self.assertEqual(self.r.ruse("change", "start", "--issue", "12", "--allow", "a/").returncode, 0)

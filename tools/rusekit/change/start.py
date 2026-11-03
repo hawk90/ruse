@@ -23,7 +23,10 @@ from rusekit.change import edit  # noqa: E402
 
 
 def _fill_change_yaml(template: str, issue: str, kind: str | None,
-                      crates: list[str]) -> str:
+                      crates: list[str], seed_allow: bool = True) -> str:
+    """Fill the template. `allow_paths` is seeded from the crates only when the caller gave no explicit
+    `--allow`: explicit paths are the whole blast radius, never widened by a crate default (a docs-only
+    change declared with `--area core` must not silently allow `crates/core/`)."""
     out = template
     out = out.replace('issue: "<id>"', f'issue: "{issue}"', 1)      # top-level (col 0)
     out = out.replace('  issue: "<id>"', f'  issue: "{issue}"', 1)  # artifacts.issue
@@ -32,8 +35,9 @@ def _fill_change_yaml(template: str, issue: str, kind: str | None,
     if crates:
         clist = ", ".join(crates)
         out = out.replace("  crates: []", f"  crates: [{clist}]", 1)
-        paths = ", ".join(f'"crates/{c}/"' for c in crates)
-        out = out.replace("allow_paths: []", f"allow_paths: [{paths}]", 1)
+        if seed_allow:
+            paths = ", ".join(f'"crates/{c}/"' for c in crates)
+            out = out.replace("allow_paths: []", f"allow_paths: [{paths}]", 1)
     return out
 
 
@@ -70,7 +74,7 @@ def main(argv: list[str]) -> int:
     # change.yaml
     tmpl_path = repo.path("spec", "templates", "change.yaml")
     template = open(tmpl_path, encoding="utf-8").read() if os.path.isfile(tmpl_path) else ""
-    text = _fill_change_yaml(template, args.issue, args.kind, args.area)
+    text = _fill_change_yaml(template, args.issue, args.kind, args.area, seed_allow=not args.allow)
     if args.goal:
         text = text.replace(
             "  <one paragraph: the observable outcome this change delivers>",

@@ -117,8 +117,11 @@ python3 tools/ruse.py change set --issue 42 --replace --allow tools/    # replac
 | `--kind KIND` / `--goal TEXT` | `kind` / `goal` (`change set` only; `change start` has its own `--kind` / `--goal`) |
 
 List flags **append**, and duplicates are skipped. With `change set --replace`, each list flag you pass
-replaces its list, and lists you do not mention are kept. Scalars always replace. `--area` still fills
-`affected.crates` and adds `crates/<c>/` to `allow_paths`. The template's comments are preserved. A
+replaces its list, and lists you do not mention are kept. Scalars always replace. `--area` fills
+`affected.crates`. It seeds `allow_paths` with `crates/<c>/` **only when `change start` gets no `--allow`**:
+explicit `--allow` paths are the whole blast radius, so a docs-only change declared with `--area core`
+does not silently allow `crates/core/` (`pr check` fails any file outside `allow_paths`). The template's
+comments are preserved. A
 field that was hand-edited into a different shape is rewritten through YAML, and a warning says so.
 
 ```
