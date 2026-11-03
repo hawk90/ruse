@@ -30,7 +30,11 @@ Open <file> in the editor, or an unnamed buffer with no file.
 Use `--` before a file name that starts with '-'.
 
 Environment:
-  RUSE_PROFILE=vim|emacs|native   key profile (default vim)
+  RUSE_PROFILE=vim|emacs|native   key profile (default vim; overrides input.profile)
+
+Config:
+  /etc/ruse/config.toml, ${XDG_CONFIG_HOME:-~/.config}/ruse/config.toml, and the
+  workspace's .ruse/config.toml once :trust recorded it (:inspect config lists them).
 ";
 
 /// What the command line asks for (#896).

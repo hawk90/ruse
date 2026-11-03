@@ -4,14 +4,25 @@
 //! only by an explicit grant from the USER principal, never from anything inside the workspace:
 //!
 //! - `:trust` — trust the current workspace for this session (handled by the LSP coordinator);
-//! - `RUSE_TRUSTED_WORKSPACES` — an OS path list (`:`-separated on Unix) of absolute roots the user trusts;
-//!   the workspace is trusted when its root is one of them or inside one. The runtime stand-in for the
-//!   `workspace.trusted_roots` config key until a config loader exists (spec/config-schema.yaml).
+//! - `workspace.trusted_roots` in the user config, or `RUSE_TRUSTED_WORKSPACES`, an OS path list
+//!   (`:`-separated on Unix) of absolute roots the user trusts; the workspace is trusted when its root is
+//!   one of them or inside one.
+//!
+//! The workspace CONFIG layer (`.ruse/config.toml`) has its own, content-bound gate (D-062, #614): `:trust`
+//! also writes a user-side [`TrustStore`] record holding a hash of the root's `.ruse/` contents
+//! ([`ruse_dir_hash`]), and the layer loads only while the record exists and the hash still matches. A
+//! pull or branch switch that changes `.ruse/` makes the layer stale until `:trust` records the new hash;
+//! `:untrust` deletes the record. The records live in `${XDG_STATE_HOME:-~/.local/state}/ruse/trust/`,
+//! one file per root, named by the SHA-256 of the canonical absolute root path (Helix's workspace trust
+//! model), and are never written into the repository.
 //!
 //! The workspace root is the process working directory (the same root the LSP `rootUri` uses).
 
 use std::ffi::OsStr;
+use std::io;
 use std::path::{Path, PathBuf};
+
+use sha2::{Digest, Sha256};
 
 /// The environment variable listing the user's trusted workspace roots (see the module docs).
 pub const TRUSTED_WORKSPACES_ENV: &str = "RUSE_TRUSTED_WORKSPACES";
@@ -40,6 +51,158 @@ pub fn is_trusted_by_list(root: &Path, list: Option<&OsStr>) -> bool {
 /// The startup trust decision for the workspace at `root`, from the user's `RUSE_TRUSTED_WORKSPACES`.
 pub fn workspace_trusted(root: &Path) -> bool {
     is_trusted_by_list(root, std::env::var_os(TRUSTED_WORKSPACES_ENV).as_deref())
+}
+
+/// The user-side trust record directory: `${XDG_STATE_HOME:-$HOME/.local/state}/ruse/trust`.
+#[must_use]
+pub fn trust_dir() -> Option<PathBuf> {
+    let var = |n: &str| {
+        std::env::var_os(n)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    var("XDG_STATE_HOME")
+        .or_else(|| var("HOME").map(|h| h.join(".local").join("state")))
+        .map(|s| s.join("ruse").join("trust"))
+}
+
+/// The most entries and bytes [`ruse_dir_hash`] reads before it gives up (a `.ruse/` holds a few small
+/// config files; this bounds a hostile one).
+const MAX_HASH_ENTRIES: usize = 10_000;
+const MAX_HASH_BYTES: u64 = 64 << 20;
+
+/// The content hash a trust record binds to: `sha256:` and the hex SHA-256 of every entry under
+/// `<root>/.ruse/`, sorted by relative path (`/`-separated bytes). After the tag `ruse-trust-v1\0`, a
+/// regular file contributes `F`, its path, `\0`, its length as 8 big-endian bytes and its bytes; a symbolic
+/// link (never followed) contributes `L`, its path, `\0`, the link target's length and bytes; directories
+/// are walked; anything else is skipped. An absent `.ruse/` is the empty set (D-062), so its hash is the
+/// tag's alone.
+///
+/// # Errors
+/// A read error, or a `.ruse/` past [`MAX_HASH_ENTRIES`] / [`MAX_HASH_BYTES`].
+pub fn ruse_dir_hash(root: &Path) -> io::Result<String> {
+    let base = root.join(".ruse");
+    let mut entries: Vec<(Vec<u8>, PathBuf, bool)> = Vec::new();
+    if std::fs::symlink_metadata(&base).is_ok_and(|m| m.is_dir()) {
+        let mut dirs = vec![(base.clone(), Vec::<u8>::new())];
+        while let Some((dir, rel)) = dirs.pop() {
+            for e in std::fs::read_dir(&dir)? {
+                let e = e?;
+                let mut name = rel.clone();
+                if !name.is_empty() {
+                    name.push(b'/');
+                }
+                name.extend_from_slice(os_bytes(&e.file_name()));
+                let ft = e.file_type()?;
+                if ft.is_dir() {
+                    dirs.push((e.path(), name));
+                } else if ft.is_file() || ft.is_symlink() {
+                    entries.push((name, e.path(), ft.is_symlink()));
+                }
+                if entries.len() + dirs.len() > MAX_HASH_ENTRIES {
+                    return Err(io::Error::other(".ruse/ has too many entries to hash"));
+                }
+            }
+        }
+    }
+    entries.sort();
+    let mut h = Sha256::new();
+    h.update(b"ruse-trust-v1\0");
+    let mut total = 0u64;
+    for (name, path, link) in &entries {
+        let bytes = if *link {
+            os_bytes(std::fs::read_link(path)?.as_os_str()).to_vec()
+        } else {
+            std::fs::read(path)?
+        };
+        total += bytes.len() as u64;
+        if total > MAX_HASH_BYTES {
+            return Err(io::Error::other(".ruse/ is too large to hash"));
+        }
+        h.update(if *link { b"L" } else { b"F" });
+        h.update(name);
+        h.update(b"\0");
+        h.update((bytes.len() as u64).to_be_bytes());
+        h.update(&bytes);
+    }
+    Ok(format!("sha256:{}", hex(&h.finalize())))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(unix)]
+fn os_bytes(s: &OsStr) -> &[u8] {
+    std::os::unix::ffi::OsStrExt::as_bytes(s)
+}
+
+#[cfg(not(unix))]
+fn os_bytes(s: &OsStr) -> &[u8] {
+    s.as_encoded_bytes()
+}
+
+/// The user-side trust records: one JSON file per workspace root in [`TrustStore::dir`], named by the hex
+/// SHA-256 of the canonical root path, holding `{"root": …, "hash": …}` (the [`ruse_dir_hash`] at grant).
+pub struct TrustStore {
+    dir: PathBuf,
+}
+
+impl TrustStore {
+    #[must_use]
+    pub fn new(dir: PathBuf) -> TrustStore {
+        TrustStore { dir }
+    }
+
+    /// The record file for `root` (canonicalized when it exists).
+    fn file(&self, root: &Path) -> (PathBuf, String) {
+        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        let name = hex(&Sha256::digest(os_bytes(root.as_os_str())));
+        (self.dir.join(name), root.to_string_lossy().into_owned())
+    }
+
+    /// The content hash recorded for `root`, if it is trusted.
+    #[must_use]
+    pub fn lookup(&self, root: &Path) -> Option<String> {
+        let (file, root) = self.file(root);
+        let text = std::fs::read_to_string(file).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+        // The name is a hash of the root; the stored root guards against a mismatched file.
+        (v.get("root")?.as_str()? == root).then(|| v.get("hash")?.as_str().map(str::to_string))?
+    }
+
+    /// Record `root` as trusted with content hash `hash` (write-new-then-rename; the directory is private
+    /// to the user on Unix). Returns the record's path.
+    ///
+    /// # Errors
+    /// The directory or the file cannot be written.
+    pub fn record(&self, root: &Path, hash: &str) -> io::Result<PathBuf> {
+        let (file, root) = self.file(root);
+        std::fs::create_dir_all(&self.dir)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&self.dir, std::fs::Permissions::from_mode(0o700))?;
+        }
+        let body = serde_json::json!({ "root": root, "hash": hash }).to_string() + "\n";
+        let tmp = file.with_extension("tmp");
+        std::fs::write(&tmp, body)?;
+        std::fs::rename(&tmp, &file)?;
+        Ok(file)
+    }
+
+    /// Delete `root`'s record. Returns whether there was one.
+    ///
+    /// # Errors
+    /// The record exists and cannot be removed.
+    pub fn remove(&self, root: &Path) -> io::Result<bool> {
+        let (file, _) = self.file(root);
+        match std::fs::remove_file(file) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 #[cfg(test)]

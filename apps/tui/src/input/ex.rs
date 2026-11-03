@@ -52,8 +52,12 @@ pub enum Ex {
     /// `:diagnostics`/`:diags`/`:diag` — list the focused buffer's diagnostics; Enter jumps (F-014).
     Diagnostics,
     /// `:trust` — trust the current workspace for this session, allowing language servers to start
-    /// (INV-TRUST-1, D-058). ruse-specific (no Vim counterpart).
+    /// (INV-TRUST-1, D-058), and record the content-bound trust that loads its `.ruse/config.toml` (D-062).
     Trust,
+    /// `:untrust` (or nvim's `:trust ++remove`) — delete the trust record and take back the session grant.
+    Untrust,
+    /// `:inspect config [key]` — the config layers, values with their sources, and diagnostics (#614).
+    InspectConfig(Option<String>),
     /// `:registers`/`:reg`/`:display` — view the non-empty registers (F-029). View-only.
     Registers,
     /// `:digraphs`/`:dig` — list the curated digraph table (code + glyph + decimal) in a view-only overlay.
@@ -1165,6 +1169,11 @@ pub fn parse_ex(line: &str) -> Ex {
         "codeaction" | "codeactions" => Ex::CodeAction,
         "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
         "trust" => Ex::Trust,
+        "untrust" | "trust ++remove" => Ex::Untrust,
+        "inspect config" => Ex::InspectConfig(None),
+        l if l.starts_with("inspect config ") => {
+            Ex::InspectConfig(Some(l["inspect config ".len()..].trim().to_string()))
+        }
         "registers" | "reg" | "display" | "di" => Ex::Registers,
         "digraphs" | "digraph" | "dig" => Ex::Digraphs,
         "marks" => Ex::Marks,

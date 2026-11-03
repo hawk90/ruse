@@ -145,6 +145,13 @@ impl LspCoordinator {
         };
     }
 
+    /// `:untrust` — take back the session's trust: no language server starts from now on (one already
+    /// running keeps running until it exits).
+    pub(crate) fn revoke_trust(&mut self) {
+        self.trusted = false;
+        self.trust_notice_shown = false;
+    }
+
     /// The `(server key, uri)` for the FOCUSED buffer, if it is backed by a spawned+opened language server.
     fn focused_server(&self, ws: &Workspace, files: &Files) -> Option<(&'static str, String)> {
         let bid = ws.focused_buffer();

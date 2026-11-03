@@ -41,6 +41,7 @@ pub mod shell;
 pub(crate) mod app;
 // CTRL-C during a long command: the terminal side of `ruse_core::interrupt` (#682, #898).
 pub(crate) mod breakcheck;
+pub(crate) mod config;
 pub(crate) mod health;
 pub(crate) mod indent;
 pub(crate) mod log;

@@ -125,6 +125,8 @@ const RUSE_COMMANDS: &[&str] = &[
     "rename",
     "rn",
     "trace",
+    "untrust",
+    "inspect",
 ];
 
 /// A command modifier (`:help :command-modifiers`) ruse honours.
@@ -132,7 +134,7 @@ const RUSE_COMMANDS: &[&str] = &[
 enum Modifier {
     Silent,
     Unsilent,
-    /// Accepted with no effect: ruse prints nothing that depends on `'verbose'`.
+    /// `:verbose`: `:set opt?` also says which config file set the value (#614).
     Verbose,
     /// Accepted with no effect: ruse has no autocommands.
     NoAutocmd,
@@ -161,6 +163,8 @@ pub struct ExModifiers {
     pub silent: bool,
     /// `:silent!` — its error messages are not shown either, and an error does not end the `|` chain.
     pub silent_errors: bool,
+    /// `:verb[ose]` — `:set opt?` adds the `Last set from` line (`:help :set-verbose`).
+    pub verbose: bool,
     /// `:keepj[umps]` — the command adds nothing to the jumplist or the change list.
     pub keep_jumps: bool,
     /// `:keepp[atterns]` — the command leaves the last search and substitute patterns as they were.
@@ -317,7 +321,8 @@ pub fn strip_modifiers(line: &str) -> (ExModifiers, &str) {
                 mods.silent = false;
                 mods.silent_errors = false;
             }
-            Modifier::Verbose | Modifier::NoAutocmd => {}
+            Modifier::Verbose => mods.verbose = true,
+            Modifier::NoAutocmd => {}
             Modifier::KeepJumps => mods.keep_jumps = true,
             Modifier::KeepPatterns => mods.keep_patterns = true,
             Modifier::KeepAlt => mods.keep_alt = true,
@@ -411,6 +416,7 @@ mod tests {
                 ExModifiers {
                     silent: true,
                     silent_errors: true,
+                    verbose: true,
                     ..ExModifiers::default()
                 },
                 "s/a/b/"

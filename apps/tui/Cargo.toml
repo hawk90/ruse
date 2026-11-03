@@ -44,6 +44,10 @@ serde_json = "1.0.154"
 tree-sitter-md = "0.5.4"
 # F-014 file URIs: RFC 3986 percent-encoding of paths (DEP-PERCENT-ENCODING). Never hand-roll escapes (D-034).
 percent-encoding = "2.3.2"
+# #614 config loader: TOML config files with source spans for provenance (DEP-TOML; parse only, no writer).
+toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }
+# #614 workspace trust: the content hash of `.ruse/` a trust record holds is SHA-256 (DEP-CRYPTO-HASH).
+sha2 = "0.10.9"
 
 # F-010 live capability probe: a `poll()` liveness net so startup never hangs on a terminal that
 # never answers DA1 (the fence, not the clock, decides support). Unix-only; other targets fall back

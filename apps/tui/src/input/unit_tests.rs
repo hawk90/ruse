@@ -3735,6 +3735,13 @@ mod tests {
         assert_eq!(parse_ex("diags"), Ex::Diagnostics);
         assert_eq!(parse_ex("diag"), Ex::Diagnostics);
         assert_eq!(parse_ex("trust"), Ex::Trust);
+        assert_eq!(parse_ex("untrust"), Ex::Untrust);
+        assert_eq!(parse_ex("trust ++remove"), Ex::Untrust);
+        assert_eq!(parse_ex("inspect config"), Ex::InspectConfig(None));
+        assert_eq!(
+            parse_ex("inspect config editor.tab_width"),
+            Ex::InspectConfig(Some("editor.tab_width".into()))
+        );
         assert_eq!(parse_ex("registers"), Ex::Registers);
         assert_eq!(parse_ex("reg"), Ex::Registers);
         assert_eq!(parse_ex("display"), Ex::Registers);

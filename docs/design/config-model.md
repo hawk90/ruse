@@ -65,7 +65,7 @@ never touch a security boundary.
   (INV-PRIORITY / INV-PROFILE-ISOLATION). This doc only covers how keymap *config layers* stack (Keymap config).
 - Not the plugin capability/permission grant flow (that is architecture §4.4 / §10); C-CONFIG only stores
   the declarative settings, never the trust decision.
-- Not the config file **surface syntax**. The on-disk format (TOML/RON/…) is implementation-defined; this
+- Not the config file **surface syntax**. The on-disk format is implementation-defined (the loader reads TOML, `config.toml`, #614); this
   doc specifies the model, and the authored schema is YAML. The wire model is a typed key→value map.
 - Not profiles-as-behavior-policy beyond the `input.profile` selector (bounded-scope profiles are CFG §10 /
   architecture §11.1, tracked separately).
@@ -223,9 +223,31 @@ contents** at the time of the grant (an absent `.ruse/` hashes as empty). On eve
 recomputed. If it differs — a pull, a branch switch, a merged change — the workspace layer is **stale**: it is
 treated as untrusted, kept inert, shown as `stale` in `:inspect config`, and not loaded until the user
 re-confirms (for example `:trust` again), which records the new hash. Content binding applies to the config
-layer; the D-058 language-server gate stays root-bound. The hash algorithm, the exact file set hashed and the
-location of the user-side record are left to the loader implementation (a collision-resistant hash is
-required). Full rationale: [RFC-0021](../rfc/proposed/RFC-0021-workspace-config-boundary.md).
+layer; the D-058 language-server gate stays root-bound. Full rationale:
+[RFC-0021](../rfc/proposed/RFC-0021-workspace-config-boundary.md).
+
+The loader (#614, `apps/tui/src/trust.rs`, `apps/tui/src/config.rs`) settles the details:
+
+- **Hash** — SHA-256 (DEP-CRYPTO-HASH, RustCrypto `sha2`), recorded as `sha256:<hex>`.
+- **File set** — every entry under `<root>/.ruse/`, walked recursively and sorted by relative path
+  (`/`-separated bytes). The input starts with the tag `ruse-trust-v1\0`. A regular file adds `F`, its path,
+  `\0`, its length as 8 big-endian bytes and its bytes. A symbolic link is never followed; it adds `L`, its
+  path, `\0`, and the length and bytes of its target. Directories are walked, and other entries are skipped.
+  An absent `.ruse/` is the empty set (only the tag). Hashing gives up past 10 000 entries or 64 MiB, and the
+  layer is then stale.
+- **Record** — one JSON file per root, `{"root": …, "hash": …}`, in
+  `${XDG_STATE_HOME:-~/.local/state}/ruse/trust/`. The file is named by the hex SHA-256 of the canonical
+  absolute root path, as in Helix, and the directory is mode 0700. Nothing is written under the repository.
+- **Commands** — `:trust` grants the session's language-server trust (D-058, unchanged), writes the record,
+  and reloads the config so the workspace layer applies at once. `:untrust` (nvim spelling:
+  `:trust ++remove`) deletes the record, takes back the session grant, and reloads. A value that came from the
+  workspace goes back to the layer below, or to the default. Options typed with `:set` keep their values.
+- **Links** — the loader reads `.ruse/config.toml` only as a regular file inside a real `.ruse/` directory.
+  A symbolic link at either place quarantines the layer, so nothing outside the hashed set can load.
+- **Language servers** — a trust record is not a language-server grant. At startup that comes from
+  `workspace.trusted_roots` in the user layer, or `RUSE_TRUSTED_WORKSPACES`. A `workspace.trusted_roots`
+  entry does not load workspace config either: config needs a record. Whether a persisted record should also
+  grant language servers is a D-058 re-evaluation, left open.
 
 ### Deriving config keys from parity — depth-first, never bulk
 

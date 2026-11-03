@@ -505,6 +505,15 @@ pub(crate) struct Session {
     fixeol_on: bool,
     /// `'scrolloff'` as set (nvim keeps any number; a negative one keeps no context here).
     scrolloff: i64,
+    /// Where each option's value came from, for `:verbose set opt?` (#614).
+    opt_sources: HashMap<crate::input::set_cmd::Opt, crate::app::set_exec::OptSource>,
+    /// The command being run came after `:verbose`.
+    ex_verbose: bool,
+    /// The loaded config layers (#614), for `:inspect config`; empty in a headless session.
+    pub(crate) config: crate::config::Config,
+    /// Where the config layers and trust records live, when the session loads config (the binary does,
+    /// the headless harness does not), so `:trust` / `:untrust` can reload the workspace layer.
+    pub(crate) config_paths: Option<crate::config::ConfigPaths>,
     /// The last `:s` (pattern, replacement, flags) — recorded on every substitute so `&` can repeat it (F-009).
     last_substitute: Option<(String, String, ruse_core::SubFlags)>,
     /// The last executed Ex command-line (WITHOUT the leading `:`) — Vim's `":` register (`:help quote_:`),
@@ -624,6 +633,10 @@ impl Session {
             incsearch_on: true,
             fixeol_on: false,
             scrolloff: SCROLLOFF,
+            opt_sources: HashMap::new(),
+            ex_verbose: false,
+            config: crate::config::Config::default(),
+            config_paths: None,
             last_substitute: None,
             last_ex_line: None,
             last_shell: None,
@@ -1071,6 +1084,102 @@ impl Session {
     /// `'scrolloff'` as the rows of context the viewport keeps.
     fn scrolloff_rows(&self) -> usize {
         usize::try_from(self.scrolloff).unwrap_or(0)
+    }
+
+    /// Install the loaded config ([`Session::config`]) into the options, with provenance (#614). At
+    /// `startup` nothing goes into the trace and the trace's starting options are read again afterwards
+    /// (a trace starts from the configured values, RFC-0020 R4); a reload mid-session records its sets.
+    pub(crate) fn apply_config(&mut self, startup: bool) {
+        let mut scratch = Vec::new();
+        let Session {
+            ws,
+            recorded,
+            engine,
+            hlsearch_on,
+            search_hl,
+            incsearch_on,
+            fixeol_on,
+            scrolloff,
+            folds,
+            fold_method,
+            foldlevel,
+            foldenable,
+            fold_rev,
+            opt_sources,
+            config,
+            ..
+        } = self;
+        let mut host = crate::app::set_exec::OptionHost {
+            ws,
+            recorded: if startup { &mut scratch } else { recorded },
+            engine,
+            hlsearch_on,
+            search_hl,
+            incsearch_on,
+            fixeol_on,
+            scrolloff,
+            folds,
+            fold_method,
+            foldlevel,
+            foldenable,
+            fold_rev,
+            sources: opt_sources,
+        };
+        crate::app::set_exec::apply_config(config, &mut host);
+        if startup {
+            self.start_options = self.ws.focused().view.editing_options();
+        }
+    }
+
+    /// `:trust` (`grant`) / `:untrust`: write or delete the user-side trust record of the workspace root
+    /// (its `.ruse/` content hash, D-062), then reload the config so the workspace layer comes in or goes.
+    /// `:untrust` also takes back the session's language-server grant (servers already running keep
+    /// running until they exit).
+    fn change_config_trust(&mut self, grant: bool) {
+        if !grant {
+            self.lsp.revoke_trust();
+        }
+        let paths = self.config_paths.clone();
+        let target = paths.as_ref().and_then(|p| {
+            Some((
+                p.workspace_root.clone()?,
+                crate::trust::TrustStore::new(p.trust_dir.clone()?),
+            ))
+        });
+        let Some((root, store)) = target else {
+            if !grant {
+                self.status = "workspace untrusted for this session".into();
+            }
+            return;
+        };
+        let note = if grant {
+            match crate::trust::ruse_dir_hash(&root).and_then(|h| store.record(&root, &h)) {
+                Ok(_) => None,
+                Err(e) => Some(format!("trust record not written: {e}")),
+            }
+        } else {
+            Some(match store.remove(&root) {
+                Ok(true) => "workspace untrusted: its config is no longer loaded".to_string(),
+                Ok(false) => "workspace untrusted for this session (it had no trust record)".into(),
+                Err(e) => format!("trust record not removed: {e}"),
+            })
+        };
+        if let Some(paths) = paths {
+            self.config = crate::config::load(&paths);
+            self.apply_config(false);
+        }
+        let workspace_loaded = self.config.layers.iter().any(|l| {
+            l.kind == crate::config::LayerKind::Workspace
+                && l.state == crate::config::LayerState::Loaded
+        });
+        match note {
+            Some(n) if grant => self.status = format!("{}; {n}", self.status),
+            Some(n) => self.status = n,
+            None if workspace_loaded => {
+                self.status = format!("{}; workspace config loaded", self.status);
+            }
+            None => {}
+        }
     }
 
     fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
@@ -2336,8 +2445,10 @@ impl Session {
                 self.ws.set_keep_jumps(true);
             }
             self.ex_filter = mods.filter.clone();
+            self.ex_verbose = mods.verbose;
             self.execute_ex_one(cmd.to_string(), frame);
             self.ex_filter = None;
+            self.ex_verbose = false;
             if !jumps_were_kept {
                 self.ws.set_keep_jumps(false);
             }
@@ -2413,6 +2524,9 @@ impl Session {
             incsearch_on,
             fixeol_on,
             scrolloff,
+            opt_sources,
+            ex_verbose,
+            config,
             last_substitute,
             last_shell,
             overlay,
@@ -2537,6 +2651,7 @@ impl Session {
         };
         // An Ex line a command asks to run after it (`:e +cmd`).
         let mut then_run = None;
+        let mut trust_change = None;
         match ex {
             Ex::NoHighlight => *search_hl = None, // `:noh` clears the search highlight (F-009 #1)
             // `:set` / `:setlocal` / `:setglobal` (#614): the grammar is `input/set_cmd.rs`, the values it
@@ -2556,8 +2671,10 @@ impl Session {
                     foldlevel,
                     foldenable,
                     fold_rev,
+                    sources: opt_sources,
                 };
-                let out = crate::app::set_exec::run_set(&line, &mut host, cols as usize);
+                let out =
+                    crate::app::set_exec::run_set(&line, &mut host, cols as usize, *ex_verbose);
                 crate::app::ex_more::show_rows(out.rows, status, overlay);
                 if let Some(e) = out.error {
                     *status = e;
@@ -2569,8 +2686,27 @@ impl Session {
                 lsp.on_ex(&ex, ws, files, snapshot, status);
             }
             // `:trust` (D-058): the user grants workspace trust for this session; language servers
-            // start on the next frame's sync.
-            Ex::Trust => lsp.grant_trust(status),
+            // start on the next frame's sync. It also records the content-bound trust of the workspace
+            // config (D-062, #614), and `:untrust` removes that record (both below, after this match).
+            Ex::Trust => {
+                lsp.grant_trust(status);
+                trust_change = Some(true);
+            }
+            Ex::Untrust => trust_change = Some(false),
+            // `:inspect config [key]` (CFG-PROV-001): the layers, their state, every value a layer set
+            // with its source, and the diagnostics; or one key's layer stack.
+            Ex::InspectConfig(key) => {
+                let rows = match key.as_deref() {
+                    None => Some(crate::config::inspect_all(config)),
+                    Some(k) => crate::config::inspect_key(config, k),
+                };
+                match rows {
+                    Some(rows) => crate::app::ex_more::show_rows(rows, status, overlay),
+                    None => {
+                        *status = format!("unknown config key: {}", key.unwrap_or_default());
+                    }
+                }
+            }
             // `:diagnostics` (F-014): open a picker over the focused buffer's already-collected
             // diagnostics (no server round-trip); Enter jumps to the selected one.
             Ex::Diagnostics => {
@@ -3533,6 +3669,9 @@ impl Session {
             Ex::Fail(msg) => *status = msg,
             Ex::Unknown(s) => *status = format!("E492: Not an editor command: {s}"),
         }
+        if let Some(grant) = trust_change {
+            self.change_config_trust(grant);
+        }
         if let Some(line) = then_run {
             let opened = std::mem::take(&mut self.status);
             self.execute_ex_one(line, frame);
@@ -3983,17 +4122,46 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         },
     };
 
-    // Profile selection (F-012 / F-013): no config loader exists yet, so `RUSE_PROFILE` picks the profile
-    // (the same env-override seam as the terminal caps). `emacs` = Emacs, `native` = Native, else Vim.
-    let profile = match std::env::var("RUSE_PROFILE").as_deref() {
-        Ok("emacs") => "emacs",
-        Ok("native") => "native",
+    // The config layers (#614): machine, user, and the workspace's `.ruse/config.toml` when its trust record
+    // matches. Loading never fails; the problems are diagnostics, shown once on the status line.
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let config_paths = crate::config::ConfigPaths::from_env(&cwd);
+    let config = crate::config::load(&config_paths);
+    for d in &config.diagnostics {
+        tracing::warn!(code = d.code, "{}", d.message);
+    }
+    let status = match crate::config::startup_notice(&config) {
+        Some(note) if status == "ruse — :q to quit" => note,
+        Some(note) => format!("{status} · {note}"),
+        None => status,
+    };
+    // Profile selection (F-012 / F-013): `RUSE_PROFILE` for this run, else the config's `input.profile`.
+    // `emacs` = Emacs, `native` = Native, else Vim.
+    let configured_profile = config.get("input.profile").and_then(|e| match &e.value {
+        crate::config::Value::Str(s) => Some(s.clone()),
+        _ => None,
+    });
+    let profile = match std::env::var("RUSE_PROFILE")
+        .ok()
+        .or(configured_profile)
+        .as_deref()
+    {
+        Some("emacs") => "emacs",
+        Some("native") => "native",
         _ => "vim",
     };
     // INV-TRUST-1 / D-058: language servers execute workspace code (build scripts, proc-macros), so they
-    // start only once the user trusts the workspace (`RUSE_TRUSTED_WORKSPACES` at startup, or `:trust`).
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let trusted = crate::trust::workspace_trusted(&cwd);
+    // start only once the user trusts the workspace: the user config's `workspace.trusted_roots` or
+    // `RUSE_TRUSTED_WORKSPACES` at startup, or `:trust`.
+    let configured_roots: Vec<PathBuf> = match config.get("workspace.trusted_roots") {
+        Some(crate::config::Effective {
+            value: crate::config::Value::List(roots),
+            ..
+        }) => roots.iter().map(PathBuf::from).collect(),
+        _ => Vec::new(),
+    };
+    let trusted =
+        crate::trust::workspace_trusted(&cwd) || crate::trust::is_trusted(&cwd, configured_roots);
     let mut s = Session::new(SessionInit {
         path,
         fmt,
@@ -4009,6 +4177,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         trusted,
         rescue: true,
     });
+    s.config = config;
+    s.config_paths = Some(config_paths);
+    s.apply_config(true);
     // `"+`/`"*` (`:help quoteplus`): inject the real OS-clipboard provider (shell-out to pbcopy/wl-copy/
     // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run
     // still works — `"+p` just pastes nothing.

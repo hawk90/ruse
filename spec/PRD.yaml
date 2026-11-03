@@ -375,7 +375,7 @@ features:
     # :set all, all&, bare :set (options that differ from ruse's default), :setlocal / :setglobal (local
     # per View for ts/sw/et/tw with the Workspace's global copy; ic/scs are global and reach every window),
     # nvim's messages (E474/E487/E488/E518/E521) and its stop-at-the-first-error order; 'scrolloff' is
-    # settable. `&` restores ruse's default, `&vim` Vim's. The config loader is the follow-up (#614 part 2).
+    # settable. `&` restores ruse's default, `&vim` Vim's. #614 part 2: the config loader (config.rs; machine / user ~/.config/ruse/config.toml / trusted workspace .ruse/config.toml) installs ts sw et tw so ic scs hls is top fixeol and input.profile, `:verbose set opt?` names the file and line, `:inspect config [key]` lists layers, sources and diagnostics, and `:trust` / `:untrust` write and delete the content-bound trust record (D-062).
     status: done
     depends_on: [C-INPUT, C-COMMAND]
     summary: A real namespace with its own line editor, not an ad-hoc text buffer on the UI.
@@ -715,7 +715,7 @@ features:
     # progress: InputProfile{Vim,Emacs,..} on the engine; `feed` branches to the non-modal `feed_emacs` BEFORE
     # any Vim modal handling (Emacs has no Normal/Insert grammar). apps/tui/src/input/emacs.rs holds the keymap
     # layer stack, the C-x prefix map, a numeric C-u path, M-x and the kill commands. `RUSE_PROFILE=
-    # emacs` selects it (no config loader yet). REMAINING includes the raw prefix argument and the other prefix
+    # emacs` or the config key `input.profile = "emacs"` selects it (#614). REMAINING includes the raw prefix argument and the other prefix
     # maps (D-049, #650), the command model (#651), Vim-frontend interception (#604), the yank-pop kill-ring view
     # (D-026, #653), the mark ring (D-027, #654) and keyboard macros (#657).
     status: planned

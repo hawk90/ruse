@@ -1,5 +1,5 @@
 //! Running a parsed `:set` / `:setlocal` / `:setglobal` line (#614) against the option values the
-//! session and the core hold.
+//! session and the core hold, and the provenance each value carries (`:verbose set opt?`).
 //!
 //! The grammar and the option table are `input/set_cmd.rs`; this module owns where each value lives:
 //! the core's View options (`ic`, `scs`, `ts`, `sw`, `et`, `tw`, local per View plus the Workspace's global
@@ -17,6 +17,20 @@ use crate::input::set_cmd::{
 };
 use crate::input::{FoldMethod, InputEngine};
 
+/// Where an option's value came from (CFG-PROV-001): what `:verbose set opt?` reports. An option with no
+/// entry still has its default.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) enum OptSource {
+    /// Typed (`:set`): nvim prints no `Last set from` line for it, and a config reload leaves it alone.
+    Typed,
+    /// A config file: its layer, the file and the 1-based line.
+    Config {
+        layer: &'static str,
+        file: String,
+        line: usize,
+    },
+}
+
 /// The option values a `:set` line reads and writes, borrowed from the session for one command.
 pub(crate) struct OptionHost<'a> {
     pub ws: &'a mut Workspace,
@@ -32,6 +46,7 @@ pub(crate) struct OptionHost<'a> {
     pub foldlevel: &'a mut HashMap<DocumentId, usize>,
     pub foldenable: &'a mut HashMap<DocumentId, bool>,
     pub fold_rev: &'a mut HashMap<DocumentId, Revision>,
+    pub sources: &'a mut HashMap<Opt, OptSource>,
 }
 
 /// What a `:set` line printed: the rows (`:set ts?`, listings) and the error that stopped it, if any.
@@ -162,6 +177,16 @@ impl OptionHost<'_> {
             crate::folds::apply_foldlevel(fv, level);
         }
     }
+
+    /// The `Last set from` line `:verbose set opt?` adds when a config file set the value.
+    fn last_set(&self, opt: Opt) -> Option<String> {
+        match self.sources.get(&opt)? {
+            OptSource::Typed => None,
+            OptSource::Config { layer, file, line } => Some(format!(
+                "\tLast set from {file} line {line} ({layer} config)"
+            )),
+        }
+    }
 }
 
 fn level(scope: SetScope) -> OptionLevel {
@@ -173,8 +198,13 @@ fn level(scope: SetScope) -> OptionLevel {
 }
 
 /// Run a parsed `:set` line in order, stopping at the first error (nvim's `do_set`). `cols` is the
-/// screen width a listing lays out in.
-pub(crate) fn run_set(line: &SetLine, host: &mut OptionHost<'_>, cols: usize) -> SetOutcome {
+/// screen width a listing lays out in; `verbose` is the `:verbose` modifier.
+pub(crate) fn run_set(
+    line: &SetLine,
+    host: &mut OptionHost<'_>,
+    cols: usize,
+    verbose: bool,
+) -> SetOutcome {
     let mut out = SetOutcome::default();
     let global = line.scope == SetScope::Global;
     let lvl = level(line.scope);
@@ -189,11 +219,17 @@ pub(crate) fn run_set(line: &SetLine, host: &mut OptionHost<'_>, cols: usize) ->
     }
     let mut notice = None;
     for (arg, text) in &line.args {
-        let write = |host: &mut OptionHost<'_>, opt: Opt, val: OptVal| host.put(opt, lvl, val);
+        let write = |host: &mut OptionHost<'_>, opt: Opt, val: OptVal| {
+            host.put(opt, lvl, val);
+            host.sources.insert(opt, OptSource::Typed);
+        };
         match arg {
             SetArg::Show(opt) => {
                 out.rows
                     .push(show_one(opt_def(*opt), host.get(*opt, global)));
+                if verbose {
+                    out.rows.extend(host.last_set(*opt));
+                }
             }
             SetArg::Bool(opt, on) => write(host, *opt, OptVal::Bool(*on)),
             SetArg::Toggle(opt) => {
@@ -208,6 +244,7 @@ pub(crate) fn run_set(line: &SetLine, host: &mut OptionHost<'_>, cols: usize) ->
                 if opt_def(*opt).locality == Locality::Local {
                     let g = host.get(*opt, true);
                     host.put(*opt, OptionLevel::Local, g);
+                    host.sources.insert(*opt, OptSource::Typed);
                 }
             }
             SetArg::Assign { opt, op, val } => {
@@ -260,5 +297,70 @@ fn title(scope: SetScope) -> &'static str {
         SetScope::Both => "--- Options ---",
         SetScope::Local => "--- Local option values ---",
         SetScope::Global => "--- Global option values ---",
+    }
+}
+
+/// The config key an option persists as (`spec/config-schema.yaml`), if any.
+#[must_use]
+pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
+    Some(match opt {
+        Opt::TabStop => "editor.tab_width",
+        Opt::ShiftWidth => "editor.shift_width",
+        Opt::ExpandTab => "editor.indent_style",
+        Opt::TextWidth => "editor.textwidth",
+        Opt::ScrollOff => "editor.scrolloff",
+        Opt::IgnoreCase => "editor.ignorecase",
+        Opt::SmartCase => "editor.smartcase",
+        Opt::HlSearch => "editor.hlsearch",
+        Opt::IncSearch => "editor.incsearch",
+        Opt::TildeOp => "editor.tildeop",
+        Opt::FixEol => "editor.fixeol",
+        _ => return None,
+    })
+}
+
+/// A config value as the option's value (`editor.indent_style = "space"` is `'expandtab'`).
+fn option_value(opt: Opt, v: &crate::config::Value) -> Option<OptVal> {
+    use crate::config::Value;
+    match (opt, v) {
+        (Opt::ExpandTab, Value::Str(s)) => Some(OptVal::Bool(s == "space")),
+        (_, Value::Bool(b)) => Some(OptVal::Bool(*b)),
+        (_, Value::Int(n)) => Some(OptVal::Num(*n)),
+        _ => None,
+    }
+}
+
+/// Install `cfg`'s values into the options (`:set` writes both copies), with their provenance. An option
+/// typed with `:set` this session is left alone, and one an earlier config set but `cfg` no longer does
+/// (`:untrust` made the workspace layer inert) goes back to ruse's default.
+pub(crate) fn apply_config(cfg: &crate::config::Config, host: &mut OptionHost<'_>) {
+    for def in OPTIONS {
+        let Some(key) = config_key(def.opt) else {
+            continue;
+        };
+        if host.sources.get(&def.opt) == Some(&OptSource::Typed) {
+            continue;
+        }
+        let found = cfg
+            .get(key)
+            .and_then(|e| Some((e, option_value(def.opt, &e.value)?)));
+        match found {
+            Some((e, v)) => {
+                host.put(def.opt, OptionLevel::Both, v);
+                host.sources.insert(
+                    def.opt,
+                    OptSource::Config {
+                        layer: e.source.layer.label(),
+                        file: crate::config::short_path(&e.source.path),
+                        line: e.source.line,
+                    },
+                );
+            }
+            None => {
+                if host.sources.remove(&def.opt).is_some() {
+                    host.put(def.opt, OptionLevel::Both, def.default);
+                }
+            }
+        }
     }
 }
