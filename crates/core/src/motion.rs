@@ -1318,6 +1318,11 @@ fn find_char_target(
     let ls = line_start(b, cursor);
     let le = line_end(b, cursor); // newline / end position for this line
     let line = std::str::from_utf8(b.get(ls..le)?).ok()?;
+    // A target matches the FIRST char of a cluster only: `f` to a combining mark, an emoji modifier or the
+    // second flag letter finds nothing inside a cluster, as nvim v0.12.6 (`f\u{301}` on `xáb` fails; #909).
+    let starts = line
+        .grapheme_indices(true)
+        .filter_map(|(i, g)| g.chars().next().map(|c| (ls + i, c)));
     // `t`/`T` stop one CHARACTER short of the match: a base with its marks, a flag, a ZWJ sequence (#909).
     let skip = (repeat && till && n == 1).then(|| {
         if forward {
@@ -1328,18 +1333,14 @@ fn find_char_target(
     });
     if forward {
         // Matches strictly after the cursor, in order; take the n-th.
-        let hit = line
-            .char_indices()
-            .map(|(i, c)| (ls + i, c))
+        let hit = starts
             .filter(|&(pos, c)| pos > cursor && c == ch && Some(pos) != skip)
             .nth(n - 1)?
             .0;
         Some(if till { prev_grapheme(b, hit) } else { hit })
     } else {
         // Matches strictly before the cursor; take the n-th counting backward.
-        let hit = line
-            .char_indices()
-            .map(|(i, c)| (ls + i, c))
+        let hit = starts
             .filter(|&(pos, c)| pos < cursor && c == ch && Some(pos) != skip)
             .rev()
             .nth(n - 1)?

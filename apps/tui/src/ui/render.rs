@@ -1717,4 +1717,88 @@ mod render_tests {
             "no fence when unsupported"
         );
     }
+
+    /// #909: every case of Unicode's GraphemeBreakTest (17.0.0, `tests/unicode/`) paints one cell group per
+    /// extended grapheme cluster, in order, and the caret column of each cluster start is where the painter
+    /// put it: the layout never splits a cluster or drifts from the caret. Cases holding a CR are left out:
+    /// the painter prints a buffer CR raw and treats a CR LF cluster as no line break (#821).
+    #[test]
+    fn grapheme_break_test_clusters_paint_whole() {
+        use unicode_segmentation::UnicodeSegmentation;
+        let data = include_str!("../../../../tests/unicode/GraphemeBreakTest-17.0.0.txt");
+        let mut n = 0;
+        for (i, raw) in data.lines().enumerate() {
+            let body = raw.split('#').next().unwrap_or("").trim();
+            if body.is_empty() {
+                continue;
+            }
+            let mut text = String::new();
+            let mut want: Vec<String> = Vec::new();
+            for tok in body.split_whitespace() {
+                match tok {
+                    "÷" => want.push(String::new()),
+                    "×" => {}
+                    hex => {
+                        let cp = u32::from_str_radix(hex, 16).expect("hex code point");
+                        let c = char::from_u32(cp).expect("scalar value");
+                        text.push(c);
+                        want.last_mut().expect("a case opens with ÷").push(c);
+                    }
+                }
+            }
+            want.pop(); // the closing `÷` opens nothing
+            if text.contains('\r') || text.contains('\n') {
+                continue;
+            }
+            let cols = 64u16;
+            let rect = Rect {
+                x: 0,
+                y: 0,
+                w: cols,
+                h: 1,
+            };
+            let mut cur = screen::Screen::new(cols, 1);
+            paint_pane(
+                &mut cur,
+                rect,
+                text.as_bytes(),
+                &[],
+                0,
+                None,
+                None,
+                &[],
+                &[],
+                &[],
+                0,
+                &[],
+                &mut Vec::new(),
+                false,
+                &std::collections::HashMap::new(),
+                &[],
+                TAB_WIDTH,
+            );
+            let mut painted: Vec<(u16, String)> = Vec::new();
+            for col in 0..cols {
+                if let screen::Content::Cluster(g) = cur.cell(0, col).content {
+                    painted.push((col, g.to_string()));
+                }
+            }
+            let got: Vec<&str> = painted.iter().map(|(_, g)| g.as_str()).collect();
+            assert_eq!(got, want, "line {}: {text:?}", i + 1);
+            for ((col, _), (b, _)) in painted.iter().zip(text.grapheme_indices(true)) {
+                let (_, caret) = cursor_cell(
+                    text.as_bytes(),
+                    b,
+                    0,
+                    &[],
+                    &[],
+                    &li(text.as_bytes()),
+                    TAB_WIDTH,
+                );
+                assert_eq!(caret, *col, "caret at byte {b} of line {}: {text:?}", i + 1);
+            }
+            n += 1;
+        }
+        assert!(n > 500, "most cases are checked ({n})");
+    }
 }

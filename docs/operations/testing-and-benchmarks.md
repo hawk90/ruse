@@ -285,6 +285,16 @@ test had missed:
   list) runs next to `Document` through random transactions, undo, redo, saves, anchor creation and removal
   and snapshots, and must agree on the bytes, each anchor's offset and `invalidated` flag (bias and
   span-delete policy, touching edits applied left to right, #758), and the modified flag at the save point.
+  A second model keeps the text as lines and each mark as `(line, column)` and applies whole-line inserts
+  and deletes (both `dd` forms), `o` and in-line edits, undo and redo by what they mean to lines (#906): the
+  document's line anchors, plain `Tracked` positions and the restorable ones (`uh_namedm` swap) must agree
+  with it for `Drop`, `Keep` and `Cursor`.
+- **Registers** (`apps/tui/tests/register_model.rs`). Random yanks, deletes, puts, motions and undos through
+  the headless key path against a shadow model of `:help registers` (`"0`, the `"1`-`"9` ring, `"-`, named
+  and appended registers, `"_`). The model was checked against nvim v0.12.6 on 300 random sessions.
+- **Keymaps** (`apps/tui/src/input/keymap_check.rs`). The static conflict check of ENG-PROFILE-001
+  (#1130): no key is bound twice in one table and no prefix is hidden behind a plain binding, over the
+  Vim namespace layers, the Emacs tiers and `C-x` map, and the Native leader menu.
 - **Shadow consumers.** The line index refreshed by `(buffer, revision)` equals the `pos` scan after any
   edit/undo/redo run (`line_index.rs`). Manual folds follow edits by line anchors (#819): a fold model
   property (`session_fuzz.rs`) marks the lines in a fold through random `dd`/`o`/`O`/`p`/`P`/`J` and the
@@ -293,7 +303,10 @@ test had missed:
 - **Unicode.** The cursor rests on an extended grapheme cluster boundary after any motion and after `x`,
   `<BS>`, typing and undo over wide, combining, ZWJ, flag and jamo text (`properties.rs`); `session_fuzz`
   types and starts from the same pieces. It found `e`/`E`/`de`, `t`/`T`, `g_`, `<BS>` and the phantom-line
-  clamp stepping by code point (fixed with oracle fixtures, #909). UCD conformance files are not run.
+  clamp stepping by code point (fixed with oracle fixtures, #909). The UCD's `GraphemeBreakTest-17.0.0.txt`
+  (`tests/unicode/`) runs through the position conversions, `l`/`h`/`$`, `x`, the word motions and `f`/`t`
+  (`grapheme_conformance.rs`) and through the painter and caret column (`render.rs`); it found `f` landing
+  on a combining mark inside a cluster (#909).
 - **File round trip.** `apps/tui/tests/file_roundtrip.rs` opens and writes back, through the real binary,
   every file in `apps/tui/tests/fixtures/files/` (line-ending mixes, BOMs, no final newline, lone CR, NUL,
   invalid UTF-8, UTF-16, Latin-1, a long line); `persist/encoding.rs` holds the pure property.
@@ -305,8 +318,7 @@ test had missed:
   journal replay, the terminal grid and the LSP framing; `fuzz.yml` runs each for 15 minutes weekly on
   nightly. A crash input is reduced and committed as a regression test or proptest seed.
 
-Still deferred: line-anchor (mark) semantics against a naive model (the store is checked against
-`LineMap`, the same rule), the O(A+E) cost bound as a performance property, and the fault-injection and
+Still deferred: the O(A+E) cost bound as a performance property, and the fault-injection and
 replay-corpus layers.
 
 ### 1.3 Differential parity — `tests/parity/<profile>/*.yaml`

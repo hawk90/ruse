@@ -2468,7 +2468,7 @@ impl InputEngine {
         // dispatch. `C-g` (keyboard-quit) or any unbound key cancels the prefix (Emacs beeps). The prefix
         // is always cleared here, so a single stray key can never leave the engine wedged in a prefix.
         if let Some(prefix) = self.emacs_prefix.take() {
-            return self.feed_emacs_prefix(prefix, key, ctrl);
+            return self.feed_emacs_prefix(prefix, key);
         }
         // `C-u` (universal argument): seed the prefix argument, or multiply an in-progress one by four.
         // It never completes a command — it always leaves the argument pending for the next key.
@@ -2525,27 +2525,14 @@ impl InputEngine {
     }
 
     /// Resolve the second key of an Emacs prefix sequence (F-012). Only the `C-x` map exists in this slice:
-    /// `C-x C-s` saves, `C-x C-c` quits, `C-x u` undoes, `C-x C-x` exchanges point and mark. An unbound key
+    /// [`emacs::EMACS_CX_MAP`] (`C-x C-s` saves, `C-x C-c` quits, `C-x u` undoes, …). An unbound key
     /// (including `C-g`) cancels the prefix and is inert — the prefix was already cleared by the caller, so
     /// the engine is never left wedged.
-    fn feed_emacs_prefix(&mut self, prefix: char, key: KeyEvent, ctrl: bool) -> Feed {
-        if prefix == 'x' {
-            let cmd = match key.code {
-                KeyCode::Char('s') if ctrl => Command::Save, // C-x C-s — save-buffer
-                KeyCode::Char('c') if ctrl => Command::Quit, // C-x C-c — save-buffers-kill-terminal
-                KeyCode::Char('u') if !ctrl => Command::Undo, // C-x u — undo
-                KeyCode::Char('x') if ctrl => Command::ExchangePointMark, // C-x C-x — exchange point/mark
-                KeyCode::Char('u') if ctrl => Command::EmacsCaseRegion {
-                    case: WordCase::Upcase, // C-x C-u — upcase-region
-                },
-                KeyCode::Char('l') if ctrl => Command::EmacsCaseRegion {
-                    case: WordCase::Downcase, // C-x C-l — downcase-region
-                },
-                _ => return Feed::Ignored,
-            };
-            return Feed::Cmd(cmd);
+    fn feed_emacs_prefix(&mut self, prefix: char, key: KeyEvent) -> Feed {
+        match prefix {
+            'x' => emacs::emacs_cx_command(key).map_or(Feed::Ignored, Feed::Cmd),
+            _ => Feed::Ignored,
         }
-        Feed::Ignored
     }
 
     /// Fold a just-produced outcome into the dot-repeat record. In Insert mode, extend the in-flight change
@@ -4615,3 +4602,6 @@ mod unit_tests;
 
 #[cfg(test)]
 mod chord_tests;
+
+#[cfg(test)]
+mod keymap_check;

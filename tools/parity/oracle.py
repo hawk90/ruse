@@ -1659,6 +1659,35 @@ FIXTURES: list[dict] = [
     {"name": "redo_cursor_ex_substitute_all", "lines": ["a", "b", "c"], "keys": ":%s/./X/<CR>uG<C-r>", "setup": UNDO_SETUP},
     {"name": "undo_cursor_ex_substitute_range", "lines": ["a", "  b", "c"], "keys": "G:2,3s/b/X/<CR>u", "setup": UNDO_SETUP},
     {"name": "undo_cursor_ex_substitute_far", "lines": ["abcdef", "b", "  cxx", "d"], "keys": "4l:3s/c/X/<CR>ggu", "setup": UNDO_SETUP},
+    # --- #906 the undo state matrix: where marks and the cursor are after `u`/CTRL-R. Each case ends by
+    #     jumping to the mark (`` `a `` / `'a`, `` `. ``, `` `[ ``, `` `< ``, CTRL-O), so the cursor observes it.
+    #     Lowercase and Visual marks go back to where the undone change found them (`uh_namedm`); the rest
+    #     follow the undo's own line changes (`mark_adjust`). -------------------------------------------------
+    {"name": "undo_mark_after_dd_above", "lines": ["a", "b", "c"], "keys": "jjmaggddu`a", "setup": UNDO_SETUP},
+    {"name": "redo_mark_after_dd_above", "lines": ["a", "b", "c"], "keys": "jjmaggddu<C-r>`a", "setup": UNDO_SETUP},
+    {"name": "undo_mark_column_after_J", "lines": ["aa", "  bbbb"], "keys": "j3|makJu`a", "setup": UNDO_SETUP},
+    {"name": "redo_mark_column_after_J", "lines": ["aa", "  bbbb"], "keys": "j3|makJu<C-r>`a", "setup": UNDO_SETUP},
+    {"name": "undo_mark_after_charwise_delete_across_lines", "lines": ["abc", "def ghi"], "keys": "jwmaggld/h<CR>u`a",
+     "setup": UNDO_SETUP},
+    {"name": "undo_mark_column_after_insert_before", "lines": ["abcdef"], "keys": "4|ma0ixy<Esc>u`a", "setup": UNDO_SETUP},
+    {"name": "undo_mark_column_after_x_before", "lines": ["abcdef"], "keys": "4|ma0xxu`a", "setup": UNDO_SETUP},
+    {"name": "undo_mark_after_O_above", "lines": ["a", "b"], "keys": "jmaOx<Esc>u`a", "setup": UNDO_SETUP},
+    {"name": "undo_mark_on_a_line_the_undo_deletes", "lines": ["a", "b"], "keys": "ox<Esc>mau`a", "setup": UNDO_SETUP},
+    {"name": "undo_two_steps_mark", "lines": ["a", "b", "c", "d"], "keys": "Gmaggdddduu`a", "setup": UNDO_SETUP},
+    {"name": "undo_uppercase_mark_after_dd", "lines": ["a", "b", "c"], "keys": "jmAddu`A", "setup": UNDO_SETUP},
+    {"name": "undo_uppercase_mark_after_dd_above", "lines": ["a", "b", "c"], "keys": "jjmAggddu`A", "setup": UNDO_SETUP},
+    {"name": "undo_last_change_mark", "lines": ["abc", "def"], "keys": "jlxggu`.", "setup": UNDO_SETUP},
+    {"name": "undo_change_start_mark", "lines": ["abc def", "ghi"], "keys": "wdwu0`[", "setup": UNDO_SETUP},
+    {"name": "undo_change_end_mark", "lines": ["abc def", "ghi"], "keys": "wdwu0`]", "setup": UNDO_SETUP},
+    {"name": "undo_visual_mark_after_dd_above", "lines": ["a", "bcd", "e"], "keys": "jlvl<Esc>ggddu`<", "setup": UNDO_SETUP},
+    {"name": "undo_jumplist_after_dd_above", "lines": ["a", "b", "c", "d"], "keys": "Gggjddu<C-o>", "setup": UNDO_SETUP},
+    # --- #909 `f`/`t` match the first char of a cluster only: a combining mark or an emoji modifier inside one
+    #     is never a target. -----------------------------------------------------------------------------------
+    {"name": "f_combining_mark_finds_nothing", "lines": ["xáb"], "keys": "f́"},
+    {"name": "F_combining_mark_finds_nothing", "lines": ["xábc"], "keys": "$F́"},
+    {"name": "f_emoji_modifier_finds_nothing", "lines": ["x\U0001F476\U0001F3FFy"], "keys": "f\U0001F3FF"},
+    {"name": "f_cluster_base_matches", "lines": ["xáb"], "keys": "fa"},
+    {"name": "t_stops_before_a_composed_char", "lines": ["xábc"], "keys": "tb"},
     # --- #678/#939 undo steps: the keys are fed as typed, so Vim syncs undo before every Normal or Ex command
     #     and each is one step; an Insert session is one step until a cursor key, CTRL-G u or i_CTRL-O
     #     breaks it; the keys of one `@{reg}` (not typed) are one step. ------------------------------------

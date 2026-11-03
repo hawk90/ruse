@@ -36654,6 +36654,641 @@
       }
     },
     {
+      "name": "undo_mark_after_dd_above",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jjmaggddu`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "redo_mark_after_dd_above",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jjmaggddu<C-r>`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "b",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_mark_column_after_J",
+      "lines": [
+        "aa",
+        "  bbbb"
+      ],
+      "keys": "j3|makJu`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "aa",
+          "  bbbb"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "redo_mark_column_after_J",
+      "lines": [
+        "aa",
+        "  bbbb"
+      ],
+      "keys": "j3|makJu<C-r>`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "aa bbbb"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_mark_after_charwise_delete_across_lines",
+      "lines": [
+        "abc",
+        "def ghi"
+      ],
+      "keys": "jwmaggld/h<CR>u`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc",
+          "def ghi"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "c\ndef g",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "undo_mark_column_after_insert_before",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "4|ma0ixy<Esc>u`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_mark_column_after_x_before",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "4|ma0xxu`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "bcdef"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_mark_after_O_above",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "jmaOx<Esc>u`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_mark_on_a_line_the_undo_deletes",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "ox<Esc>mau`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "undo_two_steps_mark",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "Gmaggdddduu`a",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "undo_uppercase_mark_after_dd",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jmAddu`A",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_uppercase_mark_after_dd_above",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jjmAggddu`A",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_last_change_mark",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "jlxggu`.",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "e",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_change_start_mark",
+      "lines": [
+        "abc def",
+        "ghi"
+      ],
+      "keys": "wdwu0`[",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_change_end_mark",
+      "lines": [
+        "abc def",
+        "ghi"
+      ],
+      "keys": "wdwu0`]",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_visual_mark_after_dd_above",
+      "lines": [
+        "a",
+        "bcd",
+        "e"
+      ],
+      "keys": "jlvl<Esc>ggddu`<",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "bcd",
+          "e"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_jumplist_after_dd_above",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": "Gggjddu<C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "f_combining_mark_finds_nothing",
+      "lines": [
+        "xáb"
+      ],
+      "keys": "f́",
+      "expect": {
+        "text": [
+          "xáb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "F_combining_mark_finds_nothing",
+      "lines": [
+        "xábc"
+      ],
+      "keys": "$F́",
+      "expect": {
+        "text": [
+          "xábc"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "f_emoji_modifier_finds_nothing",
+      "lines": [
+        "x👶🏿y"
+      ],
+      "keys": "f🏿",
+      "expect": {
+        "text": [
+          "x👶🏿y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "f_cluster_base_matches",
+      "lines": [
+        "xáb"
+      ],
+      "keys": "fa",
+      "expect": {
+        "text": [
+          "xáb"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "t_stops_before_a_composed_char",
+      "lines": [
+        "xábc"
+      ],
+      "keys": "tb",
+      "expect": {
+        "text": [
+          "xábc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "undo_step_x_x",
       "lines": [
         "abc"

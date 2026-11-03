@@ -72,7 +72,7 @@ impl EmacsArg {
 /// [`KeyCode`] as the Vim namespaces are. Shift is tracked ONLY for non-character keys (`C-S-<backspace>`):
 /// for a printable key Shift is already folded into the char (`Shift-2` = `@`), so tracking it there would
 /// make a shifted printable miss its unshifted binding.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct EmacsKey {
     code: KeyCode,
     ctrl: bool,
@@ -409,6 +409,42 @@ impl EmacsProfile {
             .expect("emacs tier ids and ranks are unique");
         EmacsProfile { map }
     }
+}
+
+/// The `C-x` prefix map (`ctl-x-map`): `(key, ctrl held, command)`. The key after `C-x` resolves here;
+/// anything else cancels the prefix. A table rather than a `match` so the static conflict check
+/// (ENG-PROFILE-001, #1130) can walk it.
+pub(crate) const EMACS_CX_MAP: &[(char, bool, Command)] = &[
+    ('s', true, Command::Save),              // C-x C-s — save-buffer
+    ('c', true, Command::Quit),              // C-x C-c — save-buffers-kill-terminal
+    ('u', false, Command::Undo),             // C-x u — undo
+    ('x', true, Command::ExchangePointMark), // C-x C-x — exchange point and mark
+    (
+        'u',
+        true,
+        Command::EmacsCaseRegion {
+            case: WordCase::Upcase, // C-x C-u — upcase-region
+        },
+    ),
+    (
+        'l',
+        true,
+        Command::EmacsCaseRegion {
+            case: WordCase::Downcase, // C-x C-l — downcase-region
+        },
+    ),
+];
+
+/// The command `C-x` then `key` runs, or `None` when the `C-x` map does not bind it.
+pub(crate) fn emacs_cx_command(key: KeyEvent) -> Option<Command> {
+    let KeyCode::Char(c) = key.code else {
+        return None;
+    };
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    EMACS_CX_MAP
+        .iter()
+        .find(|(k, kc, _)| *k == c && *kc == ctrl)
+        .map(|(_, _, cmd)| cmd.clone())
 }
 
 /// Fold an Emacs prefix count into a command that has no native count field by repeating it: `count <= 1`

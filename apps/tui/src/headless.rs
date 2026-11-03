@@ -258,6 +258,12 @@ impl Headless {
         self.s.assert_fold_invariants();
     }
 
+    /// The editor-global register store.
+    #[must_use]
+    pub fn registers(&self) -> &ruse_core::RegisterStore {
+        self.s.ws.registers()
+    }
+
     /// The focused view's Emacs mark, a byte offset.
     #[must_use]
     pub fn mark(&self) -> Option<usize> {

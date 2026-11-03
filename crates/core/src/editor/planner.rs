@@ -856,6 +856,14 @@ fn apply_op(
     } = sp;
     let mode = st.view.mode;
     let rest = if linewise { cur.min(landing) } else { s };
+    // An empty buffer is nvim's "--No lines in buffer--" (a new or empty file, or every line deleted):
+    // `yy` there yanks one empty line (nvim v0.12.6 sets `""` and `"0` to a linewise "\n"), while `dd` has
+    // no line to delete and fails, leaving the registers alone (#906).
+    if linewise && s >= e && b.is_empty() && op == MarkOp::Yank {
+        let mut plan = nop(cur, mode);
+        plan.set_register = Some(RegWrite::Yank(Register::linewise(Vec::new()), (s, e)));
+        return plan;
+    }
     match op {
         MarkOp::Delete | MarkOp::Yank | MarkOp::Case(_) if s >= e => nop(cur, mode),
         MarkOp::Delete if !linewise => {

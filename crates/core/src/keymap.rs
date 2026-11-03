@@ -174,6 +174,27 @@ impl<K: PartialEq, V> Layer<K, V> {
     fn get(&self, key: &K) -> Option<&V> {
         self.bindings.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
+
+    /// The layer's bindings in the order they were bound — for the static conflict check
+    /// (ENG-PROFILE-001, #1130) and anything else that walks a profile's table.
+    pub fn bindings(&self) -> impl Iterator<Item = (&K, &V)> + '_ {
+        self.bindings.iter().map(|(k, v)| (k, v))
+    }
+
+    /// Every key bound more than once in this layer, once each, in binding order. Resolution takes the
+    /// first binding, so a later one is dead code: an authored layer must have none (a layer made by
+    /// [`LayerStack::collapse`] keeps shadowed bindings on purpose and is not checked).
+    #[must_use]
+    pub fn duplicate_keys(&self) -> Vec<&K> {
+        let mut out: Vec<&K> = Vec::new();
+        for (i, (k, _)) in self.bindings.iter().enumerate() {
+            let again = self.bindings[i + 1..].iter().any(|(o, _)| o == k);
+            if again && !out.contains(&k) {
+                out.push(k);
+            }
+        }
+        out
+    }
 }
 
 impl<K, V: PartialEq> Layer<K, V> {
@@ -257,6 +278,47 @@ impl<K: PartialEq, V> LayerStack<K, V> {
     /// Layer ids in resolution order (highest rank first).
     pub fn order(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.layers.iter().map(|l| l.id)
+    }
+
+    /// The layers in resolution order (highest rank first).
+    pub fn layers(&self) -> impl Iterator<Item = &Layer<K, V>> + '_ {
+        self.layers.iter()
+    }
+
+    /// The static conflict check over this stack (ENG-PROFILE-001, #1130): one line per problem, empty
+    /// when the stack is well-formed.
+    ///
+    /// - a key bound twice in one layer (the second binding can never resolve);
+    /// - a prefix key (`is_prefix` says its value opens a sub-map, Emacs's `C-x`) that a layer the walk
+    ///   reaches first binds to a non-prefix value, so every sequence under the prefix is unreachable.
+    ///
+    /// A higher layer rebinding an ordinary key is no conflict: that override is what the stack is for.
+    pub fn conflicts(&self, is_prefix: impl Fn(&V) -> bool) -> Vec<String>
+    where
+        K: fmt::Debug,
+    {
+        let mut out = Vec::new();
+        for l in &self.layers {
+            for k in l.duplicate_keys() {
+                out.push(format!("{}: {k:?} is bound twice", l.id));
+            }
+        }
+        for (i, l) in self.layers.iter().enumerate() {
+            for (k, v) in &l.bindings {
+                if !is_prefix(v) {
+                    continue;
+                }
+                for above in &self.layers[..i] {
+                    if above.get(k).is_some_and(|w| !is_prefix(w)) {
+                        out.push(format!(
+                            "{}: prefix {k:?} is shadowed by a plain binding in {}",
+                            l.id, above.id
+                        ));
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// Resolve one key: walk highest-rank-first until a layer binds; a sealed layer stops the walk
@@ -382,6 +444,36 @@ mod tests {
                 layer: "insert",
                 policy: UnmatchedKey::Insert
             }
+        );
+    }
+
+    /// The static conflict check (#1130) flags a key bound twice in one layer and a prefix a higher
+    /// layer hides behind a plain binding; an ordinary override is fine.
+    #[test]
+    fn conflicts_flag_duplicates_and_shadowed_prefixes() {
+        let prefix = |v: &&str| v.starts_with("prefix");
+        let clean = stack(vec![
+            Layer::new("minor", 30, false, UnmatchedKey::Ignore).bind('a', "minor-a"),
+            Layer::new("global", 10, false, UnmatchedKey::Ignore)
+                .bind('a', "global-a")
+                .bind('x', "prefix-x"),
+        ]);
+        assert!(clean.conflicts(prefix).is_empty());
+
+        let dup = stack(vec![Layer::new("global", 10, false, UnmatchedKey::Ignore)
+            .bind('a', "one")
+            .bind('b', "b")
+            .bind('a', "two")
+            .bind('a', "three")]);
+        assert_eq!(dup.conflicts(prefix), vec!["global: 'a' is bound twice"]);
+
+        let shadowed = stack(vec![
+            Layer::new("minor", 30, false, UnmatchedKey::Ignore).bind('x', "plain"),
+            Layer::new("global", 10, false, UnmatchedKey::Ignore).bind('x', "prefix-x"),
+        ]);
+        assert_eq!(
+            shadowed.conflicts(prefix),
+            vec!["global: prefix 'x' is shadowed by a plain binding in minor"]
         );
     }
 
