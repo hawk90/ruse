@@ -998,3 +998,22 @@ related:
 - Refs: [RFC-0021](../docs/rfc/proposed/RFC-0021-workspace-config-boundary.md), D-058, D-046, D-008, #1026,
   #987, #1137, #647, INV-TRUST-1, INV-PROFILE-ISOLATION, INV-PRIORITY, CAP-LSP-COORD, F-014,
   [config-model.md](../docs/design/config-model.md), [change-workflow.md](../docs/operations/change-workflow.md).
+
+## D-063 — Positions are typed at the core boundary · decided (design)
+- **Decision:** A byte position that crosses the public API of `crates/core` (`pub` functions and methods,
+  `pub` fields, `Command`/`ExCmd`/`Edit`/`Transaction` payloads) is a `BytePos`. Char, grapheme, UTF-16 and
+  screen-cell positions keep their own types where they cross. Inside a function a position may be unwrapped
+  to `usize` for arithmetic. Line and column numbers are named indices (`line`, `col`, `vcol`, `row`) and stay
+  `usize`. A source-scan test (`no-usize-coords`) fails on a `pub` core signature or field whose name says
+  position but whose type is a bare `usize`, with an explained allow-list that can only shrink. The trace
+  text format is unchanged. INV-POS-TYPED and F-002 acceptance 4 are amended to this boundary rule. Full
+  design: [RFC-0022](../docs/rfc/proposed/RFC-0022-typed-positions-at-the-core-boundary.md).
+- **Reason:** #889: the invariant claimed untyped coordinates never occur, while about 130 `pub` core
+  functions passed positions as `usize`, so review trusted a guard that did not exist. Units mix at
+  boundaries (frontend, LSP, renderer), and that is where types pay. Typing single-unit arithmetic inside
+  motions adds noise and no safety. Weakening the claim to "bytes are canonical" would drop the guard where it
+  matters.
+- **Re-evaluate if:** a bug mixes line or column units (then type `col`/`vcol`); or a second consumer of
+  `ruse-core` appears (a plugin host or GUI).
+- Refs: [RFC-0022](../docs/rfc/proposed/RFC-0022-typed-positions-at-the-core-boundary.md), RFC-0008, D-023,
+  INV-POS-TYPED, ENG-POS-001, F-002, #889.

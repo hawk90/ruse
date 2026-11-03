@@ -114,7 +114,7 @@ features:
       - Cursor/decoration positions survive edits via anchors, not raw offsets.
       - Wide/emoji/combining/ZWJ clusters do not desync the cursor from logical text.
       - Anchor gravity (left/right) is honored when an edit lands exactly at the anchor.
-      - Byte, char, grapheme, and screen-cell coordinates are distinct types, not interchanged.
+      - Byte, char, grapheme, and screen-cell positions that cross the core's public API are distinct types, not interchanged (D-063).
 
   # --- Vim input profile (F-003 + F-023..F-027) ------------------------------------------------
   # F-003 used to be ONE feature carrying 43 parity IDs — every mode, operator, motion, register and

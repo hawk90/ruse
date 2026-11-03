@@ -41,8 +41,9 @@ they do not mint new numbering.
 
 ## Text & Position
 
-- **INV-POS-TYPED** — Positions are typed by unit (byte / char / grapheme / UTF-16 column / screen cell);
-  coordinates are never an untyped `usize`. *Guards:* TEXT-1/2.
+- **INV-POS-TYPED** — Positions that cross the core's public API are typed by unit (byte / char / grapheme /
+  UTF-16 column / screen cell); inside a function a position may be unwrapped for arithmetic. Line and column
+  indices are named indices, not untyped coordinates (D-063, RFC-0022). *Guards:* TEXT-1/2.
 - **INV-ANCHOR** — Long-lived positions (cursors, diagnostics, decorations) are anchors with a boundary
   **bias** (`Before | After`, anchor-store D-023) that survive edits, never raw offsets; anchor update cost
   is not O(anchors × edits).
