@@ -1303,6 +1303,14 @@ impl EditorState {
                     .iter()
                     .map(|&(s, e)| Edit::delete(s, e - s))
                     .collect();
+                // Vim runs `:d` once per marked line, so each deleted line goes through the unnamed register
+                // and shifts the numbered ring in turn: `""` and `"1` end on the last one (#1100).
+                for &li in &marked {
+                    let (ls, le) = lines[li];
+                    self.view
+                        .registers
+                        .delete(None, Register::linewise(bytes[ls..le].to_vec()));
+                }
                 let list =
                     EditList::new(edits).expect("whole-line deletes are disjoint and ordered");
                 let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)

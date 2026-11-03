@@ -15,11 +15,14 @@ use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Tra
 
 use crate::app::dispatch::{
     buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, match_count_message, may_quit,
-    open_file_into_buffer, quit_window, regex_error_msg, run_cmd, save, BufferFile, Files,
+    open_file_into_buffer, quit_window, regex_error_msg, run_cmd, BufferFile, Files,
 };
 use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
-use crate::input::{parse_ex, BufTarget, Ex, Feed, InputEngine, Pending, ReadSource};
+use crate::input::{
+    parse_ex, BufTarget, EditSpec, Ex, Feed, InputEngine, Pending, ReadSource, WriteSpec,
+    WriteTarget,
+};
 use crate::terminal::guard::TermGuard;
 use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
@@ -2264,7 +2267,8 @@ impl Session {
         } = self;
         let (cols, text_rows) = (frame.cols, frame.text_rows);
         let (snapshot, rects) = (&frame.snapshot, &frame.rects);
-        // The current and alternate file names, for `%` / `#` in a file argument or shell command.
+        // The current, alternate and numbered file names, for `%` / `#` / `#n` in a file argument or shell
+        // command.
         let file_name = |id: Option<DocumentId>| {
             id.and_then(|id| files.get(&id))
                 .map(|bf| bf.path.to_string_lossy().into_owned())
@@ -2273,9 +2277,17 @@ impl Session {
             file_name(Some(ws.focused_buffer())),
             file_name(ws.alternate()),
         );
-        let expand = |arg: &str| {
-            crate::input::expand_filename(arg, cur_name.as_deref(), alt_name.as_deref())
+        let numbered: Vec<(u64, String)> = files
+            .iter()
+            .map(|(id, bf)| (id.0, bf.path.to_string_lossy().into_owned()))
+            .collect();
+        let names = crate::input::FileNames {
+            current: cur_name.as_deref(),
+            alternate: alt_name.as_deref(),
+            buffers: &numbered,
         };
+        let expand = |arg: &str| crate::input::expand_filename(arg, &names);
+        let expand_opt = |arg: Option<String>| arg.map(|a| expand(&a)).transpose();
         // A shell command: `%`/`#` first, then `!` → the previous command; remembered for the next `!`.
         let mut shell_cmd = |cmd: &str| -> Result<String, crate::input::ExpandError> {
             let cmd = crate::input::expand_bang(&expand(cmd)?, last_shell.as_deref())?;
@@ -2318,7 +2330,18 @@ impl Session {
             }
         };
         let ex = match parse_ex(&text) {
-            Ex::Edit(file) => expand(&file).map(Ex::Edit),
+            Ex::Edit(spec) => {
+                expand_opt(spec.file.clone()).map(|file| Ex::Edit(EditSpec { file, ..spec }))
+            }
+            Ex::SaveAs { bang, file, opts } => {
+                expand(&file).map(|file| Ex::SaveAs { bang, file, opts })
+            }
+            Ex::Write(spec) => match &spec.target {
+                WriteTarget::File(f) => expand_opt(f.clone()).map(WriteTarget::File),
+                WriteTarget::Append(f) => expand_opt(f.clone()).map(WriteTarget::Append),
+                WriteTarget::Command(c) => shell_cmd(c).map(WriteTarget::Command),
+            }
+            .map(|target| Ex::Write(WriteSpec { target, ..spec })),
             Ex::Read {
                 addr,
                 source: ReadSource::File(path),
@@ -2344,6 +2367,8 @@ impl Session {
                 return;
             }
         };
+        // An Ex line a command asks to run after it (`:e +cmd`).
+        let mut then_run = None;
         match ex {
             Ex::NoHighlight => *search_hl = None, // `:noh` clears the search highlight (F-009 #1)
             // `:set (no)hlsearch/incsearch` — frontend render toggles (behavior stays on by default).
@@ -2531,7 +2556,7 @@ impl Session {
                                 format!("{n} lines changed")
                             }
                             // Vim reports a pattern `:g` cannot use as `E476` (`ex_global`).
-                            Err(e) => format!("E476: Invalid command: {}", regex_error_msg(&e)),
+                            Err(e) => crate::app::dispatch::invalid_command_msg(&e),
                         };
                     }
                     crate::input::GlobalPayload::Normal { keys, .. } => {
@@ -2576,23 +2601,17 @@ impl Session {
                 }
                 *status = format!("{n} change(s) later");
             }
-            // `:e {file}` opens a file into a new buffer (F-007) — shared with the file picker. Naming the
-            // focused buffer's own file (`:e %`) re-edits it, as in nvim: re-read from disk when unmodified,
-            // `E37` when it has unsaved changes (`:e!` discards them).
-            Ex::Edit(file) => {
-                let focused = ws.focused_buffer();
-                let own = crate::app::dispatch::buffer_for_path(files, std::path::Path::new(&file))
-                    == Some(focused);
-                *status = if !own {
-                    open_file_into_buffer(&file, ws, files, highlighters).status
-                } else if ws.focused().doc.is_modified() {
-                    "E37: No write since last change (add ! to override)".into()
-                } else {
-                    reload_focused_file(ws, files)
-                };
+            // `:e[!] [++ff] [+cmd] [{file}]` (F-007, #610): open a file into a buffer (shared with the file
+            // picker), or re-read the focused buffer's own file, which unsaved changes block (`E37`) without `!`.
+            // A `+cmd` runs once the file is open (after this dispatch, which holds the session's fields).
+            Ex::Edit(spec) => {
+                if crate::app::file_cmds::ex_edit(&spec, ws, files, highlighters, status) {
+                    then_run = spec
+                        .cmd
+                        .as_deref()
+                        .map(crate::app::file_cmds::plus_cmd_line);
+                }
             }
-            // `:e!` reloads the focused buffer's file from disk, discarding unsaved changes.
-            Ex::EditReload => *status = reload_focused_file(ws, files),
             // `:[addr]r {file}` / `:[addr]r !{cmd}` — read a file's contents (pure IO) or a shell
             // command's stdout below the addressed line. The read is IMPURE (fs / process) and stays in
             // the frontend; core only splices the resulting bytes. The cursor lands on the
@@ -2696,8 +2715,10 @@ impl Session {
             // Vim does, and a non-empty one is remembered so `&` can repeat it. It also becomes the last
             // search pattern (Vim's `save_re_pat`): `n` finds it next, and `:g//` or `:s//` reuse it.
             mut ex @ Ex::Substitute(_) => {
-                // `:s` leaves an empty pattern for the compiler to refuse (no error to report here).
-                let _ = crate::input::reuse_last_search(&mut ex, engine.last_search());
+                if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
+                    *status = msg.to_string();
+                    return;
+                }
                 let Ex::Substitute(spec) = ex else {
                     unreachable!("bound by the arm's pattern")
                 };
@@ -2719,7 +2740,7 @@ impl Session {
                             format!("E486: pattern not found: {}", spec.pattern)
                         }
                         Ok(out) => match_count_message(out.replacements, out.lines),
-                        Err(e) => regex_error_msg(&e),
+                        Err(e) => crate::app::dispatch::invalid_command_msg(&e),
                     };
                 } else if spec.confirm {
                     // `c`: compute the matches and hand control to the interactive confirm loop (F-009 #2).
@@ -2729,7 +2750,7 @@ impl Session {
                             *status = format!("E486: pattern not found: {}", spec.pattern);
                         }
                         Ok(subs) => *confirm = Some(Confirm::new(subs)),
-                        Err(e) => *status = regex_error_msg(&e),
+                        Err(e) => *status = crate::app::dispatch::invalid_command_msg(&e),
                     }
                 } else {
                     *status =
@@ -2743,27 +2764,50 @@ impl Session {
                             Ok(out) => {
                                 format!("{} substitutions on {} lines", out.replacements, out.lines)
                             }
-                            Err(e) => regex_error_msg(&e),
+                            Err(e) => crate::app::dispatch::invalid_command_msg(&e),
                         };
                 }
             }
-            Ex::Save => {
-                save(ws, files, status, *fixeol_on);
+            // The `:w` family (#610). `:wq`/`:x` close the window only after a successful write (#842): no
+            // file, or a failed write, keeps it open; `!` also lets the focused buffer's changes go.
+            Ex::Write(spec) => {
+                let ok = crate::app::file_cmds::ex_write(
+                    &spec,
+                    ws,
+                    files,
+                    highlighters,
+                    *fixeol_on,
+                    status,
+                );
+                if ok && spec.quit {
+                    quit_window(ws, status, quit, spec.bang);
+                }
+            }
+            Ex::SaveAs { bang, file, opts } => {
+                crate::app::file_cmds::ex_saveas(
+                    bang,
+                    &file,
+                    opts,
+                    ws,
+                    files,
+                    highlighters,
+                    *fixeol_on,
+                    status,
+                );
+            }
+            // `:wa` / `:wqa` / `:xa`: write every modified buffer with a file (a terminal has none to write).
+            Ex::WriteAll { quit: then_quit } => {
+                #[cfg(unix)]
+                let skip = |id: DocumentId| terminals.contains_key(&id);
+                #[cfg(not(unix))]
+                let skip = |_: DocumentId| false;
+                let ok = crate::app::file_cmds::ex_write_all(ws, files, *fixeol_on, status, skip);
+                if ok && then_quit {
+                    *quit = may_quit(ws, status, false);
+                }
             }
             Ex::Quit => quit_window(ws, status, quit, false),
             Ex::QuitForce => quit_window(ws, status, quit, true),
-            // `:wq` / `:x` close the window only after a successful save (#842): no file, or a failed write,
-            // keeps it open. `:x` writes only a modified buffer.
-            Ex::SaveQuit => {
-                if save(ws, files, status, *fixeol_on) {
-                    quit_window(ws, status, quit, false);
-                }
-            }
-            Ex::ExitWrite => {
-                if !ws.focused().doc.is_modified() || save(ws, files, status, *fixeol_on) {
-                    quit_window(ws, status, quit, false);
-                }
-            }
             Ex::QuitAll { force: true } => *quit = true,
             Ex::QuitAll { force: false } => *quit = may_quit(ws, status, false),
             Ex::CQuit(code) => {
@@ -2884,13 +2928,7 @@ impl Session {
                 *status = match ws.sort_lines(range, &spec) {
                     Ok(0) => "sorted".into(),
                     Ok(removed) => format!("sorted, {removed} fewer lines"),
-                    // The pattern reader's own error, E-number first, as `:sort` shows it (`E54`).
-                    Err(ruse_core::RegexError::Syntax(m))
-                        if m.starts_with('E')
-                            && m[1..].starts_with(|c: char| c.is_ascii_digit()) =>
-                    {
-                        m
-                    }
+                    // The pattern reader's own error, as `:sort` shows it (`E54`, no `E476` after it).
                     Err(e) => regex_error_msg(&e),
                 };
             }
@@ -2928,6 +2966,14 @@ impl Session {
             }
             Ex::Fail(msg) => *status = msg,
             Ex::Unknown(s) => *status = format!("E492: Not an editor command: {s}"),
+        }
+        if let Some(line) = then_run {
+            let opened = std::mem::take(&mut self.status);
+            self.execute_ex_one(line, frame);
+            // The open's own report stays unless the command said something (an error, a count).
+            if self.status.is_empty() {
+                self.status = opened;
+            }
         }
     }
 
@@ -3220,30 +3266,6 @@ impl Session {
         s.execute_ex_one(line.to_string(), &frame);
         std::mem::swap(&mut s.ws, ws);
         s
-    }
-}
-
-/// Re-read the focused buffer's file from disk, replacing its text (unsaved changes are dropped): `:e!`, and
-/// `:e %` on an unmodified buffer. Returns the status line.
-fn reload_focused_file(ws: &mut Workspace, files: &mut Files) -> String {
-    let id = ws.focused_buffer();
-    let Some(path) = files.get(&id).map(|bf| bf.path.clone()) else {
-        return "E32: No file name".into();
-    };
-    match persist::read_file(&path) {
-        Ok(raw) => {
-            let fmt = persist::encoding::FileFormat::detect(&raw);
-            ws.reload_focused(fmt.to_buffer(&raw));
-            files.insert(
-                id,
-                BufferFile {
-                    path: path.clone(),
-                    fmt,
-                },
-            );
-            format!("\"{}\" reloaded", path.display())
-        }
-        Err(e) => format!("E484: can't open {}: {e}", path.display()),
     }
 }
 
@@ -3638,6 +3660,11 @@ fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut String) -> bool
     match ws.global_marks(ruse_core::SubRange::WholeFile, pattern, false) {
         Ok(lines) if lines.is_empty() => {
             *status = format!("E486: pattern not found: {pattern}");
+            true
+        }
+        // A malformed pattern (`/\(`, `/a\{`) fails with the pattern reader's error, and nothing runs (#1087).
+        Err(e @ ruse_core::RegexError::Syntax(_)) => {
+            *status = regex_error_msg(&e);
             true
         }
         _ => false,

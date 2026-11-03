@@ -4073,8 +4073,9 @@ pub use ex_cmd::{strip_modifiers, ExModifiers};
 // `GlobalPayload` is referenced by the non-test dispatch/run-loop (routing `:g/pat/normal` vs `d`/`s`) and
 // by the integration scenarios that drive `:g` directly, so it is part of the input surface like `Ex`.
 pub use ex::{
-    expand_bang, expand_filename, parse_ex, split_bar, BufTarget, Ex, ExpandError, FoldMethod,
-    GlobalPayload, ReadSource,
+    expand_bang, expand_filename, parse_ex, split_bar, BufTarget, EditSpec, Ex, ExpandError,
+    FileFormatOpt, FileNames, FileOpts, FoldMethod, GlobalPayload, ReadSource, WriteSpec,
+    WriteTarget,
 };
 #[cfg(test)]
 pub(crate) use ex::{parse_substitute, GlobalSpec, SubSpec};

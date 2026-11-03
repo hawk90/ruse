@@ -680,8 +680,15 @@ mod tests {
 
     #[test]
     fn parse_edit_reload() {
-        assert_eq!(parse_ex("e!"), Ex::EditReload);
-        assert_eq!(parse_ex("edit!"), Ex::EditReload);
+        use crate::input::{EditSpec, FileOpts};
+        let reload = Ex::Edit(EditSpec {
+            bang: true,
+            file: None,
+            cmd: None,
+            opts: FileOpts::default(),
+        });
+        assert_eq!(parse_ex("e!"), reload);
+        assert_eq!(parse_ex("edit!"), reload);
     }
 
     #[test]
@@ -3608,7 +3615,10 @@ mod tests {
             Feed::Cmd(Command::InsertChar('z'))
         );
         assert_eq!(e.feed(k(':'), Mode::Normal), Feed::Pending);
-        assert_eq!(parse_ex("wq"), Ex::SaveQuit);
+        assert!(matches!(
+            parse_ex("wq"),
+            Ex::Write(crate::input::WriteSpec { quit: true, .. })
+        ));
         assert_eq!(
             parse_ex("trace save t.trace"),
             Ex::SaveTrace("t.trace".into())
@@ -3666,15 +3676,21 @@ mod tests {
         assert_eq!(parse_ex("b#"), Ex::Buffer(BufTarget::Alternate));
         assert!(matches!(parse_ex("b foo"), Ex::Unknown(_)));
         assert!(matches!(parse_ex("bx"), Ex::Unknown(_)));
-        // `:e {file}` / `:edit {file}` open a file; `:enew`/`:ene` and a bare `:e` are NOT edits.
-        assert_eq!(parse_ex("e src/main.rs"), Ex::Edit("src/main.rs".into()));
-        assert_eq!(parse_ex("edit a.txt"), Ex::Edit("a.txt".into()));
+        // `:e {file}` / `:edit {file}` open a file; `:enew`/`:ene` are not edits, and a bare `:e` re-edits the
+        // buffer's own file (#610).
+        let edit = |file: Option<&str>| {
+            Ex::Edit(crate::input::EditSpec {
+                bang: false,
+                file: file.map(str::to_string),
+                cmd: None,
+                opts: crate::input::FileOpts::default(),
+            })
+        };
+        assert_eq!(parse_ex("e src/main.rs"), edit(Some("src/main.rs")));
+        assert_eq!(parse_ex("edit a.txt"), edit(Some("a.txt")));
         assert_eq!(parse_ex("enew"), Ex::Enew);
         assert_eq!(parse_ex("ene"), Ex::Enew);
-        assert!(
-            matches!(parse_ex("e"), Ex::Unknown(_)),
-            "bare :e is not an edit"
-        );
+        assert_eq!(parse_ex("e"), edit(None));
     }
 }
 

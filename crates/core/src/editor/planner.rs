@@ -472,9 +472,25 @@ fn search_char_span(
 
 /// The keyword search `*`/`#` (`whole_word`) or `g*`/`g#` runs from the cursor: the keyword's START (Vim moves
 /// there before searching) and its pattern (`\<word\>` for the whole-word form). `None` when the line has
-/// no keyword at or after the cursor (E348).
+/// no keyword at or after the cursor.
+///
+/// A line with no keyword but other non-blank text searches that text instead (`...`), as nvim's
+/// `find_ident_under_cursor` falls back to the non-blank string: its magic characters are escaped and it
+/// gets no `\<`/`\>` (#1087). `None` only when the rest of the line is blank (E348).
 pub(crate) fn word_search(b: &[u8], cur: usize, whole_word: bool) -> Option<(usize, String)> {
-    let (s, e) = motion::word_under_cursor(b, cur)?;
+    let Some((s, e)) = motion::word_under_cursor(b, cur) else {
+        let (s, e) = motion::cword_under_cursor(b, cur, false)?;
+        let text = std::str::from_utf8(&b[s..e]).ok()?;
+        // nvim's `nv_ident` escapes `/.*~[^$\` (`?` too for `#`, which its `?` search then unescapes).
+        let mut pattern = String::with_capacity(2 * text.len());
+        for c in text.chars() {
+            if "/.*~[^$\\".contains(c) {
+                pattern.push('\\');
+            }
+            pattern.push(c);
+        }
+        return Some((s, pattern));
+    };
     let word = std::str::from_utf8(&b[s..e]).ok()?;
     // Keyword chars (alnum/`_`/non-ASCII) are regex-safe; `\<…\>` = whole word.
     let pattern = if whole_word {

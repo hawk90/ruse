@@ -3,17 +3,24 @@ use super::*;
 /// A parsed ex command (the `:` line).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Ex {
-    Save,
+    /// `:[range]w[rite][!] [++opt] [{file} | >> [{file}] | !{cmd}]`, `:up[date]`, `:wq` and `:x[it]` (#610).
+    Write(WriteSpec),
+    /// `:sav[eas][!] [++opt] {file}` — write the buffer to `{file}`, which becomes its file.
+    SaveAs {
+        bang: bool,
+        file: String,
+        opts: FileOpts,
+    },
+    /// `:wa[ll][!]` — write every modified buffer; `:wqa[ll]`/`:xa[ll]` (`quit`) then quit the editor.
+    WriteAll {
+        quit: bool,
+    },
     /// `:q`/`:quit` — close the focused window; on the last window quit the editor, refusing with E37 when
     /// the focused buffer has unsaved changes and E162 when a hidden one does.
     Quit,
     /// `:q!`/`:quit!` — as `:q`, but the focused buffer's changes do not block it. A modified hidden buffer
     /// still does (nvim); `:qa!` is the way to abandon every change.
     QuitForce,
-    /// `:wq` — write the focused buffer, then `:q`.
-    SaveQuit,
-    /// `:x`/`:xit`/`:exit` (and Normal `ZZ`) — like `:wq`, but write only when the buffer is modified.
-    ExitWrite,
     /// `:qa`/`:qall`/`:quitall` (`force` with `!`) — quit the editor whatever the window layout. Without
     /// `!` any modified buffer refuses (E37 for the focused one, E162 for another).
     QuitAll {
@@ -157,10 +164,9 @@ pub enum Ex {
     CheckHealth,
     /// `:enew` / `:ene` — open a new empty (scratch) buffer in the focused window (F-007 multi-buffer).
     Enew,
-    /// `:e {file}` / `:edit {file}` — open a file into a new buffer and focus it (F-007 multi-buffer).
-    Edit(String),
-    /// `:e!` / `:edit!` — reload the focused buffer's file from disk, discarding unsaved changes.
-    EditReload,
+    /// `:e[dit][!] [++opt] [+cmd] [{file}]` — open `{file}` into a buffer and focus it (F-007), or, with no
+    /// file (or the buffer's own), re-read the focused buffer's file (#610).
+    Edit(EditSpec),
     /// `:ls` / `:buffers` — list the buffers on the status line (F-007 multi-buffer).
     Buffers,
     /// `:bnext` / `:bn` — switch the focused window to the next buffer in list order (F-007).
@@ -206,6 +212,60 @@ pub enum Ex {
     /// `:set nosuchoption`): the status is nvim's error, and nothing runs.
     Fail(String),
     Unknown(String),
+}
+
+/// What a `:w`-family command writes to (`:help :w`).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum WriteTarget {
+    /// `:w [{file}]` — replace `{file}`, or the buffer's own file when `None`.
+    File(Option<String>),
+    /// `:w >> [{file}]` — append to an existing `{file}` (the buffer's own file when `None`).
+    Append(Option<String>),
+    /// `:w !{cmd}` — feed the lines to a shell command's stdin and show its output.
+    Command(String),
+}
+
+/// A parsed `:w`-family command: `:w`, `:up`, `:wq`, `:x` (#610).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct WriteSpec {
+    /// The lines to write; `None` = the whole buffer.
+    pub range: Option<SubRange>,
+    /// `!`: overwrite an existing file, write part of a buffer to its own file, and (with `quit`) let the
+    /// focused buffer's changes go.
+    pub bang: bool,
+    pub target: WriteTarget,
+    pub opts: FileOpts,
+    /// `:up`/`:x`: write only when the buffer is modified.
+    pub if_modified: bool,
+    /// `:wq`/`:x`: close the window after a successful write.
+    pub quit: bool,
+}
+
+/// The line ending a `++ff=` option forces (`:help ++ff`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FileFormatOpt {
+    /// `++ff=unix`: `\n`.
+    Unix,
+    /// `++ff=dos`: `\r\n`.
+    Dos,
+}
+
+/// The `++opt` arguments of a file command (`:help ++opt`). Only `++ff` is honoured.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct FileOpts {
+    pub ff: Option<FileFormatOpt>,
+}
+
+/// A parsed `:e[dit][!] [++opt] [+cmd] [{file}]` (#610).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct EditSpec {
+    /// `!`: re-read the buffer's own file even when it has unsaved changes.
+    pub bang: bool,
+    /// The file to edit; `None` = the focused buffer's own file.
+    pub file: Option<String>,
+    /// `+cmd`: the Ex command to run once the file is open (`+` alone is `$`, `+N` is line N).
+    pub cmd: Option<String>,
+    pub opts: FileOpts,
 }
 
 /// How folds are formed for a buffer (`:set foldmethod`). Slice 3 implements `manual` (existing `zf` folds)
@@ -779,6 +839,10 @@ fn split_first_command(cmd: &str) -> (&str, Option<&str>) {
         || is_prefix("vglobal", 1)
         || is_prefix("normal", 4)
         || (is_prefix("read", 1) && arg.trim_start().starts_with('!'))
+        // `:w !cmd` / `:up !cmd` pipe to a shell command (the `!` after a blank; `:w!` is the bang).
+        || ((is_prefix("write", 1) || is_prefix("update", 2))
+            && arg.starts_with(char::is_whitespace)
+            && arg.trim_start().starts_with('!'))
     {
         return whole();
     }
@@ -880,33 +944,168 @@ pub fn expand_bang(cmd: &str, prev: Option<&str>) -> Result<String, ExpandError>
     Ok(out)
 }
 
+/// The file names a cmdline-special character stands for ([`expand_filename`]).
+#[derive(Clone, Copy, Default, Debug)]
+pub struct FileNames<'a> {
+    /// `%`: the focused buffer's file.
+    pub current: Option<&'a str>,
+    /// `#`: the alternate buffer's file.
+    pub alternate: Option<&'a str>,
+    /// `#{n}`: buffer `n`'s file, for every buffer that has one.
+    pub buffers: &'a [(u64, String)],
+}
+
 /// Expand the cmdline-special file names in a file argument or shell command (`:help cmdline-special`):
-/// `%` is the current file name and `#` the alternate one; `\%` and `\#` are literal. File-name modifiers
-/// (`%:p`, `%:h`, …) and `#{n}` buffer numbers are not modeled: a `#` before a digit stays literal.
+/// `%` is the current file name, `#` the alternate one and `#{n}` buffer `n`'s; `\%` and `\#` are literal.
+/// Each may be followed by file-name modifiers (`:help filename-modifiers`), applied left to right: `:p`
+/// (full path), `:~` (relative to the home directory), `:.` (relative to the working directory), `:h`
+/// (head), `:t` (tail), `:r` (root) and `:e` (extension; `:e:e` takes two). Other modifiers (`:s`, `:gs`,
+/// `:S`) are not modeled and stay as text.
 ///
 /// # Errors
 /// [`ExpandError::EmptyFileName`] when `%` names no file, [`ExpandError::NoAlternateFile`] when there is no
-/// alternate file for `#`.
-pub fn expand_filename(
-    arg: &str,
-    cur: Option<&str>,
-    alt: Option<&str>,
-) -> Result<String, ExpandError> {
+/// alternate file for `#` or no buffer `n` with a file for `#{n}`.
+pub fn expand_filename(arg: &str, names: &FileNames<'_>) -> Result<String, ExpandError> {
     let mut out = String::with_capacity(arg.len());
-    let mut chars = arg.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' if matches!(chars.peek(), Some('%' | '#')) => {
-                out.extend(chars.next());
+    let mut rest = arg;
+    while let Some(c) = rest.chars().next() {
+        rest = &rest[c.len_utf8()..];
+        let name = match c {
+            '\\' if rest.starts_with(['%', '#']) => {
+                out.push_str(&rest[..1]);
+                rest = &rest[1..];
+                continue;
             }
-            '%' => out.push_str(cur.ok_or(ExpandError::EmptyFileName)?),
-            '#' if !chars.peek().is_some_and(char::is_ascii_digit) => {
-                out.push_str(alt.ok_or(ExpandError::NoAlternateFile)?)
+            '%' => names.current.ok_or(ExpandError::EmptyFileName)?.to_string(),
+            '#' => {
+                let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+                if digits == 0 {
+                    names
+                        .alternate
+                        .ok_or(ExpandError::NoAlternateFile)?
+                        .to_string()
+                } else {
+                    let n: Option<u64> = rest[..digits].parse().ok();
+                    rest = &rest[digits..];
+                    names
+                        .buffers
+                        .iter()
+                        .find(|(id, _)| Some(*id) == n)
+                        .map(|(_, name)| name.clone())
+                        .ok_or(ExpandError::NoAlternateFile)?
+                }
             }
-            _ => out.push(c),
-        }
+            c => {
+                out.push(c);
+                continue;
+            }
+        };
+        let (name, after) = apply_filename_modifiers(name, rest);
+        out.push_str(&name);
+        rest = after;
     }
     Ok(out)
+}
+
+/// Apply the file-name modifiers at the start of `mods` to `name`; returns the result and the text after
+/// the modifiers.
+fn apply_filename_modifiers(mut name: String, mut mods: &str) -> (String, &str) {
+    // `:e` after `:e` widens the extension by one (`k.tar.gz` -> `gz` -> `tar.gz`): the name before the
+    // first `:e`, and how many extensions to keep.
+    let mut ext_of: Option<(String, usize)> = None;
+    while let Some(m) = mods.strip_prefix(':').and_then(|r| r.chars().next()) {
+        if !"p~.htre".contains(m) {
+            break;
+        }
+        mods = &mods[2..];
+        if m != 'e' {
+            ext_of = None;
+        }
+        name = match m {
+            'p' => full_path(&name),
+            '~' => home_relative(&full_path(&name)).unwrap_or(name),
+            '.' => cwd_relative(&full_path(&name)).unwrap_or(name),
+            'h' => head(&name),
+            't' => name.rsplit('/').next().unwrap_or("").to_string(),
+            'r' => {
+                let (root, _) = split_extension(&name);
+                root.to_string()
+            }
+            _ => {
+                let (base, n) = match ext_of.take() {
+                    Some((base, n)) => (base, n + 1),
+                    None => (name.clone(), 1),
+                };
+                let mut root = base.as_str();
+                for _ in 0..n {
+                    root = split_extension(root).0;
+                }
+                let ext = base
+                    .get(root.len()..)
+                    .and_then(|e| e.strip_prefix('.'))
+                    .unwrap_or("")
+                    .to_string();
+                ext_of = Some((base, n));
+                ext
+            }
+        };
+    }
+    (name, mods)
+}
+
+/// `:p`: the absolute path (a directory gets a trailing `/`, as in Vim).
+fn full_path(name: &str) -> String {
+    let path = std::path::Path::new(name);
+    let abs =
+        std::path::absolute(path).map_or_else(|_| name.to_string(), |p| p.display().to_string());
+    let abs = abs.replace("/./", "/");
+    if path.is_dir() && !abs.ends_with('/') {
+        format!("{abs}/")
+    } else {
+        abs
+    }
+}
+
+/// `:~`: `abs` with the home directory written `~`, when it is under it.
+fn home_relative(abs: &str) -> Option<String> {
+    let home = std::env::var("HOME").ok().filter(|h| !h.is_empty())?;
+    let rest = abs.strip_prefix(home.trim_end_matches('/'))?;
+    (rest.is_empty() || rest.starts_with('/')).then(|| format!("~{rest}"))
+}
+
+/// `:.`: `abs` relative to the working directory, when it is under it.
+fn cwd_relative(abs: &str) -> Option<String> {
+    let cwd = std::env::current_dir().ok()?;
+    let cwd = cwd.to_str()?.trim_end_matches('/');
+    let rest = abs.strip_prefix(cwd)?.strip_prefix('/')?;
+    Some(if rest.is_empty() {
+        ".".into()
+    } else {
+        rest.into()
+    })
+}
+
+/// `:h`: the name without its last component (`.` when it has no directory part); a trailing `/` alone
+/// is removed first.
+fn head(name: &str) -> String {
+    if let Some(dir) = name.strip_suffix('/').filter(|d| !d.is_empty()) {
+        return dir.to_string();
+    }
+    match name.rfind('/') {
+        Some(0) => "/".into(),
+        Some(i) => name[..i].to_string(),
+        None => ".".into(),
+    }
+}
+
+/// Split the last extension off `name`: `("dir/k.tar", "gz")` for `dir/k.tar.gz`. A dot that starts the
+/// tail (`.bashrc`) is not an extension.
+fn split_extension(name: &str) -> (&str, &str) {
+    let tail_at = name.rfind('/').map_or(0, |i| i + 1);
+    match name[tail_at..].rfind('.') {
+        Some(i) if i > 0 => (&name[..tail_at + i], &name[tail_at + i + 1..]),
+        _ => (name, ""),
+    }
 }
 
 /// nvim's error for a command that needs an argument (`:normal`, `:sign`).
@@ -928,11 +1127,8 @@ pub fn parse_ex(line: &str) -> Ex {
     }
     let line = line.trim();
     match line {
-        "w" => Ex::Save,
         "q" | "qu" | "qui" | "quit" => Ex::Quit,
         "q!" | "qu!" | "qui!" | "quit!" => Ex::QuitForce,
-        "wq" => Ex::SaveQuit,
-        "x" | "xi" | "xit" | "exi" | "exit" => Ex::ExitWrite,
         "qa" | "qal" | "qall" | "quita" | "quital" | "quitall" => Ex::QuitAll { force: false },
         "qa!" | "qal!" | "qall!" | "quita!" | "quital!" | "quitall!" => Ex::QuitAll { force: true },
         "hid" | "hide" => Ex::Hide,
@@ -957,7 +1153,6 @@ pub fn parse_ex(line: &str) -> Ex {
         "ascii" | "as" => Ex::Ascii,
         "noh" | "nohl" | "nohlsearch" => Ex::NoHighlight,
         "checkhealth" | "checkhealt" | "checkheal" | "che" => Ex::CheckHealth,
-        "e!" | "edit!" => Ex::EditReload,
         "enew" | "ene" => Ex::Enew,
         "ls" | "buffers" | "files" => Ex::Buffers,
         "bnext" | "bn" => Ex::BufferNext,
@@ -977,7 +1172,7 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(ex) = parse_buffer(line) {
                 ex
-            } else if let Some(ex) = parse_edit(line) {
+            } else if let Some(ex) = parse_file_command(line) {
                 ex
             } else if let Some(name) = parse_rename(line) {
                 Ex::Rename(name)
@@ -1256,20 +1451,204 @@ fn parse_register_verb(line: &str, verbs: &[&str]) -> Option<(SubRange, Option<c
     Some((parse_sub_range(range_str)?, reg))
 }
 
-/// Parse `:e {file}` / `:edit {file}` (open a file into a new buffer). Requires a whitespace-separated,
-/// non-empty path, so `:enew` (matched literally earlier) and a bare `:e` do not reach here as an edit.
-fn parse_edit(line: &str) -> Option<Ex> {
-    let rest = line
-        .strip_prefix("edit")
-        .or_else(|| line.strip_prefix('e'))?;
-    if !rest.starts_with(char::is_whitespace) {
+/// The file commands [`parse_file_command`] reads.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FileVerb {
+    Write,
+    WriteQuit,
+    Exit,
+    Update,
+    SaveAs,
+    WriteAll { quit: bool },
+    Edit,
+}
+
+/// The file command `verb` names, with every abbreviation Vim accepts (`:w`…`:write`, `:x`/`:exi`, `:up`,
+/// `:sav`, `:wa`, `:wqa`/`:xa`, `:e`…`:edit` and `:ex`).
+fn file_verb(verb: &str) -> Option<FileVerb> {
+    let abbrev = |full: &str, min: usize| verb.len() >= min && full.starts_with(verb);
+    Some(if abbrev("write", 1) {
+        FileVerb::Write
+    } else if verb == "wq" {
+        FileVerb::WriteQuit
+    } else if abbrev("xit", 1) || abbrev("exit", 3) {
+        FileVerb::Exit
+    } else if abbrev("update", 2) {
+        FileVerb::Update
+    } else if abbrev("saveas", 3) {
+        FileVerb::SaveAs
+    } else if abbrev("wall", 2) {
+        FileVerb::WriteAll { quit: false }
+    } else if abbrev("wqall", 3) || abbrev("xall", 2) {
+        FileVerb::WriteAll { quit: true }
+    } else if abbrev("edit", 1) || verb == "ex" {
+        FileVerb::Edit
+    } else {
+        return None;
+    })
+}
+
+/// nvim's error for an argument it cannot use (`++ff=mac`, an unknown `++opt`).
+const INVALID_ARGUMENT: &str = "E474: Invalid argument";
+
+/// Read the leading `++opt` arguments of a file command (`:help ++opt`): `++ff=unix|dos` (or
+/// `++fileformat=`) is honoured; any other `++opt`, and `++ff=mac` (ruse has no `\r` line ending), is an
+/// [`Ex::Fail`]. Returns the options and the text after them.
+fn parse_file_opts(mut rest: &str) -> Result<(FileOpts, &str), Ex> {
+    let mut opts = FileOpts::default();
+    while let Some(opt) = rest.strip_prefix("++") {
+        let end = opt.find(char::is_whitespace).unwrap_or(opt.len());
+        let ff = opt[..end]
+            .strip_prefix("ff=")
+            .or_else(|| opt[..end].strip_prefix("fileformat="));
+        opts.ff = Some(match ff {
+            Some("unix") => FileFormatOpt::Unix,
+            Some("dos") => FileFormatOpt::Dos,
+            _ => return Err(Ex::Fail(INVALID_ARGUMENT.into())),
+        });
+        rest = opt[end..].trim_start();
+    }
+    Ok((opts, rest))
+}
+
+/// Read one file-name argument: `\ ` is a space in the name, and an unescaped blank before more text is
+/// `E172`, as in Vim. Other backslashes stay for the `%`/`#` expansion (`\%`). `None` for no argument.
+fn file_arg(rest: &str) -> Result<Option<String>, Ex> {
+    let rest = rest.trim();
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    let mut name = String::with_capacity(rest.len());
+    let mut chars = rest.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if chars.peek().is_some_and(|c| c.is_whitespace()) => name.extend(chars.next()),
+            c if c.is_whitespace() => {
+                return Err(Ex::Fail("E172: Only one file name allowed".into()))
+            }
+            c => name.push(c),
+        }
+    }
+    Ok(Some(name))
+}
+
+/// Parse the file commands (#610): `:[range]w[rite][!] [++opt] [{file} | >> [{file}] | !{cmd}]`,
+/// `:[range]up[date][!]` (the same, written only when modified), `:[range]wq[!]` and `:[range]x[it][!]`
+/// (then close the window), `:sav[eas][!] [++opt] {file}`, `:wa[ll][!]`, `:wqa[ll][!]`/`:xa[ll][!]`, and
+/// `:e[dit][!] [++opt] [+cmd] [{file}]`. `None` when the line is none of them.
+fn parse_file_command(line: &str) -> Option<Ex> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+    let verb_len = rest
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(rest.len());
+    let verb = file_verb(&rest[..verb_len])?;
+    let rest = &rest[verb_len..];
+    // The verb ends at a `!`, a blank, `>>`/`+` (`:w>>f`, `:e+5 f`), or the line's end.
+    if !(rest.is_empty() || rest.starts_with(|c: char| c.is_whitespace() || "!>+".contains(c))) {
         return None;
     }
-    let file = rest.trim();
-    if file.is_empty() {
-        return None;
+    let (bang, rest) = match rest.strip_prefix('!') {
+        Some(r) => (true, r),
+        None => (false, rest),
+    };
+    let range = if range_str.is_empty() {
+        None
+    } else {
+        Some(parse_sub_range(range_str)?)
+    };
+    // Only the `:w` family takes a range (`E481` otherwise, as in nvim).
+    let ranged = matches!(
+        verb,
+        FileVerb::Write | FileVerb::WriteQuit | FileVerb::Exit | FileVerb::Update
+    );
+    if range.is_some() && !ranged {
+        return Some(Ex::Fail("E481: No range allowed".into()));
     }
-    Some(Ex::Edit(file.to_string()))
+    let (opts, rest) = match parse_file_opts(rest.trim_start()) {
+        Ok(r) => r,
+        Err(fail) => return Some(fail),
+    };
+    Some(match verb {
+        FileVerb::Write | FileVerb::WriteQuit | FileVerb::Exit | FileVerb::Update => {
+            let target = if let Some(after) = rest.strip_prefix(">>") {
+                match file_arg(after) {
+                    Ok(f) => WriteTarget::Append(f),
+                    Err(fail) => return Some(fail),
+                }
+            } else if let Some(cmd) = rest.strip_prefix('!') {
+                WriteTarget::Command(cmd.trim_start().to_string())
+            } else {
+                match file_arg(rest) {
+                    Ok(f) => WriteTarget::File(f),
+                    Err(fail) => return Some(fail),
+                }
+            };
+            Ex::Write(WriteSpec {
+                range,
+                bang,
+                target,
+                opts,
+                if_modified: matches!(verb, FileVerb::Exit | FileVerb::Update),
+                quit: matches!(verb, FileVerb::WriteQuit | FileVerb::Exit),
+            })
+        }
+        FileVerb::SaveAs => match file_arg(rest) {
+            Ok(Some(file)) => Ex::SaveAs { bang, file, opts },
+            Ok(None) => Ex::Fail(ARGUMENT_REQUIRED.into()),
+            Err(fail) => fail,
+        },
+        FileVerb::WriteAll { quit } => {
+            if !rest.trim().is_empty() {
+                return Some(Ex::Fail(format!(
+                    "E488: Trailing characters: {}",
+                    rest.trim()
+                )));
+            }
+            Ex::WriteAll { quit }
+        }
+        FileVerb::Edit => {
+            // `+cmd` runs to the next unescaped blank; `\ ` is a space inside it.
+            let (cmd, rest) = match rest.strip_prefix('+') {
+                Some(after) => {
+                    let mut cmd = String::new();
+                    let mut chars = after.char_indices().peekable();
+                    let mut end = after.len();
+                    while let Some((i, c)) = chars.next() {
+                        match c {
+                            '\\' if chars.peek().is_some_and(|(_, c)| c.is_whitespace()) => {
+                                cmd.extend(chars.next().map(|(_, c)| c));
+                            }
+                            c if c.is_whitespace() => {
+                                end = i;
+                                break;
+                            }
+                            c => cmd.push(c),
+                        }
+                    }
+                    (Some(cmd), &after[end..])
+                }
+                None => (None, rest),
+            };
+            let (more, rest) = match parse_file_opts(rest.trim_start()) {
+                Ok(r) => r,
+                Err(fail) => return Some(fail),
+            };
+            match file_arg(rest) {
+                Ok(file) => Ex::Edit(EditSpec {
+                    bang,
+                    file,
+                    cmd,
+                    opts: FileOpts {
+                        ff: more.ff.or(opts.ff),
+                    },
+                }),
+                Err(fail) => fail,
+            }
+        }
+    })
 }
 
 /// Parse `:[addr]r[ead] {file}` / `:[addr]r[ead] !{cmd}`. After an optional `[0-9.$]` single-line address
@@ -1385,9 +1764,11 @@ fn single_char(s: &str) -> Option<char> {
 }
 
 /// An empty pattern with no last search to borrow ([`reuse_last_search`]). `Display` is the status message
-/// Vim shows: `E476` for `:g` (`ex_global` reports it after `E35`), `E35` for `:sort`.
+/// Vim shows: `E476` for `:s` and `:g` (`do_sub` and `ex_global` report it after `E35`), `E35` for `:sort`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum NoPreviousPattern {
+    /// `:s//repl/`.
+    Substitute,
     /// `:g//` / `:v//`.
     Global,
     /// `:sort //`.
@@ -1397,6 +1778,9 @@ pub(crate) enum NoPreviousPattern {
 impl std::fmt::Display for NoPreviousPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
+            NoPreviousPattern::Substitute => {
+                "E476: Invalid command: E35: No previous regular expression"
+            }
             NoPreviousPattern::Global => "E476: Invalid command",
             NoPreviousPattern::Sort => "E35: No previous regular expression",
         })
@@ -1409,9 +1793,8 @@ impl std::fmt::Display for NoPreviousPattern {
 /// no-op for a non-empty pattern or another command.
 ///
 /// # Errors
-/// The status message when an empty pattern has nothing to borrow: `E476` for `:g` (Vim's `ex_global`
-/// reports it after `E35`), `E35` for `:sort`. An empty `:s` pattern is left for the regex compiler to
-/// refuse, as before.
+/// The status message when an empty pattern has nothing to borrow: `E476` for `:s` and `:g` (Vim's `ex_global`
+/// reports it after `E35`), `E35` for `:sort`.
 pub(crate) fn reuse_last_search(
     ex: &mut Ex,
     last_search: Option<&str>,
@@ -1419,9 +1802,9 @@ pub(crate) fn reuse_last_search(
     match ex {
         Ex::Substitute(spec) => {
             if spec.pattern.is_empty() {
-                if let Some(last) = last_search {
-                    spec.pattern = last.to_string();
-                }
+                spec.pattern = last_search
+                    .ok_or(NoPreviousPattern::Substitute)?
+                    .to_string();
             }
         }
         Ex::Global(spec) => {
@@ -1484,11 +1867,14 @@ mod reuse_last_search_tests {
         );
     }
 
+    /// #1087: `:s//y/` before any search is `E35`, then `do_sub`'s `E476` (nvim v0.12.6).
     #[test]
-    fn empty_pattern_without_a_last_search_stays_empty() {
+    fn empty_pattern_without_a_last_search_is_e476() {
         let mut ex = sub("");
-        reuse_last_search(&mut ex, None).unwrap();
-        assert_eq!(pattern_of(&ex), "");
+        assert_eq!(
+            reuse_last_search(&mut ex, None).map_err(|e| e.to_string()),
+            Err("E476: Invalid command: E35: No previous regular expression".into())
+        );
     }
 
     /// #804: `:g//` takes the last search, and the `s//` inside `:g` takes the `:g` pattern.
@@ -2087,21 +2473,34 @@ mod bar_and_expansion_tests {
 
     #[test]
     fn percent_and_hash_expand_to_the_file_names() {
-        let (cur, alt) = (Some("src/a.rs"), Some("b.txt"));
-        assert_eq!(expand_filename("%", cur, alt), Ok("src/a.rs".into()));
-        assert_eq!(expand_filename("#", cur, alt), Ok("b.txt".into()));
+        let buffers = [(1, "src/a.rs".to_string()), (3, "dir/k.tar.gz".to_string())];
+        let names = FileNames {
+            current: Some("src/a.rs"),
+            alternate: Some("b.txt"),
+            buffers: &buffers,
+        };
+        let x = |arg: &str| expand_filename(arg, &names);
+        assert_eq!(x("%"), Ok("src/a.rs".into()));
+        assert_eq!(x("#"), Ok("b.txt".into()));
+        assert_eq!(x("cat % #"), Ok("cat src/a.rs b.txt".into()));
+        assert_eq!(x(r"a\%b\#"), Ok("a%b#".into()));
+        // `#{n}` is buffer n's file; a number with no such buffer is E194 (nvim v0.12.6).
+        assert_eq!(x("#3"), Ok("dir/k.tar.gz".into()));
+        assert_eq!(x("#2"), Err(ExpandError::NoAlternateFile));
+        let no_cur = FileNames {
+            current: None,
+            ..names
+        };
         assert_eq!(
-            expand_filename("cat % #", cur, alt),
-            Ok("cat src/a.rs b.txt".into())
-        );
-        assert_eq!(expand_filename(r"a\%b\#", cur, alt), Ok("a%b#".into()));
-        assert_eq!(expand_filename("#2", cur, alt), Ok("#2".into()));
-        assert_eq!(
-            expand_filename("%", None, alt),
+            expand_filename("%", &no_cur),
             Err(ExpandError::EmptyFileName)
         );
+        let no_alt = FileNames {
+            alternate: None,
+            ..names
+        };
         assert_eq!(
-            expand_filename("#", cur, None),
+            expand_filename("#", &no_alt),
             Err(ExpandError::NoAlternateFile)
         );
         assert!(ExpandError::EmptyFileName.to_string().starts_with("E499:"));
@@ -2112,5 +2511,132 @@ mod bar_and_expansion_tests {
             ExpandError::NoPreviousCommand.to_string(),
             "E34: No previous command"
         );
+    }
+}
+
+#[cfg(test)]
+mod file_command_tests {
+    use super::*;
+
+    fn write(line: &str) -> WriteSpec {
+        match parse_ex(line) {
+            Ex::Write(spec) => spec,
+            other => panic!(":{line} is not a write: {other:?}"),
+        }
+    }
+
+    /// #610: the `:w` family's forms, as `:help :w` lists them.
+    #[test]
+    fn write_forms_parse() {
+        let w = write("w");
+        assert_eq!(w.target, WriteTarget::File(None));
+        assert!(!w.bang && !w.quit && !w.if_modified && w.range.is_none());
+        assert_eq!(
+            write("write! a.txt").target,
+            WriteTarget::File(Some("a.txt".into()))
+        );
+        assert!(write("w! a.txt").bang);
+        assert_eq!(
+            write("w >> a.txt").target,
+            WriteTarget::Append(Some("a.txt".into()))
+        );
+        assert_eq!(write("w>>").target, WriteTarget::Append(None));
+        assert_eq!(
+            write("w !wc -l").target,
+            WriteTarget::Command("wc -l".into())
+        );
+        assert_eq!(write("2,3w b.txt").range, Some(SubRange::Lines(2, 3)));
+        assert_eq!(write("%w").range, Some(SubRange::WholeFile));
+        assert_eq!(
+            write(r"w my\ file").target,
+            WriteTarget::File(Some("my file".into()))
+        );
+        assert_eq!(write("w ++ff=dos d.txt").opts.ff, Some(FileFormatOpt::Dos));
+        let up = write("up");
+        assert!(up.if_modified && !up.quit);
+        let wq = write("wq! x.txt");
+        assert!(wq.quit && wq.bang && !wq.if_modified);
+        for x in ["x", "xi", "xit", "exi", "exit"] {
+            let spec = write(x);
+            assert!(spec.quit && spec.if_modified, ":{x}");
+        }
+        assert_eq!(
+            parse_ex("w a b"),
+            Ex::Fail("E172: Only one file name allowed".into())
+        );
+        assert_eq!(
+            parse_ex("w ++ff=mac a"),
+            Ex::Fail("E474: Invalid argument".into())
+        );
+        // Other `w…` commands are not writes.
+        assert!(matches!(parse_ex("wfoo"), Ex::Unknown(_)));
+        assert!(matches!(parse_ex("wn"), Ex::Unknown(_)));
+    }
+
+    #[test]
+    fn saveas_wall_and_edit_parse() {
+        assert_eq!(
+            parse_ex("sav! n.txt"),
+            Ex::SaveAs {
+                bang: true,
+                file: "n.txt".into(),
+                opts: FileOpts::default()
+            }
+        );
+        assert_eq!(
+            parse_ex("saveas"),
+            Ex::Fail("E471: Argument required".into())
+        );
+        assert_eq!(parse_ex("wa"), Ex::WriteAll { quit: false });
+        assert_eq!(parse_ex("wall!"), Ex::WriteAll { quit: false });
+        assert_eq!(parse_ex("wqa"), Ex::WriteAll { quit: true });
+        assert_eq!(parse_ex("xall"), Ex::WriteAll { quit: true });
+        assert_eq!(parse_ex("2wa"), Ex::Fail("E481: No range allowed".into()));
+        assert_eq!(
+            parse_ex(r"e! +/a\ b ++ff=unix f.txt"),
+            Ex::Edit(EditSpec {
+                bang: true,
+                file: Some("f.txt".into()),
+                cmd: Some("/a b".into()),
+                opts: FileOpts {
+                    ff: Some(FileFormatOpt::Unix)
+                },
+            })
+        );
+        let Ex::Edit(plus) = parse_ex("e + f.txt") else {
+            panic!("not an edit")
+        };
+        assert_eq!(plus.cmd.as_deref(), Some(""));
+        assert_eq!(
+            split_bar("w !a | b"),
+            ["w !a | b"],
+            "`:w !cmd` owns the bar"
+        );
+        assert_eq!(split_bar("w! a|q"), ["w! a", "q"]);
+    }
+
+    /// #610: file-name modifiers, checked against nvim v0.12.6's `expand()`.
+    #[test]
+    fn filename_modifiers() {
+        let names = FileNames {
+            current: Some("sub/k.tar.gz"),
+            alternate: Some(".bashrc"),
+            buffers: &[],
+        };
+        let x = |arg: &str| expand_filename(arg, &names).unwrap();
+        assert_eq!(x("%:h"), "sub");
+        assert_eq!(x("%:t"), "k.tar.gz");
+        assert_eq!(x("%:r"), "sub/k.tar");
+        assert_eq!(x("%:e"), "gz");
+        assert_eq!(x("%:t:r:r"), "k");
+        assert_eq!(x("%:e:e"), "tar.gz");
+        assert_eq!(x("%:r.bak"), "sub/k.tar.bak");
+        assert_eq!(x("#:r"), ".bashrc", "a leading dot is not an extension");
+        assert_eq!(x("#:h"), ".");
+        assert_eq!(x("%:x"), "sub/k.tar.gz:x", "an unknown modifier stays text");
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(x("%:p"), cwd.join("sub/k.tar.gz").display().to_string());
+        assert_eq!(x("%:p:h:h"), cwd.display().to_string());
+        assert_eq!(x("%:p:."), "sub/k.tar.gz");
     }
 }

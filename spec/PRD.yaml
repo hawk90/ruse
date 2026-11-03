@@ -548,6 +548,13 @@ features:
     # auto-overwrites, #3/#4). MVP-minimal per ruse-mvp-minimal-slice: the full four-state /
     # inverse-edit / incremental journal in persistence-and-recovery.md is the post-MVP C-PERSIST
     # elaboration. 20 unit + 3 integration (tests/persist_roundtrip.rs) tests; all 4 acceptance met.
+    # #610 Ex file commands (nvim v0.12.6; apps/tui/src/app/file_cmds.rs, tests/file_commands.rs):
+    # `:[range]w[!] [++ff] [file]`, `:w >> [file]` (append in place), `:w !cmd`, `:up`, `:wq[!] [file]`,
+    # `:x[!]`, `:sav[!] {file}`, `:wa`/`:wqa`/`:xa`, `:e[!] [++ff] [+cmd] [file]` (a missing file opens as
+    # a new buffer), and `%`/`#`/`#n` with the `:p :~ :. :h :t :r :e` modifiers. Replacing writes keep the
+    # atomic save and its non-regular-file refusal; E13/E17/E139/E140/E141/E172/E212/E502 as nvim.
+    # Not modeled: the alternate file a `:w {file}`/`:sav` sets (ruse's alternate is a buffer), and
+    # `:find`, `:view`, `:drop`, the `:cd` family, `:pwd`, `:oldfiles`, `:checktime`, `:file`.
     status: done
     depends_on: [C-DOCUMENT, C-WORKSPACE, C-PERSIST]
     summary: Atomic save preserving encoding/line-endings; append-only recovery journal.

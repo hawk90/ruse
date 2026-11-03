@@ -6476,6 +6476,20 @@ mod global_tests {
         assert_eq!(st.as_str().unwrap(), "keep\nkeep2\n");
     }
 
+    /// #1100 (nvim v0.12.6): `:g/a/d` deletes line by line, so `""` and `"1` hold the last deleted line and
+    /// the earlier ones shift down the numbered ring.
+    #[test]
+    fn global_delete_fills_the_unnamed_and_numbered_registers() {
+        let st = run_global("a1\nb\na2\nc\na3", "a", false, GlobalCmd::Delete);
+        assert_eq!(st.as_str().unwrap(), "b\nc");
+        let reg = |r| st.view.registers.get(r).text().to_vec();
+        assert_eq!(reg(None), b"a3\n");
+        assert!(st.view.registers.get(None).is_linewise());
+        assert_eq!(reg(Some('1')), b"a3\n");
+        assert_eq!(reg(Some('2')), b"a2\n");
+        assert_eq!(reg(Some('3')), b"a1\n");
+    }
+
     /// F-009 #4: `:g!/pat/d` (== `:v/pat/d`) deletes the NON-matching lines.
     #[test]
     fn global_negate_deletes_non_matching() {

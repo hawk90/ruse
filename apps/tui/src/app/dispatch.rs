@@ -52,6 +52,18 @@ pub(crate) fn open_file_into_buffer(
     files: &mut Files,
     highlighters: &mut Highlighters,
 ) -> Opened {
+    open_file_with(file, ws, files, highlighters, |fmt| fmt)
+}
+
+/// [`open_file_into_buffer`], with `format` adjusting the detected file format (`:e ++ff=dos`). A file
+/// that does not exist yet opens as an empty buffer that `:w` creates (`"new.txt" [New]`, as in nvim).
+pub(crate) fn open_file_with(
+    file: &str,
+    ws: &mut Workspace,
+    files: &mut Files,
+    highlighters: &mut Highlighters,
+    format: impl FnOnce(persist::encoding::FileFormat) -> persist::encoding::FileFormat,
+) -> Opened {
     let p = PathBuf::from(file);
     if let Some(id) = buffer_for_path(files, &p) {
         ws.focus_buffer(id);
@@ -60,8 +72,12 @@ pub(crate) fn open_file_into_buffer(
             id: Some(id),
         };
     }
-    let raw = match persist::read_file(&p) {
-        Ok(raw) => raw,
+    let (raw, new) = match persist::read_file(&p) {
+        Ok(raw) => (raw, false),
+        // A dangling symlink is not a new file: writing it would create the link's target.
+        Err(e) if e.kind() == io::ErrorKind::NotFound && fs::symlink_metadata(&p).is_err() => {
+            (Vec::new(), true)
+        }
         Err(e) => {
             return Opened {
                 status: format!("E484: can't open {file}: {e}"),
@@ -69,7 +85,7 @@ pub(crate) fn open_file_into_buffer(
             }
         }
     };
-    let f = persist::encoding::FileFormat::detect(&raw);
+    let f = format(persist::encoding::FileFormat::detect(&raw));
     let disk = f.to_buffer(&raw);
     let (journaled, journal_error) = match persist::journal::replay_checked(Some(&p)) {
         Ok(r) => (r, None),
@@ -116,6 +132,7 @@ pub(crate) fn open_file_into_buffer(
         }
         None => match journal_error {
             Some(note) => format!("\"{file}\" {note}"),
+            None if new => format!("\"{file}\" [New]"),
             None => format!("\"{file}\" {} bytes", raw.len()),
         },
     };
@@ -296,12 +313,32 @@ pub(crate) fn match_count_message(matches: usize, lines: usize) -> String {
     format!("{matches} {m} on {lines} {l}")
 }
 
-/// Human-readable status for a regex compile error (F-009).
+/// Status for a regex compile error (F-009): the pattern reader's own `E…:` message when it has one (nvim's
+/// number and wording, #1087), else a plain note. When nvim gives a second error after the first (the NFA
+/// engine's `E870` after a bad `\{…}`), that one leads, since it is the last error nvim reports.
 pub(crate) fn regex_error_msg(e: &ruse_core::RegexError) -> String {
     match e {
         ruse_core::RegexError::Unsupported(m) => format!("E: unsupported pattern: {m}"),
+        ruse_core::RegexError::Syntax(m) if m.starts_with("E554:") => {
+            format!("E870: (NFA regexp) Error while reading repetition limits: {m}")
+        }
+        ruse_core::RegexError::Syntax(m) if has_error_number(m) => m.clone(),
         ruse_core::RegexError::Syntax(m) => format!("E: bad pattern: {m}"),
     }
+}
+
+/// The status for an `:s` whose pattern cannot be used: nvim follows the pattern's own error with `E476`
+/// (`do_sub`), and so does `:g` (`ex_global`).
+pub(crate) fn invalid_command_msg(e: &ruse_core::RegexError) -> String {
+    format!("E476: Invalid command: {}", regex_error_msg(e))
+}
+
+/// Whether `msg` opens with a Vim error number (`E54: …`).
+fn has_error_number(msg: &str) -> bool {
+    let digits = msg
+        .strip_prefix('E')
+        .map_or(0, |r| r.bytes().take_while(u8::is_ascii_digit).count());
+    digits > 0 && msg[1 + digits..].starts_with(':')
 }
 
 /// The process exit status a `:cquit` asked for; 0 otherwise. Read by the CLI once the session returns.
