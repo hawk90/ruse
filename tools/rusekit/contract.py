@@ -1,4 +1,4 @@
-"""The Change Contract (`.ruse/work/<id>/change.yaml`) and the change-kinds policy.
+"""The Change Contract (`$(git rev-parse --git-path ruse/work)/<id>/change.yaml`) and the change-kinds policy.
 
 The contract is the small, local, per-task agreement: what kind of change this is, what
 it may touch, and what evidence closes it. It is NOT permanent state — only the final

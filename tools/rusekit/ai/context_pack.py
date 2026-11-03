@@ -197,7 +197,7 @@ def _cmd_build(args) -> int:
         cpath = os.path.join(wd, "context.md")
         lpath = os.path.join(wd, "context-lock.json")
     else:
-        cpath = args.out or repo.path(".ruse", "context.md")
+        cpath = args.out or os.path.join(os.path.dirname(repo.work_root()), "context.md")
         lpath = os.path.splitext(cpath)[0] + "-lock.json"
         os.makedirs(os.path.dirname(cpath), exist_ok=True)
     with open(cpath, "w", encoding="utf-8") as fh:
@@ -210,8 +210,8 @@ def _cmd_build(args) -> int:
     render.field("Roots", ", ".join(lock["roots"]) or "—")
     render.field("IDs in pack", str(len(lock["ids"])))
     render.field("Sources", str(len(lock["sources"])))
-    render.field("Context", repo.rel(cpath))
-    render.field("Lock", repo.rel(lpath))
+    render.field("Context", repo.show(cpath))
+    render.field("Lock", repo.show(lpath))
     render.ok("context pack built")
     return 0
 
@@ -223,7 +223,7 @@ def _cmd_check(args) -> int:
         return 1
     lpath = os.path.join(repo.work_dir(issue), "context-lock.json")
     if not os.path.isfile(lpath):
-        render.fail(f"no lock at {repo.rel(lpath)} — run `ruse context build` first")
+        render.fail(f"no lock at {repo.show(lpath)} — run `ruse context build` first")
         return 1
     lock = json.load(open(lpath))
     stale = []

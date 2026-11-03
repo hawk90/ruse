@@ -62,7 +62,6 @@ from rusekit import render, repo  # noqa: E402
 EDITOR = "helix"
 OUT_DIR = "spec/parity/inventory/helix"
 UPSTREAMS = "spec/parity/upstreams.yaml"
-CACHE = ".ruse/cache/parity/helix"
 
 HUMAN_FIELDS = ("status", "ruse", "note", "superseded_by", "surface_locked", "family", "secondary")
 
@@ -81,7 +80,7 @@ FIELD = re.compile(r"^\s{4}pub ([a-z_0-9]+):\s*(.+?),?\s*$")
 
 
 def _u(path: str) -> str:
-    return os.path.join(repo.path(CACHE), path)
+    return os.path.join(repo.cache_root(), "parity", EDITOR, path)
 
 
 def _read(path: str) -> list[str]:

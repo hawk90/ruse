@@ -2,7 +2,8 @@
 """parity fetch — materialise each SHA-pinned upstream into the local cache.
 
 Clones are NEVER vendored into the repo. ruse is MIT; Vim ships under the Vim license and Emacs
-under GPL-3.0, so upstream files stay in .ruse/cache/parity/<editor>/ (gitignored) and only
+under GPL-3.0, so upstream files stay in ${XDG_CACHE_HOME:-~/.cache}/ruse-dev/parity/<editor>/ (outside
+the repo, shared across worktrees, D-062) and only
 extracted FACTS (names, types, defaults, scopes) reach spec/parity/. Facts about how a program
 behaves are not the program's expression; its files are.
 
@@ -28,7 +29,7 @@ import yaml  # noqa: E402
 from rusekit import render, repo  # noqa: E402
 
 UPSTREAMS = "spec/parity/upstreams.yaml"
-CACHE = ".ruse/cache/parity"
+CACHE = "parity"   # under repo.cache_root()
 
 
 def load_upstreams() -> dict:
@@ -37,7 +38,7 @@ def load_upstreams() -> dict:
 
 
 def cache_dir(editor: str) -> str:
-    return repo.path(CACHE, editor)
+    return os.path.join(repo.cache_root(), CACHE, editor)
 
 
 def _run(args: list[str], cwd: str) -> tuple[int, str]:
@@ -53,7 +54,15 @@ def head_sha(path: str) -> str | None:
 
 
 def fetch_one(editor: str, spec: dict) -> tuple[bool, str]:
-    """Fetch exactly `spec['revision']` into the cache. Idempotent: an already-correct cache is a no-op."""
+    """Fetch exactly `spec['revision']` into the cache. Idempotent: an already-correct cache is a no-op.
+
+    The cache is shared by every worktree, so the fetch holds an exclusive lock per upstream: two
+    concurrent `parity fetch` runs serialise, and the second finds the pin already checked out."""
+    with repo.cache_lock(os.path.dirname(cache_dir(editor)), editor):
+        return _fetch_locked(editor, spec)
+
+
+def _fetch_locked(editor: str, spec: dict) -> tuple[bool, str]:
     want = str(spec.get("revision") or "")
     if len(want) != 40 or not all(ch in "0123456789abcdef" for ch in want):
         return False, f"revision must be a full 40-char commit SHA (got {want!r}) — tags and ranges are not pins"
@@ -63,12 +72,18 @@ def fetch_one(editor: str, spec: dict) -> tuple[bool, str]:
     if have == want:
         return True, f"cached at {want[:12]} ({spec.get('version_label', '?')})"
 
-    os.makedirs(path, exist_ok=True)
     if not os.path.isdir(os.path.join(path, ".git")):
-        code, out = _run(["git", "init", "-q"], path)
+        # Initialise under a temp name and rename into place, so an interrupted init never leaves a
+        # half-made clone that a later run would mistake for the cache.
+        tmp = f"{path}.tmp-{os.getpid()}"
+        os.makedirs(tmp, exist_ok=True)
+        code, out = _run(["git", "init", "-q"], tmp)
         if code != 0:
             return False, f"git init failed: {out.strip()[:200]}"
-        _run(["git", "remote", "add", "origin", spec["repo"]], path)
+        _run(["git", "remote", "add", "origin", spec["repo"]], tmp)
+        if os.path.isdir(path) and not os.listdir(path):
+            os.rmdir(path)
+        os.rename(tmp, path)
 
     # Depth-1 fetch of the exact commit. Works on GitHub for tag/branch-reachable SHAs; a pin that
     # has been GC'd or force-pushed away must fail loudly, not fall back to HEAD.
@@ -96,7 +111,8 @@ def main(argv=None) -> int:
     want = args.editors or sorted(ups)
 
     render.heading("parity fetch (SHA-pinned upstream cache)")
-    render.field("Cache", CACHE + "/  (gitignored — upstream files are never vendored)")
+    render.field("Cache", os.path.join(repo.cache_root(), CACHE)
+                 + "/  (outside the repo — upstream files are never vendored)")
 
     rc = 0
     for editor in want:

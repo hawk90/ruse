@@ -19,7 +19,7 @@
 #      exclusion carries a reason, so the cut is reviewable rather than invisible.
 #
 # `ruse parity fetch` clones each pin into ${XDG_CACHE_HOME:-~/.cache}/ruse-dev/parity/<editor>/ (outside the
-# repo, shared across worktrees; `.ruse/` is the product's project-config dir, D-062; tooling move: #1137 —
+# repo, shared across worktrees; `.ruse/` is the product's project-config dir, D-062) —
 # never vendored:
 # ruse is MIT, Vim is the Vim license, Emacs is GPL-3.0; we extract FACTS and never redistribute files).
 #

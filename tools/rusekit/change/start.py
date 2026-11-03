@@ -1,8 +1,15 @@
-"""change start — scaffold the local .ruse/work/<issue>/ change workspace.
+"""change start — scaffold the local change workspace, `$(git rev-parse --git-path ruse/work)/<issue>/`.
 
 Creates change.yaml (from spec/templates/change.yaml, pre-filled), plan.md, and empty
-impact.json / evidence.json. Nothing here is committed — .ruse/ is gitignored; only the
-eventual RFC/Decision/PRD/PR is permanent.
+impact.json / evidence.json. Nothing here is committed — the directory is inside `.git` (per
+worktree, D-062); only the eventual RFC/Decision/PRD/PR is permanent.
+
+Every contract field an author fills is a flag (see rusekit/change/edit.py), so the contract never
+needs a hand edit; `ruse change set` amends it later:
+
+  ruse change start --issue 42 --kind implementation --area core --goal "..." \\
+      --allow crates/core/ --allow docs/design/x.md --forbid spec/DECISIONS.md \\
+      --spec-ref C-TRANSACTION --spec-ref INV-TXN --rfc RFC-0021 --decision D-062
 """
 from __future__ import annotations
 
@@ -12,10 +19,14 @@ import os
 import sys
 
 from rusekit import repo, render, contract  # noqa: E402
+from rusekit.change import edit  # noqa: E402
 
 
 def _fill_change_yaml(template: str, issue: str, kind: str | None,
-                      crates: list[str]) -> str:
+                      crates: list[str], seed_allow: bool = True) -> str:
+    """Fill the template. `allow_paths` is seeded from the crates only when the caller gave no explicit
+    `--allow`: explicit paths are the whole blast radius, never widened by a crate default (a docs-only
+    change declared with `--area core` must not silently allow `crates/core/`)."""
     out = template
     out = out.replace('issue: "<id>"', f'issue: "{issue}"', 1)      # top-level (col 0)
     out = out.replace('  issue: "<id>"', f'  issue: "{issue}"', 1)  # artifacts.issue
@@ -24,13 +35,20 @@ def _fill_change_yaml(template: str, issue: str, kind: str | None,
     if crates:
         clist = ", ".join(crates)
         out = out.replace("  crates: []", f"  crates: [{clist}]", 1)
-        paths = ", ".join(f'"crates/{c}/"' for c in crates)
-        out = out.replace("allow_paths: []", f"allow_paths: [{paths}]", 1)
+        if seed_allow:
+            paths = ", ".join(f'"crates/{c}/"' for c in crates)
+            out = out.replace("allow_paths: []", f"allow_paths: [{paths}]", 1)
     return out
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(prog="ruse change start")
+    ap = argparse.ArgumentParser(
+        prog="ruse change start",
+        description="Scaffold the Change Contract. List flags (--allow, --forbid, --spec-ref, --non-goal) "
+                    "are repeatable; amend later with `ruse change set` (appends; --replace replaces).",
+        epilog="example: ruse change start --issue 42 --kind implementation --area core "
+               "--goal \"...\" --allow docs/design/x.md --forbid spec/DECISIONS.md "
+               "--spec-ref C-TRANSACTION --rfc RFC-0021 --decision D-062")
     ap.add_argument("--issue", required=True, help="tracking issue id / short slug")
     ap.add_argument("--kind", choices=contract.kind_names() or None,
                     help="declared change kind (see spec/change-kinds.yaml)")
@@ -38,12 +56,13 @@ def main(argv: list[str]) -> int:
                     help="affected crate (repeatable): " + " | ".join(repo.CRATES))
     ap.add_argument("--goal", help="one-line goal (fills change.yaml)")
     ap.add_argument("--force", action="store_true", help="overwrite an existing workspace")
+    edit.add_arguments(ap, with_kind=False)
     args = ap.parse_args(argv)
 
     wd = repo.work_dir(args.issue)
     cy = os.path.join(wd, "change.yaml")
     if os.path.exists(cy) and not args.force:
-        render.fail(f"{repo.rel(cy)} already exists (use --force to overwrite)")
+        render.fail(f"{repo.show(cy)} already exists (use --force to overwrite)")
         return 1
 
     bad = [a for a in args.area if a not in repo.CRATES]
@@ -55,11 +74,16 @@ def main(argv: list[str]) -> int:
     # change.yaml
     tmpl_path = repo.path("spec", "templates", "change.yaml")
     template = open(tmpl_path, encoding="utf-8").read() if os.path.isfile(tmpl_path) else ""
-    text = _fill_change_yaml(template, args.issue, args.kind, args.area)
+    text = _fill_change_yaml(template, args.issue, args.kind, args.area, seed_allow=not args.allow)
     if args.goal:
         text = text.replace(
             "  <one paragraph: the observable outcome this change delivers>",
             f"  {args.goal}", 1)
+    try:
+        text, _changes = edit.apply(text, args)   # --allow/--forbid/--spec-ref/--non-goal/--rfc/--decision
+    except ValueError as e:
+        render.fail(str(e))
+        return 2
     with open(cy, "w", encoding="utf-8") as fh:
         fh.write(text)
 
@@ -78,14 +102,15 @@ def main(argv: list[str]) -> int:
     branch = repo.current_branch()
 
     render.heading("change start")
-    render.field("Workspace", repo.rel(wd) + "/")
+    render.field("Workspace", repo.show(wd) + "/")
     render.field("Issue", str(args.issue))
     render.field("Kind", args.kind or "(unset — edit change.yaml)")
     render.field("Crates", ", ".join(args.area) or "(none)")
     render.field("Git branch", branch or "(not a git repo)")
     render.ok("workspace scaffolded")
     render.heading("\nNext")
-    render.bullet(f"edit {repo.rel(cy)} (goal, non-goals, affected IDs, allow_paths)")
+    render.bullet(f"python3 tools/ruse.py change set --issue {args.issue} --allow <path> --spec-ref <ID> "
+                  "(amend the contract; no hand edit needed)")
     render.bullet(f"python3 tools/ruse.py context build --issue {args.issue}")
     render.bullet(f"python3 tools/ruse.py impact --issue {args.issue}")
     render.bullet(f"python3 tools/ruse.py verify --changed")

@@ -82,7 +82,7 @@ def main(argv: list[str]) -> int:
             present.append(req)
 
     render.heading("plan validate")
-    render.field("Plan", repo.rel(path))
+    render.field("Plan", repo.show(path))
     render.field("Sections", f"{len(present)}/{len(REQUIRED)} filled")
     if missing:
         render.heading("\nMissing sections")
