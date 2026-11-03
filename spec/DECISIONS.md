@@ -251,7 +251,23 @@ related:
   magic levels `\v \V \m \M`. `'gdefault'` handled at the substitute-command layer; capability-first engine
   router; ReDoS step-budget → typed `BudgetExceeded` + scheduler cancellation. Full design:
   [vim-regex.md](../docs/design/vim-regex.md). Resolves V-8.
-- **Open (details):** OQ-1..6 in the doc (perf tuning, untrusted-pattern policy).
+- **Open (details):** none since the 2026-11-03 amendment; OQ-1..6 are answered in the doc.
+- **Amended 2026-11-03 (#996) — state as built; the decision itself is unchanged.** The Vim front-end is a port
+  of nvim's `regexp.c` reader (#692, PR #1050) that lowers straight to Rust `regex` syntax; the IR and router are
+  not built. The wrapped `regex` engine is the only engine, and the shapes it is trusted to match like nvim are
+  the ones the differential oracle certifies (`tools/parity/pattern_oracle.py` → `crates/core/tests/pattern_oracle*`:
+  553 rows at `87d7ca4`, 522 agree, 27 rejected as unsupported, 4 known divergences; per-class table in
+  vim-regex.md §Current state). That table is the §7 fast-path allow-list, grown by tests instead of starting
+  empty. Unsupported atoms (lookaround, backrefs, position atoms, `\&`, `~`, `\Z`, `[=a=]`) are rejected with
+  `RegexError::Unsupported`, never faked. The one knowing approximation is `\<`/`\>` lowered to Rust word
+  boundaries; interim fix (#745): at the pattern edges, drop them from the Rust pattern, post-check the match
+  boundary with Vim's `utf_class` rule and retry from the next position; mid-pattern stays `known` until the
+  owned engine. The owned Vim engine remains the plan for the residual (lookaround, backrefs, position atoms,
+  mid-pattern `\<`/`\>`, `\&`, `~`), scheduled later. Answers: OQ-1 the allow-list is the oracle class table;
+  OQ-2 budgets tie to the CTRL-C checkpoint (`crates/core/src/interrupt.rs`, #1122) plus a step budget for the
+  future backtracker, numbers set by bench; OQ-3 `MatchCtx` is needed only by the owned engine; OQ-4 the ripgrep
+  bridge translates from the IR independently; OQ-5 `\=` defers to D-025; OQ-6 no new invariant
+  (INV-FAIL-BOUNDED + INV-SCHED-1).
 - **Re-evaluate:** as F-009 Vim search reaches L2.
 - Refs: [vim-regex.md](../docs/design/vim-regex.md), vim.md VIM-SEARCH-1, DEP-REGEX, F-009.
 
@@ -848,16 +864,29 @@ related:
   Putting the state on a `Document` (violates INV-DOC-VIEW) or in a process-global singleton (violates
   INV-NO-GLOBAL-STATE + the D-002 single-executor) are the two wrong shapes; the `Workspace` is the single
   legitimate owner, and "editor-global" here means workspace-SCOPED, which INV-NO-GLOBAL-STATE permits.
-- **Open (design):** lowercase-marks→anchors timing; exactly which registers are global vs. buffer-local
-  (proposal: all global, D-026); `q:` re-entry via the `:normal`/`:g` executor; per-View vs. single
-  jumplist; whether to pull generational handles (INV-HANDLE) forward; the file picker's read boundary
-  (buffers vs. CAP-FS/SEARCH). Resolved at review before slice 2 (the ownership move) lands. Details in the
-  RFC/design Open questions.
+- **Open (design):** none since the 2026-11-03 amendment below. Proposed as: lowercase-marks→anchors timing;
+  exactly which registers are global vs. buffer-local; `q:` re-entry; per-View vs. single jumplist;
+  generational handles (INV-HANDLE); the file picker's read boundary.
+- **Amended 2026-11-03 (#508, RFC-0018 accepted).** The maintainer follows this design as written.
+  *Shipped:* registers on the Workspace, lent by `Workspace::lend`/`reclaim` with `from_parts`/`into_parts`
+  unchanged, and `"#` (#1114); a buffer whose last window closes stays loaded and hidden (#1044); uppercase
+  marks, kept with their own buffer (#1103); marks, special marks, the jumplist and the change list carried
+  through edits as line anchors by nvim's `mark_adjust` rule (#1124). *Remaining:* cross-buffer global marks
+  (F-032); lowercase marks per buffer rather than per View (#636); jumplist entries `(DocumentId, Anchor)`;
+  `Disposition`/`BufferKind`; the retirement Effect; editable `q:`; other-buffers completion.
+  *Answers:* (1) lowercase marks are anchors (done, #1124); (2) registers are workspace-global (done, #1114);
+  (3) `q:` runs its line through the `:normal`/`:g` driven executor (the session key path, #1096), refusing a
+  nested command-line window with nvim's E1292 and keeping `:normal`'s E192 depth limit; (4) the jumplist is
+  per View with `(DocumentId, Anchor)` entries, as in Vim and Helix; (5) generational handles are a separate
+  issue, #973; (6) the buffer picker is in scope, the file picker is a later consumer of CAP-FS/CAP-SEARCH.
+  *Added rule:* when a named buffer is retired, its global marks and cross-buffer jumplist entries degrade to
+  `(path, line, col)` (Vim's file mark with a file name) instead of being pruned, and re-attach as anchors
+  when that path is opened again; entries into an unnamed buffer are dropped.
 - **Re-evaluate if:** a second client is enabled (D-012) — some registers/marks may need a client-scope
   split; or session persistence (mksession/shada) lands — the global store gains a serialized on-disk form,
   promoting the register/mark byte encoding to a persistent-format CONTRACT decision (as D-055 notes for
   macros), superseding the "internal only" stance here.
-- Refs: [../docs/rfc/proposed/RFC-0018-multi-buffer-arena.md](../docs/rfc/proposed/RFC-0018-multi-buffer-arena.md),
+- Refs: [../docs/rfc/accepted/RFC-0018-multi-buffer-arena.md](../docs/rfc/accepted/RFC-0018-multi-buffer-arena.md),
   [../docs/design/buffer-arena-and-global-state.md](../docs/design/buffer-arena-and-global-state.md),
   [../docs/design/view-window-workspace.md](../docs/design/view-window-workspace.md),
   D-003, D-023, D-026, D-027, D-039, D-055, INV-DOC-VIEW, INV-NO-GLOBAL-STATE, INV-ANCHOR, INV-HANDLE,
@@ -907,3 +936,28 @@ related:
   does not fit, because a phase must own PRD features and most of these issues are bugs and tests.
 - **Re-evaluate if:** intermediate milestones need gating, or tagged releases stop following them.
 - Refs: D-037, D-059, `spec/phases.yaml`, `tools/phase_sync.py`.
+
+## D-061 — Ex edits are recorded in the trace as resolved semantic commands · decided (design)
+- **Decision:** Every Ex edit is recorded in the command trace as resolved commands (command-engine.md §7.3).
+  Pure edits (`:s` and its repeats `&`/`g&`/`:&`, `:d`, `:m`, `:t`, `:sort`, `:j`, `:>`/`:<`, `:retab`, `:pu`)
+  record as one `Command::Ex(ExCmd)` with RESOLVED 1-based line numbers and the literal pattern, replacement and
+  effective flags used, never the address text or "the last pattern"; `:s///c` records the user's answers.
+  IO-dependent edits record the bytes the frontend obtained as data (`ReadText { after_line, bytes }` for `:r
+  file`/`:r !cmd`, `FilterReplace { range, bytes }` for `:{range}!cmd`), so the core stays IO-free (D-039) and
+  replay never reads a file or spawns a process. `:g` and `:normal` record as a `Begin`/`End` group of their
+  resolved children (for `:normal`, the Commands its keys produced plus its per-line cursor placement), and
+  replay opens one undo block per group as the live command does. Non-edit Ex (`:w`, `:e`, `:cd`, …) is not
+  recorded, except `:set` of an option the core reads while editing (for example `ts`, `sw`, `et`, `tw`, `ic`,
+  `scs`); those options' values are also written at the start of the trace. The format stays `v1` with
+  additive verbs; older traces parse and replay unchanged. Full design:
+  [RFC-0020](../docs/rfc/proposed/RFC-0020-ex-edits-in-the-trace.md).
+- **Reason:** Ex edits call `Workspace` ops straight from `Session::execute_ex_one`, and `&`/`g&` return before
+  `run_cmd`, so none of them reach the trace: a session that used `:s`, `:g` or `:sort` replays to a different
+  document and reports success. Recording raw Ex text would re-resolve history, cursor and IO at replay time;
+  one variant per verb would scatter Ex across the key-command namespace with no home for groups; an effect-only
+  `EditList` would drop registers, marks and cursor behaviour and stop the corpus testing Ex at all.
+- **Re-evaluate if:** a trace `v2` or session persistence lands; Ex parsing moves into the core; or another
+  frontend path is found mutating outside `run_cmd` (the rule then becomes general).
+- Refs: [RFC-0020](../docs/rfc/proposed/RFC-0020-ex-edits-in-the-trace.md),
+  [command-engine.md](../docs/design/command-engine.md), RFC-0012, D-001, D-006, D-025, D-039, INV-CMD-SEMANTIC,
+  INV-ADDITIVE, INV-TXN, F-009.

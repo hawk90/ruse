@@ -28,10 +28,10 @@ related:
 
 # ruse Regex Abstraction & Vim-Dialect Engine
 
-> **Current code.** `crates/core/src/pattern.rs` is a magic-aware front-end over the wrapped `regex` crate, the
-> only engine today; atoms that crate cannot represent are rejected with a typed error. `VimEngine`, the IR, budgets
-> and the fast-path allow-list below are unbuilt. Whether the wrapped-only scope needs a D-028 amendment is open
-> (#996).
+> **Current code.** D-028 is decided, and its 2026-11-03 amendment (#996) records the state the code is in: a port of
+> nvim's pattern reader lowering straight to the wrapped `regex` crate, which is the only engine; atoms it cannot
+> represent are rejected with a typed error. See [Current state (MVP)](#current-state-mvp-d-028-amendment-2026-11-03).
+> `VimEngine`, the IR, the router and match budgets below are unbuilt; the owned engine is scheduled later (§3).
 
 Design behind **D-028** (decided, design) and **V-8** (verification.md: "Vim regex dialect has no owning component or
 decision"). Specifies the `C-REGEX` component referenced by D-028 and by
@@ -44,6 +44,66 @@ decision"). Specifies the `C-REGEX` component referenced by D-028 and by
 Intentionally-different. Vim search/substitute is a muscle-memory L2 obligation
 ([VIM-SEARCH](../parity/vim.md#vim-search--search--substitute) targets L2); `\zs`/`\ze`/lookbehind are
 common enough in real `.vimrc`/plugins that documenting them away would fail the parity charter (D-007).
+
+## Current state (MVP, D-028 amendment 2026-11-03)
+
+D-028 stands as written: option (a), a Vim front-end and an owned Vim engine beside the wrapped one. What ships
+today is the first half, and the amendment records it.
+
+- **Front-end.** `crates/core/src/pattern.rs` is a port of nvim's `regexp.c` reader (`peekchr`, `nfa_regatom`,
+  `nfa_regpiece`, the collection reader; #692, PR #1050). It resolves the magic levels once (§5) and lowers
+  `\zs`/`\ze` to reserved empty capture groups (§4). It lowers **straight to Rust `regex` syntax**: there is no
+  `RegexIr`, no `Requirements` summary and no router yet. The IR arrives with the owned engine.
+- **Engine.** The wrapped `regex` crate is the only engine; it runs every pattern the front-end accepts. Which
+  shapes agree with nvim is certified by the differential oracle, `tools/parity/pattern_oracle.py`, which
+  captures nvim's first match for each row into `crates/core/tests/pattern_oracle/cases.rs`; `crates/core/tests/pattern_oracle.rs` replays every row.
+  The per-class table (`cargo test -p ruse-core --test pattern_oracle -- --nocapture`, at `87d7ca4`):
+
+  | class | rows | agree | unsupported | known |
+  |---|---:|---:|---:|---:|
+  | collections | 56 | 55 | 1 | 0 |
+  | anchors | 43 | 43 | 0 | 0 |
+  | magic levels | 65 | 62 | 3 | 0 |
+  | atoms | 32 | 32 | 0 | 0 |
+  | multis | 44 | 44 | 0 | 0 |
+  | optional sequence and code points | 19 | 19 | 0 | 0 |
+  | case and smartcase | 75 | 73 | 2 | 0 |
+  | line breaks | 27 | 27 | 0 | 0 |
+  | character classes | 57 | 57 | 0 | 0 |
+  | word boundaries | 16 | 12 | 0 | 4 |
+  | \zs and \ze | 28 | 28 | 0 | 0 |
+  | alternation and groups | 10 | 10 | 0 | 0 |
+  | multibyte and case folding | 59 | 59 | 0 | 0 |
+  | position atoms | 8 | 0 | 8 | 0 |
+  | rejected | 14 | 1 | 13 | 0 |
+  | **total** | **553** | **522** | **27** | **4** |
+
+  This table **is** §7's fast-path allow-list, grown by tests rather than starting empty: with no owned engine
+  to fall back to, a shape ruse claims to match like nvim is one with agreeing oracle rows. A Vim atom the
+  wrapped engine cannot express is rejected (next point); a shape no row covers yet is uncertified, and the
+  fix for that is a new oracle row, not a new rejection.
+- **Rejected, never faked.** Lookaround (`\@=` `\@!` `\@<=` `\@<!` `\@>`), backrefs `\1`-`\9`, `\&`, `~`, the
+  position atoms (`\%V` `\%23l` `\%23c` `\%23v` `\%'m` `\%#` `\%^` `\%$` …), `\Z` and equivalence classes
+  `[=a=]` return `RegexError::Unsupported`; an oracle row marked `Unsupported` fails if ruse ever returns a
+  match for it.
+- **One knowing approximation.** `\<` and `\>` lower to Rust's `\b{start}`/`\b{end}`. They agree with Vim between a
+  word and a non-word character for ASCII and Latin, and miss Vim's other boundary, a change of `utf_class`
+  between two word characters (Latin to Hangul/CJK/kana), and Latin-1 `×`/`÷`. The four `known` rows are these
+  (#745); a `known` row that starts agreeing fails until it is promoted, the same ratchet as
+  `tests/parity/vim/known-divergences.txt`.
+- **Interim fix for `\<`/`\>` at the pattern edges (#745).** When `\<` opens the pattern or `\>` closes it, the
+  lowering drops it from the Rust pattern and checks the match boundary afterwards with Vim's rule
+  (`nfa_regmatch` `NFA_BOW`/`NFA_EOW` over `utf_class`): at the start, the character at the boundary is a word
+  character (class 2 or more) and the previous character has a different class; at the end, the character before
+  the boundary is a word character and the one after has a different class. A candidate that fails the check is
+  discarded and the search retries from the next character position. A `\>` failure retries from the next
+  start, so a pattern whose end can vary (`\w\+\>`) may still miss a shorter match nvim finds at the same
+  start; such rows stay `known`. Mid-pattern `\<`/`\>` keep today's `\b{start}`/`\b{end}` lowering and its
+  `known` rows until the owned engine.
+- **Owned engine: still the plan, scheduled later.** The Pike VM and bounded backtracker of §3 are for the
+  residual: lookaround, backrefs, position atoms, mid-pattern `\<`/`\>`, `\&` and `~`. When it lands, the IR and
+  router of §1 and §7 arrive with it, and the oracle classes above become the router's allow-list for
+  `DefaultEngine`.
 
 ## Problem
 
@@ -339,9 +399,9 @@ Router algorithm:
    the two engines are proven **semantically equivalent** for that IR shape (leftmost-first + greedy align; empty-
    match and POSIX-longest edge cases do **not**). Until the differential corpus proves a given IR-shape class
    equivalent, that class stays pinned to `VimEngine`. Per D-010 ("don't stabilize the unvalidated"), the
-   fast-path allow-list starts **empty** and grows only as tests certify shapes — so v1 behavior is
-   "Vim dialect → VimEngine unless certified," and the DefaultEngine fast path is a proven optimization, not an
-   assumption.
+   fast-path allow-list grows only as tests certify shapes. *As built (D-028 amendment):* there is no `VimEngine`
+   yet, so the wrapped engine runs every accepted pattern and rejects the atoms it cannot express; the allow-list
+   of shapes certified equal to nvim is the oracle's class table in [Current state](#current-state-mvp-d-028-amendment-2026-11-03), not empty.
 4. **Context/profile overrides for safety, not correctness:** untrusted contexts (`Plugin{trusted:false}`, `Ai`,
    `RemotePeer`) get the **strict step budget** and the **backref/lookbehind deny option** (§8); `Lsp`/`Config`
    use `Dialect::Default` and thus never reach `VimEngine`.
@@ -519,8 +579,8 @@ This is a substitute-layer obligation noted for F-009.
 
 ## Migration strategy
 
-`C-REGEX` currently ships as the front-end over the wrapped engine; whether that scope stands is open (#996).
-Sequence for the rest:
+`C-REGEX` ships as the front-end over the wrapped engine; that scope is the D-028 amendment of 2026-11-03 (#996).
+Sequence for the rest (the owned engine is scheduled later; see Current state):
 (1) `RegexIr` + `Default` dialect + `DefaultEngine`; (2) `Vim` front-end on the IR + magic
 resolution + Pike-VM `VimEngine` covering NFA-native atoms incl. `\zs`/`\ze`; (3) bounded-backtracking fallback +
 budgets for backrefs/variable-lookbehind; (4) certify DefaultEngine fast-path shapes (§7 step 3) under the
@@ -555,6 +615,26 @@ Differential corpus (TEST-2), asserted against real Vim output; plus fuzzing (TE
   shape currently on the fast-path allow-list (the certification gate for §7 step 3).
 
 ## Open questions
+
+Answered 2026-11-03 (D-028 amendment, #996). The answers:
+
+- **OQ-1 answer** — The allow-list is the oracle-certified class table in
+  [Current state](#current-state-mvp-d-028-amendment-2026-11-03), produced by `crates/core/tests/pattern_oracle.rs`
+  from `tools/parity/pattern_oracle.py`. A shape joins it when its oracle rows agree with nvim; it is not empty.
+- **OQ-2 answer** — Matching on the wrapped engine is linear, so its bound today is the CTRL-C interrupt
+  checkpoint from #1122 (`crates/core/src/interrupt.rs` `breakcheck`, polled by the `:s` scan in
+  `crates/core/src/editor/substitute.rs` and the `:g` marking pass) plus the crate's default compiled-size limit.
+  The owned engine's backtracker adds a step budget on top of the same checkpoint. The numbers per context tier
+  are set by bench (D-019) when that engine exists.
+- **OQ-3 answer** — `MatchCtx` is needed only by the owned engine. Until then the position atoms are rejected
+  as `Unsupported`, so no caller has to supply view state.
+- **OQ-4 answer** — The ripgrep bridge (DEP-RIPGREP) translates from the IR independently, with its own
+  lowering to ripgrep's dialect, so a version skew between ripgrep's `regex` and ours stays inside the bridge.
+  It does not reuse `DefaultEngine`'s lowering.
+- **OQ-5 answer** — `\=` scope defers to D-025 (the command and editing-language layer); this doc does not fix it.
+- **OQ-6 answer** — No new invariant. The bound is expressed by INV-FAIL-BOUNDED and INV-SCHED-1.
+
+The questions as written:
 
 - **OQ-1** — The exact set of IR shapes provably equivalent between `DefaultEngine` and `VimEngine` (empty-match,
   leftmost-first vs POSIX-longest, greedy edge cases) that may join the §7 fast-path allow-list. Grows under the

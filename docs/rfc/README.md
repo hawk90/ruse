@@ -17,8 +17,8 @@ related:
 
 # ruse RFC Index
 
-Folders: `proposed/` (under discussion) · `accepted/` (ratified; not created yet, and every RFC currently sits in
-`proposed/` whatever its decision status, #1027) · `rejected/` (kept forever so decisions aren't re-litigated). An
+Folders: `proposed/` (under discussion) · `accepted/` (ratified by the maintainer; RFC-0018 is the first to move,
+and the other RFCs still sit in `proposed/` whatever their decision status, #1027) · `rejected/` (kept forever so decisions aren't re-litigated). An
 RFC records *why*; the design docs record *how* (linked, not duplicated); the
 compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 
@@ -43,8 +43,14 @@ compact decision lives in [`spec/DECISIONS.md`](../../spec/DECISIONS.md).
 | [RFC-0015](proposed/RFC-0015-emacs-caret-gravity.md) | Caret gravity (Emacs point is between-character) | D-050 | [emacs-cursor-and-mark-fidelity](../design/emacs-cursor-and-mark-fidelity.md) |
 | [RFC-0016](proposed/RFC-0016-emacs-command-divergence.md) | Emacs-vs-Vim command divergence = distinct Commands | D-051 | [emacs-cursor-and-mark-fidelity](../design/emacs-cursor-and-mark-fidelity.md) |
 | [RFC-0017](proposed/RFC-0017-better-than-vanilla-defaults.md) | Better-than-vanilla defaults at the frontend layer | D-056 | [config-model](../design/config-model.md) |
-| [RFC-0018](proposed/RFC-0018-multi-buffer-arena.md) | Multi-buffer arena and workspace-global state | D-057 | [buffer-arena-and-global-state](../design/buffer-arena-and-global-state.md) |
 | [RFC-0019](proposed/RFC-0019-version-named-milestones.md) | Version-named milestones | D-059 | [spec/phases.yaml](../../spec/phases.yaml) |
+| [RFC-0020](proposed/RFC-0020-ex-edits-in-the-trace.md) | Ex edits are recorded in the trace as resolved commands | D-061 | [command-engine §7.3](../design/command-engine.md) |
+
+## Accepted
+
+| RFC | Title | Decisions | Design detail |
+| --- | --- | --- | --- |
+| [RFC-0018](accepted/RFC-0018-multi-buffer-arena.md) | Multi-buffer arena and workspace-global state | D-057 | [buffer-arena-and-global-state](../design/buffer-arena-and-global-state.md) |
 
 ## Rejected (do-not-relitigate)
 

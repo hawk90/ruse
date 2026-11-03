@@ -10,7 +10,7 @@ summary: >
 audience: [maintainers, contributors, llm-agents]
 status: draft
 related:
-  - ../rfc/proposed/RFC-0018-multi-buffer-arena.md
+  - ../rfc/accepted/RFC-0018-multi-buffer-arena.md
   - view-window-workspace.md
   - positions-history.md
   - register-model.md
@@ -19,6 +19,13 @@ related:
 ---
 
 # Buffer arena — workspace-global state, dispositions, and kinds
+
+> **Status (2026-11-03).** RFC-0018 is accepted and D-057 amended (#508). Shipped: registers on the Workspace and
+> `"#` (#1114), a buffer kept loaded and hidden when its last window closes (#1044), uppercase marks kept with
+> their own buffer (#1103), and marks, the jumplist and the change list following edits as line anchors (#1124).
+> Remaining: cross-buffer global marks (F-032), lowercase marks per buffer instead of per View (#636), jumplist
+> entries as `(DocumentId, Anchor)`, `Disposition`/`BufferKind`, the retirement Effect, editable `q:`, and
+> other-buffers completion. The Problem section below describes the code before these slices.
 
 <!-- code-blocks: illustrative — concrete types live in crates/core/src/{workspace,editor,register}.rs
      and are the source of truth (D-038). Blocks here specify the CONTRACT, not the definition. -->
@@ -112,7 +119,8 @@ The dividing line follows Vim/Emacs semantics, not implementation convenience.
 
 **Jumplist** is the nuanced one: Vim's jumplist is **per-window**, but each entry may point into another
 file. So it stays per-View, but each entry becomes `(DocumentId, Anchor)` instead of a bare offset
-(G3). This matches Vim exactly and is confirmed against the nvim oracle (RFC-0018 OQ-4).
+(G3). This is Vim's model (and Helix's), decided as RFC-0018 OQ-4; nvim-oracle fixtures for cross-file
+`CTRL-O` pin it when the slice lands.
 
 ### The extended swap-trick
 
@@ -161,10 +169,15 @@ fn goto_global_mark(&self, name: char) -> Option<(DocumentId, usize)>; // resolv
 - `set_global_mark` creates an anchor in the target `Document`'s `AnchorStore` (INV-ANCHOR) and records
   `(DocumentId, AnchorId)` in the Workspace `NamedMap`.
 - `goto_global_mark` resolves the anchor to a current offset; the **frontend** then `focus_buffer`s the
-  target (opening it if the frontend still has its `Files` path but the buffer was wiped is a frontend
-  concern — global marks that survive a wipe are a session-persistence feature, out of scope).
-- Retiring a `DocumentId` prunes its entries from the Workspace store (marks, jumplist entries) so no
-  entry dangles.
+  target. When the entry has degraded to `(path, line, col)` because its buffer was wiped, the frontend opens
+  the path and the entry re-attaches (below). Surviving a *restart* is session persistence (ShaDa), still
+  out of scope.
+- Retiring a `DocumentId` never leaves an entry dangling, and does not simply prune either (rule added at
+  acceptance, RFC-0018 §Acceptance): each global mark and cross-buffer jumplist entry into a **named** buffer
+  degrades to `(path, line, col)`, Vim's file mark with a file name; opening that path again re-attaches every
+  degraded entry as an anchor in the new `Document` (`(line, col)` clamped into the new text); jumping to a
+  degraded entry opens the file first. Entries into an **unnamed** buffer are dropped. The path match is the
+  frontend's (`buffer_for_path`), because the core does no IO.
 - `:marks` merges the focused View's lowercase marks with the Workspace uppercase marks.
 
 ### Buffer lifecycle: Disposition + BufferKind
@@ -245,7 +258,9 @@ Do not re-litigate; the `Workspace` is the single owner.
 
 ## Migration strategy (slices)
 
-1. **Slice 1 — buffer lifecycle + `"#` + other-buffers completion (no ownership move).**
+1. **Slice 1 — buffer lifecycle + `"#` + other-buffers completion (no ownership move).** *Partly landed:* `"#`
+   (#1114); a buffer whose last window closes stays loaded and hidden (#1044). The enums, the retirement Effect
+   and other-buffers completion remain.
    Add `Disposition`/`BufferKind`; make retirement disposition-aware and observable; wire `"#`; iterate
    `buffer_order` in `keyword_completion`. Unblocks `"#`, `'hidden'`, cross-buffer completion. No swap-trick signature change.
 2. **Slice 2 — register store to the Workspace (the ownership move).**
@@ -255,7 +270,9 @@ Do not re-litigate; the `Workspace` is the single owner.
    swap-trick lends it into the swapped-out `View` (`Workspace::lend`/`reclaim`), so `from_parts`/`into_parts`
    and the oracle's `EditorState` path are unchanged; a View at rest holds an empty store. Scope taken: one
    store per workspace (Vim), which answers the register-scope open question.
-3. **Slice 3 — uppercase/global marks + cross-buffer jumplist.**
+3. **Slice 3 — uppercase/global marks + cross-buffer jumplist.** *Partly landed:* uppercase marks with their own
+   buffer (#1103); every mark, the jumplist and the change list carried through edits by line anchors (#1124).
+   Cross-buffer `` `A ``, `(DocumentId, Anchor)` jumplist entries and the degrade-on-retirement rule remain.
    Add the Workspace `NamedMap` for `mA`-`mZ` as `(DocumentId, Anchor)`; convert jumplist entries to
    `(DocumentId, Anchor)`; wire `` `A ``/`:marks` merge; frontend `focus_buffer`-then-place. Optionally
    migrate lowercase marks to anchors.
@@ -283,6 +300,12 @@ Each slice leaves the tree green and is independently shippable.
 
 ## Open questions
 
-Mirror RFC-0018 §Open questions (lowercase-marks-to-anchors timing; global-vs-buffer register scope; `q:`
-re-entry reuse; per-View vs. single jumplist; generational handles scope; file-picker read boundary). The
-maintainer resolves these at review before slice 2 (the ownership move) lands.
+Resolved at acceptance (2026-11-03); the full text is RFC-0018 §Open questions, answered.
+
+1. Lowercase marks are anchors: done (#1124). Per-buffer instead of per-View storage is #636.
+2. Registers are workspace-global: done (#1114).
+3. `q:` reuses the `:normal`/`:g` driven executor (the session key path, #1096), with nvim's E1292 refusal of a
+   nested command-line window and the existing E192 `:normal` depth limit.
+4. Jumplist per View, entries `(DocumentId, Anchor)` (Vim, Helix).
+5. Generational handles: separate issue #973.
+6. Buffer picker in scope; the file picker is a later consumer of CAP-FS/CAP-SEARCH.

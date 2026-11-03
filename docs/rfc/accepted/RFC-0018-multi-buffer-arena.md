@@ -9,29 +9,94 @@ summary: >
   (dispositions + kinds), which is what actually unblocks `mA`-`mZ`/global marks, buffer/file pickers, an
   editable `q:`, the `"#` register, and the "other buffers" completion source.
 audience: [maintainers, contributors, llm-agents]
-status: proposed
+status: accepted
 related:
-  - ../../spec/PRD.yaml
-  - ../../spec/DECISIONS.md
-  - ../../spec/capabilities.yaml
+  - ../../../spec/PRD.yaml
+  - ../../../spec/DECISIONS.md
+  - ../../../spec/capabilities.yaml
   - ../../design/buffer-arena-and-global-state.md
   - ../../design/view-window-workspace.md
   - ../../design/positions-history.md
   - ../../design/register-model.md
-  - ./RFC-0002-workspace-architecture.md
-  - ./RFC-0008-document-model.md
+  - ../proposed/RFC-0002-workspace-architecture.md
+  - ../proposed/RFC-0008-document-model.md
 ---
 
 # RFC-0018: Multi-buffer arena — workspace-global state + buffer lifecycle
 
-- **Status:** proposed
+- **Status:** accepted (2026-11-03; slices 2 and part of 3 implemented, see [Acceptance](#acceptance-2026-11-03))
 - **Author(s):** Claude Opus 4.8 (design agent), for maintainer review
 - **Created:** 2026-08-24
+- **Accepted:** 2026-11-03 — the maintainer decided to follow this design as written (#508)
 - **Decision link:** D-057
 
 <!-- Hard-to-reverse: this moves ownership of core editor state (registers, marks, jumplist) out of the
      per-View EditorState into the Workspace, changing the core data model and the swap-trick pipeline's
      inputs. That is an architecture-kind change (spec/change-kinds.yaml). -->
+
+## Acceptance (2026-11-03)
+
+The maintainer accepted this RFC as written on 2026-11-03 (#508): the Workspace owns editor-global state, cross-buffer
+positions are anchors, and buffers gain a disposition and a kind. The body below is the design as proposed on
+2026-08-24; its `file:line` citations describe the code of that date. This section records what has shipped since,
+what remains, the answers to the open questions, and one rule the proposal left out. D-057 carries the same record.
+
+### Shipped
+
+| Slice | What landed | PR |
+|---|---|---|
+| 2 (registers) | The `Workspace` owns one `RegisterStore`. The swap-trick lends it into the swapped-out `View` (`Workspace::lend`/`reclaim`) at every `from_parts`/`into_parts` site; a View at rest holds an empty store, and `:split` no longer clones registers. Narrower than R1: `from_parts`/`into_parts` keep their signatures. `"#` reads the alternate buffer's file name. | #1114 (closed #944, #1022) |
+| 1 (part: lifecycle) | `:close` on the last window of a buffer retires only the View; the buffer stays loaded, hidden and listed, and `:q` refuses with E162 while a hidden buffer is modified. There is no `Disposition` enum yet: "hidden" is a buffer with no View. | #1044 |
+| 3 (part: uppercase marks) | `mA`-`mZ` are settable and usable, including `'A` in Ex ranges, but each stays with the View of its own buffer. A jump to an uppercase mark set in another buffer is not wired. | #1103 |
+| 3 (part: anchoring) | Lowercase and uppercase marks, the special marks, the jumplist and the change list follow edits by nvim's `mark_adjust` rule (`Track::Line` in `crates/core/src/anchor.rs`). The focused View hands its positions to the Document for every transaction, undo and redo; `Workspace::lend` pins the other Views of the same Document, so an edit in one split carries the other split's marks. These positions are carried through the transaction, not stored in the `AnchorStore`. | #1124 |
+
+### Remaining
+
+- **Cross-buffer global marks (F-032):** `` `A `` from another buffer focuses the mark's buffer and places the
+  cursor; a Workspace mark table of `(DocumentId, Anchor)` entries replaces the per-View `A`-`Z` slots.
+- **Lowercase marks per buffer, not per View** (#636): today two Views of one buffer keep separate `a`-`z` marks.
+- **Jumplist entries `(DocumentId, Anchor)`** so `CTRL-O`/`CTRL-I` cross buffers (OQ-4).
+- **`Disposition` and `BufferKind`** as explicit per-buffer state, with `:ls!` and `'hidden'` (`editor.hidden`).
+- **The retirement Effect** (R2): retirement returns or emits the retired `DocumentId`s so the frontend prunes its
+  per-buffer maps.
+- **Editable `q:`/`q/`/`q?`** on a `Scratch` buffer (slice 4). Today `apps/tui/src/input/cmdwin.rs` is a read-only overlay.
+- **Other-buffers completion:** `Workspace::keyword_completion` still reads only the focused buffer.
+
+### Open questions, answered
+
+1. **Lowercase marks are anchors.** Done in #1124 with line-gravity tracking (`Drop` for `a`-`z`, so a deleted
+   line's mark gives E20, as nvim). Moving them from the View to the buffer is #636.
+2. **Registers are workspace-global.** Done in #1114: one store per workspace, which is Vim's model. The Emacs profile
+   may layer buffer scoping as policy over the same store (D-026).
+3. **`q:` reuses the driven executor.** `<CR>` in the editable window runs its line through the same path as
+   `:normal` and `:g … normal`: the session key path (`Session::nested_key`/`normal_pass`, #1096). No second
+   re-entry model. Recursion guard: opening the command-line window from inside it is refused with nvim's
+   `E1292: Command-line window is already open`, and nested `:normal` keeps its `MAX_NORMAL_DEPTH` limit (E192).
+4. **Jumplist: per View, entries `(DocumentId, Anchor)`.** Each window keeps its own jumplist and an entry may name
+   another buffer. Vim and Helix both use this model. A single workspace jumplist is rejected.
+5. **Generational handles are a separate issue:** #973 (generation-checked `DocumentId`/`ViewId`/`WindowId`). This
+   RFC keeps the `None`-hole model and does not depend on it.
+6. **Buffer picker in scope, file picker out.** The buffer picker is this RFC's consumer (today an overlay,
+   `apps/tui/src/ui/buffer_picker.rs`; later a `Scratch`/`Unlisted` view). The file picker (CAP-FILE-PICKER, today
+   the overlay `apps/tui/src/ui/file_picker.rs`) is a later consumer of CAP-FS/CAP-SEARCH and is not part of this RFC.
+
+### Added rule: retirement degrades cross-buffer positions instead of dropping them
+
+The proposal said a retired buffer's global marks and jumplist entries are pruned. That loses `` `A `` and
+`CTRL-O` targets whenever a buffer is wiped, which Vim does not do. The accepted rule:
+
+- When a **named** buffer (one with a file path) is retired, each global mark and cross-buffer jumplist entry
+  that points into it degrades from `(DocumentId, Anchor)` to `(path, line, col)`: the anchor is resolved once,
+  at retirement, and stored with the file name. This is Vim's file mark (`fmark` with `fname`).
+- When a buffer is opened for that path again, every degraded entry for the path re-attaches: `(line, col)` is
+  clamped into the new text and becomes an anchor in the new `Document`.
+- Jumping to a degraded entry opens the file (as `` `A `` does in Vim for a mark in an unloaded file), then
+  re-attaches as above.
+- An **unnamed** buffer has no path to degrade to, so its entries are dropped at retirement.
+
+Paths are matched the way `:e` finds an open buffer (`buffer_for_path` in `apps/tui/src/app/dispatch.rs`, which
+compares canonicalised paths); the path lookup is the frontend's job, since the core does no IO (D-039). The degraded form is
+in-memory only; persisting it is ShaDa's job (see Re-evaluation conditions).
 
 ## Summary
 
@@ -207,9 +272,11 @@ No new INV-* is introduced; the RFC re-homes state within the existing invariant
 
 ## Failure modes & Recovery
 
-- **Stale cross-buffer reference** (a global mark into a wiped buffer): resolving returns `None`; the
-  command is a no-op/bell (Vim behaviour), never a panic. Anchors in a retired `Document` are dropped with
-  it; the Workspace store prunes entries for a retired `DocumentId` on retirement.
+- **Stale cross-buffer reference** (a global mark into a wiped buffer): amended at acceptance (see
+  [the added rule](#added-rule-retirement-degrades-cross-buffer-positions-instead-of-dropping-them)). Anchors in a
+  retired `Document` go with it, but the Workspace store first degrades each entry into a named buffer to
+  `(path, line, col)` and re-attaches it when the path is opened again; only an unnamed buffer's entries are
+  dropped. An entry that still cannot resolve is a no-op/bell (Vim behaviour), never a panic.
 - **Retirement / map desync:** the failure today is silent leakage of frontend maps; R2 makes retirement
   emit the retired ids so the frontend prunes deterministically. A dangling `Files` entry becomes an
   assertable inconsistency in debug builds.
@@ -296,6 +363,9 @@ re-litigated. The `Workspace` is the single legitimate owner of editor-global st
   is revisited.
 
 ## Open questions
+
+Answered at acceptance; see [Open questions, answered](#open-questions-answered). The questions as
+proposed:
 
 1. **Lowercase marks: migrate to anchors now or later?** They currently snap on commit and work; anchors
    are strictly required only for cross-buffer marks. Proposal: keep lowercase raw-offset+snap in slice 3,
