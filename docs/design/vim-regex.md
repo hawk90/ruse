@@ -31,7 +31,7 @@ related:
 > **Current code.** D-028 is decided, and its 2026-11-03 amendment (#996) records the state the code is in: a port of
 > nvim's pattern reader lowering straight to the wrapped `regex` crate, which is the only engine; atoms it cannot
 > represent are rejected with a typed error. See [Current state (MVP)](#current-state-mvp-d-028-amendment-2026-11-03).
-> `VimEngine`, the IR, the router and match budgets below are unbuilt; the owned engine is scheduled later (§3).
+> `VimEngine`, the IR, the router and match budgets below are unbuilt; the owned engine is scheduled later (§3, #1128).
 
 Design behind **D-028** (decided, design) and **V-8** (verification.md: "Vim regex dialect has no owning component or
 decision"). Specifies the `C-REGEX` component referenced by D-028 and by
@@ -99,8 +99,8 @@ today is the first half, and the amendment records it.
   discarded and the search retries from the next character position. A `\>` failure retries from the next
   start, so a pattern whose end can vary (`\w\+\>`) may still miss a shorter match nvim finds at the same
   start; such rows stay `known`. Mid-pattern `\<`/`\>` keep today's `\b{start}`/`\b{end}` lowering and its
-  `known` rows until the owned engine.
-- **Owned engine: still the plan, scheduled later.** The Pike VM and bounded backtracker of §3 are for the
+  `known` rows until the owned engine (#1128).
+- **Owned engine: still the plan, scheduled later (#1128, v0.3.2).** The Pike VM and bounded backtracker of §3 are for the
   residual: lookaround, backrefs, position atoms, mid-pattern `\<`/`\>`, `\&` and `~`. When it lands, the IR and
   router of §1 and §7 arrive with it, and the oracle classes above become the router's allow-list for
   `DefaultEngine`.

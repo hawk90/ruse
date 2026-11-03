@@ -263,7 +263,7 @@ related:
   boundaries; interim fix (#745): at the pattern edges, drop them from the Rust pattern, post-check the match
   boundary with Vim's `utf_class` rule and retry from the next position; mid-pattern stays `known` until the
   owned engine. The owned Vim engine remains the plan for the residual (lookaround, backrefs, position atoms,
-  mid-pattern `\<`/`\>`, `\&`, `~`), scheduled later. Answers: OQ-1 the allow-list is the oracle class table;
+  mid-pattern `\<`/`\>`, `\&`, `~`), scheduled later (#1128). Answers: OQ-1 the allow-list is the oracle class table;
   OQ-2 budgets tie to the CTRL-C checkpoint (`crates/core/src/interrupt.rs`, #1122) plus a step budget for the
   future backtracker, numbers set by bench; OQ-3 `MatchCtx` is needed only by the owned engine; OQ-4 the ripgrep
   bridge translates from the IR independently; OQ-5 `\=` defers to D-025; OQ-6 no new invariant
