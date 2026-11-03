@@ -10,7 +10,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ruse_core::{
-    BytePos, Command, DocumentId, Effect, ExCmd, ExOutcome, SubRange, TransactionOrigin, Workspace,
+    BytePos, Command, DocumentId, Effect, ExCmd, ExOutcome, Register, SubRange, TransactionOrigin,
+    Workspace,
 };
 
 use crate::highlight;
@@ -210,9 +211,55 @@ pub(crate) fn run_cmd(
         ws.apply(&Command::SetRegister(None));
         return;
     }
+    let at = recorded.len();
     recorded.push(cmd.clone());
-    for eff in ws.apply(&cmd) {
+    let effects = ws.apply(&cmd);
+    note_clipboard_read(ws, recorded, at);
+    for eff in effects {
         apply_effect(eff, ws, files, status, quit);
+    }
+}
+
+/// A clipboard pull the command at `recorded[at]` made (`"+p`, `:put +`, `CTRL-R +`) is recorded ahead of
+/// it as the value read (RFC-0020 R6): the OS clipboard is external input, so a replay puts the same text.
+fn note_clipboard_read(ws: &mut Workspace, recorded: &mut Vec<Command>, at: usize) {
+    if let Some(value) = ws.take_clipboard_read() {
+        let record = Command::Ex(ExCmd::Register {
+            name: Some('+'),
+            value,
+        });
+        recorded.insert(at.min(recorded.len()), record);
+    }
+}
+
+/// Write register `name` (`None` = unnamed) through the trace (RFC-0020 R6): the session writes a value no
+/// recorded command produced, so it is recorded as an `ex_register` and applied by the same core path a
+/// replay runs. Nothing is recorded when the register already holds exactly `value`.
+pub(crate) fn write_register(
+    ws: &mut Workspace,
+    recorded: &mut Vec<Command>,
+    name: Option<char>,
+    value: Register,
+) {
+    if *ws.registers().get(name) != value {
+        run_ex(ExCmd::Register { name, value }, ws, recorded);
+    }
+}
+
+/// Record the registers `write` changed (RFC-0020 R6): for a session write whose effect on the slots is the
+/// store's own rule (a macro's raw keys, `set_register_raw`), each slot that now holds another value is
+/// written again through the trace, so a replay sets the same slots.
+pub(crate) fn record_register_writes(
+    ws: &mut Workspace,
+    recorded: &mut Vec<Command>,
+    write: impl FnOnce(&mut Workspace),
+) {
+    let before = ws.registers().filled();
+    write(ws);
+    for (name, value) in ws.registers().filled() {
+        if !before.iter().any(|(n, v)| *n == name && *v == value) {
+            run_ex(ExCmd::Register { name, value }, ws, recorded);
+        }
     }
 }
 
@@ -220,7 +267,9 @@ pub(crate) fn run_cmd(
 /// here, so none can reach the document without reaching the trace.
 pub(crate) fn run_ex(ex: ExCmd, ws: &mut Workspace, recorded: &mut Vec<Command>) -> ExOutcome {
     let out = ws.apply_ex(&ex);
+    let at = recorded.len();
     recorded.push(Command::Ex(ex));
+    note_clipboard_read(ws, recorded, at);
     out
 }
 

@@ -4,6 +4,10 @@
 //! register `"-`, and the blackhole `"_`. The Emacs kill-ring (bounded ordered ring, coalescing, yank-pop)
 //! is still **deferred** (see `docs/design/register-model.md`).
 
+/// The most bytes a register value may hold in a trace record (RFC-0020 R6): nvim's `INT_MAX`, past which
+/// a put fails with E1240 ("Resulting text too long").
+pub const MAX_REGISTER_BYTES: usize = i32::MAX as usize;
+
 /// The paste GEOMETRY a register carries — the one dimension that governs how a paste lands.
 /// Charwise splices inline; linewise opens whole lines; blockwise drops a rectangle, one stored row per
 /// buffer line at a fixed column. This is the typed SHAPE of F-029 (`:help quote_bar`, blockwise via
@@ -274,6 +278,54 @@ impl RegisterStore {
         } else {
             Register::charwise(text)
         };
+    }
+
+    /// Set exactly one slot to `reg`, with none of the mirroring, appending or ring shifting a yank, delete
+    /// or macro store does: the trace's `ex_register` record (RFC-0020 R6), which carries a value the
+    /// session wrote. `None`/`"` is the unnamed slot, then `"0`–`"9`, `"a`–`"z`, `"-`, `"+`/`"*`, and the
+    /// read-only `"/ ": ". "% "#`. Returns `false` (nothing changed) for any other name.
+    pub fn set_slot(&mut self, name: Option<char>, reg: Register) -> bool {
+        let slot = match name {
+            None | Some('"') => &mut self.unnamed,
+            Some('0') => &mut self.yank0,
+            Some(c @ '1'..='9') => &mut self.numbered[c as usize - '1' as usize],
+            Some(c @ 'a'..='z') => &mut self.named[c as usize - 'a' as usize],
+            Some('-') => &mut self.small_delete,
+            Some('+' | '*') => &mut self.clipboard,
+            Some('/') => &mut self.special.search,
+            Some(':') => &mut self.special.last_ex,
+            Some('.') => &mut self.special.inserted,
+            Some('%') => &mut self.special.file,
+            Some('#') => &mut self.special.alternate,
+            Some(_) => return false,
+        };
+        *slot = reg;
+        true
+    }
+
+    /// Whether [`RegisterStore::set_slot`] accepts `name`.
+    #[must_use]
+    pub fn is_slot(name: Option<char>) -> bool {
+        name.is_none_or(|c| {
+            c.is_ascii_digit()
+                || c.is_ascii_lowercase()
+                || matches!(c, '"' | '-' | '+' | '*' | '/' | ':' | '.' | '%' | '#')
+        })
+    }
+
+    /// The registers a trace starts by writing (RFC-0020 R6): the unnamed register, `"0`–`"9`, `"a`–`"z`
+    /// and `"-`, each that holds a value, in `:registers` order. The clipboard is not among them; it is
+    /// recorded when it is read.
+    #[must_use]
+    pub fn filled(&self) -> Vec<(Option<char>, Register)> {
+        std::iter::once((None, &self.unnamed))
+            .chain(std::iter::once((Some('0'), &self.yank0)))
+            .chain(('1'..='9').zip(&self.numbered).map(|(c, r)| (Some(c), r)))
+            .chain(std::iter::once((Some('-'), &self.small_delete)))
+            .chain(('a'..='z').zip(&self.named).map(|(c, r)| (Some(c), r)))
+            .filter(|(_, r)| r.is_set())
+            .map(|(n, r)| (n, r.clone()))
+            .collect()
     }
 
     /// The yank register `"0` (the last unregistered yank).

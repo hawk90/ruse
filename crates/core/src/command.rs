@@ -1237,6 +1237,10 @@ pub enum CommandParseError {
     Empty,
     UnknownVerb(String),
     BadArgument(String),
+    /// A record past a live limit (RFC-0020 R6: an `ex_edits` batch past [`crate::MAX_APPLY_EDITS`] or
+    /// [`crate::MAX_APPLY_EDIT_BYTES`], an `ex_register` value past [`crate::MAX_REGISTER_BYTES`]). Found
+    /// before the bytes are decoded, so a hostile line is refused without a large allocation.
+    TooLarge(String),
 }
 
 /// Parse a `u32` argument (a count or a char codepoint) from a command line's token, or a `BadArgument`

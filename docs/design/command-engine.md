@@ -716,7 +716,10 @@ lives in `C-EDITLANG`, and this doc only defines the command entry points and th
 edit is recorded as the resolved command it ran (`Command::Ex(ExCmd)`: resolved line numbers, the literal pattern
 and flags used), an IO-dependent edit (`:r`, `:{range}!`) as the bytes the frontend obtained, `:g/pat/d` and
 `:g/pat/s` as the marked lines plus the command, and `:g/pat/normal` / `:normal` as a `Begin`/`End` group of their
-resolved children, replayed as one undo block (#1105; see the RFC's implementation notes).
+resolved children, replayed as one undo block (#1105; see the RFC's implementation notes). Core state the
+session writes outside a command is recorded the same way (RFC-0020 R6, #1134): a language server's edit list
+(`ExCmd::Edits`), the `:keepjumps` switch (`ExCmd::KeepJumps`) and register values no recorded command produced
+(`ExCmd::Register`), plus the registers filled when the trace began.
 
 `:command[!] -nargs -range -complete Name {repl}` (VIM-EX user commands) is modeled as **registering a
 `CommandSpec`** whose `ArgSchema` is derived from `-nargs`/`-range`/`-complete` and whose handler is a bounded

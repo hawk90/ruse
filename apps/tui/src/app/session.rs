@@ -19,7 +19,8 @@ use ruse_core::{
 use crate::app::dispatch::{
     attach_file, buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, lines_outcome,
     match_count_message, may_quit, note_ex, open_file_into_buffer, place_cursor, quit_window,
-    regex_error_msg, run_cmd, run_ex, run_repeat, sub_outcome, substitute_cmd, Files, Highlighters,
+    record_register_writes, regex_error_msg, run_cmd, run_ex, run_repeat, sub_outcome,
+    substitute_cmd, write_register, Files, Highlighters,
 };
 use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
@@ -451,6 +452,9 @@ pub(crate) struct Session {
     /// The editing options the core reads, as the session began: a saved trace starts by setting them, so
     /// it replays the same under another config (RFC-0020 R4).
     pub(crate) start_options: Vec<EditorOption>,
+    /// The registers that held a value as the session began (RFC-0020 R6): a saved trace writes them after
+    /// the starting options, so a `p` of one replays the same text. Read with the starting options.
+    pub(crate) start_registers: Vec<(Option<char>, ruse_core::Register)>,
     /// Per-buffer journal throttles (#858): a frame is appended only after the buffer actually changed.
     journal_throttle: HashMap<DocumentId, persist::journal::Throttle>,
     /// Buffers whose last journal append failed, so the E303 warning shows once per failing run (#907).
@@ -598,6 +602,7 @@ impl Session {
             ws.set_caret_gravity(CaretGravity::BetweenChar);
         }
         let start_options = ws.focused().view.editing_options();
+        let start_registers = ws.registers().filled();
         Session {
             ws,
             files,
@@ -606,6 +611,7 @@ impl Session {
             initial,
             recorded: Vec::new(),
             start_options,
+            start_registers,
             journal_throttle: HashMap::new(),
             journal_failed: HashSet::new(),
             unnamed_start: path.is_none().then_some(file_buf),
@@ -860,7 +866,7 @@ impl Session {
             &mut self.highlighters,
             &frame.snapshot,
             &mut self.status,
-            &mut |ws, at| place_cursor(ws, recorded, at),
+            &mut |ws, ex| run_ex(ex, ws, recorded),
         );
         if let Some(locs) = self.lsp.take_refs() {
             self.overlay = Some(Overlay::Refs(ref_picker::open(locs, self.lsp.cwd())));
@@ -1130,6 +1136,7 @@ impl Session {
         crate::app::set_exec::apply_config(config, &mut host);
         if startup {
             self.start_options = self.ws.focused().view.editing_options();
+            self.start_registers = self.ws.registers().filled();
         }
     }
 
@@ -1276,7 +1283,8 @@ impl Session {
             }
             crate::keys::Step::Store(reg, bytes) => {
                 let n = bytes.len();
-                ws.set_register_raw(Some(reg), bytes);
+                // Recorded as the slots it changed (RFC-0020 R6): no recorded command wrote them.
+                record_register_writes(ws, recorded, |ws| ws.set_register_raw(Some(reg), bytes));
                 *status = format!("recorded @{reg} ({n} keys)");
                 return;
             }
@@ -1344,7 +1352,7 @@ impl Session {
         lsp.clear_hover();
         // F-014 #5: the completion pum owns the keystream while open (nav / accept / dismiss); `<C-x><C-o>`
         // in Vim/Native Insert opens it. Each returns whether it consumed the key (so the loop `continue`s).
-        if lsp.on_completion_key(key, ws, status) {
+        if lsp.on_completion_key(key, ws, status, &mut |ws, ex| run_ex(ex, ws, recorded)) {
             return;
         }
         if lsp.on_omni_key(key, ws, files, snapshot, revision, *emacs_profile, status) {
@@ -1413,7 +1421,14 @@ impl Session {
                 // F-014: the code-action picker applies the selected action's WorkspaceEdit (inline, as
                 // the `spans` borrow is released post-render — like the references jump).
                 Some(Accepted::Action(action)) => {
-                    lsp.apply_code_action(&action, ws, files, highlighters, status);
+                    lsp.apply_code_action(
+                        &action,
+                        ws,
+                        files,
+                        highlighters,
+                        status,
+                        &mut |ws, ex| run_ex(ex, ws, recorded),
+                    );
                 }
                 // The command palette dispatches the selected command by its stable id, through the same
                 // path as a typed key's command (so it is resolved, undone and recorded like any other,
@@ -2119,7 +2134,14 @@ impl Session {
             // `c_CTRL-R {reg}`: the register's text at the caret. The read-only `"/ ": ". "%` registers are
             // refreshed first, as before any dispatch. An unknown or empty register splices nothing.
             Feed::CmdlineInsertRegister(name) => {
-                sync_special_registers(ws, engine, &self.last_ex_line, files, &self.alt_file);
+                sync_special_registers(
+                    ws,
+                    recorded,
+                    engine,
+                    &self.last_ex_line,
+                    files,
+                    &self.alt_file,
+                );
                 let name = name.to_ascii_lowercase();
                 let linewise = ws
                     .register_snapshot()
@@ -2187,7 +2209,7 @@ impl Session {
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
-                sync_special_registers(ws, engine, last_ex_line, files, alt_file);
+                sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
                 // `.` over a closed fold acts on it as the typed command did (#819): its first command
                 // meets the buffer as it is now; the rest follow from where that one leaves it.
                 let fv = folds
@@ -2205,7 +2227,7 @@ impl Session {
                 }
             }
             Feed::Repeat(r) => {
-                sync_special_registers(ws, engine, last_ex_line, files, alt_file);
+                sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
                 run_repeat(r, ws, files, recorded, status, quit);
             }
         }
@@ -2357,7 +2379,7 @@ impl Session {
         }
         // Refresh the read-only special registers `"/ ": ". "%` before dispatch so a `"/p` /
         // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
-        sync_special_registers(ws, engine, last_ex_line, files, alt_file);
+        sync_special_registers(ws, recorded, engine, last_ex_line, files, alt_file);
         run_cmd(cmd, ws, files, recorded, status, quit);
         // 'foldopen': a search, a horizontal move, a mark, undo… open the fold the cursor lands in.
         if opens_fold {
@@ -2456,17 +2478,19 @@ impl Session {
             let kept_alt = mods
                 .keep_alt
                 .then(|| (self.ws.alternate(), self.alt_file.clone()));
+            // The switch goes through the trace (RFC-0020 R6): the command it wraps replays without the
+            // jumps it skipped live.
             let jumps_were_kept = self.ws.keep_jumps();
-            if mods.keep_jumps {
-                self.ws.set_keep_jumps(true);
+            if mods.keep_jumps && !jumps_were_kept {
+                run_ex(ExCmd::KeepJumps(true), &mut self.ws, &mut self.recorded);
             }
             self.ex_filter = mods.filter.clone();
             self.ex_verbose = mods.verbose;
             self.execute_ex_one(cmd.to_string(), frame);
             self.ex_filter = None;
             self.ex_verbose = false;
-            if !jumps_were_kept {
-                self.ws.set_keep_jumps(false);
+            if !jumps_were_kept && self.ws.keep_jumps() {
+                run_ex(ExCmd::KeepJumps(false), &mut self.ws, &mut self.recorded);
             }
             if let Some((search, hl, sub)) = kept_patterns {
                 self.engine.restore_search_state(search);
@@ -2522,6 +2546,7 @@ impl Session {
             highlighters,
             initial,
             start_options,
+            start_registers,
             recorded,
             profile_name,
             emacs_profile,
@@ -3264,9 +3289,21 @@ impl Session {
                 };
             }
             Ex::SaveTrace(p) => {
-                let trace = Trace::record_with_options(initial, start_options, recorded.to_vec());
+                let trace = Trace::record_with_options(
+                    initial,
+                    start_options,
+                    start_registers,
+                    recorded.to_vec(),
+                );
+                // The trace holds register contents and pasted clipboard text as well as the edits
+                // (RFC-0020 R6, Security impact), so the message says so.
                 match std::fs::write(&p, trace.to_text()) {
-                    Ok(()) => *status = format!("trace saved: {p} ({} commands)", recorded.len()),
+                    Ok(()) => {
+                        *status = format!(
+                            "trace saved: {p} ({} commands; includes registers and clipboard text)",
+                            recorded.len()
+                        )
+                    }
                     Err(e) => *status = format!("trace save failed: {e}"),
                 }
             }
@@ -4590,8 +4627,12 @@ impl crate::input::complete::CompletionContext for ExCompletion<'_> {
     }
 }
 
+/// Sync the read-only registers `"/ ": ". "% "#` from frontend state. Each one whose text changed is
+/// written through the trace (RFC-0020 R6), since no recorded command produced it; an unchanged one is
+/// not recorded again.
 fn sync_special_registers(
     ws: &mut Workspace,
+    recorded: &mut Vec<Command>,
     engine: &InputEngine,
     last_ex_line: &Option<String>,
     files: &Files,
@@ -4602,16 +4643,28 @@ fn sync_special_registers(
     let file = files
         .get(&ws.focused_buffer())
         .map(|bf| bf.path.display().to_string());
-    ws.set_special_registers(
-        engine.last_search().map(str::to_string),
-        last_ex_line.clone(),
-        engine.last_inserted_text(),
-        file,
-    );
     // `"#` is the alternate file name (#1022): the one a `:w {file}`, `:sav` or `:file` left (#610), or the
     // alternate buffer's file, shown the same way.
     let alternate = crate::app::ex_more::alternate_name(alt_file, ws, files);
-    ws.set_alternate_register(alternate);
+    for (name, value) in [
+        ('/', engine.last_search().map(str::to_string)),
+        (':', last_ex_line.clone()),
+        ('.', engine.last_inserted_text()),
+        ('%', file),
+        ('#', alternate),
+    ] {
+        let bytes = value.unwrap_or_default().into_bytes();
+        // Compared by text: an empty slot never written reads as an empty one (an empty special register
+        // is "not set", E29/E30/E32/E35, whichever way it is empty).
+        if ws.registers().get(Some(name)).text() != bytes.as_slice() {
+            write_register(
+                ws,
+                recorded,
+                Some(name),
+                ruse_core::Register::charwise(bytes),
+            );
+        }
+    }
 }
 
 /// Dispatch the key after a `C-w` prefix (F-007 MVP window commands): `w`/`C-w` focus next, `s` split

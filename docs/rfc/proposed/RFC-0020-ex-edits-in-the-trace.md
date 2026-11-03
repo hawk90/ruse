@@ -291,11 +291,43 @@ cursor and undo grouping, with no IO and no re-resolution):
   `[z`/`]z`. A placement after a switch to another buffer is not recorded, since a trace follows one
   document. The caret gravity is one more starting option (`ex_set caretgravity 0|1`, R4), so an Emacs
   session replays with point between characters. ruse reads no mouse input, so there are no mouse moves.
-- **Superseded by R6** (the amendment defines the three record kinds below): LSP edits (`apply_edits`: formatting, rename, code actions, completion),
-  `:keepjumps`, and the special registers `"/ ": ". "%`. Each needs a record kind this RFC does not define:
-  an edit list for LSP edits, a jumplist-suppression marker for `:keepjumps` (its inner Ex edit replays and
-  pushes the jump it skipped live), and register contents for the special registers (open question 1). A
-  session that uses them can still replay to a different document, cursor or jumplist.
+- **R6 (#1134).** Built as specified: `ExCmd::Edits { origin, edits }` (`ex_edits`), `ExCmd::KeepJumps`
+  (`ex_keepjumps 1|0`) and `ExCmd::Register { name, value }` (`ex_register`), each run live through
+  `dispatch::run_ex` and on replay through the same `EditorState::apply_ex`.
+  - *Edits.* The LSP coordinator gets a record sink from the session and sends formatting, rename, code
+    action, server `workspace/applyEdit` and completion edits through it; replay calls the same
+    `apply_edits`. The completion caret is an `ex_place` after the edit list. A multi-file edit records
+    only the edits to the buffer that was focused (a trace follows one document, as for placements); the
+    other files' edits apply unrecorded. Format: `ex_edits <origin> <start>:<end>:<hex> …`.
+  - *Limits.* `apply_edits` now has explicit limits, live and in replay: at most `MAX_APPLY_EDITS` (2^20)
+    edits and `MAX_APPLY_EDIT_BYTES` (`INT_MAX`) of replacement text; a batch past either is refused. One
+    `ex_register` value is at most `MAX_REGISTER_BYTES` (`INT_MAX`, the E1240 limit). A trace line past a
+    limit is `TraceError::TooLarge { line }`, found from the token count and lengths before any byte is
+    decoded.
+  - *Registers.* `ex_register <name> <kind> <hex>` sets exactly that slot (`RegisterStore::set_slot`: no
+    mirroring into the unnamed register, no ring shift, no append). The kind token is `c`, `l` or
+    `b{width}`: a blockwise value carries its block width, since a put pads to it and a `zy` or tab-holding
+    block is wider than its rows measure (a detail R6 leaves to "the register kind").
+  - *"Only when the value differs from the last one recorded"* is implemented as "only when the value
+    differs from what the slot holds". Before every write the live slot and the replayed slot hold the same
+    value, so this records exactly the writes a replay needs, and it is correct where "the last recorded"
+    is not: after `"+yy`, a clipboard read of the value recorded earlier still changes the slot.
+  - *Specials.* The sync before each command writes `"/ ": ". "%` and also `"#` (the alternate file name,
+    synced the same way and read by `"#p`; R6 lists four, the general rule covers the fifth). They are
+    compared by text, so a never-written empty slot is not recorded as an empty one.
+  - *Clipboard.* The pull still happens in the core (`Workspace::apply`, `put_lines`, `apply_ex`'s
+    `:put +`), where the provider lives; a pull that changes the slot is kept, and `run_cmd`/`run_ex` record
+    it as `ex_register 43 …` ahead of the command that read it. A yank to `"+` is a recorded command, and
+    reading back the same bytes changes nothing, so it records nothing.
+  - *Macros.* A `q` store runs the store's own rule (`set_register_raw`: append for `qA`, `q"`, the unnamed
+    register following `"a` after `"ayy`), then each slot it changed is written again through the trace.
+  - *Trace start.* `Trace::record_with_options` takes the registers filled when the session began
+    (`RegisterStore::filled`, captured with the starting options) and writes them after the `ex_set` lines.
+    A session starts with empty registers today, so this matters once something fills them before the
+    first key (the headless `restart_trace` tests it).
+  - `:trace save` reports `(N commands; includes registers and clipboard text)`.
+  - Not recorded: the journal-recovery `apply_edits` when `:e` opens a file with a crash journal (a buffer
+    switch, which a trace does not follow), and the `"=` register (its value comes from a recorded command).
 
 ## Open questions
 

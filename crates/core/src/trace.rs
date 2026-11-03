@@ -21,6 +21,7 @@
 
 use crate::command::{Command, CommandParseError};
 use crate::editor::{apply_command, EditorOption, EditorState, ExCmd};
+use crate::register::Register;
 
 /// The trace file format version.
 pub const TRACE_FORMAT_VERSION: u32 = 1;
@@ -52,6 +53,11 @@ pub enum TraceError {
     UnbalancedGroup {
         line: usize,
     },
+    /// A record at `line` past a live limit: an `ex_edits` batch with more edits or text than
+    /// `apply_edits` takes, or an `ex_register` value past the register size limit (RFC-0020 R6).
+    TooLarge {
+        line: usize,
+    },
 }
 
 /// A stable, deterministic 64-bit fingerprint of the initial document (FNV-1a — not the randomized std
@@ -79,17 +85,26 @@ impl Trace {
 
     /// Record a trace whose replay starts from the editing `options` the session had when it began
     /// (RFC-0020 R4): they are written as `ex_set` lines before the commands, so a replay on a machine
-    /// with another config gives the same document. A group still open (a `:trace save` run from inside a
-    /// `:normal` or a macro) is closed at the end, so the saved trace parses.
+    /// with another config gives the same document. Then the `registers` that held a value when it began
+    /// ([`crate::RegisterStore::filled`]), as `ex_register` lines (R6), so a `p` of one replays the same
+    /// text. A group still open (a `:trace save` run from inside a `:normal` or a macro) is closed at the
+    /// end, so the saved trace parses.
     #[must_use]
     pub fn record_with_options(
         initial: &[u8],
         options: &[EditorOption],
+        registers: &[(Option<char>, Register)],
         commands: Vec<Command>,
     ) -> Trace {
         let mut all: Vec<Command> = options
             .iter()
             .map(|&o| Command::Ex(ExCmd::Set(o)))
+            .chain(registers.iter().map(|(name, value)| {
+                Command::Ex(ExCmd::Register {
+                    name: *name,
+                    value: value.clone(),
+                })
+            }))
             .collect();
         let mut depth = 0usize;
         for c in &commands {
@@ -135,8 +150,10 @@ impl Trace {
             if t.is_empty() || t.starts_with('#') {
                 continue;
             }
-            let cmd =
-                Command::from_line(t).map_err(|err| TraceError::BadCommand { line: i + 2, err })?;
+            let cmd = Command::from_line(t).map_err(|err| match err {
+                CommandParseError::TooLarge(_) => TraceError::TooLarge { line: i + 2 },
+                err => TraceError::BadCommand { line: i + 2, err },
+            })?;
             match cmd {
                 Command::Ex(ExCmd::Begin(_)) => depth += 1,
                 Command::Ex(ExCmd::End) => {
@@ -331,7 +348,7 @@ mod tests {
             Command::Ex(ExCmd::Begin(crate::editor::GroupKind::Macro)),
             Command::Ex(ExCmd::Begin(crate::editor::GroupKind::Normal)),
         ];
-        let t = Trace::record_with_options(b"", &[], open);
+        let t = Trace::record_with_options(b"", &[], &[], open);
         assert_eq!(
             Trace::from_text(&t.to_text()).map(|t| t.commands.len()),
             Ok(4)
@@ -380,15 +397,58 @@ mod tests {
             EditorOption::IgnoreCase(true),
             EditorOption::SmartCase(true),
         ];
-        let t = Trace::record_with_options(initial, &opts, vec![search.clone()]);
+        let t = Trace::record_with_options(initial, &opts, &[], vec![search.clone()]);
         let t = Trace::from_text(&t.to_text()).unwrap();
         assert_eq!(t.replay(initial).unwrap().cursor(), 2);
         let plain = Trace::record(initial, vec![search]);
         assert_eq!(plain.replay(initial).unwrap().cursor(), 6);
-        let t = Trace::record_with_options(initial, &opts, vec![]);
+        let t = Trace::record_with_options(initial, &opts, &[], vec![]);
         assert!(t
             .to_text()
             .contains("ex_set ignorecase 1\nex_set smartcase 1\n"));
+    }
+
+    /// The registers filled before the trace began are written after the options (RFC-0020 R6), so a put
+    /// of one replays the same text.
+    #[test]
+    fn starting_registers_are_replayed_before_the_commands() {
+        let initial = b"a\n";
+        let regs = [
+            (None, Register::linewise(b"un\n".to_vec())),
+            (Some('q'), Register::charwise(b"Q".to_vec())),
+        ];
+        let cmds = vec![
+            Command::Paste {
+                count: 1,
+                after: true,
+                move_after: false,
+            },
+            Command::SetRegister(Some('q')),
+            Command::Paste {
+                count: 1,
+                after: true,
+                move_after: false,
+            },
+        ];
+        let t = Trace::record_with_options(initial, &[], &regs, cmds);
+        let text = t.to_text();
+        assert!(
+            text.contains("ex_register - l 756e0a\nex_register 113 c 51\n"),
+            "{text}"
+        );
+        let st = Trace::from_text(&text).unwrap().replay(initial).unwrap();
+        assert_eq!(st.bytes(), b"a\nuQn\n");
+    }
+
+    /// A record past a live limit is a typed error, found without decoding its bytes.
+    #[test]
+    fn records_past_the_live_limits_are_typed_errors() {
+        let head = format!("# ruse-trace v1 doc_hash={:016x}\n", doc_hash(b""));
+        let many = "0:0:- ".repeat(crate::MAX_APPLY_EDITS + 1);
+        assert_eq!(
+            Trace::from_text(&format!("{head}ex_edits lsp {many}\n")),
+            Err(TraceError::TooLarge { line: 2 })
+        );
     }
 
     #[test]

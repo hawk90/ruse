@@ -124,6 +124,9 @@ pub struct Workspace {
     clipboard: Box<dyn Clipboard>,
     /// A command applied since the last [`Workspace::take_beep`] failed ([`Effect::Beep`], #1085).
     beeped: bool,
+    /// The `"+`/`"*` value the last clipboard pull wrote, when the pull changed the slot, until the frontend
+    /// takes it for the trace ([`Workspace::take_clipboard_read`], RFC-0020 R6).
+    clipboard_read: Option<crate::register::Register>,
     /// The editor-global register store (Vim registers are shared by every buffer and window; D-057
     /// slice 2, #944). Lent into the focused View for one command by [`Workspace::lend`].
     registers: RegisterStore,
@@ -155,6 +158,7 @@ impl Workspace {
             defaults: ViewOptions::DEFAULT,
             clipboard: Box::new(NoClipboard),
             beeped: false,
+            clipboard_read: None,
             registers: RegisterStore::new(),
             pins: Vec::new(),
             origin: TransactionOrigin::UserInput,
@@ -255,6 +259,20 @@ impl Workspace {
     /// untyped keys as for a failed command (#1111).
     pub fn beep(&mut self) {
         self.beeped = true;
+    }
+
+    /// The `"+`/`"*` value a clipboard pull wrote since the last call, if a pull changed the slot: what
+    /// another application copied, read as external input. The frontend records it in the trace ahead of
+    /// the command that read it (an `ex_register` record, RFC-0020 R6), so a replay, which has no clipboard,
+    /// puts the same text.
+    pub fn take_clipboard_read(&mut self) -> Option<crate::register::Register> {
+        self.clipboard_read.take()
+    }
+
+    fn note_clipboard_read(&mut self, pulled: Option<crate::register::Register>) {
+        if pulled.is_some() {
+            self.clipboard_read = pulled;
+        }
     }
 
     /// Install the OS-clipboard provider backing `"+`/`"*` (`:help quoteplus`). The frontend calls this once
@@ -428,11 +446,11 @@ impl Workspace {
                         cmd,
                         Command::InsertRegister('+') | Command::InsertRegister('*')
                     );
-            if touches_clipboard {
-                if let Some(text) = clipboard.get() {
-                    st.sync_clipboard_in(text.into_bytes());
-                }
-            }
+            let pulled = if touches_clipboard {
+                pull_clipboard(st, clipboard)
+            } else {
+                None
+            };
             let effects = apply_command(st, cmd);
             if touches_clipboard {
                 // The mirror slot now holds the yanked/deleted bytes (a paste leaves it unchanged, so the
@@ -441,8 +459,10 @@ impl Workspace {
                 let bytes = st.registers().clipboard().text().to_vec();
                 clipboard.set(&String::from_utf8_lossy(&bytes));
             }
-            effects
+            (effects, pulled)
         });
+        let (effects, pulled) = effects;
+        self.note_clipboard_read(pulled);
         self.beeped |= effects.contains(&Effect::Beep);
         effects
     }
@@ -669,14 +689,16 @@ impl Workspace {
     /// another app copied. A put only READS a register, so nothing is pushed back out.
     pub fn put_lines(&mut self, addr: LineAddr, reg: Option<char>) -> usize {
         let vid = self.windows[self.focus].view;
-        self.with_view(vid, |st, clipboard| {
-            if crate::register::RegisterStore::is_clipboard(reg) {
-                if let Some(text) = clipboard.get() {
-                    st.sync_clipboard_in(text.into_bytes());
-                }
-            }
-            st.put_lines(addr, reg)
-        })
+        let (n, pulled) = self.with_view(vid, |st, clipboard| {
+            let pulled = if crate::register::RegisterStore::is_clipboard(reg) {
+                pull_clipboard(st, clipboard)
+            } else {
+                None
+            };
+            (st.put_lines(addr, reg), pulled)
+        });
+        self.note_clipboard_read(pulled);
+        n
     }
 
     /// Run `:[addr]r {file}` / `:[addr]r !{cmd}` against the FOCUSED window (swap-trick): insert `text` (a
@@ -1272,21 +1294,32 @@ impl Workspace {
     /// global value (as [`Workspace::set_option`]). The frontend records the command and runs it here; a
     /// trace replays it through `apply_command`, which calls the same [`EditorState::apply_ex`].
     pub fn apply_ex(&mut self, ex: &crate::ExCmd) -> crate::ExOutcome {
-        if let crate::ExCmd::Set(opt) = ex {
-            self.set_option(*opt);
-            return crate::ExOutcome::Done;
+        match ex {
+            crate::ExCmd::Set(opt) => {
+                self.set_option(*opt);
+                return crate::ExOutcome::Done;
+            }
+            // `:keepjumps` reaches every view, as [`Workspace::set_keep_jumps`] does.
+            crate::ExCmd::KeepJumps(on) => {
+                self.set_keep_jumps(*on);
+                return crate::ExOutcome::Done;
+            }
+            _ => {}
         }
         let vid = self.windows[self.focus].view;
-        self.with_view(vid, |st, clipboard| {
-            if let crate::ExCmd::Put { reg, .. } = ex {
-                if crate::register::RegisterStore::is_clipboard(*reg) {
-                    if let Some(text) = clipboard.get() {
-                        st.sync_clipboard_in(text.into_bytes());
-                    }
+        let (out, pulled) = self.with_view(vid, |st, clipboard| {
+            let pulled = match ex {
+                crate::ExCmd::Put { reg, .. }
+                    if crate::register::RegisterStore::is_clipboard(*reg) =>
+                {
+                    pull_clipboard(st, clipboard)
                 }
-            }
-            st.apply_ex(ex)
-        })
+                _ => None,
+            };
+            (st.apply_ex(ex), pulled)
+        });
+        self.note_clipboard_read(pulled);
+        out
     }
 
     /// The 1-based inclusive lines `range` names in the FOCUSED window, resolved exactly as the Ex line
@@ -1364,6 +1397,20 @@ pub enum OptionLevel {
     Local,
     /// `:setglobal` — the global value only (what Views created afterward take).
     Global,
+}
+
+/// Pull the OS clipboard into the `"+`/`"*` mirror slot of `st`, returning the slot's new value when the pull
+/// changed it (what the trace records, RFC-0020 R6), `None` when the provider had nothing or the same bytes.
+fn pull_clipboard(
+    st: &mut EditorState,
+    clipboard: &mut dyn Clipboard,
+) -> Option<crate::register::Register> {
+    let text = clipboard.get()?.into_bytes();
+    if st.registers().clipboard().text() == text.as_slice() {
+        return None;
+    }
+    st.sync_clipboard_in(text);
+    Some(st.registers().clipboard().clone())
 }
 
 #[cfg(test)]

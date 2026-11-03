@@ -107,6 +107,21 @@ const SESSIONS: &[(&str, &str, &str)] = &[
     ("a\nb\nc\nd\ne\n", "jjzfjzoggzjx", "ex_place"),
     ("a\nb\nc\nd\ne\n", "jzfjzoGzkx", "ex_place"),
     ("a\nb\nc\nd\ne\n", "jzfjjzo]zx[zx", "ex_place"),
+    // Register values the session writes are recorded as `ex_register` (RFC-0020 R6): the read-only
+    // `"/ ": ".` (a put, and Insert's `CTRL-R`), and a macro's keys (`"ap` puts the recorded `x`).
+    ("abc\n", "/b<CR>\"/P", "ex_register 47 c 62"),
+    ("a\n", ":s/a/b/<CR>\":p", "ex_register 58 c"),
+    ("x\n", "ihi<Esc>\".p", "ex_register 46 c 6869"),
+    ("x\n", ":s/x/y/<CR>A <C-r>:<C-r>/<Esc>", "ex_register 58 c"),
+    ("ab\n", "qaxq\"ap", "ex_register 97 c 78"),
+    ("ab\n", "qaxqqAlq\"ap", "ex_register 97 c 786c"),
+    // `:keepjumps` skips the jump `:d` makes; replay skips it too, so `''` goes where it went live.
+    ("a\nb\nc\nd\n", "G:keepjumps 1d<CR>''x", "ex_keepjumps 1"),
+    (
+        "a\nb\nc\nd\n",
+        "G:keepjumps 2,3s/./X/<CR>``x",
+        "ex_keepjumps 0",
+    ),
 ];
 
 /// Emacs-profile sessions replay with point between characters (#1134): the trace starts with the caret
@@ -184,6 +199,88 @@ fn replay_uses_the_recorded_output_not_the_command() {
     assert_replays("a\n", ":r !echo $$", &h, &saved);
 }
 
+/// A language server's edits (formatting, rename, code action, completion) are recorded as the resolved
+/// edit list (`ex_edits`, RFC-0020 R6). No server runs headless, so the edit list is synthetic; it goes
+/// through the same session path the LSP coordinator uses. Replay gives the live document and cursor, and
+/// the batch undoes as one step, as it did live.
+#[test]
+fn lsp_edits_replay_from_the_trace() {
+    let text = "fn  main ( ) {}\nlet x=1;\n";
+    let mut h = Headless::vim(text);
+    h.keys("jw");
+    assert!(h.lsp_edits(&[(2, 4, " "), (8, 13, "()"), (21, 22, " = ")]));
+    h.keys("x");
+    // A refused batch (overlapping edits) is recorded too, and refused again on replay.
+    assert!(!h.lsp_edits(&[(0, 3, "a"), (2, 4, "b")]));
+    let trace = h.trace().to_text();
+    assert!(
+        trace.contains("ex_edits lsp 2:4:20 8:13:2829 21:22:203d20"),
+        "{trace}"
+    );
+    assert_replays(text, "lsp edits", &h, &trace);
+    h.keys("uu");
+    assert_eq!(h.text(), text, "one `u` per batch");
+    let trace = h.trace().to_text();
+    assert_replays(text, "lsp edits, undone", &h, &trace);
+}
+
+/// A clipboard read is recorded as the value read (RFC-0020 R6), once per change: replay has no clipboard,
+/// and puts what the live session pasted.
+#[test]
+fn clipboard_reads_replay_from_the_trace() {
+    let clip = ruse_core::MemClipboard::new();
+    clip.preload("ext\n");
+    let text = "a\nb\n";
+    let mut h = Headless::vim(text).with_clipboard(clip.clone());
+    h.keys("\"+p\"+P");
+    clip.preload("two");
+    h.keys("G\"+p:put +<CR>");
+    let trace = h.trace().to_text();
+    assert_eq!(
+        trace.matches("ex_register 43 l 6578740a").count(),
+        1,
+        "an unchanged clipboard is not recorded again\n{trace}"
+    );
+    assert!(trace.contains("ex_register 43 c 74776f"), "{trace}");
+    assert_replays(text, "clipboard", &h, &trace);
+    // A yank to the clipboard is a recorded command; reading back what it wrote records nothing.
+    let mut h = Headless::vim(text).with_clipboard(ruse_core::MemClipboard::new());
+    h.keys("\"+yyj\"+p");
+    let trace = h.trace().to_text();
+    assert!(!trace.contains("ex_register 43"), "{trace}");
+    assert_replays(text, "clipboard yank", &h, &trace);
+}
+
+/// The registers filled before a trace starts are written at its start (RFC-0020 R6), after the options:
+/// the unnamed register, `"0`-`"9`, `"a`-`"z` and `"-`, so a put of one replays the same text.
+#[test]
+fn registers_filled_before_the_trace_are_in_its_start() {
+    let mut h = Headless::vim("one\ntwo\nthree four\n");
+    h.keys("yyjdd\"ayyGdw");
+    h.restart_trace();
+    let text = h.text();
+    h.keys("p\"0p\"1p\"ap\"-p");
+    let trace = h.trace().to_text();
+    let start: Vec<&str> = trace
+        .lines()
+        .skip(1)
+        .skip_while(|l| l.starts_with("ex_set"))
+        .take_while(|l| l.starts_with("ex_register"))
+        .collect();
+    assert_eq!(
+        start,
+        [
+            "ex_register - c 746872656520",
+            "ex_register 48 l 6f6e650a",
+            "ex_register 49 l 74776f0a",
+            "ex_register 45 c 746872656520",
+            "ex_register 97 l 746872656520666f75720a",
+        ],
+        "{trace}"
+    );
+    assert_replays(&text, "start registers", &h, &trace);
+}
+
 /// Keys and Ex commands a random session is made of. Every Ex edit the trace records is here, with undo,
 /// redo, dot-repeat and a macro so the undo grouping is exercised.
 const PIECES: &[&str] = &[
@@ -191,9 +288,18 @@ const PIECES: &[&str] = &[
     "dd",
     "p",
     "u",
-    // `<Esc>` first: in Insert, `CTRL-R` would read a special register (`":`, `"/`), which the trace does
-    // not hold (RFC-0020 open question 1).
     "<Esc><C-r>",
+    // The registers the session writes (RFC-0020 R6): the read-only ones, a macro's keys, the clipboard.
+    "i<C-r>:<C-r>/<C-r>.<Esc>",
+    "\"/p",
+    "\".P",
+    "qwxq\"wp",
+    "\"+p",
+    "\"+yy",
+    ":put +<CR>",
+    // `:keepjumps` around a jump an Ex edit makes.
+    ":keepjumps 1d<CR>''",
+    ":keepjumps %s/a/B/<CR>``",
     ".",
     "j",
     "k",
@@ -277,14 +383,39 @@ proptest! {
     })]
 
     /// Any session of keys and Ex edits, replayed from its trace, ends in the live document and cursor.
+    /// Some steps are not keys: `@lsp` applies a language server's edit list, `@clip` changes what
+    /// another application put on the clipboard.
     #[test]
     fn random_sessions_with_ex_edits_replay_to_the_same_state(
         text in "[abc \n]{0,24}",
         picks in proptest::collection::vec(any::<proptest::sample::Index>(), 1..12),
+        clips in proptest::collection::vec("[ab\n]{0,4}", 1..4),
     ) {
-        let keys: String = picks.iter().map(|i| PIECES[i.index(PIECES.len())]).collect();
-        let mut h = Headless::vim(&text);
-        h.keys(&keys);
+        let clip = ruse_core::MemClipboard::new();
+        let mut h = Headless::vim(&text).with_clipboard(clip.clone());
+        let mut clips = clips.iter().cycle();
+        let mut keys = String::new();
+        let n = PIECES.len() + 2;
+        for i in &picks {
+            let piece = match i.index(n) {
+                i if i < PIECES.len() => {
+                    h.keys(PIECES[i]);
+                    PIECES[i]
+                }
+                i if i == PIECES.len() => {
+                    // Reformat the first line, and insert at the end: disjoint, and in range.
+                    let len = h.text().len();
+                    let eol = h.text().find('\n').unwrap_or(len);
+                    h.lsp_edits(&[(0, eol.min(1), "L"), (len, len, "\n")]);
+                    "@lsp"
+                }
+                _ => {
+                    clip.preload(clips.next().expect("cycle"));
+                    "@clip"
+                }
+            };
+            keys.push_str(piece);
+        }
         h.keys("<Esc>");
         let trace = h.trace();
         let again = Trace::from_text(&trace.to_text());

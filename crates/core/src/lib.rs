@@ -91,7 +91,8 @@ pub use edit::{Edit, EditError, EditList};
 pub use editor::{
     apply_command, commit, plan, CaretGravity, EditorOption, EditorState, ExCmd, ExOutcome,
     GlobalCmd, GroupKind, IndentStyle, LineAddr, Mode, Plan, SortKind, SortOptions, SubFlags,
-    SubOutcome, SubRange, Substitution, View, MAX_SHIFT_LEVELS,
+    SubOutcome, SubRange, Substitution, View, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES,
+    MAX_SHIFT_LEVELS,
 };
 pub use effect::Effect;
 pub use expr::{eval as eval_expr, eval_or_empty as eval_expr_or_empty, ExprError};
@@ -100,7 +101,7 @@ pub use keyword::{keyword_echo, keyword_line_numbers, keyword_list, line_text, K
 pub use motion::Motion;
 pub use pattern::{Magic, Match, Options as RegexOptions, Regex, RegexError};
 pub use pos::{BytePos, CellCol, CharPos, GraphemePos, Revision};
-pub use register::{RegKind, Register, RegisterStore};
+pub use register::{RegKind, Register, RegisterStore, MAX_REGISTER_BYTES};
 pub use registry::{
     available, command_by_id, ArgSchema, Category, CommandId, CommandSpec, Context, When,
 };

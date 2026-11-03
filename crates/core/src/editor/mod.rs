@@ -2580,7 +2580,9 @@ impl EditorState {
     /// as an LSP client does, converts at its side of this boundary). The batch is atomic (#716): if any edit
     /// is reversed, out of range, splits a UTF-8 character or overlaps another, NOTHING is applied and this
     /// returns `false`. The cursor is carried through the edits as a byte anchor that follows the text after
-    /// it, so an edit above it moves it with its text.
+    /// it, so an edit above it moves it with its text. A batch of more than [`MAX_APPLY_EDITS`] edits or
+    /// [`MAX_APPLY_EDIT_BYTES`] of replacement text is refused too, so a trace's `ex_edits` record has the
+    /// same bound live and in replay (RFC-0020 R6).
     pub fn apply_edits(
         &mut self,
         edits: &[(BytePos, BytePos, String)],
@@ -2588,7 +2590,13 @@ impl EditorState {
     ) -> bool {
         let b = self.doc.bytes();
         let boundary = |p: usize| p == b.len() || (p < b.len() && (b[p] & 0xC0) != 0x80);
+        let text_bytes = edits
+            .iter()
+            .map(|(_, _, t)| t.len())
+            .fold(0usize, usize::saturating_add);
         if edits.is_empty()
+            || edits.len() > MAX_APPLY_EDITS
+            || text_bytes > MAX_APPLY_EDIT_BYTES
             || !edits
                 .iter()
                 .all(|(s, e, _)| s <= e && e.0 <= b.len() && boundary(s.0) && boundary(e.0))
@@ -3141,7 +3149,9 @@ pub use substitute::{GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange, Substi
 mod ex_cmd;
 #[cfg(test)]
 pub(crate) use ex_cmd::samples as ex_cmd_samples;
-pub use ex_cmd::{ExCmd, ExOutcome, GroupKind, MAX_SHIFT_LEVELS};
+pub use ex_cmd::{
+    ExCmd, ExOutcome, GroupKind, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES, MAX_SHIFT_LEVELS,
+};
 
 mod indent;
 mod planner;

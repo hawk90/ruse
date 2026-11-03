@@ -1037,6 +1037,7 @@ features:
       - Same initial document + same command trace → byte-identical final state (determinism is the contract).
       - "`:trace save` writes the session's command list; `ruse --replay <trace> <file>` reproduces the edits."
       - "Ex edits (`:s` and its repeats `&`/`g&`/`:&&`, `:s///c` with its answers, `:g`, `:normal`, `:sort`, `:m`, `:t`, `:d`, `:r`, `:{range}!`) are recorded as resolved commands (D-061); replay reproduces them without reading a file or running a command."
+      - "Core state the session writes outside a command is recorded too (RFC-0020 R6): a language server's edits as the resolved edit list (`ex_edits`), the `:keepjumps` switch (`ex_keepjumps`), and register values no recorded command produced (`ex_register`: the read-only `\"/ \": \". \"% \"#`, clipboard reads, a macro's keys, and the registers filled when the trace began); `:trace save` says registers and clipboard text are included."
       - A trace round-trips through its text form (to_text/from_text) without changing what it replays to.
       - The trace records semantic Commands (not keystrokes), so it survives keymap changes.
 

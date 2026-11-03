@@ -3,19 +3,41 @@
 //! the right points — so the loop is no longer sprinkled with LSP logic. `lsp/` stays the pure client
 //! (protocol/codec/model, no app types); THIS is the wiring that touches `Workspace`/`Files`/highlighters.
 //!
-//! Determinism boundary (F-022): the coordinator issues NO `Command`s — its edits go through
-//! `Workspace::apply_edits(_, TransactionOrigin::Lsp)`, external and un-replayed, exactly as before.
+//! Determinism boundary (F-022, RFC-0020 R6): the coordinator issues no key `Command`s. A server's edits
+//! to the focused buffer are external input, so they go to the session as resolved records
+//! (`ExCmd::Edits` with `TransactionOrigin::Lsp`, and `ExCmd::Place` for the cursor it leaves) through a
+//! [`Record`] sink, which records them in the trace and runs them; replay applies the same edit list.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent};
-use ruse_core::{BytePos, DocumentId, Mode, Revision, TransactionOrigin, Workspace};
+use ruse_core::{
+    BytePos, DocumentId, ExCmd, ExOutcome, Mode, Revision, TransactionOrigin, Workspace,
+};
 use serde_json::Value;
 
 use crate::app::dispatch::{is_ctrl, open_file_into_buffer, Files, Highlighters};
 use crate::input::Ex;
 use crate::lsp::{self, Diag, LspClient};
+
+/// Where the coordinator's writes to the focused buffer go: the session records each resolved command in
+/// the trace and runs it (`dispatch::run_ex`, RFC-0020 R6).
+pub(crate) type Record<'a> = &'a mut dyn FnMut(&mut Workspace, ExCmd) -> ExOutcome;
+
+/// Apply a server's resolved byte edits to the focused buffer as one `Lsp`-origin undo group, through the
+/// trace (`ex_edits`, RFC-0020 R6). Returns whether the batch applied (`apply_edits` refuses a bad one whole).
+pub(crate) fn apply_lsp_edits(
+    ws: &mut Workspace,
+    rec: Record<'_>,
+    edits: Vec<(BytePos, BytePos, String)>,
+) -> bool {
+    let ex = ExCmd::Edits {
+        origin: TransactionOrigin::Lsp,
+        edits,
+    };
+    rec(ws, ex) == ExOutcome::Applied(true)
+}
 
 /// Status shown when a language server is held back because the workspace is not trusted (D-058).
 const UNTRUSTED_NOTICE: &str =
@@ -449,8 +471,8 @@ impl LspCoordinator {
 
     /// Apply the deferred goto jump, format edits, and multi-file rename now render is done (opening a
     /// buffer mutates `highlighters`, which the frame's `spans` borrow forbids during the poll). A goto
-    /// into the SAME file moves the cursor through `place`, which the session records in the trace
-    /// (#1134), so this coordinator still issues no `Command` itself.
+    /// into the SAME file moves the cursor, and the edits to the focused buffer apply, through `rec`, which
+    /// the session records in the trace (#1134, RFC-0020 R6).
     pub(crate) fn apply_pending(
         &mut self,
         ws: &mut Workspace,
@@ -458,7 +480,7 @@ impl LspCoordinator {
         highlighters: &mut Highlighters,
         snapshot: &[u8],
         status: &mut String,
-        place: &mut dyn FnMut(&mut Workspace, usize),
+        rec: Record<'_>,
     ) {
         // Goto: same file → move the cursor; another file → open it, then move.
         if let Some((uri, l, c)) = self.goto_jump.take() {
@@ -468,7 +490,10 @@ impl LspCoordinator {
                 .get(&ws.focused_buffer())
                 .and_then(|bf| std::fs::canonicalize(&bf.path).ok());
             if cur_path.as_deref() == Some(target.as_path()) {
-                place(ws, lsp::model::lsp_pos_to_byte(snapshot, l, c));
+                rec(
+                    ws,
+                    ExCmd::Place(lsp::model::lsp_pos_to_byte(snapshot, l, c)),
+                );
             } else {
                 let opened =
                     open_file_into_buffer(&target.display().to_string(), ws, files, highlighters);
@@ -482,14 +507,13 @@ impl LspCoordinator {
         }
         // Format edits: one Lsp-origin undo group.
         if !self.pending_edits.is_empty() {
-            ws.apply_edits(&self.pending_edits, TransactionOrigin::Lsp);
-            self.pending_edits.clear();
+            apply_lsp_edits(ws, rec, std::mem::take(&mut self.pending_edits));
             *status = "formatted".to_string();
         }
         // Rename across every affected file (the multi-file WorkspaceEdit apply, shared with code actions).
         if !self.pending_rename.is_empty() {
             let edit = std::mem::take(&mut self.pending_rename);
-            let (files_n, edits_n) = apply_workspace_edit(edit, ws, files, highlighters);
+            let (files_n, edits_n) = apply_workspace_edit(edit, ws, files, highlighters, rec);
             *status = format!("renamed: {edits_n} edit(s) across {files_n} file(s)");
         }
         // Server-initiated `workspace/applyEdit` (from an executeCommand): apply the TEXT edits as one
@@ -498,7 +522,7 @@ impl LspCoordinator {
         for (key, id, edit) in std::mem::take(&mut self.pending_server_edits) {
             let applied = !edit.is_empty();
             if applied {
-                apply_workspace_edit(edit, ws, files, highlighters);
+                apply_workspace_edit(edit, ws, files, highlighters, rec);
                 *status = "applied server edit".to_string();
             }
             if let Some(client) = self.lsp.get_mut(&key) {
@@ -529,10 +553,11 @@ impl LspCoordinator {
         files: &mut Files,
         highlighters: &mut Highlighters,
         status: &mut String,
+        rec: Record<'_>,
     ) {
         if !action.edit.is_empty() {
             let (files_n, edits_n) =
-                apply_workspace_edit(action.edit.clone(), ws, files, highlighters);
+                apply_workspace_edit(action.edit.clone(), ws, files, highlighters, rec);
             *status = format!("applied: {edits_n} edit(s) across {files_n} file(s)");
         }
         if let Some((command, arguments)) = &action.command {
@@ -575,6 +600,7 @@ impl LspCoordinator {
         key: KeyEvent,
         ws: &mut Workspace,
         status: &mut String,
+        rec: Record<'_>,
     ) -> bool {
         let Some(menu) = self.completion.as_mut() else {
             return false;
@@ -627,9 +653,9 @@ impl LspCoordinator {
                     edits.push((BytePos(s), BytePos(e), t.clone()));
                 }
             }
-            ws.apply_edits(&edits, TransactionOrigin::Lsp);
+            apply_lsp_edits(ws, rec, edits);
             let caret_pos = (start as isize + caret as isize + shift).max(0) as usize;
-            ws.place_focused_cursor(caret_pos);
+            rec(ws, ExCmd::Place(caret_pos));
             *status = format!("completed: {}", item.label);
             return true;
         }
@@ -835,12 +861,15 @@ impl LspCoordinator {
 /// `(files, edits)` applied. Each file is focused in turn (reuse an open buffer, else open it), its edits
 /// are mapped to byte offsets against ITS OWN bytes, and applied as one `Lsp`-origin undo group; then the
 /// original buffer is refocused. Opened files are modified buffers the user saves. Shared by rename and
-/// code-action apply. Must run AFTER render (opening a buffer mutates `highlighters`).
+/// code-action apply. Must run AFTER render (opening a buffer mutates `highlighters`). The edits to the
+/// buffer that was focused go through `rec` (the trace, RFC-0020 R6); a trace follows one document, so the
+/// edits to other files are applied without a record, as a cursor placed there is.
 fn apply_workspace_edit(
     edit: Vec<(String, Vec<lsp::protocol::LspTextEdit>)>,
     ws: &mut Workspace,
     files: &mut Files,
     highlighters: &mut Highlighters,
+    rec: Record<'_>,
 ) -> (usize, usize) {
     if edit.is_empty() {
         return (0, 0);
@@ -869,7 +898,11 @@ fn apply_workspace_edit(
             })
             .collect();
         edits_n += byte_edits.len();
-        ws.apply_edits(&byte_edits, TransactionOrigin::Lsp);
+        if ws.focused_buffer() == orig {
+            apply_lsp_edits(ws, rec, byte_edits);
+        } else {
+            ws.apply_edits(&byte_edits, TransactionOrigin::Lsp);
+        }
         files_n += 1;
     }
     ws.focus_buffer(orig);

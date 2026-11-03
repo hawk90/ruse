@@ -100,8 +100,47 @@ impl Headless {
         // Set before any key, so it is part of where a saved trace starts.
         if self.s.recorded.is_empty() {
             self.s.start_options = self.s.ws.focused().view.editing_options();
+            self.s.start_registers = self.s.ws.registers().filled();
         }
         self
+    }
+
+    /// Install `clipboard` as the system clipboard behind `"+`/`"*` (the binary installs the OS one).
+    #[must_use]
+    pub fn with_clipboard(mut self, clipboard: ruse_core::MemClipboard) -> Headless {
+        self.s.ws.set_clipboard(Box::new(clipboard));
+        self
+    }
+
+    /// Start the trace over from here, as a session that began with this document and these registers
+    /// would: the document as it is now becomes the trace's starting one, the cursor goes to its start, and
+    /// the options and the registers that hold a value are what a saved trace starts by writing (RFC-0020
+    /// R4, R6). For checking the start of a trace that begins with registers already filled.
+    pub fn restart_trace(&mut self) {
+        self.stale = true;
+        self.s.ws.place_focused_cursor(0);
+        self.s.initial = self.s.ws.focused().doc.bytes().to_vec();
+        self.s.recorded.clear();
+        self.s.start_options = self.s.ws.focused().view.editing_options();
+        self.s.start_registers = self.s.ws.registers().filled();
+    }
+
+    /// Apply `edits` (`(start, end, text)` byte edits) to the focused buffer the way a language server's
+    /// formatting, rename, code action or completion edits are applied, through the same session path that
+    /// records them in the trace (RFC-0020 R6). No server runs headless, so this stands in for its response.
+    /// Returns whether the batch applied.
+    pub fn lsp_edits(&mut self, edits: &[(usize, usize, &str)]) -> bool {
+        self.stale = true;
+        let edits = edits
+            .iter()
+            .map(|&(s, e, t)| (ruse_core::BytePos(s), ruse_core::BytePos(e), t.to_string()))
+            .collect();
+        let recorded = &mut self.s.recorded;
+        crate::app::lsp_coordinator::apply_lsp_edits(
+            &mut self.s.ws,
+            &mut |ws, ex| crate::app::dispatch::run_ex(ex, ws, recorded),
+            edits,
+        )
     }
 
     /// Run the frame work the event loop runs between keys (the render itself is skipped).
@@ -311,6 +350,7 @@ impl Headless {
         ruse_core::Trace::record_with_options(
             &self.s.initial,
             &self.s.start_options,
+            &self.s.start_registers,
             self.s.recorded.clone(),
         )
     }

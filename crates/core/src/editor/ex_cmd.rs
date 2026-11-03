@@ -17,10 +17,22 @@ use super::{
 };
 use crate::command::CommandParseError;
 use crate::pattern::RegexError;
+use crate::pos::BytePos;
+use crate::register::{RegKind, Register, RegisterStore, MAX_REGISTER_BYTES};
+use crate::transaction::TransactionOrigin;
 
 /// The most indent levels one `:>`/`:<` applies (`:>>>` is 3). The Ex parser counts repeated verb chars, so
 /// a typed command never comes near it; the bound keeps a hostile trace line from shifting for minutes.
 pub const MAX_SHIFT_LEVELS: u32 = 1000;
+
+/// The most edits one [`EditorState::apply_edits`] batch holds, live and in a trace's `ex_edits` record
+/// (RFC-0020 R6). A language server's response is one frame of at most 64 MiB, and an LSP `TextEdit` takes
+/// more than 64 bytes of it, so no batch a server sends comes near.
+pub const MAX_APPLY_EDITS: usize = 1 << 20;
+
+/// The most replacement-text bytes one [`EditorState::apply_edits`] batch holds (RFC-0020 R6): nvim's
+/// `INT_MAX` text limit, as for a register ([`crate::register::MAX_REGISTER_BYTES`]).
+pub const MAX_APPLY_EDIT_BYTES: usize = i32::MAX as usize;
 
 /// What opened an undo group whose children follow in the trace ([`ExCmd::Begin`]).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -122,6 +134,20 @@ pub enum ExCmd {
     Place(usize),
     /// Vim's `u_sync` before a typed command: the next change starts a new undo step.
     UndoSync,
+    /// An edit list that came from outside the core (RFC-0020 R6): a language server's formatting, rename,
+    /// code action or completion edits, resolved to the disjoint `(start, end, text)` byte edits the session
+    /// passed to [`EditorState::apply_edits`], with their origin. Replay calls the same `apply_edits`.
+    Edits {
+        origin: TransactionOrigin,
+        edits: Vec<(BytePos, BytePos, String)>,
+    },
+    /// The `:keepjumps` switch (R6): while on, no jumplist or change-list entry is recorded.
+    KeepJumps(bool),
+    /// A register value the session wrote that no recorded command produced (R6): the read-only
+    /// `"/ ": ". "% "#` synced from frontend state, a clipboard read, a macro's raw keys, and the registers
+    /// filled when the trace began. Sets exactly that slot ([`RegisterStore::set_slot`]); `None` is the
+    /// unnamed register.
+    Register { name: Option<char>, value: Register },
     /// The start of a group of child commands that undo as one step.
     Begin(GroupKind),
     /// The end of the innermost open [`ExCmd::Begin`].
@@ -142,6 +168,8 @@ pub enum ExOutcome {
     Substituted(SubOutcome),
     /// `:retab`: whether a line changed.
     Retabbed(bool),
+    /// An edit list: whether it applied (`apply_edits` refuses a bad batch whole).
+    Applied(bool),
     /// A pattern that does not compile; nothing changed.
     Failed(RegexError),
 }
@@ -282,6 +310,15 @@ impl EditorState {
                 self.doc.sync_undo();
                 ExOutcome::Done
             }
+            ExCmd::Edits { origin, edits } => ExOutcome::Applied(self.apply_edits(edits, *origin)),
+            ExCmd::KeepJumps(on) => {
+                self.view.keep_jumps = *on;
+                ExOutcome::Done
+            }
+            ExCmd::Register { name, value } => {
+                self.view.registers.set_slot(*name, value.clone());
+                ExOutcome::Done
+            }
             ExCmd::Begin(_) | ExCmd::End => ExOutcome::Done,
         }
     }
@@ -376,6 +413,26 @@ fn option_name(opt: EditorOption) -> (&'static str, String) {
         EditorOption::ShiftRound(v) => ("shiftround", flag(v)),
         // `0` rests on a character (Vim), `1` between characters (Emacs).
         EditorOption::CaretGravity(g) => ("caretgravity", flag(g == CaretGravity::BetweenChar)),
+    }
+}
+
+fn origin_token(origin: TransactionOrigin) -> &'static str {
+    match origin {
+        TransactionOrigin::UserInput => "user",
+        TransactionOrigin::Macro => "macro",
+        TransactionOrigin::Plugin => "plugin",
+        TransactionOrigin::Lsp => "lsp",
+        TransactionOrigin::AiAgent => "ai",
+        TransactionOrigin::RemotePeer => "remote",
+    }
+}
+
+/// A register's kind token: `c`, `l`, or `b{width}` (a block's width in cells, which a put pads to).
+fn reg_kind_token(r: &Register) -> String {
+    match r.kind() {
+        RegKind::Charwise => "c".into(),
+        RegKind::Linewise => "l".into(),
+        RegKind::Blockwise => format!("b{}", r.block_width()),
     }
 }
 
@@ -495,6 +552,20 @@ impl ExCmd {
             }
             ExCmd::Place(at) => format!("ex_place {at}"),
             ExCmd::UndoSync => "ex_undo_sync".into(),
+            ExCmd::Edits { origin, edits } => {
+                let mut s = format!("ex_edits {}", origin_token(*origin));
+                for (start, end, text) in edits {
+                    let _ = write!(s, " {}:{}:{}", start.0, end.0, hex(text.as_bytes()));
+                }
+                s
+            }
+            ExCmd::KeepJumps(on) => format!("ex_keepjumps {}", bool_token(*on)),
+            ExCmd::Register { name, value } => format!(
+                "ex_register {} {} {}",
+                reg_token(*name),
+                reg_kind_token(value),
+                hex(value.text())
+            ),
             ExCmd::Begin(kind) => format!("ex_begin {}", group_token(*kind)),
             ExCmd::End => "ex_end".into(),
         }
@@ -689,6 +760,71 @@ impl ExCmd {
             }
             "ex_place" => ExCmd::Place(a.num()?),
             "ex_undo_sync" => ExCmd::UndoSync,
+            "ex_edits" => {
+                let origin = match a.tok()? {
+                    "user" => TransactionOrigin::UserInput,
+                    "macro" => TransactionOrigin::Macro,
+                    "plugin" => TransactionOrigin::Plugin,
+                    "lsp" => TransactionOrigin::Lsp,
+                    "ai" => TransactionOrigin::AiAgent,
+                    "remote" => TransactionOrigin::RemotePeer,
+                    _ => return Err(a.bad()),
+                };
+                // Both limits are checked before a byte is decoded (INV-FAIL-BOUNDED).
+                let toks: Vec<&str> = a.toks.by_ref().take(MAX_APPLY_EDITS + 1).collect();
+                if toks.len() > MAX_APPLY_EDITS {
+                    return Err(a.too_large());
+                }
+                let text_len = toks
+                    .iter()
+                    .map(|t| t.rsplit(':').next().map_or(0, |h| h.len() / 2))
+                    .fold(0usize, usize::saturating_add);
+                if text_len > MAX_APPLY_EDIT_BYTES {
+                    return Err(a.too_large());
+                }
+                let edits = toks
+                    .into_iter()
+                    .map(|t| {
+                        let mut parts = t.splitn(3, ':');
+                        let mut pos = || -> Result<BytePos, CommandParseError> {
+                            parts
+                                .next()
+                                .and_then(|p| p.parse().ok())
+                                .map(BytePos)
+                                .ok_or_else(|| a.bad())
+                        };
+                        let (start, end) = (pos()?, pos()?);
+                        let text = a.decode_text(parts.next().ok_or_else(|| a.bad())?)?;
+                        Ok((start, end, text))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                ExCmd::Edits { origin, edits }
+            }
+            "ex_keepjumps" => ExCmd::KeepJumps(a.flag()?),
+            "ex_register" => {
+                let name = a.reg()?;
+                if !RegisterStore::is_slot(name) {
+                    return Err(a.bad());
+                }
+                let kind = a.tok()?;
+                let t = a.tok()?;
+                if t.len() / 2 > MAX_REGISTER_BYTES {
+                    return Err(a.too_large());
+                }
+                let bytes = a.decode(t)?;
+                let value = match kind {
+                    "c" => Register::charwise(bytes),
+                    // A linewise value ends in a newline; one without would come back changed.
+                    "l" if bytes.last() == Some(&b'\n') => Register::linewise(bytes),
+                    k => match k.strip_prefix('b').map(str::parse::<usize>) {
+                        Some(Ok(width)) if width <= MAX_REGISTER_BYTES => {
+                            Register::blockwise_width(bytes, width)
+                        }
+                        _ => return Err(a.bad()),
+                    },
+                };
+                ExCmd::Register { name, value }
+            }
             "ex_begin" => ExCmd::Begin(match a.tok()? {
                 "normal" => GroupKind::Normal,
                 "global" => GroupKind::Global,
@@ -714,6 +850,12 @@ struct Args<'a> {
 impl<'a> Args<'a> {
     fn bad(&self) -> CommandParseError {
         CommandParseError::BadArgument(self.line.to_string())
+    }
+
+    /// A record past a live limit. Only the verb is kept, not the (large) line.
+    fn too_large(&self) -> CommandParseError {
+        let verb = self.line.split_whitespace().next().unwrap_or_default();
+        CommandParseError::TooLarge(verb.to_string())
     }
 
     fn tok(&mut self) -> Result<&'a str, CommandParseError> {
@@ -986,6 +1128,35 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Set(EditorOption::CaretGravity(CaretGravity::BetweenChar)),
         ExCmd::Place(17),
         ExCmd::UndoSync,
+        ExCmd::Edits {
+            origin: TransactionOrigin::Lsp,
+            edits: vec![
+                (BytePos(0), BytePos(3), "가 b".into()),
+                (BytePos(5), BytePos(5), String::new()),
+            ],
+        },
+        ExCmd::Edits {
+            origin: TransactionOrigin::UserInput,
+            edits: Vec::new(),
+        },
+        ExCmd::KeepJumps(true),
+        ExCmd::KeepJumps(false),
+        ExCmd::Register {
+            name: None,
+            value: Register::linewise(b"a\n".to_vec()),
+        },
+        ExCmd::Register {
+            name: Some('/'),
+            value: Register::charwise(Vec::new()),
+        },
+        ExCmd::Register {
+            name: Some('+'),
+            value: Register::charwise(b"x\x00 y".to_vec()),
+        },
+        ExCmd::Register {
+            name: Some('a'),
+            value: Register::blockwise_width(b"ab\nc".to_vec(), 4),
+        },
         ExCmd::Begin(GroupKind::Normal),
         ExCmd::Begin(GroupKind::Global),
         ExCmd::Begin(GroupKind::Macro),
@@ -1020,6 +1191,18 @@ mod tests {
             "ex_sort 1 2 - 61",
             "ex_mark 1 1114112",
             "ex_begin visual",
+            "ex_edits lsp 1:2",
+            "ex_edits lsp 1:2:6",
+            "ex_edits lsp x:2:-",
+            "ex_edits vim 1:2:-",
+            "ex_edits lsp 0:0:ff",
+            "ex_keepjumps 2",
+            "ex_register 65 c 61",
+            "ex_register 95 c 61",
+            "ex_register - l 61",
+            "ex_register - z 61",
+            "ex_register - bx 61",
+            "ex_register - c",
             "ex_nope",
         ] {
             assert!(Command::from_line(bad).is_err(), "{bad:?} parsed");
