@@ -7,5 +7,6 @@ pub(crate) mod ex_more;
 pub(crate) mod ex_print;
 pub(crate) mod ex_range;
 pub(crate) mod file_cmds;
+pub(crate) mod fold_cmds;
 pub(crate) mod lsp_coordinator;
 pub(crate) mod session;

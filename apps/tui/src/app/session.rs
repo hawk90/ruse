@@ -288,10 +288,12 @@ fn resolve_tree_aware(
     line_idx: &line_index::LineIndex,
     snapshot: &[u8],
 ) -> Command {
+    // A buffer whose language is not indented by node depth (Markdown, #818) keeps the core's plain `=`/`o`.
     let tree_of = |ws: &Workspace| {
         highlighters
             .get(&ws.focused_buffer())
             .and_then(highlight::CachedHighlight::tree)
+            .filter(|t| indent::uses_node_depth(t))
     };
     // `=` — resolve the reindent range + levels from the tree, else fall through to the core `=`.
     let cmd = if let Command::Reindent { count, motion } = cmd {
@@ -468,8 +470,8 @@ pub(crate) struct Session {
     /// skip them. Under `foldmethod=manual` (default) edits shift/drop them; under `foldmethod=indent` (slice 3)
     /// they are RECOMPUTED from indentation on edit.
     pub(crate) folds: HashMap<DocumentId, Vec<crate::folds::Fold>>,
-    /// Per-buffer line count from the previous frame, to detect edit-driven line shifts for manual fold ranges.
-    fold_lines: HashMap<DocumentId, usize>,
+    /// The line anchors that carry each buffer's manual folds through its edits (#819).
+    fold_anchors: HashMap<DocumentId, crate::folds::Anchored>,
     /// Per-buffer `foldmethod` (default manual), `foldlevel` (default 0), `foldenable` (default true), and the
     /// buffer revision the indent folds were last computed at (recompute when it changes). All frontend state
     /// (folds never leak into core; INV-DOC-VIEW).
@@ -603,7 +605,7 @@ impl Session {
             term,
             prefix: Prefix::None,
             folds: HashMap::new(),
-            fold_lines: HashMap::new(),
+            fold_anchors: HashMap::new(),
             fold_method: HashMap::new(),
             foldlevel: HashMap::new(),
             foldenable: HashMap::new(),
@@ -635,6 +637,29 @@ impl Session {
         }
     }
 
+    /// Panic unless the focused buffer's folds are well formed over it (in range; a manual set flat, an
+    /// indent set nested) and every manual fold anchor is live in its document — the fold part of the
+    /// invariant walker (#906). Only the focused buffer's folds are reconciled each frame, so only they are
+    /// checked against their text.
+    pub(crate) fn assert_fold_invariants(&self) {
+        let buf = self.ws.focused_buffer();
+        if let Some(fv) = self.folds.get(&buf) {
+            let lines = crate::app::dispatch::line_count(self.ws.focused().doc.bytes());
+            let nested = self.fold_method.get(&buf) == Some(&crate::input::FoldMethod::Indent);
+            crate::folds::assert_invariants(fv, lines, nested);
+        }
+        for (id, a) in &self.fold_anchors {
+            if let Some(doc) = self.ws.document(*id) {
+                for anchor in a.anchor_ids() {
+                    assert!(
+                        doc.resolve_anchor(anchor).is_some(),
+                        "a fold anchor of buffer {id:?} is not live"
+                    );
+                }
+            }
+        }
+    }
+
     /// The per-frame work that precedes the render and the key read: snapshot the focused buffer, refresh
     /// the line index, reconcile folds, publish the crash-rescue state, follow a `:s///c` match, and scroll
     /// each pane to its cursor. `cols`×`term_rows` is the terminal size.
@@ -648,7 +673,7 @@ impl Session {
             unnamed_start,
             rescue,
             folds,
-            fold_lines,
+            fold_anchors,
             fold_method,
             foldlevel,
             foldenable,
@@ -667,12 +692,12 @@ impl Session {
         // Refresh the line index (rebuilds only on a revision change) so the per-frame row/viewport
         // lookups below are O(log n), not an O(buffer) newline scan. MVP splits share this one buffer.
         line_idx.refresh_for(ws.focused_buffer(), revision, &snapshot);
-        // Fold reconcile (per frame): (a) shift/drop folds when the buffer's line count changed since
-        // last frame — approximating the edit point as the cursor line; (b) snap the cursor OUT of any closed
-        // fold onto its summary (start) line, so it never rests on a hidden row.
+        // Fold reconcile (per frame): (a) carry manual folds through the edits since the last frame by their
+        // line anchors (#819); (b) in Insert and Replace mode open the folds holding the cursor line, as nvim
+        // does when Insert starts ("the cursor line is never folded"). The cursor may rest inside a closed
+        // fold otherwise; it paints on the fold's summary row.
         {
             let buf = ws.focused_buffer();
-            let nlines = line_idx.line_of(snapshot.len());
             let indent = fold_method.get(&buf).copied() == Some(crate::input::FoldMethod::Indent);
             if indent {
                 // Indent folds are DERIVED: recompute from indentation whenever the buffer content changed
@@ -696,27 +721,26 @@ impl Session {
                     folds.insert(buf, computed);
                     fold_rev.insert(buf, revision);
                 }
+                // Derived folds need no anchors; manual ones made before `:set fdm=indent` lose theirs.
+                if let Some(mut a) = fold_anchors.remove(&buf) {
+                    a.release(ws.focused_doc_mut());
+                }
             } else if let Some(fv) = folds.get_mut(&buf) {
-                // Manual folds are NOT recomputed: shift/drop them when the line count changed since last
-                // frame (approximating the edit point as the cursor line).
-                if !fv.is_empty() {
-                    let prev = *fold_lines.get(&buf).unwrap_or(&nlines);
-                    if nlines != prev {
-                        let delta = nlines as isize - prev as isize;
-                        let at = line_idx.line_of(ws.focused().view.cursor());
-                        crate::folds::shift(fv, at, delta);
-                    }
+                // Manual folds are NOT recomputed: their anchors carry them through the edits.
+                let a = fold_anchors.entry(buf).or_default();
+                a.follow(ws.focused().doc, fv, |o| line_idx.line_of(o));
+                if !a.current(revision, fv) {
+                    a.anchor(ws.focused_doc_mut(), fv, |l| line_idx.nth_line_start(l));
                 }
             }
-            // Snap the cursor OUT of any closed fold onto its summary (start) row (both methods).
-            if let Some(fv) = folds.get(&buf) {
-                let cline = line_idx.line_of(ws.focused().view.cursor());
-                let snapped = crate::folds::snap_out(fv, cline);
-                if snapped != cline {
-                    ws.place_focused_cursor(line_idx.nth_line_start(snapped));
+            if matches!(
+                ws.focused().view.mode(),
+                Mode::Insert | Mode::Replace | Mode::VirtualReplace
+            ) {
+                if let Some(fv) = folds.get_mut(&buf) {
+                    crate::folds::open_at(fv, line_idx.line_of(ws.focused().view.cursor()));
                 }
             }
-            fold_lines.insert(buf, nlines);
         }
         // Crash-rescue store + recovery journal cover EVERY recoverable buffer, not just the focused one
         // (#856): each file-backed buffer (keyed by its own path, F-007; incl. `:e`-opened ones) and the
@@ -1502,17 +1526,14 @@ impl Session {
                             KeyCode::Char('c') => true,
                             _ => !fv[idx].closed,
                         };
-                        let start = fv[idx].start;
-                        if fv[idx].closed {
-                            ws.place_focused_cursor(line_idx.nth_line_start(start));
-                        }
+                        // The cursor keeps its line inside a closed fold (nvim; #819).
                     }
                 }
                 // `zj` / `zk` — move the cursor DOWN to the next fold's start / UP to the previous fold's
                 // end (`{count}` repeats; a closed fold counts as one, which is inherent since we step over
                 // whole folds, not lines). Cursor-only, column 0 — matching nvim, which ignores 'startofline'
                 // here (verified: `zj` lands at col 0 even with `startofline` on). Landing inside a closed
-                // fold is snapped onto its summary row by the per-frame fold reconcile.
+                // fold keeps the cursor there; it paints on the summary row.
                 KeyCode::Char('j') | KeyCode::Char('k') => {
                     let n = count.max(1);
                     let down = matches!(key.code, KeyCode::Char('j'));
@@ -1631,8 +1652,8 @@ impl Session {
                 let buf = ws.focused_buffer();
                 let cur_line = line_idx.line_of(ws.focused().view.cursor());
                 if let Some(fv) = folds.get(&buf) {
-                    if let Some(idx) = crate::folds::fold_at(fv, cur_line) {
-                        let target = if open { fv[idx].start } else { fv[idx].end };
+                    if let Some((s, e)) = crate::app::fold_cmds::current_open_fold(fv, cur_line) {
+                        let target = if open { s } else { e };
                         ws.place_focused_cursor(line_idx.nth_line_start(target));
                     }
                 }
@@ -2031,8 +2052,20 @@ impl Session {
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
                 sync_special_registers(ws, engine, last_ex_line, files, alt_file);
-                for cmd in cmds {
-                    run_cmd(cmd, ws, files, recorded, status, quit);
+                // `.` over a closed fold acts on it as the typed command did (#819): its first command
+                // meets the buffer as it is now; the rest follow from where that one leaves it.
+                let fv = folds
+                    .get(&ws.focused_buffer())
+                    .map_or(&[][..], Vec::as_slice);
+                let mut cmds = cmds.into_iter();
+                let first = cmds.next().and_then(|c| {
+                    crate::app::fold_cmds::prepare(c, ws, fv, line_idx, snapshot, recorded)
+                });
+                if let Some(first) = first {
+                    run_cmd(first, ws, files, recorded, status, quit);
+                    for cmd in cmds {
+                        run_cmd(cmd, ws, files, recorded, status, quit);
+                    }
                 }
             }
             Feed::Repeat(r) => {
@@ -2061,6 +2094,7 @@ impl Session {
             overlay,
             status,
             alt_file,
+            folds,
             ..
         } = self;
         let snapshot = &frame.snapshot;
@@ -2170,6 +2204,16 @@ impl Session {
             cmd
         };
         // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
+        // Over closed folds (#819): `j`/`k` count a fold as one line, an operator takes it whole, `o`/`p`
+        // open and put past it. Before the tree-aware rewrite, which reads the cursor line `o` opens from.
+        let fv = folds
+            .get(&ws.focused_buffer())
+            .map_or(&[][..], Vec::as_slice);
+        let Some(cmd) = crate::app::fold_cmds::prepare(cmd, ws, fv, line_idx, snapshot, recorded)
+        else {
+            return;
+        };
+        let opens_fold = crate::app::fold_cmds::opens_fold(&cmd);
         let cmd = resolve_tree_aware(cmd, ws, highlighters, line_idx, snapshot);
         // A completed search turns on hlsearch for that pattern (F-009 #1).
         if let Some(p) = search_pattern(&cmd) {
@@ -2179,6 +2223,16 @@ impl Session {
         // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
         sync_special_registers(ws, engine, last_ex_line, files, alt_file);
         run_cmd(cmd, ws, files, recorded, status, quit);
+        // 'foldopen': a search, a horizontal move, a mark, undo… open the fold the cursor lands in.
+        if opens_fold {
+            if let Some(fv) = folds.get_mut(&ws.focused_buffer()) {
+                let pane = ws.focused();
+                crate::folds::open_at(
+                    fv,
+                    ruse_core::pos::line_of(pane.doc.bytes(), pane.view.cursor()),
+                );
+            }
+        }
     }
 
     /// Run a finished `:`-line (F-026): split it at its `|` separators (`:help :bar`) and run each command

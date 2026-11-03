@@ -30,11 +30,13 @@ use ruse_tui::headless::Headless;
 fn alphabet(include_history_ops: bool) -> Vec<KeyEvent> {
     let mut v = Vec::new();
     // Motions h j k l w b e W B E 0 $ ^ g G; modes i a o O v V R; edits x X p P J ~ D C Y s; operators
-    // d c y; find f F t T ; ,; search / n N; register "; dot .; counts 1 2 3; and literal insert chars
-    // (so insert sessions produce real bytes: a Latin, a Hangul and a CJK wide char, a combining acute, a
-    // zero-width joiner, an emoji and a tab, so wide and composing text meets every operator, #909).
+    // d c y; find f F t T ; ,; search / n N; register "; dot .; counts 1 2 3; the fold prefix z (with
+    // `f`, `o`, `c`, `a`, `d`, `E`, `R`, `M`, `j`, `k` from the set, so closed folds meet every operator,
+    // #819); and literal insert chars (so insert sessions produce real bytes: a Latin, a Hangul and a CJK
+    // wide char, a combining acute, a zero-width joiner, an emoji and a tab, so wide and composing text
+    // meets every operator, #909).
     for c in
-        "hjklwbeWBE0$^gGiaoOvVRxXpPJ~DCYsdcyfFtT;,nN/\".123AIqZ é가漢\u{301}\u{200d}👩\t".chars()
+        "hjklwbeWBE0$^gGiaoOvVRxXpPJ~DCYsdcyfFtT;,nN/\".123AIqZzM é가漢\u{301}\u{200d}👩\t".chars()
     {
         v.push(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
     }
@@ -143,8 +145,9 @@ fn run_session(init: &[u8], keys: &[KeyEvent]) -> Result<Headless, TestCaseError
             cursor
         );
 
-        // The whole-state walker (#906): undo tree, anchors, marks, windows and buffers stay consistent.
-        ws.assert_invariants();
+        // The whole-state walker (#906): undo tree, anchors, marks, windows and buffers stay consistent,
+        // and so do the folds and their anchors.
+        h.assert_invariants();
 
         // Bound exponential yank+paste growth (see `MAX_FUZZ_BUFFER_BYTES`): the invariants above have been
         // checked for this key; once the buffer is huge we stop feeding further keys rather than let a
@@ -190,6 +193,110 @@ fn cases(n: u32) -> ProptestConfig {
         cases: n.saturating_mul(scale),
         max_global_rejects: base.max_global_rejects.saturating_mul(scale),
         ..base
+    }
+}
+
+/// One line edit of the fold model property.
+#[derive(Clone, Copy, Debug)]
+enum LineOp {
+    Down,
+    Up,
+    DeleteLine,
+    OpenBelow,
+    OpenAbove,
+    PutBelow,
+    PutAbove,
+    Join,
+}
+
+impl LineOp {
+    fn keys(self) -> &'static str {
+        match self {
+            LineOp::Down => "j",
+            LineOp::Up => "k",
+            LineOp::DeleteLine => "dd",
+            LineOp::OpenBelow => "onew<Esc>",
+            LineOp::OpenAbove => "Onew<Esc>",
+            LineOp::PutBelow => "yyp",
+            LineOp::PutAbove => "yyP",
+            LineOp::Join => "J",
+        }
+    }
+
+    /// Apply this op at `cur` (the cursor line before it) to the model: per line, whether it is in the
+    /// fold. A line made below a fold line joins the fold unless that is the fold's last line, one made
+    /// above unless it is the first (nvim: `o` on the last line and `O` on the first open outside it); a
+    /// joined-in line is gone.
+    fn apply(self, inside: &mut Vec<bool>, cur: usize) {
+        let first = inside.iter().position(|&x| x);
+        let last = inside.iter().rposition(|&x| x);
+        match self {
+            LineOp::Down | LineOp::Up => {}
+            LineOp::DeleteLine => {
+                inside.remove(cur);
+                if inside.is_empty() {
+                    inside.push(false);
+                }
+            }
+            LineOp::OpenBelow | LineOp::PutBelow => {
+                inside.insert(cur + 1, inside[cur] && last != Some(cur));
+            }
+            LineOp::OpenAbove | LineOp::PutAbove => {
+                inside.insert(cur, inside[cur] && first != Some(cur));
+            }
+            LineOp::Join => {
+                if cur + 1 < inside.len() {
+                    inside.remove(cur + 1);
+                }
+            }
+        }
+    }
+}
+
+fn line_op() -> impl Strategy<Value = LineOp> {
+    proptest::sample::select(vec![
+        LineOp::Down,
+        LineOp::Up,
+        LineOp::DeleteLine,
+        LineOp::OpenBelow,
+        LineOp::OpenAbove,
+        LineOp::PutBelow,
+        LineOp::PutAbove,
+        LineOp::Join,
+    ])
+}
+
+proptest! {
+    #![proptest_config(cases(200))]
+
+    /// The fold model property (#819, #903): a manual fold follows line edits as nvim's `foldMarkAdjust`
+    /// moves it. The model marks the lines in the fold (see [`LineOp::apply`]); the fold must run from
+    /// the first marked line to the last, and be gone once no line is marked. The fold is open, so each
+    /// edit acts on one line.
+    #[test]
+    fn a_manual_fold_follows_line_edits(
+        n in 4usize..10,
+        a in 0usize..10,
+        len in 1usize..5,
+        ops in prop::collection::vec(line_op(), 0..24),
+    ) {
+        let a = a % (n - 1);
+        let b = (a + len).min(n - 1);
+        let text: String = (0..n).map(|i| format!("a{i}\n")).collect();
+        let mut h = Headless::vim(&text);
+        h.keys(&format!("{}Gzf{}jzo", a + 1, b - a));
+        let mut inside: Vec<bool> = (0..n).map(|i| a <= i && i <= b).collect();
+        for op in ops {
+            let cur = h.cursor_row_col().0 - 1;
+            h.keys(op.keys());
+            op.apply(&mut inside, cur);
+            h.assert_invariants();
+            let first = inside.iter().position(|&x| x);
+            let want = first.zip(inside.iter().rposition(|&x| x));
+            let got = h.folds().first().map(|f| (f.start, f.end));
+            prop_assert_eq!(got, want, "after {:?} on line {} ({:?})", op, cur, h.text());
+            prop_assert!(h.folds().len() <= 1);
+        }
     }
 }
 

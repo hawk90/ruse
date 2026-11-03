@@ -34,9 +34,14 @@ fn without(n: usize, gone: &[usize]) -> String {
 
 /// Open `text` in ruse, type `keys`, write with `:w`, quit, and return the file's contents.
 fn edit(text: &str, keys: &str) -> String {
+    edit_as("f.txt", text, keys)
+}
+
+/// [`edit`] on a file called `name`, so its extension picks the syntax tree (tree-aware indent).
+fn edit_as(name: &str, text: &str, keys: &str) -> String {
     let dir = Scratch::new();
-    let file = dir.file("f.txt", text.as_bytes());
-    let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
+    let file = dir.file(name, text.as_bytes());
+    let mut ed = Editor::start(&dir, &[Path::new(name)]);
     ed.keys(keys);
     // `:qa!`, not `:q!`: with a split left open, `:q!` closes only the focused window (#611, as in nvim).
     ed.keys(&format!("{ESC}:w\r:qa!\r"));
@@ -167,12 +172,12 @@ fn zo_opens_the_fold_so_j_enters_it() {
     assert_eq!(edit(&numbered(10), "zfjzojdd"), without(10, &[2]));
 }
 
-/// Known divergence #819: a closed fold snaps the cursor to its first line every frame, so `zc` moves the
-/// cursor and `j` cannot leave the fold. Neovim keeps the cursor on line 2 after `zc` and `j` goes to line 3.
+/// #819: `zc` keeps the cursor on its line inside the fold, and `j` from a closed fold goes to the line
+/// after it (Neovim).
 #[test]
-fn zc_closes_the_fold_and_snaps_the_cursor() {
-    assert_eq!(edit(&numbered(10), "zfjzojzczodd"), without(10, &[1]));
-    assert_eq!(edit(&numbered(10), "zfjjzodd"), without(10, &[1]));
+fn zc_keeps_the_cursor_and_j_leaves_the_closed_fold() {
+    assert_eq!(edit(&numbered(10), "zfjzojzczodd"), without(10, &[2]));
+    assert_eq!(edit(&numbered(10), "zfjjzodd"), without(10, &[3]));
 }
 
 // ---- `[z`/`]z` fold navigation, and the engine's own bracket commands --------------------------------
@@ -181,6 +186,49 @@ fn zc_closes_the_fold_and_snaps_the_cursor() {
 fn bracket_z_moves_to_the_fold_start_and_end() {
     assert_eq!(edit(&numbered(10), "3Gzf3jzo5G[zdd"), without(10, &[3]));
     assert_eq!(edit(&numbered(10), "3Gzf3jzo5G]zdd"), without(10, &[6]));
+}
+
+/// #819: over a closed fold `dd` deletes the whole fold, `o` opens below it and `p` puts below it, `j`
+/// steps over it (Neovim 0.12.6, same keys).
+#[test]
+fn edits_on_a_closed_fold_act_on_the_whole_fold() {
+    assert_eq!(edit(&numbered(6), "jzf2jdd"), without(6, &[2, 3, 4]));
+    assert_eq!(
+        edit(&numbered(6), &format!("jzf2joNEW{ESC}")),
+        "line1\nline2\nline3\nline4\nNEW\nline5\nline6\n"
+    );
+    assert_eq!(
+        edit(&numbered(6), "jzf2jggyyjp"),
+        "line1\nline2\nline3\nline4\nline1\nline5\nline6\n"
+    );
+    assert_eq!(edit(&numbered(6), "jzf2jggjjdd"), without(6, &[5]));
+}
+
+/// #818: tree-aware indent does not count the root node, so top-level lines stay at column 0 (Neovim
+/// 0.12.6 with `filetype plugin indent on`, `sw=4 et`: the same bytes).
+#[test]
+fn tree_aware_indent_leaves_top_level_lines_alone() {
+    assert_eq!(
+        edit_as(
+            "f.rs",
+            "fn a() {}\nfn b() {\nlet x = 1;\n}\n\nstruct S;\n",
+            "=G"
+        ),
+        "fn a() {}\nfn b() {\n    let x = 1;\n}\n\nstruct S;\n"
+    );
+    assert_eq!(
+        edit_as("f.rs", "fn a() {}\nfn b() {}\n", &format!("joz{ESC}")),
+        "fn a() {}\nfn b() {}\nz\n"
+    );
+    let py = "import os\ndef f():\n    x = 1\n    y = 2\n\nz = 3\n";
+    assert_eq!(edit_as("f.py", py, "=G"), py);
+    // Markdown is not indented by node depth: a line under `## Sub` opens at column 0.
+    let md = "# Top\n\n## Sub\n\nSome paragraph\nmore\n";
+    assert_eq!(edit_as("f.md", md, "=G"), md);
+    assert_eq!(
+        edit_as("f.md", "# Top\n\n## Sub\n", &format!("Goabc{ESC}")),
+        "# Top\n\n## Sub\nabc\n"
+    );
 }
 
 #[test]

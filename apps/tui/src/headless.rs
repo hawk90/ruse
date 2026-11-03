@@ -184,6 +184,41 @@ impl Headless {
         (row, off - line_start)
     }
 
+    /// The focused buffer's folds per line, as nvim's `foldclosed()`, `foldclosedend()` and `foldlevel()`
+    /// report them: `[first, last, level]` with 1-based lines, `-1` for a line in no closed fold. The
+    /// parity oracle records the same for a fixture that observes folds (#903).
+    #[must_use]
+    pub fn fold_lines(&self) -> Vec<[i64; 3]> {
+        let bytes = self.s.ws.focused().doc.bytes();
+        let lines = crate::app::dispatch::line_count(bytes);
+        let folds = self.folds();
+        (0..lines)
+            .map(|l| {
+                let level = folds.iter().filter(|f| f.contains(l)).count() as i64;
+                match crate::folds::closed_range(folds, l) {
+                    Some((s, e)) => [s as i64 + 1, e as i64 + 1, level],
+                    None => [-1, -1, level],
+                }
+            })
+            .collect()
+    }
+
+    /// The focused buffer's folds.
+    #[must_use]
+    pub fn folds(&self) -> &[crate::folds::Fold] {
+        self.s
+            .folds
+            .get(&self.s.ws.focused_buffer())
+            .map_or(&[][..], Vec::as_slice)
+    }
+
+    /// The whole-state invariant walker (#906): the workspace's, and the session's folds — every fold set
+    /// well formed over its buffer, and every fold anchor live in its document.
+    pub fn assert_invariants(&self) {
+        self.s.ws.assert_invariants();
+        self.s.assert_fold_invariants();
+    }
+
     /// The focused view's Emacs mark, a byte offset.
     #[must_use]
     pub fn mark(&self) -> Option<usize> {

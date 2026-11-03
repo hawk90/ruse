@@ -35,7 +35,7 @@ const MAX_BUFFER: usize = 256 * 1024;
 
 fn alphabet() -> Vec<KeyEvent> {
     let mut v = Vec::new();
-    for c in "hjklwbeWBE0$^gGiaoOvVRxXpPJ~DCYsdcyfFtT;,nN/?\".123456789AIqm`'%{}()[]<>@uU*#rS é가\u{301}\t".chars() {
+    for c in "hjklwbeWBE0$^gGiaoOvVRxXpPJ~DCYsdcyfFtT;,nN/?\".123456789AIqm`'%{}()[]<>@uU*#rSzM é가\u{301}\t".chars() {
         v.push(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
     }
     for code in [
@@ -85,7 +85,8 @@ fuzz_target!(|data: &[u8]| {
             s.is_char_boundary(cursor),
             "cursor {cursor} off a char boundary"
         );
-        ws.assert_invariants();
+        // The walker over the workspace and the session's folds (#906, #819).
+        h.assert_invariants();
         if bytes.len() > MAX_BUFFER || h.quit() {
             break;
         }

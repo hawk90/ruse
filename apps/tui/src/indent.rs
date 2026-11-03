@@ -10,6 +10,12 @@
 //! line whose first non-blank is a closer (`}`/`)`/`]`) dedents one, so closers align with their opener.
 //! Robust where raw bracket-depth is not: a `{` inside a string or comment is a leaf/`string` node, so it
 //! never opens a block. A heuristic, not full Vim/Helix indent-query fidelity.
+//!
+//! Two kinds of node never open a level (#818): the ROOT (`source_file`, `module`, …), which encloses
+//! every top-level line, and a `block` that starts on its first statement rather than on an opener token
+//! (Python's; Rust's starts on `{`): the `def` above it already opened the level, so counting the block as
+//! well would put the second body line a level deeper than the first. Markdown is not indented by node depth at all
+//! ([`uses_node_depth`]): its `section` nodes nest per heading, so depth says nothing about indent.
 
 use tree_sitter::Tree;
 
@@ -34,6 +40,38 @@ fn first_non_blank(bytes: &[u8], ls: usize, le: usize) -> usize {
     i
 }
 
+/// Whether the tree's language is indented by node depth. Markdown is not: a heading opens a `section`
+/// that runs to the next heading of its level, so every line under `## Sub` would sit two sections deep.
+/// Without a tree-aware level the core's plain `=` and `o` apply, as in nvim, which has no Markdown indent.
+pub fn uses_node_depth(tree: &Tree) -> bool {
+    tree.language().name() != Some("markdown")
+}
+
+/// The number of indent levels the ancestors of `node` (itself included) open for a line on `row`: the
+/// DISTINCT start rows among the multi-line nodes that start on an earlier row, leaving out the root and
+/// a statement-led `block` (see the module docs).
+fn depth(node: Option<tree_sitter::Node<'_>>, row: usize) -> usize {
+    let mut level = 0usize;
+    let mut last_row: Option<usize> = None;
+    let mut node = node;
+    while let Some(nd) = node {
+        let Some(parent) = nd.parent() else {
+            break; // the root encloses every line, so it opens no level
+        };
+        let sr = nd.start_position().row;
+        let er = nd.end_position().row;
+        let opens = nd.kind() != "block" || nd.child(0).is_some_and(|c| !c.is_named());
+        // Nested nodes that start on the SAME row count once (de-dup by start-row, non-increasing as we
+        // walk up).
+        if er > sr && sr < row && opens && Some(sr) != last_row {
+            level += 1;
+            last_row = Some(sr);
+        }
+        node = Some(parent);
+    }
+    level
+}
+
 /// The indent LEVEL for each line in `[first_line, last_line]` (inclusive, clamped), from the parse tree.
 /// See the module docs for the node-depth model. Blank lines get a level too, but the core leaves blank
 /// lines empty, so it is unused there.
@@ -51,20 +89,7 @@ pub fn indent_levels(tree: &Tree, bytes: &[u8], first_line: usize, last_line: us
         let blank = fnb >= le;
         let pos = if blank { ls } else { fnb };
 
-        let mut level = 0usize;
-        let mut last_row: Option<usize> = None;
-        let mut node = root.descendant_for_byte_range(pos, pos);
-        while let Some(nd) = node {
-            let sr = nd.start_position().row;
-            let er = nd.end_position().row;
-            // A multi-line ancestor that starts before this line contributes an indent; nested nodes that
-            // start on the SAME row count once (de-dup by start-row, non-increasing as we walk up).
-            if er > sr && sr < li && Some(sr) != last_row {
-                level += 1;
-                last_row = Some(sr);
-            }
-            node = nd.parent();
-        }
+        let mut level = depth(root.descendant_for_byte_range(pos, pos), li);
         if !blank && matches!(bytes[fnb], b')' | b']' | b'}') {
             level = level.saturating_sub(1);
         }
@@ -81,20 +106,7 @@ pub fn indent_levels(tree: &Tree, bytes: &[u8], first_line: usize, last_line: us
 /// (no closer-dedent: the new line is blank). Querying at `at` (past a just-typed `{`) makes an opener on
 /// the current line deepen the new line, so `o` after `fn f() {` indents one further.
 pub fn suggest_indent(tree: &Tree, at: usize, new_row: usize) -> usize {
-    let root = tree.root_node();
-    let mut level = 0usize;
-    let mut last_row: Option<usize> = None;
-    let mut node = root.descendant_for_byte_range(at, at);
-    while let Some(nd) = node {
-        let sr = nd.start_position().row;
-        let er = nd.end_position().row;
-        if er > sr && sr < new_row && Some(sr) != last_row {
-            level += 1;
-            last_row = Some(sr);
-        }
-        node = nd.parent();
-    }
-    level
+    depth(tree.root_node().descendant_for_byte_range(at, at), new_row)
 }
 
 #[cfg(test)]
@@ -134,6 +146,42 @@ mod tests {
         assert_eq!(suggest_indent(&tree, starts[3], 3), 2);
         // The `{` inside the string on row 1 must NOT deepen: `o` there opens row 2 at level 1, not 2.
         assert_eq!(suggest_indent(&tree, eol(1), 2), 1);
+    }
+
+    fn parse(lang: tree_sitter::Language, src: &[u8]) -> Tree {
+        let mut p = Parser::new();
+        p.set_language(&lang).unwrap();
+        p.parse(src, None).unwrap()
+    }
+
+    /// #818: the root node encloses every line, so it must not indent the top-level ones. The old walk
+    /// counted it, and a multi-line node starting on row 0 hid that in the tests above.
+    #[test]
+    fn top_level_lines_stay_at_level_zero() {
+        let src = b"fn a() {}\nfn b() {\n    let x = 1;\n}\n\nstruct S;\n";
+        let tree = parse_rust(src);
+        assert_eq!(indent_levels(&tree, src, 0, 5), vec![0, 0, 1, 0, 0, 0]);
+        // `o` after a closed top-level fn opens a top-level line.
+        let src = b"fn a() {}\nfn b() {}\n";
+        let tree = parse_rust(src);
+        assert_eq!(suggest_indent(&tree, 9, 1), 0);
+    }
+
+    /// Python: a body is one level under its `def`; the statement-led `block` adds none (#818).
+    #[test]
+    fn python_bodies_are_one_level_deep() {
+        let src = b"import os\ndef f():\n    x = 1\n    y = 2\n\nz = 3\n";
+        let tree = parse(tree_sitter_python::LANGUAGE.into(), src);
+        assert_eq!(indent_levels(&tree, src, 0, 5), vec![0, 0, 1, 1, 0, 0]);
+    }
+
+    /// Markdown is not indented by node depth: its sections nest per heading (#818).
+    #[test]
+    fn markdown_is_not_node_depth_indented() {
+        let src = b"# Top\n\n## Sub\n\nSome paragraph\nmore\n";
+        let tree = parse(tree_sitter_md::LANGUAGE.into(), src);
+        assert!(!uses_node_depth(&tree));
+        assert!(uses_node_depth(&parse_rust(b"fn a() {}\n")));
     }
 
     #[test]

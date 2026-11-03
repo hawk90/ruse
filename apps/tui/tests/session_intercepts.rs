@@ -216,12 +216,12 @@ fn zo_opens_the_fold_so_j_enters_it() {
     assert_eq!(edit(&numbered(10), "zfjzojdd"), without(10, &[2]));
 }
 
-/// Known divergence #819: a closed fold snaps the cursor to its first line every frame, so `zc` moves the
-/// cursor and `j` cannot leave the fold. Neovim keeps the cursor on line 2 after `zc` and `j` goes to line 3.
+/// #819: `zc` keeps the cursor on its line inside the fold, and `j` from a closed fold goes to the line
+/// after it (Neovim).
 #[test]
-fn zc_closes_the_fold_and_snaps_the_cursor() {
-    assert_eq!(edit(&numbered(10), "zfjzojzczodd"), without(10, &[1]));
-    assert_eq!(edit(&numbered(10), "zfjjzodd"), without(10, &[1]));
+fn zc_keeps_the_cursor_and_j_leaves_the_closed_fold() {
+    assert_eq!(edit(&numbered(10), "zfjzojzczodd"), without(10, &[2]));
+    assert_eq!(edit(&numbered(10), "zfjjzodd"), without(10, &[3]));
 }
 
 // ---- `[z`/`]z` fold navigation, and the engine's own bracket commands --------------------------------

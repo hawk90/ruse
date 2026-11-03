@@ -118,6 +118,25 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     if r_emsg != e_emsg {
         diffs.push(format!("emsg {r_emsg:?} != {e_emsg:?}"));
     }
+    // Per-line fold state, recorded only for the fixtures about folds (#903).
+    if let Some(e_folds) = expect.get("folds") {
+        let e_folds: Vec<Vec<i64>> = e_folds
+            .as_array()
+            .expect("folds")
+            .iter()
+            .map(|l| {
+                l.as_array()
+                    .expect("fold line")
+                    .iter()
+                    .map(|n| n.as_i64().expect("fold number"))
+                    .collect()
+            })
+            .collect();
+        let r_folds: Vec<Vec<i64>> = h.fold_lines().iter().map(|l| l.to_vec()).collect();
+        if r_folds != e_folds {
+            diffs.push(format!("folds {r_folds:?} != {e_folds:?}"));
+        }
+    }
     diffs
 }
 
@@ -141,7 +160,8 @@ fn parity_ruse_vs_neovim_oracle() {
 
     println!("\n=== ruse vs neovim parity ({oracle_version}) ===");
     println!(
-        "compared observables: text, cursor, reg_unnamed, reg0 (the yank register), emsg (the last E-number)\n"
+        "compared observables: text, cursor, reg_unnamed, reg0 (the yank register), emsg (the last E-number), \
+         folds (per line, where recorded)\n"
     );
 
     let mut verified = 0usize;

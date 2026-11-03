@@ -286,8 +286,10 @@ test had missed:
   and snapshots, and must agree on the bytes, each anchor's offset and `invalidated` flag (bias and
   span-delete policy, touching edits applied left to right, #758), and the modified flag at the save point.
 - **Shadow consumers.** The line index refreshed by `(buffer, revision)` equals the `pos` scan after any
-  edit/undo/redo run (`line_index.rs`). Manual folds follow the cursor line rather than the edit
-  (`session.rs`), so a fold model property waits for #819.
+  edit/undo/redo run (`line_index.rs`). Manual folds follow edits by line anchors (#819): a fold model
+  property (`session_fuzz.rs`) marks the lines in a fold through random `dd`/`o`/`O`/`p`/`P`/`J` and the
+  fold must span the marked lines, and the walker checks every fold set (in range, manual flat, indent
+  nested) and every fold anchor (`Headless::assert_invariants`).
 - **Unicode.** The cursor rests on an extended grapheme cluster boundary after any motion and after `x`,
   `<BS>`, typing and undo over wide, combining, ZWJ, flag and jamo text (`properties.rs`); `session_fuzz`
   types and starts from the same pieces. It found `e`/`E`/`de`, `t`/`T`, `g_`, `<BS>` and the phantom-line

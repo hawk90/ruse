@@ -8,8 +8,14 @@
 //! the inverse of the F-031 virtual lines — those ADD display rows, a closed fold REMOVES them. Everything
 //! here is pure over `&[Fold]`, so it is unit-tested directly; the session owns the `Vec<Fold>` per view and
 //! the render/viewport passes consult these helpers.
+//!
+//! A closed fold counts as one line for the commands that move by lines (#819): `j`/`k` step over it
+//! ([`line_down`], [`line_up`], nvim's `cursor_down`/`cursor_up`) and an operator whose range starts or ends
+//! in one takes the whole fold ([`closed_range`]); the session rewrites those commands before the core runs
+//! them, so the core keeps counting buffer lines. The cursor may rest on any line of a closed fold, as in
+//! Vim; it paints on the fold's summary row. Manual folds follow edits by line anchors ([`Anchored`]).
 
-use ruse_core::Motion;
+use ruse_core::{AnchorId, Document, LineGravity, Motion};
 
 /// One fold: the inclusive buffer line range `[start, end]`, whether it is currently collapsed, and its
 /// nesting `level` (1 = outermost). Manual (`zf`) folds are flat and always level 1; `foldmethod=indent`
@@ -82,13 +88,78 @@ pub fn hidden(folds: &[Fold], line: usize) -> bool {
         .any(|f| f.closed && line > f.start && line <= f.end)
 }
 
-/// If `line` is hidden by a closed fold, the fold's START line (where the cursor/render belongs); else `line`.
+/// The line range `(start, end)` of the closed fold holding `line`, or `None` when no closed fold holds it.
+/// With nested folds it is the OUTERMOST closed one (the widest range), which is what hides `line`: nvim's
+/// `hasFolding`.
+#[must_use]
+pub fn closed_range(folds: &[Fold], line: usize) -> Option<(usize, usize)> {
+    folds.iter().filter(|f| f.closed && f.contains(line)).fold(
+        None,
+        |acc: Option<(usize, usize)>, f| {
+            Some(acc.map_or((f.start, f.end), |(s, e)| (s.min(f.start), e.max(f.end))))
+        },
+    )
+}
+
+/// The line `n` lines below `line`, a closed fold counting as one line, or `None` when the move fails
+/// because `line` (or the end of its closed fold) is the `last` line. nvim's `cursor_down`: from inside a
+/// closed fold it steps from the fold's end, and a count that reaches past the end lands on `last`.
+#[must_use]
+pub fn line_down(folds: &[Fold], line: usize, n: usize, last: usize) -> Option<usize> {
+    let mut l = closed_range(folds, line).map_or(line, |r| r.1);
+    if n > 0 && l >= last {
+        return None;
+    }
+    if l + n >= last {
+        return Some(last);
+    }
+    for _ in 0..n {
+        l = closed_range(folds, l).map_or(l, |r| r.1) + 1;
+        if l >= last {
+            break;
+        }
+    }
+    Some(l.min(last))
+}
+
+/// The line `n` lines above `line`, a closed fold counting as one line and landing on its first line, or
+/// `None` when `line` is the first line. nvim's `cursor_up`: a count at least the line number goes to the
+/// first line.
+#[must_use]
+pub fn line_up(folds: &[Fold], line: usize, n: usize) -> Option<usize> {
+    if n > 0 && line == 0 {
+        return None;
+    }
+    if n > line {
+        return Some(0);
+    }
+    let start = |l: usize| closed_range(folds, l).map_or(l, |r| r.0);
+    let mut l = start(line);
+    for _ in 0..n {
+        l = l.saturating_sub(1);
+        if l == 0 {
+            break;
+        }
+        l = start(l);
+    }
+    Some(l)
+}
+
+/// Open every closed fold that holds `line` (nvim's `foldOpenCursor`). Returns whether one was opened.
+pub fn open_at(folds: &mut [Fold], line: usize) -> bool {
+    let mut opened = false;
+    for f in folds.iter_mut().filter(|f| f.closed && f.contains(line)) {
+        f.closed = false;
+        opened = true;
+    }
+    opened
+}
+
+/// If `line` is inside a closed fold, the fold's START line (the summary row a cursor there paints on);
+/// else `line`.
 #[must_use]
 pub fn snap_out(folds: &[Fold], line: usize) -> usize {
-    folds
-        .iter()
-        .find(|f| f.closed && f.contains(line))
-        .map_or(line, |f| f.start)
+    closed_range(folds, line).map_or(line, |r| r.0)
 }
 
 /// The count of buffer lines hidden by closed folds strictly ABOVE `line` — the number of display rows the
@@ -106,18 +177,141 @@ pub fn visible_row(folds: &[Fold], line: usize) -> usize {
     line - hidden_before(folds, line)
 }
 
-/// Adjust folds after an edit at buffer line `at_line` that changed the line count by `delta`: folds fully
-/// BELOW the edit shift by `delta`; a fold that STRADDLES the edit line is dropped (its range is no longer
-/// trustworthy); folds fully above are untouched. A coarse-but-correct rule for slice 1.
-pub fn shift(folds: &mut Vec<Fold>, at_line: usize, delta: isize) {
-    if delta == 0 {
-        return;
+/// The manual folds of one buffer pinned to its [`Document`] by line anchors, so each fold's range follows
+/// the edits made since, as nvim's `foldMarkAdjust` moves a manual fold (#819): lines inserted inside a
+/// fold grow it, lines inserted above or below it (`O` on its first line, `o` on its last) shift it or
+/// leave it alone, deleted lines shrink it, and a fold whose lines are all deleted is gone. Undo is one
+/// more change: a fold its lines' deletion removed does not come back (nvim).
+///
+/// Each fold holds three anchors: its first line (dropped with its line, landing on the line after), its
+/// last line (dropped likewise) and its last line again with [`LineGravity::Cursor`], which lands on the
+/// line before a deleted block — where a fold whose last lines were deleted now ends.
+#[derive(Debug, Default)]
+pub struct Anchored {
+    rev: Option<ruse_core::Revision>,
+    folds: Vec<(Fold, [AnchorId; 3])>,
+}
+
+impl Anchored {
+    /// Whether `folds` are the fold ranges anchored at revision `rev`, so nothing needs re-anchoring.
+    #[must_use]
+    pub fn current(&self, rev: ruse_core::Revision, folds: &[Fold]) -> bool {
+        self.rev == Some(rev)
+            && self.folds.len() == folds.len()
+            && self
+                .folds
+                .iter()
+                .zip(folds)
+                .all(|((a, _), b)| same_range(a, b))
     }
-    folds.retain(|f| !(f.start <= at_line && at_line <= f.end && delta < 0));
-    for f in folds.iter_mut() {
-        if f.start > at_line {
-            f.start = (f.start as isize + delta).max(0) as usize;
-            f.end = (f.end as isize + delta).max(0) as usize;
+
+    /// Move each fold of `folds` that was anchored to where its anchors went in `doc` since, dropping the
+    /// ones whose lines are gone. A fold made after the anchoring (not among the anchored ones) is kept as
+    /// it is. `line_of` maps a byte offset of `doc` to its line.
+    ///
+    /// A first line joined onto the line above (`J` there) is gone from the fold, which then starts on the
+    /// next line, as nvim deletes the joined line. Should two manual folds still meet, the later one goes,
+    /// so the set stays flat.
+    pub fn follow(&self, doc: &Document, folds: &mut Vec<Fold>, line_of: impl Fn(usize) -> usize) {
+        if self.rev.is_none() || self.rev == Some(doc.revision()) {
+            return;
+        }
+        let b = doc.bytes();
+        folds.retain_mut(|f| {
+            let Some((_, ids)) = self.folds.iter().find(|(a, _)| same_range(a, f)) else {
+                return true;
+            };
+            let [Some(s), Some(e), Some(e_up)] = ids.map(|id| doc.resolve_anchor(id)) else {
+                return true;
+            };
+            let s_at = s.offset.0.min(b.len());
+            let joined = s_at > 0 && b[s_at - 1] != b'\n';
+            let start = line_of(s_at) + usize::from(joined);
+            let end = line_of(if e.invalidated {
+                e_up.offset.0
+            } else {
+                e.offset.0
+            });
+            if (s.invalidated && e.invalidated) || end < start {
+                return false;
+            }
+            f.start = start;
+            f.end = end;
+            true
+        });
+        if !folds.iter().any(|f| f.level > 1) {
+            let mut kept: Vec<Fold> = Vec::with_capacity(folds.len());
+            for f in folds.drain(..) {
+                if kept.iter().all(|k| k.end < f.start || f.end < k.start) {
+                    kept.push(f);
+                }
+            }
+            *folds = kept;
+        }
+    }
+
+    /// Re-anchor `folds` in `doc` at its current revision, releasing the old anchors. `line_start` maps a
+    /// line to its first byte.
+    pub fn anchor(
+        &mut self,
+        doc: &mut Document,
+        folds: &[Fold],
+        line_start: impl Fn(usize) -> usize,
+    ) {
+        self.release(doc);
+        self.rev = Some(doc.revision());
+        for f in folds {
+            let mut at = |l: usize, g: LineGravity| {
+                doc.create_line_anchor(ruse_core::BytePos(line_start(l)), g)
+            };
+            let ids = [
+                at(f.start, LineGravity::Drop),
+                at(f.end, LineGravity::Drop),
+                at(f.end, LineGravity::Cursor),
+            ];
+            self.folds.push((*f, ids));
+        }
+    }
+
+    /// Remove every anchor this holds from `doc`.
+    pub fn release(&mut self, doc: &mut Document) {
+        let ids: Vec<AnchorId> = self.folds.drain(..).flat_map(|(_, ids)| ids).collect();
+        doc.remove_anchors(ids);
+        self.rev = None;
+    }
+
+    /// The anchors this holds, for the invariant walker: each must still be live in its document.
+    pub fn anchor_ids(&self) -> impl Iterator<Item = AnchorId> + '_ {
+        self.folds.iter().flat_map(|(_, ids)| ids.iter().copied())
+    }
+}
+
+/// Whether two folds cover the same lines (open or closed).
+fn same_range(a: &Fold, b: &Fold) -> bool {
+    a.start == b.start && a.end == b.end
+}
+
+/// Panic unless `folds` is a well-formed fold set over a buffer of `lines` lines (the invariant walker,
+/// #906): every range is inside the buffer and ordered, a manual set is flat (no two folds overlap) and an
+/// indent set nests (two folds are disjoint or one holds the other).
+pub fn assert_invariants(folds: &[Fold], lines: usize, nested: bool) {
+    for f in folds {
+        assert!(
+            f.start <= f.end && f.end < lines.max(1),
+            "fold {f:?} outside a {lines}-line buffer"
+        );
+        assert!(f.level >= 1, "fold {f:?} has no level");
+    }
+    for (i, a) in folds.iter().enumerate() {
+        for b in &folds[i + 1..] {
+            let disjoint = a.end < b.start || b.end < a.start;
+            let nests =
+                (a.start <= b.start && b.end <= a.end) || (b.start <= a.start && a.end <= b.end);
+            assert!(
+                disjoint || (nested && nests),
+                "folds {a:?} and {b:?} overlap in a {} set",
+                if nested { "nested" } else { "manual" }
+            );
         }
     }
 }
@@ -401,20 +595,195 @@ mod tests {
         assert_eq!(visible_row(&folds, 7), 4);
     }
 
+    /// The nvim answers for a fold over lines 2-4 (1-based) of six lines, 0-based here (`jzf2j`, then the
+    /// keys, `line('.')` after).
     #[test]
-    fn shift_moves_below_and_drops_straddled() {
-        // Insert 2 lines at line 1: a fold at [4,6] moves to [6,8].
-        let mut folds = vec![f(4, 6, true)];
-        shift(&mut folds, 1, 2);
-        assert_eq!(folds, vec![f(6, 8, true)]);
-        // Deleting a line inside a fold's range drops it.
-        let mut folds = vec![f(4, 6, true)];
-        shift(&mut folds, 5, -1);
-        assert!(folds.is_empty(), "a fold straddling a deletion is dropped");
-        // A fold above the edit is untouched.
-        let mut folds = vec![f(1, 2, true)];
-        shift(&mut folds, 8, 3);
-        assert_eq!(folds, vec![f(1, 2, true)]);
+    fn line_down_and_up_step_over_a_closed_fold() {
+        let folds = [f(1, 3, true)];
+        assert_eq!(
+            line_down(&folds, 0, 1, 5),
+            Some(1),
+            "j onto the fold lands on its first line"
+        );
+        assert_eq!(
+            line_down(&folds, 1, 1, 5),
+            Some(4),
+            "j from the fold goes past it"
+        );
+        assert_eq!(line_down(&folds, 2, 1, 5), Some(4), "from any line of it");
+        assert_eq!(line_down(&folds, 1, 2, 5), Some(5));
+        assert_eq!(line_down(&folds, 0, 3, 5), Some(5), "gg3j");
+        assert_eq!(line_up(&folds, 1, 1), Some(0), "k from the fold");
+        assert_eq!(
+            line_up(&folds, 3, 1),
+            Some(0),
+            "k from its last line steps from its first"
+        );
+        assert_eq!(
+            line_up(&folds, 5, 2),
+            Some(1),
+            "G2k lands on the fold's first line"
+        );
+        assert_eq!(line_up(&folds, 4, 1), Some(1));
+        assert_eq!(line_up(&folds, 0, 1), None, "k on the first line fails");
+        // A fold reaching the last line: `j` from it fails (nvim beeps, the cursor stays).
+        let folds = [f(3, 5, true)];
+        assert_eq!(line_down(&folds, 3, 1, 5), None);
+        assert_eq!(
+            line_down(&folds, 0, 5, 5),
+            Some(5),
+            "a count past the end lands on the last line"
+        );
+        // A fold at the top: `k` from inside it lands on line 0.
+        let folds = [f(0, 2, true)];
+        assert_eq!(line_up(&folds, 1, 1), Some(0));
+        // An open fold is plain lines.
+        let folds = [f(1, 3, false)];
+        assert_eq!(line_down(&folds, 1, 1, 5), Some(2));
+        assert_eq!(line_up(&folds, 3, 1), Some(2));
+    }
+
+    #[test]
+    fn closed_range_is_the_outermost_closed_fold() {
+        let folds = [fl(1, 5, false, 1), fl(3, 4, true, 2)];
+        assert_eq!(
+            closed_range(&folds, 3),
+            Some((3, 4)),
+            "only the inner fold is closed"
+        );
+        assert_eq!(closed_range(&folds, 2), None);
+        let folds = [fl(1, 5, true, 1), fl(3, 4, true, 2)];
+        assert_eq!(closed_range(&folds, 3), Some((1, 5)));
+    }
+
+    #[test]
+    fn open_at_opens_every_closed_fold_holding_the_line() {
+        let mut folds = vec![fl(1, 5, true, 1), fl(3, 4, true, 2), fl(7, 8, true, 1)];
+        assert!(open_at(&mut folds, 3));
+        assert!(!folds[0].closed && !folds[1].closed && folds[2].closed);
+        assert!(!open_at(&mut folds, 3), "nothing left to open");
+    }
+
+    fn doc(text: &str) -> Document {
+        Document::new(ruse_core::DocumentId(1), text.as_bytes().to_vec())
+    }
+
+    /// Apply one edit at `pos` deleting `del` bytes and inserting `ins`.
+    fn edit(doc: &mut Document, pos: usize, del: usize, ins: &str) {
+        let edits = ruse_core::EditList::new(vec![ruse_core::Edit::replace(
+            pos,
+            del,
+            ins.as_bytes().to_vec(),
+        )])
+        .unwrap();
+        let txn = ruse_core::Transaction::new(
+            doc.revision(),
+            edits,
+            ruse_core::TransactionOrigin::UserInput,
+        );
+        doc.apply(txn).unwrap();
+    }
+
+    fn line_starts(b: &[u8]) -> Vec<usize> {
+        std::iter::once(0)
+            .chain(
+                b.iter()
+                    .enumerate()
+                    .filter(|(_, &c)| c == b'\n')
+                    .map(|(i, _)| i + 1),
+            )
+            .collect()
+    }
+
+    fn line_of(b: &[u8], o: usize) -> usize {
+        b[..o.min(b.len())].iter().filter(|&&c| c == b'\n').count()
+    }
+
+    /// The folds after `change` edits `text` with `folds` anchored over it.
+    fn followed_from(
+        text: &str,
+        folds: &[Fold],
+        change: impl FnOnce(&mut Document),
+    ) -> Vec<(usize, usize)> {
+        let mut d = doc(text);
+        let mut folds = folds.to_vec();
+        let mut a = Anchored::default();
+        let ls = line_starts(d.bytes());
+        a.anchor(&mut d, &folds, |l| ls[l]);
+        change(&mut d);
+        let b = d.bytes().to_vec();
+        a.follow(&d, &mut folds, |o| line_of(&b, o));
+        a.release(&mut d);
+        assert_eq!(d.anchor_count(), 0, "release frees every anchor");
+        folds.iter().map(|f| (f.start, f.end)).collect()
+    }
+
+    /// The folds after `change` edits six lines `L1`…`L6` with a fold over lines 1-3 (0-based).
+    fn followed(change: impl FnOnce(&mut Document)) -> Vec<(usize, usize)> {
+        followed_from("L1\nL2\nL3\nL4\nL5\nL6\n", &[f(1, 3, true)], change)
+    }
+
+    /// Each expectation is nvim's `foldclosed()`/`foldclosedend()` after the same change (0-based).
+    #[test]
+    fn manual_folds_follow_edits_like_nvim() {
+        // `o` on the fold's last line (`L4` + `\nNEW`): outside the fold.
+        assert_eq!(followed(|d| edit(d, 11, 0, "\nNEW")), vec![(1, 3)]);
+        // `O` on its first line: the fold moves down.
+        assert_eq!(followed(|d| edit(d, 3, 0, "NEW\n")), vec![(2, 4)]);
+        // A line put inside it grows it.
+        assert_eq!(followed(|d| edit(d, 6, 0, "X\n")), vec![(1, 4)]);
+        // `dd` of all its lines removes it; so does a delete running past it.
+        assert_eq!(followed(|d| edit(d, 3, 9, "")), vec![]);
+        assert_eq!(followed(|d| edit(d, 3, 12, "")), vec![]);
+        // Deleting its first line or its last line shrinks it.
+        assert_eq!(followed(|d| edit(d, 3, 3, "")), vec![(1, 2)]);
+        assert_eq!(followed(|d| edit(d, 9, 3, "")), vec![(1, 2)]);
+        // Deleting lines above shifts it up.
+        assert_eq!(followed(|d| edit(d, 0, 3, "")), vec![(0, 2)]);
+        // `cc` over the whole fold leaves a one-line fold (nvim `foldlevel` 1 on the new line).
+        assert_eq!(followed(|d| edit(d, 3, 8, "!")), vec![(1, 1)]);
+        // `J` on its first line joins two of its lines.
+        assert_eq!(followed(|d| edit(d, 5, 1, " ")), vec![(1, 2)]);
+        // `J` on the line above joins its first line out of it.
+        assert_eq!(followed(|d| edit(d, 2, 1, " ")), vec![(1, 2)]);
+    }
+
+    /// Two folds that meet: `J` on the first one's last line joins the second's first line into it, which
+    /// leaves the second fold starting a line later (nvim), so the two stay apart.
+    #[test]
+    fn a_join_between_two_folds_keeps_them_apart() {
+        let text = "L1\nL2\nL3\nL4\nL5\nL6\n";
+        let folds = [f(1, 2, true), f(3, 4, true)];
+        assert_eq!(
+            followed_from(text, &folds, |d| edit(d, 8, 1, " ")),
+            vec![(1, 2), (3, 3)]
+        );
+    }
+
+    /// A fold at the top whose lines are all deleted is gone too (its `Cursor` anchor stays on line 0).
+    #[test]
+    fn a_deleted_fold_at_the_top_is_gone() {
+        assert_eq!(
+            followed_from("L1\nL2\nL3\nL4\n", &[f(0, 1, true)], |d| edit(d, 0, 6, "")),
+            vec![]
+        );
+        // Its first lines deleted, the rest of it stays.
+        assert_eq!(
+            followed_from("L1\nL2\nL3\nL4\n", &[f(0, 2, true)], |d| edit(d, 0, 6, "")),
+            vec![(0, 0)]
+        );
+    }
+
+    #[test]
+    fn assert_invariants_accepts_flat_and_nested_sets() {
+        assert_invariants(&[f(0, 1, true), f(3, 4, false)], 5, false);
+        assert_invariants(&[fl(0, 4, true, 1), fl(1, 2, true, 2)], 5, true);
+    }
+
+    #[test]
+    #[should_panic(expected = "overlap")]
+    fn assert_invariants_rejects_overlapping_manual_folds() {
+        assert_invariants(&[f(0, 2, true), f(2, 4, true)], 5, false);
     }
 
     #[test]

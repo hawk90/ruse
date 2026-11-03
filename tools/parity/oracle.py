@@ -83,6 +83,15 @@ io.write(vim.json.encode({
   reg0        = { vim.fn.getreg('0'), vim.fn.getregtype('0') },
   mode        = vim.api.nvim_get_mode().mode,
   emsg        = vim.v.errmsg:match('^(E%%d+)') or '',
+  -- Per line, nvim's fold state (#903): the closed fold holding it (`foldclosed`/`foldclosedend`, -1 for
+  -- none) and its fold level. Read only; recorded for the fixtures marked `folds`.
+  folds       = (function()
+    local out = {}
+    for l = 1, vim.api.nvim_buf_line_count(0) do
+      out[l] = { vim.fn.foldclosed(l), vim.fn.foldclosedend(l), vim.fn.foldlevel(l) }
+    end
+    return out
+  end)(),
 }))
 """
 
@@ -222,6 +231,7 @@ def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
         "mode": raw["mode"],
         "emsg": raw["emsg"],
         "failed": failed,
+        "folds": raw["folds"],
         "nvim_version": nvim_version(),
     }
 
@@ -3207,6 +3217,65 @@ FIXTURES: list[dict] = [
     {"name": "mk_O_on_empty_line", "lines": ["a", "", "c"], "keys": "jmaO<Esc>`ax"},
     {"name": "mk_o_text_on_empty_line", "lines": ["a", "", "c"], "keys": "jmaoz<Esc>`ax"},
     {"name": "mk_O_text_on_empty_line", "lines": ["a", "", "c"], "keys": "jmaOz<Esc>`ax"},
+    # Folds (#819, #903): motions, operators, puts and opens over closed folds, and manual folds
+    # following edits. Each records nvim's per-line fold state (`folds`).
+    {"name": "fold_j_skips_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jggjj", "folds": True},
+    {"name": "fold_count_j_counts_a_closed_fold_once", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jgg2j", "folds": True},
+    {"name": "fold_k_skips_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jGkk", "folds": True},
+    {"name": "fold_k_from_inside_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzojjzck", "folds": True},
+    {"name": "fold_j_on_a_closed_fold_at_the_end_fails", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jjjzf2jj", "folds": True},
+    {"name": "fold_zc_keeps_the_cursor_line", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzojzc", "folds": True},
+    {"name": "fold_dd_deletes_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jdd", "folds": True},
+    {"name": "fold_count_dd_counts_a_closed_fold_once", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jk3dd", "folds": True},
+    {"name": "fold_dd_from_inside_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzojzcdd", "folds": True},
+    {"name": "fold_x_deletes_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jx", "folds": True},
+    {"name": "fold_D_deletes_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jD", "folds": True},
+    {"name": "fold_dw_deletes_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jdw", "folds": True},
+    {"name": "fold_dj_takes_a_closed_fold_whole", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jkdj", "folds": True},
+    {"name": "fold_dk_from_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jdk", "folds": True},
+    {"name": "fold_dk_into_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jjdk", "folds": True},
+    {"name": "fold_dG_from_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jdG", "folds": True},
+    {"name": "fold_yy_yanks_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jyy", "folds": True},
+    {"name": "fold_yl_yanks_a_closed_fold_charwise", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jyl", "folds": True},
+    {"name": "fold_Y_yanks_a_closed_fold_charwise", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jY", "folds": True},
+    {"name": "fold_yj_then_P_above_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jkyjP", "folds": True},
+    {"name": "fold_cc_changes_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jcc!<Esc>", "folds": True},
+    {"name": "fold_cl_changes_a_closed_fold_charwise", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jcl!<Esc>", "folds": True},
+    {"name": "fold_o_opens_below_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2joNEW<Esc>", "folds": True},
+    {"name": "fold_O_opens_above_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jONEW<Esc>", "folds": True},
+    {"name": "fold_p_linewise_puts_below_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jggyyjp", "folds": True},
+    {"name": "fold_P_linewise_puts_above_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jggyyjP", "folds": True},
+    {"name": "fold_p_charwise_puts_in_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "yljzf2jp", "folds": True},
+    {"name": "fold_A_opens_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jA!<Esc>", "folds": True},
+    {"name": "fold_n_reaches_a_match_past_a_closed_fold", "lines": ["x", "foo1", "foo2", "foo3", "foo4"], "keys": "jzf2jgg/foo<CR>zcnn", "folds": True},
+    {"name": "fold_w_moves_past_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jw", "folds": True},
+    {"name": "fold_e_moves_past_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2je", "folds": True},
+    {"name": "fold_b_from_inside_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzojjzcb", "folds": True},
+    {"name": "fold_l_opens_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jl", "folds": True},
+    {"name": "fold_search_opens_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jgg/L3<CR>", "folds": True},
+    {"name": "fold_G_leaves_a_closed_fold_closed", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jgg3G", "folds": True},
+    {"name": "fold_J_on_a_closed_fold_joins_two_lines", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jJ", "folds": True},
+    {"name": "fold_dot_repeats_dd_on_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jjzfjggjdd.", "folds": True},
+    {"name": "fold_dd_then_u_drops_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jddu", "folds": True},
+    {"name": "fold_open_fold_grows_with_a_put_inside", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzoyyjp", "folds": True},
+    {"name": "fold_open_fold_shrinks_with_dd_inside", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzojdd", "folds": True},
+    {"name": "fold_open_fold_moves_down_with_O_on_its_first_line", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzoONEW<Esc>", "folds": True},
+    {"name": "fold_open_fold_keeps_o_on_its_last_line_out", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzojjoNEW<Esc>", "folds": True},
+    {"name": "fold_zj_zk_between_closed_folds", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzfjjjzfjggzjzj", "folds": True},
+    {"name": "fold_zk_from_the_last_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzfjjjzfjGzk", "folds": True},
+    {"name": "fold_bracket_z_ends_of_an_open_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzo]z", "folds": True},
+    {"name": "fold_bracket_z_start_from_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jjzf2jzojzc[z", "folds": True},
+    {"name": "fold_zR_then_zM_reclose_folds", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzfjjjzfjzRzM", "folds": True},
+    {"name": "fold_zR_opens_every_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzfjjjzfjzR", "folds": True},
+    {"name": "fold_zd_deletes_the_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jzd", "folds": True},
+    {"name": "fold_zE_eliminates_every_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzfjjjzfjzE", "folds": True},
+    {"name": "fold_visual_zf_folds_the_selection", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jVjjzf", "folds": True},
+    # Known gap (tests/parity/vim/known-divergences.txt): an Ex range ending in a closed fold does not
+    # take the fold whole in ruse yet. Visual `Vj` onto one: nvim deletes two lines.
+    {"name": "fold_visual_line_j_onto_a_closed_fold", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jggVjd", "folds": True},
+    {"name": "fold_ex_range_takes_a_closed_fold_whole", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2j:2d<CR>", "folds": True},
+    {"name": "fold_shift_takes_a_closed_fold_whole", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2j>>", "setup": "set shiftwidth=4 expandtab startofline", "folds": True},
+    {"name": "fold_count_shift_counts_a_closed_fold_once", "lines": ["L1", "L2", "L3", "L4", "L5", "L6"], "keys": "jzf2jk2>>", "setup": "set shiftwidth=4 expandtab startofline", "folds": True},
 ]
 
 
@@ -3245,6 +3314,8 @@ def generate(path: Path) -> int:
                     "reg0": state["reg0"],
                     "emsg": state["emsg"],
                     "failed": state["failed"],
+                    # Only the fixtures about folds record them, so the rest stay byte-identical.
+                    **({"folds": state["folds"]} if spec.get("folds") else {}),
                 },
             }
         )
@@ -3263,8 +3334,12 @@ def generate(path: Path) -> int:
             "nvim_version": version_line,
             "pin_version_label": pin["version_label"],
             "pin_revision": pin["revision"],
-            "captured_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "failed"],
-            "ruse_compare_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg"],
+            "captured_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "failed", "folds"],
+            "ruse_compare_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "folds"],
+            "folds_note": (
+                "folds is recorded only for fixtures about folds: per line, "
+                "[foldclosed(l), foldclosedend(l), foldlevel(l)]."
+            ),
             "feed": "nvim_feedkeys(keys, 'xt'): as typed, so keys after a failed command still run",
             "error_note": (
                 "emsg is the E-number of the last error message the keys raised (v:errmsg), or ''. "

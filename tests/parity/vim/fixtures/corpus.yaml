@@ -14,15 +14,18 @@
       "reg_unnamed",
       "reg0",
       "emsg",
-      "failed"
+      "failed",
+      "folds"
     ],
     "ruse_compare_observables": [
       "text",
       "cursor",
       "reg_unnamed",
       "reg0",
-      "emsg"
+      "emsg",
+      "folds"
     ],
+    "folds_note": "folds is recorded only for fixtures about folds: per line, [foldclosed(l), foldclosedend(l), foldlevel(l)].",
     "feed": "nvim_feedkeys(keys, 'xt'): as typed, so keys after a failed command still run",
     "error_note": "emsg is the E-number of the last error message the keys raised (v:errmsg), or ''. failed is whether any command failed (an error, or a Normal-mode beep), observed as Vim flushing the keys queued after it when they are fed not as typed. Best effort: a failure inside a macro replay is not seen. failed is captured but not compared: ruse has no bell (#901)."
   },
@@ -79130,6 +79133,3489 @@
         },
         "emsg": "",
         "failed": false
+      }
+    },
+    {
+      "name": "fold_j_skips_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jggjj",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_count_j_counts_a_closed_fold_once",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jgg2j",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_k_skips_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jGkk",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_k_from_inside_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzojjzck",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_j_on_a_closed_fold_at_the_end_fails",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jjjzf2jj",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            4,
+            6,
+            1
+          ],
+          [
+            4,
+            6,
+            1
+          ],
+          [
+            4,
+            6,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_zc_keeps_the_cursor_line",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzojzc",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dd_deletes_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jdd",
+      "expect": {
+        "text": [
+          "L1",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_count_dd_counts_a_closed_fold_once",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jk3dd",
+      "expect": {
+        "text": [
+          "L6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L1\nL2\nL3\nL4\nL5\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dd_from_inside_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzojzcdd",
+      "expect": {
+        "text": [
+          "L1",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_x_deletes_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jx",
+      "expect": {
+        "text": [
+          "L1",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_D_deletes_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jD",
+      "expect": {
+        "text": [
+          "L1",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dw_deletes_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jdw",
+      "expect": {
+        "text": [
+          "L1",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dj_takes_a_closed_fold_whole",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jkdj",
+      "expect": {
+        "text": [
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L1\nL2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dk_from_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jdk",
+      "expect": {
+        "text": [
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L1\nL2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dk_into_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jjdk",
+      "expect": {
+        "text": [
+          "L1",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\nL5\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dG_from_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jdG",
+      "expect": {
+        "text": [
+          "L1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\nL5\nL6\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_yy_yanks_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jyy",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_yl_yanks_a_closed_fold_charwise",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jyl",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "L2\nL3\nL4",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_Y_yanks_a_closed_fold_charwise",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jY",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "L2\nL3\nL4",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_yj_then_P_above_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jkyjP",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L1\nL2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "L1\nL2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            6,
+            8,
+            1
+          ],
+          [
+            6,
+            8,
+            1
+          ],
+          [
+            6,
+            8,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_cc_changes_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jcc!<Esc>",
+      "expect": {
+        "text": [
+          "L1",
+          "!",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_cl_changes_a_closed_fold_charwise",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jcl!<Esc>",
+      "expect": {
+        "text": [
+          "L1",
+          "!",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_o_opens_below_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2joNEW<Esc>",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "NEW",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_O_opens_above_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jONEW<Esc>",
+      "expect": {
+        "text": [
+          "L1",
+          "NEW",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_p_linewise_puts_below_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jggyyjp",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L1",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "L1\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_P_linewise_puts_above_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jggyyjP",
+      "expect": {
+        "text": [
+          "L1",
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L1\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "L1\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_p_charwise_puts_in_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "yljzf2jp",
+      "expect": {
+        "text": [
+          "L1",
+          "LL2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "L",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "L",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_A_opens_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jA!<Esc>",
+      "expect": {
+        "text": [
+          "L1",
+          "L2!",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_n_reaches_a_match_past_a_closed_fold",
+      "lines": [
+        "x",
+        "foo1",
+        "foo2",
+        "foo3",
+        "foo4"
+      ],
+      "keys": "jzf2jgg/foo<CR>zcnn",
+      "expect": {
+        "text": [
+          "x",
+          "foo1",
+          "foo2",
+          "foo3",
+          "foo4"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_w_moves_past_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jw",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_e_moves_past_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2je",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_b_from_inside_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzojjzcb",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_l_opens_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jl",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_search_opens_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jgg/L3<CR>",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_G_leaves_a_closed_fold_closed",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jgg3G",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_J_on_a_closed_fold_joins_two_lines",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jJ",
+      "expect": {
+        "text": [
+          "L1",
+          "L2 L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dot_repeats_dd_on_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jjzfjggjdd.",
+      "expect": {
+        "text": [
+          "L1"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L5\nL6\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_dd_then_u_drops_the_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jddu",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_open_fold_grows_with_a_put_inside",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzoyyjp",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L2",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "L2\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_open_fold_shrinks_with_dd_inside",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzojdd",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_open_fold_moves_down_with_O_on_its_first_line",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzoONEW<Esc>",
+      "expect": {
+        "text": [
+          "L1",
+          "NEW",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_open_fold_keeps_o_on_its_last_line_out",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzojjoNEW<Esc>",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "NEW",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_zj_zk_between_closed_folds",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzfjjjzfjggzjzj",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            5,
+            6,
+            1
+          ],
+          [
+            5,
+            6,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_zk_from_the_last_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzfjjjzfjGzk",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            5,
+            6,
+            1
+          ],
+          [
+            5,
+            6,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_bracket_z_ends_of_an_open_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzo]z",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_bracket_z_start_from_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jjzf2jzojzc[z",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            3,
+            5,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_zR_then_zM_reclose_folds",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzfjjjzfjzRzM",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            5,
+            6,
+            1
+          ],
+          [
+            5,
+            6,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_zR_opens_every_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzfjjjzfjzR",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_zd_deletes_the_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jzd",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_zE_eliminates_every_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzfjjjzfjzE",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_visual_zf_folds_the_selection",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jVjjzf",
+      "expect": {
+        "text": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_visual_line_j_onto_a_closed_fold",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jggVjd",
+      "expect": {
+        "text": [
+          "L3",
+          "L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L1\nL2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            1,
+            2,
+            1
+          ],
+          [
+            1,
+            2,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_ex_range_takes_a_closed_fold_whole",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2j:2d<CR>",
+      "expect": {
+        "text": [
+          "L1",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "L2\nL3\nL4\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_shift_takes_a_closed_fold_whole",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2j>>",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "L1",
+          "    L2",
+          "    L3",
+          "    L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "fold_count_shift_counts_a_closed_fold_once",
+      "lines": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6"
+      ],
+      "keys": "jzf2jk2>>",
+      "setup": "set shiftwidth=4 expandtab startofline",
+      "expect": {
+        "text": [
+          "    L1",
+          "    L2",
+          "    L3",
+          "    L4",
+          "L5",
+          "L6"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false,
+        "folds": [
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            2,
+            4,
+            1
+          ],
+          [
+            -1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
       }
     }
   ]
