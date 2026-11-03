@@ -233,6 +233,11 @@ impl Document {
         at
     }
 
+    /// Whether no position is pinned ([`Document::pin_tracked`]) — the state between commands.
+    pub(crate) fn pinned_is_empty(&self) -> bool {
+        self.pinned.is_empty()
+    }
+
     /// Take back every position [`Document::pin_tracked`] holds, as the changes since left them.
     pub fn take_pinned(&mut self) -> Vec<Tracked> {
         std::mem::take(&mut self.pinned)
@@ -569,6 +574,39 @@ impl Document {
         self.anchors.apply_change(&old, &self.text, edits);
         self.track_change(&old, edits, tracked);
         self.rebuild_index();
+    }
+
+    /// The invariant walker for one buffer (#906): the undo tree's structure, the anchor store against
+    /// the text, the saved state naming a node of the tree, the mark groups naming issued groups, and
+    /// a frozen anchor index (if any) agreeing with the store. Panics on the first broken rule; property
+    /// and fuzz tests call it after every step, so an inconsistency is caught where it starts rather than
+    /// when a later read trips over it.
+    pub fn assert_invariants(&self) {
+        let len = self.text.len();
+        self.undo.assert_invariants();
+        self.anchors.assert_invariants(len);
+        if let Some(seq) = self.saved_node {
+            assert!(
+                self.undo.has_seq(seq),
+                "the saved state {seq:?} is no undo node"
+            );
+        }
+        for g in self.mark_undo.keys() {
+            assert!(
+                self.undo.issued_group(*g),
+                "marks saved for unissued undo group {g}"
+            );
+        }
+        for t in &self.pinned {
+            if let Some(p) = t.pos {
+                assert!(p <= len, "pinned position {p} past the end {len}");
+            }
+        }
+        if let Some(ix) = self.anchor_index.get() {
+            let frozen: HashMap<_, _> = ix.all().iter().copied().collect();
+            let live: HashMap<_, _> = self.anchors.resolved().into_iter().collect();
+            assert_eq!(frozen, live, "the frozen anchor index is stale");
+        }
     }
 
     /// Drop the frozen anchor index after any change; the next snapshot freezes a fresh one.

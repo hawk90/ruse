@@ -839,6 +839,77 @@ impl Workspace {
         closed
     }
 
+    /// The invariant walker over the whole editor state (#906): every buffer and every view by
+    /// [`Document::assert_invariants`] and [`View::assert_invariants`], plus the workspace's own rules —
+    /// buffer slot `i` holds `DocumentId(i + 1)` (so no id is used twice), every window shows a live view
+    /// of a live buffer and no two windows share a view, focus names a window, the buffer list holds each
+    /// live buffer once, the alternate buffer is live, and no positions stay pinned between commands.
+    /// The flat MVP layout has no tree, so there is no cycle to look for. Panics on the first broken
+    /// rule; property and fuzz tests call it after every step.
+    pub fn assert_invariants(&self) {
+        assert_eq!(
+            self.names.len(),
+            self.docs.len(),
+            "a buffer slot lost its name"
+        );
+        for (i, d) in self.docs.iter().enumerate() {
+            if let Some(d) = d {
+                assert_eq!(
+                    d.id(),
+                    DocumentId(i as u64 + 1),
+                    "buffer slot {i} holds another id"
+                );
+                d.assert_invariants();
+            }
+        }
+        for (i, v) in self.views.iter().enumerate() {
+            if let Some(v) = v {
+                let d = self
+                    .document(v.doc())
+                    .unwrap_or_else(|| panic!("view {i} shows retired buffer {:?}", v.doc()));
+                v.assert_invariants(d.bytes());
+            }
+        }
+        assert!(!self.windows.is_empty(), "no window");
+        assert!(self.focus < self.windows.len(), "focus past the windows");
+        let mut shown = std::collections::HashSet::new();
+        for w in &self.windows {
+            assert!(
+                self.views.get(w.view.0).is_some_and(Option::is_some),
+                "a window shows retired view {:?}",
+                w.view
+            );
+            assert!(shown.insert(w.view), "two windows share view {:?}", w.view);
+        }
+        let mut listed = std::collections::HashSet::new();
+        for id in &self.buffer_order {
+            assert!(
+                self.doc_is_live(*id),
+                "the buffer list holds retired {id:?}"
+            );
+            assert!(listed.insert(*id), "{id:?} is listed twice");
+        }
+        assert_eq!(
+            listed.len(),
+            self.docs.iter().flatten().count(),
+            "a live buffer is not listed"
+        );
+        if let Some(a) = self.alt {
+            assert!(self.doc_is_live(a), "the alternate buffer {a:?} is retired");
+        }
+        assert!(
+            self.pins.is_empty(),
+            "positions left pinned after a command"
+        );
+        for d in self.docs.iter().flatten() {
+            assert!(
+                d.pinned_is_empty(),
+                "{:?} still carries pinned positions",
+                d.id()
+            );
+        }
+    }
+
     /// Whether a `DocumentId` still has a live buffer slot (for tests / retirement assertions).
     #[must_use]
     pub fn doc_is_live(&self, id: DocumentId) -> bool {
@@ -914,6 +985,11 @@ impl Workspace {
     /// brings it into the focused window.
     pub fn add_buffer(&mut self, bytes: impl Into<Vec<u8>>, name: Option<String>) -> DocumentId {
         let id = DocumentId(self.docs.len() as u64 + 1);
+        // Stability §1: a duplicate DocumentId is an invariant violation, not an error.
+        debug_assert!(
+            self.docs.iter().flatten().all(|d| d.id() != id),
+            "duplicate {id:?}"
+        );
         let mut doc = Document::new(id, bytes);
         doc.mark_saved();
         self.docs.push(Some(doc));

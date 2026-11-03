@@ -33,7 +33,7 @@ articles:
   - id: CON-TXN-ONLY-MUTATION
     statement: "All document mutation goes through a Transaction; plugins mutate only via CommandRequest -> Transaction."
     enforcement: check
-    check: spec-validate          # INV-TXN / ENG-TXN-001 (architecture-test target once code exists)
+    check: dependency-check       # architecture.yaml txn_only_mutation source scan (INV-TXN / ENG-TXN-001, #983)
     refs: [INV-TXN, ARCH-FORBID-001]
 
   - id: CON-GENERATED-NOT-EDITED

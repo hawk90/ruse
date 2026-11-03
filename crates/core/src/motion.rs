@@ -233,14 +233,15 @@ pub(crate) fn next_grapheme(b: &[u8], pos: usize) -> usize {
     let ls = line_start(b, pos);
     let le = line_end(b, pos);
     match std::str::from_utf8(&b[ls..le]) {
-        Ok(s) => {
+        Ok(s) if s.is_char_boundary(pos.saturating_sub(ls).min(s.len())) => {
             let mut gc = GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
             match gc.next_boundary(s, 0).ok().flatten() {
                 Some(rel) => ls + rel,
                 None => next_boundary(b, pos), // window exhausted: cross the newline
             }
         }
-        Err(_) => next_boundary(b, pos),
+        // Not text, or `pos` inside a char: the char step is the safe answer.
+        _ => next_boundary(b, pos),
     }
 }
 
@@ -251,14 +252,14 @@ pub(crate) fn prev_grapheme(b: &[u8], pos: usize) -> usize {
     let ls = line_start(b, pos);
     let le = line_end(b, pos);
     match std::str::from_utf8(&b[ls..le]) {
-        Ok(s) => {
+        Ok(s) if s.is_char_boundary(pos.saturating_sub(ls).min(s.len())) => {
             let mut gc = GraphemeCursor::new(pos.saturating_sub(ls).min(s.len()), s.len(), true);
             match gc.prev_boundary(s, 0).ok().flatten() {
                 Some(rel) => ls + rel,
                 None => prev_boundary(b, pos), // window exhausted: cross back over the newline
             }
         }
-        Err(_) => prev_boundary(b, pos),
+        _ => prev_boundary(b, pos),
     }
 }
 
@@ -499,10 +500,11 @@ fn prev_word_end(b: &[u8], pos: usize, big: bool) -> usize {
 }
 
 /// One past the last byte of the current/next word / WORD (the exclusive end for `de` / `dE`). The scan
-/// starts at the NEXT char, not the next byte: on a multibyte char the next byte is a continuation byte of
-/// the same char, which made `e` re-find the word it sits at the end of (#741).
+/// starts at the NEXT character, not the next byte: on a multibyte char the next byte is a continuation byte
+/// of the same char, which made `e` re-find the word it sits at the end of (#741); and on a base char with
+/// combining marks the next char is a mark of the same cell, which did the same (#909).
 pub(crate) fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
-    let mut i = next_boundary(b, pos.min(b.len()));
+    let mut i = next_grapheme(b, pos.min(b.len()));
     while i < b.len() && class(b[i]) == Class::Space {
         i += 1;
     }
@@ -966,7 +968,7 @@ fn paragraph_landing(b: &[u8], cur: usize, forward: bool, n: u32) -> Option<(usi
             None if forward => {
                 let le = content_end(b); // the last line's end
                 let ls = line_start(b, le);
-                return Some((if le > ls { prev_boundary(b, le) } else { le }, true));
+                return Some((if le > ls { prev_grapheme(b, le) } else { le }, true));
             }
             None => return Some((0, true)),
         }
@@ -1148,7 +1150,7 @@ pub fn off_phantom(b: &[u8], pos: usize) -> usize {
     }
     let le = b.len() - 1;
     if le > line_start(b, le) {
-        prev_boundary(b, le)
+        prev_grapheme(b, le)
     } else {
         le
     }
@@ -1215,11 +1217,12 @@ fn find_char_target(
     let ls = line_start(b, cursor);
     let le = line_end(b, cursor); // newline / end position for this line
     let line = std::str::from_utf8(b.get(ls..le)?).ok()?;
+    // `t`/`T` stop one CHARACTER short of the match: a base with its marks, a flag, a ZWJ sequence (#909).
     let skip = (repeat && till && n == 1).then(|| {
         if forward {
-            next_boundary(b, cursor)
+            next_grapheme(b, cursor)
         } else {
-            prev_boundary(b, cursor)
+            prev_grapheme(b, cursor)
         }
     });
     if forward {
@@ -1230,7 +1233,7 @@ fn find_char_target(
             .filter(|&(pos, c)| pos > cursor && c == ch && Some(pos) != skip)
             .nth(n - 1)?
             .0;
-        Some(if till { prev_boundary(b, hit) } else { hit })
+        Some(if till { prev_grapheme(b, hit) } else { hit })
     } else {
         // Matches strictly before the cursor; take the n-th counting backward.
         let hit = line
@@ -1240,7 +1243,7 @@ fn find_char_target(
             .rev()
             .nth(n - 1)?
             .0;
-        Some(if till { next_boundary(b, hit) } else { hit })
+        Some(if till { next_grapheme(b, hit) } else { hit })
     }
 }
 
@@ -1263,7 +1266,7 @@ fn last_non_blank(b: &[u8], pos: usize) -> usize {
     let le = line_end(b, ls);
     let mut i = le;
     while i > ls {
-        let p = prev_boundary(b, i);
+        let p = prev_grapheme(b, i);
         if b[p] != b' ' && b[p] != b'\t' {
             return p;
         }
@@ -1803,13 +1806,13 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             }
             Motion::WordFwd => next_word_start(b, c, false),
             Motion::WordBack => prev_word_start(b, c, false),
-            Motion::WordEnd => prev_boundary(b, word_end_excl(b, c, false)), // land ON the last char
+            Motion::WordEnd => prev_grapheme(b, word_end_excl(b, c, false)), // land ON the last char
             Motion::WordEndBack => prev_word_end(b, c, false),               // Vim `ge`
             Motion::EmacsWordFwd => emacs_word_fwd(b, c), // Emacs forward-word: two-class, land AFTER the word
             Motion::EmacsWordBack => emacs_word_back(b, c), // Emacs backward-word: two-class mirror
             Motion::BigWordFwd => next_word_start(b, c, true),
             Motion::BigWordBack => prev_word_start(b, c, true),
-            Motion::BigWordEnd => prev_boundary(b, word_end_excl(b, c, true)),
+            Motion::BigWordEnd => prev_grapheme(b, word_end_excl(b, c, true)),
             Motion::BigWordEndBack => prev_word_end(b, c, true), // Vim `gE`
             // FindChar / line-jumps are resolved by the early returns above; objects/linewise have no
             // bare-move target.
@@ -2005,8 +2008,8 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             // Each step starts from the previous landing (the last char of a word), not its exclusive end, so
             // `2de` on `foo.bar` takes `foo.` (the `.` is a word of its own).
             let big = m == Motion::BigWordEnd;
-            let land = repeat_step(n, cur, |p| prev_boundary(b, word_end_excl(b, p, big)));
-            (cur, next_boundary(b, land).max(cur))
+            let land = repeat_step(n, cur, |p| prev_grapheme(b, word_end_excl(b, p, big)));
+            (cur, next_grapheme(b, land).max(cur))
         }
         // Emacs `kill-word` (`M-d`): `[cursor, emacs_word_fwd)` — the two-class forward-word span, which
         // (unlike Vim `de`) skips a leading non-word run and stops at `_`/punctuation boundaries.

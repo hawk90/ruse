@@ -9,9 +9,25 @@
 use proptest::prelude::*;
 use ruse_core::{
     anchor::map_byte, apply_command, AnchorId, AnchorPolicy, Bias, BytePos, Command, Document,
-    DocumentId, Edit, EditList, EditorState, LineGravity, LineMap, Motion, Revision, SelectKind,
-    Trace, Track, Transaction, TransactionOrigin,
+    DocumentId, Edit, EditList, EditorState, LineGravity, LineMap, Mode, Motion, Revision,
+    SelectKind, Trace, Track, Transaction, TransactionOrigin,
 };
+
+/// `n` cases, scaled by `RUSE_PROPTEST_SCALE` for the scheduled deep tier (#920), with the reject budget
+/// scaled alike so a filtering test does not abort a long run.
+fn cases(n: u32) -> ProptestConfig {
+    let scale = std::env::var("RUSE_PROPTEST_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(1)
+        .max(1);
+    let base = ProptestConfig::default();
+    ProptestConfig {
+        cases: n.saturating_mul(scale),
+        max_global_rejects: base.max_global_rejects.saturating_mul(scale),
+        ..base
+    }
+}
 
 /// An arbitrary buffer: any sequence of Unicode scalars (incl. newlines / control chars) as UTF-8 bytes.
 fn text() -> impl Strategy<Value = Vec<u8>> {
@@ -139,7 +155,7 @@ fn policy() -> impl Strategy<Value = AnchorPolicy> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(128))]
+    #![proptest_config(cases(128))]
 
     /// The headline safety property: no sequence of commands, from any buffer, ever produces invalid UTF-8
     /// or leaves the cursor off a character boundary or out of bounds. This is the invariant that a
@@ -152,6 +168,7 @@ proptest! {
         let mut st = EditorState::new(init);
         for c in &cmds {
             apply_command(&mut st, c);
+            st.assert_invariants();
             let s = std::str::from_utf8(st.bytes());
             prop_assert!(s.is_ok(), "buffer became invalid UTF-8 after {c:?}");
             let s = s.unwrap();
@@ -218,6 +235,8 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(cases(256))]
+
     /// A constructed `EditList` is always sorted ascending and pairwise disjoint (touching-at-a-point is
     /// allowed); overlaps are rejected, never silently accepted.
     #[test]
@@ -250,7 +269,7 @@ proptest! {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(128))]
+    #![proptest_config(cases(128))]
 
     /// Transaction atomicity (INV-TXN / F-001): a transaction applies fully or not at all. A rejected apply
     /// — stale base revision, or an edit out of range — leaves the document's bytes AND revision *exactly*
@@ -350,6 +369,8 @@ fn track() -> impl Strategy<Value = Track> {
 }
 
 proptest! {
+    #![proptest_config(cases(256))]
+
     /// INV-ANCHOR (#686, #758, #941): the store — offset-ordered, with shifts applied lazily per region —
     /// puts every anchor, across several transactions, exactly where the one-anchor rules do (`map_byte`
     /// for a byte anchor, [`LineMap`] for a line anchor), and flags a dropped line anchor.
@@ -450,5 +471,125 @@ proptest! {
             let p = map.map(o, LineGravity::Drop).expect("an untouched line is not deleted");
             prop_assert_eq!(p - ruse_core::pos::line_start(&new, p), o - ls);
         }
+    }
+}
+
+/// Pieces of hard text (#909): wide CJK and Hangul, combining sequences, a ZWJ emoji family, a flag pair,
+/// a conjoining-jamo syllable, tabs and line breaks — the clusters a cursor must never split.
+const HARD: &[&str] = &[
+    "가",
+    "漢字",
+    "e\u{301}",
+    "a\u{301}\u{302}",
+    "👨\u{200d}👩\u{200d}👧",
+    "🇰🇷",
+    "\u{1100}\u{1161}\u{11a8}",
+    "\t",
+    "\n",
+    "a",
+    " ",
+];
+
+/// Chars to type, each a cluster of its own: a lone flag letter or a leading jamo joins the text after the
+/// caret into one cluster around it, and a mark or joiner typed at a line start joins the line above once
+/// a `<BS>` removes the break, so those are the starting buffer's business, not the typist's.
+const TYPED: &[char] = &['가', '漢', 'e', '👨', '\t', '\n', 'a', ' '];
+
+/// A buffer built from [`HARD`] pieces.
+fn hard_text() -> impl Strategy<Value = Vec<u8>> {
+    prop::collection::vec(prop::sample::select(HARD), 0..16).prop_map(|ps| ps.concat().into_bytes())
+}
+
+/// The extended grapheme cluster boundaries of `s` (UAX #29), as byte offsets including the end.
+fn cluster_boundaries(s: &str) -> Vec<usize> {
+    use unicode_segmentation::UnicodeSegmentation;
+    let mut b: Vec<usize> = s.grapheme_indices(true).map(|(i, _)| i).collect();
+    b.push(s.len());
+    b
+}
+
+/// A motion a key can move the cursor by (a text object selects, it is no bare move: it maps to `h`).
+fn bare_motion() -> impl Strategy<Value = Motion> {
+    motion().prop_map(|m| {
+        let object = matches!(
+            m,
+            Motion::InnerWord
+                | Motion::AWord
+                | Motion::InnerBigWord
+                | Motion::ABigWord
+                | Motion::InnerParagraph
+                | Motion::AParagraph
+                | Motion::InnerSentence
+                | Motion::ASentence
+                | Motion::Pair { .. }
+                | Motion::Quote { .. }
+        );
+        if object {
+            Motion::Left
+        } else {
+            m
+        }
+    })
+}
+
+/// Run `cmds` over `init` and check that the cursor rests on a cluster boundary whenever it rests ON a
+/// character (Normal mode; in Insert it is an insertion point, and a typed char may join the text after it
+/// into one cluster, as a lone flag letter typed before a flag does).
+fn rests_on_clusters(init: Vec<u8>, cmds: &[Command]) -> Result<(), TestCaseError> {
+    let mut st = EditorState::new(init);
+    for c in cmds {
+        apply_command(&mut st, c);
+        if st.mode() != Mode::Normal {
+            continue;
+        }
+        let s = std::str::from_utf8(st.bytes()).expect("valid UTF-8");
+        let b = cluster_boundaries(s);
+        prop_assert!(
+            b.binary_search(&st.cursor()).is_ok(),
+            "cursor {} inside a cluster of {:?} after {:?}",
+            st.cursor(),
+            s,
+            c
+        );
+    }
+    Ok(())
+}
+
+proptest! {
+    #![proptest_config(cases(256))]
+
+    /// The cursor never rests inside a user-perceived character (F-002, #909): after any motion, `x`,
+    /// undo or `<Esc>` over wide, combining, ZWJ and flag text, it sits on an extended grapheme cluster
+    /// boundary. (`e`/`E` landed on a combining mark before #909.)
+    #[test]
+    fn motions_rest_on_a_cluster_boundary(
+        init in hard_text(),
+        cmds in prop::collection::vec(prop_oneof![
+            6 => (1u32..3, bare_motion()).prop_map(|(n, m)| Command::Move(n, m)),
+            1 => (1u32..3).prop_map(Command::DeleteUnder),
+            1 => Just(Command::EnterInsert),
+            1 => Just(Command::EnterNormal),
+            1 => Just(Command::Undo),
+        ], 0..30),
+    ) {
+        rests_on_clusters(init, &cmds)?;
+    }
+
+    /// The same over edits that delete or type one char at a time (`X`, Insert `<BS>`, typing): `<BS>`
+    /// deleted one code point, half a flag or a base without its marks, before #909.
+    #[test]
+    fn edits_rest_on_a_cluster_boundary(
+        init in hard_text(),
+        cmds in prop::collection::vec(prop_oneof![
+            4 => (1u32..3, bare_motion()).prop_map(|(n, m)| Command::Move(n, m)),
+            1 => (1u32..3).prop_map(Command::DeleteUnder),
+            1 => Just(Command::DeleteBack),
+            1 => prop::sample::select(TYPED).prop_map(Command::InsertChar),
+            1 => Just(Command::EnterInsert),
+            1 => Just(Command::EnterNormal),
+            1 => Just(Command::Undo),
+        ], 0..30),
+    ) {
+        rests_on_clusters(init, &cmds)?;
     }
 }

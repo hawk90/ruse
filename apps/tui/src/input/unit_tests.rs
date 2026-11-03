@@ -4569,7 +4569,7 @@ mod state_machine_props {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(256))]
+        #![proptest_config(crate::test_cases(256))]
 
         /// No key sequence ever leaves a partial command dangling: after any outcome that is not
         /// `Feed::Pending`, every transient axis (count, operator, key-expectation) is cleared. And a

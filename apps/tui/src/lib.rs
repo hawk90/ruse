@@ -22,6 +22,10 @@
 pub mod caps;
 pub mod clipboard;
 pub mod folds;
+// #920: the crate-internal parsers' entry points for the `fuzz/` targets, built only by `cargo fuzz`.
+#[cfg(fuzzing)]
+#[doc(hidden)]
+pub mod fuzz_entry;
 pub mod graphics;
 // #895: a terminal-free session over the real key path, for tests (`Headless`).
 pub mod headless;
@@ -62,3 +66,20 @@ pub(crate) mod ui;
 pub(crate) mod viewport;
 
 pub use app::cli::run;
+
+/// `n` proptest cases, scaled by `RUSE_PROPTEST_SCALE` for the scheduled deep tier (#920), with the reject
+/// budget scaled alike so a filtering test does not abort a long run.
+#[cfg(test)]
+pub(crate) fn test_cases(n: u32) -> proptest::prelude::ProptestConfig {
+    let scale = std::env::var("RUSE_PROPTEST_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(1)
+        .max(1);
+    let base = proptest::prelude::ProptestConfig::default();
+    proptest::prelude::ProptestConfig {
+        cases: n.saturating_mul(scale),
+        max_global_rejects: base.max_global_rejects.saturating_mul(scale),
+        ..base
+    }
+}

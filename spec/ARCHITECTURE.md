@@ -70,7 +70,10 @@ Read side is separate (CQRS at boundaries): `Query → Snapshot/DTO` (never a li
 - Views/plugins must not emit backend-specific bytes (escape sequences, GPU calls) — only Render nodes.
 - Config/event flow must not let a workspace override security-sensitive settings.
 
-Enforced by architecture tests / dependency lint (see [POLICY.yaml](POLICY.yaml) ENG-ARCH-001).
+Enforced by `ruse arch deps` (see [POLICY.yaml](POLICY.yaml) ENG-ARCH-001): the crate graph, plus a source
+scan of [architecture.yaml](architecture.yaml)'s forbidden module edges (Document → View, kernel → terminal,
+input → frontend) and of direct document mutation outside the transaction path (#983). The plugin and
+renderer rules return with their deferred boundaries (D-039).
 
 ## ARCH-EXEC-001 — Execution model
 

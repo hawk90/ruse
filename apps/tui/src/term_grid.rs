@@ -784,7 +784,7 @@ mod tests {
     }
 
     proptest::proptest! {
-        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(512))]
+        #![proptest_config(crate::test_cases(512))]
 
         /// Arbitrary child-process output never panics the grid (a PTY child is untrusted), across resizes,
         /// and the cursor always stays inside the screen.

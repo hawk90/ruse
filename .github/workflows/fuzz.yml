@@ -1,0 +1,68 @@
+# The scheduled deep test tier (#920): never on pull requests, never a required check, every job time-capped.
+#   deep-properties — the whole test suite with every proptest scaled up (`RUSE_PROPTEST_SCALE`; blocks on the
+#                     default config read `PROPTEST_CASES`). A failure uploads the new `*.proptest-regressions`
+#                     lines, which are committed with the fix (testing-and-benchmarks.md §1.2).
+#   fuzz            — each cargo-fuzz target in `fuzz/` (its own workspace, nightly + ASan) for a capped time.
+#                     A crash uploads `fuzz/artifacts/`; reproduce with `cargo +nightly fuzz run <target> <file>`.
+# Security (docs/operations/ci-cd-and-release.md §11): actions pinned by SHA, read-only token.
+name: fuzz
+on:
+  schedule:
+    - cron: "0 3 * * 0"   # weekly, Sunday ~03:00 UTC
+  workflow_dispatch: {}
+permissions: { contents: read }
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  deep-properties:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSE_PROPTEST_SCALE: "16"
+      PROPTEST_CASES: "4096"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with: { cache: false, build-warnings: allow }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: property tests at 16x cases
+        run: cargo test --workspace
+      - name: collect new regression cases
+        if: failure()
+        run: |
+          mkdir -p regressions
+          git status --porcelain -- '*.proptest-regressions' | awk '{print $2}' | while read -r f; do
+            cp --parents "$f" regressions/
+          done
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: proptest-regressions
+          path: regressions/
+          if-no-files-found: ignore
+
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [key_session, document_ops, keys_decode, trace_parse, journal_replay, term_grid, lsp_frames]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with: { toolchain: nightly, cache: false, build-warnings: allow }
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-fuzz@0.13.1
+      - name: fuzz ${{ matrix.target }} for 15 minutes
+        run: >-
+          cargo +nightly fuzz run ${{ matrix.target }} --
+          -max_total_time=900 -timeout=30 -rss_limit_mb=2048
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore

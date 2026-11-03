@@ -156,6 +156,11 @@ impl UndoHistory {
         result_revision: Revision,
         cursor: usize,
     ) -> UndoNodeId {
+        // Stability §1: an undo node's parent must exist.
+        debug_assert!(
+            self.current.0 < self.nodes.len(),
+            "the new node's parent exists"
+        );
         let group = self.group_for(origin, hint);
         let id = UndoNodeId(self.nodes.len());
         let seq = MonotonicSeq(self.next_seq);
@@ -419,6 +424,73 @@ impl UndoHistory {
     #[must_use]
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    /// Check the tree's structure and panic on the first broken rule (#906, stability §1 "an undo node's
+    /// parent does not exist"): one root, every other node's parent exists, was created before it and
+    /// lists it as a child, `seq` and the chronological index follow creation order, a node's redo
+    /// target is one of its children, and every non-root node carries its forward and inverse edits.
+    /// `O(nodes)`; for property and fuzz tests.
+    pub fn assert_invariants(&self) {
+        let n = self.nodes.len();
+        assert!(self.current.0 < n, "current node {} of {n}", self.current.0);
+        assert!(self.nodes[0].parent.is_none(), "the root has a parent");
+        assert_eq!(
+            self.chronological.len(),
+            n,
+            "the chronological index misses a node"
+        );
+        for (i, (&id, node)) in self.chronological.iter().zip(&self.nodes).enumerate() {
+            assert_eq!(id.0, i, "chronological order is creation order");
+            assert!(
+                node.group < self.next_group,
+                "node {i} has an unissued group"
+            );
+            if i == 0 {
+                continue;
+            }
+            let p = node.parent.expect("a non-root node has a parent");
+            assert!(p.0 < i, "node {i}'s parent {} is not older than it", p.0);
+            assert!(
+                self.nodes[p.0].children.contains(&UndoNodeId(i)),
+                "node {i} is missing from its parent's children"
+            );
+            assert!(
+                node.seq > self.nodes[i - 1].seq,
+                "seq does not increase at node {i}"
+            );
+            assert!(node.seq.0 < self.next_seq, "node {i} has an unissued seq");
+            assert!(
+                node.forward.is_some() && node.inverse.is_some(),
+                "node {i} lost its edits"
+            );
+        }
+        for (i, node) in self.nodes.iter().enumerate() {
+            for c in &node.children {
+                assert_eq!(
+                    self.nodes.get(c.0).and_then(|c| c.parent),
+                    Some(UndoNodeId(i)),
+                    "child {} of node {i} names another parent",
+                    c.0
+                );
+            }
+            if let Some(r) = node.redo_child {
+                assert!(
+                    node.children.contains(&r),
+                    "node {i} redoes into a stranger"
+                );
+            }
+        }
+    }
+
+    /// Whether `g` is a group id this history has handed out.
+    pub(crate) fn issued_group(&self, g: u64) -> bool {
+        g < self.next_group
+    }
+
+    /// Whether `seq` names a node of this history.
+    pub(crate) fn has_seq(&self, seq: MonotonicSeq) -> bool {
+        self.nodes.iter().any(|n| n.seq == seq)
     }
 
     /// Nodes in creation (`seq`) order as `(seq, origin, group)` — the chronological index the `g-`/`g+`

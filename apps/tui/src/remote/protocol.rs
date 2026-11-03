@@ -177,7 +177,7 @@ mod tests {
     }
 
     proptest::proptest! {
-        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+        #![proptest_config(crate::test_cases(256))]
 
         /// A hostile peer's byte stream never panics the reader and every frame read makes progress, so a
         /// connection always ends at EOF or a typed error. Reuses the LSP codec's stream generator: the two

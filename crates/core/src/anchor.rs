@@ -321,6 +321,62 @@ impl AnchorStore {
         }
     }
 
+    /// Check the store's structure against a text of `len` bytes and panic on the first broken rule
+    /// (#906): the free list names exactly the empty slots, every live anchor resolves inside the text,
+    /// and while the order is built it holds every live anchor once, ascending by offset, each at its
+    /// own rank. `O(A log A)`; for property and fuzz tests, not the edit path.
+    pub fn assert_invariants(&self, len: usize) {
+        let mut free = self.free.clone();
+        free.sort_unstable();
+        free.dedup();
+        assert_eq!(
+            free.len(),
+            self.free.len(),
+            "a slot is on the free list twice"
+        );
+        for &f in &free {
+            let s = self.slots.get(f as usize).expect("a free slot exists");
+            assert!(s.anchor.is_none(), "free slot {f} holds an anchor");
+        }
+        let empty = self.slots.iter().filter(|s| s.anchor.is_none()).count();
+        assert_eq!(
+            empty,
+            free.len(),
+            "an empty slot is missing from the free list"
+        );
+        for (i, s) in self.slots.iter().enumerate() {
+            if let Some(a) = &s.anchor {
+                let o = self.offset_of(a);
+                assert!(o <= len, "anchor in slot {i} at {o}, past the end {len}");
+            }
+        }
+        if self.stale {
+            return;
+        }
+        assert_eq!(
+            self.order.len(),
+            self.len(),
+            "the order misses a live anchor"
+        );
+        assert_eq!(self.shift.0.len(), self.order.len(), "shift tree size");
+        for (r, &slot) in self.order.iter().enumerate() {
+            let a = self.slots[slot as usize]
+                .anchor
+                .expect("an ordered slot is live");
+            assert_eq!(
+                a.rank as usize, r,
+                "slot {slot} ranked {} at rank {r}",
+                a.rank
+            );
+            if r > 0 {
+                assert!(
+                    self.at_rank(r - 1) <= self.at_rank(r),
+                    "anchor order inverted at rank {r}"
+                );
+            }
+        }
+    }
+
     /// Rebuild the order after inserts/removes: fold every pending shift in and sort once.
     fn normalize(&mut self) {
         let mut live: Vec<(usize, u32)> = Vec::with_capacity(self.len());

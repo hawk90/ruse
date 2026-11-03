@@ -9171,3 +9171,84 @@ mod resource_bound_tests {
         assert_eq!(s.as_str().unwrap(), "a\na\na\n");
     }
 }
+
+/// #909: a base with combining marks, a flag and a ZWJ sequence are ONE character to `e`/`E`, `de`,
+/// `<BS>`, `<Esc>` and the clamp off the phantom last line (nvim v0.12.6, oracle fixtures
+/// `e_combining_*`, `de_combining`, `insert_bs_*`, `esc_after_combining_typed`).
+#[cfg(test)]
+mod cluster_tests {
+    use crate::editor::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    #[test]
+    fn word_end_lands_on_the_base_of_a_composed_char() {
+        // nvim: `e` on "éé x" (decomposed) rests on byte 3, the second base; `ee` goes on to `x`.
+        let one = run("e\u{301}e\u{301} x", &[Command::Move(1, Motion::WordEnd)]);
+        assert_eq!(one.cursor(), 3);
+        let two = run("e\u{301}e\u{301} x", &[Command::Move(2, Motion::WordEnd)]);
+        assert_eq!(two.cursor(), 7);
+        let big = run(
+            "e\u{301}e\u{301} x",
+            &[Command::Move(1, Motion::BigWordEnd)],
+        );
+        assert_eq!(big.cursor(), 3);
+    }
+
+    #[test]
+    fn de_takes_the_last_char_with_its_marks() {
+        let st = run("e\u{301}e\u{301} x", &[Command::Delete(1, Motion::WordEnd)]);
+        assert_eq!(st.bytes(), b" x");
+    }
+
+    #[test]
+    fn backspace_deletes_a_whole_cluster() {
+        for (init, want) in [("e\u{301}x", "x"), ("a🇰🇷x", "ax"), ("👨\u{200d}👩x", "x")] {
+            let st = run(
+                init,
+                &[
+                    Command::Move(1, Motion::LineEnd),
+                    Command::EnterInsert,
+                    Command::DeleteBack,
+                    Command::EnterNormal,
+                ],
+            );
+            assert_eq!(st.as_str(), Some(want), "{init:?}");
+        }
+    }
+
+    #[test]
+    fn esc_steps_back_over_a_whole_cluster() {
+        let st = run(
+            "x",
+            &[
+                Command::EnterInsert,
+                Command::InsertChar('e'),
+                Command::InsertChar('\u{301}'),
+                Command::EnterNormal,
+            ],
+        );
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn the_phantom_line_clamp_lands_on_a_cluster() {
+        // `jxj` on "é\n가": `x` empties the last line, the failed `j` clamps off the slot after the final
+        // newline onto the last char of the line above — its base, not its combining mark.
+        let st = run(
+            "e\u{301}\n가",
+            &[
+                Command::Move(1, Motion::Down),
+                Command::DeleteUnder(1),
+                Command::Move(1, Motion::Down),
+            ],
+        );
+        assert_eq!(st.cursor(), 0);
+    }
+}

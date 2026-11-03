@@ -220,8 +220,24 @@ const COMMANDS: &[&str] = &[
     "<C-o>", "g;", "<C-e>", "<C-y>", "<C-f>", "<C-b>", "<C-d>", "<C-u>", "zt", "*", "#",
 ];
 
+/// `n` cases, scaled by `RUSE_PROPTEST_SCALE` for the scheduled deep tier (#920), with the reject budget
+/// scaled alike so a filtering test does not abort a long run.
+fn cases(n: u32) -> ProptestConfig {
+    let scale = std::env::var("RUSE_PROPTEST_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(1)
+        .max(1);
+    let base = ProptestConfig::default();
+    ProptestConfig {
+        cases: n.saturating_mul(scale),
+        max_global_rejects: base.max_global_rejects.saturating_mul(scale),
+        ..base
+    }
+}
+
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(96))]
+    #![proptest_config(cases(96))]
 
     #[test]
     fn any_digit_run_before_any_command_returns(

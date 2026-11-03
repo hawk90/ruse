@@ -46,3 +46,4 @@ dependencies:
 
   # ---- tooling only (never in shipped binaries) ----
   DEP-TEST-UTIL: { purpose: "test assertions / property testing / fixtures / benchmarking (criterion, D-042)", usage: tooling, tier: 0, criticality: low, public_api_exposure: none, allowed_layers: [any-dev], alternatives: [std], exit_strategy: n/a }
+  DEP-LIBFUZZER: { purpose: "coverage-guided fuzzing (#920): libfuzzer-sys in the fuzz/ targets, run by the cargo-fuzz tool on nightly in the scheduled fuzz workflow", usage: tooling, tier: 0, criticality: low, public_api_exposure: none, allowed_layers: [any-dev], alternatives: [proptest alone (no coverage feedback), afl.rs], exit_strategy: "fuzz/ is its own workspace, excluded from the root build; delete it and the scheduled job" }

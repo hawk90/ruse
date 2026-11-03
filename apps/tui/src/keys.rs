@@ -1073,7 +1073,7 @@ mod tests {
     }
 
     proptest::proptest! {
-        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(512))]
+        #![proptest_config(crate::test_cases(512))]
 
         /// Arbitrary register bytes (a hand-edited or binary-yanked register replayed with `@`) never panic
         /// the decoder, and decoding is a fixpoint: what it yields re-encodes to bytes that decode the same.

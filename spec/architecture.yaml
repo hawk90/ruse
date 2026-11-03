@@ -19,19 +19,51 @@ crates:
 # own crate + RFC, only when its re-boundary trigger fires (RFC-0012 §Re-evaluation). Their tiers/design live
 # in RFC-0012 and docs/design/. The v0 editor is `core` (kernel) + the `ruse` TUI binary (a client, not a crate).
 
-# Module-level forbidden edges (ARCH-FORBID-001). Checked by scanning source imports once crates have code;
-# declared now so the contract predates the code. Until sources exist the checker reports these as
-# `not-yet-enforceable` rather than passing silently.
+# Module-level forbidden edges (ARCH-FORBID-001), checked by scanning the source (#983): each edge's `scan`
+# names the files of the `from` side and the patterns that would name the `to` side (an import or one of its
+# types). Comments, strings and test code are skipped; the scan is direct (it does not follow a use through
+# another module). Paths and patterns are globs and Python regexes.
 forbidden_module_edges:
-  - { from: document, to: view,             reason: "Document must not know View (INV-DOC-VIEW)" }
-  - { from: kernel,   to: terminal-backend, reason: "Kernel must not depend on a terminal backend/frontend (core is IO-free)" }
+  - from: document
+    to: view
+    reason: "Document must not know View (INV-DOC-VIEW)"
+    scan:
+      # The document layer: text, edits, transactions, undo, anchors and snapshots.
+      paths: [crates/core/src/document.rs, crates/core/src/anchor.rs, crates/core/src/edit.rs,
+              crates/core/src/transaction.rs, crates/core/src/undo.rs, crates/core/src/undo_cursor.rs,
+              crates/core/src/line_undo.rs, crates/core/src/snapshot.rs, crates/core/src/pos.rs]
+      forbid: ['crate::editor\b', 'crate::workspace\b', '\bViewId\b', '\bView\b', '\bWorkspace\b',
+               '\bEditorState\b', '\bMode\b']
+  - from: kernel
+    to: terminal-backend
+    reason: "Kernel must not depend on a terminal backend/frontend (core is IO-free)"
+    scan:
+      paths: ["crates/core/src/**/*.rs"]
+      forbid: ['\bcrossterm\b', '\bratatui\b', '\bruse_tui\b', '\blibc::', 'std::(fs|net|process)\b',
+               'std::io::(stdin|stdout|stderr)\b']
+  - from: input
+    to: frontend
+    reason: "Input engines turn keys into Commands; they never read or mutate editor state (AGENTS.md: Input -> Command -> editor)"
+    scan:
+      paths: ["apps/tui/src/input/**/*.rs"]
+      forbid: ['crate::(?!input\b)[a-z_]+', 'crossterm::(?!event\b)[a-z_]+', '\bWorkspace\b', '\bDocument\b',
+               '\bEditorState\b', '\bTransaction\b']
   # Renderer/plugin edges return with the deferred render-model / plugin-protocol boundaries (D-039).
 
-# What `ruse arch deps` enforces. Each rule reports live | not-yet-enforceable (needs source) so the gate is
-# honest about coverage in the spec-first phase.
+# CON-TXN-ONLY-MUTATION / INV-TXN (#691, #983): every document mutation goes through the transaction path that
+# carries a view's marks and records the change. Building a Transaction or calling the `*_tracked` apply and
+# undo family is allowed only in the files below; anything else edits through `EditorState`/`Workspace`.
+txn_only_mutation:
+  paths: ["crates/*/src/**/*.rs", "apps/*/src/**/*.rs"]
+  allow: [crates/core/src/document.rs, crates/core/src/editor/mod.rs, crates/core/src/transaction.rs]
+  forbid: ['\bTransaction::new\s*\(', '\bTransaction\s*\{', '\.apply_tracked\s*\(',
+           '\.(undo|redo|chronological|line_undo)_tracked\s*\(']
+
+# What `ruse arch deps` enforces.
 rules:
   - no_cycles                # crate graph is acyclic — LIVE (cargo metadata)
   - respect_may_depend_on    # cargo deps ⊆ transitive may_depend_on — LIVE (trivial until crates gain deps)
-  - forbidden_module_edges   # source-import scan — NOT-YET (needs code)
+  - forbidden_module_edges   # source scan of each edge's `scan` block — LIVE (#983)
+  - txn_only_mutation        # source scan for direct document mutation — LIVE (#983)
 
 refs: [ARCH-LAYER-001, ARCH-FORBID-001, ARCH-OWN-001, ENG-ARCH-001, INV-DOC-VIEW, INV-PLUGIN-NO-CORE]

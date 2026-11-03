@@ -432,7 +432,7 @@ pub(crate) fn change_span(b: &[u8], cur: usize, m: Motion, count: u32) -> OpSpan
             // Extend through `count-1` further word-ends (Vim `c{n}w`).
             let mut e = end;
             for _ in 1..count.max(1) {
-                let next = motion::word_end_excl(b, e.saturating_sub(1), big);
+                let next = motion::word_end_excl(b, motion::prev_grapheme(b, e), big);
                 if next == e {
                     break; // a fixpoint (buffer end): a hostile count must not spin (#907)
                 }

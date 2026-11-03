@@ -1,0 +1,2 @@
+# The file round-trip corpus (#909) is compared byte for byte: never convert its line endings.
+apps/tui/tests/fixtures/files/** -text

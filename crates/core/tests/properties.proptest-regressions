@@ -10,3 +10,4 @@ cc 59cfe9a29b14782f56fcccec859928f83121232f8f3741296cefad0fd0235d5c # shrinks to
 cc 7a29ab1d295c2955fd097370c80441e9ff9ac07100f30b64444c33b6452275b5 # shrinks to buf = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], raw = [Edit { pos: BytePos(6), del: 5, ins: [0] }, Edit { pos: BytePos(11), del: 0, ins: [0] }]
 cc 8355f6b5b2492178dc6503da1db7e27283f6f69a6bd9751aacd534d5fc61868e # shrinks to init = [], cmds = [Delete(1, Pair { open: '\0', close: '0', around: false })]
 cc 844f953b0457f9cd1466e62f05c2e140cc2d28aaa3dd4fa170d6889d7ec2bc83 # shrinks to init = [], raw = [Edit { pos: BytePos(0), del: 0, ins: [128] }], o = 0
+cc 1b31732017531f2cf910be8f2f46350b099a3d12fb31a3aaa679b012dc8d7cfa # shrinks to init = [101, 204, 129, 32], cmds = [Move(1, FindChar { ch: ' ', forward: true, till: true, repeat: false })]

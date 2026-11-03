@@ -30,7 +30,7 @@ const MAX_HEADER_LINE: u64 = 1024;
 /// A body over [`MAX_FRAME_BYTES`] is DRAINED (streamed to a sink, never allocated) and also yields
 /// `Value::Null`, so one oversized reply is dropped without desyncing the stream. A header line over 1 KiB is
 /// an `InvalidData` error (the reader thread ends).
-fn read_frame<R: BufRead>(r: &mut R) -> io::Result<Option<Value>> {
+pub(crate) fn read_frame<R: BufRead>(r: &mut R) -> io::Result<Option<Value>> {
     let mut len: Option<usize> = None;
     loop {
         let mut line = String::new();
@@ -171,7 +171,7 @@ pub(crate) mod tests {
     }
 
     proptest::proptest! {
-        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+        #![proptest_config(crate::test_cases(256))]
 
         /// A hostile byte stream never panics the reader, and every call makes progress (no frame loop
         /// without consuming input), so the reader thread always ends at EOF.

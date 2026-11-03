@@ -273,9 +273,39 @@ test had missed:
    `inverse` now merges same-position inverse edits and `from_sorted` allows touching (matching `new`);
    `new` also drops no-op edits so they can't seed the collision.
 
-Deferred (still target-state above): anchor **affinity/span-delete** semantics as properties (bias direction,
-`Invalidate` flag correctness — only in-bounds totality is covered now), the O(A+E) cost bound as a
-performance property, and the differential-parity / fault-injection / replay-corpus / fuzzing layers.
+**Reference models, the invariant walker, the deep tier and fuzzing (#906, #909, #920).**
+
+- **Invariant walker.** `Workspace::assert_invariants` (with `EditorState`, `Document`, `View`, `UndoHistory`
+  and `AnchorStore` parts) checks the whole editor state and panics on the first broken rule: the undo
+  tree's structure, the anchor store's order and bounds, the saved state and a frozen snapshot index, every
+  view position inside the text on a char boundary, window, view and buffer-list consistency, and no
+  positions left pinned. The command-sequence property, `session_fuzz` (after every key) and the fuzz
+  targets call it, so every random test checks the whole state, not only the buffer.
+- **Reference model** (`crates/core/tests/reference_model.rs`). A naive cell model (bytes and anchors in one
+  list) runs next to `Document` through random transactions, undo, redo, saves, anchor creation and removal
+  and snapshots, and must agree on the bytes, each anchor's offset and `invalidated` flag (bias and
+  span-delete policy, touching edits applied left to right, #758), and the modified flag at the save point.
+- **Shadow consumers.** The line index refreshed by `(buffer, revision)` equals the `pos` scan after any
+  edit/undo/redo run (`line_index.rs`). Manual folds follow the cursor line rather than the edit
+  (`session.rs`), so a fold model property waits for #819.
+- **Unicode.** The cursor rests on an extended grapheme cluster boundary after any motion and after `x`,
+  `<BS>`, typing and undo over wide, combining, ZWJ, flag and jamo text (`properties.rs`); `session_fuzz`
+  types and starts from the same pieces. It found `e`/`E`/`de`, `t`/`T`, `g_`, `<BS>` and the phantom-line
+  clamp stepping by code point (fixed with oracle fixtures, #909). UCD conformance files are not run.
+- **File round trip.** `apps/tui/tests/file_roundtrip.rs` opens and writes back, through the real binary,
+  every file in `apps/tui/tests/fixtures/files/` (line-ending mixes, BOMs, no final newline, lone CR, NUL,
+  invalid UTF-8, UTF-16, Latin-1, a long line); `persist/encoding.rs` holds the pure property.
+- **Deep tier.** Every proptest takes its case count from `cases(n)` / `test_cases(n)`, scaled by
+  `RUSE_PROPTEST_SCALE`. PRs run the base counts; the weekly `fuzz.yml` runs the suite at 16x and uploads
+  any new regression line.
+- **Coverage-guided fuzzing.** `fuzz/` is a separate cargo-fuzz workspace (excluded from the root build,
+  `DEP-LIBFUZZER`) with targets for keystroke sessions, document operations, key decoding, trace parsing,
+  journal replay, the terminal grid and the LSP framing; `fuzz.yml` runs each for 15 minutes weekly on
+  nightly. A crash input is reduced and committed as a regression test or proptest seed.
+
+Still deferred: line-anchor (mark) semantics against a naive model (the store is checked against
+`LineMap`, the same rule), the O(A+E) cost bound as a performance property, and the fault-injection and
+replay-corpus layers.
 
 ### 1.3 Differential parity — `tests/parity/<profile>/*.yaml`
 

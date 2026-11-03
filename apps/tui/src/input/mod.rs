@@ -1558,7 +1558,14 @@ impl InputEngine {
                 Command::InsertTab => out.push('\t'),
                 Command::InsertPaste(t) | Command::ReplacePaste(t) => out.push_str(t),
                 Command::DeleteBack => {
-                    out.pop();
+                    // `<BS>` deleted a whole cluster (#909), so the record drops one too.
+                    let keep = unicode_segmentation::UnicodeSegmentation::grapheme_indices(
+                        out.as_str(),
+                        true,
+                    )
+                    .next_back()
+                    .map_or(0, |(i, _)| i);
+                    out.truncate(keep);
                 }
                 _ => {}
             }

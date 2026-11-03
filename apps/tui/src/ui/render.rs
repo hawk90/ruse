@@ -1031,6 +1031,8 @@ mod render_tests {
     // ---- F-031 slice 0: the display-coordinate layout seam (P1/P2/P6) + faces ----
 
     proptest! {
+        #![proptest_config(crate::test_cases(256))]
+
         /// P1 (round-trip) + P2 (monotonic): the shared column rule [`line_display_col`] and its inverse
         /// [`line_byte_at_col`] agree, and the column never decreases in buffer order — over arbitrary
         /// lines mixing ASCII, tabs, wide CJK (가), and a combining mark (´).

@@ -232,7 +232,7 @@ mod tests {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(512))]
+        #![proptest_config(crate::test_cases(512))]
 
         /// Arbitrary text never panics the trace parser: it is a trace or a typed error.
         #[test]

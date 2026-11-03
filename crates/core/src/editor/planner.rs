@@ -1897,7 +1897,7 @@ fn mark_char_target(b: &[u8], pos: usize) -> usize {
     let le = line_end(b, p);
     let ls = line_start(b, p);
     if p >= le && ls < le {
-        prev_boundary(b, le)
+        prev_grapheme(b, le)
     } else {
         p
     }
@@ -2097,7 +2097,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 Mode::Insert | Mode::Replace | Mode::VirtualReplace
             ) {
                 let ls = line_start(b, cur);
-                let c = if cur > ls { prev_boundary(b, cur) } else { cur };
+                let c = if cur > ls { prev_grapheme(b, cur) } else { cur };
                 nop(c, Mode::Normal)
             } else {
                 nop(cur, Mode::Normal)
@@ -2146,7 +2146,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // At the session start `<BS>` only moves the cursor left (Vim does not restore past the start).
             None => {
                 let ls = line_start(b, cur);
-                let c = if cur > ls { prev_boundary(b, cur) } else { cur };
+                let c = if cur > ls { prev_grapheme(b, cur) } else { cur };
                 nop(c, st.view.mode)
             }
             Some(entry) => {
@@ -2514,7 +2514,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             if cur == 0 {
                 nop(cur, st.view.mode)
             } else {
-                let p = prev_boundary(b, cur);
+                // Vim's `<BS>` deletes a whole character with its composing marks, and nvim v0.12.6 a whole
+                // cluster (a flag, a ZWJ sequence), so the cursor never lands inside one (#909). The Emacs
+                // profile keeps deleting one code point.
+                let p = if st.view.caret == CaretGravity::OnChar {
+                    prev_grapheme(b, cur)
+                } else {
+                    prev_boundary(b, cur)
+                };
                 edit(one(Edit::delete(p, cur - p)), p, st.view.mode, hint)
             }
         }

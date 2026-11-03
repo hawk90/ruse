@@ -1,0 +1,71 @@
+# Coverage-guided fuzz targets (#920, testing-and-benchmarks.md §1.2). Its own workspace (excluded from the
+# root one): cargo-fuzz needs nightly and sanitizer flags, so the default `cargo build`/`test`/`clippy` never
+# compile it and PRs pay nothing. Run one target with `cargo +nightly fuzz run <target>` from the repo root;
+# the scheduled `fuzz` workflow runs each for a capped time. DEP-LIBFUZZER in spec/dependencies.yaml.
+[package]
+name = "ruse-fuzz"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.10"
+ruse-core = { path = "../crates/core" }
+ruse-tui = { path = "../apps/tui" }
+crossterm = "0.29"
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "key_session"
+path = "fuzz_targets/key_session.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "document_ops"
+path = "fuzz_targets/document_ops.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keys_decode"
+path = "fuzz_targets/keys_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "trace_parse"
+path = "fuzz_targets/trace_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "journal_replay"
+path = "fuzz_targets/journal_replay.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "term_grid"
+path = "fuzz_targets/term_grid.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lsp_frames"
+path = "fuzz_targets/lsp_frames.rs"
+test = false
+doc = false
+bench = false

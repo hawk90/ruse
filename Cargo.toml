@@ -9,6 +9,8 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "apps/*"]
+# The cargo-fuzz targets (#920) are their own workspace: nightly + sanitizers, never in the default build.
+exclude = ["fuzz"]
 
 [workspace.package]
 edition = "2021"

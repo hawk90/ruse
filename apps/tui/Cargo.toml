@@ -9,6 +9,11 @@ license.workspace = true
 [lib]
 bench = false
 
+# `cargo fuzz` builds with `--cfg fuzzing`, which gates `fuzz_entry` (#920); declare it so the check-cfg
+# lint knows it.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
+
 [[bin]]
 name = "ruse"
 path = "src/main.rs"

@@ -525,6 +525,47 @@ impl View {
         }
     }
 
+    /// The invariant walker for one view over `bytes` (#906): the cursor and every stored position (marks,
+    /// change list, jumplist, `[`/`]`, `gi`, `gv`, the Visual anchor, the Emacs mark) lie inside the text
+    /// and on a char boundary of valid UTF-8, and the change and jump cursors stay within their lists.
+    /// Panics on the first broken rule; for property and fuzz tests.
+    pub fn assert_invariants(&self, bytes: &[u8]) {
+        let len = bytes.len();
+        let utf8 = std::str::from_utf8(bytes).ok();
+        let check = |what: &str, p: usize| {
+            assert!(p <= len, "{what} at {p}, past the end {len}");
+            if let Some(s) = utf8 {
+                assert!(s.is_char_boundary(p), "{what} at {p} splits a character");
+            }
+        };
+        check("the cursor", self.cursor);
+        for (i, t) in self.tracked().iter().enumerate() {
+            if let Some(p) = t.pos {
+                check(&format!("tracked position {i}"), p);
+            }
+        }
+        for (what, p) in [
+            ("the Visual anchor", self.anchor),
+            ("the Emacs mark", self.mark),
+            ("the Insert start", self.insert_start),
+            ("Insstart", self.insstart),
+        ] {
+            if let Some(p) = p {
+                check(what, p);
+            }
+        }
+        assert!(self.changes.len() <= MAX_CHANGES, "change list overflow");
+        assert!(self.jumps.len() <= MAX_CHANGES, "jumplist overflow");
+        assert!(
+            self.change_idx <= self.changes.len(),
+            "change cursor past the list"
+        );
+        assert!(
+            self.jump_idx <= self.jumps.len(),
+            "jump cursor past the list"
+        );
+    }
+
     /// A fresh view over `doc`: cursor at the start, Normal mode, empty registers/sessions. Config
     /// fields hold the schema defaults (spec/config-schema.yaml: editor.tab_width=4,
     /// editor.indent_style=space); runtime config wiring is deferred (as with editor.scrolloff).
@@ -1196,6 +1237,18 @@ impl EditorState {
         st
     }
 
+    /// The invariant walker over the document and its view ([`Document::assert_invariants`],
+    /// [`View::assert_invariants`]); panics on the first broken rule (#906).
+    pub fn assert_invariants(&self) {
+        assert_eq!(
+            self.view.doc,
+            self.doc.id(),
+            "the view names another document"
+        );
+        self.doc.assert_invariants();
+        self.view.assert_invariants(self.doc.bytes());
+    }
+
     /// Apply `txn`, carrying this view's marks, change list and jumplist through it (#686). Every edit
     /// the editor makes goes through here or [`EditorState::with_tracked`].
     pub(crate) fn apply_txn(&mut self, txn: Transaction) -> Result<crate::pos::Revision, TxnError> {
@@ -1845,12 +1898,12 @@ impl EditorState {
     fn relocated_cursor(&self, bytes: &[u8], ls: usize) -> usize {
         let le = line_end(bytes, ls);
         let cursor = if self.view.curswant == range::MAXCOL {
-            motion::prev_boundary(bytes, le).max(ls)
+            motion::prev_grapheme(bytes, le).max(ls)
         } else {
             range::want_col(bytes, ls, self.view.curswant, self.view.indent.tab_width)
         };
         if cursor >= le && le > ls {
-            motion::prev_boundary(bytes, le)
+            motion::prev_grapheme(bytes, le)
         } else {
             cursor
         }
@@ -3031,7 +3084,7 @@ fn undo_target(st: &EditorState, placed: crate::undo_cursor::UndoCursor, mode: M
         None => range::want_col(b, ls, st.view.curswant, st.view.indent.tab_width),
     };
     if at == le && ls < le && mode == Mode::Normal && st.view.caret == CaretGravity::OnChar {
-        prev_boundary(b, le)
+        prev_grapheme(b, le)
     } else {
         at
     }

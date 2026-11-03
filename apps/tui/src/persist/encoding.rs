@@ -128,6 +128,27 @@ impl FileFormat {
 mod tests {
     use super::*;
 
+    proptest::proptest! {
+        #![proptest_config(crate::test_cases(512))]
+
+        /// An unmodified buffer writes back the exact bytes it was read from (#909): for any file, the
+        /// detected format strips to buffer bytes that restore to the original, and a file read with a
+        /// final newline gives a buffer that already ends in one (so the save step adds none). Over an
+        /// alphabet of the bytes the format logic looks at: CR, LF, the BOM's bytes, NUL and a stray byte.
+        #[test]
+        fn an_unmodified_buffer_writes_back_its_bytes(
+            raw in proptest::collection::vec(
+                proptest::sample::select(b"a\r\n\r\n\xEF\xBB\xBF\x00\xFF".to_vec()), 0..24),
+            bom in proptest::prelude::any::<bool>(),
+        ) {
+            let raw = if bom { [BOM.as_slice(), &raw].concat() } else { raw };
+            let fmt = FileFormat::detect(&raw);
+            let buffer = fmt.to_buffer(&raw);
+            proptest::prop_assert!(!fmt.final_newline || buffer.is_empty() || buffer.ends_with(b"\n"));
+            proptest::prop_assert_eq!(fmt.to_disk(&buffer), raw);
+        }
+    }
+
     #[test]
     fn detects_and_round_trips_crlf() {
         let raw = b"one\r\ntwo\r\nthree";

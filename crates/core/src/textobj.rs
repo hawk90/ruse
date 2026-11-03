@@ -1421,7 +1421,7 @@ mod tests {
     }
 
     proptest::proptest! {
-        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+        #![proptest_config(crate::test_cases(256))]
 
         /// Every object, from every cursor, with any count, in operator-pending and Visual mode, yields
         /// in-bounds ranges on char boundaries (the buffer mixes blanks, line breaks, sentence and bracket

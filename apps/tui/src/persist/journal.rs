@@ -442,7 +442,7 @@ mod tests {
         }
 
         proptest! {
-            #![proptest_config(ProptestConfig::with_cases(256))]
+            #![proptest_config(crate::test_cases(256))]
 
             /// Arbitrary bytes (and arbitrary bytes behind the magic) never panic replay.
             #[test]

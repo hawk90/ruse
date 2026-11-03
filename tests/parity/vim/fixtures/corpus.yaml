@@ -7771,6 +7771,295 @@
       }
     },
     {
+      "name": "block_d_cjk_rows",
+      "lines": [
+        "가나다",
+        "라마바",
+        "사아자"
+      ],
+      "keys": "l<C-v>jd",
+      "expect": {
+        "text": [
+          "가다",
+          "라바",
+          "사아자"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "나\n마",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_d_cjk_over_ascii",
+      "lines": [
+        "abcdef",
+        "가나다",
+        "ghijkl"
+      ],
+      "keys": "l<C-v>jjld",
+      "expect": {
+        "text": [
+          "adef",
+          "  다",
+          "gjkl"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bc\n  \nhi",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_d_ascii_over_cjk",
+      "lines": [
+        "가나다",
+        "abcdef",
+        "라마바"
+      ],
+      "keys": "<C-v>jjd",
+      "expect": {
+        "text": [
+          "나다",
+          "cdef",
+          "마바"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "가\nab\n라",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_y_p_cjk",
+      "lines": [
+        "가나다",
+        "라마바"
+      ],
+      "keys": "<C-v>jy$p",
+      "expect": {
+        "text": [
+          "가나다가",
+          "라마바라"
+        ],
+        "cursor": [
+          1,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "가\n라",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "가\n라",
+          "type": "blockwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_d_combining",
+      "lines": [
+        "éái",
+        "xyz"
+      ],
+      "keys": "l<C-v>jd",
+      "expect": {
+        "text": [
+          "éi",
+          "xz"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "á\ny",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_I_combining",
+      "lines": [
+        "éab",
+        "cde"
+      ],
+      "keys": "l<C-v>jIX<Esc>",
+      "expect": {
+        "text": [
+          "éXab",
+          "cXde"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_d_zwj_cluster",
+      "lines": [
+        "a👨‍👩b",
+        "cdefg"
+      ],
+      "keys": "l<C-v>jd",
+      "expect": {
+        "text": [
+          "ab",
+          "cfg"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "👨‍👩\nde",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_d_tab_row",
+      "lines": [
+        "\tab",
+        "1234cd"
+      ],
+      "keys": "<C-v>jd",
+      "setup": "set tabstop=4 noexpandtab",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\t\n1234",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_A_dollar_cjk",
+      "lines": [
+        "가",
+        "abc",
+        "나다"
+      ],
+      "keys": "<C-v>jj$AZ<Esc>",
+      "expect": {
+        "text": [
+          "가Z",
+          "abcZ",
+          "나다Z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "block_c_cjk",
+      "lines": [
+        "가나다",
+        "라마바"
+      ],
+      "keys": "l<C-v>jcZ<Esc>",
+      "expect": {
+        "text": [
+          "가Z다",
+          "라Z바"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "나\n마",
+          "type": "blockwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "block_insert_I_replicate",
       "lines": [
         "abc",
@@ -43410,6 +43699,214 @@
         "reg_unnamed": {
           "text": "라",
           "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "e_combining_lands_on_base",
+      "lines": [
+        "éé x"
+      ],
+      "keys": "e",
+      "expect": {
+        "text": [
+          "éé x"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "E_combining_twice",
+      "lines": [
+        "éé áb"
+      ],
+      "keys": "EE",
+      "expect": {
+        "text": [
+          "éé áb"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "e_combining_then_x",
+      "lines": [
+        "aé b"
+      ],
+      "keys": "ex",
+      "expect": {
+        "text": [
+          "a b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "de_combining",
+      "lines": [
+        "éé x"
+      ],
+      "keys": "de",
+      "expect": {
+        "text": [
+          " x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "éé",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "insert_bs_combining",
+      "lines": [
+        "éx"
+      ],
+      "keys": "$i<BS><Esc>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "insert_bs_flag",
+      "lines": [
+        "a🇰🇷x"
+      ],
+      "keys": "$i<BS><Esc>",
+      "expect": {
+        "text": [
+          "ax"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "insert_bs_zwj",
+      "lines": [
+        "👨‍👩x"
+      ],
+      "keys": "$i<BS><Esc>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "esc_after_combining_typed",
+      "lines": [
+        "x"
+      ],
+      "keys": "ié<Esc>",
+      "expect": {
+        "text": [
+          "éx"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
         },
         "reg0": {
           "text": "",

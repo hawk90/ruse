@@ -31,15 +31,20 @@ fn alphabet(include_history_ops: bool) -> Vec<KeyEvent> {
     let mut v = Vec::new();
     // Motions h j k l w b e W B E 0 $ ^ g G; modes i a o O v V R; edits x X p P J ~ D C Y s; operators
     // d c y; find f F t T ; ,; search / n N; register "; dot .; counts 1 2 3; and literal insert chars
-    // (so insert sessions produce real bytes, incl. a multibyte one).
-    for c in "hjklwbeWBE0$^gGiaoOvVRxXpPJ~DCYsdcyfFtT;,nN/\".123AIqZ é".chars() {
+    // (so insert sessions produce real bytes: a Latin, a Hangul and a CJK wide char, a combining acute, a
+    // zero-width joiner, an emoji and a tab, so wide and composing text meets every operator, #909).
+    for c in
+        "hjklwbeWBE0$^gGiaoOvVRxXpPJ~DCYsdcyfFtT;,nN/\".123AIqZ é가漢\u{301}\u{200d}👩\t".chars()
+    {
         v.push(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
     }
     for code in [KeyCode::Esc, KeyCode::Enter, KeyCode::Backspace] {
         v.push(KeyEvent::new(code, KeyModifiers::NONE));
     }
-    // CTRL-O insert one-shot, CTRL-V blockwise, CTRL-^ Lang-Arg toggle — history-neutral prefixes.
-    for c in ['o', 'v', '^'] {
+    // CTRL-O insert one-shot, CTRL-V blockwise, CTRL-^ Lang-Arg toggle — history-neutral prefixes; CTRL-W
+    // (with `s`, `v`, `c`, `w`, `o` already in the set) splits, closes and cycles windows over the one
+    // buffer, so the walker sees several views of it (#906).
+    for c in ['o', 'v', '^', 'w'] {
         v.push(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
     }
     if include_history_ops {
@@ -49,10 +54,30 @@ fn alphabet(include_history_ops: bool) -> Vec<KeyEvent> {
     v
 }
 
-/// A small random UTF-8 starting buffer (incl. multibyte chars — the cursor-boundary stressor).
+/// Pieces of hard text for the starting buffer (#909): wide CJK and Hangul, a combining sequence, a ZWJ
+/// emoji family, a flag pair, tabs mixed with wide chars, and line breaks.
+const HARD: &[&str] = &[
+    "가",
+    "漢字",
+    "e\u{301}",
+    "a\u{301}\u{302}",
+    "👨\u{200d}👩\u{200d}👧",
+    "🇰🇷",
+    "\t",
+    "\t가\t",
+    "\n",
+    "a",
+    " ",
+];
+
+/// A small random UTF-8 starting buffer: arbitrary scalars mixed with [`HARD`] pieces, so the cursor-
+/// boundary and cluster cases come up often rather than by luck.
 fn text() -> impl Strategy<Value = Vec<u8>> {
-    prop::collection::vec(any::<char>(), 0..24)
-        .prop_map(|cs| cs.into_iter().collect::<String>().into_bytes())
+    let piece = prop_oneof![
+        any::<char>().prop_map(String::from),
+        proptest::sample::select(HARD).prop_map(String::from),
+    ];
+    prop::collection::vec(piece, 0..24).prop_map(|ps| ps.concat().into_bytes())
 }
 
 /// Is `k` one of the count digits (`1`/`2`/`3`) the alphabet offers?
@@ -118,6 +143,9 @@ fn run_session(init: &[u8], keys: &[KeyEvent]) -> Result<Headless, TestCaseError
             cursor
         );
 
+        // The whole-state walker (#906): undo tree, anchors, marks, windows and buffers stay consistent.
+        ws.assert_invariants();
+
         // Bound exponential yank+paste growth (see `MAX_FUZZ_BUFFER_BYTES`): the invariants above have been
         // checked for this key; once the buffer is huge we stop feeding further keys rather than let a
         // doubling session balloon to gigabytes. The round-trip is still exercised over every applied op.
@@ -149,8 +177,24 @@ fn can_redo(ws: &Workspace) -> bool {
     ws.focused().doc.can_redo()
 }
 
+/// `n` cases, scaled by `RUSE_PROPTEST_SCALE` for the scheduled deep tier (#920), with the reject budget
+/// scaled alike so a filtering test does not abort a long run.
+fn cases(n: u32) -> ProptestConfig {
+    let scale = std::env::var("RUSE_PROPTEST_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(1)
+        .max(1);
+    let base = ProptestConfig::default();
+    ProptestConfig {
+        cases: n.saturating_mul(scale),
+        max_global_rejects: base.max_global_rejects.saturating_mul(scale),
+        ..base
+    }
+}
+
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(600))]
+    #![proptest_config(cases(600))]
 
     /// ANY session (including `u`/CTRL-R): per-key UTF-8 + cursor-boundary, and a full undo terminates
     /// and restores the initial buffer. `undo-all -> root` is valid however the session branched history.

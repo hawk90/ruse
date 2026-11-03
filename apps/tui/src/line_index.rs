@@ -91,6 +91,51 @@ mod tests {
         }
     }
 
+    proptest::proptest! {
+        #![proptest_config(crate::test_cases(256))]
+
+        /// A shadow consumer (#906): the index, refreshed by `(buffer, revision)` only, equals the `pos`
+        /// scan of the current text after any run of edits, undos and redos — the revision key is never
+        /// reused for other text.
+        #[test]
+        fn the_index_follows_any_edit_undo_redo_sequence(
+            init in proptest::collection::vec(
+                proptest::sample::select(b"ab\n".to_vec()), 0..16),
+            ops in proptest::collection::vec(
+                (0u8..4, proptest::prelude::any::<usize>(), 0usize..4,
+                 proptest::collection::vec(proptest::sample::select(b"x\n".to_vec()), 0..3)),
+                0..30),
+        ) {
+            use ruse_core::{Document, Edit, EditList, Transaction, TransactionOrigin};
+            let mut doc = Document::new(DocumentId(1), init);
+            let mut idx = LineIndex::default();
+            for (kind, p, d, ins) in ops {
+                match kind {
+                    0 => { doc.undo(); }
+                    1 => { doc.redo(); }
+                    _ => {
+                        let len = doc.len();
+                        let p = p % (len + 1);
+                        let list = EditList::new(vec![Edit::replace(p, d.min(len - p), ins)])
+                            .expect("one edit");
+                        doc.sync_undo();
+                        doc.apply(Transaction::new(doc.revision(), list, TransactionOrigin::UserInput))
+                            .expect("in range");
+                    }
+                }
+                let bytes = doc.bytes();
+                idx.refresh_for(doc.id(), doc.revision(), bytes);
+                for b in 0..=bytes.len() {
+                    proptest::prop_assert_eq!(idx.line_of(b), pos::line_of(bytes, b));
+                }
+                let lines = bytes.iter().filter(|&&b| b == b'\n').count();
+                for l in 0..=lines + 1 {
+                    proptest::prop_assert_eq!(idx.nth_line_start(l), pos::nth_line_start(bytes, l));
+                }
+            }
+        }
+    }
+
     #[test]
     fn reuses_the_cache_on_unchanged_revision() {
         let mut idx = LineIndex::default();

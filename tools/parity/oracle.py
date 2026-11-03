@@ -656,6 +656,18 @@ FIXTURES: list[dict] = [
     {"name": "block_yank_paste_before", "lines": ["abc", "def", "ghi"], "keys": "<C-v>ljyP"},
     {"name": "block_yank_paste_after_1col", "lines": ["abc", "def"], "keys": "<C-v>jyp"},
     {"name": "forced_d_ctrl_v_j_blockwise", "lines": ["abc", "def"], "keys": "d<C-v>j"},
+    #     BLOCKWISE over wide, composing and tabbed text (#909): the block is in screen cells, so a wide
+    #     char half inside it, a combining sequence, a ZWJ cluster and a tab each decide the row's slice.
+    {"name": "block_d_cjk_rows", "lines": ["가나다", "라마바", "사아자"], "keys": "l<C-v>jd"},
+    {"name": "block_d_cjk_over_ascii", "lines": ["abcdef", "가나다", "ghijkl"], "keys": "l<C-v>jjld"},
+    {"name": "block_d_ascii_over_cjk", "lines": ["가나다", "abcdef", "라마바"], "keys": "<C-v>jjd"},
+    {"name": "block_y_p_cjk", "lines": ["가나다", "라마바"], "keys": "<C-v>jy$p"},
+    {"name": "block_d_combining", "lines": ["éái", "xyz"], "keys": "l<C-v>jd"},
+    {"name": "block_I_combining", "lines": ["éab", "cde"], "keys": "l<C-v>jIX<Esc>"},
+    {"name": "block_d_zwj_cluster", "lines": ["a\U0001F468‍\U0001F469b", "cdefg"], "keys": "l<C-v>jd"},
+    {"name": "block_d_tab_row", "lines": ["\tab", "1234cd"], "keys": "<C-v>jd", "setup": "set tabstop=4 noexpandtab"},
+    {"name": "block_A_dollar_cjk", "lines": ["가", "abc", "나다"], "keys": "<C-v>jj$AZ<Esc>"},
+    {"name": "block_c_cjk", "lines": ["가나다", "라마바"], "keys": "l<C-v>jcZ<Esc>"},
     #     BLOCKWISE INSERT-REPLICATE (slice 2): `I`/`A`/`c` type on the top row and replicate the typed text
     #     down every block row on <Esc> (`A` pads short lines; `c` deletes the block first). ----------------
     {"name": "block_insert_I_replicate", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjIX<Esc>"},
@@ -1845,6 +1857,15 @@ FIXTURES: list[dict] = [
     #     unterminated last line (#709), and motions/operators at the end of the buffer (#677).
     {"name": "e_multibyte_twice", "lines": ["가나 다라"], "keys": "ee"},
     {"name": "e_multibyte_then_x", "lines": ["가나 다라"], "keys": "eex"},
+    #     #909: a base char with combining marks, and a flag, are one character to `e`/`E` and `<BS>`.
+    {"name": "e_combining_lands_on_base", "lines": ["éé x"], "keys": "e"},
+    {"name": "E_combining_twice", "lines": ["éé áb"], "keys": "EE"},
+    {"name": "e_combining_then_x", "lines": ["aé b"], "keys": "ex"},
+    {"name": "de_combining", "lines": ["éé x"], "keys": "de"},
+    {"name": "insert_bs_combining", "lines": ["éx"], "keys": "$i<BS><Esc>"},
+    {"name": "insert_bs_flag", "lines": ["a\U0001F1F0\U0001F1F7x"], "keys": "$i<BS><Esc>"},
+    {"name": "insert_bs_zwj", "lines": ["\U0001F468‍\U0001F469x"], "keys": "$i<BS><Esc>"},
+    {"name": "esc_after_combining_typed", "lines": ["x"], "keys": "ié<Esc>"},
     {"name": "de_multibyte", "lines": ["가나 다라"], "keys": "lde"},
     {"name": "de_count_punct", "lines": ["foo.bar baz"], "keys": "d2e"},
     {"name": "dw_count_crosses_lines", "lines": ["foo bar", "baz qux"], "keys": "3dw"},

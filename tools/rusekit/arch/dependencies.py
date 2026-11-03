@@ -9,6 +9,9 @@ Two things it can check today without inventing new policy:
 If spec/dependencies.yaml grows an explicit `crate_layers:` map (crate -> allowed crate
 deps), this also enforces direction against it; until then that check reports "not declared"
 rather than guessing a layering from prose.
+
+  3. The module-level rules of spec/architecture.yaml read from the source (`source_scan`, #983):
+     each `forbidden_module_edges[*].scan`, and `txn_only_mutation` (CON-TXN-ONLY-MUTATION).
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ import subprocess
 import sys
 
 from rusekit import repo, render  # noqa: E402
+from rusekit.arch import source_scan  # noqa: E402
 
 try:
     import yaml
@@ -162,11 +166,12 @@ def main(argv: list[str]) -> int:
         else:
             render.bullet("no architecture.yaml crate contract — cycles enforced, direction skipped",
                           mark="·")
-        # forbidden module edges: declared now, source-enforceable once crates have code
-        fme = arch.get("forbidden_module_edges") or []
-        if fme:
-            render.bullet(f"forbidden module edges: {len(fme)} declared "
-                          "(source-scan NOT-YET — needs code)", mark="·")
+    # 3. module-level rules read from the source (#983): forbidden edges inside a crate and direct mutation.
+    if arch:
+        src_errors, notes = source_scan.check(arch)
+        for n in notes:
+            render.bullet(n, mark="·")
+        errors.extend(src_errors)
 
     print()
     for w in warns:
