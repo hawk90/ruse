@@ -301,6 +301,67 @@ mod register_tests {
         assert_eq!(text(&st), "apatbc\n");
     }
 
+    /// The cursor after a linewise operator that `"/` refuses (#1174), as nvim v0.12.6 leaves it: a delete at
+    /// the wanted column on the range's first line, a yank at the range's start.
+    #[test]
+    fn a_refused_linewise_operator_stays_at_the_start_of_its_range() {
+        const WORDS: &[u8] = b"one two three\nfour five six\nseven eight\n";
+        let at = |cmds: &[Command], op: Command| {
+            let mut st = EditorState::new(WORDS.to_vec());
+            for c in cmds {
+                apply_command(&mut st, c);
+            }
+            apply_command(&mut st, &Command::SetRegister(Some('/')));
+            apply_command(&mut st, &op);
+            assert_eq!(st.bytes(), WORDS, "{op:?}: nothing is deleted");
+            st.cursor()
+        };
+        let line2_w = [
+            Command::Move(1, Motion::Down),
+            Command::Move(1, Motion::WordFwd),
+        ];
+        let line3_w = [
+            Command::Move(1, Motion::LastLine),
+            Command::Move(1, Motion::WordFwd),
+        ];
+        // `jw"/dd` keeps [2,5]; `jw"/dk` goes up to [1,5]; `jw"/yk` too.
+        assert_eq!(at(&line2_w, Command::Delete(1, Motion::Line)), 14 + 5);
+        assert_eq!(at(&line2_w, Command::Delete(1, Motion::Up)), 5);
+        assert_eq!(at(&line2_w, Command::Yank(1, Motion::Up)), 5);
+        // On the last line, whose delete span starts at the newline before it: `Gw"/dd` keeps [3,6].
+        assert_eq!(at(&line3_w, Command::Delete(1, Motion::Line)), 28 + 6);
+        assert_eq!(at(&line3_w, Command::Delete(1, Motion::Up)), 14 + 6);
+        // `Gw"/dgg` lands at the wanted column 6 on line 1.
+        assert_eq!(at(&line3_w, Command::Delete(1, Motion::GotoLine)), 6);
+    }
+
+    /// A search with no previous pattern (an empty one, #1173) fails: a beep, nothing moves, and the wanted
+    /// column resets to the cursor's (nvim's `normal_search`).
+    #[test]
+    fn a_search_with_no_pattern_fails_and_resets_the_wanted_column() {
+        let mut st = EditorState::new(b"ab cd ef ghijklmnop qrstuvwxyz\ngh (ij kl\n".to_vec());
+        apply_command(&mut st, &Command::Move(1, Motion::Down));
+        apply_command(&mut st, &Command::Move(1, Motion::LineEnd));
+        let effects = apply_command(
+            &mut st,
+            &Command::Search {
+                op: crate::SearchOp::Delete,
+                count: 1,
+                pattern: String::new(),
+                backward: false,
+                offset: crate::SearchOffset::None,
+            },
+        );
+        assert!(effects.contains(&Effect::Beep));
+        assert_eq!(st.cursor(), 31 + 8);
+        apply_command(&mut st, &Command::Move(1, Motion::Up));
+        assert_eq!(
+            st.cursor(),
+            8,
+            "the wanted column is the cursor's, not the line's end"
+        );
+    }
+
     #[test]
     fn insert_eval_splices_arithmetic_result_at_the_caret() {
         // `i` then `<C-r>=1+2*3<CR>` inserts "7" at the caret, staying in Insert (`:help i_CTRL-R`).
@@ -2387,11 +2448,16 @@ mod shift_tests {
     }
 
     #[test]
-    fn shift_right_adds_tab_width_spaces_and_homes_to_first_non_blank() {
-        // Default config = 4 spaces. Matches the parity fixture shift_right_line (oracle `>>`).
+    fn shift_right_adds_tab_width_spaces_and_keeps_the_wanted_column() {
+        // Default config = 4 spaces. Matches the parity fixture shift_right_line (oracle `>>`): under
+        // 'nostartofline' the cursor stays at the wanted column, here 0 (#1176).
         let st = run("hello", &[Command::ShiftRight(1)]);
         assert_eq!(text(&st), "    hello");
-        assert_eq!(st.cursor(), 4, "cursor lands on the first non-blank ('h')");
+        assert_eq!(
+            st.cursor(),
+            0,
+            "cursor stays at column 0, on the new indent"
+        );
         assert_eq!(
             st.register().text(),
             b"",
@@ -2403,14 +2469,14 @@ mod shift_tests {
     fn shift_right_stacks_onto_existing_indent() {
         let st = run("  hi", &[Command::ShiftRight(1)]);
         assert_eq!(text(&st), "      hi"); // 2 + 4 spaces
-        assert_eq!(st.cursor(), 6);
+        assert_eq!(st.cursor(), 0);
     }
 
     #[test]
     fn shift_right_uses_a_tab_when_indent_style_is_tab() {
         let st = run_indent("hello", 4, IndentStyle::Tab, &[Command::ShiftRight(1)]);
         assert_eq!(text(&st), "\thello");
-        assert_eq!(st.cursor(), 1, "cursor after the one-byte tab, on 'h'");
+        assert_eq!(st.cursor(), 0, "cursor on the tab that covers column 0");
     }
 
     #[test]
@@ -2485,11 +2551,7 @@ mod shift_tests {
             "    a\n    b\nc",
             "2>> shifts the first two lines"
         );
-        assert_eq!(
-            st.cursor(),
-            4,
-            "cursor stays on the first line's first non-blank"
-        );
+        assert_eq!(st.cursor(), 0, "cursor stays on the first line, column 0");
     }
 
     #[test]
@@ -2504,7 +2566,7 @@ mod shift_tests {
         // 6 leading spaces, tab_width 4 -> removes 4, leaves 2.
         let st = run("      hi", &[Command::ShiftLeft(1)]);
         assert_eq!(text(&st), "  hi");
-        assert_eq!(st.cursor(), 2);
+        assert_eq!(st.cursor(), 0);
     }
 
     #[test]
@@ -2529,7 +2591,8 @@ mod shift_tests {
     fn shift_left_removes_a_leading_tab() {
         let st = run("\thello", &[Command::ShiftLeft(1)]);
         assert_eq!(text(&st), "hello");
-        assert_eq!(st.cursor(), 0);
+        // The cursor on the tab wants its last column (3 at tabstop 4), and stays there.
+        assert_eq!(st.cursor(), 3);
     }
 
     #[test]
@@ -8580,7 +8643,8 @@ mod visual_op_tests {
 
     #[test]
     fn shift_moves_the_selected_lines_count_levels() {
-        // `vj2>` with shiftwidth 4: two lines, eight columns; cursor on the first line's first non-blank.
+        // `vj2>` with shiftwidth 4: two lines, eight columns; cursor on the first line at the wanted column
+        // (0, 'nostartofline', #1176).
         let st = run(
             "a\nb\nc",
             &[
@@ -8593,7 +8657,7 @@ mod visual_op_tests {
             ],
         );
         assert_eq!(text(&st), "        a\n        b\nc");
-        assert_eq!(st.cursor(), 8);
+        assert_eq!(st.cursor(), 0);
         assert_eq!(st.mode(), Mode::Normal);
         let st = run(
             "            a\nb",
