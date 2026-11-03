@@ -39,10 +39,9 @@ THE NON-CORRUPTION TECHNIQUE (this harness's answer to the oracle hazard):
        version number (spec/parity/upstreams.yaml emacs.version_label), and that version string is
        recorded in every emitted document. A wrong binary refuses rather than silently recording a lie.
 
-SCOPE OF THE SEED CORPUS (char vs byte): point/mark are emitted as 0-based CHARACTER offsets. ruse's
-core addresses the buffer by BYTE offset; for the ASCII seed corpus the two coincide, so the ruse
-comparator can compare them directly. Multibyte fixtures (where char != byte) are a later expansion,
-exactly as the Neovim corpus added its unicode fixtures after the ASCII core — see the corpus `note`.
+CHAR VS BYTE: point/mark are emitted as 0-based CHARACTER offsets. ruse's core addresses the buffer by
+BYTE offset, so the ruse comparator converts a fixture's point to bytes going in and ruse's point/mark
+back to characters coming out. The case-conversion fixtures (#912, `cc_*`) are multibyte.
 
 Stdlib only (D-034): no PyYAML, no pip deps. The fixture corpus is emitted as JSON, which is a strict
 subset of YAML 1.2 — so `corpus.yaml` is valid YAML *and* parses with `serde_json` on the Rust side.
@@ -94,11 +93,15 @@ _ELISP = r"""
       (setq last-command this-command)
       (setq this-command (intern op))
       (call-interactively (intern op)))
-    (princ (json-serialize
-            (list :text (vconcat (split-string (buffer-string) "\n"))
-                  :point (1- (point))
-                  :mark (if (mark t) (1- (mark t)) :null)
-                  :kill (if kill-ring (substring-no-properties (car kill-ring)) :null))))))
+    ;; `json-serialize` returns unibyte UTF-8; `princ` would write each byte of it as a raw-byte char, so
+    ;; decode it first and let the batch output coding (UTF-8) write the text (multibyte fixtures, #912).
+    (princ (decode-coding-string
+            (json-serialize
+             (list :text (vconcat (split-string (buffer-string) "\n"))
+                   :point (1- (point))
+                   :mark (if (mark t) (1- (mark t)) :null)
+                   :kill (if kill-ring (substring-no-properties (car kill-ring)) :null)))
+            'utf-8))))
 """
 
 
@@ -190,6 +193,7 @@ def run_emacs(text: str, ops: list[str], point: int = 0) -> dict:
             ["emacs", "-Q", "--batch", "-l", script],
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
     finally:
         Path(script).unlink(missing_ok=True)
@@ -211,8 +215,7 @@ def run_emacs(text: str, ops: list[str], point: int = 0) -> dict:
 # --- The fixture corpus: ALREADY-IMPLEMENTED ruse Emacs-profile ops. `expect` is captured from the
 #     oracle, never hand-written; the (text, ops, point) here are the only human-authored part. Every
 #     op name is an Emacs command that the ruse M-x registry (emacs_command_by_name) also resolves, so
-#     the same fixture drives both editors. ASCII only for the seed (char offset == byte offset); see
-#     the module docstring's scope note.
+#     the same fixture drives both editors. Offsets are characters; see the module docstring.
 FIXTURES: list[dict] = [
     # --- motion (point only; text/mark/kill unchanged) ------------------------------------------------
     {"name": "forward_char", "text": "hello", "ops": ["forward-char"]},
@@ -452,6 +455,62 @@ FIXTURES: list[dict] = [
     {"name": "backward_kill_word_trailing_punct", "text": "foo...", "ops": ["backward-kill-word"], "point": 6},
     # --- mark-word at end-of-buffer: forward-word cannot advance, mark lands at point (degenerate region). -
     {"name": "mark_word_at_eob", "text": "foo", "ops": ["mark-word"], "point": 3},
+    # === Case conversion conformance (#912): casefiddle.c's special casing (one character to several),
+    #     the standard case table (ı and ſ stay), title case for capitalize, and the final sigma. Point is
+    #     a CHARACTER offset, so a widening recase moves it by characters. ----------------------------
+    {"name": "cc_upcase_word_sharp_s", "text": "straße x", "ops": ["upcase-word"]},
+    {"name": "cc_downcase_word_capital_sharp_s", "text": "STRAẞE x", "ops": ["downcase-word"]},
+    {"name": "cc_capitalize_word_sharp_s_initial", "text": "ßa x", "ops": ["capitalize-word"]},
+    {"name": "cc_capitalize_word_sharp_s_inner", "text": "straße x", "ops": ["capitalize-word"]},
+    {"name": "cc_upcase_word_ligature", "text": "ﬁsh x", "ops": ["upcase-word"]},
+    {"name": "cc_capitalize_word_ligature", "text": "ﬁsh x", "ops": ["capitalize-word"]},
+    {"name": "cc_downcase_word_ligature", "text": "ﬁsh x", "ops": ["downcase-word"]},
+    {"name": "cc_capitalize_word_titlecase", "text": "ǆemal x", "ops": ["capitalize-word"]},
+    {"name": "cc_downcase_word_titlecase", "text": "ǅEMAL x", "ops": ["downcase-word"]},
+    {"name": "cc_upcase_word_titlecase", "text": "ǅemal x", "ops": ["upcase-word"]},
+    {"name": "cc_upcase_word_dotless_i", "text": "ıx y", "ops": ["upcase-word"]},
+    {"name": "cc_upcase_word_long_s", "text": "ſx y", "ops": ["upcase-word"]},
+    {"name": "cc_downcase_word_dotted_capital_i", "text": "İx y", "ops": ["downcase-word"]},
+    {"name": "cc_upcase_word_micro_y_diaeresis", "text": "µÿ x", "ops": ["upcase-word"]},
+    {"name": "cc_upcase_word_n_apostrophe", "text": "ŉa x", "ops": ["upcase-word"]},
+    {"name": "cc_upcase_word_j_caron", "text": "ǰa x", "ops": ["upcase-word"]},
+    {"name": "cc_upcase_word_armenian_ligature", "text": "և x", "ops": ["upcase-word"]},
+    {"name": "cc_downcase_word_final_sigma", "text": "ΌΣΟΣ x", "ops": ["downcase-word"]},
+    {"name": "cc_downcase_word_sigma_inside", "text": "ΑΣΑ x", "ops": ["downcase-word"]},
+    {"name": "cc_downcase_word_sigma_alone", "text": "Σ x", "ops": ["downcase-word"]},
+    {"name": "cc_capitalize_word_final_sigma", "text": "ΌΣΟΣ x", "ops": ["capitalize-word"]},
+    {"name": "cc_upcase_word_final_sigma", "text": "οδος x", "ops": ["upcase-word"]},
+    {"name": "cc_upcase_word_iota_subscript", "text": "ᾳβ x", "ops": ["upcase-word"]},
+    {"name": "cc_capitalize_word_iota_subscript", "text": "ᾳβ x", "ops": ["capitalize-word"]},
+    {"name": "cc_upcase_word_dialytika_tonos", "text": "ΐα x", "ops": ["upcase-word"]},
+    {"name": "cc_upcase_word_cherokee", "text": "ꭰꭱ x", "ops": ["upcase-word"]},
+    {"name": "cc_capitalize_word_underscore", "text": "foo_bar baz", "ops": ["capitalize-word"]},
+    {
+        "name": "cc_upcase_region_sharp_s",
+        "text": "straße x",
+        "ops": ["set-mark-command", "forward-word", "upcase-region"],
+    },
+    {
+        "name": "cc_upcase_region_sharp_s_point_at_start",
+        "text": "straße x",
+        "ops": ["set-mark-command", "forward-word", "exchange-point-and-mark", "upcase-region"],
+    },
+    {
+        "name": "cc_downcase_region_final_sigma",
+        "text": "ΟΔΟΣ ΣΑΣ x",
+        "ops": ["set-mark-command", "forward-word", "forward-word", "downcase-region"],
+    },
+    {
+        "name": "cc_downcase_region_sigma_cut_by_region",
+        "text": "ΑΣΑ x",
+        "ops": ["set-mark-command", "move-beginning-of-line", "downcase-region"],
+        "point": 2,
+    },
+    {
+        "name": "cc_capitalize_region_greek",
+        "text": "όσος καλός",
+        "ops": ["set-mark-command", "forward-word", "forward-word", "capitalize-region"],
+    },
 ]
 
 
@@ -488,8 +547,7 @@ def generate(path: Path) -> int:
             "GENERATED — every `expect` was captured from the pinned Emacs oracle via "
             "call-interactively, never hand-written. Regenerate with "
             "`python3 tools/parity/emacs_oracle.py --generate`. point/mark are 0-based CHARACTER "
-            "offsets; the seed corpus is ASCII so char == byte and the ruse comparator (byte offsets) "
-            "compares them directly. Consecutive kills accumulate onto one kill-ring entry (the oracle "
+            "offsets; the ruse comparator converts them to and from its byte offsets. Consecutive kills accumulate onto one kill-ring entry (the oracle "
             "threads `last-command` like the real command loop), so multi-kill fixtures are faithful. "
             "JSON is a subset of YAML 1.2, so this .yaml parses on both ends."
         ),

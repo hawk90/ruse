@@ -1801,52 +1801,30 @@ fn edit_kill(edits: EditList, cursor: usize, mode: Mode, hint: GroupHint, reg: R
     }
 }
 
-/// Recase a word span for [`Command::EmacsCaseWord`]. `Capitalize` upper-cases the first alphanumeric of
-/// each word (a run of alphanumerics) and lower-cases the rest, mirroring Emacs `capitalize-region`;
-/// `Upcase`/`Downcase` map every character. Unicode-aware (`char::to_uppercase` can widen, e.g. `ß`→`SS`).
+/// Recase `text` for a Vim case operator (`gU` `gu` `g~` `~` `g?`): nvim's tables, one character to one
+/// (`ß` → `ẞ`), composing characters kept ([`crate::casemap::vim_recase`]). `Capitalize` is not a Vim
+/// operator; it takes the Emacs rules.
 fn recase(text: &str, case: WordCase) -> String {
+    use crate::casemap::{vim_recase, VimCase};
     match case {
-        WordCase::Upcase => text.to_uppercase(),
-        WordCase::Downcase => text.to_lowercase(),
-        WordCase::Toggle => {
-            let mut out = String::with_capacity(text.len());
-            for ch in text.chars() {
-                if ch.is_uppercase() {
-                    out.extend(ch.to_lowercase());
-                } else if ch.is_lowercase() {
-                    out.extend(ch.to_uppercase());
-                } else {
-                    out.push(ch);
-                }
-            }
-            out
-        }
-        WordCase::Rot13 => text
-            .chars()
-            .map(|ch| match ch {
-                'a'..='z' => (((ch as u8 - b'a' + 13) % 26) + b'a') as char,
-                'A'..='Z' => (((ch as u8 - b'A' + 13) % 26) + b'A') as char,
-                other => other,
-            })
-            .collect(),
-        WordCase::Capitalize => {
-            let mut out = String::with_capacity(text.len());
-            let mut at_word_start = true;
-            for ch in text.chars() {
-                if ch.is_alphanumeric() {
-                    if at_word_start {
-                        out.extend(ch.to_uppercase());
-                    } else {
-                        out.extend(ch.to_lowercase());
-                    }
-                    at_word_start = false;
-                } else {
-                    out.push(ch);
-                    at_word_start = true;
-                }
-            }
-            out
-        }
+        WordCase::Upcase => vim_recase(text, VimCase::Upper),
+        WordCase::Downcase => vim_recase(text, VimCase::Lower),
+        WordCase::Toggle => vim_recase(text, VimCase::Toggle),
+        WordCase::Rot13 => vim_recase(text, VimCase::Rot13),
+        WordCase::Capitalize => recase_emacs(text, case),
+    }
+}
+
+/// Recase `text` for an Emacs case command (`M-u` `M-l` `M-c`, the region commands): Emacs 31.1's
+/// casefiddle rules, special casing (`ß` → `SS`) and final sigma included
+/// ([`crate::casemap::emacs_recase`]). `Toggle` / `Rot13` are not Emacs commands; they take the Vim rules.
+fn recase_emacs(text: &str, case: WordCase) -> String {
+    use crate::casemap::{emacs_recase, EmacsCase};
+    match case {
+        WordCase::Upcase => emacs_recase(text, EmacsCase::Up),
+        WordCase::Downcase => emacs_recase(text, EmacsCase::Down),
+        WordCase::Capitalize => emacs_recase(text, EmacsCase::Capitalize),
+        WordCase::Toggle | WordCase::Rot13 => recase(text, case),
     }
 }
 
@@ -1916,15 +1894,22 @@ fn active_region(st: &EditorState, cur: usize) -> Option<(usize, usize)> {
     }
 }
 
-/// Recase `b[s..e]` with `case`, or `None` when the span is empty or not valid UTF-8 (a grapheme-boundary
-/// span always is). Shared by `EmacsCaseWord` (forward-word span) and `EmacsCaseRegion` (the region).
-fn recase_span(b: &[u8], s: usize, e: usize, case: WordCase) -> Option<Vec<u8>> {
+/// Recase `b[s..e]` with `case` by `rules` ([`recase`] for Vim, [`recase_emacs`]), or `None` when the
+/// span is empty or not valid UTF-8 (a grapheme-boundary span always is). Shared by `EmacsCaseWord`
+/// (forward-word span), `EmacsCaseRegion` (the region) and a Visual-block `CaseSelection` (each row).
+fn recase_span(
+    b: &[u8],
+    s: usize,
+    e: usize,
+    case: WordCase,
+    rules: fn(&str, WordCase) -> String,
+) -> Option<Vec<u8>> {
     if e <= s {
         return None;
     }
     std::str::from_utf8(&b[s..e])
         .ok()
-        .map(|span| recase(span, case).into_bytes())
+        .map(|span| rules(span, case).into_bytes())
 }
 
 /// Plan a `[count]J` / `[count]gJ` join. `count` joins `count-1` seams (Vim: `J`/`2J` = one join, `3J` =
@@ -3267,7 +3252,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 let edits: Vec<Edit> = block
                     .rows
                     .iter()
-                    .filter_map(|r| recase_span(b, r.s, r.e, *case).map(|new| (r, new)))
+                    .filter_map(|r| recase_span(b, r.s, r.e, *case, recase).map(|new| (r, new)))
                     .filter(|(r, new)| new[..] != b[r.s..r.e])
                     .map(|(r, new)| Edit::replace(r.s, r.e - r.s, new))
                     .collect();
@@ -3681,7 +3666,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         // UTF-8 to recase; point lands at `cur + new_len` in case the recased bytes changed length.
         Command::EmacsCaseWord { case } => {
             let end = motion::target(b, cur, Motion::EmacsWordFwd, 1);
-            match recase_span(b, cur, end, *case) {
+            match recase_span(b, cur, end, *case, recase_emacs) {
                 Some(recased) => {
                     let cursor = cur + recased.len();
                     Plan {
@@ -3753,22 +3738,52 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
             }
         }
         // `C-x C-u` / `C-x C-l` (Emacs upcase-/downcase-/capitalize-region, D-051): recase the active region
-        // `[min(point,mark), max)` and leave point and mark where they are. Inert without a mark. No kill write.
+        // `[min(point,mark), max)`. When the recasing changes the length (`ß` → `SS`), point at the region
+        // end moves with the text (casefiddle.c adjusts it), while the mark keeps its CHARACTER offset
+        // (`replace_range_2` leaves markers alone): Emacs 31.1 upcases "straße" with point at 0 and the
+        // mark at 6 to "STRASSE" with the mark still at 6. Inert without a mark. No kill write.
         Command::EmacsCaseRegion { case } => match active_region(st, cur) {
-            Some((s, e)) => match recase_span(b, s, e, *case) {
-                Some(recased) => Plan {
-                    action: Action::Txn {
-                        edits: one(Edit::replace(s, e - s, recased)),
-                        hint,
-                    },
-                    cursor: cur,
-                    mode: st.view.mode,
-                    is_edit: true,
-                    effects: Vec::new(),
-                    set_register: None,
-                    set_anchor: None,
-                    set_mark: None,
-                },
+            Some((s, e)) => match recase_span(b, s, e, *case, recase_emacs) {
+                Some(recased) => {
+                    let new_end = s + recased.len();
+                    let follow = |p: usize| if p >= e { p - e + new_end } else { p };
+                    // The byte offset in the recased buffer of the character the mark's offset counts to.
+                    let keep_chars = |m: usize| {
+                        if m <= s {
+                            return m;
+                        }
+                        let n = String::from_utf8_lossy(&b[s..m]).chars().count();
+                        let new = String::from_utf8_lossy(&recased);
+                        match new.char_indices().nth(n) {
+                            Some((i, _)) => s + i,
+                            None => {
+                                let past = n - new.chars().count();
+                                let tail = String::from_utf8_lossy(&b[e..]);
+                                new_end
+                                    + tail.char_indices().nth(past).map_or(tail.len(), |(i, _)| i)
+                            }
+                        }
+                    };
+                    let set_mark = st
+                        .view
+                        .mark
+                        .map(keep_chars)
+                        .filter(|&m| Some(m) != st.view.mark)
+                        .map(MarkWrite::Set);
+                    Plan {
+                        action: Action::Txn {
+                            edits: one(Edit::replace(s, e - s, recased)),
+                            hint,
+                        },
+                        cursor: follow(cur),
+                        mode: st.view.mode,
+                        is_edit: true,
+                        effects: Vec::new(),
+                        set_register: None,
+                        set_anchor: None,
+                        set_mark,
+                    }
+                }
                 None => nop(cur, st.view.mode),
             },
             None => nop(cur, st.view.mode),

@@ -51,7 +51,7 @@ custom operators are unreachable. This is the V-1 NO-GO for Vim L2.
 
 `r{char}` replaces the character under the cursor (via the input engine's `Awaiting::ReplaceChar` state — the
 key after `r` is the replacement; ctrl-r stays redo), leaving the cursor on it; it is a no-op at end-of-line
-or over a newline. `~` toggles the case of the char (Unicode-aware; `ß` differs from Vim, #732) and moves right (a non-letter just moves). `J` joins
+or over a newline. `~` toggles the case of the char by nvim's own one-to-one case tables (`ß` → `ẞ`; `crates/core/src/casemap.rs`, #732) and moves right (a non-letter just moves). `J` joins
 the current line with the next on a single space, dropping the next line's leading indent, with no space before
 `)` and existing trailing space kept (no-op on the last line; empty next line, #718). `r` and `~` take a count.
 

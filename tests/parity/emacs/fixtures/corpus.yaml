@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator": "tools/parity/emacs_oracle.py",
-  "note": "GENERATED — every `expect` was captured from the pinned Emacs oracle via call-interactively, never hand-written. Regenerate with `python3 tools/parity/emacs_oracle.py --generate`. point/mark are 0-based CHARACTER offsets; the seed corpus is ASCII so char == byte and the ruse comparator (byte offsets) compares them directly. Consecutive kills accumulate onto one kill-ring entry (the oracle threads `last-command` like the real command loop), so multi-kill fixtures are faithful. JSON is a subset of YAML 1.2, so this .yaml parses on both ends.",
+  "note": "GENERATED — every `expect` was captured from the pinned Emacs oracle via call-interactively, never hand-written. Regenerate with `python3 tools/parity/emacs_oracle.py --generate`. point/mark are 0-based CHARACTER offsets; the ruse comparator converts them to and from its byte offsets. Consecutive kills accumulate onto one kill-ring entry (the oracle threads `last-command` like the real command loop), so multi-kill fixtures are faithful. JSON is a subset of YAML 1.2, so this .yaml parses on both ends.",
   "oracle": {
     "editor": "emacs",
     "invoke": "emacs -Q --batch -l <script>",
@@ -1785,6 +1785,500 @@
         ],
         "point": 3,
         "mark": 3,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_sharp_s",
+      "text": "straße x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "STRASSE x"
+        ],
+        "point": 7,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_word_capital_sharp_s",
+      "text": "STRAẞE x",
+      "ops": [
+        "downcase-word"
+      ],
+      "expect": {
+        "text": [
+          "straße x"
+        ],
+        "point": 6,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_capitalize_word_sharp_s_initial",
+      "text": "ßa x",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "Ssa x"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_capitalize_word_sharp_s_inner",
+      "text": "straße x",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "Straße x"
+        ],
+        "point": 6,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_ligature",
+      "text": "ﬁsh x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "FISH x"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_capitalize_word_ligature",
+      "text": "ﬁsh x",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "Fish x"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_word_ligature",
+      "text": "ﬁsh x",
+      "ops": [
+        "downcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ﬁsh x"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_capitalize_word_titlecase",
+      "text": "ǆemal x",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "ǅemal x"
+        ],
+        "point": 5,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_word_titlecase",
+      "text": "ǅEMAL x",
+      "ops": [
+        "downcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ǆemal x"
+        ],
+        "point": 5,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_titlecase",
+      "text": "ǅemal x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ǄEMAL x"
+        ],
+        "point": 5,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_dotless_i",
+      "text": "ıx y",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ıX y"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_long_s",
+      "text": "ſx y",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ſX y"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_word_dotted_capital_i",
+      "text": "İx y",
+      "ops": [
+        "downcase-word"
+      ],
+      "expect": {
+        "text": [
+          "i̇x y"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_micro_y_diaeresis",
+      "text": "µÿ x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ΜŸ x"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_n_apostrophe",
+      "text": "ŉa x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ʼNA x"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_j_caron",
+      "text": "ǰa x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "J̌A x"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_armenian_ligature",
+      "text": "և x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ԵՒ x"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_word_final_sigma",
+      "text": "ΌΣΟΣ x",
+      "ops": [
+        "downcase-word"
+      ],
+      "expect": {
+        "text": [
+          "όσος x"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_word_sigma_inside",
+      "text": "ΑΣΑ x",
+      "ops": [
+        "downcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ασα x"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_word_sigma_alone",
+      "text": "Σ x",
+      "ops": [
+        "downcase-word"
+      ],
+      "expect": {
+        "text": [
+          "σ x"
+        ],
+        "point": 1,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_capitalize_word_final_sigma",
+      "text": "ΌΣΟΣ x",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "Όσος x"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_final_sigma",
+      "text": "οδος x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ΟΔΟΣ x"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_iota_subscript",
+      "text": "ᾳβ x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ΑΙΒ x"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_capitalize_word_iota_subscript",
+      "text": "ᾳβ x",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "ᾼβ x"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_dialytika_tonos",
+      "text": "ΐα x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "Ϊ́Α x"
+        ],
+        "point": 4,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_word_cherokee",
+      "text": "ꭰꭱ x",
+      "ops": [
+        "upcase-word"
+      ],
+      "expect": {
+        "text": [
+          "ᎠᎡ x"
+        ],
+        "point": 2,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_capitalize_word_underscore",
+      "text": "foo_bar baz",
+      "ops": [
+        "capitalize-word"
+      ],
+      "expect": {
+        "text": [
+          "Foo_bar baz"
+        ],
+        "point": 3,
+        "mark": null,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_region_sharp_s",
+      "text": "straße x",
+      "ops": [
+        "set-mark-command",
+        "forward-word",
+        "upcase-region"
+      ],
+      "expect": {
+        "text": [
+          "STRASSE x"
+        ],
+        "point": 7,
+        "mark": 0,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_upcase_region_sharp_s_point_at_start",
+      "text": "straße x",
+      "ops": [
+        "set-mark-command",
+        "forward-word",
+        "exchange-point-and-mark",
+        "upcase-region"
+      ],
+      "expect": {
+        "text": [
+          "STRASSE x"
+        ],
+        "point": 0,
+        "mark": 6,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_region_final_sigma",
+      "text": "ΟΔΟΣ ΣΑΣ x",
+      "ops": [
+        "set-mark-command",
+        "forward-word",
+        "forward-word",
+        "downcase-region"
+      ],
+      "expect": {
+        "text": [
+          "οδος σας x"
+        ],
+        "point": 8,
+        "mark": 0,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_downcase_region_sigma_cut_by_region",
+      "text": "ΑΣΑ x",
+      "ops": [
+        "set-mark-command",
+        "move-beginning-of-line",
+        "downcase-region"
+      ],
+      "point": 2,
+      "expect": {
+        "text": [
+          "αςΑ x"
+        ],
+        "point": 0,
+        "mark": 2,
+        "kill": null
+      }
+    },
+    {
+      "name": "cc_capitalize_region_greek",
+      "text": "όσος καλός",
+      "ops": [
+        "set-mark-command",
+        "forward-word",
+        "forward-word",
+        "capitalize-region"
+      ],
+      "expect": {
+        "text": [
+          "Όσος Καλός"
+        ],
+        "point": 10,
+        "mark": 0,
         "kill": null
       }
     }

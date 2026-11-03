@@ -134,8 +134,10 @@ impl Regex {
         if case_insensitive != base {
             low = lower(pattern, opts.magic, case_insensitive)?;
         }
+        // No `(?i)`: under 'ignorecase' the lowering already spelled each literal as its nvim fold class
+        // (#1112), since the engine's own Unicode folding is not Vim's (`ß` / `ẞ`, the iota-subscript
+        // letters, letters newer than the engine's tables).
         let inner = regex::RegexBuilder::new(&low.rust)
-            .case_insensitive(case_insensitive)
             .build()
             .map_err(|e| RegexError::Syntax(e.to_string()))?;
         Ok(Regex {
@@ -914,7 +916,7 @@ impl Parser<'_> {
                 None => regex::escape("["),
             },
             // Every other character, magic or not, is itself (Vim's default case).
-            Tok::Op(c) | Tok::Lit(c) => regex::escape(&c.to_string()),
+            Tok::Op(c) | Tok::Lit(c) => literal(c, self.ci),
         }))
     }
 
@@ -948,7 +950,7 @@ impl Parser<'_> {
                 let ch = char::from_u32(n).ok_or_else(|| {
                     syntax("E1541: Value too large, max Unicode codepoint is U+10FFFF")
                 })?;
-                regex::escape(&ch.to_string())
+                literal(ch, self.ci)
             }
             Some('[') => self.optional_sequence()?,
             Some('#') => {
@@ -1106,6 +1108,22 @@ impl Parser<'_> {
         }
         self.lx.seek(endp + 1);
         set.emit(negated, extra, self.ci).map(Some)
+    }
+}
+
+/// A literal character, under 'ignorecase' (`ci`) as the class of every character nvim's `utf_fold`
+/// makes equal to it ([`crate::casemap::vim_fold_class`]).
+fn literal(c: char, ci: bool) -> String {
+    match crate::casemap::vim_fold_class(c) {
+        Some(class) if ci => {
+            let mut out = String::from("[");
+            for &m in class {
+                out.push_str(&format!(r"\x{{{m:X}}}"));
+            }
+            out.push(']');
+            out
+        }
+        _ => regex::escape(&c.to_string()),
     }
 }
 
@@ -1314,12 +1332,15 @@ struct CollSet {
     /// Some item covers U+000A, which a non-`\_` collection must not match (Vim never matches a line
     /// break that way).
     covers_lf: bool,
+    /// The character and range items as code-point ranges, for closing the set under 'ignorecase'.
+    ranges: Vec<(u32, u32)>,
 }
 
 impl CollSet {
     fn push_char(&mut self, c: char) {
         self.covers_lf |= c == '\n';
         self.items.push_str(&class_char(c));
+        self.ranges.push((u32::from(c), u32::from(c)));
     }
 
     fn push_range(&mut self, lo: char, hi: char) {
@@ -1327,6 +1348,23 @@ impl CollSet {
         self.items.push_str(&class_char(lo));
         self.items.push('-');
         self.items.push_str(&class_char(hi));
+        self.ranges.push((u32::from(lo), u32::from(hi)));
+    }
+
+    /// Under 'ignorecase' nvim matches a collection item against any character with the same
+    /// `utf_fold` (a range: any character folding like one inside it), so add every fold class that has
+    /// a member among the items (#1112).
+    fn fold_items(&mut self) {
+        let inside = |x: u32| self.ranges.iter().any(|&(lo, hi)| lo <= x && x <= hi);
+        let mut extra = String::new();
+        for class in crate::casemap::vim_fold_classes() {
+            if class.iter().any(|&m| inside(m)) {
+                for &m in class.iter().filter(|&&m| !inside(m)) {
+                    extra.push_str(&format!(r"\x{{{m:X}}}"));
+                }
+            }
+        }
+        self.items.push_str(&extra);
     }
 
     fn push_class(&mut self, class: NamedClass) {
@@ -1337,7 +1375,10 @@ impl CollSet {
         }
     }
 
-    fn emit(self, negated: bool, extra: bool, ci: bool) -> Result<String, RegexError> {
+    fn emit(mut self, negated: bool, extra: bool, ci: bool) -> Result<String, RegexError> {
+        if ci {
+            self.fold_items();
+        }
         let split_exact = ci && !self.exact.is_empty();
         if negated {
             if split_exact {

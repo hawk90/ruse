@@ -405,7 +405,7 @@ Per D-007's per-feature grading, the Vim regex surface (VIM-SEARCH-1) is scoped 
 | Backrefs `\1`–`\9` | **Exact**, but **budget-bounded** | may abort on pathological input (M2) instead of Vim's slow completion |
 | `\< \>`, `\{-}`, `\%(...\)`, `\%[...]`, classes `\d \w \s …` | **Exact** | NFA-native (§3) |
 | Position atoms `\%23l \%23c \%V \%#` | **Adapted** | supported where `MatchCtx` (line/col/visual-area/cursor) is supplied by the caller (§5); pure-string matches without a view context skip them |
-| `\c` / `\C`, `'ignorecase'` / `'smartcase'` | **Exact** | folded into `CompileOpts` |
+| `\c` / `\C`, `'ignorecase'` / `'smartcase'` | **Exact** | folded into `CompileOpts`; under `'ignorecase'` a literal is its nvim `utf_fold` class and a collection is closed under those classes, never the engine's `(?i)` (#1112) |
 | Replacement items `& \0`–`\9` `~ \u\U\l\L\e\E \r\n\t` | **Exact** | expanded by substitute layer (§6) |
 | `'gdefault'` `g` inversion | **Exact** | command layer `g XOR gdefault` (§6) |
 | `:s///\=expr` | **Adapted** | ruse expression surface, not Vimscript (Non-goals, VIM-SCRIPT) |
