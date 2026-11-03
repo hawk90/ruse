@@ -194,6 +194,105 @@ pub(crate) struct BufferFile {
 /// `:w` on it declines). Replaces the old single `path`/`fmt`/`file_buf` triple (F-007 multi-buffer).
 pub(crate) type Files = HashMap<DocumentId, BufferFile>;
 
+/// `gq` under `'formatprg'` and `=` under `'equalprg'` (#617, #618): instead of formatting or reindenting,
+/// filter the operator's lines through that shell command, as nvim's `op_colon` runs `:{range}!{prg}`.
+/// After `gq` the cursor goes to the first non-blank of the last filtered line (nvim's `']`), after `=` to
+/// that of the first. `gw` never uses `'formatprg'`. A search or mark target, and a blockwise selection,
+/// keep the internal operator. Returns whether the command was handled here.
+pub(crate) fn run_prg_operator(
+    cmd: &Command,
+    ws: &mut Workspace,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+) -> bool {
+    use ruse_core::VisualOp;
+    let view = ws.focused().view;
+    let set = |s: &str| (!s.is_empty()).then(|| s.to_string());
+    let (fp_value, ep_value) = (set(view.formatprg()), set(view.equalprg()));
+    let fp = || fp_value.clone();
+    let ep = || ep_value.clone();
+    let visual_lines = |ws: &Workspace| {
+        let pane = ws.focused();
+        let b = pane.doc.bytes();
+        let (s, e) = pane.view.selection_span(b)?;
+        Some((
+            ruse_core::pos::line_of(b, s),
+            ruse_core::pos::line_of(b, e.saturating_sub(1).max(s)),
+        ))
+    };
+    let (prg, range, to_last, visual) = match cmd {
+        Command::Format {
+            count,
+            motion,
+            keep_cursor: false,
+        } => match fp() {
+            Some(p) => (p, ws.reindent_range(*motion, *count), true, false),
+            None => return false,
+        },
+        Command::Reindent { count, motion } => match ep() {
+            Some(p) => (p, ws.reindent_range(*motion, *count), false, false),
+            None => return false,
+        },
+        Command::VisualOp(VisualOp::Format) => match fp() {
+            Some(p) => (p, visual_lines(ws), true, true),
+            None => return false,
+        },
+        Command::VisualOp(VisualOp::Reindent) => match ep() {
+            Some(p) => (p, visual_lines(ws), false, true),
+            None => return false,
+        },
+        _ => return false,
+    };
+    let Some((first, last)) = range else {
+        return false;
+    };
+    if visual {
+        // The selection ends first, as the `:'<,'>!` line nvim runs does.
+        let files = Files::new();
+        let mut quit = false;
+        run_cmd(
+            Command::EnterNormal,
+            ws,
+            &files,
+            recorded,
+            status,
+            &mut quit,
+        );
+    }
+    let range = SubRange::Lines(first + 1, last + 1);
+    let Some(input) = ws.range_text(range) else {
+        return true;
+    };
+    match crate::shell::filter(&prg, &input) {
+        Ok(out) => {
+            let ex = ExCmd::FilterReplace {
+                first: first + 1,
+                last: last + 1,
+                bytes: out.raw.clone(),
+            };
+            run_ex(ex, ws, recorded);
+            if to_last {
+                let n = out.raw.split(|&c| c == b'\n').count()
+                    - usize::from(out.raw.last() == Some(&b'\n'));
+                let b = ws.focused().doc.bytes();
+                let line = (first + n.max(1) - 1).min(ruse_core::pos::count_newlines(b));
+                let ls = ruse_core::pos::nth_line_start(b, line);
+                let at = ls
+                    + b[ls..]
+                        .iter()
+                        .take_while(|&&c| c == b' ' || c == b'\t')
+                        .count();
+                place_cursor(ws, recorded, at);
+            }
+            if let Some(note) = out.failure() {
+                *status = note;
+            }
+        }
+        Err(e) => *status = e.to_string(),
+    }
+    true
+}
+
 /// Record a command and apply it to the focused window, performing any effects.
 pub(crate) fn run_cmd(
     cmd: Command,

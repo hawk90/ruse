@@ -169,6 +169,7 @@ pub(crate) fn resolve(
         Command::CaseMotion { count, motion, .. }
         | Command::ShiftMotion { count, motion, .. }
         | Command::Reindent { count, motion }
+        | Command::Comment { count, motion }
         | Command::Format { count, motion, .. } => (*count, *motion),
         // `>>`/`<<` shift `count` lines; `x`/`<Del>` delete `count` characters (`dl`).
         Command::ShiftRight(n) | Command::ShiftLeft(n) => (*n, Motion::Line),
@@ -259,6 +260,10 @@ pub(crate) fn resolve(
             motion: m,
         },
         Command::Reindent { .. } => Command::Reindent {
+            count: n,
+            motion: m,
+        },
+        Command::Comment { .. } => Command::Comment {
             count: n,
             motion: m,
         },

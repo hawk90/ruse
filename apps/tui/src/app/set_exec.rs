@@ -56,13 +56,29 @@ pub(crate) struct SetOutcome {
     pub error: Option<String>,
 }
 
-fn core_option(opt: Opt, val: OptVal) -> Option<EditorOption> {
-    let n = |v: OptVal| match v {
-        OptVal::Num(n) => usize::try_from(n).unwrap_or(0),
+fn core_option(opt: Opt, val: &OptVal) -> Option<EditorOption> {
+    let n = |v: &OptVal| match v {
+        OptVal::Num(n) => usize::try_from(*n).unwrap_or(0),
         _ => 0,
     };
-    let b = |v: OptVal| matches!(v, OptVal::Bool(true));
+    let b = |v: &OptVal| matches!(v, OptVal::Bool(true));
+    let s = |v: &OptVal| match v {
+        OptVal::Text(t) => t.to_string(),
+        _ => String::new(),
+    };
     Some(match opt {
+        Opt::FormatOptions => EditorOption::FormatOptions(s(val)),
+        Opt::Comments => EditorOption::Comments(s(val)),
+        Opt::CommentString => EditorOption::CommentString(s(val)),
+        Opt::FormatListPat => EditorOption::FormatListPat(s(val)),
+        Opt::FormatPrg => EditorOption::FormatPrg(s(val)),
+        Opt::EqualPrg => EditorOption::EqualPrg(s(val)),
+        Opt::CinWords => EditorOption::CinWords(s(val)),
+        Opt::JoinSpaces => EditorOption::JoinSpaces(b(val)),
+        Opt::WrapMargin => EditorOption::WrapMargin(match val {
+            OptVal::Num(n) => *n,
+            _ => 0,
+        }),
         Opt::IgnoreCase => EditorOption::IgnoreCase(b(val)),
         Opt::SmartCase => EditorOption::SmartCase(b(val)),
         Opt::TabStop => EditorOption::TabStop(n(val)),
@@ -70,7 +86,7 @@ fn core_option(opt: Opt, val: OptVal) -> Option<EditorOption> {
         Opt::ExpandTab => EditorOption::ExpandTab(b(val)),
         Opt::TextWidth => EditorOption::TextWidth(n(val)),
         Opt::SoftTabStop => EditorOption::SoftTabStop(match val {
-            OptVal::Num(n) => n,
+            OptVal::Num(n) => *n,
             _ => 0,
         }),
         Opt::AutoIndent => EditorOption::AutoIndent(b(val)),
@@ -84,8 +100,17 @@ fn core_option(opt: Opt, val: OptVal) -> Option<EditorOption> {
 }
 
 fn core_value(opts: &[EditorOption], opt: Opt) -> Option<OptVal> {
-    opts.iter().find_map(|o| match (opt, *o) {
-        (Opt::IgnoreCase, EditorOption::IgnoreCase(v))
+    opts.iter().find_map(|o| match (opt, o.clone()) {
+        (Opt::FormatOptions, EditorOption::FormatOptions(s))
+        | (Opt::Comments, EditorOption::Comments(s))
+        | (Opt::CommentString, EditorOption::CommentString(s))
+        | (Opt::FormatListPat, EditorOption::FormatListPat(s))
+        | (Opt::FormatPrg, EditorOption::FormatPrg(s))
+        | (Opt::EqualPrg, EditorOption::EqualPrg(s))
+        | (Opt::CinWords, EditorOption::CinWords(s)) => Some(OptVal::Text(s.into())),
+        (Opt::WrapMargin, EditorOption::WrapMargin(n)) => Some(OptVal::Num(n)),
+        (Opt::JoinSpaces, EditorOption::JoinSpaces(v))
+        | (Opt::IgnoreCase, EditorOption::IgnoreCase(v))
         | (Opt::SmartCase, EditorOption::SmartCase(v))
         | (Opt::ExpandTab, EditorOption::ExpandTab(v))
         | (Opt::AutoIndent, EditorOption::AutoIndent(v))
@@ -136,10 +161,11 @@ impl OptionHost<'_> {
 
     /// Write `val` into `opt` at `level`.
     pub(crate) fn put(&mut self, opt: Opt, level: OptionLevel, val: OptVal) {
-        if let Some(core) = core_option(opt, val) {
-            self.ws.set_option_in(core, level);
+        if let Some(core) = core_option(opt, &val) {
+            let global = core.is_global();
+            self.ws.set_option_in(core.clone(), level);
             // The trace replays the focused window, so it records a write that reaches it.
-            if level != OptionLevel::Global || core.is_global() {
+            if level != OptionLevel::Global || global {
                 crate::app::dispatch::note_ex(ExCmd::Set(core), self.recorded);
             }
             return;
@@ -255,7 +281,15 @@ pub(crate) fn run_set(
             }
             SetArg::Default { opt, vim } => {
                 let def = opt_def(*opt);
-                write(host, *opt, if *vim { def.vim_default } else { def.default });
+                write(
+                    host,
+                    *opt,
+                    if *vim {
+                        def.vim_default.clone()
+                    } else {
+                        def.default.clone()
+                    },
+                );
             }
             SetArg::FromGlobal(opt) => {
                 if opt_def(*opt).locality == Locality::Local {
@@ -286,7 +320,7 @@ pub(crate) fn run_set(
             }
             SetArg::ResetAll => {
                 for d in OPTIONS {
-                    write(host, d.opt, d.default);
+                    write(host, d.opt, d.default.clone());
                 }
             }
             SetArg::Unsupported(_) => {
@@ -339,15 +373,36 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::SoftTabStop => "editor.softtabstop",
         Opt::SmartTab => "editor.smarttab",
         Opt::ShiftRound => "editor.shiftround",
+        Opt::WrapMargin => "editor.wrapmargin",
+        Opt::FormatOptions => "editor.formatoptions",
+        Opt::Comments => "editor.comments",
+        Opt::CommentString => "editor.commentstring",
+        Opt::FormatListPat => "editor.formatlistpat",
+        Opt::FormatPrg => "editor.formatprg",
+        Opt::EqualPrg => "editor.equalprg",
+        Opt::CinWords => "editor.cinwords",
+        Opt::JoinSpaces => "editor.joinspaces",
         _ => return None,
     })
 }
 
-/// A config value as the option's value (`editor.indent_style = "space"` is `'expandtab'`).
+/// A config value as the option's value (`editor.indent_style = "space"` is `'expandtab'`). A string
+/// option's value passes the check `:set` gives it (`editor.formatoptions = "xyz"` is ignored, E539).
 fn option_value(opt: Opt, v: &crate::config::Value) -> Option<OptVal> {
     use crate::config::Value;
     match (opt, v) {
         (Opt::ExpandTab, Value::Str(s)) => Some(OptVal::Bool(s == "space")),
+        (_, Value::Str(s)) if matches!(opt_def(opt).kind, OptKind::Text { .. }) => {
+            let def = opt_def(opt);
+            let raw = crate::input::set_cmd::RawVal::Str(s.clone());
+            assign_value(
+                def,
+                def.default.clone(),
+                crate::input::set_cmd::AssignOp::Set,
+                &raw,
+            )
+            .ok()
+        }
         (_, Value::Bool(b)) => Some(OptVal::Bool(*b)),
         (_, Value::Int(n)) => Some(OptVal::Num(*n)),
         _ => None,
@@ -382,7 +437,7 @@ pub(crate) fn apply_config(cfg: &crate::config::Config, host: &mut OptionHost<'_
             }
             None => {
                 if host.sources.remove(&def.opt).is_some() {
-                    host.put(def.opt, OptionLevel::Both, def.default);
+                    host.put(def.opt, OptionLevel::Both, def.default.clone());
                 }
             }
         }

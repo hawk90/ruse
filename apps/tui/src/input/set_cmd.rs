@@ -25,6 +25,8 @@
 //! one. ruse models a local value per View for the buffer-local options the core reads (`ts`, `sw`, `et`,
 //! `tw`) and per buffer for the fold options; the other options have one value, so every form writes it.
 
+use std::borrow::Cow;
+
 use super::nvim_options::{NVIM_BOOLEAN_OPTIONS, NVIM_OPTIONS};
 
 /// An option ruse honours.
@@ -51,15 +53,54 @@ pub enum Opt {
     FoldEnable,
     FoldMethod,
     FoldLevel,
+    Comments,
+    CommentString,
+    FormatListPat,
+    FormatOptions,
+    FormatPrg,
+    EqualPrg,
+    CinWords,
+    JoinSpaces,
+    WrapMargin,
 }
 
 /// An option's value.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum OptVal {
     Bool(bool),
     Num(i64),
     /// A string option's value: always one of its [`OptKind::Str`] values.
     Str(&'static str),
+    /// A free-form string option's value ([`OptKind::Text`]).
+    Text(Cow<'static, str>),
+}
+
+impl OptVal {
+    const fn text(s: &'static str) -> OptVal {
+        OptVal::Text(Cow::Borrowed(s))
+    }
+}
+
+/// How `+=` / `-=` / `^=` treat a free-form string option (nvim's `P_FLAGLIST` / `P_COMMA`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ListKind {
+    /// A plain string: append, remove the first occurrence, prepend.
+    Plain,
+    /// One-letter flags (`'formatoptions'`): `+=` / `^=` drop the flags already there first, unless the
+    /// whole value is already in the option.
+    Flags,
+    /// A comma-separated list (`'comments'`): items are added with a comma, unless present, and removed
+    /// whole.
+    Comma,
+}
+
+/// The check a free-form string value must pass (nvim's `did_set_*` callbacks).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TextCheck {
+    None,
+    FormatOptions,
+    Comments,
+    CommentString,
 }
 
 /// An option's type, with its value rules.
@@ -77,6 +118,11 @@ pub enum OptKind {
         values: &'static [&'static str],
         supported: &'static [&'static str],
     },
+    /// Any string passing `check`, combined by `list`.
+    Text {
+        list: ListKind,
+        check: TextCheck,
+    },
 }
 
 /// Where an option's value lives in ruse.
@@ -91,7 +137,7 @@ pub enum Locality {
 }
 
 /// One option ruse honours.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct OptDef {
     pub opt: Opt,
     pub name: &'static str,
@@ -106,6 +152,10 @@ pub struct OptDef {
 
 const INT_MAX: i64 = i32::MAX as i64;
 const INT_MIN: i64 = i32::MIN as i64;
+
+/// nvim's default `'comments'` and `'formatlistpat'`.
+const COMMENTS: &str = "s1:/*,mb:*,ex:*/,://,b:#,:%,:XCOMM,n:>,fb:-,fb:•";
+const LISTPAT: &str = r"^\s*\d\+[\]:.)}\t ]\s*";
 
 const FOLD_METHODS: &[&str] = &["manual", "expr", "marker", "syntax", "diff", "indent"];
 
@@ -146,6 +196,42 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Local,
     ),
     def(
+        Opt::CinWords,
+        "cinwords",
+        "cinw",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::None,
+        },
+        OptVal::text("if,else,while,do,for,switch"),
+        OptVal::text("if,else,while,do,for,switch"),
+        Locality::Local,
+    ),
+    def(
+        Opt::Comments,
+        "comments",
+        "com",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::Comments,
+        },
+        OptVal::text(COMMENTS),
+        OptVal::text(COMMENTS),
+        Locality::Local,
+    ),
+    def(
+        Opt::CommentString,
+        "commentstring",
+        "cms",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::CommentString,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Local,
+    ),
+    def(
         Opt::CopyIndent,
         "copyindent",
         "ci",
@@ -153,6 +239,18 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(false),
         OptVal::Bool(false),
         Locality::Local,
+    ),
+    def(
+        Opt::EqualPrg,
+        "equalprg",
+        "ep",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::None,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Global,
     ),
     def(
         Opt::ExpandTab,
@@ -203,6 +301,42 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::PerBuffer,
     ),
     def(
+        Opt::FormatListPat,
+        "formatlistpat",
+        "flp",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::None,
+        },
+        OptVal::text(LISTPAT),
+        OptVal::text(LISTPAT),
+        Locality::Local,
+    ),
+    def(
+        Opt::FormatOptions,
+        "formatoptions",
+        "fo",
+        OptKind::Text {
+            list: ListKind::Flags,
+            check: TextCheck::FormatOptions,
+        },
+        OptVal::text("tcqj"),
+        OptVal::text("tcqj"),
+        Locality::Local,
+    ),
+    def(
+        Opt::FormatPrg,
+        "formatprg",
+        "fp",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::None,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Global,
+    ),
+    def(
         Opt::HlSearch,
         "hlsearch",
         "hls",
@@ -227,6 +361,15 @@ pub const OPTIONS: &[OptDef] = &[
         OptKind::Bool,
         OptVal::Bool(true),
         OptVal::Bool(true),
+        Locality::Global,
+    ),
+    def(
+        Opt::JoinSpaces,
+        "joinspaces",
+        "js",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
         Locality::Global,
     ),
     def(
@@ -336,6 +479,18 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(false),
         OptVal::Bool(false),
         Locality::Global,
+    ),
+    def(
+        Opt::WrapMargin,
+        "wrapmargin",
+        "wm",
+        OptKind::Num {
+            min: INT_MIN,
+            max: INT_MAX,
+        },
+        OptVal::Num(0),
+        OptVal::Num(0),
+        Locality::Local,
     ),
 ];
 
@@ -721,20 +876,23 @@ fn string_value(s: &str, at: usize) -> (String, usize) {
 }
 
 /// Why a value cannot be assigned to an option (the message prefix; the argument text follows it).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ValueError {
     /// `E487: Argument must be positive`.
     Positive,
     /// `E474: Invalid argument`.
     Invalid,
+    /// A string option's own check failed (`E539: Illegal character <x>`, `E537`, …).
+    Message(String),
 }
 
 impl ValueError {
     #[must_use]
-    pub fn message(self) -> &'static str {
+    pub fn message(&self) -> &str {
         match self {
             ValueError::Positive => "E487: Argument must be positive",
             ValueError::Invalid => E474,
+            ValueError::Message(m) => m,
         }
     }
 }
@@ -783,7 +941,71 @@ pub fn assign_value(
                 .map(|&x| OptVal::Str(x))
                 .ok_or(ValueError::Invalid)
         }
+        (OptKind::Text { list, check }, OptVal::Text(cur), RawVal::Str(v)) => {
+            let new = combine(list, &cur, op, v);
+            let checked = match check {
+                TextCheck::None => Ok(()),
+                TextCheck::FormatOptions => ruse_core::editor::check_formatoptions(&new),
+                TextCheck::Comments => ruse_core::editor::check_comments(&new),
+                TextCheck::CommentString => {
+                    if new.is_empty() || new.contains("%s") {
+                        Ok(())
+                    } else {
+                        Err("E537: 'commentstring' must be empty or contain %s".to_string())
+                    }
+                }
+            };
+            checked.map_err(ValueError::Message)?;
+            Ok(OptVal::Text(Cow::Owned(new)))
+        }
         _ => Err(ValueError::Invalid),
+    }
+}
+
+/// `s` with each flag that appears again later dropped.
+fn dedup_flags(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    chars
+        .iter()
+        .enumerate()
+        .filter(|&(i, c)| !chars[i + 1..].contains(c))
+        .map(|(_, c)| c)
+        .collect()
+}
+
+/// `cur` combined with `v` by `op` the way nvim's `do_set_option_string` combines a string option.
+fn combine(list: ListKind, cur: &str, op: AssignOp, v: &str) -> String {
+    match (op, list) {
+        // A flag list keeps the LAST of a flag that appears twice (nvim's `stropt_remove_dupflags`).
+        (AssignOp::Set, ListKind::Flags) => dedup_flags(v),
+        (AssignOp::Set, _) => v.to_string(),
+        (AssignOp::Add, ListKind::Flags) => dedup_flags(&format!("{cur}{v}")),
+        (AssignOp::Prepend, ListKind::Flags) => dedup_flags(&format!("{v}{cur}")),
+        (AssignOp::Add | AssignOp::Prepend, ListKind::Comma) => {
+            if v.is_empty() || cur.split(',').any(|item| item == v) {
+                return cur.to_string();
+            }
+            match (cur.is_empty(), op) {
+                (true, _) => v.to_string(),
+                (false, AssignOp::Add) => format!("{cur},{v}"),
+                (false, _) => format!("{v},{cur}"),
+            }
+        }
+        (AssignOp::Add, ListKind::Plain) => format!("{cur}{v}"),
+        (AssignOp::Prepend, ListKind::Plain) => format!("{v}{cur}"),
+        (AssignOp::Sub, ListKind::Comma) => {
+            let items: Vec<&str> = cur.split(',').collect();
+            match items.iter().position(|item| *item == v) {
+                Some(i) => {
+                    let mut items = items;
+                    items.remove(i);
+                    items.join(",")
+                }
+                None => cur.to_string(),
+            }
+        }
+        (AssignOp::Sub, ListKind::Flags) => dedup_flags(&cur.replacen(v, "", 1)),
+        (AssignOp::Sub, _) => cur.replacen(v, "", 1),
     }
 }
 
@@ -796,6 +1018,7 @@ pub fn show_one(def: &OptDef, val: OptVal) -> String {
         OptVal::Bool(false) => format!("no{}", def.name),
         OptVal::Num(n) => format!("  {}={n}", def.name),
         OptVal::Str(s) => format!("  {}={s}", def.name),
+        OptVal::Text(s) => format!("  {}={s}", def.name),
     }
 }
 
@@ -807,14 +1030,14 @@ pub fn listing(title: &str, items: &[(&OptDef, OptVal)], cols: usize) -> Vec<Str
     const INC: usize = 20;
     const GAP: usize = 3;
     let mut rows = vec![title.to_string()];
-    let fits = |d: &OptDef, v: OptVal| match v {
+    let fits = |d: &OptDef, v: &OptVal| match v {
         OptVal::Bool(_) => true,
-        _ => show_one(d, v).len() - 2 <= INC - GAP,
+        _ => show_one(d, v.clone()).len() - 2 <= INC - GAP,
     };
     let short: Vec<String> = items
         .iter()
-        .filter(|(d, v)| fits(d, *v))
-        .map(|(d, v)| show_one(d, *v))
+        .filter(|(d, v)| fits(d, v))
+        .map(|(d, v)| show_one(d, v.clone()))
         .collect();
     if !short.is_empty() {
         let ncols = ((cols + GAP).saturating_sub(3) / INC).max(1);
@@ -834,8 +1057,8 @@ pub fn listing(title: &str, items: &[(&OptDef, OptVal)], cols: usize) -> Vec<Str
     rows.extend(
         items
             .iter()
-            .filter(|(d, v)| !fits(d, *v))
-            .map(|(d, v)| show_one(d, *v)),
+            .filter(|(d, v)| !fits(d, v))
+            .map(|(d, v)| show_one(d, v.clone())),
     );
     rows
 }
@@ -1038,25 +1261,97 @@ mod tests {
         let s = |v: &str| RawVal::Str(v.into());
         let cur = OptVal::Str("manual");
         assert_eq!(
-            assign_value(fdm, cur, set, &s("bogus")),
+            assign_value(fdm, cur.clone(), set, &s("bogus")),
             Err(ValueError::Invalid)
         );
         assert_eq!(
-            assign_value(fdm, cur, set, &s("")),
-            Err(ValueError::Invalid)
-        );
-        assert_eq!(assign_value(fdm, cur, AssignOp::Add, &s("")), Ok(cur));
-        assert_eq!(
-            assign_value(fdm, cur, AssignOp::Add, &s("x")),
+            assign_value(fdm, cur.clone(), set, &s("")),
             Err(ValueError::Invalid)
         );
         assert_eq!(
-            assign_value(fdm, cur, AssignOp::Sub, &s("al")),
+            assign_value(fdm, cur.clone(), AssignOp::Add, &s("")),
+            Ok(cur.clone())
+        );
+        assert_eq!(
+            assign_value(fdm, cur.clone(), AssignOp::Add, &s("x")),
             Err(ValueError::Invalid)
         );
         assert_eq!(
-            assign_value(fdm, cur, set, &s("marker")),
+            assign_value(fdm, cur.clone(), AssignOp::Sub, &s("al")),
+            Err(ValueError::Invalid)
+        );
+        assert_eq!(
+            assign_value(fdm, cur.clone(), set, &s("marker")),
             Ok(OptVal::Str("marker"))
+        );
+    }
+
+    #[test]
+    fn string_options_combine_and_check_like_nvim() {
+        let set = AssignOp::Set;
+        let s = |v: &str| RawVal::Str(v.into());
+        let text = |v: &str| OptVal::Text(Cow::Owned(v.into()));
+        let fo = opt_def(Opt::FormatOptions);
+        // nvim v0.12.6: a flag list drops the flags already there, unless the value is already in it.
+        assert_eq!(
+            assign_value(fo, text("tcqj"), AssignOp::Add, &s("jr")),
+            Ok(text("tcqjr"))
+        );
+        assert_eq!(
+            assign_value(fo, text("tcqj"), AssignOp::Add, &s("qj")),
+            Ok(text("tcqj"))
+        );
+        assert_eq!(
+            assign_value(fo, text("tcqj"), AssignOp::Add, &s("cq")),
+            Ok(text("tjcq"))
+        );
+        assert_eq!(
+            assign_value(fo, text("tcqj"), AssignOp::Sub, &s("cq")),
+            Ok(text("tj"))
+        );
+        assert_eq!(
+            assign_value(fo, text("tcqj"), AssignOp::Sub, &s("qc")),
+            Ok(text("tcqj"))
+        );
+        assert_eq!(
+            assign_value(fo, text("tcqj"), AssignOp::Prepend, &s("r")),
+            Ok(text("rtcqj"))
+        );
+        assert_eq!(
+            assign_value(fo, text("tcqj"), set, &s("xyz")),
+            Err(ValueError::Message("E539: Illegal character <x>".into()))
+        );
+        let com = opt_def(Opt::Comments);
+        assert_eq!(
+            assign_value(com, text("b:x"), AssignOp::Add, &s(":;")),
+            Ok(text("b:x,:;"))
+        );
+        assert_eq!(
+            assign_value(com, text("b:x,:;"), AssignOp::Add, &s(":;")),
+            Ok(text("b:x,:;"))
+        );
+        assert_eq!(
+            assign_value(com, text("b:x,:;"), AssignOp::Sub, &s("b:x")),
+            Ok(text(":;"))
+        );
+        assert_eq!(
+            assign_value(com, text("b:x"), AssignOp::Prepend, &s(":;")),
+            Ok(text(":;,b:x"))
+        );
+        assert_eq!(
+            assign_value(com, text(""), set, &s(":,")),
+            Err(ValueError::Message("E525: Zero length string".into()))
+        );
+        let cms = opt_def(Opt::CommentString);
+        assert_eq!(assign_value(cms, text(""), set, &s("#%s")), Ok(text("#%s")));
+        assert!(matches!(
+            assign_value(cms, text(""), AssignOp::Add, &s("x")),
+            Err(ValueError::Message(m)) if m.starts_with("E537")
+        ));
+        let fp = opt_def(Opt::FormatPrg);
+        assert_eq!(
+            assign_value(fp, text(""), AssignOp::Add, &s(" -w")),
+            Ok(text(" -w"))
         );
     }
 

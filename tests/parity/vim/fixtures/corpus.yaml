@@ -85730,6 +85730,3859 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "shift_count_past_end_one_line",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>3>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "shift_count_past_end_two_lines",
+      "lines": [
+        "x",
+        "y"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>3>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "    x",
+          "    y"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "unshift_count_on_last_line",
+      "lines": [
+        "a",
+        "    b"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>G03<<",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "a",
+          "    b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "shift_count_on_last_line_of_longer",
+      "lines": [
+        "a",
+        "b",
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>G3>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "x"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "shift_count_from_second_to_last",
+      "lines": [
+        "a",
+        "b",
+        "x"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>j5>>",
+      "setup": "set startofline",
+      "expect": {
+        "text": [
+          "a",
+          "    b",
+          "    x"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_counted_insert_wraps",
+      "lines": [
+        ""
+      ],
+      "keys": ":set tw=10<CR>8ia b<Esc>",
+      "expect": {
+        "text": [
+          "a ba ba ba",
+          "ba ba ba",
+          "ba b"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wraps_while_typing",
+      "lines": [
+        ""
+      ],
+      "keys": ":set tw=10<CR>ihello world foo bar<Esc>",
+      "expect": {
+        "text": [
+          "hello",
+          "world foo",
+          "bar"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_fo_without_t_does_not_wrap",
+      "lines": [
+        ""
+      ],
+      "keys": ":set tw=10 fo-=t<CR>ihello world foo bar<Esc>",
+      "expect": {
+        "text": [
+          "hello world foo bar"
+        ],
+        "cursor": [
+          1,
+          18
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_keeps_autoindent",
+      "lines": [
+        "  x"
+      ],
+      "keys": ":set tw=10<CR>A hello world foo<Esc>",
+      "expect": {
+        "text": [
+          "  x hello",
+          "  world",
+          "  foo"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_noai_column_zero",
+      "lines": [
+        "  x"
+      ],
+      "keys": ":set tw=10 noai<CR>A hello world foo<Esc>",
+      "expect": {
+        "text": [
+          "  x hello",
+          "world foo"
+        ],
+        "cursor": [
+          2,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_continues_hash_comment",
+      "lines": [
+        "# x"
+      ],
+      "keys": ":set tw=10<CR>A hello world foo<Esc>",
+      "expect": {
+        "text": [
+          "# x hello",
+          "# world",
+          "# foo"
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_continues_slash_comment",
+      "lines": [
+        "// x"
+      ],
+      "keys": ":set tw=12<CR>A hello world foo<Esc>",
+      "expect": {
+        "text": [
+          "// x hello",
+          "// world foo"
+        ],
+        "cursor": [
+          2,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_fo_without_c_drops_leader",
+      "lines": [
+        "// x"
+      ],
+      "keys": ":set tw=12 fo-=c<CR>A hello world foo<Esc>",
+      "expect": {
+        "text": [
+          "// x hello",
+          "world foo"
+        ],
+        "cursor": [
+          2,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_c_comment_middle",
+      "lines": [
+        "/* x"
+      ],
+      "keys": ":set tw=12<CR>A hello world foo<Esc>",
+      "expect": {
+        "text": [
+          "/* x hello",
+          " * world foo"
+        ],
+        "cursor": [
+          2,
+          11
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_long_word_moves_down",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set tw=10<CR>A aaaaaaaaaaaaaaa<Esc>",
+      "expect": {
+        "text": [
+          "x",
+          "aaaaaaaaaaaaaaa"
+        ],
+        "cursor": [
+          2,
+          14
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_fo_l_keeps_long_line",
+      "lines": [
+        "aaaaaaaaaaaaaaaa"
+      ],
+      "keys": ":set tw=10 fo+=l<CR>A b c<Esc>",
+      "expect": {
+        "text": [
+          "aaaaaaaaaaaaaaaa b c"
+        ],
+        "cursor": [
+          1,
+          19
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_long_line_breaks_without_l",
+      "lines": [
+        "aaaaaaaaaaaaaaaa"
+      ],
+      "keys": ":set tw=10<CR>A b c<Esc>",
+      "expect": {
+        "text": [
+          "aaaaaaaaaaaaaaaa",
+          "b c"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_one_letter_words",
+      "lines": [
+        ""
+      ],
+      "keys": ":set tw=10<CR>ia b c d e f g h i j k<Esc>",
+      "expect": {
+        "text": [
+          "a b c d e",
+          "f g h i j",
+          "k"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_fo_1_keeps_one_letter_words",
+      "lines": [
+        ""
+      ],
+      "keys": ":set tw=10 fo+=1<CR>ia b c d e f g h i j k<Esc>",
+      "expect": {
+        "text": [
+          "a b c d e f g h i j k"
+        ],
+        "cursor": [
+          1,
+          20
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_two_spaces_after_period",
+      "lines": [
+        ""
+      ],
+      "keys": ":set tw=10<CR>ifoo.  bar baz qux<Esc>",
+      "expect": {
+        "text": [
+          "foo.  bar",
+          "baz qux"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_insert_before_text_no_wrap",
+      "lines": [
+        "hello world"
+      ],
+      "keys": ":set tw=8<CR>0ifoo <Esc>",
+      "expect": {
+        "text": [
+          "foo hello world"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_typing_blank_does_not_wrap",
+      "lines": [
+        ""
+      ],
+      "keys": ":set tw=5<CR>iabcdefg h<Esc>",
+      "expect": {
+        "text": [
+          "abcdefg",
+          "h"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_mid_line",
+      "lines": [
+        "aaa bbb ccc"
+      ],
+      "keys": ":set tw=10<CR>$ix<Esc>",
+      "expect": {
+        "text": [
+          "aaa bbb",
+          "ccxc"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_tab_indent",
+      "lines": [
+        "\tx"
+      ],
+      "keys": ":set tw=12 ts=8 noet<CR>A aa bb<Esc>",
+      "expect": {
+        "text": [
+          "\tx aa",
+          "\tbb"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_wrap_multibyte",
+      "lines": [
+        "ééé ééé"
+      ],
+      "keys": ":set tw=8<CR>A éé<Esc>",
+      "expect": {
+        "text": [
+          "ééé ééé",
+          "éé"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_fo_2_insert_no_effect",
+      "lines": [
+        "  x",
+        "    y"
+      ],
+      "keys": ":set tw=10 fo+=2<CR>A aaa bbb ccc<Esc>",
+      "expect": {
+        "text": [
+          "  x aaa",
+          "  bbb ccc",
+          "    y"
+        ],
+        "cursor": [
+          2,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_fo_n_list_indent",
+      "lines": [
+        "1. x"
+      ],
+      "keys": ":set tw=10 fo+=n<CR>A aaa bbb ccc<Esc>",
+      "expect": {
+        "text": [
+          "1. x aaa",
+          "   bbb ccc"
+        ],
+        "cursor": [
+          2,
+          9
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "tw_dot_repeats_wrapping_insert",
+      "lines": [
+        "",
+        "z"
+      ],
+      "keys": ":set tw=8<CR>ia b c d e<Esc>j.",
+      "expect": {
+        "text": [
+          "a b c d",
+          "e",
+          "a b c d",
+          "ez"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wm_with_tw_uses_tw",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set tw=10 wm=5<CR>A aaa bbb ccc<Esc>",
+      "expect": {
+        "text": [
+          "x aaa bbb",
+          "ccc"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wm_wraps_before_the_edge",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set wm=70<CR>A aaa bbb ccc<Esc>",
+      "expect": {
+        "text": [
+          "x aaa bbb",
+          "ccc"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wm_narrow_width",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set wm=74<CR>A aaa bbb ccc<Esc>",
+      "expect": {
+        "text": [
+          "x aaa",
+          "bbb",
+          "ccc"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "wm_gq_width",
+      "lines": [
+        "aaa bbb ccc ddd"
+      ],
+      "keys": ":set wm=74<CR>gqq",
+      "expect": {
+        "text": [
+          "aaa",
+          "bbb",
+          "ccc",
+          "ddd"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "js_join_after_period",
+      "lines": [
+        "a.",
+        "b"
+      ],
+      "keys": ":set js<CR>J",
+      "expect": {
+        "text": [
+          "a.  b"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "js_join_after_question",
+      "lines": [
+        "a?",
+        "b"
+      ],
+      "keys": ":set js<CR>J",
+      "expect": {
+        "text": [
+          "a?  b"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "js_join_after_period_space",
+      "lines": [
+        "a. ",
+        "b"
+      ],
+      "keys": ":set js<CR>J",
+      "expect": {
+        "text": [
+          "a.  b"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "js_gJ_adds_nothing",
+      "lines": [
+        "a.",
+        "b"
+      ],
+      "keys": ":set js<CR>gJ",
+      "expect": {
+        "text": [
+          "a.b"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "js_off_one_space",
+      "lines": [
+        "a.",
+        "b"
+      ],
+      "keys": "J",
+      "expect": {
+        "text": [
+          "a. b"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_j_removes_leader",
+      "lines": [
+        "// a",
+        "// b"
+      ],
+      "keys": "J",
+      "expect": {
+        "text": [
+          "// a b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_j_off_keeps_leader",
+      "lines": [
+        "// a",
+        "// b"
+      ],
+      "keys": ":set fo-=j<CR>J",
+      "expect": {
+        "text": [
+          "// a // b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_j_gJ_removes_leader",
+      "lines": [
+        "// a",
+        "// b"
+      ],
+      "keys": "gJ",
+      "expect": {
+        "text": [
+          "// a b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_j_trailing_comment",
+      "lines": [
+        "x // a",
+        "// b"
+      ],
+      "keys": "J",
+      "expect": {
+        "text": [
+          "x // a b"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_j_not_after_code",
+      "lines": [
+        "a",
+        "// b"
+      ],
+      "keys": "J",
+      "expect": {
+        "text": [
+          "a // b"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_j_three_part_comment",
+      "lines": [
+        "/* a",
+        " * b",
+        " */"
+      ],
+      "keys": "3J",
+      "expect": {
+        "text": [
+          "/* a b */"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_j_hash_count",
+      "lines": [
+        "# a",
+        "# b",
+        "# c"
+      ],
+      "keys": "3J",
+      "expect": {
+        "text": [
+          "# a b c"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_j_indented_leader",
+      "lines": [
+        "// a",
+        "  // b"
+      ],
+      "keys": "J",
+      "expect": {
+        "text": [
+          "// a b"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "join_empty_part_after_space",
+      "lines": [
+        "a ",
+        "",
+        "b"
+      ],
+      "keys": "3J",
+      "expect": {
+        "text": [
+          "a  b"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_M_no_space_multibyte",
+      "lines": [
+        "あ",
+        "い"
+      ],
+      "keys": ":set fo+=M<CR>J",
+      "expect": {
+        "text": [
+          "あい"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_B_no_space_between_multibyte",
+      "lines": [
+        "あ",
+        "い"
+      ],
+      "keys": ":set fo+=B<CR>J",
+      "expect": {
+        "text": [
+          "あい"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_B_space_to_ascii",
+      "lines": [
+        "あ",
+        "b"
+      ],
+      "keys": ":set fo+=B<CR>J",
+      "expect": {
+        "text": [
+          "あ b"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_line_to_tw",
+      "lines": [
+        "aaa bbb ccc ddd eee fff"
+      ],
+      "keys": ":set tw=10<CR>gqq",
+      "expect": {
+        "text": [
+          "aaa bbb",
+          "ccc ddd",
+          "eee fff"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gw_line_keeps_cursor",
+      "lines": [
+        "aaa bbb ccc ddd eee fff"
+      ],
+      "keys": ":set tw=10<CR>wwgww",
+      "expect": {
+        "text": [
+          "aaa bbb",
+          "ccc ddd",
+          "eee fff"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_comment_keeps_leader",
+      "lines": [
+        "// aaa bbb ccc ddd eee fff"
+      ],
+      "keys": ":set tw=12<CR>gqq",
+      "expect": {
+        "text": [
+          "// aaa bbb",
+          "// ccc ddd",
+          "// eee fff"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_joins_comment_paragraph",
+      "lines": [
+        "// aaa bbb",
+        "// ccc ddd eee fff"
+      ],
+      "keys": ":set tw=12<CR>gqj",
+      "expect": {
+        "text": [
+          "// aaa bbb",
+          "// ccc ddd",
+          "// eee fff"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_fo_without_q_ignores_leader",
+      "lines": [
+        "// aaa bbb",
+        "// ccc ddd eee fff"
+      ],
+      "keys": ":set tw=12 fo-=q<CR>gqj",
+      "expect": {
+        "text": [
+          "// aaa bbb",
+          "// ccc ddd",
+          "eee fff"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_keeps_first_line_indent",
+      "lines": [
+        "  aaa bbb ccc",
+        "ddd eee fff"
+      ],
+      "keys": ":set tw=10<CR>gqj",
+      "expect": {
+        "text": [
+          "  aaa bbb",
+          "  ccc ddd",
+          "  eee fff"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_fo_2_second_line_indent",
+      "lines": [
+        "  aaa bbb ccc",
+        "    ddd eee fff"
+      ],
+      "keys": ":set tw=10 fo+=2<CR>gqj",
+      "expect": {
+        "text": [
+          "  aaa bbb",
+          "    ccc",
+          "    ddd",
+          "    eee",
+          "    fff"
+        ],
+        "cursor": [
+          5,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_fo_n_list",
+      "lines": [
+        "1. aaa bbb ccc ddd eee"
+      ],
+      "keys": ":set tw=10 fo+=n<CR>gqq",
+      "expect": {
+        "text": [
+          "1. aaa bbb",
+          "   ccc ddd",
+          "   eee"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_no_n_list",
+      "lines": [
+        "1. aaa bbb ccc ddd eee"
+      ],
+      "keys": ":set tw=10<CR>gqq",
+      "expect": {
+        "text": [
+          "1. aaa bbb",
+          "ccc ddd",
+          "eee"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_fo_n_two_items",
+      "lines": [
+        "1. aaa bbb",
+        "2. ccc ddd"
+      ],
+      "keys": ":set tw=40 fo+=n<CR>gqj",
+      "expect": {
+        "text": [
+          "1. aaa bbb",
+          "2. ccc ddd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_joinspaces",
+      "lines": [
+        "aaa bbb.",
+        "ccc ddd"
+      ],
+      "keys": ":set js tw=40<CR>gqj",
+      "expect": {
+        "text": [
+          "aaa bbb.  ccc ddd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_one_space",
+      "lines": [
+        "aaa bbb.",
+        "ccc ddd"
+      ],
+      "keys": ":set tw=40<CR>gqj",
+      "expect": {
+        "text": [
+          "aaa bbb. ccc ddd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_paragraphs",
+      "lines": [
+        "aaa",
+        "",
+        "bbb",
+        "ccc"
+      ],
+      "keys": ":set tw=40<CR>gqG",
+      "expect": {
+        "text": [
+          "aaa",
+          "",
+          "bbb ccc"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_leader_change_ends_paragraph",
+      "lines": [
+        "// a",
+        "# b"
+      ],
+      "keys": ":set tw=40<CR>gqj",
+      "expect": {
+        "text": [
+          "// a",
+          "# b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_c_comment_block",
+      "lines": [
+        "/*",
+        " * aaa",
+        " * bbb",
+        " */"
+      ],
+      "keys": ":set tw=40<CR>gqG",
+      "expect": {
+        "text": [
+          "/*",
+          " * aaa bbb",
+          " */"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_ap_lands_below",
+      "lines": [
+        "aaa bbb",
+        "ccc",
+        "",
+        "x"
+      ],
+      "keys": ":set tw=40<CR>gqap",
+      "expect": {
+        "text": [
+          "aaa bbb ccc",
+          "",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_brace_end_adjusted",
+      "lines": [
+        "aaa bbb",
+        "ccc",
+        "",
+        "x"
+      ],
+      "keys": ":set tw=40<CR>gq}",
+      "expect": {
+        "text": [
+          "aaa bbb ccc",
+          "",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gw_ap_keeps_cursor",
+      "lines": [
+        "aaa bbb",
+        "ccc ddd"
+      ],
+      "keys": ":set tw=5<CR>jwgwap",
+      "expect": {
+        "text": [
+          "aaa",
+          "bbb",
+          "ccc",
+          "ddd"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_visual",
+      "lines": [
+        "aaa bbb ccc",
+        "ddd"
+      ],
+      "keys": ":set tw=8<CR>Vjgq",
+      "expect": {
+        "text": [
+          "aaa bbb",
+          "ccc ddd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_et_rebuilds_tab_indent",
+      "lines": [
+        "\taaa bbb ccc"
+      ],
+      "keys": ":set tw=12 ts=4 et<CR>gqq",
+      "expect": {
+        "text": [
+          "    aaa bbb",
+          "    ccc"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gq_long_line_tw_default",
+      "lines": [
+        "a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a "
+      ],
+      "keys": "gqq",
+      "expect": {
+        "text": [
+          "a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a",
+          "a a a a a a a a a a "
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_o_continues_slash_comment",
+      "lines": [
+        "// a"
+      ],
+      "keys": ":set fo+=o<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "// a",
+          "// b"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_o_O_continues_comment",
+      "lines": [
+        "// a"
+      ],
+      "keys": ":set fo+=o<CR>Ob<Esc>",
+      "expect": {
+        "text": [
+          "// b",
+          "// a"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_r_cr_continues_comment",
+      "lines": [
+        "// a"
+      ],
+      "keys": ":set fo+=r<CR>A<CR>b<Esc>",
+      "expect": {
+        "text": [
+          "// a",
+          "// b"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_default_cr_no_leader",
+      "lines": [
+        "// a"
+      ],
+      "keys": "A<CR>b<Esc>",
+      "expect": {
+        "text": [
+          "// a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_c_comment_middle",
+      "lines": [
+        "/* a"
+      ],
+      "keys": ":set fo+=ro<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "/* a",
+          " * b"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_middle_continues",
+      "lines": [
+        "/* a",
+        " * b"
+      ],
+      "keys": ":set fo+=ro<CR>jA<CR>c<Esc>",
+      "expect": {
+        "text": [
+          "/* a",
+          " * b",
+          " * c"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_auto_end",
+      "lines": [
+        "/* a",
+        " * b"
+      ],
+      "keys": ":set fo+=ro<CR>jA<CR>/c<Esc>",
+      "expect": {
+        "text": [
+          "/* a",
+          " * b",
+          " */c"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_closed_comment_no_leader",
+      "lines": [
+        "/* a */"
+      ],
+      "keys": ":set fo+=ro<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "/* a */",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_hash_indented",
+      "lines": [
+        "  # a"
+      ],
+      "keys": ":set fo+=ro<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "  # a",
+          "  # b"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_dash_first_line_only",
+      "lines": [
+        "- a"
+      ],
+      "keys": ":set fo+=ro<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "- a",
+          "  b"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_dash_O_no_leader",
+      "lines": [
+        "- a"
+      ],
+      "keys": ":set fo+=ro<CR>Ob<Esc>",
+      "expect": {
+        "text": [
+          "b",
+          "- a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_quote_leader",
+      "lines": [
+        "> a"
+      ],
+      "keys": ":set fo+=ro<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "> a",
+          "> b"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_ro_bare_leader",
+      "lines": [
+        "//"
+      ],
+      "keys": ":set fo+=ro<CR>A<CR>b<Esc>",
+      "expect": {
+        "text": [
+          "//",
+          "//b"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_o_esc_trims_leader_blank",
+      "lines": [
+        "  // a"
+      ],
+      "keys": ":set fo+=o<CR>o<Esc>",
+      "expect": {
+        "text": [
+          "  // a",
+          "  //"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_o_indented_leader",
+      "lines": [
+        "  // a"
+      ],
+      "keys": ":set fo+=o<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "  // a",
+          "  // b"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_o_noai_leader",
+      "lines": [
+        "// a"
+      ],
+      "keys": ":set fo+=o noai<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "// a",
+          "// b"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_o_noai_indented_leader",
+      "lines": [
+        "  // a"
+      ],
+      "keys": ":set fo+=o noai<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "  // a",
+          "  // b"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_o_comment_start_alone",
+      "lines": [
+        "/*"
+      ],
+      "keys": ":set fo+=o<CR>ob<Esc>",
+      "expect": {
+        "text": [
+          "/*",
+          " * b"
+        ],
+        "cursor": [
+          2,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_O_on_comment_end",
+      "lines": [
+        "  */"
+      ],
+      "keys": ":set fo+=o<CR>Ob<Esc>",
+      "expect": {
+        "text": [
+          "  * b",
+          "  */"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_o_after_comment_end_lines_up",
+      "lines": [
+        "  /* a",
+        "   */"
+      ],
+      "keys": ":set fo+=o<CR>job<Esc>",
+      "expect": {
+        "text": [
+          "  /* a",
+          "   */",
+          "  b"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fo_r_cr_cr_trims",
+      "lines": [
+        "// a"
+      ],
+      "keys": ":set fo+=r<CR>A<CR><CR>b<Esc>",
+      "expect": {
+        "text": [
+          "// a",
+          "//",
+          "// b"
+        ],
+        "cursor": [
+          3,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "set_fo_illegal_flag",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set fo=xyz<CR>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E539",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_com_illegal_flag",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set com=abc<CR>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E539",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_com_zero_length",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set com=:,<CR>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E525",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_cms_needs_percent_s",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set cms=abc<CR>",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E537",
+        "failed": true
+      }
+    },
+    {
+      "name": "set_fo_add_dedups",
+      "lines": [
+        "aaa bbb"
+      ],
+      "keys": ":set tw=5 fo=t fo+=ct<CR>A x<Esc>",
+      "expect": {
+        "text": [
+          "aaa",
+          "bbb x"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_empty_cms_does_nothing",
+      "lines": [
+        "abc"
+      ],
+      "keys": "gcc",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_comments_line",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set cms=#%s<CR>gcc",
+      "expect": {
+        "text": [
+          "#x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_uncomments_line",
+      "lines": [
+        "#x"
+      ],
+      "keys": ":set cms=#%s<CR>gcc",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_j_comments_two_lines",
+      "lines": [
+        "x",
+        "y"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcj",
+      "expect": {
+        "text": [
+          "# x",
+          "# y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_j_uncomments_two_lines",
+      "lines": [
+        "# x",
+        "# y"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcj",
+      "expect": {
+        "text": [
+          "x",
+          "y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_blank_line_gets_bare_leader",
+      "lines": [
+        "",
+        "x"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcj",
+      "expect": {
+        "text": [
+          "#",
+          "# x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_uses_least_indent",
+      "lines": [
+        "  x",
+        "    y"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcj",
+      "expect": {
+        "text": [
+          "  # x",
+          "  #   y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_wraps_both_parts",
+      "lines": [
+        "x"
+      ],
+      "keys": ":set cms=/*%s*/<CR>gcc",
+      "expect": {
+        "text": [
+          "/*x*/"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_unwraps_both_parts",
+      "lines": [
+        "/* x */"
+      ],
+      "keys": ":set cms=/*%s*/<CR>gcc",
+      "expect": {
+        "text": [
+          " x "
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_cursor_keeps_column",
+      "lines": [
+        "  abc",
+        "  def"
+      ],
+      "keys": ":set cms=#\\ %s<CR>llgcj",
+      "expect": {
+        "text": [
+          "  # abc",
+          "  # def"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_k_cursor_to_start",
+      "lines": [
+        "  abc",
+        "  def"
+      ],
+      "keys": ":set cms=#\\ %s<CR>jllgck",
+      "expect": {
+        "text": [
+          "  # abc",
+          "  # def"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_count",
+      "lines": [
+        "  abc",
+        "  def",
+        "x"
+      ],
+      "keys": ":set cms=#\\ %s<CR>ll2gcc",
+      "expect": {
+        "text": [
+          "  # abc",
+          "  # def",
+          "x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_dot_repeat",
+      "lines": [
+        "  abc",
+        "  def",
+        "x"
+      ],
+      "keys": ":set cms=#\\ %s<CR>llgccj.",
+      "expect": {
+        "text": [
+          "  # abc",
+          "  # def",
+          "x"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_visual_lines",
+      "lines": [
+        "  abc",
+        "  def",
+        "x"
+      ],
+      "keys": ":set cms=#\\ %s<CR>lljVkgc",
+      "expect": {
+        "text": [
+          "  # abc",
+          "  # def",
+          "x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_G_then_undo",
+      "lines": [
+        "  abc",
+        "  def",
+        "x"
+      ],
+      "keys": ":set cms=#\\ %s<CR>llgcGu",
+      "expect": {
+        "text": [
+          "  abc",
+          "  def",
+          "x"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_search_motion",
+      "lines": [
+        "abc",
+        "abd"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gc/abd<CR>",
+      "expect": {
+        "text": [
+          "# abc",
+          "abd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_mark_motion",
+      "lines": [
+        "abc",
+        "abd",
+        "x"
+      ],
+      "keys": ":set cms=#\\ %s<CR>jmagg0gc'a",
+      "expect": {
+        "text": [
+          "# abc",
+          "# abd",
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_keeps_trailing_blanks",
+      "lines": [
+        "x  ",
+        "y"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcj",
+      "expect": {
+        "text": [
+          "# x  ",
+          "# y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_exact_parts_first",
+      "lines": [
+        "#  x"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcc",
+      "expect": {
+        "text": [
+          " x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gcc_leader_only_empties",
+      "lines": [
+        "# "
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcc",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_tab_indent_shortest",
+      "lines": [
+        "\tx",
+        "  y"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcj",
+      "expect": {
+        "text": [
+          "\t# x",
+          "\t#  y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gc_mixed_comments_comment_all",
+      "lines": [
+        "# x",
+        "y"
+      ],
+      "keys": ":set cms=#\\ %s<CR>gcj",
+      "expect": {
+        "text": [
+          "# # x",
+          "# y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fp_gq_filters_lines",
+      "lines": [
+        "b",
+        "a",
+        "z"
+      ],
+      "keys": ":set fp=sort<CR>gqj",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fp_gq_cursor_last_line",
+      "lines": [
+        "  b",
+        "  a",
+        "z"
+      ],
+      "keys": ":set fp=sort<CR>gqj",
+      "expect": {
+        "text": [
+          "  a",
+          "  b",
+          "z"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fp_gw_does_not_filter",
+      "lines": [
+        "b",
+        "a",
+        "z"
+      ],
+      "keys": ":set fp=sort<CR>gwj",
+      "expect": {
+        "text": [
+          "b a",
+          "z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "fp_visual_gq",
+      "lines": [
+        "b",
+        "a",
+        "z"
+      ],
+      "keys": ":set fp=sort<CR>Vjgq",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "z"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ep_equal_filters_lines",
+      "lines": [
+        "  b",
+        "  a",
+        "z"
+      ],
+      "keys": ":set ep=sort<CR>=j",
+      "expect": {
+        "text": [
+          "  a",
+          "  b",
+          "z"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ep_equal_from_below",
+      "lines": [
+        "  b",
+        "  a",
+        "z"
+      ],
+      "keys": ":set ep=sort<CR>jll=k",
+      "expect": {
+        "text": [
+          "  a",
+          "  b",
+          "z"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ep_visual_equal",
+      "lines": [
+        "b",
+        "a",
+        "z"
+      ],
+      "keys": ":set ep=sort<CR>Vj=",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ep_count_equal_equal",
+      "lines": [
+        "b",
+        "a",
+        "z"
+      ],
+      "keys": ":set ep=sort<CR>2==",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "z"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_down_removes_indent",
+      "lines": [
+        "  foo",
+        "bar"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>o<Down><Esc>",
+      "expect": {
+        "text": [
+          "  foo",
+          "",
+          "bar"
+        ],
+        "cursor": [
+          3,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_up_then_type",
+      "lines": [
+        "  foo",
+        "  bar"
+      ],
+      "keys": ":set ts=4 sw=4 et<CR>o<Up>x<Esc>",
+      "expect": {
+        "text": [
+          "  xfoo",
+          "",
+          "  bar"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_caret_ctrl_d_restores_next_line",
+      "lines": [
+        "  x"
+      ],
+      "keys": "A<CR>^<C-d>y<CR>z<Esc>",
+      "expect": {
+        "text": [
+          "  x",
+          "y",
+          "  z"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_caret_ctrl_d_after_text",
+      "lines": [
+        "  x"
+      ],
+      "keys": "A^<C-d><CR>y<Esc>",
+      "expect": {
+        "text": [
+          "x",
+          "  y"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "ai_zero_ctrl_d_no_restore",
+      "lines": [
+        "  x"
+      ],
+      "keys": "A<CR>0<C-d>y<CR>z<Esc>",
+      "expect": {
+        "text": [
+          "  x",
+          "y",
+          "z"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_equal_keeps_tab",
+      "lines": [
+        "{",
+        "\t  x",
+        "}"
+      ],
+      "keys": ":set ts=4 sw=4 et pi<CR>=G",
+      "expect": {
+        "text": [
+          "{",
+          "\tx",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_off_equal_rebuilds",
+      "lines": [
+        "{",
+        "\t  x",
+        "}"
+      ],
+      "keys": ":set ts=4 sw=4 et nopi<CR>=G",
+      "expect": {
+        "text": [
+          "{",
+          "    x",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_equal_noet_keeps_mixed",
+      "lines": [
+        "{",
+        "  \tx",
+        "}"
+      ],
+      "keys": ":set ts=4 sw=4 noet pi<CR>=G",
+      "expect": {
+        "text": [
+          "{",
+          "  \tx",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "pi_equal_nested",
+      "lines": [
+        "{",
+        "{",
+        "  x",
+        "}",
+        "}"
+      ],
+      "keys": ":set ts=4 sw=4 noet pi<CR>=G",
+      "expect": {
+        "text": [
+          "{",
+          "\t{",
+          "  \t\tx",
+          "\t}",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cinw_custom_keyword",
+      "lines": [
+        "  unless x"
+      ],
+      "keys": ":set ts=4 sw=4 et si cinw=unless<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  unless x",
+          "      y"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cinw_drops_default",
+      "lines": [
+        "  if (x)"
+      ],
+      "keys": ":set ts=4 sw=4 et si cinw=unless<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  if (x)",
+          "  y"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "cinw_append",
+      "lines": [
+        "  loop"
+      ],
+      "keys": ":set ts=4 sw=4 et si cinw+=loop<CR>oy<Esc>",
+      "expect": {
+        "text": [
+          "  loop",
+          "      y"
+        ],
+        "cursor": [
+          2,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

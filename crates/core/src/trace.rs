@@ -98,7 +98,7 @@ impl Trace {
     ) -> Trace {
         let mut all: Vec<Command> = options
             .iter()
-            .map(|&o| Command::Ex(ExCmd::Set(o)))
+            .map(|o| Command::Ex(ExCmd::Set(o.clone())))
             .chain(registers.iter().map(|(name, value)| {
                 Command::Ex(ExCmd::Register {
                     name: *name,

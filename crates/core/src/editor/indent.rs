@@ -5,14 +5,14 @@
 //! `'softtabstop'` / `'smarttab'` steps of an Insert `<Tab>` (`ins_tab`) and `<BS>` (`ins_bs`).
 //!
 //! Every function here is pure over the buffer bytes; the planner turns the results into edits.
-//! `'comments'` leaders are not modelled: with nvim's default `'formatoptions'` (`tcqj`, no `r`/`o`) an
-//! opened line never continues a comment, so `open_line`'s comment-leader branch is never taken.
+//! A line that continues a `'comments'` leader (`'formatoptions'` `r`/`o`, #618) takes its leader from
+//! [`super::format::open_leader`] instead; the planner tries that first.
 
 use super::{IndentConfig, IndentStyle};
 use crate::pos::{line_end, line_start};
 
 /// `'cinwords'` at its nvim default: the keywords after which `'smartindent'` indents the next line.
-const CINWORDS: &[&[u8]] = &[b"if", b"else", b"while", b"do", b"for", b"switch"];
+pub(crate) const DEFAULT_CINWORDS: &str = "if,else,while,do,for,switch";
 
 /// The `'smartindent'` state of a line just opened, valid until the first key typed on it (nvim's
 /// `can_si`, `can_si_back` and `did_si`, which typing any character clears).
@@ -83,13 +83,18 @@ pub(super) fn find_opener(b: &[u8], from: usize, open: u8, close: u8) -> Option<
     None
 }
 
-/// Whether `line` starts (after blanks) with a `'cinwords'` keyword (nvim's `cin_is_cinword`).
-fn is_cinword(line: &[u8]) -> bool {
+/// Whether `line` starts (after blanks) with a keyword of `cinwords` (the comma-separated `'cinwords'`,
+/// nvim's `cin_is_cinword`).
+fn is_cinword(line: &[u8], cinwords: &str) -> bool {
     let p = &line[line.iter().take_while(|&&c| is_white(c)).count()..];
-    CINWORDS.iter().any(|w| {
-        p.starts_with(w)
-            && !(p.get(w.len()).copied().is_some_and(is_word) && is_word(w[w.len() - 1]))
-    })
+    cinwords
+        .split(',')
+        .map(str::as_bytes)
+        .filter(|w| !w.is_empty())
+        .any(|w| {
+            p.starts_with(w)
+                && !(p.get(w.len()).copied().is_some_and(is_word) && is_word(w[w.len() - 1]))
+        })
 }
 
 impl IndentConfig {
@@ -181,6 +186,7 @@ impl IndentConfig {
         ls: usize,
         end: usize,
         below: bool,
+        cinwords: &str,
     ) -> (Vec<u8>, SiState) {
         let ts = self.tab_width;
         let saved = &b[ls..end];
@@ -221,7 +227,7 @@ impl IndentConfig {
                 if last_char == Some(b'{') {
                     si.did_si = true;
                     no_si = true;
-                } else if !matches!(last_char, Some(b';' | b'}')) && is_cinword(ptr) {
+                } else if !matches!(last_char, Some(b';' | b'}')) && is_cinword(ptr, cinwords) {
                     si.did_si = true;
                 }
             } else {
@@ -447,9 +453,12 @@ mod tests {
 
     #[test]
     fn cinwords_match_whole_keywords() {
-        assert!(is_cinword(b"  if (x)"));
-        assert!(is_cinword(b"switch:"));
-        assert!(!is_cinword(b"  iffy"));
-        assert!(is_cinword(b"for(;;)"));
+        let w = DEFAULT_CINWORDS;
+        assert!(is_cinword(b"  if (x)", w));
+        assert!(is_cinword(b"switch:", w));
+        assert!(!is_cinword(b"  iffy", w));
+        assert!(is_cinword(b"for(;;)", w));
+        assert!(is_cinword(b"  unless x", "unless"));
+        assert!(!is_cinword(b"  if (x)", "unless"));
     }
 }

@@ -103,6 +103,8 @@ pub(super) fn continues_op(op: super::Op, key: KeyEvent) -> bool {
         // `gqgq` / `gwgw` double through the `g` tier (`g` is a motion prefix below).
         Op::Format => 'q',
         Op::FormatKeep => 'w',
+        // `gcc` is the line form (`gcgc` is the comment text object in nvim, not modelled).
+        Op::Comment => 'c',
     };
     c == doubles
         || c.is_ascii_digit()

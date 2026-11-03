@@ -9303,4 +9303,44 @@ mod cluster_tests {
         assert!(opts.contains(&EditorOption::AutoIndent(false)));
         assert!(opts.contains(&EditorOption::SmartTab(true)));
     }
+
+    /// #618: auto-wrap and the comment-leader opens are Vim-profile rules; Emacs typing past
+    /// 'textwidth' and an Emacs `newline` on a comment line stay plain.
+    #[test]
+    fn emacs_typing_does_not_auto_wrap_or_continue_comments() {
+        let mut st = EditorState::new(b"aaa bbb".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_option(EditorOption::TextWidth(5));
+        st.set_option(EditorOption::FormatOptions("tcqjro".into()));
+        apply_command(&mut st, &Command::MoveLineEnd);
+        apply_command(&mut st, &Command::InsertChar('x'));
+        assert_eq!(st.doc.bytes(), b"aaa bbbx");
+        let mut st = EditorState::new(b"// a".to_vec());
+        st.set_caret_gravity(CaretGravity::BetweenChar);
+        st.set_option(EditorOption::FormatOptions("tcqjro".into()));
+        apply_command(&mut st, &Command::MoveLineEnd);
+        apply_command(&mut st, &Command::InsertNewline);
+        assert_eq!(st.doc.bytes(), b"// a\n");
+    }
+
+    /// #618: the trace header records the formatting options, string ones included, and they round-trip
+    /// through the `ex_set` codec.
+    #[test]
+    fn formatting_options_round_trip_through_the_trace_codec() {
+        let mut st = EditorState::new(b"x".to_vec());
+        st.set_option(EditorOption::Comments("b:#,://".into()));
+        st.set_option(EditorOption::WrapMargin(-3));
+        let opts = st.view.editing_options();
+        assert!(opts.contains(&EditorOption::FormatOptions("tcqj".into())));
+        assert!(opts.contains(&EditorOption::Comments("b:#,://".into())));
+        assert!(opts.contains(&EditorOption::WrapMargin(-3)));
+        for o in opts {
+            let line = ExCmd::Set(o.clone()).to_line();
+            let mut toks = line.splitn(2, ' ');
+            let verb = toks.next().unwrap();
+            let back = ExCmd::from_parts(verb, toks.next().unwrap_or(""), &line)
+                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
+            assert_eq!(back, ExCmd::Set(o), "{line}");
+        }
+    }
 }

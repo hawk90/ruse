@@ -5,6 +5,8 @@
 //! the same commands on the same initial document is deterministic (see [`crate::trace`]). This is the split
 //! that captures most of a Haskell rewrite's benefit in Rust — enforced by an empty dependency set.
 
+use std::borrow::Cow;
+
 use crate::anchor::Tracked;
 use crate::command::{
     BlockInsertKind, Command, ForcedWise, MarkOp, OpKind, OpenKind, SearchOffset, SearchOp,
@@ -73,8 +75,9 @@ pub enum IndentStyle {
 }
 
 /// One `:set` option this MVP honors, mapped onto the existing indent/search-case config. `bool` options
-/// carry their on/off value (`:set ic` = `IgnoreCase(true)`, `:set noic` = `IgnoreCase(false)`).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// carry their on/off value (`:set ic` = `IgnoreCase(true)`, `:set noic` = `IgnoreCase(false)`). The string
+/// options carry their text, so the type is `Clone`, not `Copy`.
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum EditorOption {
     /// `'ignorecase'` (`ic`).
     IgnoreCase(bool),
@@ -114,6 +117,27 @@ pub enum EditorOption {
     /// The core reads it on every edit, so a trace starts with it (RFC-0020 R4, #1134): an Emacs session
     /// replays with point between characters.
     CaretGravity(CaretGravity),
+    /// `'formatoptions'` (`fo`) — the flag letters that steer auto-wrap, comment leaders, `gq` and `J`
+    /// (#618). nvim's default is `tcqj`.
+    FormatOptions(String),
+    /// `'comments'` (`com`) — the comma-separated `{flags}:{string}` comment leaders (#618).
+    Comments(String),
+    /// `'commentstring'` (`cms`) — the `%s` template the `gc` comment operator wraps a line in (#618).
+    CommentString(String),
+    /// `'formatlistpat'` (`flp`) — the pattern of a numbered-list item for `'formatoptions'` `n` (#618).
+    FormatListPat(String),
+    /// `'formatprg'` (`fp`, global here) — the external program `gq` filters lines through (#618).
+    FormatPrg(String),
+    /// `'equalprg'` (`ep`, global here) — the external program `=` filters lines through (#617).
+    EqualPrg(String),
+    /// `'cinwords'` (`cinw`) — the comma-separated keywords after which `'smartindent'` indents the next
+    /// line (#617).
+    CinWords(String),
+    /// `'joinspaces'` (`js`, Vim-global) — `J` and `gq` put two spaces after a `.`, `?` or `!` (#618).
+    JoinSpaces(bool),
+    /// `'wrapmargin'` (`wm`) — with `'textwidth'` 0, wrap this many columns before the window's right edge
+    /// (#618).
+    WrapMargin(i64),
 }
 
 impl EditorOption {
@@ -121,7 +145,7 @@ impl EditorOption {
     /// so `:set`, `:setlocal` and `:setglobal` all write it everywhere. The others are buffer-local, and
     /// ruse keeps their local value per View with the global copy on the Workspace.
     #[must_use]
-    pub fn is_global(self) -> bool {
+    pub fn is_global(&self) -> bool {
         // The caret gravity is the input profile's, one for the whole session (`Workspace::set_caret_gravity`).
         matches!(
             self,
@@ -130,8 +154,27 @@ impl EditorOption {
                 | EditorOption::SmartTab(_)
                 | EditorOption::ShiftRound(_)
                 | EditorOption::CaretGravity(_)
+                | EditorOption::JoinSpaces(_)
+                | EditorOption::FormatPrg(_)
+                | EditorOption::EqualPrg(_)
         )
     }
+}
+
+/// Whether `value` is a valid `'formatoptions'` (nvim's `FO_ALL`), else nvim's error message (#618).
+///
+/// # Errors
+/// `E539: Illegal character <c>` for a letter no flag uses.
+pub fn check_formatoptions(value: &str) -> Result<(), String> {
+    format::check_formatoptions(value)
+}
+
+/// Whether `value` is a valid `'comments'` (nvim's `did_set_comments`), else nvim's error message (#618).
+///
+/// # Errors
+/// `E539` for a bad flag, `E524` for a part without `:`, `E525` for an empty leader.
+pub fn check_comments(value: &str) -> Result<(), String> {
+    format::check_comments(value)
 }
 
 /// The largest value a number option holds (nvim's C `int`).
@@ -176,13 +219,37 @@ struct SearchCase {
     smart: bool,
 }
 
-/// The option values a [`View`] carries (indent, `'textwidth'`, search case, caret gravity), grouped so the
-/// Workspace can keep the GLOBAL values Vim's `:set` also writes and hand them to every View it creates
-/// (`:enew`, `:e`, `:bd`'s replacement), as Vim copies global options into a new buffer (#754).
-#[derive(Clone, Copy)]
+/// The text-formatting options (#618): `'formatoptions'`, `'comments'`, `'commentstring'`,
+/// `'formatlistpat'`, `'formatprg'`, `'joinspaces'` and `'wrapmargin'`. The strings borrow nvim's defaults
+/// until a `:set` replaces them.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct FormatConfig {
+    pub(crate) options: Cow<'static, str>,
+    pub(crate) comments: Cow<'static, str>,
+    pub(crate) commentstring: Cow<'static, str>,
+    pub(crate) listpat: Cow<'static, str>,
+    pub(crate) prg: Cow<'static, str>,
+    pub(crate) equalprg: Cow<'static, str>,
+    pub(crate) cinwords: Cow<'static, str>,
+    pub(crate) joinspaces: bool,
+    pub(crate) wrapmargin: i64,
+}
+
+impl FormatConfig {
+    /// Whether `'formatoptions'` holds flag `c`.
+    pub(crate) fn has(&self, c: char) -> bool {
+        self.options.contains(c)
+    }
+}
+
+/// The option values a [`View`] carries (indent, `'textwidth'`, formatting, search case, caret gravity),
+/// grouped so the Workspace can keep the GLOBAL values Vim's `:set` also writes and hand them to every View
+/// it creates (`:enew`, `:e`, `:bd`'s replacement), as Vim copies global options into a new buffer (#754).
+#[derive(Clone)]
 pub(crate) struct ViewOptions {
     indent: IndentConfig,
     text_width: usize,
+    format: FormatConfig,
     search_case: SearchCase,
     caret: CaretGravity,
 }
@@ -204,6 +271,17 @@ impl ViewOptions {
             shiftround: false,
         },
         text_width: 0,
+        format: FormatConfig {
+            options: Cow::Borrowed("tcqj"),
+            comments: Cow::Borrowed(format::DEFAULT_COMMENTS),
+            commentstring: Cow::Borrowed(""),
+            listpat: Cow::Borrowed(format::DEFAULT_LISTPAT),
+            prg: Cow::Borrowed(""),
+            equalprg: Cow::Borrowed(""),
+            cinwords: Cow::Borrowed(indent::DEFAULT_CINWORDS),
+            joinspaces: false,
+            wrapmargin: 0,
+        },
         search_case: SearchCase {
             ignore: false,
             smart: false,
@@ -238,12 +316,23 @@ impl ViewOptions {
             EditorOption::SmartTab(v) => self.indent.smarttab = v,
             EditorOption::ShiftRound(v) => self.indent.shiftround = v,
             EditorOption::CaretGravity(g) => self.caret = g,
+            EditorOption::FormatOptions(v) => self.format.options = Cow::Owned(v),
+            EditorOption::Comments(v) => self.format.comments = Cow::Owned(v),
+            EditorOption::CommentString(v) => self.format.commentstring = Cow::Owned(v),
+            EditorOption::FormatListPat(v) => self.format.listpat = Cow::Owned(v),
+            EditorOption::FormatPrg(v) => self.format.prg = Cow::Owned(v),
+            EditorOption::EqualPrg(v) => self.format.equalprg = Cow::Owned(v),
+            EditorOption::CinWords(v) => self.format.cinwords = Cow::Owned(v),
+            EditorOption::JoinSpaces(v) => self.format.joinspaces = v,
+            EditorOption::WrapMargin(n) => {
+                self.format.wrapmargin = n.clamp(i64::from(i32::MIN), i64::from(i32::MAX));
+            }
         }
     }
 
     /// These values as the `:set`s that would install them (`ic`, `scs`, `ts`, `sw`, `et`, `tw`; `sw` is
     /// the raw value, `0` follows `ts`), then the caret gravity.
-    pub(crate) fn editing_options(self) -> Vec<EditorOption> {
+    pub(crate) fn editing_options(&self) -> Vec<EditorOption> {
         vec![
             EditorOption::IgnoreCase(self.search_case.ignore),
             EditorOption::SmartCase(self.search_case.smart),
@@ -259,6 +348,15 @@ impl ViewOptions {
             EditorOption::SmartTab(self.indent.smarttab),
             EditorOption::ShiftRound(self.indent.shiftround),
             EditorOption::CaretGravity(self.caret),
+            EditorOption::FormatOptions(self.format.options.to_string()),
+            EditorOption::Comments(self.format.comments.to_string()),
+            EditorOption::CommentString(self.format.commentstring.to_string()),
+            EditorOption::FormatListPat(self.format.listpat.to_string()),
+            EditorOption::FormatPrg(self.format.prg.to_string()),
+            EditorOption::EqualPrg(self.format.equalprg.to_string()),
+            EditorOption::CinWords(self.format.cinwords.to_string()),
+            EditorOption::JoinSpaces(self.format.joinspaces),
+            EditorOption::WrapMargin(self.format.wrapmargin),
         ]
     }
 
@@ -419,6 +517,13 @@ pub struct View {
     auto_indent_pending: bool,
     /// The `'smartindent'` rules armed on a line just opened, until the first key typed on it (#617).
     si_state: indent::SiState,
+    /// The last character of the comment-end string a line opened inside a three-part comment may close
+    /// with (nvim's `end_comment_pending`, the `x` flag of `'comments'`): typing it first on the line
+    /// replaces the middle leader by the end one (` * /` → ` */`, #618).
+    end_comment: Option<u8>,
+    /// The indent `^ CTRL-D` deleted, which the next Insert `<CR>` gives back under `'autoindent'` (nvim's
+    /// `old_indent`, #617). `0` when there is none.
+    old_indent: usize,
     /// Whether the character before the caret is a space typed in this Insert (nvim's `inserted_space`),
     /// which a `'softtabstop'` `<BS>` deletes alone (#617).
     typed_space: bool,
@@ -426,6 +531,12 @@ pub struct View {
     indent: IndentConfig,
     /// `'textwidth'` (`tw`): the column `gq`/`gw` wrap to; `0` = use the 79-column fallback (Vim).
     text_width: usize,
+    /// The text-formatting options (#618).
+    format: FormatConfig,
+    /// The columns of this View's text area (the window width less its gutter), set by the frontend:
+    /// `'wrapmargin'` counts from its right edge and a `gq` with neither `'textwidth'` nor `'wrapmargin'`
+    /// wraps one short of it (at most 79). 80 until the frontend says otherwise (a headless nvim's width).
+    text_cols: usize,
     /// The STICKY desired column (Vim `curswant`): the char column `j`/`k` aim for, preserved across shorter
     /// interior lines rather than collapsing to the short line's end. Maintained in [`apply_command`] — kept
     /// on a vertical move, set to [`MAXCOL`] by `$`/`<End>` (ride each line's end), and recomputed from the
@@ -480,6 +591,9 @@ pub struct View {
     /// inside it does not move it), lowered when a delete reaches before it. Maintained with
     /// [`View::insert_col`].
     insstart: Option<usize>,
+    /// The line number the Insert session began on and that line's width in cells then (nvim's
+    /// `Insstart.lnum` and `Insstart_textlen`), for `'formatoptions'` `l` (#618).
+    insstart_line: Option<(usize, usize)>,
     /// A caret jump (a cursor key, `CTRL-G j`, …) happened in Insert since the last edit, so the next edit
     /// restarts `insert_col` there.
     insert_jumped: bool,
@@ -689,8 +803,12 @@ impl View {
             auto_indent_pending: false,
             si_state: indent::SiState::default(),
             typed_space: false,
+            old_indent: 0,
+            end_comment: None,
             indent: ViewOptions::DEFAULT.indent,
             text_width: ViewOptions::DEFAULT.text_width,
+            format: ViewOptions::DEFAULT.format,
+            text_cols: 80,
             curswant: 0,
             keep_jumps: false,
             search_case: ViewOptions::DEFAULT.search_case,
@@ -705,6 +823,7 @@ impl View {
             insert_start: None,
             insert_col: 0,
             insstart: None,
+            insstart_line: None,
             insert_jumped: false,
             jumps: Vec::new(),
             jump_idx: 0,
@@ -965,6 +1084,7 @@ impl View {
         ViewOptions {
             indent: self.indent,
             text_width: self.text_width,
+            format: self.format.clone(),
             search_case: self.search_case,
             caret: self.caret,
         }
@@ -974,6 +1094,7 @@ impl View {
     pub(crate) fn set_options(&mut self, o: ViewOptions) {
         self.indent = o.indent;
         self.text_width = o.text_width;
+        self.format = o.format;
         self.search_case = o.search_case;
         self.caret = o.caret;
     }
@@ -1024,6 +1145,47 @@ impl View {
     /// Set this View's scroll position (frontend viewport pass).
     pub fn set_top(&mut self, top: usize) {
         self.top = top;
+    }
+
+    /// `'formatprg'`: the program `gq` filters through (empty: format internally, #618).
+    #[must_use]
+    pub fn formatprg(&self) -> &str {
+        &self.format.prg
+    }
+
+    /// `'equalprg'`: the program `=` filters through (empty: reindent internally, #617).
+    #[must_use]
+    pub fn equalprg(&self) -> &str {
+        &self.format.equalprg
+    }
+
+    /// Whether `cmd` (`o`, `O`, an Insert `<CR>`) on `bytes` opens a line that continues a comment under
+    /// `'formatoptions'` `o`/`r` (#618). A frontend that seeds an opened line's indent from a syntax tree
+    /// leaves such an open to the core.
+    #[must_use]
+    pub fn opens_comment(&self, bytes: &[u8], cmd: &Command) -> bool {
+        planner::open_comment_line_in(self, bytes, cmd).is_some()
+    }
+
+    /// Set the columns of this View's text area (the window width less its gutter), which
+    /// `'wrapmargin'` and a `gq` without `'textwidth'` measure against (frontend layout pass).
+    pub fn set_text_cols(&mut self, cols: usize) {
+        self.text_cols = cols.max(1);
+    }
+
+    /// The width text wraps at (nvim's `comp_textwidth`): `'textwidth'`, else the text area less
+    /// `'wrapmargin'` when that is set, else `0` (no auto-wrap). `force` is `gq`/`gw`, which wraps at one
+    /// column short of the text area (at most 79) when neither is set.
+    pub(crate) fn text_width_for(&self, force: bool) -> usize {
+        let mut tw = self.text_width;
+        if tw == 0 && self.format.wrapmargin != 0 {
+            let cols = i64::try_from(self.text_cols).unwrap_or(i64::MAX);
+            tw = usize::try_from(cols.saturating_sub(self.format.wrapmargin)).unwrap_or(0);
+        }
+        if force && tw == 0 {
+            tw = self.text_cols.saturating_sub(1).min(79);
+        }
+        tw
     }
 
     /// The `CTRL-D`/`CTRL-U` amount for a window `height` rows high (Vim's 'scroll'): the value a count last
@@ -3153,6 +3315,7 @@ pub use ex_cmd::{
     ExCmd, ExOutcome, GroupKind, MAX_APPLY_EDITS, MAX_APPLY_EDIT_BYTES, MAX_SHIFT_LEVELS,
 };
 
+mod format;
 mod indent;
 mod planner;
 pub use planner::plan;
@@ -3668,6 +3831,20 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     };
     // The smartindent state a line opened by this command arms (read from the buffer before the edit).
     let opened_si = opened_si_state(st, cmd);
+    // An open that continues a comment leader counts as an untouched autoindent (nvim sets `did_ai`).
+    let opened = planner::open_comment_line(st, cmd);
+    let opened_leader = opened.as_ref().is_some_and(|o| o.1);
+    let opened_end_comment = planner::open_end_comment(st, cmd);
+    // The indent `^ CTRL-D` deletes, for the next `<CR>`.
+    let deleted_indent = if matches!(cmd, Command::InsertDeleteIndentRestore) {
+        let b = st.doc.bytes();
+        let ls = line_start(b, st.view.cursor);
+        // The `^` is deleted first, by the `DeleteBack` before this command; the indent is the line's.
+        indent::indent_cols(&b[ls..line_end(b, ls)], st.view.indent.tab_width).0
+    } else {
+        0
+    };
+    let entry_line = line_start(st.doc.bytes(), entry_cursor);
     let mut p = plan(st, cmd);
     // A linewise change (`cc`, `S`, `Vc`) leaves its line with the kept indent and nothing typed: the
     // same autoindent cleanup an opened line gets applies (nvim's `op_change` sets `did_ai`).
@@ -3715,9 +3892,13 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         Command::OpenLineIndent { level, .. } => st.view.auto_indent_pending = *level > 0,
         Command::OpenBelow | Command::OpenAbove | Command::InsertNewline => {
             st.view.auto_indent_pending =
-                st.view.mode == Mode::Insert && only_indent_before_caret(st);
+                st.view.mode == Mode::Insert && (opened_leader || only_indent_before_caret(st));
         }
         _ if linewise_change => st.view.auto_indent_pending = only_indent_before_caret(st),
+        // A caret key off the line ends it (nvim's `start_arrow`).
+        _ if line_start(st.doc.bytes(), st.view.cursor) != entry_line => {
+            st.view.auto_indent_pending = false;
+        }
         // Typing anything keeps the indent (nvim clears `did_ai` on a typed blank too).
         Command::InsertChar(_)
         | Command::InsertTab
@@ -3733,6 +3914,19 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         _ => {}
     }
     st.view.si_state = opened_si;
+    match cmd {
+        Command::InsertDeleteIndentRestore => st.view.old_indent = deleted_indent,
+        Command::InsertNewline if st.view.mode == Mode::Insert => st.view.old_indent = 0,
+        _ => {}
+    }
+    st.view.end_comment = if opened_leader {
+        opened_end_comment
+    } else {
+        None
+    };
+    if !st.view.auto_indent_pending {
+        st.view.end_comment = None;
+    }
     st.view.typed_space = match cmd {
         Command::InsertChar(' ') => true,
         Command::InsertChar(_) | Command::DeleteBack => st.view.typed_space,
@@ -3760,10 +3954,17 @@ fn opened_si_state(st: &EditorState, cmd: &Command) -> indent::SiState {
     match cmd {
         Command::OpenBelow | Command::OpenAbove if si => {
             let below = matches!(cmd, Command::OpenBelow);
-            st.view.indent.open_indent(b, ls, line_end(b, cur), below).1
+            let words = &st.view.format.cinwords;
+            st.view
+                .indent
+                .open_indent(b, ls, line_end(b, cur), below, words)
+                .1
         }
         Command::InsertNewline if si && st.view.mode == Mode::Insert => {
-            st.view.indent.open_indent(b, ls, cur, true).1
+            st.view
+                .indent
+                .open_indent(b, ls, cur, true, &st.view.format.cinwords)
+                .1
         }
         _ => indent::SiState::default(),
     }
@@ -3839,12 +4040,18 @@ fn track_insert_start(
     if !is_text_entry(st.view.mode) {
         st.view.insert_jumped = false;
         st.view.insstart = None;
+        st.view.insstart_line = None;
         return;
     }
     if !is_text_entry(entry_mode) {
         let b = st.doc.bytes();
         st.view.insert_col = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
         st.view.insstart = Some(st.view.cursor);
+        let ls = line_start(b, st.view.cursor);
+        st.view.insstart_line = Some((
+            crate::pos::line_of(b, st.view.cursor),
+            range::line_cells(b, ls, st.view.indent.tab_width),
+        ));
         st.view.insert_jumped = false;
     } else if st.doc.revision() != entry_rev {
         if std::mem::take(&mut st.view.insert_jumped) {

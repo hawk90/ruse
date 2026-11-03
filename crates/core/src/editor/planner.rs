@@ -217,8 +217,9 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
             count.max(1),
             hint,
         )),
-        VisualOp::Join { spaces } => plan_join(b, lo, lines.max(2), Mode::Normal, hint, !spaces),
+        VisualOp::Join { spaces } => plan_join(st, lo, lines.max(2), Mode::Normal, hint, !spaces),
         VisualOp::Reindent => normal(plan_reindent(st, first, last, hint)),
+        VisualOp::Comment => normal(plan_comment(st, first, last, lo, hint)),
         VisualOp::Format => normal(plan_format_lines(
             st,
             cur,
@@ -734,7 +735,8 @@ fn plan_search_char(
         | SearchOp::Case(_)
         | SearchOp::Shift { .. }
         | SearchOp::Reindent
-        | SearchOp::Format { .. } => unreachable!("handled above"),
+        | SearchOp::Format { .. }
+        | SearchOp::Comment => unreachable!("handled above"),
     }
 }
 
@@ -809,7 +811,8 @@ fn plan_search_lines(
         | SearchOp::Case(_)
         | SearchOp::Shift { .. }
         | SearchOp::Reindent
-        | SearchOp::Format { .. } => unreachable!("handled above"),
+        | SearchOp::Format { .. }
+        | SearchOp::Comment => unreachable!("handled above"),
     };
     plan_op_over_span(
         st,
@@ -919,7 +922,7 @@ fn apply_op(
                 edit(one(Edit::replace(s, e - s, recased)), at, mode, hint)
             }
         }
-        MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } => {
+        MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } | MarkOp::Comment => {
             unreachable!("the line operators take plan_op_over_span")
         }
     }
@@ -995,7 +998,7 @@ fn plan_op_over_span(
     // range before the span split the others share. They reuse the SAME planners as over a motion.
     if matches!(
         op,
-        MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. }
+        MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } | MarkOp::Comment
     ) {
         let (first, last) = if linewise {
             (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi))
@@ -1015,6 +1018,7 @@ fn plan_op_over_span(
                 let end = line_end(b, crate::pos::nth_line_start(b, last));
                 plan_format_lines(st, cur, start, end, keep, end_adjusted, hint)
             }
+            MarkOp::Comment => plan_comment(st, first, last, cur.min(lo), hint),
             _ => unreachable!("guarded by matches! above"),
         };
     }
@@ -1130,7 +1134,8 @@ fn plan_search_object(
         SearchOp::Case(_)
         | SearchOp::Shift { .. }
         | SearchOp::Reindent
-        | SearchOp::Format { .. } => {
+        | SearchOp::Format { .. }
+        | SearchOp::Comment => {
             let span_op = op.span_op().expect("a span op");
             plan_op_over_span(st, b, cur, span_op, s, e, false, false, s, hint)
         }
@@ -1281,7 +1286,8 @@ fn failed_motion(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Optio
         | Command::CaseMotion { count, motion, .. }
         | Command::ShiftMotion { count, motion, .. }
         | Command::Reindent { count, motion }
-        | Command::Format { count, motion, .. } => (count, motion, true),
+        | Command::Format { count, motion, .. }
+        | Command::Comment { count, motion } => (count, motion, true),
         _ => return None,
     };
     let visual = st.view.mode.selection().is_some();
@@ -1942,52 +1948,112 @@ fn recase_span(
         .map(|span| rules(span, case).into_bytes())
 }
 
-/// Plan a `[count]J` / `[count]gJ` join. `count` joins `count-1` seams (Vim: `J`/`2J` = one join, `3J` =
-/// two), leaving the cursor on the LAST join. `J` inserts one space per seam (suppressed before `)`, after
-/// trailing whitespace, or on an empty line) and strips the next line's leading blanks; `gJ` removes only
-/// the newline, keeping leading whitespace. The seams are disjoint in original coordinates, so they apply as
-/// one `EditList`; `removed` maps each seam's original offset to its post-edit position for the cursor.
+/// Plan a `[count]J` / `[count]gJ` join (nvim's `do_join`). `count` joins `count-1` seams (Vim: `J`/`2J` =
+/// one join, `3J` = two), leaving the cursor on the LAST join. `J` strips the next line's leading blanks
+/// and inserts one space per seam (none before `)`, after a tab or a trailing space, or around an empty
+/// line part; two after `.`/`?`/`!` under `'joinspaces'`; `'formatoptions'` `M`/`B` drop it around
+/// multibyte characters); `gJ` removes only the newline. Under `'formatoptions'` `j` a line that
+/// continues a comment loses its leader (`skip_comment`, #618). The seams are disjoint in original
+/// coordinates, so they apply as one `EditList`; `removed` maps each seam's original offset to its
+/// post-edit position for the cursor.
 fn plan_join(
-    b: &[u8],
+    st: &EditorState,
     cur: usize,
     count: u32,
     mode: Mode,
     hint: GroupHint,
     no_space: bool,
 ) -> Plan {
+    let b = st.bytes();
+    let fc = &st.view.format;
+    let remove_comments = fc.has('j');
+    let parts = if remove_comments {
+        format::parse_comments(&fc.comments)
+    } else {
+        Vec::new()
+    };
+    let insert_space = !no_space;
     let joins = count.max(2) - 1;
     let mut edits: Vec<Edit> = Vec::new();
     let mut cursor = cur;
-    let mut removed = 0usize;
+    let mut removed: isize = 0;
     let mut le = line_end(b, cur);
-    // The last byte of the text joined so far (`None` while it is empty): Vim's `sumsize`/`endcurr1`. An
-    // empty line taking part adds nothing, so `a`+``+`b` joins to `a b`, and `foo`+`` to `foo` (#677).
     let first_ls = line_start(b, cur);
-    let mut joined_last: Option<u8> = (le > first_ls).then(|| b[le - 1]);
+    // nvim's `sumsize != 0` (anything joined so far) and `endcurr1`/`endcurr2` (the last two characters of
+    // the latest line part, none after an empty one). An empty line taking part adds nothing, so
+    // `a`+``+`b` joins to `a b`, and `foo`+`` to `foo` (#677).
+    let mut sum = le > first_ls;
+    let last_two = |s: &[u8]| -> (Option<char>, Option<char>) {
+        let t = std::str::from_utf8(s).unwrap_or("");
+        let mut it = t.chars().rev();
+        (it.next(), it.next())
+    };
+    let (mut end1, mut end2) = if insert_space {
+        last_two(&b[first_ls..le])
+    } else {
+        (None, None)
+    };
+    let mut prev_was_comment =
+        remove_comments && format::skip_comment(&b[first_ls..le], &parts, false, insert_space).1;
     for _ in 0..joins {
         // No next line to join. A final newline ends the last line; it is no seam, so `J` on the last line
         // of `a\nb\n` leaves it alone instead of turning it into a trailing space (#677).
         if le + 1 >= b.len() {
             break;
         }
-        let next_le = line_end(b, le + 1);
-        let (del_start, del_len, sep): (usize, usize, Vec<u8>) = if no_space {
-            (le, 1, Vec::new()) // gJ: remove only the newline, keep the next line's leading whitespace
-        } else {
-            // One space, unless the next line is empty (after its indent) or opens with `)`, the text
-            // joined so far is empty, or it already ends in white space.
-            let ws_end = hspace_end(b, le + 1);
-            let next_empty = ws_end >= next_le;
-            let next_is_close = !next_empty && b[ws_end] == b')';
-            let space = !next_empty && !next_is_close && joined_last.is_some_and(|c| !is_hspace(c));
-            let sep = if space { b" ".to_vec() } else { Vec::new() };
-            (le, ws_end - le, sep)
-        };
-        if hspace_end(b, le + 1) < next_le {
-            joined_last = Some(b[next_le - 1]);
+        let next_ls = le + 1;
+        let next_le = line_end(b, next_ls);
+        let mut skip = 0usize;
+        if remove_comments {
+            let line = &b[next_ls..next_le];
+            if prev_was_comment {
+                let (n, c) = format::skip_comment(line, &parts, true, insert_space);
+                skip = n;
+                prev_was_comment = c;
+            } else {
+                prev_was_comment = format::skip_comment(line, &parts, false, insert_space).1;
+            }
         }
-        cursor = del_start - removed; // Vim rests the cursor on the join seam
-        removed += del_len - sep.len();
+        let content = if insert_space {
+            hspace_end(b, next_ls + skip)
+        } else {
+            next_ls + skip
+        };
+        let mut sep: Vec<u8> = Vec::new();
+        if insert_space && content < next_le && b[content] != b')' && sum && end1 != Some('\t') {
+            let c0 = std::str::from_utf8(&b[content..next_le])
+                .ok()
+                .and_then(|t| t.chars().next())
+                .unwrap_or('\0');
+            let e1 = end1.unwrap_or('\0');
+            let narrow = |c: char| u32::from(c) < 0x100;
+            let mbyte_ok = (!fc.has('M') || (narrow(c0) && narrow(e1)))
+                && (!fc.has('B')
+                    || (narrow(c0) && !format::eat_space(e1))
+                    || (narrow(e1) && !format::eat_space(c0)));
+            if mbyte_ok {
+                let mut e = end1;
+                if e == Some(' ') {
+                    e = end2;
+                } else {
+                    sep.push(b' ');
+                }
+                if fc.joinspaces && matches!(e, Some('.' | '?' | '!')) {
+                    sep.push(b' ');
+                }
+            }
+        }
+        let (del_start, del_len) = (le, content - le);
+        if content < next_le {
+            sum = true;
+        }
+        (end1, end2) = if insert_space {
+            last_two(&b[content..next_le])
+        } else {
+            (None, None)
+        };
+        cursor = del_start.saturating_add_signed(-removed); // Vim rests the cursor on the join seam
+        removed += del_len as isize - sep.len() as isize;
         // Joining onto an EMPTY line removes just its `\n`, which reads as that line deleted; take the next
         // line's first char along, so the empty line's marks stay on the joined line (nvim `do_join`,
         // #1125). An empty next line has no char to take; its marks are dropped there.
@@ -2004,7 +2070,7 @@ fn plan_join(
                 Edit::replace(del_start, del_len, sep)
             },
         );
-        le = line_end(b, del_start + del_len); // end of the next line to join (original coords)
+        le = next_le; // end of the next line to join (original coords)
     }
     if edits.is_empty() {
         // No line below to join: Vim's `nv_join` beeps on the last line, stopping a macro or a `:normal`
@@ -2019,7 +2085,263 @@ fn plan_join(
     )
 }
 
+/// The line a comment-continuing open makes (#618): `o`/`O` under `'formatoptions'` `o` and an Insert
+/// `<CR>` under `r` on a line that starts with a `'comments'` leader (nvim's `open_line` with
+/// `OPENLINE_DO_COM`). The new line's leading text (indent and leader) and, for `<CR>`, how far the text
+/// after the cursor starts (`'autoindent'` drops the blanks there). `None` when the line is no comment, so
+/// the plain open applies; also for a finished C comment under `'autoindent'`, which lines up with the
+/// line that opened it.
+pub(super) fn open_comment_line(st: &EditorState, cmd: &Command) -> Option<(Vec<u8>, bool)> {
+    open_comment_line_in(&st.view, st.bytes(), cmd)
+}
+
+/// [`open_comment_line`] over a View and its buffer's bytes.
+pub(crate) fn open_comment_line_in(
+    view: &View,
+    b: &[u8],
+    cmd: &Command,
+) -> Option<(Vec<u8>, bool)> {
+    if view.caret != CaretGravity::OnChar {
+        return None;
+    }
+    let fc = &view.format;
+    let cur = view.cursor;
+    let (forward, split) = match cmd {
+        Command::OpenBelow if fc.has('o') => (true, false),
+        Command::OpenAbove if fc.has('o') => (false, false),
+        Command::InsertNewline if fc.has('r') && view.mode == Mode::Insert => (true, true),
+        _ => return None,
+    };
+    let ls = line_start(b, cur);
+    let le = line_end(b, cur);
+    let saved = &b[ls..if split { cur } else { le }];
+    let ind = view.indent;
+    let indent_on = ind.autoindent || ind.smartindent;
+    let parts = format::parse_comments(&fc.comments);
+    let lead = format::open_leader(
+        saved,
+        &parts,
+        forward,
+        split.then(|| cur - ls),
+        indent_on,
+        ind.tab_width,
+    );
+    let (old_cols, old_len) = indent_cols(saved, ind.tab_width);
+    let mut leader = lead.leader;
+    let newindent = if leader.is_empty() {
+        // A finished C comment: line up with the line holding its `/*`.
+        let ce = lead.comment_end?;
+        if !(indent_on && saved[ce..].starts_with(b"*/")) {
+            return None;
+        }
+        let open = b[..ls + ce].windows(2).rposition(|w| w == b"/*")?;
+        let ols = line_start(b, open);
+        indent_cols(&b[ols..line_end(b, ols)], ind.tab_width).0
+    } else if indent_on {
+        lead.newindent.unwrap_or(old_cols)
+    } else {
+        0
+    };
+    if newindent > 0 {
+        let n = leader
+            .iter()
+            .take_while(|&&c| c == b' ' || c == b'\t')
+            .count();
+        leader.drain(..n);
+    }
+    let mut line = if newindent == 0 {
+        Vec::new()
+    } else if ind.copyindent {
+        ind.keeping(&saved[..old_len], newindent)
+    } else {
+        ind.whitespace(newindent)
+    };
+    let has_leader = !leader.is_empty();
+    line.extend_from_slice(&leader);
+    Some((line, has_leader))
+}
+
+/// The comment-end character a comment-continuing open arms ([`View::end_comment`]): the last byte of
+/// the end part of the three-part comment the source line is in, when that part has the `x` flag.
+pub(super) fn open_end_comment(st: &EditorState, cmd: &Command) -> Option<u8> {
+    let forward = match cmd {
+        Command::OpenBelow | Command::InsertNewline => true,
+        Command::OpenAbove => false,
+        _ => return None,
+    };
+    let b = st.bytes();
+    let cur = st.view.cursor;
+    let ls = line_start(b, cur);
+    let end = if matches!(cmd, Command::InsertNewline) {
+        cur
+    } else {
+        line_end(b, cur)
+    };
+    let parts = format::parse_comments(&st.view.format.comments);
+    let (n, k) = format::leader_len(&b[ls..end], &parts, !forward, true);
+    let k = k.filter(|_| n > 0)?;
+    let flags = parts[k].flags.as_bytes();
+    let end_part = flags.iter().find_map(|&f| match f {
+        b's' => Some(k + 2),
+        b'm' => Some(k + 1),
+        b'e' if !forward => Some(k),
+        b'e' | b'f' => Some(usize::MAX),
+        _ => None,
+    })?;
+    let part = parts.get(end_part)?;
+    if part.flags.contains('x') {
+        part.text.last().copied()
+    } else {
+        None
+    }
+}
+
+/// Typing the armed comment-end character first on a line opened inside a three-part comment replaces the
+/// middle leader by the end one (nvim's `insertchar` with `end_comment_pending`): ` * ` + `/` is ` */`.
+fn plan_end_comment(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    c: char,
+    hint: GroupHint,
+) -> Option<Plan> {
+    let ch = u8::try_from(c).ok()?;
+    if !st.view.auto_indent_pending
+        || st.view.end_comment != Some(ch)
+        || st.view.mode != Mode::Insert
+    {
+        return None;
+    }
+    let ls = line_start(b, cur);
+    let line = &b[ls..line_end(b, cur)];
+    let parts = format::parse_comments(&st.view.format.comments);
+    let (n, k) = format::leader_len(line, &parts, false, true);
+    let k = k.filter(|&k| n > 0 && parts[k].flags.contains('m'))?;
+    let mut middle = parts[k].text.as_slice();
+    while middle.last().is_some_and(|&x| x == b' ' || x == b'\t') {
+        middle = &middle[..middle.len() - 1];
+    }
+    let end = &parts.get(k + 1)?.text;
+    let mut i = cur - ls;
+    while i > 0 && matches!(line[i - 1], b' ' | b'\t') {
+        i -= 1;
+    }
+    let i = i.checked_sub(middle.len())?;
+    if end.last() != Some(&ch) {
+        return None;
+    }
+    Some(edit(
+        one(Edit::replace(ls + i, cur - (ls + i), end.clone())),
+        ls + i + end.len(),
+        Mode::Insert,
+        hint,
+    ))
+}
+
+/// Plan an open that continues a comment ([`open_comment_line`]), or `None`.
+fn plan_open_comment(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    cmd: &Command,
+    hint: GroupHint,
+) -> Option<Plan> {
+    let (prefix, _) = open_comment_line(st, cmd)?;
+    let ls = line_start(b, cur);
+    let le = line_end(b, cur);
+    let plan = match cmd {
+        Command::OpenBelow => {
+            let mut ins = vec![b'\n'];
+            ins.extend_from_slice(&prefix);
+            edit(
+                one(Edit::insert(le, ins)),
+                le + 1 + prefix.len(),
+                Mode::Insert,
+                hint,
+            )
+        }
+        Command::OpenAbove => {
+            let mut ins = prefix.clone();
+            ins.push(b'\n');
+            edit(
+                one(Edit::insert(ls, ins)),
+                ls + prefix.len(),
+                Mode::Insert,
+                hint,
+            )
+        }
+        _ => {
+            // Insert `<CR>`: an untouched autoindent's blanks before the cursor go (nvim's `trunc_line`), and
+            // under 'autoindent' the blanks after it do not move to the new line.
+            let mut cut = cur;
+            if st.view.auto_indent_pending {
+                while cut > ls && matches!(b[cut - 1], b' ' | b'\t') {
+                    cut -= 1;
+                }
+            }
+            let mut after = cur;
+            if st.view.indent.autoindent {
+                while after < le && matches!(b[after], b' ' | b'\t') {
+                    after += 1;
+                }
+            }
+            let mut ins = vec![b'\n'];
+            ins.extend_from_slice(&prefix);
+            let cursor = cut + ins.len();
+            edit(
+                one(Edit::replace(cut, after - cut, ins)),
+                cursor,
+                Mode::Insert,
+                hint,
+            )
+        }
+    };
+    Some(plan)
+}
+
+/// A caret key that takes an Insert cursor off a line it opened with an untouched autoindent (or comment
+/// leader) removes that line's trailing blanks first (nvim's `start_arrow` → `stop_insert` with `did_ai`,
+/// #617): `o<Up>` leaves an empty line, not one holding the indent.
+fn leave_autoindent(st: &EditorState, cur: usize, p: Plan, hint: GroupHint) -> Plan {
+    let b = st.bytes();
+    if st.view.mode != Mode::Insert
+        || !st.view.auto_indent_pending
+        || st.view.caret != CaretGravity::OnChar
+        || p.is_edit
+        || !matches!(p.action, Action::Nop)
+        || p.mode != Mode::Insert
+        || line_start(b, p.cursor) == line_start(b, cur)
+    {
+        return p;
+    }
+    let ls = line_start(b, cur);
+    let le = line_end(b, cur);
+    let mut cut = le;
+    while cut > ls && matches!(b[cut - 1], b' ' | b'\t') {
+        cut -= 1;
+    }
+    if cut == le || cur != le {
+        return p;
+    }
+    let cursor = if p.cursor >= le {
+        p.cursor - (le - cut)
+    } else {
+        p.cursor
+    };
+    edit(one(Edit::delete(cut, le - cut)), cursor, Mode::Insert, hint)
+}
+
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
+    let hint = if st.view.last_was_edit {
+        GroupHint::Continue
+    } else {
+        GroupHint::BreakBefore
+    };
+    let p = plan_cmd(st, cmd);
+    leave_autoindent(st, st.view.cursor, p, hint)
+}
+
+fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
     let b = st.bytes();
     let cur = st.view.cursor;
     // Undo/redo restore DOCUMENT state, not mode. The engine only reaches them from Normal or from
@@ -2037,6 +2359,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         GroupHint::BreakBefore
     };
     if let Some(p) = failed_motion(st, b, cur, cmd) {
+        return p;
+    }
+    if let Some(p) = plan_open_comment(st, b, cur, cmd, hint) {
         return p;
     }
 
@@ -2085,7 +2410,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let ls = line_start(b, cur);
             let le = line_end(b, cur);
             let below = matches!(cmd, Command::OpenBelow);
-            let (pad, _) = st.view.indent.open_indent(b, ls, le, below);
+            let (pad, _) = st
+                .view
+                .indent
+                .open_indent(b, ls, le, below, &st.view.format.cinwords);
             let mut ins = Vec::with_capacity(pad.len() + 1);
             if below && le == ls && le < b.len() {
                 // An empty line: the new line goes in after its `\n`, so marks stay on it (#1125).
@@ -2154,10 +2482,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 // whitespace is left. Guarded to ONLY a line that is entirely blank with the caret at its
                 // end — exactly the auto-indent-leftover shape — so user-typed content is never touched.
                 if st.view.auto_indent_pending {
+                    // nvim's `stop_insert` with `did_ai`: the blanks before the caret at the line end go,
+                    // the whole indent of a line holding nothing else, or the blank after a comment
+                    // leader (`o<Esc>` on `// a` leaves `//`, #618).
                     let ls = line_start(b, cur);
                     let le = line_end(b, cur);
-                    if cur == le && le > ls && b[ls..le].iter().all(|&c| c == b' ' || c == b'\t') {
-                        return edit(one(Edit::delete(ls, le - ls)), ls, Mode::Normal, hint);
+                    let mut cut = le;
+                    while cut > ls && matches!(b[cut - 1], b' ' | b'\t') {
+                        cut -= 1;
+                    }
+                    if cur == le && cut < le {
+                        return edit(one(Edit::delete(cut, le - cut)), cut, Mode::Normal, hint);
                     }
                 }
             }
@@ -2272,6 +2607,12 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                         hint,
                     );
                 }
+            }
+            if let Some(p) = plan_end_comment(st, b, cur, *c, hint) {
+                return p;
+            }
+            if let Some(p) = auto_wrap(st, b, cur, *c, hint) {
+                return p;
             }
             edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
         }
@@ -2459,7 +2800,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             edit(one(Edit::replace(ls, ws, want)), cursor, Mode::Insert, hint)
         }
         // `i_0_CTRL-D` / `i_^_CTRL-D` — delete all leading whitespace of the line; the caret rides left.
-        Command::InsertDeleteIndent => {
+        Command::InsertDeleteIndent | Command::InsertDeleteIndentRestore => {
             let ls = line_start(b, cur);
             let le = line_end(b, ls);
             let remove = b[ls..le]
@@ -2525,7 +2866,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::InsertNewline if auto_indents(st) && st.view.mode == Mode::Insert => {
             let ls = line_start(b, cur);
             let le = line_end(b, cur);
-            let (pad, _) = st.view.indent.open_indent(b, ls, cur, true);
+            let (mut pad, _) =
+                st.view
+                    .indent
+                    .open_indent(b, ls, cur, true, &st.view.format.cinwords);
+            // After `^ CTRL-D` an unindented line hands the deleted indent to the next one (`old_indent`).
+            if pad.is_empty() && st.view.old_indent > 0 && st.view.indent.autoindent {
+                pad = st.view.indent.whitespace(st.view.old_indent);
+            }
             let mut cut = cur;
             if st.view.auto_indent_pending {
                 while cut > ls && matches!(b[cut - 1], b' ' | b'\t') {
@@ -2734,8 +3082,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 }
             }
         }
-        Command::JoinLines(count) => plan_join(b, cur, *count, st.view.mode, hint, false),
-        Command::JoinLinesNoSpace(count) => plan_join(b, cur, *count, st.view.mode, hint, true),
+        Command::JoinLines(count) => plan_join(st, cur, *count, st.view.mode, hint, false),
+        Command::JoinLinesNoSpace(count) => plan_join(st, cur, *count, st.view.mode, hint, true),
         Command::IncrementNumber(delta) => {
             // `CTRL-A`/`CTRL-X`: adjust the number at or after the cursor on the current line. A `0x`-prefixed
             // hex literal increments in hex (`0x1f`→`0x20`); otherwise a decimal (with optional `-` sign).
@@ -2942,7 +3290,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let sp = exclusive_op_span(b, lo, hi);
             if matches!(
                 op,
-                MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. }
+                MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } | MarkOp::Comment
             ) {
                 return plan_op_over_span(st, b, cur, *op, lo, hi, false, sp.adjusted, mark, hint);
             }
@@ -3178,6 +3526,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             );
             apply_op(st, b, cur, mark_op(*op), sp, landing, hint)
         }
+        // `{count}>>` moves `count - 1` lines down first (nvim `nv_lineop` → `cursor_down`), so on the
+        // last line a count above 1 fails like `3dd` there, shifting nothing (#1159); a count past the
+        // end from a line above still shifts the lines that exist.
+        Command::ShiftRight(count) | Command::ShiftLeft(count)
+            if *count > 1
+                && st.view.caret == CaretGravity::OnChar
+                && st.view.mode == Mode::Normal
+                && line_end(b, cur) >= crate::motion::content_end(b) =>
+        {
+            beep(cur, st.view.mode)
+        }
         Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
         Command::ShiftLeft(count) => plan_shift(st, cur, *count, false, hint),
         Command::ShiftMotion {
@@ -3212,6 +3571,28 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             motion,
             keep_cursor,
         } => plan_format(st, cur, *count, *motion, *keep_cursor, hint),
+        Command::Comment { count, motion } => {
+            // `gc` over a motion: every LINE it touches; the cursor goes to the start of the range
+            // (`g@`'s `'[`), keeping its column over a linewise motion.
+            let (s, e, linewise) = op_span(b, cur, *motion, *count);
+            if s >= e {
+                nop(cur, st.view.mode)
+            } else {
+                let landing = op_landing(
+                    b,
+                    cur,
+                    *motion,
+                    *count,
+                    st.view.curswant,
+                    st.view.indent.tab_width,
+                    true,
+                );
+                let at = if linewise { cur.min(landing) } else { s };
+                let first = crate::pos::line_of(b, s);
+                let last = crate::pos::line_of(b, e - 1);
+                plan_comment(st, first, last, at, hint)
+            }
+        }
         Command::SetIndents {
             first_line,
             last_line,
@@ -4029,7 +4410,10 @@ fn plan_set_indents(
         let want: Vec<u8> = if fnb >= le {
             Vec::new() // blank line → no indent
         } else {
-            st.indent_for_level(levels.get(li - first).copied().unwrap_or(0))
+            let level = levels.get(li - first).copied().unwrap_or(0);
+            st.view
+                .indent
+                .rebuilt(&b[ls..fnb], level * st.view.indent.shift_width())
         };
         if li == first {
             first_cursor = ls + want.len();
@@ -4055,61 +4439,82 @@ fn plan_set_indents(
     }
 }
 
-/// Re-wrap a block of text to `width` columns for `gq`/`gw`. Each blank-line-separated PARAGRAPH is joined
-/// into a single word stream and greedily re-broken so no line exceeds `width` (always ≥1 word/line); the
-/// paragraph's FIRST line's leading whitespace is used as the indent of every wrapped line. Blank lines are
-/// preserved as paragraph separators. Width is measured in `char`s (an MVP approximation of display width).
-fn reflow(block: &str, width: usize) -> String {
-    let width = width.max(1);
-    let mut out: Vec<String> = Vec::new();
-    let mut para: Vec<&str> = Vec::new();
-    let flush = |para: &mut Vec<&str>, out: &mut Vec<String>| {
-        if para.is_empty() {
-            return;
-        }
-        let indent: String = para[0]
-            .chars()
-            .take_while(|c| *c == ' ' || *c == '\t')
-            .collect();
-        let words: Vec<&str> = para.iter().flat_map(|l| l.split_whitespace()).collect();
-        para.clear();
-        if words.is_empty() {
-            return;
-        }
-        let mut line = indent.clone();
-        let mut have_word = false;
-        for w in words {
-            let wlen = w.chars().count();
-            if !have_word {
-                line.push_str(w);
-                have_word = true;
-            } else if line.chars().count() + 1 + wlen > width {
-                out.push(std::mem::replace(&mut line, {
-                    let mut s = indent.clone();
-                    s.push_str(w);
-                    s
-                }));
-            } else {
-                line.push(' ');
-                line.push_str(w);
-            }
-        }
-        out.push(line);
+/// The formatting options a `gq` or an auto-wrap reads, from this View's (#618).
+fn fmt_opts(st: &EditorState) -> format::FmtOpts<'_> {
+    let fc = &st.view.format;
+    let listpat = if fc.has('n') && !fc.listpat.is_empty() {
+        crate::pattern::Regex::compile(&fc.listpat, crate::pattern::Options::default()).ok()
+    } else {
+        None
     };
-    for l in block.split('\n') {
-        if l.trim().is_empty() {
-            flush(&mut para, &mut out);
-            out.push(String::new()); // preserve the blank separator line
-        } else {
-            para.push(l);
-        }
+    format::FmtOpts {
+        fo: &fc.options,
+        parts: format::parse_comments(&fc.comments),
+        ind: st.view.indent,
+        joinspaces: fc.joinspaces,
+        listpat,
     }
-    flush(&mut para, &mut out);
-    out.join("\n")
 }
 
-/// `gq`/`gw` {motion} — reflow the motion's whole lines to `'textwidth'` (or 79 when tw=0). `gw`
-/// (`keep_cursor`) restores the caret; `gq` leaves it at the start of the last reformatted line.
+/// The line at `l` of `b` without its newline, if the buffer has one there.
+fn buffer_line(b: &[u8], ls: usize) -> Vec<u8> {
+    b[ls..line_end(b, ls)].to_vec()
+}
+
+/// Auto-wrap while typing (nvim's `insertchar` → `internal_format`, #618): typing the non-blank `c` at
+/// `cur` in Insert past `'textwidth'` (or the `'wrapmargin'` width) breaks the line at a blank before the
+/// cursor, the new line taking the indent and, with `'formatoptions'` `c`, the comment leader; then `c`
+/// goes in. `None` when nothing wraps.
+fn auto_wrap(st: &EditorState, b: &[u8], cur: usize, c: char, hint: GroupHint) -> Option<Plan> {
+    if st.view.caret != CaretGravity::OnChar
+        || st.view.mode != Mode::Insert
+        || c == ' '
+        || c == '\t'
+    {
+        return None;
+    }
+    let tw = st.view.text_width_for(false);
+    if tw == 0 {
+        return None;
+    }
+    let ls = line_start(b, cur);
+    let le = line_end(b, cur);
+    // 'formatoptions' `l`: a line already longer than 'textwidth' when this insert began is left alone.
+    if st.view.format.has('l') {
+        if let Some((line, len)) = st.view.insstart_line {
+            if line == crate::pos::line_of(b, cur) && len > tw {
+                return None;
+            }
+        }
+    }
+    let o = fmt_opts(st);
+    let mut fb = format::FmtBuf {
+        lines: vec![b[ls..le].to_vec()],
+        cur: (0, cur - ls),
+        saved: None,
+        before: None,
+        after: None,
+    };
+    fb.internal_format(tw, -1, false, false, false, Some(c), &o);
+    if fb.lines.len() == 1 {
+        return None;
+    }
+    let (l, col) = fb.cur;
+    let at: usize = fb.lines[..l].iter().map(|x| x.len() + 1).sum::<usize>() + col;
+    let mut text = fb.lines.join(&b'\n');
+    let mut buf = [0u8; 4];
+    let typed = c.encode_utf8(&mut buf).as_bytes();
+    text.splice(at..at, typed.iter().copied());
+    Some(edit(
+        one(Edit::replace(ls, le - ls, text)),
+        ls + at + typed.len(),
+        Mode::Insert,
+        hint,
+    ))
+}
+
+/// `gq`/`gw` {motion} — format the motion's whole lines (nvim's `op_format`). `gw` (`keep_cursor`) keeps
+/// the caret on its text; `gq` leaves it on the first non-blank of the last formatted line.
 fn plan_format(
     st: &EditorState,
     cur: usize,
@@ -4135,11 +4540,14 @@ fn plan_format(
     )
 }
 
-/// Reflow the whole lines `[start, end)` (`start` a line start, `end` a line's content end) — the shared
-/// tail of `gq`/`gw` over a motion, a search, a `gn` match or a mark, and of Visual `gq`. `below` is nvim's
-/// `end_adjusted` (never set for Visual `gq`): the
-/// exclusive-linewise rule pulled the span's end off the next line, so `gq` lands on the first non-blank of
-/// that next line instead of the last formatted one (nvim `op_format`, #1071). `gw` ignores it.
+/// Format the whole lines `[start, end)` (`start` a line start, `end` a line's content end) — the shared
+/// tail of `gq`/`gw` over a motion, a search, a `gn` match or a mark, and of Visual `gq` (nvim's
+/// `format_lines` through [`format::FmtBuf`], #618): each paragraph (blank lines, a change of comment
+/// leader and, with `'formatoptions'` `n`, a list item end one) is joined and broken again at
+/// `'textwidth'`, keeping its comment leader under `'formatoptions'` `q`. `below` is nvim's
+/// `end_adjusted` (never set for Visual `gq`): the exclusive-linewise rule pulled the span's end off the
+/// next line, so `gq` lands on the first non-blank of that next line instead of the last formatted one
+/// (nvim `op_format`, #1071). `gw` ignores it.
 fn plan_format_lines(
     st: &EditorState,
     cur: usize,
@@ -4150,43 +4558,87 @@ fn plan_format_lines(
     hint: GroupHint,
 ) -> Plan {
     let b = st.bytes();
-    // The cursor on the line after the block, once the block is `new_len` bytes long. Only when that line
-    // is a real buffer line (a trailing newline does not start one).
-    let below_cursor = |new_len: usize| -> Option<usize> {
-        (below && !keep_cursor && end + 1 < b.len()).then(|| {
-            let fnb = motion::first_non_blank(b, end + 1);
-            start + new_len + (fnb - end)
-        })
-    };
-    let Ok(block) = std::str::from_utf8(&b[start..end]) else {
+    if std::str::from_utf8(&b[start..end]).is_err() {
         return nop(cur, Mode::Normal);
+    }
+    let lines: Vec<Vec<u8>> = b[start..end]
+        .split(|&c| c == b'\n')
+        .map(<[u8]>::to_vec)
+        .collect();
+    let n = lines.len();
+    let before = (start > 0).then(|| buffer_line(b, line_start(b, start - 1)));
+    let after = (end + 1 < b.len()).then(|| buffer_line(b, end + 1));
+    let saved = keep_cursor.then(|| {
+        let c = cur.clamp(start, end);
+        let l = b[start..c].iter().filter(|&&x| x == b'\n').count();
+        (l, c - line_start(b, c))
+    });
+    let mut fb = format::FmtBuf {
+        lines,
+        cur: (0, 0),
+        saved,
+        before,
+        after,
     };
-    let width = if st.view.text_width > 0 {
-        st.view.text_width
+    let o = fmt_opts(st);
+    fb.format_lines(n, st.view.text_width_for(true), &o);
+    let new = fb.lines.join(&b'\n');
+    let offset = |l: usize, col: usize| -> usize {
+        start
+            + fb.lines[..l].iter().map(|x| x.len() + 1).sum::<usize>()
+            + col.min(fb.lines[l].len())
+    };
+    let new_len = new.len();
+    let cursor = if keep_cursor {
+        let (l, col) = fb.saved.unwrap_or((0, 0));
+        offset(l.min(fb.lines.len() - 1), col)
+    } else if below && end + 1 < b.len() {
+        // The line after the block, at its first non-blank.
+        let fnb = motion::first_non_blank(b, end + 1);
+        start + new_len + (fnb - end)
     } else {
-        79
+        let l = fb.cur.0.min(fb.lines.len() - 1);
+        let ws = fb.lines[l]
+            .iter()
+            .take_while(|&&c| c == b' ' || c == b'\t')
+            .count();
+        offset(l, ws)
     };
-    let new = reflow(block, width);
-    if new.as_bytes() == &b[start..end] {
-        // Already wrapped — no edit; still move the cursor per gq (Vim) unless gw.
-        let cursor = below_cursor(end - start).unwrap_or(if keep_cursor { cur } else { start });
+    if new[..] == b[start..end] {
         return nop(cursor, Mode::Normal);
     }
-    let new_bytes = new.into_bytes();
-    // gw restores the caret (clamped into the resized buffer); gq lands on the last reformatted line's start.
-    let cursor = if let Some(c) = below_cursor(new_bytes.len()) {
-        c
-    } else if keep_cursor {
-        cur.min(start + new_bytes.len())
-    } else {
-        let last_line_off = new_bytes
-            .iter()
-            .rposition(|&c| c == b'\n')
-            .map_or(0, |i| i + 1);
-        start + last_line_off
-    };
     edit(
-        one(Edit::replace(start, end - start, new_bytes)),
+        one(Edit::replace(start, end - start, new)),
+        cursor,
+        Mode::Normal,
+        hint,
+    )
+}
+
+/// `gc` over the lines `first..=last` (0-based): comment them out with `'commentstring'`, or uncomment
+/// them when every non-blank one is commented ([`format::toggle_comment`], nvim's `vim._comment`). The
+/// cursor goes to `at`'s line and column, clamped (the lines are replaced, as `nvim_buf_set_lines` does). An
+/// empty `'commentstring'` changes nothing.
+fn plan_comment(st: &EditorState, first: usize, last: usize, at: usize, hint: GroupHint) -> Plan {
+    let b = st.bytes();
+    let start = crate::pos::nth_line_start(b, first);
+    let end = line_end(b, crate::pos::nth_line_start(b, last));
+    let at_line = crate::pos::line_of(b, at).clamp(first, last);
+    let at_col = at - line_start(b, at);
+    let lines: Vec<&[u8]> = b[start..end].split(|&c| c == b'\n').collect();
+    let Some(new_lines) = format::toggle_comment(&lines, &st.view.format.commentstring) else {
+        return nop(at, Mode::Normal);
+    };
+    let k = at_line - first;
+    let cursor = start
+        + new_lines[..k].iter().map(|l| l.len() + 1).sum::<usize>()
+        + at_col.min(new_lines[k].len());
+    let new = new_lines.join(&b'\n');
+    if new[..] == b[start..end] {
+        return nop(cursor, Mode::Normal);
+    }
+    edit(
+        one(Edit::replace(start, end - start, new)),
         cursor,
         Mode::Normal,
         hint,
@@ -4234,7 +4686,10 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
         let want: Vec<u8> = if fnb >= le {
             Vec::new() // blank line → no indent
         } else {
-            st.indent_for_level(indent_level(li, fnb, ls))
+            // nvim's `set_indent`: under 'preserveindent' the line keeps its indent characters as far
+            // as they fit (#617).
+            let cols = indent_level(li, fnb, ls) * st.view.indent.shift_width();
+            st.view.indent.rebuilt(&b[ls..fnb], cols)
         };
         if li == first_line {
             first_cursor = ls + want.len();
@@ -4304,7 +4759,7 @@ fn plan_shift_times(
             }
         }
         if le >= b.len() {
-            break; // no more lines — shifting fewer than `count` is fine (Vim clamps too).
+            break; // no more lines: a count past the end shifts the lines that exist (#1159).
         }
         ls = le + 1;
     }

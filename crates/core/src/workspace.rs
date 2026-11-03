@@ -297,7 +297,7 @@ impl Workspace {
     /// return its id. Every View the workspace creates (other than a split's clone) comes from here.
     fn push_view(&mut self, doc: DocumentId) -> ViewId {
         let mut view = View::fresh(doc);
-        view.set_options(self.defaults);
+        view.set_options(self.defaults.clone());
         self.views.push(Some(view));
         ViewId(self.views.len() - 1)
     }
@@ -408,6 +408,15 @@ impl Workspace {
         let vid = self.windows[i].view;
         if let Some(v) = self.views[vid.0].as_mut() {
             v.set_top(top);
+        }
+    }
+
+    /// Set the `i`th Window's text-area width, which `'wrapmargin'` and a `gq` without `'textwidth'`
+    /// measure against (#618).
+    pub fn set_text_cols(&mut self, i: usize, cols: usize) {
+        let vid = self.windows[i].view;
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.set_text_cols(cols);
         }
     }
 
@@ -1296,7 +1305,7 @@ impl Workspace {
     pub fn apply_ex(&mut self, ex: &crate::ExCmd) -> crate::ExOutcome {
         match ex {
             crate::ExCmd::Set(opt) => {
-                self.set_option(*opt);
+                self.set_option(opt.clone());
                 return crate::ExOutcome::Done;
             }
             // `:keepjumps` reaches every view, as [`Workspace::set_keep_jumps`] does.
@@ -1362,14 +1371,14 @@ impl Workspace {
     /// writes the global value AND every open View.
     pub fn set_option_in(&mut self, opt: crate::editor::EditorOption, level: OptionLevel) {
         if opt.is_global() {
-            self.defaults.set(opt);
+            self.defaults.set(opt.clone());
             for v in self.views.iter_mut().flatten() {
-                v.update_options(|o| o.set(opt));
+                v.update_options(|o| o.set(opt.clone()));
             }
             return;
         }
         if level != OptionLevel::Local {
-            self.defaults.set(opt);
+            self.defaults.set(opt.clone());
         }
         if level != OptionLevel::Global {
             let vid = self.windows[self.focus].view;

@@ -187,6 +187,8 @@ enum Op {
     /// last reformatted line; `FormatKeep` (`gw`) restores it.
     Format,
     FormatKeep,
+    /// `gc` — comment / uncomment the operator span's lines with `'commentstring'` (#618).
+    Comment,
     /// `!` — filter the operator span's LINES through a shell command (`!{motion}{cmd}<CR>`, `!!{cmd}`).
     /// Unlike the other operators this does not resolve to a buffer edit in the engine: the completed
     /// motion yields a [`Feed::FilterMotion`] the frontend turns into a pre-seeded `:{range}!` ex line
@@ -209,6 +211,8 @@ enum OpClass {
     Reindent,
     /// `gq` / `gw` (`keep`).
     Format { keep: bool },
+    /// `gc`.
+    Comment,
     /// `!` — resolved by the frontend into a pre-seeded `:{range}!` line, never an edit here.
     Filter,
 }
@@ -228,6 +232,7 @@ impl Op {
             Op::Reindent => OpClass::Reindent,
             Op::Format => OpClass::Format { keep: false },
             Op::FormatKeep => OpClass::Format { keep: true },
+            Op::Comment => OpClass::Comment,
             Op::Filter => OpClass::Filter,
         }
     }
@@ -244,6 +249,7 @@ impl OpClass {
             OpClass::Shift { left } => SearchOp::Shift { left },
             OpClass::Reindent => SearchOp::Reindent,
             OpClass::Format { keep } => SearchOp::Format { keep },
+            OpClass::Comment => SearchOp::Comment,
             OpClass::Filter => return None,
         })
     }
@@ -258,6 +264,7 @@ impl OpClass {
             OpClass::Shift { left } => MarkOp::Shift { left },
             OpClass::Reindent => MarkOp::Reindent,
             OpClass::Format { keep } => MarkOp::Format { keep },
+            OpClass::Comment => MarkOp::Comment,
             OpClass::Filter => return None,
         })
     }
@@ -1878,6 +1885,10 @@ impl InputEngine {
                 motion: m,
                 keep_cursor: keep,
             }),
+            Some(OpClass::Comment) => Feed::Cmd(Command::Comment {
+                count: total,
+                motion: m,
+            }),
             Some(OpClass::Text(op)) => Feed::Cmd(match (self.normal.forced_wise, op) {
                 (Some(wise), op) => Command::OpForced {
                     op,
@@ -2209,6 +2220,10 @@ impl InputEngine {
                 count: n,
                 motion: line,
                 keep_cursor: keep,
+            }),
+            OpClass::Comment => Feed::Cmd(Command::Comment {
+                count: n,
+                motion: line,
             }),
             OpClass::Filter => Feed::FilterMotion {
                 count: n,
@@ -2911,13 +2926,17 @@ impl InputEngine {
             return self.action(Command::InsertIndent);
         }
         // `0 CTRL-D` / `^ CTRL-D` (the `0`/`^` typed just before): delete the typed char and ALL indent of the
-        // line. The two edits travel in a `Replay`, which bypasses the recorder, so fold them in by hand.
-        // (`^ CTRL-D` also restores the indent on the next line under 'autoindent'; ruse does not restore it
-        // yet, so `^ CTRL-D` behaves as `0 CTRL-D`, #617 follow-up.)
+        // line; after `^` the next `<CR>` restores it under 'autoindent' (#617). The two edits travel in a
+        // `Replay`, which bypasses the recorder, so fold them in by hand.
         if ctrl && key.code == KeyCode::Char('d') {
             if matches!(last_typed, Some('0' | '^')) {
                 self.reset();
-                let cmds = vec![Command::DeleteBack, Command::InsertDeleteIndent];
+                let delete = if last_typed == Some('^') {
+                    Command::InsertDeleteIndentRestore
+                } else {
+                    Command::InsertDeleteIndent
+                };
+                let cmds = vec![Command::DeleteBack, delete];
                 for cmd in &cmds {
                     self.record(&Feed::Cmd(cmd.clone()), Mode::Insert);
                 }
@@ -3693,6 +3712,18 @@ impl InputEngine {
                 kind: SelectKind::Linewise,
             }),
             KeyCode::Char('d') => self.operator(Op::Delete),
+            // `gcc` — the doubled comment operator: its `c` is the doubling key, not `c` (#618).
+            KeyCode::Char('c')
+                if matches!(
+                    self.normal.op,
+                    Some(OpPending {
+                        op: Op::Comment,
+                        ..
+                    })
+                ) =>
+            {
+                self.op_linewise()
+            }
             KeyCode::Char('c') => self.operator(Op::Change),
             KeyCode::Char('y') => self.operator(Op::Yank),
             // `>`/`<` are operators: doubled (`>>`) shifts the current `count` lines, and over a motion
@@ -4056,6 +4087,10 @@ impl InputEngine {
                     KeyCode::Char('q') if matches!(mode, Mode::Visual { .. }) => {
                         self.action(Command::VisualOp(VisualOp::Format))
                     }
+                    // Visual `gc` — comment / uncomment the selected lines (nvim's default `gc`, #618).
+                    KeyCode::Char('c') if matches!(mode, Mode::Visual { .. }) => {
+                        self.action(Command::VisualOp(VisualOp::Comment))
+                    }
                     // `ge` / `gE` — backward to the end of the previous word / WORD (operator-aware via
                     // `motion`, so `dge` deletes back through the previous word-end).
                     KeyCode::Char('e') => self.motion(Motion::WordEndBack),
@@ -4145,6 +4180,13 @@ impl InputEngine {
                     // `gq` / `gw` — arm the reflow operator over the next motion (`gqap`, `gwj`). Normal
                     // only. `gqgq` is the doubled line form (through the operator-pending `g` tier above).
                     KeyCode::Char('q') if matches!(mode, Mode::Normal) => self.arm_op(Op::Format),
+                    // `gc` — arm the comment operator (`gcj`, `gcip`; `gcc` is its line form). The `gc`
+                    // comment text object (`dgc`, `gcgc`) is not modelled: `gcgc` cancels (#618).
+                    KeyCode::Char('c')
+                        if matches!(mode, Mode::Normal) && self.normal.op.is_none() =>
+                    {
+                        self.arm_op(Op::Comment)
+                    }
                     KeyCode::Char('w') if matches!(mode, Mode::Normal) => {
                         self.arm_op(Op::FormatKeep)
                     }

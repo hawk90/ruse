@@ -276,6 +276,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::ShiftMotion { .. }
         | C::Reindent { .. }
         | C::Format { .. }
+        | C::Comment { .. }
         | C::Paste { .. }
         | C::PasteIndent { .. }
         | C::PasteBlockInner { .. }
@@ -300,7 +301,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
             | VisualOp::Shift { .. }
             | VisualOp::Join { .. }
             | VisualOp::Reindent
-            | VisualOp::Format,
+            | VisualOp::Format
+            | VisualOp::Comment,
         )
         | C::OpForced {
             op: OpKind::Delete, ..
@@ -312,7 +314,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
                 | SearchOp::Case(_)
                 | SearchOp::Shift { .. }
                 | SearchOp::Reindent
-                | SearchOp::Format { .. },
+                | SearchOp::Format { .. }
+                | SearchOp::Comment,
             ..
         }
         // `` d`a ``/`d'a`, `` g~`a ``, `` >`a ``, `` =`a ``, `` gq`a `` — the mark is re-resolved on replay.
@@ -322,7 +325,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
                 | MarkOp::Case(_)
                 | MarkOp::Shift { .. }
                 | MarkOp::Reindent
-                | MarkOp::Format { .. },
+                | MarkOp::Format { .. }
+                | MarkOp::Comment,
             ..
         }
         // `dgn`/`dgN` — delete the match; dot-repeatable to sweep the next match. Likewise `gUgn`, `>gn`, ...
@@ -332,7 +336,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
                 | SearchOp::Case(_)
                 | SearchOp::Shift { .. }
                 | SearchOp::Reindent
-                | SearchOp::Format { .. },
+                | SearchOp::Format { .. }
+                | SearchOp::Comment,
             ..
         }
         // `d*`, `gU#`, `>g*` — re-searched for the keyword under the new cursor (nvim `d*.`, #1071).
@@ -342,7 +347,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
                 | SearchOp::Case(_)
                 | SearchOp::Shift { .. }
                 | SearchOp::Reindent
-                | SearchOp::Format { .. },
+                | SearchOp::Format { .. }
+                | SearchOp::Comment,
             ..
         } => ChangeKind::Immediate,
         // Not a change: yanks (incl. forced, search and mark yanks), motions and jumps, mode switches,
@@ -406,6 +412,7 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::InsertIndent
         | C::InsertDedent
         | C::InsertDeleteIndent
+        | C::InsertDeleteIndentRestore
         | C::InsertStartColumnLine { .. }
         | C::InsertCaretStep { .. }
         | C::InsertTab
@@ -498,6 +505,10 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
             motion: *motion,
         },
         C::Reindent { motion, .. } => C::Reindent {
+            count: n,
+            motion: *motion,
+        },
+        C::Comment { motion, .. } => C::Comment {
             count: n,
             motion: *motion,
         },
@@ -602,6 +613,7 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::InsertIndent
         | C::InsertDedent
         | C::InsertDeleteIndent
+        | C::InsertDeleteIndentRestore
         | C::InsertStartColumnLine { .. }
         | C::InsertCaretStep { .. }
         | C::InsertTab

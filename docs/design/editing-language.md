@@ -63,6 +63,12 @@ appends at the line end, `I` inserts before the first non-blank. The frontend su
 (`apps/tui/src/indent.rs`), and Visual `o` / block `I`/`A` swap ends and block-insert. Without a syntax tree
 the core applies nvim's `'autoindent'` / `'smartindent'` / `'copyindent'` rules to the opened line, and
 `'softtabstop'` / `'smarttab'` to an Insert `<Tab>` and `<BS>` (`crates/core/src/editor/indent.rs`, #617).
+Text formatting follows nvim's `textformat.c` (`crates/core/src/editor/format.rs`, #618): typing past
+`'textwidth'` (or the `'wrapmargin'` width) breaks the line at a blank, the new line keeping the indent and,
+under `'formatoptions'` `c`, the `'comments'` leader; `fo` `r`/`o` continue a comment leader on `<CR>`/`o`/`O`;
+`gq`/`gw` join and re-break each paragraph (comment-aware under `q`, `2`/`n` second-line and list indent),
+`J` honours `'joinspaces'` and drops a comment leader under `j`, and `gc` toggles `'commentstring'`
+comments. With `'formatprg'` / `'equalprg'` set, `gq` / `=` filter through that program instead.
 
 ## v0 — small-word vs WORD motions (SHIPPED)
 
@@ -163,7 +169,7 @@ pub trait Operator {
 
 - The operator reads the range's `RangeKind` to set the **register type** (char/line/block) it writes — the
   bridge to [register-model.md](register-model.md) (D-026): paste geometry follows the stored type.
-- Built-in operators: `d c y > < = gu gU g~ ! gq g? zf`. `x`=`dl`, `D`=`d$`, `C`=`c$`, `s`=`cl`, `S`=`cc`
+- Built-in operators: `d c y > < = gu gU g~ ! gq gw gc g? zf`. `x`=`dl`, `D`=`d$`, `C`=`c$`, `s`=`cl`, `S`=`cc`
   are aliases that construct the operator+motion internally.
 - Result is a **single `CommandOutcome::Transaction`** (one undo group — D-005) or a `Composite`/`AsyncTask`
   for `=`/`!` (external filter). The outcome enum is bounded (no unlimited effect system; anti-pattern CMD-14).

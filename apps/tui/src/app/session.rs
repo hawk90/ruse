@@ -312,10 +312,15 @@ fn resolve_tree_aware(
     };
     // `o`/`O`/`<CR>` — seed the opened line with the tree-suggested indent. Dot-repeat replays the plain
     // open (column-0), so a stale recorded level is never re-applied at a new location.
+    let continues_comment = {
+        let pane = ws.focused();
+        pane.view.opens_comment(pane.doc.bytes(), &cmd)
+    };
     let cmd = if matches!(
         cmd,
         Command::OpenBelow | Command::OpenAbove | Command::InsertNewline
-    ) {
+    ) && !continues_comment
+    {
         match tree_of(ws) {
             Some(tree) => {
                 let cur = ws.focused().view.cursor();
@@ -845,6 +850,8 @@ impl Session {
                 new_top = new_top.min(cur_top.max(floor));
             }
             ws.set_top(i, new_top);
+            // The window's text columns ('wrapmargin' counts from its right edge; ruse draws no gutter).
+            ws.set_text_cols(i, rect.w as usize);
         }
         FrameCtx {
             revision,
@@ -2372,6 +2379,10 @@ impl Session {
             return;
         };
         let opens_fold = crate::app::fold_cmds::opens_fold(&cmd);
+        // `gq` under 'formatprg' / `=` under 'equalprg' filter through the program instead (#617, #618).
+        if crate::app::dispatch::run_prg_operator(&cmd, ws, recorded, status) {
+            return;
+        }
         let cmd = resolve_tree_aware(cmd, ws, highlighters, line_idx, snapshot);
         // A completed search turns on hlsearch for that pattern (F-009 #1).
         if let Some(p) = search_pattern(&cmd) {

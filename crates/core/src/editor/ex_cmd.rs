@@ -297,7 +297,7 @@ impl EditorState {
                 ExOutcome::Done
             }
             ExCmd::Set(opt) => {
-                self.set_option(*opt);
+                self.set_option(opt.clone());
                 ExOutcome::Done
             }
             ExCmd::Place(at) => {
@@ -394,10 +394,11 @@ fn bool_token(b: bool) -> &'static str {
     }
 }
 
-/// An option's trace name and value token (a boolean is `0`/`1`; `'softtabstop'` may be negative).
-fn option_name(opt: EditorOption) -> (&'static str, String) {
+/// An option's trace name and value token (a boolean is `0`/`1`; `'softtabstop'` may be negative; a
+/// string is hex, `-` for empty).
+fn option_name(opt: &EditorOption) -> (&'static str, String) {
     let flag = |v: bool| bool_token(v).to_string();
-    match opt {
+    match opt.clone() {
         EditorOption::IgnoreCase(v) => ("ignorecase", flag(v)),
         EditorOption::SmartCase(v) => ("smartcase", flag(v)),
         EditorOption::TabStop(n) => ("tabstop", n.to_string()),
@@ -413,6 +414,15 @@ fn option_name(opt: EditorOption) -> (&'static str, String) {
         EditorOption::ShiftRound(v) => ("shiftround", flag(v)),
         // `0` rests on a character (Vim), `1` between characters (Emacs).
         EditorOption::CaretGravity(g) => ("caretgravity", flag(g == CaretGravity::BetweenChar)),
+        EditorOption::FormatOptions(v) => ("formatoptions", hex(v.as_bytes())),
+        EditorOption::Comments(v) => ("comments", hex(v.as_bytes())),
+        EditorOption::CommentString(v) => ("commentstring", hex(v.as_bytes())),
+        EditorOption::FormatListPat(v) => ("formatlistpat", hex(v.as_bytes())),
+        EditorOption::FormatPrg(v) => ("formatprg", hex(v.as_bytes())),
+        EditorOption::EqualPrg(v) => ("equalprg", hex(v.as_bytes())),
+        EditorOption::CinWords(v) => ("cinwords", hex(v.as_bytes())),
+        EditorOption::JoinSpaces(v) => ("joinspaces", flag(v)),
+        EditorOption::WrapMargin(n) => ("wrapmargin", n.to_string()),
     }
 }
 
@@ -434,6 +444,20 @@ fn reg_kind_token(r: &Register) -> String {
         RegKind::Linewise => "l".into(),
         RegKind::Blockwise => format!("b{}", r.block_width()),
     }
+}
+
+/// The constructor of the string option a trace names `name`, if it is one.
+fn string_option(name: &str) -> Option<fn(String) -> EditorOption> {
+    Some(match name {
+        "formatoptions" => EditorOption::FormatOptions,
+        "comments" => EditorOption::Comments,
+        "commentstring" => EditorOption::CommentString,
+        "formatlistpat" => EditorOption::FormatListPat,
+        "formatprg" => EditorOption::FormatPrg,
+        "equalprg" => EditorOption::EqualPrg,
+        "cinwords" => EditorOption::CinWords,
+        _ => return None,
+    })
 }
 
 fn group_token(kind: GroupKind) -> &'static str {
@@ -547,7 +571,7 @@ impl ExCmd {
             }
             ExCmd::Mark { line, name } => format!("ex_mark {line} {}", *name as u32),
             ExCmd::Set(opt) => {
-                let (name, value) = option_name(*opt);
+                let (name, value) = option_name(opt);
                 format!("ex_set {name} {value}")
             }
             ExCmd::Place(at) => format!("ex_place {at}"),
@@ -713,13 +737,19 @@ impl ExCmd {
             }
             "ex_set" => {
                 let name = a.tok()?;
-                if name == "softtabstop" {
+                if name == "softtabstop" || name == "wrapmargin" {
                     let n: i64 = a.tok()?.parse().map_err(|_| a.bad())?;
                     let ok = (i64::from(i32::MIN)..=i64::from(i32::MAX)).contains(&n);
                     if !ok {
                         return Err(a.bad());
                     }
-                    ExCmd::Set(EditorOption::SoftTabStop(n))
+                    ExCmd::Set(if name == "wrapmargin" {
+                        EditorOption::WrapMargin(n)
+                    } else {
+                        EditorOption::SoftTabStop(n)
+                    })
+                } else if let Some(make) = string_option(name) {
+                    ExCmd::Set(make(a.text()?))
                 } else {
                     let value = a.num()?;
                     let flag = |v: usize| match v {
@@ -753,6 +783,7 @@ impl ExCmd {
                                 CaretGravity::OnChar
                             })
                         }),
+                        "joinspaces" => flag(value).map(EditorOption::JoinSpaces),
                         _ => None,
                     };
                     ExCmd::Set(opt.ok_or_else(|| a.bad())?)

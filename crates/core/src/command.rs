@@ -29,6 +29,8 @@ pub enum SearchOp {
     Reindent,
     /// `gq/pat` (`keep: false`) / `gw/pat` (`keep: true`): reflow every line the span touches.
     Format { keep: bool },
+    /// `gc/pat`: comment or uncomment every line the span touches.
+    Comment,
 }
 
 impl SearchOp {
@@ -43,6 +45,7 @@ impl SearchOp {
             SearchOp::Shift { left } => Some(MarkOp::Shift { left }),
             SearchOp::Reindent => Some(MarkOp::Reindent),
             SearchOp::Format { keep } => Some(MarkOp::Format { keep }),
+            SearchOp::Comment => Some(MarkOp::Comment),
         }
     }
 }
@@ -195,6 +198,8 @@ pub enum MarkOp {
     Format {
         keep: bool,
     },
+    /// `` gc`a `` — comment or uncomment the spanned lines with `'commentstring'`.
+    Comment,
 }
 
 /// A Visual operator beyond `d`/`c`/`y`/`p`/`r`/case ([`Command::VisualOp`]). Each acts on the live
@@ -215,6 +220,8 @@ pub enum VisualOp {
     Reindent,
     /// `gq`: reflow the selected lines.
     Format,
+    /// `gc`: comment or uncomment the selected lines with `'commentstring'` (#618).
+    Comment,
     /// Blockwise `O`: move to the other corner on the SAME row (the anchor takes the cursor's column).
     OtherCorner,
     /// `zy`: yank the selection like `y`, but without a block's trailing white space (`:help zy`).
@@ -376,6 +383,9 @@ pub enum Command {
     /// `i_0_CTRL-D` / `i_^_CTRL-D` — delete ALL indent of the current line, staying in Insert; the caret rides
     /// with the text. (The typed `0`/`^` is removed by a `DeleteBack` the input engine emits first.)
     InsertDeleteIndent,
+    /// `i_^_CTRL-D` — [`Command::InsertDeleteIndent`], and the next Insert `<CR>` under `'autoindent'`
+    /// gives the new line the deleted indent back (nvim's `old_indent`, #617).
+    InsertDeleteIndentRestore,
     /// `i_CTRL-G_j` / `i_CTRL-G_k` — move the caret one line down / up to the column where inserting
     /// started (Vim's `Insstart`: the insert entry, or where typing resumed after a caret jump). A no-op on
     /// the last / first line.
@@ -554,6 +564,13 @@ pub enum Command {
     /// shiftwidth; a closer-first line dedents one). Structural, language-agnostic (no string/comment
     /// awareness); the doubled `==` uses `motion: Line`.
     Reindent {
+        count: u32,
+        motion: Motion,
+    },
+    /// `gc` {motion} (and `gcc`, `motion: Line`) — comment the motion's LINES out with `'commentstring'`,
+    /// or uncomment them when every non-blank one already is (nvim's `vim._comment`, #618). An empty
+    /// `'commentstring'` does nothing.
+    Comment {
         count: u32,
         motion: Motion,
     },
@@ -1097,6 +1114,7 @@ fn mark_op_token(op: MarkOp) -> String {
         MarkOp::Reindent => "reindent".into(),
         MarkOp::Format { keep: false } => "format".into(),
         MarkOp::Format { keep: true } => "format_keep".into(),
+        MarkOp::Comment => "comment".into(),
     }
 }
 
@@ -1120,6 +1138,7 @@ fn mark_op_from_token(s: &str) -> Option<MarkOp> {
         "reindent" => MarkOp::Reindent,
         "format" => MarkOp::Format { keep: false },
         "format_keep" => MarkOp::Format { keep: true },
+        "comment" => MarkOp::Comment,
         _ => return None,
     })
 }
@@ -1136,6 +1155,7 @@ fn visual_op_token(op: VisualOp) -> String {
         VisualOp::Join { spaces: false } => "join_raw".into(),
         VisualOp::Reindent => "reindent".into(),
         VisualOp::Format => "format".into(),
+        VisualOp::Comment => "comment".into(),
         VisualOp::OtherCorner => "other_corner".into(),
         VisualOp::YankTrim => "yank_trim".into(),
         VisualOp::LeaveAtStart => "leave_at_start".into(),
@@ -1162,6 +1182,7 @@ fn visual_op_from_token(s: &str) -> Option<VisualOp> {
         "join_raw" => VisualOp::Join { spaces: false },
         "reindent" => VisualOp::Reindent,
         "format" => VisualOp::Format,
+        "comment" => VisualOp::Comment,
         "other_corner" => VisualOp::OtherCorner,
         "yank_trim" => VisualOp::YankTrim,
         "leave_at_start" => VisualOp::LeaveAtStart,
@@ -1211,6 +1232,7 @@ fn search_op_from_token(s: &str) -> Option<SearchOp> {
         MarkOp::Shift { left } => SearchOp::Shift { left },
         MarkOp::Reindent => SearchOp::Reindent,
         MarkOp::Format { keep } => SearchOp::Format { keep },
+        MarkOp::Comment => SearchOp::Comment,
     })
 }
 
@@ -1349,6 +1371,7 @@ impl Command {
             Command::InsertIndent => "insert_indent".into(),
             Command::InsertDedent => "insert_dedent".into(),
             Command::InsertDeleteIndent => "insert_delete_indent".into(),
+            Command::InsertDeleteIndentRestore => "insert_delete_indent_restore".into(),
             Command::InsertStartColumnLine { down } => {
                 format!(
                     "insert_start_column_line {}",
@@ -1428,6 +1451,9 @@ impl Command {
             ),
             Command::Reindent { count, motion } => {
                 format!("reindent {count} {}", motion_token(*motion))
+            }
+            Command::Comment { count, motion } => {
+                format!("comment {count} {}", motion_token(*motion))
             }
             Command::Format {
                 count,
@@ -1727,6 +1753,7 @@ impl Command {
             "insert_indent" => Command::InsertIndent,
             "insert_dedent" => Command::InsertDedent,
             "insert_delete_indent" => Command::InsertDeleteIndent,
+            "insert_delete_indent_restore" => Command::InsertDeleteIndentRestore,
             "insert_start_column_line" => Command::InsertStartColumnLine {
                 down: match arg {
                     Some("down") => true,
@@ -1914,6 +1941,7 @@ impl Command {
                 });
             }
             "reindent" => return op_cmd(arg, |count, motion| Command::Reindent { count, motion }),
+            "comment" => return op_cmd(arg, |count, motion| Command::Comment { count, motion }),
             "format" => {
                 // `format {count} {motion} {keep|move}`
                 let a = arg.ok_or_else(|| CommandParseError::BadArgument(line.to_string()))?;
@@ -2428,6 +2456,22 @@ mod tests {
                 name: 'j',
                 linewise: false,
             },
+            Command::OpToMark {
+                op: MarkOp::Comment,
+                name: 'k',
+                linewise: true,
+            },
+            Command::Comment {
+                count: 2,
+                motion: Motion::Line,
+            },
+            Command::Search {
+                op: SearchOp::Comment,
+                count: 1,
+                pattern: "c".into(),
+                backward: false,
+                offset: SearchOffset::None,
+            },
             Command::BreakUndo,
             Command::ShiftRight(1),
             Command::ShiftRight(3),
@@ -2476,6 +2520,7 @@ mod tests {
             Command::InsertIndent,
             Command::InsertDedent,
             Command::InsertDeleteIndent,
+            Command::InsertDeleteIndentRestore,
             Command::InsertStartColumnLine { down: true },
             Command::InsertStartColumnLine { down: false },
             Command::InsertCaretStep { right: true },
@@ -2750,6 +2795,7 @@ mod tests {
             Command::VisualOp(VisualOp::Join { spaces: true }),
             Command::VisualOp(VisualOp::Join { spaces: false }),
             Command::VisualOp(VisualOp::Reindent),
+            Command::VisualOp(VisualOp::Comment),
             Command::VisualOp(VisualOp::Format),
             Command::VisualOp(VisualOp::OtherCorner),
             Command::VisualOp(VisualOp::YankTrim),
