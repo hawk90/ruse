@@ -416,6 +416,7 @@ impl Document {
         let cur_line = crate::pos::line_of(&self.text, cursor);
         let mut entries = Vec::new();
         let mut uh = (0, 0);
+        let mut lines_before = undo_cursor::line_count(&self.text);
         let mut before: Vec<Option<usize>> = Vec::new();
         for (i, edits) in step.edits.iter().enumerate() {
             let group = step.groups.get(i).copied();
@@ -426,9 +427,12 @@ impl Document {
                     .map(|t| t.pos)
                     .collect();
             }
-            if i == step.tail && step.forward {
-                // A redo's `uh_cursor` is in the text before the change, which is the text right now.
-                uh = undo_cursor::line_col(&self.text, step.cursor);
+            if i == step.tail {
+                lines_before = undo_cursor::line_count(&self.text);
+                if step.forward {
+                    // A redo's `uh_cursor` is in the text before the change, which is the text right now.
+                    uh = undo_cursor::line_col(&self.text, step.cursor);
+                }
             }
             let old = Arc::clone(&self.text);
             self.reapply(edits, tracked);
@@ -445,7 +449,10 @@ impl Document {
             // An undo's `uh_cursor` is in the text the undo restores.
             uh = undo_cursor::line_col(&self.text, step.cursor);
         }
-        undo_cursor::place(&entries, uh, cur_line, undo_cursor::line_count(&self.text))
+        let lines = undo_cursor::line_count(&self.text);
+        let mut placed = undo_cursor::place(&entries, uh, cur_line, lines);
+        placed.marks = undo_cursor::change_marks(&entries, lines_before, lines);
+        placed
     }
 
     /// Put the restorable `tracked` positions back as undo group `group` saved them, keeping `before` (the

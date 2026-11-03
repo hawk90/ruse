@@ -156,17 +156,18 @@ fn plan_selection_span(
             // A linewise delete keeps the wanted column on the line that moves up under the cursor (nvim's
             // `nostartofline`: `lVjd` lands on column 1); `at_col` clamps it to that line's end.
             // Lines through the end of the buffer also take the newline before them (no blank line is left
-            // behind) and the cursor moves up onto the new last line.
+            // behind) and the cursor moves up onto the new last line; in a newline-terminated buffer only
+            // the empty slot after the final newline is left below, which is no line (#677, #1167).
             let (s, cursor) = if !line {
                 (s, s)
-            } else if e < b.len() || b[e - 1] == b'\n' {
+            } else if e < b.len() {
                 (
                     s,
                     want_col(b, e, st.view.curswant, st.view.indent.tab_width) - (e - s),
                 )
             } else if s > 0 {
                 (
-                    s - 1,
+                    if b[e - 1] == b'\n' { s } else { s - 1 },
                     want_col(
                         b,
                         line_start(b, s - 1),
@@ -874,9 +875,13 @@ fn apply_op(
             let reg = captured(b, s, e, true);
             // The line that ends up under the cursor, as `(its start before the delete, the bytes removed
             // before it)`: the line below the span, or — when the span runs to an unterminated last line,
-            // whose preceding newline goes too — the line above it.
+            // whose preceding newline goes too — the line above it. A span that runs to the end of a
+            // newline-terminated buffer leaves only the empty slot after the final newline below it, which
+            // is no line (#677): the cursor takes the line above too, at the wanted column (#1167).
             let (del_start, line, shift) = if e == b.len() && s > 0 && b[e - 1] != b'\n' {
                 (s - 1, line_start(b, s - 1), 0)
+            } else if e == b.len() && s > 0 {
+                (s, line_start(b, s - 1), 0)
             } else {
                 (s, e, e - s)
             };

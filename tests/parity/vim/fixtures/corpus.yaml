@@ -39291,6 +39291,917 @@
       }
     },
     {
+      "name": "undo_charwise_last_change_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jwdwggu`.",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "jkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_charwise_change_start_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jwdwggu`[",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "jkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_charwise_change_end_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jwdwggu`]",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "jkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_charwise_jumplist",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jwdwggu<C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "jkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_context_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jwdwggu``",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "jkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_change_then_change_list",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jwcwX<Esc>ggu`.",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "jkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_join_lines_end_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "jwd/n<CR>ggu`]",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "jkl\nm",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "redo_join_lines_start_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "jwd/n<CR>ggu<C-r>`[",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi no"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "jkl\nm",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "redo_charwise_last_change_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "jwdwggu<C-r>`.",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi ",
+          "mno"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "jkl",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_dd_last_line_start_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "Gddggu`[",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "mno\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_dd_last_line_end_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "Gddggu`]",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "mno\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_P_last_change_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "jyyPGu`.",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi jkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "ghi jkl\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_dj_end_mark",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "ggjdjggu`]",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def",
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ghi jkl\nmno\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "undo_jumplist_two_back",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "keys": "Gggjddu<C-o><C-o>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_yy_then_dd",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "$jyydd",
+      "expect": {
+        "text": [
+          "ab cd ef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "gh ij\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "gh ij\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_y_dollar_then_dd",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "$jy$dd",
+      "expect": {
+        "text": [
+          "ab cd ef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "gh ij\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "j",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_x_then_dd",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "$jxdd",
+      "expect": {
+        "text": [
+          "ab cd ef"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "gh i\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_D_then_dd",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "$jDdd",
+      "expect": {
+        "text": [
+          "ab cd ef"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "gh i\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_zero_D_then_dd",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "$j0lDdd",
+      "expect": {
+        "text": [
+          "ab cd ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "g\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_p_then_dd",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "yl$jpdd",
+      "expect": {
+        "text": [
+          "ab cd ef"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "gh ija\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_P_then_dd",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "yl$jPdd",
+      "expect": {
+        "text": [
+          "ab cd ef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "gh iaj\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_p_then_k",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "yl$jpk",
+      "expect": {
+        "text": [
+          "ab cd ef",
+          "gh ija"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_P_then_k",
+      "lines": [
+        "ab cd ef",
+        "gh ij"
+      ],
+      "keys": "yl$jPk",
+      "expect": {
+        "text": [
+          "ab cd ef",
+          "gh iaj"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_yy_then_k",
+      "lines": [
+        "ab cd ef ghijklmnop",
+        "gh ij",
+        "kl"
+      ],
+      "keys": "$jyyk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop",
+          "gh ij",
+          "kl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "gh ij\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "gh ij\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_named_yy_then_k",
+      "lines": [
+        "ab cd ef ghijklmnop",
+        "gh ij",
+        "kl"
+      ],
+      "keys": "$j\"ayyk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop",
+          "gh ij",
+          "kl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "gh ij\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_yj_then_k",
+      "lines": [
+        "ab cd ef ghijklmnop",
+        "gh ij",
+        "kl"
+      ],
+      "keys": "$jyjk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop",
+          "gh ij",
+          "kl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "gh ij\nkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "gh ij\nkl\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_x_then_k",
+      "lines": [
+        "ab cd ef ghijklmnop",
+        "gh ij",
+        "kl"
+      ],
+      "keys": "$jxk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop",
+          "gh i",
+          "kl"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "j",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_tilde_then_k",
+      "lines": [
+        "ab cd ef ghijklmnop",
+        "gh ij",
+        "kl"
+      ],
+      "keys": "$j~k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop",
+          "gh iJ",
+          "kl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_r_then_k",
+      "lines": [
+        "ab cd ef ghijklmnop",
+        "gh ij",
+        "kl"
+      ],
+      "keys": "$jrxk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop",
+          "gh ix",
+          "kl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_gUiw_then_k",
+      "lines": [
+        "ab cd ef ghijklmnop",
+        "gh ij",
+        "kl"
+      ],
+      "keys": "$jgUiwk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop",
+          "gh IJ",
+          "kl"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dollar_x_undo_then_k",
+      "lines": [
+        "ab cd ef ghijklmnop",
+        "gh ij",
+        "kl"
+      ],
+      "keys": "$jxuk",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop",
+          "gh ij",
+          "kl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "j",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "f_combining_mark_finds_nothing",
       "lines": [
         "xáb"

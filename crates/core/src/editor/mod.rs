@@ -3426,6 +3426,23 @@ fn change_start(
 
 /// The byte offset for an undo placement: the column on its line (clamped, and pulled off the newline in
 /// Normal mode as Vim's `check_cursor` does), or the sticky column when Vim would `beginline`.
+/// Run one undo/redo step `f` with the view's marks tracked through it. Like nvim's `u_undoredo`, a step
+/// first records the cursor `from` on the jumplist (`setpcmark`), so the entry follows the step's own line
+/// changes; a step that finds nothing to re-apply records nothing (#1168).
+fn undo_step(
+    st: &mut EditorState,
+    from: usize,
+    f: impl FnOnce(&mut Document, &mut [Tracked]) -> Option<crate::undo_cursor::UndoCursor>,
+) -> Option<crate::undo_cursor::UndoCursor> {
+    let saved = (st.view.jumps.clone(), st.view.jump_idx);
+    st.view.push_jump(from);
+    let placed = st.with_tracked(f);
+    if placed.is_none() {
+        (st.view.jumps, st.view.jump_idx) = saved;
+    }
+    placed
+}
+
 fn undo_target(st: &EditorState, placed: crate::undo_cursor::UndoCursor, mode: Mode) -> usize {
     let b = st.doc.bytes();
     let ls = crate::pos::nth_line_start(b, placed.line);
@@ -3480,6 +3497,8 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let mut edit_span: Option<(usize, usize)> = None;
     // `g;`/`g,` resolve their destination here (they step `change_idx`, which the pure planner cannot do).
     let mut nav_target: Option<usize> = None;
+    // The lines an undo/redo leaves `[`, `]` and `.` on (#1168).
+    let mut undo_marks: Option<crate::undo_cursor::ChangeMarks> = None;
     // Effects the commit itself adds (a failed `g;`/`CTRL-O`), after the plan's own.
     let mut extra: Vec<Effect> = Vec::new();
     // The undo group before the command: an edit that leaves a different one began a new undo step.
@@ -3538,16 +3557,21 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             }
         }
         Action::Undo => {
-            let placed = st.with_tracked(|d, t| d.undo_tracked(entry_cursor, t));
+            let placed = undo_step(st, entry_cursor, |d, t| d.undo_tracked(entry_cursor, t));
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
+            undo_marks = placed.map(|p| p.marks);
         }
         Action::Redo => {
-            let placed = st.with_tracked(|d, t| d.redo_tracked(entry_cursor, t));
+            let placed = undo_step(st, entry_cursor, |d, t| d.redo_tracked(entry_cursor, t));
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
+            undo_marks = placed.map(|p| p.marks);
         }
         Action::UndoChrono { older } => {
-            let placed = st.with_tracked(|d, t| d.chronological_tracked(older, entry_cursor, t));
+            let placed = undo_step(st, entry_cursor, |d, t| {
+                d.chronological_tracked(older, entry_cursor, t)
+            });
             nav_target = placed.map(|p| undo_target(st, p, plan.mode));
+            undo_marks = placed.map(|p| p.marks);
         }
         Action::LineUndo => {
             let origin = st.origin;
@@ -3642,6 +3666,18 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         let new_step = st.doc.history().current_group() != entry_group;
         st.view
             .push_change(st.doc.bytes(), st.view.cursor, new_step);
+    }
+    // Undo and redo put `[`/`]` at column 0 of the first and last line they re-applied, and `.` (the newest
+    // change-list entry, without starting a new one) at column 0 of the top line of the last entry they
+    // re-applied: nvim's `u_undoredo` and `changed_lines` (#1168).
+    if let Some(m) = undo_marks {
+        let b = st.doc.bytes();
+        st.view.change_start = Some(crate::pos::nth_line_start(b, m.start));
+        st.view.change_end = Some(crate::pos::nth_line_start(b, m.end));
+        if let Some(line) = m.last_change {
+            let pos = crate::pos::nth_line_start(b, line);
+            st.view.push_change(b, pos, false);
+        }
     }
     // Vim `[`/`]` change marks: bound the last changed OR yanked text. A text-entry session (Insert/Replace)
     // is ONE change bracketed from where it began to the caret at exit (so `ihello<Esc>` brackets the whole

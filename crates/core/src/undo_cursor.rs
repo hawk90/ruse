@@ -8,6 +8,8 @@
 //! 2. one line up when that is the line just below `uh_cursor`'s (the `o` case);
 //! 3. at `uh_cursor`'s column when on `uh_cursor`'s line, else at the sticky column (`nostartofline`).
 //!
+//! The same entries give the `[`/`]`/`.` marks the step leaves (`change_marks`, #1168).
+//!
 //! ruse records byte edits, not line entries, so [`entries`] derives the entry an edit would have been in
 //! Vim: a whole-line edit (it starts at a line start and inserts and deletes only whole lines) covers just
 //! those lines, any other edit covers every line it touches.
@@ -19,6 +21,8 @@ use crate::pos::{count_newlines, line_of, line_start};
 pub(crate) struct Entry {
     /// The number of lines above the entry (Vim's `ue_top`).
     top: usize,
+    /// How many lines the entry held before the step.
+    oldsize: usize,
     /// How many lines the entry holds after the step (Vim's `ue_size`).
     newsize: usize,
     /// How many of those leading lines the step left as they were.
@@ -41,21 +45,35 @@ pub(crate) fn entries(old: &[u8], new: &[u8], list: &EditList, out: &mut Vec<Ent
         let whole_lines = (pos == 0 || old[pos - 1] == b'\n')
             && (e.del == 0 || old[end - 1] == b'\n')
             && e.ins.last().is_none_or(|&c| c == b'\n');
-        let (oldsize, newsize) = if whole_lines {
+        // Whole lines below an unterminated last line: they go with the newline before them (`dd` or a
+        // linewise put there), so the edit runs from that line's end to the end of the text. Vim's entry
+        // holds only those lines, below the line the edit starts on.
+        let tail_lines = !whole_lines
+            && end == old.len()
+            && pos > 0
+            && old[pos - 1] != b'\n'
+            && (e.del > 0 || !e.ins.is_empty())
+            && (e.del == 0 || old[pos] == b'\n')
+            && (e.ins.is_empty() || (e.ins[0] == b'\n' && e.ins.last() != Some(&b'\n')));
+        let (oldsize, newsize) = if whole_lines || tail_lines {
             (del_nl, ins_nl)
         } else {
             (del_nl + 1, ins_nl + 1)
         };
         let new_pos = pos.saturating_add_signed(byte_delta);
-        let top = old_line.saturating_add_signed(line_delta);
-        let same = same_lines(
-            old,
-            line_start(old, pos),
-            new,
-            line_start(new, new_pos),
-            oldsize.min(newsize),
-        );
-        out.push(Entry { top, newsize, same });
+        let top = old_line.saturating_add_signed(line_delta) + usize::from(tail_lines);
+        let (old_from, new_from) = if tail_lines {
+            (pos + 1, new_pos + 1)
+        } else {
+            (line_start(old, pos), line_start(new, new_pos))
+        };
+        let same = same_lines(old, old_from, new, new_from, oldsize.min(newsize));
+        out.push(Entry {
+            top,
+            oldsize,
+            newsize,
+            same,
+        });
         byte_delta += e.ins.len() as isize - e.del as isize;
         line_delta += ins_nl as isize - del_nl as isize;
     }
@@ -87,6 +105,64 @@ pub struct UndoCursor {
     pub line: usize,
     /// Byte column on that line (clamp it to the line), or `None` for the sticky column.
     pub col: Option<usize>,
+    /// The lines the step leaves the `[`/`]`/`.` marks on.
+    pub marks: ChangeMarks,
+}
+
+/// Where `u` / `CTRL-R` leave the `[`, `]` and `.` marks: column 0 of these 0-based lines of the text after
+/// the step (#1168). Vim's `u_undoredo` brackets the lines its entries re-applied (`b_op_start` /
+/// `b_op_end`), and `changed_lines` puts `.` on the top line of the last entry it re-applied.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct ChangeMarks {
+    /// The `[` mark's line.
+    pub start: usize,
+    /// The `]` mark's line.
+    pub end: usize,
+    /// The `.` mark's line, or `None` when no entry changed a line.
+    pub last_change: Option<usize>,
+}
+
+/// Vim's `[`/`]`/`.` bookkeeping in `u_undoredo` over one group's `entries`, in the order they were
+/// re-applied. `lines_before` and `lines_after` are the line counts before and after the group: `[` starts
+/// at the old line count and only ever moves up, so undoing the deletion of the last line leaves it there,
+/// one line above the restored line (nvim v0.12.6).
+pub(crate) fn change_marks(
+    entries: &[Entry],
+    lines_before: usize,
+    lines_after: usize,
+) -> ChangeMarks {
+    // 1-based line numbers, as in Vim; `top` is the line above the entry.
+    let mut start = lines_before as isize;
+    let mut end: isize = 0;
+    let mut dot = None;
+    for e in entries {
+        let (top, old, new) = (e.top as isize, e.oldsize as isize, e.newsize as isize);
+        if old != new {
+            // `mark_adjust` for the marks set by the entries before this one.
+            if start > top + old {
+                start += new - old;
+            }
+            if end > top + old {
+                end += new - old;
+            }
+        }
+        if old > 0 || new > 0 {
+            dot = Some(top + 1);
+        }
+        start = start.min(top + 1);
+        if new == 0 && top + 1 > end {
+            end = top + 1;
+        } else if top + new > end {
+            end = top + new;
+        }
+    }
+    let lines = lines_after.max(1) as isize;
+    let line = |n: isize| (n.clamp(1, lines) - 1) as usize;
+    ChangeMarks {
+        start: line(start),
+        end: line(end),
+        last_change: dot.map(line),
+    }
 }
 
 /// Vim's placement over the step's last-group `entries`. `uh` is `uh_cursor` as a 0-based (line, byte
@@ -124,6 +200,7 @@ pub(crate) fn place(
     UndoCursor {
         line: lnum - 1,
         col: (uh_lnum == lnum).then_some(uh.1),
+        marks: ChangeMarks::default(),
     }
 }
 
@@ -202,32 +279,62 @@ mod tests {
 
     #[test]
     fn placement_follows_vim() {
-        let e = |top, newsize, same| Entry { top, newsize, same };
+        let e = |top, newsize, same| Entry {
+            top,
+            oldsize: newsize,
+            newsize,
+            same,
+        };
+        let at = |c: UndoCursor| (c.line, c.col);
         // `uh_cursor` inside the entry: back there, column and all.
-        assert_eq!(
-            place(&[e(0, 1, 0)], (0, 4), 1, 2),
-            UndoCursor {
-                line: 0,
-                col: Some(4)
-            }
-        );
+        assert_eq!(at(place(&[e(0, 1, 0)], (0, 4), 1, 2)), (0, Some(4)));
         // Far from the change: the first changed line, sticky column.
-        assert_eq!(
-            place(&[e(4, 1, 0)], (0, 4), 0, 9),
-            UndoCursor { line: 4, col: None }
-        );
+        assert_eq!(at(place(&[e(4, 1, 0)], (0, 4), 0, 9)), (4, None));
         // Undoing a deletion at the end: the line under the entry, clamped to the buffer.
-        assert_eq!(
-            place(&[e(3, 0, 0)], (0, 0), 0, 3),
-            UndoCursor { line: 2, col: None }
-        );
+        assert_eq!(at(place(&[e(3, 0, 0)], (0, 0), 0, 3)), (2, None));
         // `uh_cursor` just under the entry still counts as in it (undoing `o`).
+        assert_eq!(at(place(&[e(5, 0, 0)], (5, 2), 0, 9)), (5, Some(2)));
+    }
+
+    #[test]
+    fn a_line_put_below_an_unterminated_last_line_is_an_entry_of_its_own() {
+        // `dd` on the unterminated last line takes the newline before it: the entry is the line alone.
+        assert_eq!(run("ab\ncd", vec![Edit::delete(2, 3)]), [(1, 0, 0)]);
+        // Undoing it puts the line back below line 1.
         assert_eq!(
-            place(&[e(5, 0, 0)], (5, 2), 0, 9),
-            UndoCursor {
-                line: 5,
-                col: Some(2)
-            }
+            run("ab", vec![Edit::insert(2, b"\ncd".to_vec())]),
+            [(1, 1, 0)]
+        );
+        // A charwise edit at the end of the text is not one: it changes the last line.
+        assert_eq!(run("ab", vec![Edit::insert(2, b"x".to_vec())]), [(0, 1, 0)]);
+    }
+
+    #[test]
+    fn change_marks_follow_vim() {
+        let e = |top, oldsize, newsize| Entry {
+            top,
+            oldsize,
+            newsize,
+            same: 0,
+        };
+        let m = |start, end, last_change| ChangeMarks {
+            start,
+            end,
+            last_change,
+        };
+        // Undoing `dw` on line 2: `[`, `]` and `.` all on line 2.
+        assert_eq!(change_marks(&[e(1, 1, 1)], 2, 2), m(1, 1, Some(1)));
+        // Undoing a join of lines 2 and 3: `]` on line 3.
+        assert_eq!(change_marks(&[e(1, 1, 2)], 2, 3), m(1, 2, Some(1)));
+        // Undoing `dd` of the last line: `[` stays at the old last line, one above the restored one.
+        assert_eq!(change_marks(&[e(2, 0, 1)], 2, 3), m(1, 2, Some(2)));
+        // Undoing `P` of line 2: the deleted line's place; `.` past the end is clamped to the last line.
+        assert_eq!(change_marks(&[e(1, 1, 0)], 4, 3), m(1, 1, Some(1)));
+        assert_eq!(change_marks(&[e(3, 1, 0)], 4, 3), m(2, 2, Some(2)));
+        // A later entry above an earlier one moves the earlier one's marks down by its line change.
+        assert_eq!(
+            change_marks(&[e(4, 1, 1), e(0, 0, 2)], 6, 8),
+            m(0, 6, Some(0))
         );
     }
 

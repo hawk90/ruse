@@ -9,7 +9,3 @@ sc_edge_empty_Vd # as sc_edge_empty_dd: the oracle's empty line vs ruse's no-lin
 sc_edge_empty_ex_delete # as sc_edge_empty_dd: the oracle's empty line vs ruse's no-lines buffer (#906)
 fold_ex_range_takes_a_closed_fold_whole # an Ex range does not grow to whole closed folds (#819 follow-up)
 vb_C_cr_then_esc # nvim copies the text typed before a <CR> in a block change onto the next line; ruse replicates nothing (pre-existing)
-undo_last_change_mark # u sets `. to column 0 of the first line it changed (changed_lines); ruse keeps the mark's old column (#906 follow-up)
-undo_change_start_mark # u sets `[ and `] to column 0 of the lines it changed (u_undoredo); ruse keeps the marks of the undone change (#906 follow-up)
-undo_change_end_mark # see undo_change_start_mark (#906 follow-up)
-undo_jumplist_after_dd_above # after dd above a jumplist entry and u, CTRL-O lands on line 3 in nvim (the entry is not moved back down), line 4 in ruse (#906 follow-up)
