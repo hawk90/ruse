@@ -15082,6 +15082,66 @@
       }
     },
     {
+      "name": "icpt_amp_then_dot_no_change",
+      "lines": [
+        "a a",
+        "a a",
+        "a a"
+      ],
+      "keys": ":s/a/b/g<CR>j&j.",
+      "expect": {
+        "text": [
+          "b b",
+          "b b",
+          "a a"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "icpt_amp_then_dot_repeats_x",
+      "lines": [
+        "xa a",
+        "a a",
+        "a a"
+      ],
+      "keys": "x:s/a/b/g<CR>j&j.",
+      "expect": {
+        "text": [
+          "b b",
+          "b b",
+          " a"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "icpt_amp_count_past_end",
       "lines": [
         "a a",
