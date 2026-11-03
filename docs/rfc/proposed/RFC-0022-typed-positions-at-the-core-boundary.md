@@ -47,6 +47,9 @@ and the renderer. Inside a function that works on one unit, a newtype adds noise
 
 ## Guide-level explanation
 
+<!-- code-blocks: illustrative — the Rust shown is NOT normative; the canonical home is code, per D-038.
+     The block fixes the boundary rule, not the exact signatures. -->
+
 ```rust
 // core public API: the unit is in the type
 pub fn cursor(&self) -> BytePos;
