@@ -244,6 +244,9 @@ The loader (#614, `apps/tui/src/trust.rs`, `apps/tui/src/config.rs`) settles the
   workspace goes back to the layer below, or to the default. Options typed with `:set` keep their values.
 - **Links** — the loader reads `.ruse/config.toml` only as a regular file inside a real `.ruse/` directory.
   A symbolic link at either place quarantines the layer, so nothing outside the hashed set can load.
+  The loader parses the `config.toml` bytes the hash walk read and never opens the file a second time, so a
+  file changed or swapped between the check and the parse cannot load unhashed content. Each file is opened
+  without following a link (`O_NOFOLLOW` on Unix) and read only up to the 64 MiB budget.
 - **Language servers** — a trust record is not a language-server grant. At startup that comes from
   `workspace.trusted_roots` in the user layer, or `RUSE_TRUSTED_WORKSPACES`. A `workspace.trusted_roots`
   entry does not load workspace config either: config needs a record. Whether a persisted record should also

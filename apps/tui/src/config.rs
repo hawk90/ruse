@@ -487,7 +487,7 @@ pub fn load(paths: &ConfigPaths) -> Config {
     if let Some(path) = paths.workspace_file() {
         let root = paths.workspace_root.clone().unwrap_or_default();
         let entries = match workspace_gate(&root, &path, paths.trust_dir.as_deref()) {
-            Ok(()) => read_layer(LayerKind::Workspace, &path, &mut cfg),
+            Ok(bytes) => parse_workspace_bytes(&path, &bytes, &mut cfg),
             Err(state) => {
                 if state != LayerState::Absent {
                     cfg.diagnostics.push(Diagnostic {
@@ -536,8 +536,14 @@ pub fn load(paths: &ConfigPaths) -> Config {
 }
 
 /// Whether the workspace layer at `file` (under `root`) may load: present, not a symbolic link, and
-/// trusted with a matching content hash. The error is the inert state to report.
-fn workspace_gate(root: &Path, file: &Path, trust_dir: Option<&Path>) -> Result<(), LayerState> {
+/// trusted with a matching content hash. `Ok` holds the `config.toml` bytes the hash covered, which are
+/// the only bytes the layer parses (no second read, so nothing can be swapped in after the check). The
+/// error is the inert state to report.
+fn workspace_gate(
+    root: &Path,
+    file: &Path,
+    trust_dir: Option<&Path>,
+) -> Result<Vec<u8>, LayerState> {
     let dir = root.join(".ruse");
     match std::fs::symlink_metadata(&dir) {
         Err(_) => return Err(LayerState::Absent),
@@ -557,9 +563,42 @@ fn workspace_gate(root: &Path, file: &Path, trust_dir: Option<&Path>) -> Result<
     let Some(recorded) = crate::trust::TrustStore::new(trust_dir.to_path_buf()).lookup(root) else {
         return Err(LayerState::Untrusted);
     };
-    match crate::trust::ruse_dir_hash(root) {
-        Ok(h) if h == recorded => Ok(()),
+    match crate::trust::ruse_dir_snapshot(root) {
+        Ok(snap) if snap.hash == recorded => snap.config.ok_or_else(|| {
+            LayerState::Quarantined("not a regular file (a symbolic link is not followed)".into())
+        }),
         _ => Err(LayerState::Stale),
+    }
+}
+
+/// Parse the trusted workspace layer from the bytes [`workspace_gate`] hashed.
+fn parse_workspace_bytes(path: &Path, bytes: &[u8], cfg: &mut Config) -> Vec<Entry> {
+    let kind = LayerKind::Workspace;
+    let fail = |cfg: &mut Config, why: String| {
+        cfg.diagnostics.push(quarantined(path, &why));
+        cfg.layers.push(LayerReport {
+            kind,
+            path: path.to_path_buf(),
+            state: LayerState::Quarantined(why),
+        });
+        Vec::new()
+    };
+    if bytes.len() as u64 > MAX_FILE {
+        return fail(cfg, format!("larger than {MAX_FILE} bytes"));
+    }
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return fail(cfg, "stream did not contain valid UTF-8".into());
+    };
+    match parse_layer(kind, path, text, &mut cfg.diagnostics) {
+        Ok(entries) => {
+            cfg.layers.push(LayerReport {
+                kind,
+                path: path.to_path_buf(),
+                state: LayerState::Loaded,
+            });
+            entries
+        }
+        Err(rejected) => fail(cfg, rejected.to_string()),
     }
 }
 
@@ -579,14 +618,8 @@ fn read_layer(kind: LayerKind, path: &Path, cfg: &mut Config) -> Vec<Entry> {
         }
         Ok(m) => m,
     };
-    // The workspace file must be a regular file inside `.ruse/`, which the trust hash covers: a link
-    // would load bytes the hash never saw (D-062).
-    if kind == LayerKind::Workspace && !meta.file_type().is_file() {
-        let why = "not a regular file (a symbolic link is not followed)".to_string();
-        cfg.diagnostics.push(quarantined(path, &why));
-        report(LayerState::Quarantined(why));
-        return Vec::new();
-    }
+    // (The workspace layer never comes here: it parses the bytes its trust hash covered,
+    // [`parse_workspace_bytes`].)
     if meta.len() > MAX_FILE {
         let why = format!("larger than {MAX_FILE} bytes");
         cfg.diagnostics.push(quarantined(path, &why));

@@ -81,6 +81,23 @@ const MAX_HASH_BYTES: u64 = 64 << 20;
 /// # Errors
 /// A read error, or a `.ruse/` past [`MAX_HASH_ENTRIES`] / [`MAX_HASH_BYTES`].
 pub fn ruse_dir_hash(root: &Path) -> io::Result<String> {
+    ruse_dir_snapshot(root).map(|s| s.hash)
+}
+
+/// What [`ruse_dir_snapshot`] read: the content hash and the bytes it hashed for `config.toml`.
+pub struct RuseSnapshot {
+    /// The [`ruse_dir_hash`] of the bytes read.
+    pub hash: String,
+    /// `.ruse/config.toml` as hashed, when it is a regular file. The loader parses these bytes and never
+    /// reads the file again, so a file swapped after the hash cannot load unhashed content.
+    pub config: Option<Vec<u8>>,
+}
+
+/// Read `<root>/.ruse/` once: its [`ruse_dir_hash`] and the hashed `config.toml` bytes.
+///
+/// # Errors
+/// As [`ruse_dir_hash`].
+pub fn ruse_dir_snapshot(root: &Path) -> io::Result<RuseSnapshot> {
     let base = root.join(".ruse");
     let mut entries: Vec<(Vec<u8>, PathBuf, bool)> = Vec::new();
     if std::fs::symlink_metadata(&base).is_ok_and(|m| m.is_dir()) {
@@ -109,11 +126,12 @@ pub fn ruse_dir_hash(root: &Path) -> io::Result<String> {
     let mut h = Sha256::new();
     h.update(b"ruse-trust-v1\0");
     let mut total = 0u64;
+    let mut config = None;
     for (name, path, link) in &entries {
         let bytes = if *link {
             os_bytes(std::fs::read_link(path)?.as_os_str()).to_vec()
         } else {
-            std::fs::read(path)?
+            read_bounded(path, MAX_HASH_BYTES - total)?
         };
         total += bytes.len() as u64;
         if total > MAX_HASH_BYTES {
@@ -124,8 +142,40 @@ pub fn ruse_dir_hash(root: &Path) -> io::Result<String> {
         h.update(b"\0");
         h.update((bytes.len() as u64).to_be_bytes());
         h.update(&bytes);
+        if !*link && name.as_slice() == b"config.toml" {
+            config = Some(bytes);
+        }
     }
-    Ok(format!("sha256:{}", hex(&h.finalize())))
+    Ok(RuseSnapshot {
+        hash: format!("sha256:{}", hex(&h.finalize())),
+        config,
+    })
+}
+
+/// Read `path` without following a symbolic link swapped in after the directory walk, and without
+/// holding more than `limit` bytes (a larger file is an error, not a huge allocation).
+fn read_bounded(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.custom_flags(libc::O_NOFOLLOW);
+    }
+    let file = opts.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::other(format!(
+            "{} is not a regular file",
+            path.display()
+        )));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Err(io::Error::other(".ruse/ is too large to hash"));
+    }
+    Ok(bytes)
 }
 
 fn hex(bytes: &[u8]) -> String {

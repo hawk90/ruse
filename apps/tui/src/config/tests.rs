@@ -289,6 +289,26 @@ fn a_linked_workspace_config_is_not_followed() {
 }
 
 #[test]
+fn the_snapshot_holds_the_config_bytes_it_hashed() {
+    let d = Dirs::new("snap");
+    let root = d.base.join("ws");
+    d.write("ws/.ruse/config.toml", "[editor]\ntab_width = 3\n");
+    d.write("ws/.ruse/other.txt", "x");
+    let snap = crate::trust::ruse_dir_snapshot(&root).unwrap();
+    assert_eq!(snap.hash, ruse_dir_hash(&root).unwrap());
+    assert_eq!(
+        snap.config.as_deref(),
+        Some(&b"[editor]\ntab_width = 3\n"[..])
+    );
+    // No config.toml: the hash still covers the directory, and there is nothing to parse.
+    std::fs::remove_file(root.join(".ruse/config.toml")).unwrap();
+    assert!(crate::trust::ruse_dir_snapshot(&root)
+        .unwrap()
+        .config
+        .is_none());
+}
+
+#[test]
 fn the_content_hash_is_stable_and_covers_paths_and_bytes() {
     let d = Dirs::new("hash");
     let root = d.base.join("ws");
