@@ -21,6 +21,8 @@ struct Win<'a> {
     cursor: usize,
     globals: DisplayGlobals,
     folds: Vec<crate::folds::Fold>,
+    textwidth: usize,
+    leftcol: usize,
 }
 
 impl<'a> Win<'a> {
@@ -33,6 +35,8 @@ impl<'a> Win<'a> {
             cursor: 0,
             globals: DisplayGlobals::default(),
             folds: Vec::new(),
+            textwidth: 0,
+            leftcol: 0,
         }
     }
 
@@ -41,6 +45,10 @@ impl<'a> Win<'a> {
         let mut ws = Workspace::new(self.text);
         ws.set_option_in(
             ruse_core::editor::EditorOption::TabStop(8),
+            ruse_core::OptionLevel::Both,
+        );
+        ws.set_option_in(
+            ruse_core::editor::EditorOption::TextWidth(self.textwidth),
             ruse_core::OptionLevel::Both,
         );
         ws.update_window_options(ruse_core::OptionLevel::Both, opts);
@@ -55,7 +63,9 @@ impl<'a> Win<'a> {
             usize::from(self.h),
             text.line_count(),
             false,
-        );
+        )
+        .with_folds(&self.folds);
+        win.leftcol = self.leftcol;
         let cline = idx.line_of(self.cursor);
         win.cursor = Some((
             self.cursor,
@@ -84,6 +94,7 @@ impl<'a> Win<'a> {
             virt: &[],
             folds: &self.folds,
             signs: &[],
+            visual: false,
             graphics_on: false,
             image_dims: &dims,
         };
@@ -233,4 +244,307 @@ fn no_raw_control_byte_reaches_the_terminal() {
     );
     assert!(s.contains("x^[]0;pwned^Gy^[[2Jz<9b>31m<85>^M^H"), "{s:?}");
     assert!(s.contains("msg ^[[31mred^G"), "{s:?}");
+}
+
+// ---- #616: 'cursorline', 'cursorlineopt', 'cursorcolumn', 'colorcolumn' ----
+
+/// Each cell's overlay: `c` the `CursorLine` / `CursorColumn` background, `k` the `ColorColumn` one, `B`
+/// a bold `CursorLineNr` cell, `.` none (nvim's `screenattr()` classes, read from its dumps).
+fn attrs(scr: &screen::Screen, w: u16, h: u16) -> Vec<String> {
+    (0..h)
+        .map(|r| {
+            (0..w)
+                .map(|c| {
+                    let st = scr.cell(r, c).style;
+                    if st.bg == CURSORLINE_BG {
+                        'c'
+                    } else if st.bg == COLORCOLUMN_BG {
+                        'k'
+                    } else if st.bold {
+                        'B'
+                    } else {
+                        '.'
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// nvim's probe: a line wrapping over three 20-cell rows, a tab and a wide char, an empty line.
+const CUL: &str =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbb\nshort\n\tx\u{4e2d}yy\n  indented\n\nend\n";
+
+fn cul_attrs(cursor: usize, culopt: &str, number: bool) -> Vec<String> {
+    let mut w = Win::new(CUL, 20, 8);
+    w.cursor = cursor;
+    let culopt = culopt.to_string();
+    let scr = w.paint(move |o| {
+        o.cursorline = true;
+        o.cursorlineopt = culopt.clone();
+        o.number = number;
+    });
+    attrs(&scr, 20, 8)
+}
+
+const ROW_C: &str = "cccccccccccccccccccc";
+const ROW_N: &str = "....................";
+
+#[test]
+fn cursorline_marks_the_cursor_lines_rows_like_nvim() {
+    // `both` (the default) without 'number': all three rows of the wrapped line, to the window's edge.
+    let a = cul_attrs(0, "both", false);
+    assert_eq!(a[..3], [ROW_C, ROW_C, ROW_C]);
+    assert_eq!(a[3..], [ROW_N; 5]);
+    // With 'number': the number column bold (CursorLineNr) on every row of the line.
+    let a = cul_attrs(0, "both", true);
+    assert_eq!(a[..3], ["BBBBcccccccccccccccc"; 3]);
+    assert_eq!(a[3], ROW_N);
+    // `number` alone: only the number's own row, and no line background.
+    let a = cul_attrs(0, "number", true);
+    assert_eq!(a[0], "BBBB................");
+    assert_eq!(a[1..3], [ROW_N, ROW_N]);
+    // `line` alone: the rows, not the number.
+    let a = cul_attrs(0, "line", true);
+    assert_eq!(a[..3], ["....cccccccccccccccc"; 3]);
+    // `screenline`: the cursor's own row (after `gj`, byte 16 is on the second row of the 16-cell text).
+    let a = cul_attrs(0, "screenline", true);
+    assert_eq!(a[..3], ["....cccccccccccccccc", ROW_N, ROW_N]);
+    let a = cul_attrs(16, "screenline", true);
+    assert_eq!(a[..3], [ROW_N, "....cccccccccccccccc", ROW_N]);
+    // `screenline,number`: the number's row bold, the cursor's row lit.
+    let a = cul_attrs(16, "screenline,number", true);
+    assert_eq!(
+        a[..3],
+        ["BBBB................", "....cccccccccccccccc", ROW_N]
+    );
+    // An empty line: the whole row.
+    let empty = CUL.find("\n\nend").unwrap() + 1;
+    let a = cul_attrs(empty, "both", true);
+    assert_eq!(a[6], "BBBBcccccccccccccccc");
+    assert_eq!(a[5], ROW_N);
+}
+
+#[test]
+fn cursorline_leaves_a_visual_selection_alone() {
+    let mut w = Win::new("abc\ndef\n", 10, 3);
+    w.cursor = 1;
+    let mut ws = Workspace::new(w.text);
+    ws.update_window_options(ruse_core::OptionLevel::Both, |o| o.cursorline = true);
+    let bytes = w.text.as_bytes();
+    let idx = li(bytes);
+    let mut win = WinView::resolve(ws.focused().view, &w.globals, 10, 3, 2, false);
+    win.cursor = Some((1, 1));
+    let dims = std::collections::HashMap::new();
+    let p = PaneInput {
+        text: PaneText { bytes, idx: &idx },
+        win: &win,
+        byte_style: &[],
+        top: 0,
+        sel: None,
+        block: None,
+        hl: &[],
+        underline: &[],
+        conceal: &[],
+        caret_line: 0,
+        cursor_line: 0,
+        virt: &[],
+        folds: &[],
+        signs: &[],
+        visual: true,
+        graphics_on: false,
+        image_dims: &dims,
+    };
+    let mut scr = screen::Screen::new(10, 3);
+    let rect = Rect {
+        x: 0,
+        y: 0,
+        w: 10,
+        h: 3,
+    };
+    paint_window(&mut scr, rect, &p, &mut Vec::new());
+    assert_eq!(attrs(&scr, 10, 3)[0], "..........");
+}
+
+#[test]
+fn cursorcolumn_marks_the_cursors_virtual_column_like_nvim() {
+    let paint = |cursor: usize| {
+        let mut w = Win::new(CUL, 20, 8);
+        w.cursor = cursor;
+        attrs(&w.paint(|o| o.cursorcolumn = true), 20, 8)
+    };
+    // `3G$`: virtual column 12 on every other line's first row, past their ends too, not on the
+    // wrapped rows (their columns are 20 on) and not on the cursor's own line.
+    let l3_end = CUL.find("yy\n").unwrap() + 1;
+    let at12 = "............c.......";
+    assert_eq!(
+        paint(l3_end),
+        [at12, ROW_N, ROW_N, at12, ROW_N, at12, at12, at12]
+    );
+    // `gg0`: column 0 of the other lines.
+    let at0 = "c...................";
+    assert_eq!(paint(0)[..4], [ROW_N, ROW_N, ROW_N, at0]);
+    assert_eq!(paint(0)[4..], [at0; 4]);
+    // `gg25l`: column 25 is the long line's own second row; no other line reaches it.
+    assert!(paint(25).iter().all(|r| r == ROW_N));
+    // The cursor on a tab sits on its last cell (column 7).
+    let l3 = CUL.find('\t').unwrap();
+    assert_eq!(paint(l3)[0], ".......c............");
+}
+
+#[test]
+fn colorcolumn_marks_virtual_columns_like_nvim() {
+    let paint = |cc: &str, tw: usize, wrap: bool, leftcol: usize| {
+        let mut w = Win::new(CUL, 20, 8);
+        w.textwidth = tw;
+        w.leftcol = leftcol;
+        let cc = cc.to_string();
+        attrs(
+            &w.paint(move |o| {
+                o.colorcolumn = cc.clone();
+                o.wrap = wrap;
+            }),
+            20,
+            8,
+        )
+    };
+    // `cc=5,+2 tw=10`: columns 5 and 12 on each line's first row, past the text too.
+    let cols = "....k......k........";
+    assert_eq!(
+        paint("5,+2", 10, true, 0),
+        [cols, ROW_N, ROW_N, cols, cols, cols, cols, cols]
+    );
+    // `+2` needs a 'textwidth'.
+    assert_eq!(paint("5,+2", 0, true, 0)[0], "....k...............");
+    // `cc=25`: only the long line has a 25th column (its second row).
+    let a = paint("25", 0, true, 0);
+    assert_eq!(a[1], "....k...............");
+    assert!(a.iter().enumerate().all(|(i, r)| i == 1 || r == ROW_N));
+    // Without 'wrap', scrolled 32 columns: columns 3 and 30 are off the window.
+    assert!(paint("3,30", 0, false, 32).iter().all(|r| r == ROW_N));
+}
+
+// ---- #616: 'fillchars', 'foldcolumn' ----
+
+fn fold(start: usize, end: usize, closed: bool) -> crate::folds::Fold {
+    crate::folds::Fold {
+        start,
+        end,
+        closed,
+        level: 1,
+    }
+}
+
+/// nvim's fold probe: twelve lines, a fold over lines 2-8 holding one over lines 3-6 (1-based).
+fn fold_text() -> String {
+    (1..=12)
+        .map(|i| {
+            if i % 4 == 0 {
+                format!("  indented {i}\n")
+            } else {
+                format!("line {i}\n")
+            }
+        })
+        .collect()
+}
+
+/// The first `n` cells of each row.
+fn heads(rows: &[String], n: usize) -> Vec<String> {
+    rows.iter().map(|r| r.chars().take(n).collect()).collect()
+}
+
+#[test]
+fn foldcolumn_shows_the_fold_levels_like_nvim() {
+    let text = fold_text();
+    let run = |fdc: &str, outer_closed: bool| {
+        let mut w = Win::new(&text, 30, 14);
+        w.folds = vec![fold(1, 7, outer_closed), fold(2, 5, true)];
+        let fdc = fdc.to_string();
+        w.rows(move |o| o.foldcolumn = fdc.clone())
+    };
+    // Both closed: the outer fold's `+`.
+    assert_eq!(heads(&run("1", true), 2)[..3], [" l", "+\u{25b8}", " l"]);
+    assert_eq!(heads(&run("2", true), 3)[..2], ["  l", "+ \u{25b8}"]);
+    assert_eq!(heads(&run("3", true), 4)[1], "+  \u{25b8}");
+    // The outer one open: `-` where it starts, `│` inside it, the inner closed one's `+`.
+    let open3 = heads(&run("3", false), 3);
+    assert_eq!(
+        open3[..6],
+        [
+            "   ",
+            "-  ",
+            "\u{2502}+ ",
+            "\u{2502}  ",
+            "\u{2502}  ",
+            "   "
+        ]
+    );
+    // One column for two levels: the inner fold's `+` wins its row.
+    let open1 = heads(&run("1", false), 1);
+    assert_eq!(open1[..6], [" ", "-", "+", "\u{2502}", "\u{2502}", " "]);
+    // `auto` is one column wide, `auto:3` as wide as the two levels.
+    assert_eq!(heads(&run("auto", false), 1), open1);
+    assert_eq!(
+        heads(&run("auto:3", false), 2)[..4],
+        ["  ", "- ", "\u{2502}+", "\u{2502} "]
+    );
+    // The fold column comes before the number column.
+    let mut w = Win::new(&text, 30, 14);
+    w.folds = vec![fold(1, 7, false), fold(2, 5, true)];
+    let rows = w.rows(|o| {
+        o.foldcolumn = "2".into();
+        o.number = true;
+    });
+    assert_eq!(
+        heads(&rows, 7)[..4],
+        [
+            "    1 l",
+            "-   2 l",
+            "\u{2502}+  3 \u{25b8}",
+            "\u{2502}   7 l"
+        ]
+    );
+}
+
+#[test]
+fn foldcolumn_repeats_on_a_wrapped_lines_rows() {
+    let text = format!("line 1\nline 2 {}\nline 3\n", "x".repeat(30));
+    let mut w = Win::new(&text, 20, 6);
+    w.folds = vec![fold(1, 2, false)];
+    let rows = w.rows(|o| o.foldcolumn = "2".into());
+    assert_eq!(
+        heads(&rows, 3),
+        ["  l", "- l", "- x", "- x", "\u{2502} l", "~"]
+    );
+}
+
+#[test]
+fn fillchars_draws_eob_fold_and_fold_column_marks() {
+    let text = fold_text();
+    let mut w = Win::new(&text, 30, 14);
+    w.folds = vec![fold(1, 7, true), fold(2, 5, true)];
+    // The default: `~` rows after the last line, the fold row filled with `·`.
+    let rows = w.rows(|_| {});
+    assert_eq!(rows[6..], ["~"; 8]);
+    assert!(rows[1].ends_with("\u{b7}\u{b7}\u{b7}"), "{:?}", rows[1]);
+    assert_eq!(rows[1].chars().count(), 30);
+    w.globals.fillchars = "eob:x,fold:-,foldopen:o,foldclose:c,foldsep:s".into();
+    let rows = w.rows(|o| o.foldcolumn = "1".into());
+    assert_eq!(rows[6..], ["x"; 8]);
+    assert!(
+        rows[1].starts_with('c') && rows[1].ends_with("---"),
+        "{:?}",
+        rows[1]
+    );
+    w.folds = vec![fold(1, 7, false), fold(2, 5, true)];
+    let rows = w.rows(|o| o.foldcolumn = "2".into());
+    assert_eq!(heads(&rows, 2)[..4], ["  ", "o ", "sc", "s "]);
+    // A window-local value wins over the global one; `eob: ` hides the rows.
+    let rows = w.rows(|o| o.fillchars = Some("eob: ".into()));
+    assert_eq!(rows[13], "");
+    // `lastline` marks a last line that does not fit.
+    let long = format!("a\n{}\n", "b".repeat(50));
+    let mut w = Win::new(&long, 20, 2);
+    w.globals.fillchars = "lastline:#".into();
+    assert_eq!(w.rows(|_| {})[1], "bbbbbbbbbbbbbbbbb###");
 }

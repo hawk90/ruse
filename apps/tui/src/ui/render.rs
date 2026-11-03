@@ -118,12 +118,94 @@ pub(crate) struct PaneInput<'a> {
     pub folds: &'a [crate::folds::Fold],
     /// `(line, sign text, colour)` for the sign column (#616): the diagnostics' `E`/`W`/`I`/`H`.
     pub signs: &'a [(usize, char, crossterm::style::Color)],
+    /// The window is in Visual mode: `'cursorline'` leaves the text alone then (nvim).
+    pub visual: bool,
     pub graphics_on: bool,
     pub image_dims: &'a std::collections::HashMap<String, (u32, u32)>,
 }
 
 /// The colour nvim's `NonText` / `Whitespace` / `LineNr` groups get here.
 const DIM: crossterm::style::Color = crossterm::style::Color::DarkGrey;
+/// The background of nvim's `CursorLine` / `CursorColumn` (its default `NvimDarkGrey3`) and
+/// `ColorColumn` (`NvimDarkGrey4`), as the nearest 256-colour cells (#616).
+const CURSORLINE_BG: crossterm::style::Color = crossterm::style::Color::AnsiValue(236);
+const COLORCOLUMN_BG: crossterm::style::Color = crossterm::style::Color::AnsiValue(239);
+
+/// The frame overlays of one painted line (#616): its screen rows, which of its own rows they are,
+/// and its laid-out rows.
+struct LineRows {
+    line: usize,
+    /// The first screen row and how many show.
+    srow: u16,
+    shown: usize,
+    /// The line's own row the first shown one is (the rows `skip` leaves out above).
+    skip: usize,
+    /// The line's rows when laid out (1 for a closed fold).
+    rows: usize,
+    fold: bool,
+}
+
+/// Paint the `'cursorline'`, `'cursorcolumn'` and `'colorcolumn'` backgrounds and the `CursorLineNr`
+/// gutter of one line, as nvim v0.12.6 places them: the columns are virtual columns, so a wrapped line
+/// shows them on the row holding that column and nowhere past its last row.
+fn paint_line_overlays(cur: &mut screen::Screen, rect: Rect, p: &PaneInput<'_>, lr: &LineRows) {
+    let win = p.win;
+    let gutter = u16::try_from(win.gutter()).unwrap_or(u16::MAX).min(rect.w);
+    let (tx, x1) = (rect.x + gutter, rect.x + rect.w);
+    let tw = usize::from(rect.w - gutter);
+    let leftcol = if win.wrap { 0 } else { win.leftcol };
+    let cursor_vcol = win.cursor.map_or(0, |(_, v)| v);
+    let is_cursor_line = crate::folds::snap_out(p.folds, p.cursor_line) == lr.line;
+    // The screen cell of virtual column `v` on this line, if it shows.
+    let cell = |v: usize| -> Option<(u16, u16)> {
+        let (r, c) = if win.wrap {
+            (v / tw.max(1), v % tw.max(1))
+        } else if v >= leftcol && v - leftcol < tw {
+            (0, v - leftcol)
+        } else {
+            return None;
+        };
+        (r >= lr.skip && r < lr.rows && r - lr.skip < lr.shown)
+            .then(|| (lr.srow + (r - lr.skip) as u16, tx + c as u16))
+    };
+    if let (Some(o), true) = (win.cursorline, is_cursor_line) {
+        let crow = if lr.fold || !win.wrap {
+            0
+        } else {
+            (cursor_vcol / tw.max(1)).saturating_sub(lr.skip)
+        };
+        if !p.visual && (o.line || o.screenline) {
+            for r in 0..lr.shown {
+                if o.line || r == crow {
+                    for x in tx..x1 {
+                        cur.set_bg(lr.srow + r as u16, x, CURSORLINE_BG);
+                    }
+                }
+            }
+        }
+        if o.number && win.num_w > 0 {
+            let x0 = rect.x + (win.fold_w + win.sign_w) as u16;
+            for r in 0..lr.shown {
+                // The number's row, or every row of the line with `line`.
+                if (o.line || r + lr.skip == 0) && !win.signs_in_number {
+                    for x in x0..(x0 + win.num_w as u16).min(x1) {
+                        cur.set_bold(lr.srow + r as u16, x);
+                    }
+                }
+            }
+        }
+    }
+    if win.cursorcolumn && !is_cursor_line && !lr.fold {
+        if let Some((y, x)) = cell(cursor_vcol) {
+            cur.set_bg(y, x, CURSORLINE_BG);
+        }
+    }
+    for &v in &win.colorcolumns {
+        if let Some((y, x)) = cell(v) {
+            cur.set_bg(y, x, COLORCOLUMN_BG);
+        }
+    }
+}
 
 /// Paint one window into its `rect`: from line `top`, each line laid out by [`line_layout`] (soft wrap,
 /// `'showbreak'`, `'breakindent'`, `'linebreak'`, `'list'`, or the columns from `leftcol` without
@@ -160,16 +242,19 @@ pub(crate) fn paint_window(
         },
         _ => paint_virt_block(cur, rect, disp_row, vb),
     };
+    let mut buf = [0u8; 4];
+    let lastline: &str = win.fill.lastline.encode_utf8(&mut buf);
+    let lastline = lastline.to_string();
     let mut row: u16 = 0;
     let mut line = p.top;
     let mut first = true;
+    let mut cut = false;
     while row < rect.h && line < count {
         if crate::folds::hidden(p.folds, line) {
             line += 1;
             continue;
         }
         let srow = rect.y + row;
-        paint_gutter(cur, rect, srow, line, p);
         let ls = p.text.start(line);
         // Only what the window can show is laid out (a huge line costs its visible rows).
         let skip = if first { win.skip } else { 0 };
@@ -181,6 +266,7 @@ pub(crate) fn paint_window(
         let text = p.text.line_upto(line, PaneText::bytes_for(max_vcol));
         if let Some(fold) = crate::folds::closed_starting_at(p.folds, line) {
             // A closed fold's start row shows its one-line summary in place of the text.
+            paint_gutter(cur, rect, srow, line, 0, p);
             let mut c = tx;
             for gph in crate::folds::summary(fold, text).graphemes(true) {
                 if c >= x1 {
@@ -188,6 +274,25 @@ pub(crate) fn paint_window(
                 }
                 c = cur.put(srow, c, gph, DIM, false);
             }
+            // 'fillchars' `fold` fills the rest of the row.
+            let mut fb = [0u8; 4];
+            let fill: &str = win.fill.fold.encode_utf8(&mut fb);
+            while c < x1 {
+                c = cur.put(srow, c, fill, DIM, false);
+            }
+            paint_line_overlays(
+                cur,
+                rect,
+                p,
+                &LineRows {
+                    line,
+                    srow,
+                    shown: 1,
+                    skip: 0,
+                    rows: 1,
+                    fold: true,
+                },
+            );
             row += 1;
         } else {
             // F-031 conceal: hidden on every line but the caret's, which is revealed so its markup stays
@@ -214,11 +319,15 @@ pub(crate) fn paint_window(
             let partial = rows > avail && !first;
             if partial && win.lastline == LastLine::AtRows {
                 for r in 0..avail {
-                    cur.put(srow + r as u16, tx, "@", DIM, false);
+                    cur.put(srow + r as u16, tx, &lastline, DIM, false);
                 }
+                cut = true;
                 break;
             }
             let shown = rows.min(avail);
+            for r in 0..shown {
+                paint_gutter(cur, rect, srow + r as u16, line, r + skip, p);
+            }
             let truncate_row = (partial && win.lastline == LastLine::Truncate).then_some(shown - 1);
             for c in &lay.cells {
                 let (r, col) = if win.wrap {
@@ -282,20 +391,34 @@ pub(crate) fn paint_window(
                     }
                 }
             }
+            paint_line_overlays(
+                cur,
+                rect,
+                p,
+                &LineRows {
+                    line,
+                    srow,
+                    shown,
+                    skip,
+                    rows: lay.rows,
+                    fold: false,
+                },
+            );
             if partial {
                 let last = srow + (shown - 1) as u16;
                 match win.lastline {
                     LastLine::Lastline => {
                         for k in 0..3.min(tw) {
-                            cur.put(last, x1 - 1 - k as u16, "@", DIM, false);
+                            cur.put(last, x1 - 1 - k as u16, &lastline, DIM, false);
                         }
                     }
                     _ => {
                         for k in 0..3.min(tw) {
-                            cur.put(last, tx + k as u16, "@", DIM, false);
+                            cur.put(last, tx + k as u16, &lastline, DIM, false);
                         }
                     }
                 }
+                cut = true;
                 break;
             }
             row += shown as u16;
@@ -319,6 +442,20 @@ pub(crate) fn paint_window(
             row = row.saturating_add(vb.height);
         }
         line += 1;
+    }
+    // The rows after the buffer's last line show 'fillchars' `eob` in their first column.
+    if !cut && line >= count {
+        let mut eb = [0u8; 4];
+        let eob: &str = win.fill.eob.encode_utf8(&mut eb);
+        for r in row..rect.h {
+            cur.put(rect.y + r, rect.x, eob, DIM, false);
+        }
+    }
+    // A 'smoothscroll' window scrolled into its top line shows `<<<` over its first cells.
+    if win.smoothscroll && win.skip > 0 && win.wrap && win.showbreak.is_empty() {
+        for k in 0..3.min(rect.w) {
+            cur.put(rect.y, rect.x + k, "<", DIM, false);
+        }
     }
 }
 
@@ -355,11 +492,32 @@ fn cell_style(
 /// Paint line `line`'s sign column and number column on screen row `srow` (#616): the sign (or blank),
 /// then the number right-aligned with a blank after it — the cursor line's own number left-aligned under
 /// `'number'` + `'relativenumber'`, distances that count a closed fold as one line.
-fn paint_gutter(cur: &mut screen::Screen, rect: Rect, srow: u16, line: usize, p: &PaneInput<'_>) {
+fn paint_gutter(
+    cur: &mut screen::Screen,
+    rect: Rect,
+    srow: u16,
+    line: usize,
+    line_row: usize,
+    p: &PaneInput<'_>,
+) {
     let win = p.win;
-    let sign = p.signs.iter().find(|s| s.0 == line);
     let mut x = rect.x;
     let end = rect.x + rect.w;
+    if win.fold_w > 0 {
+        // 'foldcolumn' (#616): on every row of the line, as nvim draws it.
+        for ch in crate::ui::window_view::fold_column(p.folds, line, win.fold_w, &win.fill) {
+            if x >= end {
+                return;
+            }
+            let mut buf = [0u8; 4];
+            x = cur.put(srow, x, ch.encode_utf8(&mut buf), DIM, false);
+        }
+    }
+    if line_row > 0 {
+        // A wrapped line's later rows show no sign or number.
+        return;
+    }
+    let sign = p.signs.iter().find(|s| s.0 == line);
     if win.sign_w > 0 {
         if let Some(&(_, ch, color)) = sign {
             let mut buf = [0u8; 4];
@@ -508,6 +666,7 @@ pub(crate) fn paint_pane(
         virt,
         folds,
         signs: &[],
+        visual: false,
         graphics_on,
         image_dims,
     };
@@ -979,6 +1138,7 @@ pub(crate) fn render(
             virt: pane_virt,
             folds: pane_folds,
             signs: if i == ws.focus() { &signs } else { &[] },
+            visual: matches!(p.view.mode(), Mode::Visual { .. } | Mode::Select { .. }),
             graphics_on,
             image_dims,
         };
@@ -2044,6 +2204,10 @@ mod render_tests {
             if text.contains('\r') || text.contains('\n') {
                 continue;
             }
+            // A cluster nvim does not print shows transcribed (`^@`, `<200b>`, #1181), not whole.
+            if want.iter().any(|g| screen::transcribe(g, false).is_some()) {
+                continue;
+            }
             let cols = 64u16;
             let rect = Rect {
                 x: 0,
@@ -2093,7 +2257,7 @@ mod render_tests {
             }
             n += 1;
         }
-        assert!(n > 500, "most cases are checked ({n})");
+        assert!(n > 480, "most cases are checked ({n})");
     }
 
     // ---- #615 / #616: wrap, gutter, 'list' and the horizontal offset, against nvim v0.12.6 screens ----
@@ -2145,6 +2309,7 @@ mod render_tests {
             virt: &[],
             folds: &[],
             signs: &[],
+            visual: false,
             graphics_on: false,
             image_dims: &dims,
         };

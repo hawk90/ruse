@@ -9,7 +9,10 @@
 use ruse_core::View;
 
 use crate::folds::Fold;
-pub(crate) use crate::input::display_opts::{parse_signcolumn, SignColumn};
+pub(crate) use crate::input::display_opts::{
+    parse_colorcolumn, parse_culopt, parse_fillchars, parse_foldcolumn, parse_signcolumn,
+    ColorColumn, CursorLineOpt, FillChars, FoldColumn, SignColumn,
+};
 pub(crate) use crate::input::ScreenMotion;
 use crate::line_index::LineIndex;
 use crate::ui::line_layout::{self, BreakAt, BriOpt, LineLayout, ListChars};
@@ -20,6 +23,7 @@ use crate::viewport::Lines;
 pub(crate) struct DisplayGlobals {
     pub showbreak: String,
     pub listchars: String,
+    pub fillchars: String,
     pub breakat: String,
     /// `'display'`, as typed.
     pub display: String,
@@ -33,6 +37,7 @@ impl Default for DisplayGlobals {
         DisplayGlobals {
             showbreak: String::new(),
             listchars: line_layout::LISTCHARS_DEFAULT.into(),
+            fillchars: String::new(),
             breakat: line_layout::BREAKAT_DEFAULT.into(),
             display: "lastline".into(),
             sidescroll: 1,
@@ -85,6 +90,101 @@ pub(crate) struct WinView {
     /// The cursor's buffer byte and virtual column as the viewport pass found them, so the frame's
     /// render does not lay the cursor's line out again.
     pub cursor: Option<(usize, usize)>,
+    /// `'fillchars'` (#616).
+    pub fill: FillChars,
+    /// `'cursorlineopt'` when `'cursorline'` is on.
+    pub cursorline: Option<CursorLineOpt>,
+    /// `'cursorcolumn'`.
+    pub cursorcolumn: bool,
+    /// `'colorcolumn'`, as 0-based virtual columns (`'textwidth'` applied).
+    pub colorcolumns: Vec<usize>,
+    /// `'foldcolumn'` as set, and its cells this frame ([`WinView::with_folds`]).
+    pub foldcolumn: FoldColumn,
+    pub fold_w: usize,
+    /// `'smoothscroll'`.
+    pub smoothscroll: bool,
+    /// The virtual columns of the top line hidden above the window (nvim's `w_skipcol`).
+    pub skipcol: usize,
+}
+
+/// The deepest fold nesting in `folds` (nvim's `getDeepestNesting`), for `'foldcolumn'` `auto`.
+pub(crate) fn deepest_fold(folds: &[Fold]) -> usize {
+    folds
+        .iter()
+        .map(|f| {
+            folds
+                .iter()
+                .filter(|o| o.start <= f.start && f.end <= o.end)
+                .count()
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// What the fold column shows for line `l` (nvim's `fold_info`): its fold level, the first line of the
+/// fold it is in, the lowest level of a fold starting on it, and the lines of the closed fold it is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FoldInfo {
+    pub level: usize,
+    pub first: usize,
+    pub low_level: usize,
+    pub closed: bool,
+}
+
+/// nvim's `fold_info` over ruse's fold list: walk the folds holding `l` from the outermost; the first
+/// closed one ends the walk.
+pub(crate) fn fold_info(folds: &[Fold], l: usize) -> FoldInfo {
+    let mut holding: Vec<&Fold> = folds.iter().filter(|f| f.contains(l)).collect();
+    holding.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
+    let (mut level, mut low, mut first) = (0, 0, l);
+    for f in holding {
+        if f.start == l && low == 0 {
+            low = level + 1;
+        }
+        if f.closed {
+            return FoldInfo {
+                level: level + 1,
+                first: f.start,
+                low_level: if low == 0 { level + 1 } else { low },
+                closed: true,
+            };
+        }
+        first = f.start;
+        level += 1;
+    }
+    FoldInfo {
+        level,
+        first,
+        low_level: if low == 0 { level } else { low },
+        closed: false,
+    }
+}
+
+/// nvim's `fill_foldcolumn`: the `fdc` cells of the fold column for line `l`.
+pub(crate) fn fold_column(folds: &[Fold], l: usize, fdc: usize, fill: &FillChars) -> Vec<char> {
+    let fi = fold_info(folds, l);
+    let closed = usize::from(fi.closed);
+    let first_level = (fi.level as isize - fdc as isize - closed as isize + 1).max(1) as usize;
+    let closedcol = fdc.min(fi.level);
+    (0..fdc)
+        .map(|i| {
+            if i >= fi.level {
+                ' '
+            } else if fi.closed && i + 1 == closedcol {
+                fill.foldclose
+            } else if fi.first == l && first_level + i >= fi.low_level {
+                fill.foldopen
+            } else if first_level == 1 {
+                fill.foldsep
+            } else if let Some(c) = fill.foldinner {
+                c
+            } else if first_level + i <= 9 {
+                char::from(b'0' + (first_level + i) as u8)
+            } else {
+                '>'
+            }
+        })
+        .collect()
 }
 
 /// nvim's `number_width`: the digits of the largest number shown, at least `'numberwidth'` - 1.
@@ -131,6 +231,33 @@ impl WinView {
             num_w = 3; // a sign needs two cells plus the blank
         }
         let sign_w = sign_cols * 2;
+        let fcs = o.fillchars.as_deref().unwrap_or(&g.fillchars);
+        let textwidth = view
+            .editing_options()
+            .iter()
+            .find_map(|e| match e {
+                ruse_core::editor::EditorOption::TextWidth(n) => Some(*n),
+                _ => None,
+            })
+            .unwrap_or(0);
+        let colorcolumns = parse_colorcolumn(&o.colorcolumn)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|c| {
+                let col = match c {
+                    ColorColumn::At(n) => n,
+                    // Relative to 'textwidth', and only with one.
+                    ColorColumn::FromTextWidth(_) if textwidth == 0 => return None,
+                    ColorColumn::FromTextWidth(n) => i64::try_from(textwidth).ok()? + n,
+                };
+                usize::try_from(col - 1).ok()
+            })
+            .collect();
+        let foldcolumn = parse_foldcolumn(&o.foldcolumn).unwrap_or(FoldColumn::Fixed(0));
+        let fold_w = match foldcolumn {
+            FoldColumn::Fixed(n) => n,
+            FoldColumn::Auto(_) => 0,
+        };
         let display = &g.display;
         let has = |f: &str| display.split(',').any(|x| x == f);
         WinView {
@@ -160,7 +287,7 @@ impl WinView {
             sign_w,
             num_w,
             signs_in_number,
-            width: rect_w.saturating_sub(sign_w + num_w).max(1),
+            width: rect_w.saturating_sub(fold_w + sign_w + num_w).max(1),
             sidescroll: usize::try_from(g.sidescroll).unwrap_or(0),
             sidescrolloff: usize::try_from(
                 o.sidescrolloff
@@ -171,7 +298,29 @@ impl WinView {
             leftcol: view.leftcol(),
             skip: 0,
             cursor: None,
+            fill: parse_fillchars(fcs).unwrap_or_default(),
+            cursorline: o
+                .cursorline
+                .then(|| parse_culopt(&o.cursorlineopt).ok())
+                .flatten(),
+            cursorcolumn: o.cursorcolumn,
+            colorcolumns,
+            foldcolumn,
+            fold_w,
+            smoothscroll: o.smoothscroll,
+            skipcol: view.skipcol(),
         }
+    }
+
+    /// Size an `auto` fold column for the window's `folds` (as deep as the deepest fold, at most its
+    /// maximum) and narrow the text area by it.
+    pub(crate) fn with_folds(mut self, folds: &[Fold]) -> WinView {
+        if let FoldColumn::Auto(max) = self.foldcolumn {
+            let w = deepest_fold(folds).min(max);
+            self.width = (self.width + self.fold_w).saturating_sub(w).max(1);
+            self.fold_w = w;
+        }
+        self
     }
 
     /// A window `width` x `height` with no gutter that does not wrap: how the renderer drew every window
@@ -199,12 +348,20 @@ impl WinView {
             leftcol: 0,
             skip: 0,
             cursor: None,
+            fill: FillChars::default(),
+            cursorline: None,
+            cursorcolumn: false,
+            colorcolumns: Vec::new(),
+            foldcolumn: FoldColumn::Fixed(0),
+            fold_w: 0,
+            smoothscroll: false,
+            skipcol: 0,
         }
     }
 
-    /// The gutter's width: the sign column and the number column.
+    /// The gutter's width: the fold column, the sign column and the number column.
     pub(crate) fn gutter(&self) -> usize {
-        self.sign_w + self.num_w
+        self.fold_w + self.sign_w + self.num_w
     }
 
     /// The line layout options.

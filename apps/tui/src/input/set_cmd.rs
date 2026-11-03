@@ -94,6 +94,14 @@ pub enum Opt {
     SideScrollOff,
     SignColumn,
     Wrap,
+    ColorColumn,
+    CursorColumn,
+    CursorLine,
+    CursorLineOpt,
+    FillChars,
+    FoldColumn,
+    Scroll,
+    SmoothScroll,
 }
 
 /// An option's value.
@@ -138,6 +146,10 @@ pub enum TextCheck {
     ShowBreak,
     Display,
     SignColumn,
+    FillChars,
+    CursorLineOpt,
+    ColorColumn,
+    FoldColumn,
 }
 
 /// An option's type, with its value rules.
@@ -291,6 +303,18 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Local,
     ),
     def(
+        Opt::ColorColumn,
+        "colorcolumn",
+        "cc",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::ColorColumn,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::Local,
+    ),
+    def(
         Opt::Comments,
         "comments",
         "com",
@@ -336,6 +360,36 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Global,
     ),
     def(
+        Opt::CursorColumn,
+        "cursorcolumn",
+        "cuc",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
+        Opt::CursorLine,
+        "cursorline",
+        "cul",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
+        Opt::CursorLineOpt,
+        "cursorlineopt",
+        "culopt",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::CursorLineOpt,
+        },
+        OptVal::text("both"),
+        OptVal::text("both"),
+        Locality::Local,
+    ),
+    def(
         Opt::Display,
         "display",
         "dy",
@@ -369,6 +423,18 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Local,
     ),
     def(
+        Opt::FillChars,
+        "fillchars",
+        "fcs",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::FillChars,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::GlobalLocal,
+    ),
+    def(
         Opt::FixEol,
         "fixendofline",
         "fixeol",
@@ -376,6 +442,18 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(true),
         OptVal::Bool(false),
         Locality::Global,
+    ),
+    def(
+        Opt::FoldColumn,
+        "foldcolumn",
+        "fdc",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::FoldColumn,
+        },
+        OptVal::text("0"),
+        OptVal::text("0"),
+        Locality::Local,
     ),
     def(
         Opt::FoldEnable,
@@ -558,6 +636,15 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Local,
     ),
     def(
+        Opt::Scroll,
+        "scroll",
+        "scr",
+        NUM0,
+        OptVal::Num(0),
+        OptVal::Num(0),
+        Locality::Local,
+    ),
+    def(
         Opt::ScrollJump,
         "scrolljump",
         "sj",
@@ -676,6 +763,15 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(true),
         OptVal::Bool(true),
         Locality::Global,
+    ),
+    def(
+        Opt::SmoothScroll,
+        "smoothscroll",
+        "sms",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
     ),
     def(
         Opt::SoftTabStop,
@@ -1191,8 +1287,8 @@ pub fn assign_value(
             if !(INT_MIN..=INT_MAX).contains(&v) {
                 return Err(ValueError::Invalid);
             }
-            // 'scrolljump' below -100 is nvim's E49, not E487.
-            if def.opt == Opt::ScrollJump && v < min {
+            // 'scrolljump' below -100, and a negative 'scroll', are nvim's E49, not E487.
+            if matches!(def.opt, Opt::ScrollJump | Opt::Scroll) && v < min {
                 return Err(ValueError::Message("E49: Invalid scroll size".into()));
             }
             // Below the minimum is "not positive" (`'tabstop'` 0 too, as nvim says).
@@ -1234,7 +1330,11 @@ pub fn assign_value(
                 | TextCheck::BreakIndentOpt
                 | TextCheck::ShowBreak
                 | TextCheck::Display
-                | TextCheck::SignColumn => {
+                | TextCheck::SignColumn
+                | TextCheck::FillChars
+                | TextCheck::CursorLineOpt
+                | TextCheck::ColorColumn
+                | TextCheck::FoldColumn => {
                     display_check(check, &new).map_err(|e| ValueError::Message(e.to_string()))?;
                     Ok(())
                 }
@@ -1255,6 +1355,10 @@ fn display_check(check: TextCheck, v: &str) -> Result<(), super::display_opts::D
         TextCheck::ShowBreak => d::check_showbreak(v),
         TextCheck::Display => d::check_display(v),
         TextCheck::SignColumn => d::parse_signcolumn(v).map(|_| ()),
+        TextCheck::FillChars => d::parse_fillchars(v).map(|_| ()),
+        TextCheck::CursorLineOpt => d::parse_culopt(v).map(|_| ()),
+        TextCheck::ColorColumn => d::parse_colorcolumn(v).map(|_| ()),
+        TextCheck::FoldColumn => d::parse_foldcolumn(v).map(|_| ()),
         _ => Ok(()),
     }
 }

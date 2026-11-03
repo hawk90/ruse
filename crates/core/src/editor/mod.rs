@@ -465,6 +465,10 @@ pub struct View {
     /// The first displayed screen column when `'wrap'` is off (nvim's `w_leftcol`). Frontend-owned, like
     /// `top`: the viewport pass and `zh`/`zl`/`zs`/`ze` set it (#615).
     leftcol: usize,
+    /// The virtual columns of the top line scrolled out of the window (nvim's `w_skipcol`):
+    /// `'smoothscroll'` scrolling, or a cursor line taller than the window. Frontend-owned, like `top`
+    /// (#615).
+    skipcol: usize,
     /// nvim's window-local display options (#615, #616). The core only stores them: the frontend lays
     /// out with them, and a split copies them with the View.
     window: crate::WindowOptions,
@@ -798,6 +802,7 @@ impl View {
             scroll: None,
             scrolloff: None,
             leftcol: 0,
+            skipcol: 0,
             window: crate::WindowOptions::default(),
             cursor: 0,
             mode: Mode::Normal,
@@ -1220,6 +1225,17 @@ impl View {
     /// Set the first displayed screen column (the frontend's horizontal scroll, #615).
     pub fn set_leftcol(&mut self, col: usize) {
         self.leftcol = col;
+    }
+
+    /// The virtual columns of the top line scrolled out of the window (nvim's `w_skipcol`, #615).
+    #[must_use]
+    pub fn skipcol(&self) -> usize {
+        self.skipcol
+    }
+
+    /// Set the top line's skipped virtual columns (the frontend's screen-row scroll, #615).
+    pub fn set_skipcol(&mut self, col: usize) {
+        self.skipcol = col;
     }
 
     /// The wanted column (Vim's `curswant`) as a display column, `usize::MAX` after `$`: read by the

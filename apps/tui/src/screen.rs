@@ -234,6 +234,30 @@ impl Screen {
         col + w
     }
 
+    /// Give the cell at `(row, col)` the background `bg`, keeping what it shows (`'cursorline'`,
+    /// `'cursorcolumn'`, `'colorcolumn'`, #616). A wide glyph's two cells both take it.
+    pub fn set_bg(&mut self, row: u16, col: u16, bg: Color) {
+        let Some(i) = self.idx(row, col) else {
+            return;
+        };
+        self.cells[i].style.bg = bg;
+        let wide = |c: &Cell| matches!(&c.content, Content::Cluster(g) if cluster_width(g) == 2);
+        if self.cells[i].content == Content::Continuation && col > 0 {
+            self.cells[i - 1].style.bg = bg;
+        } else if wide(&self.cells[i]) {
+            if let Some(j) = self.idx(row, col + 1) {
+                self.cells[j].style.bg = bg;
+            }
+        }
+    }
+
+    /// Make the cell at `(row, col)` bold (`CursorLineNr`, #616).
+    pub fn set_bold(&mut self, row: u16, col: u16) {
+        if let Some(i) = self.idx(row, col) {
+            self.cells[i].style.bold = true;
+        }
+    }
+
     /// Paint a plain ASCII/short string left-to-right from `col`, one cluster per call. Convenience
     /// for the status line. Stops at the right edge.
     pub fn put_str(&mut self, row: u16, mut col: u16, s: &str, fg: Color, reverse: bool) -> u16 {

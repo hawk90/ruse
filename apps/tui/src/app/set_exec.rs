@@ -50,6 +50,8 @@ pub(crate) struct OptionHost<'a> {
     pub fold_rev: &'a mut HashMap<DocumentId, Revision>,
     pub sources: &'a mut HashMap<Opt, OptSource>,
     pub ui: &'a mut UiOptions,
+    /// The focused window's text rows: `'scroll'` reads and checks against it (0 when unknown).
+    pub win_height: usize,
 }
 
 /// The session's own option values that no other owner holds (#1151).
@@ -85,6 +87,12 @@ fn window_value(o: &WindowOptions, opt: Opt) -> Option<OptVal> {
         Opt::NumberWidth => OptVal::Num(o.numberwidth),
         Opt::SignColumn => OptVal::Text(o.signcolumn.clone().into()),
         Opt::List => OptVal::Bool(o.list),
+        Opt::CursorLine => OptVal::Bool(o.cursorline),
+        Opt::CursorLineOpt => OptVal::Text(o.cursorlineopt.clone().into()),
+        Opt::CursorColumn => OptVal::Bool(o.cursorcolumn),
+        Opt::ColorColumn => OptVal::Text(o.colorcolumn.clone().into()),
+        Opt::FoldColumn => OptVal::Text(o.foldcolumn.clone().into()),
+        Opt::SmoothScroll => OptVal::Bool(o.smoothscroll),
         _ => return None,
     })
 }
@@ -106,6 +114,12 @@ fn set_window_value(o: &mut WindowOptions, opt: Opt, val: &OptVal) {
         (Opt::NumberWidth, OptVal::Num(n)) => o.numberwidth = *n,
         (Opt::SignColumn, _) => o.signcolumn = text(),
         (Opt::List, _) => o.list = on,
+        (Opt::CursorLine, _) => o.cursorline = on,
+        (Opt::CursorLineOpt, _) => o.cursorlineopt = text(),
+        (Opt::CursorColumn, _) => o.cursorcolumn = on,
+        (Opt::ColorColumn, _) => o.colorcolumn = text(),
+        (Opt::FoldColumn, _) => o.foldcolumn = text(),
+        (Opt::SmoothScroll, _) => o.smoothscroll = on,
         _ => {}
     }
 }
@@ -226,6 +240,17 @@ impl OptionHost<'_> {
                     .unwrap_or_else(|| d.listchars.clone())
                     .into(),
             ),
+            Opt::FillChars => OptVal::Text(
+                local
+                    .and_then(|o| o.fillchars.clone())
+                    .unwrap_or_else(|| d.fillchars.clone())
+                    .into(),
+            ),
+            // 'scroll': the window's value at its height (half the height until a count or `:set` gives
+            // it one).
+            Opt::Scroll => OptVal::Num(
+                i64::try_from(self.ws.focused().view.scroll(self.win_height)).unwrap_or(0),
+            ),
             Opt::SideScrollOff => OptVal::Num(
                 local
                     .and_then(|o| o.sidescrolloff)
@@ -275,6 +300,7 @@ impl OptionHost<'_> {
             return match opt {
                 Opt::ShowBreak => OptVal::Text(o.showbreak.clone().unwrap_or_default().into()),
                 Opt::ListChars => OptVal::Text(o.listchars.clone().unwrap_or_default().into()),
+                Opt::FillChars => OptVal::Text(o.fillchars.clone().unwrap_or_default().into()),
                 Opt::SideScrollOff => OptVal::Num(o.sidescrolloff.unwrap_or(-1)),
                 _ => OptVal::Num(self.ws.focused().view.scrolloff_local().unwrap_or(-1)),
             };
@@ -306,7 +332,7 @@ impl OptionHost<'_> {
         };
         match (opt, val) {
             // The global-local display options: as 'scrolloff' (`:set` drops the window's own value).
-            (Opt::ShowBreak | Opt::ListChars | Opt::SideScrollOff, v) => {
+            (Opt::ShowBreak | Opt::ListChars | Opt::FillChars | Opt::SideScrollOff, v) => {
                 let n = match v {
                     OptVal::Num(n) => n,
                     _ => 0,
@@ -317,6 +343,7 @@ impl OptionHost<'_> {
                         .update_window_options(OptionLevel::Local, |o| match opt {
                             Opt::ShowBreak => o.showbreak = local.then(|| text.clone()),
                             Opt::ListChars => o.listchars = local.then(|| text.clone()),
+                            Opt::FillChars => o.fillchars = local.then(|| text.clone()),
                             _ => o.sidescrolloff = local.then_some(n),
                         });
                 }
@@ -325,6 +352,7 @@ impl OptionHost<'_> {
                     match opt {
                         Opt::ShowBreak => d.showbreak = text,
                         Opt::ListChars => d.listchars = text,
+                        Opt::FillChars => d.fillchars = text,
                         _ => d.sidescrolloff = n,
                     }
                 }
@@ -333,6 +361,14 @@ impl OptionHost<'_> {
             (Opt::Display, _) => self.ui.display.display = text,
             (Opt::SideScroll, OptVal::Num(n)) => self.ui.display.sidescroll = n,
             (Opt::ScrollJump, OptVal::Num(n)) => self.ui.display.scrolljump = n,
+            // 'scroll' 0 is half the window again (nvim's `win_comp_scroll`).
+            (Opt::Scroll, OptVal::Num(n)) => {
+                let h = self.win_height.max(1);
+                let lines = usize::try_from(n).unwrap_or(0);
+                let lines = if lines == 0 { (h / 2).max(1) } else { lines };
+                let focus = self.ws.focus();
+                self.ws.set_scroll(focus, lines, h);
+            }
             (Opt::HlSearch, _) => {
                 *self.hlsearch_on = on;
                 if !on {
@@ -429,7 +465,8 @@ pub(crate) fn run_set(
         let items: Vec<(&OptDef, OptVal)> = OPTIONS
             .iter()
             .map(|d| (d, host.read(d.opt, line.scope)))
-            .filter(|(d, v)| *v != d.default)
+            // 'scroll' follows the window's height; it lists only as `:set all` shows it.
+            .filter(|(d, v)| *v != d.default && d.opt != Opt::Scroll)
             .collect();
         out.rows = listing(title(line.scope), &items, cols);
         return out;
@@ -477,7 +514,21 @@ pub(crate) fn run_set(
             }
             SetArg::Assign { opt, op, val } => {
                 let def = opt_def(*opt);
-                match assign_value(def, host.read(*opt, line.scope), *op, val) {
+                let value = assign_value(def, host.read(*opt, line.scope), *op, val);
+                // 'scroll' above the window's height is nvim's E49.
+                let value = match value {
+                    Ok(OptVal::Num(n))
+                        if *opt == Opt::Scroll
+                            && host.win_height > 0
+                            && usize::try_from(n).unwrap_or(usize::MAX) > host.win_height =>
+                    {
+                        Err(crate::input::set_cmd::ValueError::Message(
+                            "E49: Invalid scroll size".into(),
+                        ))
+                    }
+                    v => v,
+                };
+                match value {
                     Ok(OptVal::Str(s)) if !supported(def, s) => {
                         notice = Some(format!("option not supported: {}", text.trim_end()));
                     }
@@ -588,6 +639,13 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::SignColumn => "render.signcolumn",
         Opt::List => "render.list",
         Opt::ListChars => "render.listchars",
+        Opt::CursorLine => "render.cursorline",
+        Opt::CursorLineOpt => "render.cursorlineopt",
+        Opt::CursorColumn => "render.cursorcolumn",
+        Opt::ColorColumn => "render.colorcolumn",
+        Opt::FoldColumn => "render.foldcolumn",
+        Opt::FillChars => "render.fillchars",
+        Opt::SmoothScroll => "render.smoothscroll",
         _ => return None,
     })
 }

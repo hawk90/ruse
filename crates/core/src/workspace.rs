@@ -435,6 +435,14 @@ impl Workspace {
         }
     }
 
+    /// Set the `i`th Window's skipped virtual columns of its top line (`'smoothscroll'`, #615).
+    pub fn set_skipcol(&mut self, i: usize, col: usize) {
+        let vid = self.windows[i].view;
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.set_skipcol(col);
+        }
+    }
+
     /// The global copy of the window-local display options (#615, #616).
     #[must_use]
     pub fn window_defaults(&self) -> &crate::WindowOptions {

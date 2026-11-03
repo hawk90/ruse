@@ -32,6 +32,20 @@ pub struct WindowOptions {
     pub showbreak: Option<String>,
     /// The window's own `'listchars'` (global-local; `None` follows the global value).
     pub listchars: Option<String>,
+    /// `'cursorline'`: highlight the cursor's line.
+    pub cursorline: bool,
+    /// `'cursorlineopt'`, as typed (`line`, `screenline`, `number`, `both`).
+    pub cursorlineopt: String,
+    /// `'cursorcolumn'`: highlight the cursor's screen column.
+    pub cursorcolumn: bool,
+    /// `'colorcolumn'`, as typed (columns, `+N` / `-N` from `'textwidth'`).
+    pub colorcolumn: String,
+    /// `'foldcolumn'`, as typed (`0`-`9`, `auto`, `auto:N`).
+    pub foldcolumn: String,
+    /// `'smoothscroll'`: scroll a wrapped line by screen rows.
+    pub smoothscroll: bool,
+    /// The window's own `'fillchars'` (global-local; `None` follows the global value).
+    pub fillchars: Option<String>,
 }
 
 impl Default for WindowOptions {
@@ -49,6 +63,13 @@ impl Default for WindowOptions {
             sidescrolloff: None,
             showbreak: None,
             listchars: None,
+            cursorline: false,
+            cursorlineopt: "both".into(),
+            cursorcolumn: false,
+            colorcolumn: String::new(),
+            foldcolumn: "0".into(),
+            smoothscroll: false,
+            fillchars: None,
         }
     }
 }

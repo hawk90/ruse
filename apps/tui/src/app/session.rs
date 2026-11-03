@@ -992,7 +992,8 @@ impl Session {
                     height,
                     text.line_count(),
                     i == ws.focus() && has_signs,
-                );
+                )
+                .with_folds(pane_folds);
                 let cursor = p.view.cursor().min(text.bytes.len());
                 let cline = idx.line_of(cursor);
                 let lines = PaneLines {
@@ -1330,6 +1331,7 @@ impl Session {
             fold_rev,
             sources: opt_sources,
             ui: ui_opts,
+            win_height: 0,
         };
         crate::app::set_exec::apply_config(config, &mut host);
         let notes =
@@ -3026,6 +3028,7 @@ impl Session {
             // `:set` / `:setlocal` / `:setglobal` (#614): the grammar is `input/set_cmd.rs`, the values it
             // reads and writes are behind `set_exec::OptionHost`.
             Ex::SetOptions(line) => {
+                let win_height = frame.rects.get(ws.focus()).map_or(0, |r| usize::from(r.h));
                 let mut host = crate::app::set_exec::OptionHost {
                     ws,
                     recorded,
@@ -3042,6 +3045,7 @@ impl Session {
                     fold_rev,
                     sources: opt_sources,
                     ui: ui_opts,
+                    win_height,
                 };
                 let out =
                     crate::app::set_exec::run_set(&line, &mut host, cols as usize, *ex_verbose);
@@ -4090,6 +4094,13 @@ impl Session {
                     bytes: p.doc.bytes(),
                     idx,
                 };
+                let folds = if i == self.ws.focus() {
+                    self.folds
+                        .get(&self.ws.focused_buffer())
+                        .map_or(&[][..], Vec::as_slice)
+                } else {
+                    &[]
+                };
                 WinView::resolve(
                     p.view,
                     &self.ui_opts.display,
@@ -4098,6 +4109,7 @@ impl Session {
                     text.line_count(),
                     i == self.ws.focus() && has_signs,
                 )
+                .with_folds(folds)
             })
             .collect()
     }
