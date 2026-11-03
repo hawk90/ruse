@@ -2443,19 +2443,40 @@ impl Session {
             Ex::Normal { range, keys, .. } => self.ex_normal(range, &keys, frame),
             // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window. The `d`/`s`
             // payloads run in core; a `normal` payload replays keys per marked line through the engine.
-            Ex::Global(spec) => match &spec.cmd {
-                crate::input::GlobalPayload::Core(cmd) => {
-                    *status = match ws.global(spec.range, &spec.pattern, spec.negate, cmd) {
-                        // Not an error in Vim: `:g` with no match only echoes the message (no `E486`).
-                        Ok(0) => format!("Pattern not found: {}", spec.pattern),
-                        Ok(n) => format!("{n} lines changed"),
-                        Err(e) => regex_error_msg(&e),
-                    };
+            // An empty `:g//` pattern is the last search, and the `:g` pattern becomes the last search
+            // before the command runs, so `:g/pat/s//X/` substitutes `pat` (Vim, #804).
+            mut ex @ Ex::Global(_) => {
+                if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
+                    *status = msg;
+                    return;
                 }
-                crate::input::GlobalPayload::Normal { keys, .. } => {
-                    self.ex_global_normal(spec.range, &spec.pattern, spec.negate, keys, frame);
+                let Ex::Global(spec) = ex else {
+                    unreachable!("bound by the arm's pattern")
+                };
+                engine.set_last_search_pattern(spec.pattern.clone());
+                *search_hl = Some(spec.pattern.clone());
+                match &spec.cmd {
+                    crate::input::GlobalPayload::Core(cmd) => {
+                        *status = match ws.global(spec.range, &spec.pattern, spec.negate, cmd) {
+                            // Not an error in Vim: `:g` with no match only echoes the message (no `E486`).
+                            Ok(0) => format!("Pattern not found: {}", spec.pattern),
+                            Ok(n) => {
+                                // The `:s` that ran on the marked lines set the last search in turn.
+                                if let ruse_core::GlobalCmd::Substitute { pattern, .. } = cmd {
+                                    engine.set_last_search_pattern(pattern.clone());
+                                    *search_hl = Some(pattern.clone());
+                                }
+                                format!("{n} lines changed")
+                            }
+                            // Vim reports a pattern `:g` cannot use as `E476` (`ex_global`).
+                            Err(e) => format!("E476: Invalid command: {}", regex_error_msg(&e)),
+                        };
+                    }
+                    crate::input::GlobalPayload::Normal { keys, .. } => {
+                        self.ex_global_normal(spec.range, &spec.pattern, spec.negate, keys, frame);
+                    }
                 }
-            },
+            }
             // `:checkhealth` (F-030): gather the frontend snapshot (guard/profile/highlighter) and render
             // the report's one-line summary into status.
             Ex::CheckHealth => {
@@ -2545,7 +2566,7 @@ impl Session {
             Ex::Filter { range, cmd } => match ws.range_text(range) {
                 Some(input) => match crate::shell::filter(&cmd, &input) {
                     Ok(out) => {
-                        let n = ws.filter_lines(range, out.text.as_bytes());
+                        let n = ws.filter_lines(range, &out.raw);
                         let lines = if n <= 1 {
                             String::new()
                         } else {
@@ -2597,9 +2618,9 @@ impl Session {
                     Some((pat, rep, stored)) => {
                         let use_flags = flags.unwrap_or(*stored);
                         match ws.substitute(range, pat, rep, use_flags) {
-                            Ok(out) if out.replacements == 0 => {
-                                format!("E486: pattern not found: {pat}")
-                            }
+                            Ok(out) if out.lines == 0 => format!("E486: pattern not found: {pat}"),
+                            // A `:s/\n//` join on the last line: nothing to join, not an error.
+                            Ok(out) if out.replacements == 0 => String::new(),
                             Ok(out) => {
                                 format!("{} substitutions on {} lines", out.replacements, out.lines)
                             }
@@ -2610,9 +2631,11 @@ impl Session {
                 };
             }
             // `:[range]s/pat/rep/flags` (F-009 #2). An empty pattern reuses the last search (`/`/`*`), as
-            // Vim does, and a non-empty one is remembered so `&` can repeat it.
+            // Vim does, and a non-empty one is remembered so `&` can repeat it. It also becomes the last
+            // search pattern (Vim's `save_re_pat`): `n` finds it next, and `:g//` or `:s//` reuse it.
             mut ex @ Ex::Substitute(_) => {
-                crate::input::reuse_last_search(&mut ex, engine.last_search());
+                // `:s` leaves an empty pattern for the compiler to refuse (no error to report here).
+                let _ = crate::input::reuse_last_search(&mut ex, engine.last_search());
                 let Ex::Substitute(spec) = ex else {
                     unreachable!("bound by the arm's pattern")
                 };
@@ -2623,6 +2646,8 @@ impl Session {
                 if !spec.pattern.is_empty() {
                     *last_substitute =
                         Some((spec.pattern.clone(), spec.replacement.clone(), flags));
+                    engine.set_last_search_pattern(spec.pattern.clone());
+                    *search_hl = Some(spec.pattern.clone());
                 }
                 if spec.count_only {
                     // `n`: REPORT ONLY — count the matches and echo the tally, editing nothing (Vim `:s///n`).
@@ -2647,10 +2672,12 @@ impl Session {
                 } else {
                     *status =
                         match ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags) {
-                            Ok(out) if out.replacements == 0 && spec.quiet => String::new(),
-                            Ok(out) if out.replacements == 0 => {
+                            Ok(out) if out.lines == 0 && spec.quiet => String::new(),
+                            Ok(out) if out.lines == 0 => {
                                 format!("E486: pattern not found: {}", spec.pattern)
                             }
+                            // A `:s/\n//` join on the last line: nothing to join, not an error.
+                            Ok(out) if out.replacements == 0 => String::new(),
                             Ok(out) => {
                                 format!("{} substitutions on {} lines", out.replacements, out.lines)
                             }
@@ -2784,12 +2811,25 @@ impl Session {
                 };
             }
             // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
-            Ex::Sort(range, spec) => {
-                let removed = ws.sort_lines(range, &spec);
-                *status = if removed > 0 {
-                    format!("sorted, {removed} fewer lines")
-                } else {
-                    "sorted".into()
+            mut ex @ Ex::Sort(..) => {
+                if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
+                    *status = msg;
+                    return;
+                }
+                let Ex::Sort(range, spec) = ex else {
+                    unreachable!("bound by the arm's pattern")
+                };
+                *status = match ws.sort_lines(range, &spec) {
+                    Ok(0) => "sorted".into(),
+                    Ok(removed) => format!("sorted, {removed} fewer lines"),
+                    // The pattern reader's own error, E-number first, as `:sort` shows it (`E54`).
+                    Err(ruse_core::RegexError::Syntax(m))
+                        if m.starts_with('E')
+                            && m[1..].starts_with(|c: char| c.is_ascii_digit()) =>
+                    {
+                        m
+                    }
+                    Err(e) => regex_error_msg(&e),
                 };
             }
             // `:set {option}` — set one editor option on the focused view.

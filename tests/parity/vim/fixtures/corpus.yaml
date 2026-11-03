@@ -60216,6 +60216,1677 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "sub_rep_cr_splits_line",
+      "lines": [
+        "a,b"
+      ],
+      "keys": ":s/,/\\r/<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_rep_backslash_n_is_nul",
+      "lines": [
+        "a,b"
+      ],
+      "keys": ":s/,/\\n/<CR>",
+      "expect": {
+        "text": [
+          "a\u0000b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_rep_cr_cursor_on_new_line",
+      "lines": [
+        "x",
+        "  abc"
+      ],
+      "keys": ":%s/b/1\\r  2/<CR>",
+      "expect": {
+        "text": [
+          "x",
+          "  a1",
+          "  2c"
+        ],
+        "cursor": [
+          3,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_rep_cr_insert_after",
+      "lines": [
+        "x",
+        "abc"
+      ],
+      "keys": ":%s/b/1\\r2/<CR>iZ<Esc>",
+      "expect": {
+        "text": [
+          "x",
+          "a1",
+          "Z2c"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_rep_cr_global",
+      "lines": [
+        "a,b,c",
+        "d,e"
+      ],
+      "keys": ":%s/,/\\r/g<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_rep_double_backslash_r",
+      "lines": [
+        "a,b"
+      ],
+      "keys": ":s/,/\\\\r/<CR>",
+      "expect": {
+        "text": [
+          "a\\rb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_cursor_first_non_blank",
+      "lines": [
+        "  abc"
+      ],
+      "keys": "$:s/b/X/<CR>",
+      "expect": {
+        "text": [
+          "  aXc"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_joins_all",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":%s/\\n/,/<CR>",
+      "expect": {
+        "text": [
+          "a,b,c,"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_one_line_range",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":1s/\\n/,/<CR>",
+      "expect": {
+        "text": [
+          "a,b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_two_line_range",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":1,2s/\\n/,/<CR>",
+      "expect": {
+        "text": [
+          "a,b,c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_inside",
+      "lines": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "keys": ":%s/b\\nc/X/<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "X",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_global_joined",
+      "lines": [
+        "ab",
+        "ab",
+        "c"
+      ],
+      "keys": ":%s/b\\na/X/g<CR>",
+      "expect": {
+        "text": [
+          "aXb",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_two_breaks",
+      "lines": [
+        "a",
+        "",
+        "",
+        "b"
+      ],
+      "keys": ":%s/\\n\\n/X/<CR>",
+      "expect": {
+        "text": [
+          "aX",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_alternation",
+      "lines": [
+        "a b",
+        "c"
+      ],
+      "keys": ":%s/ \\|\\n/_/g<CR>",
+      "expect": {
+        "text": [
+          "a_b_c_"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_zs",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ":%s/\\n\\zs/X/<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "Xb"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_to_two_crs",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":%s/\\n/\\r\\r/<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "b",
+          "",
+          "c",
+          "",
+          ""
+        ],
+        "cursor": [
+          7,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_amp",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ":%s/\\n/&&/<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "b",
+          "",
+          ""
+        ],
+        "cursor": [
+          5,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_star_global",
+      "lines": [
+        "aa",
+        "b"
+      ],
+      "keys": ":%s/a*\\n/X/g<CR>",
+      "expect": {
+        "text": [
+          "XbX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_empty_is_join",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": ":%s/\\n//<CR>",
+      "expect": {
+        "text": [
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_empty_range_join",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": ":1,2s/\\n//<CR>",
+      "expect": {
+        "text": [
+          "abcdef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_pat_nl_empty_last_line",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":2s/\\n//<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_pat_nl_marks_start_line",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":g/a\\nb/s/^/#/<CR>",
+      "expect": {
+        "text": [
+          "#a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "v_pat_nl_marks",
+      "lines": [
+        "x",
+        "x",
+        "x",
+        "y"
+      ],
+      "keys": ":v/x\\nx/s/^/#/<CR>",
+      "expect": {
+        "text": [
+          "x",
+          "x",
+          "#x",
+          "#y"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_sub_nl_skips_joined_line",
+      "lines": [
+        "a",
+        "a",
+        "b"
+      ],
+      "keys": ":g/a/s/\\n/-/<CR>",
+      "expect": {
+        "text": [
+          "a-a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "search_slash_in_collection",
+      "lines": [
+        "x/y"
+      ],
+      "keys": "/[/]<CR>x",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "/",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "search_slash_in_collection_offset",
+      "lines": [
+        "x/y"
+      ],
+      "keys": "/[/]/e<CR>x",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "/",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_slash_in_collection",
+      "lines": [
+        "a/b"
+      ],
+      "keys": ":s/[/]/x/<CR>",
+      "expect": {
+        "text": [
+          "axb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_slash_in_collection_very_magic",
+      "lines": [
+        "a/b"
+      ],
+      "keys": ":s/\\v[/]/x/<CR>",
+      "expect": {
+        "text": [
+          "axb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_unclosed_collection_takes_the_rest",
+      "lines": [
+        "a[b"
+      ],
+      "keys": ":s/[/x/<CR>",
+      "expect": {
+        "text": [
+          "a[b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "sub_bracket_slash_literal",
+      "lines": [
+        "a[/b"
+      ],
+      "keys": ":s/[/]/x/<CR>",
+      "expect": {
+        "text": [
+          "a[xb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_bar_in_collection",
+      "lines": [
+        "a|b"
+      ],
+      "keys": ":s/[|]/x/<CR>",
+      "expect": {
+        "text": [
+          "axb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_slash_in_collection",
+      "lines": [
+        "a/b",
+        "c"
+      ],
+      "keys": ":g/[/]/s/^/#/<CR>",
+      "expect": {
+        "text": [
+          "#a/b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_sub_empty_uses_g_pattern",
+      "lines": [
+        "aa",
+        "b"
+      ],
+      "keys": ":g/a/s//X/<CR>",
+      "expect": {
+        "text": [
+          "Xa",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_empty_uses_last_search",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "/a<CR>:g//s/^/#/<CR>",
+      "expect": {
+        "text": [
+          "#a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_empty_no_previous_pattern",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ":g//d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E476",
+        "failed": true
+      }
+    },
+    {
+      "name": "v_empty_no_previous_pattern",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": ":v//d<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E476",
+        "failed": true
+      }
+    },
+    {
+      "name": "g_empty_uses_last_sub_pattern",
+      "lines": [
+        "ab",
+        "b"
+      ],
+      "keys": ":s/a/X/<CR>:g//d<CR>",
+      "expect": {
+        "text": [
+          "Xb",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sub_sets_last_search",
+      "lines": [
+        "ab",
+        "ba"
+      ],
+      "keys": ":s/a/X/<CR>jn",
+      "expect": {
+        "text": [
+          "Xb",
+          "ba"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_sets_last_search",
+      "lines": [
+        "ab",
+        "ba"
+      ],
+      "keys": ":g/b/s/a/X/<CR>ggn",
+      "expect": {
+        "text": [
+          "Xb",
+          "bX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "sort_unclosed_collection_e654",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort /[/<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E654",
+        "failed": true
+      }
+    },
+    {
+      "name": "sort_unclosed_pattern_e654",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort /a<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E654",
+        "failed": true
+      }
+    },
+    {
+      "name": "sort_bad_regex",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort /\\(/<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E54",
+        "failed": true
+      }
+    },
+    {
+      "name": "sort_flag_after_pattern",
+      "lines": [
+        "x9",
+        "x10",
+        "x1"
+      ],
+      "keys": ":sort /x/ n<CR>",
+      "expect": {
+        "text": [
+          "x1",
+          "x9",
+          "x10"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_flag_before_pattern",
+      "lines": [
+        "x9",
+        "x10",
+        "x1"
+      ],
+      "keys": ":sort n /x/<CR>",
+      "expect": {
+        "text": [
+          "x1",
+          "x9",
+          "x10"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_numeric_no_number_first",
+      "lines": [
+        "b",
+        "-5",
+        "a",
+        "3"
+      ],
+      "keys": ":sort n<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a",
+          "-5",
+          "3"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_numeric_overflow_saturates",
+      "lines": [
+        "99999999999999999999",
+        "5",
+        "-99999999999999999999"
+      ],
+      "keys": ":sort n<CR>",
+      "expect": {
+        "text": [
+          "-99999999999999999999",
+          "5",
+          "99999999999999999999"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_reverse_unique_ignore_case",
+      "lines": [
+        "a",
+        "A",
+        "b"
+      ],
+      "keys": ":sort! iu<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "A"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_unique_ignore_case",
+      "lines": [
+        "a",
+        "A",
+        "b"
+      ],
+      "keys": ":sort iu<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_unique_compares_lines",
+      "lines": [
+        "1",
+        "01",
+        "2"
+      ],
+      "keys": ":sort nu<CR>",
+      "expect": {
+        "text": [
+          "1",
+          "01",
+          "2"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_bad_flag_e475",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort z<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E475",
+        "failed": true
+      }
+    },
+    {
+      "name": "sort_two_formats_e474",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort nx<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E474",
+        "failed": true
+      }
+    },
+    {
+      "name": "sort_second_pattern_e475",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort /a/ /b/<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E475",
+        "failed": true
+      }
+    },
+    {
+      "name": "sort_empty_pattern_no_previous",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort //<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
+      "name": "sort_empty_pattern_last_search",
+      "lines": [
+        "xb",
+        "ya"
+      ],
+      "keys": "/x\\|y<CR>:sort //<CR>",
+      "expect": {
+        "text": [
+          "ya",
+          "xb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_space_delimiter",
+      "lines": [
+        "b x",
+        "a y"
+      ],
+      "keys": ":sort / /<CR>",
+      "expect": {
+        "text": [
+          "b x",
+          "a y"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_comment",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort \" comment<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_pattern_ignorecase",
+      "lines": [
+        "Bx",
+        "ax"
+      ],
+      "keys": ":set ic<CR>:sort /X/<CR>",
+      "expect": {
+        "text": [
+          "Bx",
+          "ax"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sort_cursor_first_non_blank",
+      "lines": [
+        "  b",
+        "a"
+      ],
+      "keys": "j:sort<CR>",
+      "expect": {
+        "text": [
+          "  b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sortn_is_not_sort",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sortn<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E492",
+        "failed": true
+      }
     }
   ]
 }

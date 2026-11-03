@@ -4334,10 +4334,16 @@ mod search_tests {
             split_search_offset("foo/", '/'),
             ("foo".into(), Some(SearchOffset::None))
         );
-        // An escaped delimiter stays in the pattern; the split is the LAST unescaped one.
+        // An escaped delimiter stays in the pattern; the split is the first unescaped one.
         assert_eq!(
             split_search_offset("ab\\/cd/e", '/'),
             ("ab\\/cd".into(), Some(SearchOffset::End(0)))
+        );
+        // A delimiter inside `[...]` is part of the pattern (#803, nvim `skip_regexp`).
+        assert_eq!(split_search_offset("[/]", '/'), ("[/]".into(), None));
+        assert_eq!(
+            split_search_offset("[/]/e", '/'),
+            ("[/]".into(), Some(SearchOffset::End(0)))
         );
         // Backward delimiter `?` (a `/` in the pattern is then literal).
         assert_eq!(

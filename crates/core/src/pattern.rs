@@ -107,6 +107,10 @@ pub struct Regex {
     zs: Vec<usize>,
     /// Same for `\ze`: the reported end.
     ze: Vec<usize>,
+    /// The pattern has an item that matches a line break (`\n`, `\_x`, `\_[…]`, `[\n]`): Vim's
+    /// `re_multiline`. Only such a pattern can match across lines, so `:s` and `:g` search the whole
+    /// buffer for it instead of one line at a time.
+    multiline: bool,
 }
 
 impl Regex {
@@ -138,7 +142,28 @@ impl Regex {
             inner,
             zs: low.zs,
             ze: low.ze,
+            multiline: low.has_nl,
         })
+    }
+
+    /// Whether the pattern can match a line break (Vim's `re_multiline`), so a match may span lines.
+    #[must_use]
+    pub fn multiline(&self) -> bool {
+        self.multiline
+    }
+
+    /// Like [`Regex::find_at`], but also returns where the WHOLE match starts, before any `\zs` moves
+    /// the reported start. Vim's `:s` and `:g` take a match as belonging to the line its whole match
+    /// starts on, even when a `\zs` after a `\n` reports a start on a later line.
+    #[must_use]
+    pub fn find_whole_at(&self, hay: &str, from: usize) -> Option<(usize, Match)> {
+        let from = from.min(hay.len());
+        let caps = self.inner.captures_at(hay, from)?;
+        if phantom_line(hay, &caps) {
+            return None;
+        }
+        let whole = caps.get(0).expect("group 0 always present").start();
+        Some((whole, self.report(&caps)))
     }
 
     /// The first match at a byte offset `>= from`, honoring the `\zs`/`\ze` reported span. `None` if
@@ -499,6 +524,8 @@ struct Lowered {
     ze: Vec<usize>,
     /// `Some(true)` for a `\c` in the pattern, `Some(false)` for `\C` (and no `\c`), else `None`.
     case: Option<bool>,
+    /// An item that matches a line break was read (Vim's `RF_HASNL`).
+    has_nl: bool,
 }
 
 /// Lower a Vim pattern to Rust-`regex` syntax under a starting magic level. `ci` is the final
@@ -524,6 +551,7 @@ fn lower(pattern: &str, magic0: Magic, ci: bool) -> Result<Lowered, RegexError> 
         saw_ic: false,
         saw_noic: false,
         ci,
+        has_nl: false,
     };
     let rust = p.reg(Paren::Top)?;
     let case = if p.saw_ic {
@@ -538,6 +566,7 @@ fn lower(pattern: &str, magic0: Magic, ci: bool) -> Result<Lowered, RegexError> 
         zs: p.zs,
         ze: p.ze,
         case,
+        has_nl: p.has_nl,
     })
 }
 
@@ -556,6 +585,8 @@ struct Parser<'a> {
     saw_ic: bool,
     saw_noic: bool,
     ci: bool,
+    /// An item that matches a line break was read (Vim's `RF_HASNL`).
+    has_nl: bool,
 }
 
 /// One parsed atom and whether it is a `\zs`/`\ze` marker (which cannot take a multi).
@@ -773,14 +804,23 @@ impl Parser<'_> {
                 Some('^') => "(?m:^)".to_string(),
                 Some('$') => "(?m:$)".to_string(),
                 Some('[') => match self.collection(true)? {
-                    Some(c) => c,
+                    Some(c) => {
+                        self.has_nl = true;
+                        c
+                    }
                     None => regex::escape("["), // no closing `]`: a literal `[`, as Vim reads it
                 },
-                Some(c) if CLASS_CHARS.contains(c) => class_atom(c, true, self.ci),
+                Some(c) if CLASS_CHARS.contains(c) => {
+                    self.has_nl = true;
+                    class_atom(c, true, self.ci)
+                }
                 Some(c) => return Err(syntax(&format!("E877: Invalid character class: \\_{c}"))),
             },
             Tok::Op(c) if CLASS_CHARS.contains(c) => class_atom(c, false, self.ci),
-            Tok::Op('n') => r"\n".to_string(),
+            Tok::Op('n') => {
+                self.has_nl = true;
+                r"\n".to_string()
+            }
             Tok::Op('(') => {
                 self.groups += 1;
                 format!("({})", self.reg(Paren::Capture)?)
@@ -899,6 +939,8 @@ impl Parser<'_> {
         if s.get(endp) != Some(&']') {
             return Ok(None);
         }
+        // A `\n` item lets the collection match a line break, which makes the pattern multi-line.
+        self.has_nl |= s[start..endp].windows(2).any(|w| w == ['\\', 'n']);
         if let Some(class) = recognized_class(s, start, endp, extra, self.ci) {
             self.lx.seek(endp + 1);
             return Ok(Some(class));
@@ -1034,6 +1076,49 @@ fn char_code(s: &[char], p: usize, kind: char) -> Option<(u32, usize)> {
         return None;
     }
     Some((u32::try_from(n).unwrap_or(u32::MAX), q))
+}
+
+/// Where the pattern at the start of `s` ends: the byte offset of the `delim` that closes it, or
+/// `s.len()` when none does (Vim's `skip_regexp`). A backslash escapes the next character, and a `[…]`
+/// collection is skipped whole, so `[/]` in `:s/[/]/x/` or `/[/]` does not end the pattern. A bare `[`
+/// opens a collection under `'magic'` (`magic`) or after `\v`; `\[` does under `'nomagic'` or after `\V`.
+/// As in Vim, only the `\v` / `\V` switches are tracked here, not `\m` / `\M`. Ex commands and the
+/// search command line use it to split a pattern from what follows it.
+#[must_use]
+pub fn skip_regexp(s: &str, delim: char, magic: bool) -> usize {
+    // Vim's magic_T order: NONE (`\V`) < OFF < ON < ALL (`\v`).
+    const NONE: u8 = 0;
+    const OFF: u8 = 1;
+    const ON: u8 = 2;
+    const ALL: u8 = 3;
+    let chars: Vec<char> = s.chars().collect();
+    let mut level = if magic { ON } else { OFF };
+    let mut p = 0;
+    while p < chars.len() {
+        if chars[p] == delim {
+            break;
+        }
+        if (chars[p] == '[' && level >= ON)
+            || (chars[p] == '\\' && chars.get(p + 1) == Some(&'[') && level <= OFF)
+        {
+            p = skip_anyof(&chars, p + 1);
+            if p >= chars.len() {
+                break;
+            }
+        } else if chars[p] == '\\' && p + 1 < chars.len() {
+            p += 1;
+            match chars[p] {
+                'v' => level = ALL,
+                'V' => level = NONE,
+                _ => {}
+            }
+        }
+        p += 1;
+    }
+    chars[..p.min(chars.len())]
+        .iter()
+        .map(|c| c.len_utf8())
+        .sum()
 }
 
 /// Skip over a `[]` collection body starting just after the `[` (Vim's `skip_anyof`). Returns the index
@@ -1397,6 +1482,36 @@ mod tests {
     fn find(pat: &str, hay: &str) -> Option<(usize, usize)> {
         let re = Regex::compile(pat, Options::default()).expect("compiles");
         re.find_at(hay, 0).map(|m| (m.start, m.end))
+    }
+
+    /// #803: the pattern ends at the delimiter Vim's `skip_regexp` finds — not one inside `[...]`, not an
+    /// escaped one; a `[` with no `]` runs to the end; `\v` / `\V` decide whether `[` opens a collection.
+    #[test]
+    fn skip_regexp_steps_over_collections() {
+        let cases: &[(&str, char, bool, usize)] = &[
+            ("a/b", '/', true, 1),
+            ("[/]/x/", '/', true, 3),
+            (r"a\/b/c", '/', true, 4),
+            ("[/x/", '/', true, 4),
+            (r"\v[/]/x", '/', true, 5),
+            (r"\V[/]/x", '/', true, 3),
+            (r"\[/]/x", '/', false, 4),
+            ("[]/]/x", '/', true, 4),
+            ("[[:alpha:]/]/x", '/', true, 12),
+            ("é/x", '/', true, "é".len()),
+            ("abc", '/', true, 3),
+        ];
+        for &(s, delim, magic, want) in cases {
+            assert_eq!(skip_regexp(s, delim, magic), want, "{s:?}");
+        }
+    }
+
+    /// Only a pattern with a line-break item is multi-line (Vim's `RF_HASNL`).
+    #[test]
+    fn multiline_marks_line_break_items() {
+        let ml = |p: &str| Regex::compile(p, Options::default()).unwrap().multiline();
+        assert!(ml(r"a\nb") && ml(r"\_s") && ml(r"\_[ab]") && ml(r"[a\n]"));
+        assert!(!ml("ab") && !ml(r"a\s") && !ml("[ab]") && !ml(r"\_^a"));
     }
 
     #[test]

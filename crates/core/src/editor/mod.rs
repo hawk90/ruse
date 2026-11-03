@@ -995,8 +995,52 @@ impl EditorState {
         replacement: &str,
         flags: SubFlags,
     ) -> Result<SubOutcome, RegexError> {
+        if pattern == r"\n" && replacement.is_empty() && flags.ignore_case.is_none() {
+            return Ok(self.substitute_join(range));
+        }
         let subs = self.substitute_preview(range, pattern, replacement, flags)?;
         Ok(self.apply_substitutions(&subs))
+    }
+
+    /// `:[range]s/\n//` (with no flag but `g`), which Vim runs as a join (`sub_joining_lines`, nvim
+    /// v0.12.6): the range's lines plus the next one, if there is one, are joined with nothing in between,
+    /// and the cursor lands where the last joined line begins. Joining a single line (the last one) is not
+    /// an error; it reports no replacements on one line.
+    fn substitute_join(&mut self, range: SubRange) -> SubOutcome {
+        let bytes = self.doc.bytes();
+        let lines = line_spans(bytes);
+        let cursor_line = crate::pos::line_of(bytes, self.view.cursor);
+        let (first, last) = resolve_line_range(range, &lines, cursor_line);
+        let joined = last - first + 1 + usize::from(last + 1 < lines.len());
+        if joined <= 1 {
+            // Vim still moves to the range's first line, keeping the column.
+            let col = self.view.cursor - lines[cursor_line.min(lines.len() - 1)].0;
+            let (ls, le) = lines[first];
+            self.view.cursor = (ls + col).min(le);
+            self.settle_offsets();
+            return SubOutcome {
+                replacements: 0,
+                lines: 1,
+            };
+        }
+        let seams = joined - 1;
+        let edits: Vec<Edit> = (first..first + seams)
+            .map(|li| Edit::delete(lines[li].1, 1))
+            .collect();
+        let cursor = lines[first + seams].0 - seams;
+        let list = EditList::new(edits).expect("line breaks are disjoint and ordered");
+        let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
+            .with_hint(GroupHint::BreakBefore);
+        self.doc
+            .apply(txn)
+            .expect("join substitute applies cleanly");
+        self.view.last_was_edit = true;
+        self.view.cursor = cursor.min(self.doc.bytes().len());
+        self.settle_offsets();
+        SubOutcome {
+            replacements: seams,
+            lines: 1,
+        }
     }
 
     /// Compute — but do NOT apply — the substitutions `:[range]s/pat/rep/flags` would make (F-009 #2).
@@ -1041,23 +1085,16 @@ impl EditorState {
         };
 
         let mut out: Vec<Substitution> = Vec::new();
-        for (li, &(ls, le)) in lines.iter().enumerate().take(last + 1).skip(first) {
-            let line = &hay[ls..le];
-            let matches: Vec<crate::pattern::Match> = if flags.global {
-                re.find_all(line)
-            } else {
-                re.find_at(line, 0).into_iter().collect()
-            };
-            for m in matches {
-                let matched = &line[m.start..m.end];
-                out.push(Substitution {
-                    start: ls + m.start,
-                    end: ls + m.end,
-                    replacement: expand_replacement(replacement, matched),
-                    line: li,
-                });
-            }
-        }
+        find_substitutions(
+            &re,
+            hay,
+            &lines,
+            (first, last),
+            flags.global,
+            replacement,
+            &mut None,
+            &mut out,
+        );
         Ok(out)
     }
 
@@ -1109,7 +1146,15 @@ impl EditorState {
             })
             .collect();
         let replacements = edits.len();
-        let last_line_idx = subs.iter().map(|s| s.line).max();
+        // Where the last replacement ends once every edit is in: its start moves by the length change of
+        // the edits before it.
+        let last_end = subs.last().map(|last| {
+            let before: isize = subs[..subs.len() - 1]
+                .iter()
+                .map(|s| s.replacement.len() as isize - (s.end - s.start) as isize)
+                .sum();
+            (last.start as isize + before) as usize + last.replacement.len()
+        });
         // Disjoint + ordered by construction; `new` re-validates (a bad accepted set is a caller bug).
         let list = EditList::new(edits).expect("substitutions are disjoint and ordered");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
@@ -1118,9 +1163,16 @@ impl EditorState {
             .apply(txn)
             .expect("substitute transaction applies cleanly");
         self.view.last_was_edit = true;
-        if let Some(li) = last_line_idx {
+        if let Some(end) = last_end {
+            // Vim: the line the last replacement ends on (a `\r` in it moves the cursor down with the new
+            // line), at its first non-blank (`beginline(BL_WHITE | BL_FIX)`).
             let nb = self.doc.bytes();
-            self.view.cursor = crate::pos::nth_line_start(nb, li).min(nb.len());
+            let end = end.min(nb.len());
+            let line_start = nb[..end]
+                .iter()
+                .rposition(|&c| c == b'\n')
+                .map_or(0, |i| i + 1);
+            self.view.cursor = motion::first_non_blank(nb, line_start);
         }
         self.settle_offsets();
         SubOutcome {
@@ -1171,10 +1223,37 @@ impl EditorState {
         if count == 0 {
             return Ok(Vec::new());
         }
+        if !re.multiline() {
+            return Ok((first..=last)
+                .filter(|&li| {
+                    let (ls, le) = lines[li];
+                    re.find_at(&hay[ls..le], 0).is_some() != negate
+                })
+                .collect());
+        }
+        // A pattern that can match a line break marks the line its match STARTS on (`:g/a\nb/` marks the
+        // `a` line). Searched in the whole buffer, ending in a line break so the last line's `\n` matches;
+        // the leftmost match found from one line answers for every line before it.
+        let owned;
+        let hay: &str = if hay.ends_with('\n') {
+            hay
+        } else {
+            owned = format!("{hay}\n");
+            &owned
+        };
+        let mut next: Option<(usize, Option<usize>)> = None; // (searched from, leftmost whole start)
         Ok((first..=last)
             .filter(|&li| {
                 let (ls, le) = lines[li];
-                re.find_at(&hay[ls..le], 0).is_some() != negate
+                let ws = match next {
+                    Some((from, ws)) if from <= ls && ws.is_none_or(|w| w >= ls) => ws,
+                    _ => {
+                        let ws = re.find_whole_at(hay, ls).map(|(w, _)| w);
+                        next = Some((ls, ws));
+                        ws
+                    }
+                };
+                ws.is_some_and(|w| w <= le) != negate
             })
             .collect())
     }
@@ -1260,22 +1339,18 @@ impl EditorState {
                 };
                 let sre = crate::pattern::Regex::compile(sp, sopts)?;
                 let mut subs: Vec<Substitution> = Vec::new();
+                let mut consumed = None;
                 for &li in &marked {
-                    let (ls, le) = lines[li];
-                    let line = &hay[ls..le];
-                    let matches: Vec<crate::pattern::Match> = if flags.global {
-                        sre.find_all(line)
-                    } else {
-                        sre.find_at(line, 0).into_iter().collect()
-                    };
-                    for m in matches {
-                        subs.push(Substitution {
-                            start: ls + m.start,
-                            end: ls + m.end,
-                            replacement: expand_replacement(replacement, &line[m.start..m.end]),
-                            line: li,
-                        });
-                    }
+                    find_substitutions(
+                        &sre,
+                        hay,
+                        &lines,
+                        (li, li),
+                        flags.global,
+                        replacement,
+                        &mut consumed,
+                        &mut subs,
+                    );
                 }
                 Ok(self.apply_substitutions(&subs).lines)
             }
@@ -1712,34 +1787,21 @@ impl EditorState {
     }
 
     /// The text of the lines in `range` (each with a trailing `\n`), as Vim feeds a filter command's stdin
-    /// for `:{range}!{cmd}`. `None` for an empty or non-UTF-8 buffer. No range = the current line.
+    /// for `:{range}!{cmd}`: the buffer's bytes as they are, whatever their encoding. `None` for an empty
+    /// buffer. No range = the current line.
     #[must_use]
-    pub fn range_text(&self, range: SubRange) -> Option<String> {
+    pub fn range_text(&self, range: SubRange) -> Option<Vec<u8>> {
         let bytes = self.doc.bytes();
-        let hay = std::str::from_utf8(bytes).ok()?;
-        if hay.is_empty() {
+        if bytes.is_empty() {
             return None;
         }
-        let had_trailing_nl = hay.ends_with('\n');
-        let nlines = {
-            let mut n = hay.split('\n').count();
-            if had_trailing_nl {
-                n -= 1; // the split's empty tail after the final '\n' is not a line
-            }
-            n
-        };
-        if nlines == 0 {
-            return None;
-        }
-        let spans = line_spans(hay);
+        let spans = line_spans(bytes);
         let cursor_line = crate::pos::line_of(bytes, self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
-        let last = last.min(nlines - 1);
-        let first = first.min(last);
-        let mut out = String::new();
+        let mut out = Vec::new();
         for &(s, e) in &spans[first..=last] {
-            out.push_str(&hay[s..e]);
-            out.push('\n');
+            out.extend_from_slice(&bytes[s..e]);
+            out.push(b'\n');
         }
         Some(out)
     }
@@ -1748,14 +1810,13 @@ impl EditorState {
     /// on `\n` with the trailing-newline element dropped, exactly like [`read_lines`]), as one undo group. An
     /// empty `text` deletes the range's lines (Vim: a filter that emits nothing). The cursor lands on the
     /// FIRST non-blank of the first line of the replaced region (verified vs nvim v0.12.4). Returns the number
-    /// of INPUT lines filtered (0 for an empty / non-UTF-8 buffer), matching Vim's "N lines filtered" report.
+    /// of INPUT lines filtered (0 for an empty buffer), matching Vim's "N lines filtered" report. Bytes are
+    /// spliced as they are, so a buffer that is not UTF-8 filters too.
     pub fn filter_lines(&mut self, range: SubRange, text: &[u8]) -> usize {
         let buf = self.doc.bytes();
-        let Ok(hay) = std::str::from_utf8(buf) else {
-            return 0;
-        };
+        let hay = buf;
         let orig_len = buf.len();
-        let had_trailing_nl = hay.ends_with('\n');
+        let had_trailing_nl = hay.ends_with(b"\n");
         let mut lines: Vec<&[u8]> = if hay.is_empty() {
             Vec::new()
         } else {
@@ -1815,15 +1876,23 @@ impl EditorState {
     }
 
     /// `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file when the caller
-    /// passes `WholeFile`) as one undo group. The sort KEY per line is, in order: the text after the first
-    /// `pattern` match (or the matched text itself under `r`), else the whole line; lowercased under `i`
-    /// (`ignore_case`); its first decimal number under `n` (`numeric`). `reverse` (`!`) sorts descending;
-    /// `unique` (`u`) drops runs of equal KEYS after sorting. The sort is stable. Returns lines removed by
-    /// `u`.
-    pub fn sort_lines(&mut self, range: SubRange, opts: &SortOptions) -> usize {
+    /// passes `WholeFile`) as one undo group, the way nvim's `ex_sort` does (v0.12.6). The sort KEY per
+    /// line is the text after the first `pattern` match (the matched text itself under `r`), or the whole
+    /// line; a line the pattern does not match has an empty key. Text keys compare bytewise, ignoring
+    /// ASCII case under `i`. Under `n` the key is the first decimal number in it (a `-` just before it
+    /// counts, and a number too large saturates); a key with no number sorts before every number. The
+    /// sort is stable; `reverse` (`!`) reverses the sorted order, ties included. `unique` (`u`) then drops
+    /// a line equal to the one kept before it, comparing WHOLE lines (case-folded under `i`), not keys.
+    /// The pattern is matched with the `'ignorecase'` setting (no smartcase). The cursor lands on the
+    /// first non-blank of the range's first line. Returns the lines removed by `u`.
+    ///
+    /// # Errors
+    /// [`RegexError`] if `pattern` does not compile; the buffer is left as it was. A one-line range is a
+    /// no-op that never compiles the pattern (Vim returns before reading the arguments).
+    pub fn sort_lines(&mut self, range: SubRange, opts: &SortOptions) -> Result<usize, RegexError> {
         let bytes = self.doc.bytes();
         let Ok(hay) = std::str::from_utf8(bytes) else {
-            return 0;
+            return Ok(0);
         };
         let had_trailing_nl = hay.ends_with('\n');
         let mut lines: Vec<String> = if hay.is_empty() {
@@ -1836,23 +1905,31 @@ impl EditorState {
             v
         };
         if lines.is_empty() {
-            return 0;
+            return Ok(0);
         }
         let spans = line_spans(hay);
         let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
-        // `line_spans` counts a phantom empty line after a trailing '\n'; the split/pop `lines` vec does
-        // not, so clamp the resolved indices to the vec.
         let last = last.min(lines.len() - 1);
         let first = first.min(last);
+        if first == last {
+            return Ok(0);
+        }
 
+        let search = self.view.search_options();
+        let compiled = match opts.pattern.as_deref() {
+            Some(p) => Some(crate::pattern::Regex::compile(
+                p,
+                crate::pattern::Options {
+                    magic: search.magic,
+                    ignore_case: search.ignore_case,
+                    smart_case: false,
+                },
+            )?),
+            None => None,
+        };
         // The comparable key for one line, honoring `/pattern/`, `r`, `i`, and `n`.
-        let compiled = opts.pattern.as_deref().and_then(|p| {
-            crate::pattern::Regex::compile(p, crate::pattern::Options::default()).ok()
-        });
         let key_of = |line: &str| -> SortKey {
-            // Slice the pattern-selected base: text after the match, or the match itself under `r`; a line
-            // the pattern does not match yields an empty base (Vim floats non-matching lines to the front).
             let base: &str = match &compiled {
                 Some(re) => match re.find_at(line, 0) {
                     Some(m) if opts.use_match => &line[m.start..m.end],
@@ -1864,7 +1941,7 @@ impl EditorState {
             if opts.numeric {
                 SortKey::Num(first_number(base))
             } else if opts.ignore_case {
-                SortKey::Text(base.to_lowercase())
+                SortKey::Text(base.to_ascii_lowercase())
             } else {
                 SortKey::Text(base.to_string())
             }
@@ -1874,14 +1951,18 @@ impl EditorState {
             .iter()
             .map(|l| (key_of(l), l.clone()))
             .collect();
-        keyed.sort_by(|a, b| a.0.cmp(&b.0)); // stable (Vim's sort is stable)
-        if opts.unique {
-            keyed.dedup_by(|a, b| a.0 == b.0);
-        }
+        keyed.sort_by(|a, b| a.0.cmp(&b.0)); // stable (Vim breaks ties by line number)
         if opts.reverse {
             keyed.reverse();
         }
-        let seg: Vec<String> = keyed.into_iter().map(|(_, l)| l).collect();
+        let mut seg: Vec<String> = keyed.into_iter().map(|(_, l)| l).collect();
+        if opts.unique {
+            if opts.ignore_case {
+                seg.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+            } else {
+                seg.dedup();
+            }
+        }
         let removed = (last - first + 1) - seg.len();
         lines.splice(first..=last, seg);
 
@@ -1890,7 +1971,7 @@ impl EditorState {
             text.push('\n');
         }
         let new_bytes = text.into_bytes();
-        let cursor = new_bytes
+        let line_start = new_bytes
             .split_inclusive(|&b| b == b'\n')
             .take(first)
             .map(<[u8]>::len)
@@ -1902,9 +1983,10 @@ impl EditorState {
             .with_hint(GroupHint::BreakBefore);
         self.doc.apply(txn).expect("sort applies cleanly");
         self.view.last_was_edit = true;
-        self.view.cursor = cursor.min(self.doc.bytes().len());
+        let nb = self.doc.bytes();
+        self.view.cursor = motion::first_non_blank(nb, line_start.min(nb.len()));
         self.settle_offsets();
-        removed
+        Ok(removed)
     }
 
     /// Apply a set of DISJOINT byte-range replacements as ONE undo group, tagged with the caller-supplied
@@ -2171,31 +2253,32 @@ pub struct SortOptions {
 }
 
 /// A line's comparable sort key: a number (`n`) or text. All keys in one sort share a variant, so the
-/// derived ordering (which compares `Num` < `Text` across variants) never actually mixes them.
+/// derived ordering (which compares `Num` < `Text` across variants) never actually mixes them. `Num(None)`
+/// (no number in the key) orders before every number, as in Vim.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum SortKey {
-    Num(i64),
+    Num(Option<i64>),
     Text(String),
 }
 
-/// The first decimal number in `s` (with an optional leading `-`), for `:sort n`. Lines without a number
-/// sort as `0` (Vim keeps them before the numbered lines, which a stable sort preserves).
-fn first_number(s: &str) -> i64 {
+/// The first decimal number in `s` for `:sort n`, with a `-` just before it, or `None` when `s` has no
+/// digit. A number past the `i64` range saturates to its bound (Vim's `vim_str2nr`).
+fn first_number(s: &str) -> Option<i64> {
     let b = s.as_bytes();
-    for i in 0..b.len() {
-        if b[i].is_ascii_digit() {
-            let start = if i > 0 && b[i - 1] == b'-' { i - 1 } else { i };
-            let mut j = i;
-            while j < b.len() && b[j].is_ascii_digit() {
-                j += 1;
-            }
-            return s[start..j].parse::<i64>().unwrap_or(0);
-        }
-    }
-    0
+    let i = b.iter().position(u8::is_ascii_digit)?;
+    let negative = i > 0 && b[i - 1] == b'-';
+    let digits = b[i..].iter().take_while(|c| c.is_ascii_digit());
+    let magnitude = digits.fold(0u64, |n, &d| {
+        n.saturating_mul(10).saturating_add(u64::from(d - b'0'))
+    });
+    Some(if negative {
+        0i64.checked_sub_unsigned(magnitude).unwrap_or(i64::MIN)
+    } else {
+        i64::try_from(magnitude).unwrap_or(i64::MAX)
+    })
 }
 
-pub(crate) use substitute::{expand_replacement, line_spans, resolve_line_range};
+pub(crate) use substitute::{find_substitutions, line_spans, resolve_line_range};
 pub use substitute::{GlobalCmd, LineAddr, SubFlags, SubOutcome, SubRange, Substitution};
 
 mod planner;

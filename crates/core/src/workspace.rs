@@ -792,9 +792,10 @@ impl Workspace {
     }
 
     /// The text of the FOCUSED window's lines in `range` (each with a trailing `\n`), as the frontend feeds a
-    /// `:{range}!{cmd}` filter's stdin. `None` for an empty / non-UTF-8 buffer. Read-only in effect, but takes
-    /// `&mut self` to reuse the swap-trick that reconstitutes the [`EditorState`] (which owns the resolver).
-    pub fn range_text(&mut self, range: SubRange) -> Option<String> {
+    /// `:{range}!{cmd}` filter's stdin, as raw bytes. `None` for an empty buffer. Read-only in effect, but
+    /// takes `&mut self` to reuse the swap-trick that reconstitutes the [`EditorState`] (which owns the
+    /// resolver).
+    pub fn range_text(&mut self, range: SubRange) -> Option<Vec<u8>> {
         let vid = self.windows[self.focus].view;
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
@@ -828,7 +829,14 @@ impl Workspace {
 
     /// Run `:[range]sort` against the FOCUSED window (swap-trick): sort the range's lines as one undo
     /// group. Returns the number of lines removed by the `unique` flag.
-    pub fn sort_lines(&mut self, range: SubRange, opts: &crate::SortOptions) -> usize {
+    ///
+    /// # Errors
+    /// [`RegexError`] if the sort pattern does not compile; the buffer is left as it was.
+    pub fn sort_lines(
+        &mut self,
+        range: SubRange,
+        opts: &crate::SortOptions,
+    ) -> Result<usize, RegexError> {
         let vid = self.windows[self.focus].view;
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
@@ -2225,32 +2233,84 @@ mod tests {
             ..SortOptions::default()
         };
         let mut w = Workspace::new(b"banana\napple\ncherry\n".to_vec());
-        w.sort_lines(SubRange::WholeFile, &opts(false, false, false));
+        w.sort_lines(SubRange::WholeFile, &opts(false, false, false))
+            .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"apple\nbanana\ncherry\n");
 
         // numeric: 10 sorts after 2, not lexicographically before it.
         let mut w = Workspace::new(b"10\n2\n1\n".to_vec());
-        w.sort_lines(SubRange::WholeFile, &opts(false, true, false));
+        w.sort_lines(SubRange::WholeFile, &opts(false, true, false))
+            .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"1\n2\n10\n");
 
         // reverse (descending).
         let mut w = Workspace::new(b"a\nb\nc\n".to_vec());
-        w.sort_lines(SubRange::WholeFile, &opts(true, false, false));
+        w.sort_lines(SubRange::WholeFile, &opts(true, false, false))
+            .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"c\nb\na\n");
 
         // unique drops duplicate lines after sorting.
         let mut w = Workspace::new(b"b\na\nb\na\n".to_vec());
         assert_eq!(
             w.sort_lines(SubRange::WholeFile, &opts(false, false, true)),
-            2,
+            Ok(2),
             "2 dupes removed"
         );
         assert_eq!(w.focused().doc.bytes(), b"a\nb\n");
 
         // A range limits the sort to those lines; the rest stays put.
         let mut w = Workspace::new(b"z\n3\n1\n2\n".to_vec());
-        w.sort_lines(SubRange::Lines(2, 4), &opts(false, true, false));
+        w.sort_lines(SubRange::Lines(2, 4), &opts(false, true, false))
+            .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"z\n1\n2\n3\n");
+    }
+
+    /// #719 (nvim v0.12.6): a key with no number sorts before every number, a number too large saturates,
+    /// `u` compares whole lines in the output order (after `!`), and a bad pattern leaves the text alone.
+    #[test]
+    fn sort_lines_numeric_keys_unique_and_bad_patterns() {
+        use crate::SortOptions;
+        let sorted = |text: &str, opts: SortOptions| {
+            let mut w = Workspace::new(text.as_bytes().to_vec());
+            w.sort_lines(SubRange::WholeFile, &opts).unwrap();
+            String::from_utf8(w.focused().doc.bytes().to_vec()).unwrap()
+        };
+        let numeric = SortOptions {
+            numeric: true,
+            ..SortOptions::default()
+        };
+        assert_eq!(sorted("b\n-5\na\n3\n", numeric.clone()), "b\na\n-5\n3\n");
+        assert_eq!(
+            sorted(
+                "99999999999999999999\n5\n-99999999999999999999\n",
+                numeric.clone()
+            ),
+            "-99999999999999999999\n5\n99999999999999999999\n"
+        );
+        let numeric_unique = SortOptions {
+            unique: true,
+            ..numeric
+        };
+        assert_eq!(sorted("1\n01\n2\n", numeric_unique), "1\n01\n2\n");
+        let ic_unique = SortOptions {
+            ignore_case: true,
+            unique: true,
+            ..SortOptions::default()
+        };
+        assert_eq!(sorted("a\nA\nb\n", ic_unique.clone()), "a\nb\n");
+        let reversed = SortOptions {
+            reverse: true,
+            ..ic_unique
+        };
+        assert_eq!(sorted("a\nA\nb\n", reversed), "b\nA\n");
+
+        let mut w = Workspace::new(b"b\na\n".to_vec());
+        let bad = SortOptions {
+            pattern: Some("\\(".into()),
+            ..SortOptions::default()
+        };
+        assert!(w.sort_lines(SubRange::WholeFile, &bad).is_err());
+        assert_eq!(w.focused().doc.bytes(), b"b\na\n");
     }
 
     #[test]
@@ -2264,7 +2324,8 @@ mod tests {
                 ignore_case: true,
                 ..SortOptions::default()
             },
-        );
+        )
+        .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"apple\nBanana\ncherry\n");
 
         // `/pattern/` — sort on the text AFTER the match (here, after the leading `id=` tag).
@@ -2275,7 +2336,8 @@ mod tests {
                 pattern: Some("id=".into()),
                 ..SortOptions::default()
             },
-        );
+        )
+        .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"id=alice\nid=bob\nid=charlie\n");
 
         // `/pattern/` + `r` — sort on the MATCHED text itself (the number), numerically.
@@ -2288,7 +2350,8 @@ mod tests {
                 numeric: true,
                 ..SortOptions::default()
             },
-        );
+        )
+        .unwrap();
         assert_eq!(w.focused().doc.bytes(), b"c9\na99\nb100\n");
     }
 

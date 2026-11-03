@@ -397,9 +397,15 @@ fn parse_set_option(opt: &str) -> Option<Ex> {
     Some(Ex::Set(ex))
 }
 
-/// Parse `:[range]sort[!] [i][n][r][u] [/pattern/]` (`sort`/`sor`). No range = the WHOLE FILE (Vim). Honors
-/// `!` reverse, `n` numeric, `u` unique, `i` case-insensitive, and a trailing `/pattern/` (with `r` = sort
-/// on the matched text). Other Vim flags (`b`/`x` binary/hex numeric, `l`/`o`) are accepted but ignored.
+/// Parse `:[range]sort[!] [b][i][l][n][o][r][u][x] [/pattern/]` (`sort`/`sor`) the way nvim's `ex_sort`
+/// reads its argument (v0.12.6). No range = the WHOLE FILE (Vim). Flags and one `/pattern/` may come in any
+/// order, with blanks between; the pattern is delimited by any non-letter and ends as `:s` patterns do
+/// ([`ruse_core::pattern::skip_regexp`]), and a `"` starts a comment. Honors `!` reverse, `n` numeric, `u`
+/// unique, `i` case-insensitive, and the pattern (with `r` = sort on the matched text). An empty pattern
+/// (`//`) is `Some("")`, for the caller to fill from the last search. `b`/`x`/`o` (binary/hex/octal numbers)
+/// and `l` (locale) are accepted but sort as text; `f` (float) is not supported. A bad argument is
+/// [`Ex::Fail`]: `E475` for an unknown flag or a second pattern, `E474` for two number formats, `E654`
+/// for a pattern without its closing delimiter.
 fn parse_sort(line: &str) -> Option<Ex> {
     let split = line
         .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
@@ -408,45 +414,61 @@ fn parse_sort(line: &str) -> Option<Ex> {
     let rest = rest
         .strip_prefix("sort")
         .or_else(|| rest.strip_prefix("sor"))?;
+    // `:sortn` is not `:sort n`: Vim reads the whole name, which is no command (E492).
+    if rest.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return None;
+    }
     let (reverse, rest) = match rest.strip_prefix('!') {
         Some(r) => (true, r),
         None => (false, rest),
     };
-    // A trailing `/pattern/` (Vim): everything from the first `/` is the pattern (optionally closed by a
-    // second `/`); the flag run is what precedes it. `//` with no closer means "to end of line".
-    let (flag_str, pattern) = match rest.find('/') {
-        Some(i) => {
-            let after = &rest[i + 1..];
-            let pat = after.strip_suffix('/').unwrap_or(after);
-            (&rest[..i], (!pat.is_empty()).then(|| pat.to_string()))
-        }
-        None => (rest, None),
-    };
-    let flags = flag_str.trim();
-    // Only a bare flag run before any pattern is a sort we understand.
-    if !flags
-        .chars()
-        .all(|c| matches!(c, 'n' | 'u' | 'i' | 'r' | 'b' | 'x' | 'l' | 'o'))
-    {
-        return None;
-    }
     let range = if range_str.is_empty() {
         SubRange::WholeFile
     } else {
         parse_sub_range(range_str)?
     };
-    Some(Ex::Sort(
-        range,
-        ruse_core::SortOptions {
-            reverse,
-            numeric: flags.contains('n'),
-            unique: flags.contains('u'),
-            ignore_case: flags.contains('i'),
-            // `r` only means "sort on the match" when there is a pattern; otherwise it is inert.
-            use_match: flags.contains('r') && pattern.is_some(),
-            pattern,
-        },
-    ))
+    let mut opts = ruse_core::SortOptions {
+        reverse,
+        ..ruse_core::SortOptions::default()
+    };
+    let mut use_match = false;
+    let mut formats = 0;
+    let mut p = rest;
+    while let Some(c) = p.chars().next() {
+        let after = &p[c.len_utf8()..];
+        match c {
+            ' ' | '\t' => {}
+            'i' => opts.ignore_case = true,
+            'l' => {}
+            'r' => use_match = true,
+            'n' => {
+                opts.numeric = true;
+                formats += 1;
+            }
+            'b' | 'o' | 'x' => formats += 1,
+            'u' => opts.unique = true,
+            '"' => break,
+            c if !c.is_ascii_alphabetic() && opts.pattern.is_none() => {
+                let end = ruse_core::pattern::skip_regexp(after, c, true);
+                if !after[end..].starts_with(c) {
+                    return Some(Ex::Fail(format!(
+                        "E654: missing delimiter after search pattern: {after}"
+                    )));
+                }
+                opts.pattern = Some(after[..end].to_string());
+                p = &after[end + c.len_utf8()..];
+                continue;
+            }
+            _ => return Some(Ex::Fail(format!("E475: Invalid argument: {p}"))),
+        }
+        p = after;
+    }
+    if formats > 1 {
+        return Some(Ex::Fail("E474: Invalid argument".into()));
+    }
+    // `r` only means "sort on the match" when there is a pattern; otherwise it is inert.
+    opts.use_match = use_match && opts.pattern.is_some();
+    Some(Ex::Sort(range, opts))
 }
 
 /// Parse a `:[range]s/pat/rep/flags` line into a [`SubSpec`], or `None` if it is not a substitute.
@@ -467,34 +489,19 @@ pub(crate) fn parse_substitute(line: &str, gdefault: bool) -> Option<SubSpec> {
         return None; // e.g. `:sort` — `o` is not a delimiter
     }
     let body = &rest[delim.len_utf8()..];
-    // Split into up to three parts on UNESCAPED delimiters (`\/` stays literal in the pattern/rep).
-    let mut parts: Vec<String> = Vec::new();
-    let mut cur = String::new();
-    let mut chars = body.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            cur.push('\\');
-            if let Some(n) = chars.next() {
-                cur.push(n);
-            }
-        } else if c == delim {
-            parts.push(std::mem::take(&mut cur));
-            if parts.len() == 2 {
-                // Everything after the third delimiter is the flags run (no more splitting).
-                parts.push(chars.as_str().to_string());
-                cur.clear();
-                break;
-            }
-        } else {
-            cur.push(c);
-        }
-    }
-    if !cur.is_empty() || parts.len() < 2 {
-        parts.push(cur);
-    }
-    let pattern = parts.first().cloned().unwrap_or_default();
-    let replacement = parts.get(1).cloned().unwrap_or_default();
-    let flags = parts.get(2).map(String::as_str).unwrap_or("");
+    // The pattern ends where Vim's `skip_regexp` says (a delimiter inside `[...]` is part of it, #803); the
+    // replacement runs to the next UNESCAPED delimiter, and the rest is the flags run. Escapes stay as typed
+    // (`\/` is a literal `/` to the pattern reader and the replacement expander alike).
+    let pend = ruse_core::pattern::skip_regexp(body, delim, true);
+    let pattern = body[..pend].to_string();
+    let (replacement, flags) = match body[pend..].strip_prefix(delim) {
+        Some(after) => match skip_unescaped(after, 0, delim, 1) {
+            Some(end) => (&after[..end - delim.len_utf8()], &after[end..]),
+            None => (after, ""),
+        },
+        None => ("", ""),
+    };
+    let replacement = replacement.to_string();
 
     let mut global = flags.contains('g');
     if gdefault {
@@ -606,8 +613,11 @@ fn parse_global(line: &str) -> Option<GlobalSpec> {
         return None;
     }
     let body = &rest[delim.len_utf8()..];
-    let (pattern, cmd_str) = split_first_unescaped(body, delim)?;
-    let cmd = parse_global_cmd(&cmd_str)?;
+    // Vim's `skip_regexp`: a delimiter inside `[...]` does not end the pattern (#803).
+    let pend = ruse_core::pattern::skip_regexp(body, delim, true);
+    let pattern = body[..pend].to_string();
+    let cmd_str = body[pend..].strip_prefix(delim)?;
+    let cmd = parse_global_cmd(cmd_str)?;
     let range = if range_str.is_empty() {
         SubRange::WholeFile
     } else {
@@ -638,25 +648,6 @@ fn strip_global_verb(rest: &str) -> Option<(&str, bool)> {
     } else {
         None
     }
-}
-
-/// Split `s` at the FIRST unescaped `delim` into `(before, after)`; `None` if there is no delimiter.
-fn split_first_unescaped(s: &str, delim: char) -> Option<(String, String)> {
-    let mut before = String::new();
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            before.push('\\');
-            if let Some(n) = chars.next() {
-                before.push(n);
-            }
-        } else if c == delim {
-            return Some((before, chars.as_str().to_string()));
-        } else {
-            before.push(c);
-        }
-    }
-    None
 }
 
 /// Parse the command that follows `:g/pat/`: `normal[!] {keys}` (frontend-executed), `d`/`delete`, or a
@@ -794,7 +785,12 @@ fn split_first_command(cmd: &str) -> (&str, Option<&str>) {
         if let Some(delim) = arg.chars().next() {
             if delim.is_ascii_punctuation() && !matches!(delim, '\\' | '"' | '|') {
                 let body_start = i + verb_len + delim.len_utf8();
-                match skip_unescaped(cmd, body_start, delim, 2) {
+                let pend =
+                    body_start + ruse_core::pattern::skip_regexp(&cmd[body_start..], delim, true);
+                let rep_start = cmd[pend..]
+                    .starts_with(delim)
+                    .then(|| pend + delim.len_utf8());
+                match rep_start.and_then(|r| skip_unescaped(cmd, r, delim, 1)) {
                     Some(end) => scan_from = end,
                     None => return whole(), // an unterminated pattern/replacement owns the `|`
                 }
@@ -1380,16 +1376,46 @@ fn single_char(s: &str) -> Option<char> {
     cs.next().is_none().then_some(c)
 }
 
-/// Fill an empty `:s` pattern from the last search (`/` / `*`), exactly as Vim resolves `:s//repl/`. A
-/// no-op for a non-empty pattern, a non-substitute command, or when there is no last search to borrow.
-pub(crate) fn reuse_last_search(ex: &mut Ex, last_search: Option<&str>) {
-    if let Ex::Substitute(spec) = ex {
-        if spec.pattern.is_empty() {
-            if let Some(last) = last_search {
-                spec.pattern = last.to_string();
+/// Fill an empty pattern from the last search pattern, as Vim does for every Ex command that takes one
+/// (#804): `:s//repl/`, `:g//cmd` / `:v//cmd`, `:sort //`, and the `:s//` inside `:g/pat/s//repl/`, which
+/// gets the `:g` pattern (Vim's `:g` makes its pattern the last search before it runs the command). A
+/// no-op for a non-empty pattern or another command.
+///
+/// # Errors
+/// The status message when an empty pattern has nothing to borrow: `E476` for `:g` (Vim's `ex_global`
+/// reports it after `E35`), `E35` for `:sort`. An empty `:s` pattern is left for the regex compiler to
+/// refuse, as before.
+pub(crate) fn reuse_last_search(ex: &mut Ex, last_search: Option<&str>) -> Result<(), String> {
+    match ex {
+        Ex::Substitute(spec) => {
+            if spec.pattern.is_empty() {
+                if let Some(last) = last_search {
+                    spec.pattern = last.to_string();
+                }
             }
         }
+        Ex::Global(spec) => {
+            if spec.pattern.is_empty() {
+                spec.pattern = last_search
+                    .ok_or_else(|| "E476: Invalid command".to_string())?
+                    .to_string();
+            }
+            if let GlobalPayload::Core(GlobalCmd::Substitute { pattern, .. }) = &mut spec.cmd {
+                if pattern.is_empty() {
+                    pattern.clone_from(&spec.pattern);
+                }
+            }
+        }
+        Ex::Sort(_, opts) if opts.pattern.as_deref() == Some("") => {
+            opts.pattern = Some(
+                last_search
+                    .ok_or_else(|| "E35: No previous regular expression".to_string())?
+                    .to_string(),
+            );
+        }
+        _ => {}
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1419,14 +1445,14 @@ mod reuse_last_search_tests {
     #[test]
     fn empty_pattern_borrows_the_last_search() {
         let mut ex = sub("");
-        reuse_last_search(&mut ex, Some("foo"));
+        reuse_last_search(&mut ex, Some("foo")).unwrap();
         assert_eq!(pattern_of(&ex), "foo");
     }
 
     #[test]
     fn non_empty_pattern_is_left_alone() {
         let mut ex = sub("bar");
-        reuse_last_search(&mut ex, Some("foo"));
+        reuse_last_search(&mut ex, Some("foo")).unwrap();
         assert_eq!(
             pattern_of(&ex),
             "bar",
@@ -1437,8 +1463,47 @@ mod reuse_last_search_tests {
     #[test]
     fn empty_pattern_without_a_last_search_stays_empty() {
         let mut ex = sub("");
-        reuse_last_search(&mut ex, None);
+        reuse_last_search(&mut ex, None).unwrap();
         assert_eq!(pattern_of(&ex), "");
+    }
+
+    /// #804: `:g//` takes the last search, and the `s//` inside `:g` takes the `:g` pattern.
+    #[test]
+    fn global_and_its_substitute_borrow_too() {
+        let mut ex = parse_ex("g//s//X/");
+        reuse_last_search(&mut ex, Some("a")).unwrap();
+        let Ex::Global(spec) = &ex else {
+            panic!("not a :g: {ex:?}")
+        };
+        assert_eq!(spec.pattern, "a");
+        assert!(matches!(
+            &spec.cmd,
+            GlobalPayload::Core(GlobalCmd::Substitute { pattern, .. }) if pattern == "a"
+        ));
+        let mut ex = parse_ex("g/b/s//X/");
+        reuse_last_search(&mut ex, Some("a")).unwrap();
+        assert!(matches!(
+            &ex,
+            Ex::Global(GlobalSpec { cmd: GlobalPayload::Core(GlobalCmd::Substitute { pattern, .. }), .. })
+                if pattern == "b"
+        ));
+        let mut ex = parse_ex("g//d");
+        assert_eq!(
+            reuse_last_search(&mut ex, None),
+            Err("E476: Invalid command".to_string())
+        );
+    }
+
+    #[test]
+    fn sort_borrows_or_reports_e35() {
+        let mut ex = parse_ex("sort //");
+        reuse_last_search(&mut ex, Some("x")).unwrap();
+        assert!(matches!(&ex, Ex::Sort(_, o) if o.pattern.as_deref() == Some("x")));
+        let mut ex = parse_ex("sort //");
+        assert_eq!(
+            reuse_last_search(&mut ex, None),
+            Err("E35: No previous regular expression".to_string())
+        );
     }
 }
 

@@ -48,6 +48,8 @@ pub struct ShellOutput {
     /// stdout and stderr interleaved in the order the command wrote them (Vim's `shellredir` is
     /// `>%s 2>&1`), lossily decoded as UTF-8.
     pub text: String,
+    /// The same output as it came, byte for byte: what a filter puts back into the buffer.
+    pub raw: Vec<u8>,
     /// The exit code; `None` when the shell was killed by a signal.
     pub code: Option<i32>,
 }
@@ -77,7 +79,7 @@ pub fn capture(cmd: &str) -> Result<ShellOutput, ShellError> {
 ///
 /// # Errors
 /// Returns [`ShellError`] when the shell cannot be spawned/awaited, or on a non-unix platform.
-pub fn filter(cmd: &str, input: &str) -> Result<ShellOutput, ShellError> {
+pub fn filter(cmd: &str, input: &[u8]) -> Result<ShellOutput, ShellError> {
     run(cmd, Some(input))
 }
 
@@ -87,7 +89,7 @@ pub fn filter(cmd: &str, input: &str) -> Result<ShellOutput, ShellError> {
 /// `shell returned {n}` — unless the shell could not be spawned. stderr must not be inherited: it would land
 /// on the editor's own terminal, under the TUI.
 #[cfg(unix)]
-fn run(cmd: &str, input: Option<&str>) -> Result<ShellOutput, ShellError> {
+fn run(cmd: &str, input: Option<&[u8]>) -> Result<ShellOutput, ShellError> {
     let (mut reader, writer) = std::io::pipe().map_err(ShellError::Spawn)?;
     let writer_err = writer.try_clone().map_err(ShellError::Spawn)?;
     let mut command = Command::new("sh");
@@ -110,7 +112,7 @@ fn run(cmd: &str, input: Option<&str>) -> Result<ShellOutput, ShellError> {
     // input outgrows the pipe buffers, because a command like `cat` blocks writing output nobody reads (#854).
     let feeder = match (input, child.stdin.take()) {
         (Some(text), Some(mut stdin)) => {
-            let bytes = text.as_bytes().to_vec();
+            let bytes = text.to_vec();
             Some(std::thread::spawn(move || {
                 // A broken pipe (the command exited before reading all input, e.g. `head`) is not an error.
                 let _ = stdin.write_all(&bytes);
@@ -129,12 +131,13 @@ fn run(cmd: &str, input: Option<&str>) -> Result<ShellOutput, ShellError> {
     read.map_err(ShellError::Wait)?;
     Ok(ShellOutput {
         text: String::from_utf8_lossy(&out).into_owned(),
+        raw: out,
         code: status.code(),
     })
 }
 
 #[cfg(not(unix))]
-fn run(_cmd: &str, _input: Option<&str>) -> Result<ShellOutput, ShellError> {
+fn run(_cmd: &str, _input: Option<&[u8]>) -> Result<ShellOutput, ShellError> {
     Err(ShellError::Unsupported)
 }
 
@@ -169,8 +172,19 @@ mod tests {
             eprintln!("skipping: `sort` not on PATH");
             return;
         }
-        let out = filter("sort", "gamma\nalpha\nbeta\n").expect("sort runs");
+        let out = filter("sort", b"gamma\nalpha\nbeta\n").expect("sort runs");
         assert_eq!(out.text, "alpha\nbeta\ngamma\n");
+    }
+
+    /// #875: a filter gets and gives back raw bytes, so a buffer that is not UTF-8 survives `:%!cat`.
+    #[test]
+    fn filter_passes_bytes_that_are_not_utf8() {
+        if !has("cat") {
+            eprintln!("skipping: `cat` not on PATH");
+            return;
+        }
+        let out = filter("cat", b"a\xff\n").expect("cat runs");
+        assert_eq!(out.raw, b"a\xff\n");
     }
 
     #[test]
@@ -179,7 +193,7 @@ mod tests {
             eprintln!("skipping: `tr` not on PATH");
             return;
         }
-        let out = filter("tr a-z A-Z", "one\ntwo\n").expect("tr runs");
+        let out = filter("tr a-z A-Z", b"one\ntwo\n").expect("tr runs");
         assert_eq!(out.text, "ONE\nTWO\n");
     }
 
@@ -194,7 +208,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let sent = input.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(filter("cat", &sent).map_err(|e| e.to_string()));
+            let _ = tx.send(filter("cat", sent.as_bytes()).map_err(|e| e.to_string()));
         });
         let out = rx
             .recv_timeout(std::time::Duration::from_secs(10))
@@ -208,7 +222,7 @@ mod tests {
     fn a_failing_command_is_not_an_error_and_yields_its_output() {
         // nvim v0.12.6 `:2!cat; exit 1` keeps what `cat` wrote and reports `shell returned 1`; the caller
         // decides what to show.
-        let out = filter("cat; exit 1", "keep\n").expect("cat still emitted stdout");
+        let out = filter("cat; exit 1", b"keep\n").expect("cat still emitted stdout");
         assert_eq!(out.text, "keep\n");
         assert_eq!(out.failure().as_deref(), Some("shell returned 1"));
     }
@@ -217,7 +231,7 @@ mod tests {
     /// `:%!echo out; echo err >&2; exit 3` leaves `out\nerr\n` and says `shell returned 3`.
     #[test]
     fn stderr_is_captured_in_order_with_stdout() {
-        let out = filter("echo out; echo err >&2; exit 3", "x\n").expect("sh runs");
+        let out = filter("echo out; echo err >&2; exit 3", b"x\n").expect("sh runs");
         assert_eq!(out.text, "out\nerr\n");
         assert_eq!(out.code, Some(3));
         let out = capture("nonexistent_cmd_zz_861").expect("sh runs");

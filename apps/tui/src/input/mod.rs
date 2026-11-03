@@ -1243,6 +1243,16 @@ impl InputEngine {
         self.last_search = Some((pattern, forward, SearchOffset::None));
     }
 
+    /// Replace the last search PATTERN only, keeping its direction and offset (forward with no offset when
+    /// there was none), as an Ex `:s/pat/` or `:g/pat/` does in Vim (`save_re_pat`): `n` then finds `pat`.
+    pub fn set_last_search_pattern(&mut self, pattern: String) {
+        let (forward, offset) = self
+            .last_search
+            .as_ref()
+            .map_or((true, SearchOffset::None), |&(_, f, o)| (f, o));
+        self.last_search = Some((pattern, forward, offset));
+    }
+
     /// The last search pattern (`/`, `?`, `*`, `#`), or `None` if nothing has been searched yet. The
     /// frontend reads it to resolve an empty `:s//repl/` pattern, which Vim fills from the last search.
     #[must_use]
@@ -4022,27 +4032,18 @@ fn insert_cursor_command(code: KeyCode) -> Option<Command> {
     })
 }
 
+/// Split a typed search line into `{pattern}` and `{offset}` at the delimiter that ends the pattern, found
+/// as Vim's `skip_regexp` finds it: a `\/` is a literal, and so is a delimiter inside `[...]` (`/[/]`,
+/// #803). `None` when there is no offset part.
 fn split_search_offset(line: &str, delim: char) -> (String, Option<SearchOffset>) {
-    let bytes = line.as_bytes();
-    let dl = delim as u8; // both `/` and `?` are single ASCII bytes
-    let mut last: Option<usize> = None;
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' {
-            i += 2; // skip the escaped char (a `\/` is a literal delimiter in the pattern)
-            continue;
-        }
-        if bytes[i] == dl {
-            last = Some(i);
-        }
-        i += 1;
-    }
-    match last {
-        Some(idx) => (
+    let idx = ruse_core::pattern::skip_regexp(line, delim, true);
+    if idx < line.len() {
+        (
             line[..idx].to_string(),
-            Some(SearchOffset::parse(&line[idx + 1..])),
-        ),
-        None => (line.to_string(), None),
+            Some(SearchOffset::parse(&line[idx + delim.len_utf8()..])),
+        )
+    } else {
+        (line.to_string(), None)
     }
 }
 

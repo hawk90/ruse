@@ -6259,6 +6259,85 @@ mod substitute_tests {
         assert_eq!(st.as_str().unwrap(), "#");
     }
 
+    /// #715: a `\n` in the pattern matches the line break, across lines, as in nvim v0.12.6 — with and
+    /// without a final newline, and with Vim's "go on in the joined line" rule (`do_again`) bounded by the
+    /// range.
+    #[test]
+    fn substitute_matches_line_breaks() {
+        let none = SubFlags::default();
+        let g = SubFlags {
+            global: true,
+            ignore_case: None,
+        };
+        let whole = SubRange::WholeFile;
+        let cases: &[(&str, SubRange, &str, &str, SubFlags, &str)] = &[
+            ("a\nb\n", whole, r"\n", ",", none, "a,b,\n"),
+            ("a\nb", whole, r"\n", ",", none, "a,b,"),
+            ("a\nb\nc", SubRange::Lines(1, 1), r"\n", ",", none, "a,b\nc"),
+            ("a\nb\nc", SubRange::Lines(1, 2), r"\n", ",", none, "a,b,c"),
+            ("a\nb\nc\nd", whole, r"b\nc", "X", none, "a\nX\nd"),
+            ("ab\nab\nc", whole, r"b\na", "X", g, "aXb\nc"),
+            ("a\n\n\nb", whole, r"\n\n", "X", none, "aX\nb"),
+            ("a b\nc", whole, r" \|\n", "_", g, "a_b_c_"),
+            ("a\nb", whole, r"$\n", ",", none, "a,b,"),
+            ("a\nb", whole, r"a\_.*", "X", none, "X"),
+            ("a\nb", whole, r"\n\zs", "X", none, "a\nXb"),
+            ("a\nb", whole, r"a\ze\nb", "X", none, "X\nb"),
+            ("a\nb", whole, r"\n", "&&", none, "a\n\nb\n\n"),
+            ("aa\nb", whole, r"a*\n", "X", g, "XbX"),
+            ("a\nb\nc", whole, r"\n", r"\r\r", none, "a\n\nb\n\nc\n\n"),
+        ];
+        for &(text, range, pat, rep, flags, want) in cases {
+            let (st, _) = sub(text, range, pat, rep, flags);
+            assert_eq!(st.as_str().unwrap(), want, "{text:?} :s/{pat}/{rep}/");
+        }
+        let (_, out) = sub("a\nb\nc", whole, r"\n", ",", none);
+        assert_eq!(
+            (out.replacements, out.lines),
+            (3, 1),
+            "one line, as Vim counts"
+        );
+    }
+
+    /// #715: `:s/\n//` is Vim's join (`sub_joining_lines`): the range plus the next line, the cursor on the
+    /// last seam; on the last line it has nothing to join and is not a miss.
+    #[test]
+    fn substitute_newline_with_nothing_is_a_join() {
+        let none = SubFlags::default();
+        let (st, out) = sub("ab\ncd\nef", SubRange::WholeFile, r"\n", "", none);
+        assert_eq!(st.as_str().unwrap(), "abcdef");
+        assert_eq!(st.cursor(), 4);
+        assert_eq!((out.replacements, out.lines), (2, 1));
+        let (st, _) = sub("ab\ncd\nef", SubRange::Lines(1, 2), r"\n", "", none);
+        assert_eq!(st.as_str().unwrap(), "abcdef");
+        let (st, out) = sub("ab\ncd", SubRange::Lines(2, 2), r"\n", "", none);
+        assert_eq!(st.as_str().unwrap(), "ab\ncd");
+        assert_eq!((out.replacements, out.lines), (0, 1));
+    }
+
+    /// #698: `\r` splits the line and the cursor follows to the line the last replacement ends on, at its
+    /// first non-blank (nvim: `x\n  abc` `:%s/b/1\r  2/` → cursor on `  2c`, column 2).
+    #[test]
+    fn substitute_line_break_moves_the_cursor_down() {
+        let (st, _) = sub(
+            "x\n  abc",
+            SubRange::WholeFile,
+            "b",
+            r"1\r  2",
+            SubFlags::default(),
+        );
+        assert_eq!(st.as_str().unwrap(), "x\n  a1\n  2c");
+        assert_eq!(st.cursor(), "x\n  a1\n  ".len());
+        let (st, _) = sub(
+            "a,b",
+            SubRange::CurrentLine,
+            ",",
+            r"\n",
+            SubFlags::default(),
+        );
+        assert_eq!(st.doc.bytes(), b"a\0b");
+    }
+
     /// F-009 #2: the `g` flag replaces ALL matches on each line.
     #[test]
     fn substitute_global_flag() {
@@ -6402,6 +6481,27 @@ mod global_tests {
     fn global_negate_deletes_non_matching() {
         let st = run_global("a1\nb\na2\nc\n", "a", true, GlobalCmd::Delete);
         assert_eq!(st.as_str().unwrap(), "a1\na2\n");
+    }
+
+    /// #715: a multi-line `:g` pattern marks the line its match starts on (nvim: `:g/a\nb/d` on a/b/c
+    /// leaves b/c), and a `:s` inside `:g` skips a marked line an earlier match joined away.
+    #[test]
+    fn global_multiline_pattern_marks_the_starting_line() {
+        let st = run_global("a\nb\nc", r"a\nb", false, GlobalCmd::Delete);
+        assert_eq!(st.as_str().unwrap(), "b\nc");
+        let st = run_global("x\nx\nx\ny", r"x\nx", true, GlobalCmd::Delete);
+        assert_eq!(st.as_str().unwrap(), "x\nx");
+        let st = run_global(
+            "a\na\nb",
+            "a",
+            false,
+            GlobalCmd::Substitute {
+                pattern: r"\n".into(),
+                replacement: "-".into(),
+                flags: SubFlags::default(),
+            },
+        );
+        assert_eq!(st.as_str().unwrap(), "a-a\nb");
     }
 
     /// F-009 #4: the two-pass mark-then-execute means a `:g/pat/s///` only substitutes on lines that
@@ -8100,18 +8200,30 @@ mod read_filter_tests {
         let mut st = EditorState::new(b"one\ntwo\nthree\nfour\n".to_vec());
         assert_eq!(
             st.range_text(SubRange::Lines(2, 3)).as_deref(),
-            Some("two\nthree\n")
+            Some(&b"two\nthree\n"[..])
         );
         assert_eq!(
             st.range_text(SubRange::WholeFile).as_deref(),
-            Some("one\ntwo\nthree\nfour\n"),
+            Some(&b"one\ntwo\nthree\nfour\n"[..]),
             "the whole-file range does not include a phantom trailing empty line"
         );
         st.set_cursor(0);
         assert_eq!(
             st.range_text(SubRange::CurrentLine).as_deref(),
-            Some("one\n")
+            Some(&b"one\n"[..])
         );
+    }
+
+    /// #875: a buffer that is not UTF-8 still feeds its bytes to a filter, and takes the output back.
+    #[test]
+    fn range_text_and_filter_keep_non_utf8_bytes() {
+        let mut st = EditorState::new(b"a\xff\nb\n".to_vec());
+        assert_eq!(
+            st.range_text(SubRange::WholeFile).as_deref(),
+            Some(&b"a\xff\nb\n"[..])
+        );
+        assert_eq!(st.filter_lines(SubRange::Lines(1, 1), b"\xfe\n"), 1);
+        assert_eq!(st.doc.bytes(), b"\xfe\nb\n");
     }
 
     /// `:{range}!cmd` replaces the range's lines with the filter output; the cursor lands on the first line of
@@ -8152,6 +8264,7 @@ mod substitute_case_modifier_tests {
     //! `:s` replacement case modifiers `\u \l \U \L \e \E`. Each expected value is the exact output
     //! produced by nvim v0.12.4 (`nvim -u NONE` headless) for the same pattern/replacement, so these
     //! lock parity. Capture backrefs `\1`-`\9` are deferred (see `expand_replacement` docs) — not tested.
+    use crate::editor::substitute::expand_replacement;
     use crate::editor::*;
 
     /// Assert `expand_replacement(rep, matched)` yields exactly `want` (as bytes).
@@ -8213,11 +8326,24 @@ mod substitute_case_modifier_tests {
         ex(r"\Ux\ey&", "ab", "Xyab");
     }
 
-    /// The region composes with `\n`: it stays active across the inserted newline byte, so both `&`
-    /// insertions are uppercased. (This codebase maps `\n`→newline in replacements.)
+    /// The region composes with a line break: it stays active across the `\r` that splits the line, so
+    /// both `&` insertions are uppercased. `\n` is a NUL byte, as in Vim (#698).
     #[test]
     fn region_composes_with_newline_escape() {
-        ex(r"\U&\n&", "ab", "AB\nAB");
+        ex(r"\U&\r&", "ab", "AB\nAB");
+        ex(r"\U&\n&", "ab", "AB\0AB");
+    }
+
+    /// #698 (nvim v0.12.6): `\r` and a literal carriage return split the line, `\<CR>` inserts a
+    /// carriage return, `\n` inserts NUL, and a carriage return in the matched text stays one.
+    #[test]
+    fn line_break_escapes_follow_vim() {
+        ex(r"a\rb", "", "a\nb");
+        ex("a\rb", "", "a\nb");
+        ex("a\\\rb", "", "a\rb");
+        ex(r"a\nb", "", "a\0b");
+        ex(r"\\r", "", "\\r");
+        ex("&", "x\ry", "x\ry");
     }
 
     /// A pending one-char modifier wins over an active region for exactly one char, then the region
