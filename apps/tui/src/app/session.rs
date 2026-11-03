@@ -11,11 +11,14 @@ use std::path::PathBuf;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal as ct_terminal;
 
-use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Workspace};
+use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Trace, Workspace};
 
-use crate::app::dispatch::{is_ctrl, open_file_into_buffer, run_cmd, run_ex, BufferFile, Files};
+use crate::app::dispatch::{
+    buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, match_count_message, may_quit,
+    open_file_into_buffer, quit_window, regex_error_msg, run_cmd, save, BufferFile, Files,
+};
 use crate::app::lsp_coordinator::LspCoordinator;
-use crate::input::{parse_ex, Ex, Feed, InputEngine, Pending, ReadSource};
+use crate::input::{parse_ex, BufTarget, Ex, Feed, InputEngine, Pending, ReadSource};
 use crate::terminal::guard::TermGuard;
 use crate::ui::palette::focused_context;
 use crate::ui::picker::{PickOutcome, Picker};
@@ -2037,8 +2040,9 @@ impl Session {
         }
     }
 
-    /// Run ONE Ex command (a `|`-free piece of the typed line): the Ex commands that need session state
-    /// beyond `run_ex`'s.
+    /// Run ONE Ex command (a `|`-free piece of the typed line). This is the single Ex dispatch (#892):
+    /// every `Ex` variant has exactly one arm here, so a new command cannot land in a match that never sees
+    /// it.
     fn execute_ex_one(&mut self, text: String, frame: &FrameCtx) {
         let Session {
             ws,
@@ -2262,8 +2266,8 @@ impl Session {
             }
             // `:jumps` / `:changes` (F-003): position viewers over the jumplist / change list;
             // Enter jumps. Both share the `pos_picker` overlay (never open at once).
-            Ex::Jumps | Ex::Changes => {
-                let positions = if matches!(parse_ex(&text), Ex::Jumps) {
+            ex @ (Ex::Jumps | Ex::Changes) => {
+                let positions = if matches!(ex, Ex::Jumps) {
                     ws.jumps_snapshot()
                 } else {
                     ws.changes_snapshot()
@@ -2299,24 +2303,27 @@ impl Session {
                     *status = "terminal is not supported on this platform".to_string();
                 }
             }
-            // Lang-Arg map maintenance (F-027): the map is engine state, so it is applied here
-            // where `engine` is in scope, not in `run_ex` (which owns only workspace/file state).
+            // Lang-Arg map maintenance (F-027): the map is engine state.
             Ex::Lmap { lhs, rhs } => engine.set_lang_mapping(lhs, rhs),
             Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),
-            // `:[range]normal[!] {keys}` replays the key payload through the input `engine` (in scope
-            // here, not in `run_ex`) → the same `Command` pipeline as typed keys / macro replay.
+            // `:[range]normal[!] {keys}` replays the key payload through the input `engine` → the same
+            // `Command` pipeline as typed keys / macro replay.
             Ex::Normal { range, keys, .. } => {
                 crate::app::dispatch::run_normal(
                     engine, ws, range, &keys, files, recorded, status, quit,
                 );
             }
-            // `:g/pat/normal[!] {keys}` — a `:g` whose payload replays keys per marked line, so it
-            // needs the input `engine` (in scope here, not in `run_ex`). The `d`/`s` payloads have no
-            // engine dependency and fall through to `run_ex`'s core two-pass below.
-            Ex::Global(ref spec)
-                if matches!(spec.cmd, crate::input::GlobalPayload::Normal { .. }) =>
-            {
-                if let crate::input::GlobalPayload::Normal { keys, .. } = &spec.cmd {
+            // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window. The `d`/`s`
+            // payloads run in core; a `normal` payload replays keys per marked line through the engine.
+            Ex::Global(spec) => match &spec.cmd {
+                crate::input::GlobalPayload::Core(cmd) => {
+                    *status = match ws.global(spec.range, &spec.pattern, spec.negate, cmd) {
+                        Ok(0) => format!("E486: pattern not found: {}", spec.pattern),
+                        Ok(n) => format!("{n} lines changed"),
+                        Err(e) => regex_error_msg(&e),
+                    };
+                }
+                crate::input::GlobalPayload::Normal { keys, .. } => {
                     crate::app::dispatch::run_global_normal(
                         engine,
                         ws,
@@ -2330,9 +2337,9 @@ impl Session {
                         quit,
                     );
                 }
-            }
-            // `:checkhealth` (F-030): gather the frontend snapshot HERE (guard/profile/highlighter
-            // are in scope, not in `run_ex`) and render the report's one-line summary into status.
+            },
+            // `:checkhealth` (F-030): gather the frontend snapshot (guard/profile/highlighter) and render
+            // the report's one-line summary into status.
             Ex::CheckHealth => {
                 let inputs = health::HealthInputs {
                     profile: profile_name,
@@ -2356,18 +2363,17 @@ impl Session {
             }
             // `:earlier`/`:later` walk chronological undo time by recording + applying N of the
             // g-/g+ commands (done HERE so they land in `recorded` for trace fidelity).
-            Ex::Earlier(n) | Ex::Later(n) => {
-                // The pattern binds `n` but not the direction; recover it from the parsed command.
-                let older = matches!(parse_ex(&text), Ex::Earlier(_));
-                let cmd = if older {
-                    Command::UndoOlder
-                } else {
-                    Command::UndoNewer
-                };
+            Ex::Earlier(n) => {
                 for _ in 0..n {
-                    run_cmd(cmd.clone(), ws, files, recorded, status, quit);
+                    run_cmd(Command::UndoOlder, ws, files, recorded, status, quit);
                 }
-                *status = format!("{n} change(s) {}", if older { "earlier" } else { "later" });
+                *status = format!("{n} change(s) earlier");
+            }
+            Ex::Later(n) => {
+                for _ in 0..n {
+                    run_cmd(Command::UndoNewer, ws, files, recorded, status, quit);
+                }
+                *status = format!("{n} change(s) later");
             }
             // `:e {file}` opens a file into a new buffer (F-007) — shared with the file picker. Naming the
             // focused buffer's own file (`:e %`) re-edits it, as in nvim: re-read from disk when unmodified,
@@ -2387,8 +2393,8 @@ impl Session {
             // `:e!` reloads the focused buffer's file from disk, discarding unsaved changes.
             Ex::EditReload => *status = reload_focused_file(ws, files),
             // `:[addr]r {file}` / `:[addr]r !{cmd}` — read a file's contents (pure IO) or a shell
-            // command's stdout below the addressed line. Done HERE (not in `run_ex`) because the read
-            // is IMPURE (fs / process); core only splices the resulting bytes. The cursor lands on the
+            // command's stdout below the addressed line. The read is IMPURE (fs / process) and stays in
+            // the frontend; core only splices the resulting bytes. The cursor lands on the
             // FIRST inserted line for a file read, the LAST for a command read (nvim v0.12.4 quirk).
             Ex::Read { addr, source } => match source {
                 ReadSource::File(path) => match persist::read_file(std::path::Path::new(&path)) {
@@ -2451,8 +2457,7 @@ impl Session {
                 }
                 Err(e) => *status = e.to_string(),
             },
-            // `:bd` deletes the focused buffer — done HERE so the buffer's `files`/highlighter
-            // entries are dropped (both are `&mut` in scope, not in `run_ex`). Guards unsaved
+            // `:bd` deletes the focused buffer and drops its `files`/highlighter entries. Guards unsaved
             // changes with E89 unless `!` forces it.
             Ex::BufferDelete { force } => {
                 let id = ws.focused_buffer();
@@ -2486,28 +2491,244 @@ impl Session {
                     None => "no previous substitute".to_string(),
                 };
             }
-            mut ex => {
-                // An empty `:s` pattern reuses the last search (`/`/`*`), exactly as Vim does.
+            // `:[range]s/pat/rep/flags` (F-009 #2). An empty pattern reuses the last search (`/`/`*`), as
+            // Vim does, and a non-empty one is remembered so `&` can repeat it.
+            mut ex @ Ex::Substitute(_) => {
                 crate::input::reuse_last_search(&mut ex, engine.last_search());
-                // Record a `:s` so `&` can repeat it (Vim). Only a non-empty pattern is worth
-                // remembering (an empty one that could not be filled has nothing to repeat).
-                if let Ex::Substitute(spec) = &ex {
-                    if !spec.pattern.is_empty() {
-                        *last_substitute = Some((
-                            spec.pattern.clone(),
-                            spec.replacement.clone(),
-                            ruse_core::SubFlags {
-                                global: spec.global,
-                                ignore_case: spec.ignore_case,
-                            },
-                        ));
-                    }
+                let Ex::Substitute(spec) = ex else {
+                    unreachable!("bound by the arm's pattern")
+                };
+                let flags = ruse_core::SubFlags {
+                    global: spec.global,
+                    ignore_case: spec.ignore_case,
+                };
+                if !spec.pattern.is_empty() {
+                    *last_substitute =
+                        Some((spec.pattern.clone(), spec.replacement.clone(), flags));
                 }
-                run_ex(
-                    &ex, ws, files, initial, recorded, status, quit, confirm, *fixeol_on,
-                )
+                if spec.count_only {
+                    // `n`: REPORT ONLY — count the matches and echo the tally, editing nothing (Vim `:s///n`).
+                    // Overrides `c` (like Vim). `substitute_count` borrows `&`, so no edit / undo / cursor move.
+                    *status = match ws.substitute_count(spec.range, &spec.pattern, flags) {
+                        Ok(out) if out.replacements == 0 => {
+                            format!("E486: pattern not found: {}", spec.pattern)
+                        }
+                        Ok(out) => match_count_message(out.replacements, out.lines),
+                        Err(e) => regex_error_msg(&e),
+                    };
+                } else if spec.confirm {
+                    // `c`: compute the matches and hand control to the interactive confirm loop (F-009 #2).
+                    match ws.substitute_preview(spec.range, &spec.pattern, &spec.replacement, flags)
+                    {
+                        Ok(subs) if subs.is_empty() => {
+                            *status = format!("E486: pattern not found: {}", spec.pattern);
+                        }
+                        Ok(subs) => *confirm = Some(Confirm::new(subs)),
+                        Err(e) => *status = regex_error_msg(&e),
+                    }
+                } else {
+                    *status =
+                        match ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags) {
+                            Ok(out) if out.replacements == 0 => {
+                                format!("E486: pattern not found: {}", spec.pattern)
+                            }
+                            Ok(out) => {
+                                format!("{} substitutions on {} lines", out.replacements, out.lines)
+                            }
+                            Err(e) => regex_error_msg(&e),
+                        };
+                }
             }
+            Ex::Save => {
+                save(ws, files, status, *fixeol_on);
+            }
+            Ex::Quit => quit_window(ws, status, quit, false),
+            Ex::QuitForce => quit_window(ws, status, quit, true),
+            // `:wq` / `:x` close the window only after a successful save (#842): no file, or a failed write,
+            // keeps it open. `:x` writes only a modified buffer.
+            Ex::SaveQuit => {
+                if save(ws, files, status, *fixeol_on) {
+                    quit_window(ws, status, quit, false);
+                }
+            }
+            Ex::ExitWrite => {
+                if !ws.focused().doc.is_modified() || save(ws, files, status, *fixeol_on) {
+                    quit_window(ws, status, quit, false);
+                }
+            }
+            Ex::QuitAll { force: true } => *quit = true,
+            Ex::QuitAll { force: false } => *quit = may_quit(ws, status, false),
+            Ex::CQuit(code) => {
+                crate::app::dispatch::set_exit_status(code);
+                *quit = true;
+            }
+            Ex::Hide | Ex::Close => {
+                if !ws.close_focused() {
+                    *status = "E444: Cannot close last window".into();
+                }
+            }
+            // F-007 window commands: split the focused window onto the same buffer, or close it.
+            Ex::Split => {
+                ws.split(SplitDir::Horizontal);
+                *status = "window split".into();
+            }
+            Ex::VSplit => {
+                ws.split(SplitDir::Vertical);
+                *status = "window vsplit".into();
+            }
+            Ex::Only => {
+                *status = match ws.only() {
+                    0 => "already one window".into(),
+                    1 => "1 window closed".into(),
+                    n => format!("{n} windows closed"),
+                };
+            }
+            Ex::SaveTrace(p) => {
+                let trace = Trace::record(initial, recorded.to_vec());
+                match std::fs::write(&p, trace.to_text()) {
+                    Ok(()) => *status = format!("trace saved: {p} ({} commands)", recorded.len()),
+                    Err(e) => *status = format!("trace save failed: {e}"),
+                }
+            }
+            // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
+            Ex::Delete(range) => {
+                let n = ws.delete_lines(range);
+                *status = if n == 1 {
+                    "1 line deleted".into()
+                } else {
+                    format!("{n} lines deleted")
+                };
+            }
+            // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
+            Ex::Yank(range) => {
+                let n = ws.yank_lines(range);
+                *status = if n == 1 {
+                    "1 line yanked".into()
+                } else {
+                    format!("{n} lines yanked")
+                };
+            }
+            // `:[range]j[oin][!]` — join the range's lines into one, reusing the core `J`/`gJ` join (no range =
+            // the current line, which joins with the next). `bang` is the raw `gJ` form.
+            Ex::Join { range, bang } => {
+                let n = ws.join_lines(range, bang);
+                *status = if n <= 1 {
+                    String::new()
+                } else {
+                    format!("{n} lines joined")
+                };
+            }
+            // `:[range]m {addr}` — move the range's lines to after the destination line.
+            Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, dest) => {
+                *status = "E16: Invalid range".into();
+            }
+            Ex::Move(range, dest) => {
+                *status = match ws.move_lines(range, dest) {
+                    Some(1) => "1 line moved".into(),
+                    Some(n) => format!("{n} lines moved"),
+                    None => "E134: Cannot move a range of lines into itself".into(),
+                };
+            }
+            // `:[range]t {addr}` / `:copy` — copy the range's lines to after the destination line.
+            Ex::Copy(range, dest) => {
+                *status = match ws.copy_lines(range, dest) {
+                    Some(1) => "1 line copied".into(),
+                    Some(n) => format!("{n} lines copied"),
+                    None => "E486: invalid copy".into(),
+                };
+            }
+            // `:[range]>` / `:[range]<` — shift the range's lines one indent level per repeated verb char,
+            // reusing the core `>>`/`<<` shift (no range = the current line).
+            Ex::Shift {
+                range,
+                left,
+                levels,
+            } => {
+                let n = ws.shift_lines(range, left, levels);
+                *status = if n == 1 {
+                    String::new()
+                } else {
+                    format!("{n} lines {}ed 1 time", if left { '<' } else { '>' })
+                };
+            }
+            // `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed
+            // line (a charwise register is still put as whole lines — the linewise-forcing rule).
+            Ex::Put { addr, reg } => {
+                let n = ws.put_lines(addr, reg);
+                *status = if n == 1 {
+                    "1 more line".into()
+                } else if n > 1 {
+                    format!("{n} more lines")
+                } else {
+                    String::new()
+                };
+            }
+            // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
+            Ex::Sort(range, spec) => {
+                let removed = ws.sort_lines(range, &spec);
+                *status = if removed > 0 {
+                    format!("sorted, {removed} fewer lines")
+                } else {
+                    "sorted".into()
+                };
+            }
+            // `:set {option}` — set one editor option on the focused view.
+            Ex::Set(opt) => {
+                ws.set_option(opt);
+                *status = format!("{opt:?}");
+            }
+            // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
+            // buffers; `:bn`/`:bp` cycle; `:b {n}`/`:b#` switch by number / to the alternate.
+            Ex::Enew => {
+                let id = ws.add_buffer(Vec::new(), None);
+                ws.focus_buffer(id);
+                *status = format!("[No Name] (buffer {})", id.0);
+            }
+            Ex::Buffers => *status = buffer_list_line(ws),
+            Ex::BufferNext => {
+                ws.cycle_buffer(true);
+                *status = focused_buffer_label(ws);
+            }
+            Ex::BufferPrev => {
+                ws.cycle_buffer(false);
+                *status = focused_buffer_label(ws);
+            }
+            Ex::Buffer(target) => {
+                let id = match target {
+                    BufTarget::Number(n) => Some(DocumentId(n)),
+                    BufTarget::Alternate => ws.alternate(),
+                };
+                match id {
+                    Some(id) if ws.focus_buffer(id) => *status = focused_buffer_label(ws),
+                    Some(id) => *status = format!("E86: buffer {} does not exist", id.0),
+                    None => *status = "E23: no alternate buffer".into(),
+                }
+            }
+            Ex::Unknown(s) => *status = format!("unknown command: {s}"),
         }
+    }
+
+    /// Test seam: run ONE Ex command (`line`, no leading `:`) against `ws` through the session's Ex
+    /// dispatch, as a typed `:{line}<CR>` would after the command line closes. `ws` is moved into a fresh
+    /// session for the call and back out after. Returns the session for its status / quit / confirm.
+    #[cfg(test)]
+    pub(crate) fn ex_on(ws: &mut Workspace, line: &str) -> Session {
+        let mut s = Session::new(SessionInit {
+            path: None,
+            fmt: persist::encoding::FileFormat::default(),
+            initial: ws.focused().doc.bytes().to_vec(),
+            status: String::new(),
+            profile: "vim",
+            term: TermInfo::default(),
+            cwd: PathBuf::new(),
+            trusted: false,
+            rescue: false,
+        });
+        std::mem::swap(&mut s.ws, ws);
+        let frame = s.pre_frame(80, 24);
+        s.execute_ex_one(line.to_string(), &frame);
+        std::mem::swap(&mut s.ws, ws);
+        s
     }
 }
 

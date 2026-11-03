@@ -114,7 +114,7 @@ pub enum Ex {
     ///   GIVEN flags REPLACING the old ones (`flags = Some(parsed)`; empty flag run = default = the bare `:s`).
     ///
     /// No range = the current line. The core keeps no `:s` history, so — like `Command::RepeatSubstituteLine`
-    /// — the FRONTEND resolves this against its last-substitute state; `run_ex` treats it as a no-op.
+    /// — the FRONTEND resolves this against its last-substitute state.
     RepeatSubstitute {
         range: SubRange,
         flags: Option<ruse_core::SubFlags>,

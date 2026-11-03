@@ -9,14 +9,12 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{
-    Command, DocumentId, Effect, Mode, SplitDir, SubRange, Trace, TransactionOrigin, Workspace,
-};
+use ruse_core::{Command, DocumentId, Effect, Mode, SubRange, TransactionOrigin, Workspace};
 
 use crate::highlight;
-use crate::input::{BufTarget, Ex, Feed, InputEngine};
+use crate::input::{Feed, InputEngine};
 use crate::persist;
-use crate::ui::prompts::{prompt_recovery, Confirm, RecoveryChoice};
+use crate::ui::prompts::{prompt_recovery, RecoveryChoice};
 
 /// The per-buffer syntax-highlighter registry (F-007 / F-015), keyed by [`DocumentId`]. Shared by the
 /// session loop and the LSP coordinator (both open buffers that need a highlighter).
@@ -516,300 +514,6 @@ pub(crate) fn resolve_ex_range(line: &str, ws: &Workspace) -> Result<ExRange, Ex
     Ok(ExRange::Line(format!("{range}{tail}")))
 }
 
-// The ex-line dispatcher legitimately needs the full editor context (buffer, file identity+format,
-// the trace baseline+recording, and the status/quit sinks); grouping them into a struct would only
-// move the wiring, not reduce it.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn run_ex(
-    ex: &Ex,
-    ws: &mut Workspace,
-    files: &Files,
-    initial: &[u8],
-    recorded: &[Command],
-    status: &mut String,
-    quit: &mut bool,
-    confirm: &mut Option<Confirm>,
-    fixeol: bool,
-) {
-    match ex {
-        Ex::Save => {
-            save(ws, files, status, fixeol);
-        }
-        Ex::Quit => quit_window(ws, status, quit, false),
-        Ex::QuitForce => quit_window(ws, status, quit, true),
-        // `:wq` / `:x` close the window only after a successful save (#842): no file, or a failed write,
-        // keeps it open. `:x` writes only a modified buffer.
-        Ex::SaveQuit => {
-            if save(ws, files, status, fixeol) {
-                quit_window(ws, status, quit, false);
-            }
-        }
-        Ex::ExitWrite => {
-            if !ws.focused().doc.is_modified() || save(ws, files, status, fixeol) {
-                quit_window(ws, status, quit, false);
-            }
-        }
-        Ex::QuitAll { force: true } => *quit = true,
-        Ex::QuitAll { force: false } => *quit = may_quit(ws, status, false),
-        Ex::CQuit(code) => {
-            EXIT_STATUS.store(*code, Ordering::Relaxed);
-            *quit = true;
-        }
-        Ex::Hide => {
-            if !ws.close_focused() {
-                *status = "E444: Cannot close last window".into();
-            }
-        }
-        // F-007 window commands: split the focused window onto the same buffer, or close it.
-        Ex::Split => {
-            ws.split(SplitDir::Horizontal);
-            *status = "window split".into();
-        }
-        Ex::VSplit => {
-            ws.split(SplitDir::Vertical);
-            *status = "window vsplit".into();
-        }
-        Ex::Close => {
-            if !ws.close_focused() {
-                *status = "E444: Cannot close last window".into();
-            }
-        }
-        Ex::Only => {
-            let closed = ws.only();
-            *status = match closed {
-                0 => "already one window".into(),
-                1 => "1 window closed".into(),
-                n => format!("{n} windows closed"),
-            };
-        }
-        Ex::SaveTrace(p) => {
-            let trace = Trace::record(initial, recorded.to_vec());
-            match fs::write(p, trace.to_text()) {
-                Ok(()) => *status = format!("trace saved: {p} ({} commands)", recorded.len()),
-                Err(e) => *status = format!("trace save failed: {e}"),
-            }
-        }
-        // `:[range]s/pat/rep/flags` (F-009 #2). The `c` (confirm) flag is the interactive loop (PR-c2);
-        // for now it is declined rather than silently applied.
-        Ex::Substitute(spec) => {
-            let flags = ruse_core::SubFlags {
-                global: spec.global,
-                ignore_case: spec.ignore_case,
-            };
-            if spec.count_only {
-                // `n`: REPORT ONLY — count the matches and echo the tally, editing nothing (Vim `:s///n`).
-                // Overrides `c` (like Vim). `substitute_count` borrows `&`, so no edit / undo / cursor move.
-                *status = match ws.substitute_count(spec.range, &spec.pattern, flags) {
-                    Ok(out) if out.replacements == 0 => {
-                        format!("E486: pattern not found: {}", spec.pattern)
-                    }
-                    Ok(out) => match_count_message(out.replacements, out.lines),
-                    Err(e) => regex_error_msg(&e),
-                };
-            } else if spec.confirm {
-                // `c`: compute the matches and hand control to the interactive confirm loop (F-009 #2).
-                match ws.substitute_preview(spec.range, &spec.pattern, &spec.replacement, flags) {
-                    Ok(subs) if subs.is_empty() => {
-                        *status = format!("E486: pattern not found: {}", spec.pattern);
-                    }
-                    Ok(subs) => *confirm = Some(Confirm::new(subs)),
-                    Err(e) => *status = regex_error_msg(&e),
-                }
-            } else {
-                *status = match ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags) {
-                    Ok(out) if out.replacements == 0 => {
-                        format!("E486: pattern not found: {}", spec.pattern)
-                    }
-                    Ok(out) => format!("{} substitutions on {} lines", out.replacements, out.lines),
-                    Err(e) => regex_error_msg(&e),
-                };
-            }
-        }
-        // Bare `:s` / `:s {flags}` / `:&` / `:&&` — repeat the last `:s`. Resolved in the run loop against the
-        // last-substitute history (like `&`/`g&`), which `run_ex` cannot see; a no-op here.
-        Ex::RepeatSubstitute { .. } => {}
-        // `:[range]d` — delete the range's lines (no range = the current line) as one undo group.
-        Ex::Delete(range) => {
-            let n = ws.delete_lines(*range);
-            *status = if n == 1 {
-                "1 line deleted".into()
-            } else {
-                format!("{n} lines deleted")
-            };
-        }
-        // `:[range]y` — yank the range's lines linewise into the unnamed register (like `yy`).
-        Ex::Yank(range) => {
-            let n = ws.yank_lines(*range);
-            *status = if n == 1 {
-                "1 line yanked".into()
-            } else {
-                format!("{n} lines yanked")
-            };
-        }
-        // `:[range]j[oin][!]` — join the range's lines into one, reusing the core `J`/`gJ` join (no range =
-        // the current line, which joins with the next). `bang` is the raw `gJ` form.
-        Ex::Join { range, bang } => {
-            let n = ws.join_lines(*range, *bang);
-            *status = if n <= 1 {
-                String::new()
-            } else {
-                format!("{n} lines joined")
-            };
-        }
-        // `:[range]m {addr}` — move the range's lines to after the destination line.
-        Ex::Move(_, dest) | Ex::Copy(_, dest) if !dest_in_range(ws, *dest) => {
-            *status = "E16: Invalid range".into();
-        }
-        Ex::Move(range, dest) => {
-            *status = match ws.move_lines(*range, *dest) {
-                Some(1) => "1 line moved".into(),
-                Some(n) => format!("{n} lines moved"),
-                None => "E134: Cannot move a range of lines into itself".into(),
-            };
-        }
-        // `:[range]t {addr}` / `:copy` — copy the range's lines to after the destination line.
-        Ex::Copy(range, dest) => {
-            *status = match ws.copy_lines(*range, *dest) {
-                Some(1) => "1 line copied".into(),
-                Some(n) => format!("{n} lines copied"),
-                None => "E486: invalid copy".into(),
-            };
-        }
-        // `:[range]>` / `:[range]<` — shift the range's lines one indent level per repeated verb char,
-        // reusing the core `>>`/`<<` shift (no range = the current line).
-        Ex::Shift {
-            range,
-            left,
-            levels,
-        } => {
-            let n = ws.shift_lines(*range, *left, *levels);
-            *status = if n == 1 {
-                String::new()
-            } else {
-                format!("{n} lines {}ed 1 time", if *left { '<' } else { '>' })
-            };
-        }
-        // `:[line]put [reg]` — put a register's text LINEWISE as new whole line(s) after the addressed
-        // line (a charwise register is still put as whole lines — the linewise-forcing rule).
-        Ex::Put { addr, reg } => {
-            let n = ws.put_lines(*addr, *reg);
-            *status = if n == 1 {
-                "1 more line".into()
-            } else if n > 1 {
-                format!("{n} more lines")
-            } else {
-                String::new()
-            };
-        }
-        // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
-        Ex::Sort(range, spec) => {
-            let removed = ws.sort_lines(*range, spec);
-            *status = if removed > 0 {
-                format!("sorted, {removed} fewer lines")
-            } else {
-                "sorted".into()
-            };
-        }
-        // `:set {option}` — set one editor option on the focused view.
-        Ex::Set(opt) => {
-            ws.set_option(*opt);
-            *status = format!("{opt:?}");
-        }
-        // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window. The `d`/`s`
-        // payloads run in core here; a `normal` payload drives the input engine and is handled in the run
-        // loop (`run_global_normal`), never reaching here — a `.` no-op keeps the match exhaustive.
-        Ex::Global(spec) => match &spec.cmd {
-            crate::input::GlobalPayload::Core(cmd) => {
-                *status = match ws.global(spec.range, &spec.pattern, spec.negate, cmd) {
-                    Ok(0) => format!("E486: pattern not found: {}", spec.pattern),
-                    Ok(n) => format!("{n} lines changed"),
-                    Err(e) => regex_error_msg(&e),
-                };
-            }
-            crate::input::GlobalPayload::Normal { .. } => {}
-        },
-        // `:noh` is handled in the run loop (it clears the frontend's search highlight); never reaches here.
-        Ex::NoHighlight => {}
-        // `:set (no)hlsearch/incsearch` are handled in the run loop (frontend render flags); never here.
-        Ex::SetHlSearch(_) | Ex::SetIncSearch(_) => {}
-        // `:set (no)fixeol` is handled in the run loop (a frontend write flag threaded into `save`); never here.
-        Ex::SetFixEol(_) => {}
-        // `:set (no)tildeop` is handled in the run loop (an input-engine option); never here.
-        Ex::SetTildeOp(_) => {}
-        // `:set foldmethod/foldlevel/foldenable` are handled in the run loop (frontend fold state); never here.
-        Ex::SetFoldMethod(_) | Ex::SetFoldLevel(_) | Ex::SetFoldEnable(_) => {}
-        // `:registers` is handled in the run loop (it opens the frontend-owned register-viewer picker).
-        Ex::Registers => {}
-        // `:digraphs` is handled in the run loop (it opens the frontend-owned digraph-listing picker).
-        Ex::Digraphs => {}
-        // `:marks` is handled in the run loop (it opens the frontend-owned marks-viewer picker).
-        Ex::Marks => {}
-        // `:jumps` / `:changes` are handled in the run loop (frontend-owned position-viewer picker).
-        Ex::Jumps | Ex::Changes => {}
-        // `:ascii`/`:as` is handled in the run loop (it reads the focused buffer + cursor and sets status).
-        Ex::Ascii => {}
-        // `:lmap`/`:lunmap` are handled in the run loop (they mutate engine-owned Lang-Arg state — the
-        // `engine` this fn does not borrow); never reach here.
-        Ex::Lmap { .. } | Ex::Lunmap { .. } => {}
-        // `:checkhealth` is handled in the run loop (it reads the terminal-cap ledger + profile this fn
-        // does not borrow); never reaches here.
-        Ex::CheckHealth => {}
-        // `:e {file}` / `:e!` are handled in the run loop (they read the file + mutate the buffer and the
-        // `files`/highlighter registries this fn only borrows immutably); never reach here.
-        Ex::Edit(_) | Ex::EditReload => {}
-        // `:r`/`:read`, the `:{range}!` filter, and `:!` are handled in the run loop: they do frontend file
-        // IO / shell-out (which `run_ex`, a pure caller over `Workspace`, must not do); never reach here.
-        Ex::Read { .. } | Ex::Filter { .. } | Ex::Shell(_) => {}
-        // `:bd` is handled in the run loop (it drops the deleted buffer's `files`/highlighter entries,
-        // which this fn only borrows immutably); never reaches here.
-        Ex::BufferDelete { .. } => {}
-        // `:earlier`/`:later` are handled in the run loop (they record + apply undo-time commands into
-        // the `recorded` stream this fn only borrows immutably); never reach here.
-        Ex::Earlier(_) | Ex::Later(_) => {}
-        // F-007 multi-buffer navigation. `:enew` opens a scratch buffer and focuses it; `:ls` lists the
-        // buffers; `:bn`/`:bp` cycle; `:b {n}`/`:b#` switch by number / to the alternate.
-        Ex::Enew => {
-            let id = ws.add_buffer(Vec::new(), None);
-            ws.focus_buffer(id);
-            *status = format!("[No Name] (buffer {})", id.0);
-        }
-        Ex::Buffers => *status = buffer_list_line(ws),
-        Ex::BufferNext => {
-            ws.cycle_buffer(true);
-            *status = focused_buffer_label(ws);
-        }
-        Ex::BufferPrev => {
-            ws.cycle_buffer(false);
-            *status = focused_buffer_label(ws);
-        }
-        Ex::Buffer(target) => {
-            let id = match target {
-                BufTarget::Number(n) => Some(ruse_core::DocumentId(*n)),
-                BufTarget::Alternate => ws.alternate(),
-            };
-            match id {
-                Some(id) if ws.focus_buffer(id) => *status = focused_buffer_label(ws),
-                Some(id) => *status = format!("E86: buffer {} does not exist", id.0),
-                None => *status = "E23: no alternate buffer".into(),
-            }
-        }
-        // `:terminal` (F-011) / `:fmt` / `:rename` / `:references` (F-014) / `:trust` (D-058) are handled in
-        // `session::run`
-        // (they need the terminals / lsp maps); they never reach here, but the match stays exhaustive.
-        Ex::Terminal
-        | Ex::Format
-        | Ex::Rename(_)
-        | Ex::References
-        | Ex::CodeAction
-        | Ex::Diagnostics
-        | Ex::Trust => {}
-        // `:[range]normal` is handled in the run loop (it drives the input `engine`, which this fn does not
-        // borrow, to replay the keys through the same pipeline); never reaches here.
-        Ex::Normal { .. } => {}
-        Ex::Unknown(s) => *status = format!("unknown command: {s}"),
-    }
-}
-
 /// A short label for the focused buffer (name + `[+]` when modified) — the status after `:b`/`:bn`/`:bp`.
 pub(crate) fn focused_buffer_label(ws: &Workspace) -> String {
     let id = ws.focused_buffer();
@@ -862,9 +566,14 @@ pub(crate) fn exit_status() -> u8 {
     EXIT_STATUS.load(Ordering::Relaxed)
 }
 
+/// Record the exit status `:cq [N]` asked for.
+pub(crate) fn set_exit_status(code: u8) {
+    EXIT_STATUS.store(code, Ordering::Relaxed);
+}
+
 /// Whether a `:m`/`:t` destination lands inside the focused buffer. A relative one (`:m+5`, `:m$-9`) can
 /// fall off either end, which Vim refuses with E16 rather than clamping.
-fn dest_in_range(ws: &Workspace, dest: ruse_core::LineAddr) -> bool {
+pub(crate) fn dest_in_range(ws: &Workspace, dest: ruse_core::LineAddr) -> bool {
     let b = ws.focused().doc.bytes();
     let cursor = ws.focused().view.cursor().min(b.len());
     let cursor_line = b[..cursor].iter().filter(|&&c| c == b'\n').count();
@@ -987,7 +696,8 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
-    use ruse_core::Command;
+    use crate::input::Ex;
+    use ruse_core::{Command, SplitDir};
 
     /// #1069: a C0 punctuation chord matches in both encodings — the kitty protocol's `CTRL-]` and the
     /// `CTRL-5` crossterm decodes from a legacy terminal's 0x1d — and a letter chord only as itself.
@@ -1013,28 +723,11 @@ mod dispatch_tests {
     /// `:q` refuses (E37) once the focused buffer is modified; `:q!` quits regardless; a clean `:q` quits.
     #[test]
     fn quit_guards_unsaved_changes_and_bang_overrides() {
-        let files = Files::new();
-        let run = |ex: &Ex, ws: &mut Workspace| {
-            let mut status = String::new();
-            let mut quit = false;
-            let mut confirm = None;
-            run_ex(
-                ex,
-                ws,
-                &files,
-                b"",
-                &[],
-                &mut status,
-                &mut quit,
-                &mut confirm,
-                false,
-            );
-            (status, quit)
-        };
+        let run = |line: &str, ws: &mut Workspace| ex_run(ws, line);
 
         // Clean buffer → `:q` quits.
         let mut ws = Workspace::new(b"hello\n".to_vec());
-        let (_, quit) = run(&Ex::Quit, &mut ws);
+        let (_, quit) = run("q", &mut ws);
         assert!(quit, "clean buffer quits on :q");
 
         // Modify the buffer → `:q` refuses with E37, `:q!` quits.
@@ -1042,30 +735,17 @@ mod dispatch_tests {
         ws.apply(&Command::EnterInsert);
         ws.apply(&Command::InsertChar('x'));
         assert!(ws.focused().doc.is_modified(), "edit dirtied the buffer");
-        let (status, quit) = run(&Ex::Quit, &mut ws);
+        let (status, quit) = run("q", &mut ws);
         assert!(!quit, ":q does not quit a dirty buffer");
         assert!(status.starts_with("E37"), "E37 surfaced: {status}");
-        let (_, quit) = run(&Ex::QuitForce, &mut ws);
+        let (_, quit) = run("q!", &mut ws);
         assert!(quit, ":q! discards changes and quits");
     }
 
-    /// Run one ex line against `ws`, returning `(status, quit)`.
+    /// Run one ex line against `ws` through the session's Ex dispatch, returning `(status, quit)`.
     fn ex_run(ws: &mut Workspace, line: &str) -> (String, bool) {
-        let files = Files::new();
-        let mut status = String::new();
-        let mut quit = false;
-        run_ex(
-            &crate::input::parse_ex(line),
-            ws,
-            &files,
-            b"",
-            &[],
-            &mut status,
-            &mut quit,
-            &mut None,
-            false,
-        );
-        (status, quit)
+        let s = crate::app::session::Session::ex_on(ws, line);
+        (s.status, s.quit)
     }
 
     /// A workspace with a.txt focused and a MODIFIED b.txt loaded but hidden (`:split`, `:e b.txt`, `x`,
@@ -1505,28 +1185,12 @@ mod dispatch_tests {
     }
 
     /// Drive the ex executor END TO END for `:[range]j[oin][!]`: parse the raw line with `parse_ex` and run
-    /// it through `run_ex` exactly as the run loop does. `parity_compare` cannot drive ex commands, so each
+    /// it through the session's Ex dispatch exactly as the run loop does. `parity_compare` cannot drive ex commands, so each
     /// expectation is the buffer nvim v0.12.4 produces for the SAME line (`nvim -u NONE`, confirmed by hand).
     fn run_ex_oracle(buf: &str, cursor0: usize, line: &str) -> (String, usize) {
         let mut ws = Workspace::new(buf.as_bytes().to_vec());
         ws.place_focused_cursor(cursor0);
-        let files = Files::new();
-        let recorded: Vec<Command> = Vec::new();
-        let mut status = String::new();
-        let mut quit = false;
-        let mut confirm = None;
-        let ex = crate::input::parse_ex(line);
-        run_ex(
-            &ex,
-            &mut ws,
-            &files,
-            buf.as_bytes(),
-            &recorded,
-            &mut status,
-            &mut quit,
-            &mut confirm,
-            false,
-        );
+        ex_run(&mut ws, line);
         let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
         (bytes, ws.focused().view.cursor())
     }
@@ -1571,26 +1235,10 @@ mod dispatch_tests {
         let src = "foo bar foo\nfoo baz\nno match here\nfoo foo foo\n";
         let mut ws = Workspace::new(src.as_bytes().to_vec());
         ws.place_focused_cursor(5); // must not move
-        let files = Files::new();
-        let recorded: Vec<Command> = Vec::new();
-        let mut status = String::new();
-        let mut quit = false;
-        let mut confirm = None;
-        let ex = crate::input::parse_ex("%s/foo//gn");
-        run_ex(
-            &ex,
-            &mut ws,
-            &files,
-            src.as_bytes(),
-            &recorded,
-            &mut status,
-            &mut quit,
-            &mut confirm,
-            false,
-        );
-        assert_eq!(status, "6 matches on 3 lines", "nvim wording");
+        let s = crate::app::session::Session::ex_on(&mut ws, "%s/foo//gn");
+        assert_eq!(s.status, "6 matches on 3 lines", "nvim wording");
         assert!(
-            confirm.is_none(),
+            s.confirm.is_none(),
             "`n` overrides `c` — no confirm loop opens"
         );
         assert_eq!(ws.focused().doc.bytes(), src.as_bytes(), "buffer unchanged");
@@ -1605,19 +1253,7 @@ mod dispatch_tests {
         );
 
         // No-match reports E486 (nvim), still without editing.
-        let mut status = String::new();
-        let ex = crate::input::parse_ex("%s/zzz//gn");
-        run_ex(
-            &ex,
-            &mut ws,
-            &files,
-            src.as_bytes(),
-            &recorded,
-            &mut status,
-            &mut quit,
-            &mut confirm,
-            false,
-        );
+        let (status, _) = ex_run(&mut ws, "%s/zzz//gn");
         assert_eq!(status, "E486: pattern not found: zzz");
         assert_eq!(
             ws.focused().doc.bytes(),
