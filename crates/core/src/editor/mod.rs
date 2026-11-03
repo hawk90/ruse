@@ -184,6 +184,11 @@ pub struct View {
     /// First visible buffer row — this View's scroll position. View-local so two Views of one buffer
     /// scroll independently (F-007 acceptance #1). Maintained by the frontend viewport pass.
     top: usize,
+    /// Vim's window-local 'scroll' (the `CTRL-D`/`CTRL-U` amount) as `(lines, height)`: a count given to
+    /// `CTRL-D`/`CTRL-U` sets it, and it holds only while the window keeps the height it was set at (Vim
+    /// recomputes 'scroll' as half the height on a resize). `None` = half the window height. Frontend-owned,
+    /// like `top`.
+    scroll: Option<(usize, usize)>,
     cursor: usize,
     mode: Mode,
     /// Whether the previous command edited text — drives undo grouping: an edit right after a non-edit
@@ -285,6 +290,13 @@ pub struct View {
     /// Combined with the caret when the session is left, it bounds the inserted run for `[`/`]`. `None`
     /// outside a session. Snapped like the marks so a buffer-resizing edit under it stays valid.
     insert_start: Option<usize>,
+    /// Vim's `Insstart` column (char column) for `i_CTRL-G_j`/`k`: where the current insert run started —
+    /// the caret at Insert entry, or where an edit next happened after a caret jump inside Insert
+    /// (`insert_jumped`). Maintained in [`apply_command`].
+    insert_col: usize,
+    /// A caret jump (a cursor key, `CTRL-G j`, …) happened in Insert since the last edit, so the next edit
+    /// restarts `insert_col` there.
+    insert_jumped: bool,
     /// The jumplist (Vim): the cursor positions BEFORE each jump (search / `G` / `%` / a mark / paragraph),
     /// oldest → newest, bounded to [`MAX_CHANGES`]. Navigated by `CTRL-O` (older) / `CTRL-I` (newer) through
     /// [`jump_idx`]; recorded in [`apply_command`] and snapped every commit like the marks.
@@ -357,6 +369,7 @@ impl View {
         View {
             doc,
             top: 0,
+            scroll: None,
             cursor: 0,
             mode: Mode::Normal,
             last_was_edit: false,
@@ -390,6 +403,8 @@ impl View {
             change_start: None,
             change_end: None,
             insert_start: None,
+            insert_col: 0,
+            insert_jumped: false,
             jumps: Vec::new(),
             jump_idx: 0,
         }
@@ -591,6 +606,21 @@ impl View {
     /// Set this View's scroll position (frontend viewport pass).
     pub fn set_top(&mut self, top: usize) {
         self.top = top;
+    }
+
+    /// The `CTRL-D`/`CTRL-U` amount for a window `height` rows high (Vim's 'scroll'): the value a count last
+    /// set at this height, else half the height (at least 1).
+    #[must_use]
+    pub fn scroll(&self, height: usize) -> usize {
+        match self.scroll {
+            Some((lines, h)) if h == height => lines,
+            _ => (height / 2).max(1),
+        }
+    }
+
+    /// Set Vim's 'scroll' for a window `height` rows high (a count typed before `CTRL-D`/`CTRL-U`).
+    pub fn set_scroll(&mut self, lines: usize, height: usize) {
+        self.scroll = Some((lines, height));
     }
 
     /// The highlighted byte range `[start, end)` of the current charwise/linewise Visual selection over
@@ -2405,8 +2435,19 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     // A jump records the position it LEAVES onto the jumplist (Vim), so `CTRL-O` can return there.
     let jump_from = is_jump(cmd).then_some(st.view.cursor);
     prepare_selection_op(st, cmd);
+    let (entry_mode, entry_cursor, entry_rev) = (st.view.mode, st.view.cursor, st.doc.revision());
+    let entry_was_edit = st.view.last_was_edit;
+    let entry_col = {
+        let b = st.doc.bytes();
+        col_of(b, line_start(b, entry_cursor), entry_cursor)
+    };
     let p = plan(st, cmd);
     let effects = commit(st, p);
+    track_insert_start(st, cmd, entry_mode, entry_cursor, entry_rev, entry_col);
+    // `CTRL-G U` + `<Left>`/`<Right>` moves without starting a new undo group.
+    if matches!(cmd, Command::InsertCaretStep { .. }) {
+        st.view.last_was_edit = entry_was_edit;
+    }
     if let Some(from) = jump_from {
         st.view.push_jump(from);
     }
@@ -2428,6 +2469,34 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     }
     update_curswant(st, cmd);
     effects
+}
+
+/// Maintain Vim's `Insstart` column ([`View::insert_col`]) after a command: set at Insert entry; inside
+/// Insert a caret jump arms a restart and the next edit moves it to where that edit began (Vim's
+/// `stop_arrow`). `CTRL-G U` steps stay inside the run.
+fn track_insert_start(
+    st: &mut EditorState,
+    cmd: &Command,
+    entry_mode: Mode,
+    entry_cursor: usize,
+    entry_rev: crate::Revision,
+    entry_col: usize,
+) {
+    if !is_text_entry(st.view.mode) {
+        st.view.insert_jumped = false;
+        return;
+    }
+    if !is_text_entry(entry_mode) {
+        let b = st.doc.bytes();
+        st.view.insert_col = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
+        st.view.insert_jumped = false;
+    } else if st.doc.revision() != entry_rev {
+        if std::mem::take(&mut st.view.insert_jumped) {
+            st.view.insert_col = entry_col;
+        }
+    } else if st.view.cursor != entry_cursor && !matches!(cmd, Command::InsertCaretStep { .. }) {
+        st.view.insert_jumped = true;
+    }
 }
 
 /// Maintain [`EditorState::curswant`] after a command (Vim's curswant rule): a vertical move KEEPS the

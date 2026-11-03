@@ -249,7 +249,7 @@ impl Headless {
 ///
 /// Literal characters stand for themselves (an uppercase letter carries `SHIFT`, as crossterm reports
 /// it). Bracketed names, case-insensitive: `<Esc>`, `<CR>`/`<Enter>`/`<Return>`, `<BS>`, `<Tab>`,
-/// `<Space>`, `<lt>`, `<Del>`, `<Up>`/`<Down>`/`<Left>`/`<Right>`, `<Home>`/`<End>`, `<C-x>` (control),
+/// `<Space>`, `<lt>`, `<Del>`, `<Up>`/`<Down>`/`<Left>`/`<Right>`, `<Home>`/`<End>`, `<PageUp>`/`<PageDown>`, `<Insert>`, `<C-x>` (control),
 /// `<M-x>`/`<A-x>` (meta, i.e. `ESC x`), `<S-Right>` (shift on a special key, as crossterm reports a
 /// shifted arrow/`<Home>`/`<End>`), and combinations such as `<M-C-x>` or `<M-BS>`. Control keys
 /// fold as the terminal folds them: `<C-Space>`/`<C-@>` is `CTRL-Space`, `<C-\>`/`<C-]>`/`<C-^>`/`<C-_>`
@@ -320,12 +320,15 @@ fn base_key(name: &str, modified: bool) -> Option<KeyEvent> {
         "home" => KeyCode::Home,
         "end" => KeyCode::End,
         "insert" => KeyCode::Insert,
+        "pageup" => KeyCode::PageUp,
+        "pagedown" => KeyCode::PageDown,
         _ => return None,
     };
     Some(plain(code))
 }
 
-/// A bracketed name, with any `C-`/`M-`/`A-` prefixes applied as a legacy terminal encodes them.
+/// A bracketed name, with any `C-`/`M-`/`A-`/`S-` prefixes applied as a legacy terminal encodes them
+/// (`S-` only on the special keys, which xterm reports with a modifier parameter: `<S-Up>`, `<S-CR>`).
 fn named_key(name: &str) -> Option<KeyEvent> {
     let (mut ctrl, mut meta, mut shift, mut rest) = (false, false, false, name);
     loop {
@@ -368,6 +371,15 @@ fn control(base: KeyEvent, name: &str) -> KeyEvent {
         KeyCode::Char(']') => ctrl('5'),
         KeyCode::Char('^') => ctrl('6'),
         KeyCode::Char('_') => ctrl('7'),
+        // xterm reports the modified cursor / editing keys with a modifier parameter (`CSI 1;5H`).
+        KeyCode::Up
+        | KeyCode::Down
+        | KeyCode::Left
+        | KeyCode::Right
+        | KeyCode::Home
+        | KeyCode::End
+        | KeyCode::PageUp
+        | KeyCode::PageDown => KeyEvent::new(base.code, base.modifiers | KeyModifiers::CONTROL),
         _ => panic!("<{name}> has no legacy terminal encoding"),
     }
 }

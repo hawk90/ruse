@@ -260,6 +260,14 @@ impl Workspace {
         }
     }
 
+    /// Set the `i`th Window's 'scroll' amount (`{count}CTRL-D`), valid while its height stays `height`.
+    pub fn set_scroll(&mut self, i: usize, lines: usize, height: usize) {
+        let vid = self.windows[i].view;
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.set_scroll(lines, height);
+        }
+    }
+
     /// The focused buffer, mutably — for a durable save to `mark_saved()` after writing to disk.
     pub fn focused_doc_mut(&mut self) -> &mut Document {
         let vid = self.windows[self.focus].view;

@@ -373,6 +373,12 @@ struct InsertState {
     /// Insert resumed after an `i_CTRL-O` one-shot ended the previous change (#795): the next edit opens
     /// a fresh `i` dot-repeat change. Vim's `arrow_used`/`stop_arrow` pair. Local to Insert.
     resumed: bool,
+    /// `CTRL-G U` was typed: the next `<Left>`/`<Right>` stays inside the undo group and the `.` record
+    /// ([`Command::InsertCaretStep`]). Any key consumes it. Local to Insert.
+    keep_undo: bool,
+    /// The char the previous Insert key typed (the printable-insert path), for `0 CTRL-D` / `^ CTRL-D`. Any
+    /// other key clears it. Local to Insert.
+    last_typed: Option<char>,
 }
 
 /// One in-flight insert-mode keyword-completion session (`i_CTRL-N` / `i_CTRL-P`). The candidate list is
@@ -2120,6 +2126,13 @@ impl InputEngine {
     /// therefore restarted here, which also drops a count-on-insert (`3ix<Left>y` inserts `y` once). The
     /// move itself is not recorded: it travels in the recorder-bypassing [`Feed::Replay`].
     fn insert_cursor_move(&mut self, cmd: Command) -> Feed {
+        self.restart_insert_change();
+        Feed::Replay(vec![Command::BreakUndo, cmd])
+    }
+
+    /// End the insert change at a caret jump and start a fresh plain-`i` one (see
+    /// [`insert_cursor_move`](Self::insert_cursor_move)).
+    fn restart_insert_change(&mut self) {
         self.reset();
         if self.recording.is_some() {
             self.recording = Some(ChangeIntent {
@@ -2129,7 +2142,14 @@ impl InputEngine {
                 entry_count: 1,
             });
         }
-        Feed::Replay(vec![Command::BreakUndo, cmd])
+    }
+
+    /// An Insert-mode page key (`i_<PageDown>`, `i_<S-Up>`, …), which the frontend scrolls because it needs
+    /// the window: it is a caret jump like `i_<Down>`, so it breaks the undo sequence and restarts the `.`
+    /// record (nvim v0.12.6). Returns the undo break for the caller to run before the scroll.
+    pub fn insert_page_jump(&mut self) -> Command {
+        self.restart_insert_change();
+        Command::BreakUndo
     }
 
     fn feed_insert(&mut self, key: KeyEvent) -> Feed {
@@ -2137,6 +2157,9 @@ impl InputEngine {
         // the frontend before `feed`), so it ACCEPTS the current candidate and ends the cycle (Vim). The
         // accepted text already sits in the buffer; dropping the state is all that is needed.
         self.insert.completion = None;
+        // One-key Insert memories: both are consumed by whatever key comes next.
+        let last_typed = self.insert.last_typed.take();
+        let keep_undo = std::mem::take(&mut self.insert.keep_undo);
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         // `i_CTRL-X` submode: the in-scope second key `CTRL-L` (whole-line completion) is intercepted by the
         // frontend BEFORE `feed_insert` (it needs the buffer), so any key that REACHES here cancels the
@@ -2196,16 +2219,32 @@ impl InputEngine {
                 }
             };
         }
-        // `CTRL-G` prefix: consume the second key. `u` (or `U`) breaks the undo group; anything else
-        // aborts the prefix without inserting (Vim beeps). Checked before the layer so the printable
-        // path never sees the prefixed key.
+        // `CTRL-G` prefix: consume the second key (nvim v0.12.6). `u` breaks the undo group; `U` keeps the
+        // NEXT `<Left>`/`<Right>` inside it; `j`/`<Down>`/`CTRL-J` and `k`/`<Up>`/`CTRL-K` move a line down /
+        // up to the column where inserting started (a caret jump, like `<Down>`). Anything else aborts the
+        // prefix without inserting (Vim beeps). Checked before the layer so the printable path never sees the
+        // prefixed key.
         if self.insert.ctrl_g {
             self.insert.ctrl_g = false;
+            let only_ctrl = key.modifiers - KeyModifiers::SHIFT == KeyModifiers::CONTROL;
+            let line = match key.code {
+                KeyCode::Char('j') if !is_chord(key) || only_ctrl => Some(true),
+                KeyCode::Char('k') if !is_chord(key) || only_ctrl => Some(false),
+                KeyCode::Down if key.modifiers.is_empty() => Some(true),
+                KeyCode::Up if key.modifiers.is_empty() => Some(false),
+                _ => None,
+            };
+            if let Some(down) = line {
+                return self.insert_cursor_move(Command::InsertStartColumnLine { down });
+            }
             return match key.code {
                 // `action` clears the transient axes (like every other completed key), so no partial
                 // Normal state can survive an Insert key.
-                KeyCode::Char('u') | KeyCode::Char('U') if !is_chord(key) => {
-                    self.action(Command::BreakUndo)
+                KeyCode::Char('u') if !is_chord(key) => self.action(Command::BreakUndo),
+                KeyCode::Char('U') if !is_chord(key) => {
+                    self.reset();
+                    self.insert.keep_undo = true;
+                    Feed::Pending
                 }
                 _ => {
                     self.reset();
@@ -2307,7 +2346,19 @@ impl InputEngine {
         if ctrl && key.code == KeyCode::Char('t') {
             return self.action(Command::InsertIndent);
         }
+        // `0 CTRL-D` / `^ CTRL-D` (the `0`/`^` typed just before): delete the typed char and ALL indent of the
+        // line. The two edits travel in a `Replay`, which bypasses the recorder, so fold them in by hand.
+        // (`^ CTRL-D` also restores the indent on the next line under 'autoindent'; ruse's plain `<CR>` does
+        // not autoindent, so there is nothing to restore.)
         if ctrl && key.code == KeyCode::Char('d') {
+            if matches!(last_typed, Some('0' | '^')) {
+                self.reset();
+                let cmds = vec![Command::DeleteBack, Command::InsertDeleteIndent];
+                for cmd in &cmds {
+                    self.record(&Feed::Cmd(cmd.clone()), Mode::Insert);
+                }
+                return Feed::Replay(cmds);
+            }
             return self.action(Command::InsertDedent);
         }
         // `i_CTRL-A` — re-insert the text of the MOST RECENT insert session at the caret (Vim's `".`
@@ -2336,8 +2387,41 @@ impl InputEngine {
         if key.code == KeyCode::Tab {
             return self.action(Command::InsertTab);
         }
-        // The unmodified cursor and editing keys (`:help ins-special-special`). A modified one (`<S-Left>`,
-        // `<C-Home>`) is a different command and stays unbound here.
+        // `CTRL-G U` then `<Left>`/`<Right>`: a step that stays in the undo group and the `.` record.
+        if keep_undo
+            && key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Left | KeyCode::Right)
+        {
+            return self.action(Command::InsertCaretStep {
+                right: key.code == KeyCode::Right,
+            });
+        }
+        // `<S-Left>`/`<C-Left>` and `<S-Right>`/`<C-Right>` move a word back / forward (across lines);
+        // `<C-Home>` goes to the first char of the file, `<C-End>` after the last one. Caret jumps, like the
+        // plain arrows (nvim v0.12.6). `<S-Up>`/`<S-Down>` page-scroll in the frontend.
+        if key.modifiers == KeyModifiers::SHIFT || key.modifiers == KeyModifiers::CONTROL {
+            match key.code {
+                KeyCode::Left => {
+                    return self.insert_cursor_move(Command::Move(1, Motion::WordBack))
+                }
+                KeyCode::Right => {
+                    return self.insert_cursor_move(Command::Move(1, Motion::WordFwd))
+                }
+                KeyCode::Home if ctrl => {
+                    return self.insert_cursor_move(Command::Move(1, Motion::GotoByte))
+                }
+                KeyCode::End if ctrl => {
+                    self.restart_insert_change();
+                    return Feed::Replay(vec![
+                        Command::BreakUndo,
+                        Command::Move(1, Motion::LastLine),
+                        Command::MoveLineEnd,
+                    ]);
+                }
+                _ => {}
+            }
+        }
+        // The unmodified cursor and editing keys (`:help ins-special-special`).
         if key.modifiers.is_empty() {
             if let Some(cmd) = insert_cursor_command(key.code) {
                 return self.insert_cursor_move(cmd);
@@ -2356,7 +2440,11 @@ impl InputEngine {
             self.reset();
             return Feed::Cmd(cmd);
         }
-        self.unmatched(Ns::Insert, key)
+        let out = self.unmatched(Ns::Insert, key);
+        if let (KeyCode::Char(c), Feed::Cmd(Command::InsertChar(_))) = (key.code, &out) {
+            self.insert.last_typed = Some(c);
+        }
+        out
     }
 
     /// `i_CTRL-V` literal / numeric-code entry (`:help i_CTRL-V`). Drives the collector armed by
@@ -2688,12 +2776,33 @@ impl InputEngine {
         if is_chord(key) && matches!(key.code, KeyCode::Char(_)) {
             return self.feed_chord(key, mode);
         }
-        // `<S-Left>`/`<C-Left>` and `<S-Right>`/`<C-Right>` move by word (`b`/`w`), not by char. The other
-        // modified special keys keep their plain meaning.
+        // `<S-Left>`/`<C-Left>` and `<S-Right>`/`<C-Right>` move by word (`b`/`w`), not by char. `<C-Home>` is
+        // `gg`; `<C-End>` goes to line `{count}` (default the last) on its LAST char (nvim v0.12.6). The other
+        // modified special keys keep their plain meaning (`<S-Up>`/`<S-Down>` page-scroll in the frontend).
         if !key.modifiers.is_empty() {
+            let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Left => return self.motion(Motion::WordBack),
                 KeyCode::Right => return self.motion(Motion::WordFwd),
+                KeyCode::Home if ctrl => return self.motion(Motion::GotoLine),
+                KeyCode::End if ctrl => {
+                    let line = if self.normal.typed() > 0 {
+                        Motion::GotoLine
+                    } else {
+                        Motion::LastLine
+                    };
+                    // Under an operator it is linewise like `G` (nvim's is charwise-inclusive to the last
+                    // char; the two agree whenever the start is at or before the first non-blank).
+                    if self.normal.op.is_some() {
+                        return self.motion(line);
+                    }
+                    let n = self.mcount();
+                    self.reset();
+                    return Feed::Replay(vec![
+                        Command::Move(n, line),
+                        Command::Move(1, Motion::LineEnd),
+                    ]);
+                }
                 _ => {}
             }
         }
@@ -3248,6 +3357,14 @@ impl InputEngine {
             }
             Awaiting::GSecond => {
                 self.normal.awaiting = Awaiting::Nothing;
+                // `g<Down>`/`g<Up>`/`g<Home>`/`g<End>` are `gj`/`gk`/`g0`/`g$` (`:help g<Down>`).
+                let key = match key.code {
+                    KeyCode::Down if key.modifiers.is_empty() => plain(KeyCode::Char('j')),
+                    KeyCode::Up if key.modifiers.is_empty() => plain(KeyCode::Char('k')),
+                    KeyCode::Home if key.modifiers.is_empty() => plain(KeyCode::Char('0')),
+                    KeyCode::End if key.modifiers.is_empty() => plain(KeyCode::Char('$')),
+                    _ => key,
+                };
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 // `g CTRL-G` and Visual `g CTRL-A`/`g CTRL-X` are the only `g` chords; any other one aborts
                 // instead of reaching the bare `g{char}` arms (`g<C-e>` is not `ge`).

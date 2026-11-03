@@ -188,8 +188,11 @@ features:
     # no longer cross lines either. Also bound: `<Del>` (= `x`; `{count}<Del>` drops a count digit),
     # `<Space>`/`<BS>` (wrap across lines, nvim's default 'whichwrap' b,s), `<Home>`/`<End>` (`0`/`$`;
     # `{count}$` now reaches the end of the line count-1 below), `<Insert>` (= `i`), and `ZZ`/`ZQ` (= `:x`
-    # / `:q!`, sharing F-007's quit policy). Still open in #605: `U` line-undo, page scroll
-    # (PageUp/PageDown, CTRL-F/B, CTRL-D/U counts), the Shift/Ctrl arrow aliases and the small g/z keys.
+    # / `:q!`, sharing F-007's quit policy). Page scroll (#605): CTRL-F/CTRL-B, <PageDown>/<PageUp>,
+    # <S-Down>/<S-Up>, <S-CR> (counted pages, Normal + Visual) and CTRL-D/CTRL-U with the window 'scroll' a
+    # count sets; under the Native profile CTRL-F/CTRL-B stay the file / buffer pickers. Modified cursor keys:
+    # <S-Left>/<C-Left> = b, <S-Right>/<C-Right> = w, <C-Home> = gg, <C-End>, g<Down>/g<Up>/g<Home>/g<End>.
+    # Still open in #605: `U` line-undo and the small g/z keys.
     status: done
     depends_on: [C-INPUT, C-EDITLANG, C-POSHIST]
     summary: Operator x count x motion composition and dot-repeat (census surface mode_key.normal + operator_pending).
@@ -271,8 +274,11 @@ features:
     # Insert (never wrapping sideways), break the undo sequence and restart the `.` record, as in nvim;
     # <Del> deletes under the caret (joining at end of line) inside the insert; <Insert> toggles
     # Insert<->Replace. The mode_key.insert census surface stays unclassified (namespace-id backing
-    # above); still open in #607: PageUp/PageDown, the Shift/Ctrl arrow variants, CTRL-G j/k/U and the
-    # `0 CTRL-D`/`^ CTRL-D` forms.
+    # above). Also #607: <PageDown>/<PageUp>/<S-Down>/<S-Up> page-scroll from Insert, <S-Left>/<C-Left>
+    # and <S-Right>/<C-Right> move a word (across lines), <C-Home>/<C-End> jump to the file ends, CTRL-G j/k
+    # (and <Down>/<Up>, CTRL-J/CTRL-K after CTRL-G) go to the insert-start column, CTRL-G U keeps the next
+    # <Left>/<Right> in the undo group and `.` record, `0 CTRL-D`/`^ CTRL-D` delete all indent, and `.`
+    # replays an insert that <Insert> toggled into Replace.
     status: done
     depends_on: [C-INPUT, C-UNDO]
     summary: The open/insert namespace — a printable key is text — with one-shot return and undo-group ownership.

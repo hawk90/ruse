@@ -236,9 +236,18 @@ fn ctrl_e_scrolls_and_drags_the_cursor_inside_scrolloff() {
 }
 
 #[test]
+fn ctrl_f_and_ctrl_b_page_scroll_under_vim() {
+    // nvim 0.12.6 with a 23-row window (`laststatus=0`) and `so=3`: `C-f` puts line 22 on top and the
+    // cursor on line 25; `C-b` then brings the cursor back to line 20.
+    assert_eq!(edit(&numbered(60), "\u{6}dd"), without(60, &[25]));
+    assert_eq!(edit(&numbered(60), "\u{6}\u{2}dd"), without(60, &[20]));
+}
+
+#[test]
 fn pickers_own_the_keystream_until_escape() {
-    // `C-p`, `C-l`, `C-b`, `C-f`: each picker takes the typed `x` into its query and Esc closes it.
-    for open in ["\u{10}", "\u{c}", "\u{2}", "\u{6}"] {
+    // `C-p`, `C-l`: each picker takes the typed `x` into its query and Esc closes it. (`C-b`/`C-f` are the
+    // Native profile's pickers; under Vim they page-scroll, above.)
+    for open in ["\u{10}", "\u{c}"] {
         assert_eq!(
             edit("abc\n", &format!("{open}x{ESC}")),
             "abc\n",

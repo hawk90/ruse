@@ -361,12 +361,18 @@ fn ctrl_e_scrolls_and_drags_the_cursor_inside_scrolloff() {
 
 #[test]
 fn pickers_own_the_keystream_until_escape() {
-    for open in ["<C-p>", "<C-l>", "<C-b>", "<C-f>"] {
+    for open in ["<C-p>", "<C-l>"] {
         assert_eq!(
             edit("abc\n", &format!("{open}x<Esc>")),
             "abc\n",
             "picker {open}"
         );
+    }
+    // `C-b` / `C-f` open the buffer / file pickers under Native only; under Vim they page-scroll.
+    for open in ["<C-b>", "<C-f>"] {
+        let mut h = Headless::new(ruse_tui::headless::Profile::Native, "abc\n");
+        h.keys(&format!("{open}x<Esc>"));
+        assert_eq!(h.text(), "abc\n", "native picker {open}");
     }
 }
 

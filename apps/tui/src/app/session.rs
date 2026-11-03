@@ -69,6 +69,65 @@ enum Prefix {
     TermEscape,
 }
 
+/// The page-scroll direction a Normal/Visual key names (`true` = forward), nvim v0.12.6 `:help CTRL-F`:
+/// `C-f`/`<PageDown>`/`<S-Down>`/`<S-CR>` forward, `C-b`/`<PageUp>`/`<S-Up>` back. `C-f`/`C-b` are left to
+/// the Native profile's pickers when `native`. `<S-+>`/`<S-NL>` are not decoded: a terminal that reports
+/// SHIFT on `+` would turn every typed `+` into a page scroll.
+fn page_key(key: KeyEvent, native: bool) -> Option<bool> {
+    let shift = key.modifiers == KeyModifiers::SHIFT;
+    match key.code {
+        KeyCode::Char('f') if !native && is_ctrl(key, 'f') => Some(true),
+        KeyCode::Char('b') if !native && is_ctrl(key, 'b') => Some(false),
+        KeyCode::PageDown if key.modifiers.is_empty() => Some(true),
+        KeyCode::PageUp if key.modifiers.is_empty() => Some(false),
+        KeyCode::Down | KeyCode::Enter if shift => Some(true),
+        KeyCode::Up if shift => Some(false),
+        _ => None,
+    }
+}
+
+/// The Insert-mode page keys (`i_<PageDown>`/`i_<S-Down>` forward, `i_<PageUp>`/`i_<S-Up>` back).
+fn insert_page_key(key: KeyEvent) -> Option<bool> {
+    match key.code {
+        KeyCode::PageDown | KeyCode::PageUp | KeyCode::Down | KeyCode::Up => {
+            page_key(key, true).filter(|_| key.code != KeyCode::Enter)
+        }
+        _ => None,
+    }
+}
+
+/// Apply a scroll command's result: set the focused window's `top`, then move the cursor to `row` with a
+/// vertical move, so the column follows the sticky wanted column (Vim's 'nostartofline').
+#[allow(clippy::too_many_arguments)]
+fn scroll_view(
+    new_top: usize,
+    row: usize,
+    ws: &mut Workspace,
+    line_idx: &line_index::LineIndex,
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    ws.set_top(ws.focus(), new_top);
+    let cur = line_idx.line_of(ws.focused().view.cursor());
+    if row != cur {
+        let (n, m) = if row > cur {
+            (row - cur, ruse_core::Motion::Down)
+        } else {
+            (cur - row, ruse_core::Motion::Up)
+        };
+        run_cmd(
+            Command::Move(n as u32, m),
+            ws,
+            files,
+            recorded,
+            status,
+            quit,
+        );
+    }
+}
+
 /// The union of the byte ranges visible in every pane showing the FOCUSED doc — the window syntax
 /// highlighting is bounded to, so a per-keystroke reparse stays O(viewport). Falls back to the whole buffer
 /// when no pane matches. Pure over the layout + revision-cached line index (lifted out of the `run` loop).
@@ -601,11 +660,23 @@ impl Session {
         let text_rows = term_rows.saturating_sub(1);
         let rects = window_rects(cols, text_rows, ws.window_count(), ws.split_dir());
         for (i, rect) in rects.iter().enumerate() {
-            let (cursor_row, cur_top) = {
+            let (cursor_row, cur_top, focused_doc) = {
                 let p = ws.pane(i);
-                (line_idx.line_of(p.view.cursor()), p.view.top())
+                (
+                    line_idx.line_of(p.view.cursor()),
+                    p.view.top(),
+                    p.view.doc() == ws.focused().view.doc(),
+                )
             };
-            let new_top = viewport::scroll_top(cursor_row, rect.h as usize, SCROLLOFF, cur_top);
+            let mut new_top = viewport::scroll_top(cursor_row, rect.h as usize, SCROLLOFF, cur_top);
+            // 'scrolloff' never scrolls past the buffer end (Vim): a scroll DOWN stops once the last line
+            // is on the bottom row. A view already further down (`C-f` on the last page) is left alone.
+            // (The line index is the focused buffer's.)
+            if new_top > cur_top && focused_doc {
+                let last_line = line_idx.line_of(snapshot.len().saturating_sub(1));
+                let floor = (last_line + 1).saturating_sub(rect.h as usize);
+                new_top = new_top.min(cur_top.max(floor));
+            }
             ws.set_top(i, new_top);
         }
         FrameCtx {
@@ -1385,7 +1456,11 @@ impl Session {
             }
         }
         let plain_z = key.code == KeyCode::Char('z') && key.modifiers.is_empty();
+        // The Native profile keeps `C-f`/`C-b` for its file / buffer pickers; under Vim they page-scroll.
+        let native = *profile_name == "native";
+        let page = page_key(key, native);
         let session_chord = plain_z
+            || page.is_some()
             || (key.code == KeyCode::Char('&') && key.modifiers.is_empty())
             || ['w', 'p', 'l', 'b', 'f', 'd', 'u', 'e', 'y']
                 .iter()
@@ -1421,19 +1496,31 @@ impl Session {
             *line_picker = Some(line_picker::open(ws.focused().doc.bytes()));
             return;
         }
-        // `C-b` opens the buffer picker (F-013 NAT-3). Normal-only, so the Emacs profile's non-modal C-b
-        // (backward-char) is unaffected; C-b is unbound in the Vim/Native Normal grammar (no page-scroll).
-        if chord && is_ctrl(key, 'b') {
+        // Native profile: `C-b` opens the buffer picker and `C-f` the fuzzy file finder (F-013 NAT-3). Normal
+        // only, so the Emacs profile's non-modal C-b / C-f (backward-/forward-char) is unaffected. Under the
+        // Vim profile they are Vim's page scroll (below).
+        if chord && native && is_ctrl(key, 'b') {
             engine.take_count();
             *buffer_picker = Some(buffer_picker::open(ws));
             return;
         }
-        // `C-f` opens the fuzzy file finder (F-013 NAT-3). Normal-only, so the Emacs non-modal C-f
-        // (forward-char) is unaffected; in the Vim/Native Normal grammar the plain `f` find-char has no
-        // ctrl, so intercepting ctrl-f shadows nothing reachable.
-        if chord && is_ctrl(key, 'f') {
+        if chord && native && is_ctrl(key, 'f') {
             engine.take_count();
             *file_picker = Some(file_picker::open());
+            return;
+        }
+        let last_line = line_idx.line_of(snapshot.len().saturating_sub(1));
+        // Page scroll (`C-f`/`C-b`, `<PageDown>`/`<PageUp>`, `<S-Down>`/`<S-Up>`, `<S-CR>`), in Normal and
+        // Visual and, through the Insert arm below, in Insert. `{count}` scrolls that many pages.
+        let selection_base = visual && pending == Pending::Base;
+        if let (Some(forward), true) = (page, chord || selection_base) {
+            let count = engine.take_count();
+            let top = ws.focused().view.top();
+            if let Some((new_top, row)) =
+                viewport::page_scroll(top, focused_h, SCROLLOFF, count, forward, last_line)
+            {
+                scroll_view(new_top, row, ws, line_idx, files, recorded, status, quit);
+            }
             return;
         }
         // `z` arms the scroll/fold prefix with the count typed before it. In Normal (scroll + fold verbs) and
@@ -1468,17 +1555,28 @@ impl Session {
             };
             return;
         }
-        // `C-d` / `C-u` scroll a half page: move the cursor half the pane down / up (column preserved via
-        // the core Move), and the per-frame scroll pass follows it. `C-f`/`C-b` are taken by the pickers.
-        if chord && (is_ctrl(key, 'd') || is_ctrl(key, 'u')) {
-            engine.take_count(); // consume any pending count so it can't leak onto the next command
-            let half = (focused_h / 2).max(1) as u32;
-            let m = if is_ctrl(key, 'd') {
-                ruse_core::Motion::Down
-            } else {
-                ruse_core::Motion::Up
-            };
-            run_cmd(Command::Move(half, m), ws, files, recorded, status, quit);
+        // `C-d` / `C-u` scroll the view and move the cursor by the window's 'scroll' lines (default half the
+        // pane). A count sets 'scroll' for the window first (capped at the pane height), as in Vim.
+        if (chord || selection_base) && (is_ctrl(key, 'd') || is_ctrl(key, 'u')) {
+            let count = engine.take_count() as usize;
+            if count > 0 {
+                ws.set_scroll(ws.focus(), count.min(focused_h.max(1)), focused_h);
+            }
+            let amount = ws.focused().view.scroll(focused_h);
+            let (top, cur) = (
+                ws.focused().view.top(),
+                line_idx.line_of(ws.focused().view.cursor()),
+            );
+            let (new_top, row) = viewport::half_page_scroll(
+                top,
+                cur,
+                focused_h,
+                SCROLLOFF,
+                amount,
+                is_ctrl(key, 'd'),
+                last_line,
+            );
+            scroll_view(new_top, row, ws, line_idx, files, recorded, status, quit);
             return;
         }
         // `C-e` / `C-y` scroll the view one line down / up, nudging the cursor only if it would leave the
@@ -1523,6 +1621,20 @@ impl Session {
                 run_cmd(cmd, ws, files, recorded, status, quit);
             }
             return;
+        }
+        // `i_<PageDown>` / `i_<PageUp>` / `i_<S-Down>` / `i_<S-Up>` — page scroll from Insert, a caret jump
+        // that breaks undo and restarts the `.` record like `i_<Down>` (nvim v0.12.6).
+        if let (Mode::Insert, Some(forward)) = (ws.focused().view.mode(), insert_page_key(key)) {
+            if engine.insert_plain_text_ctx() {
+                let top = ws.focused().view.top();
+                if let Some((new_top, row)) =
+                    viewport::page_scroll(top, focused_h, SCROLLOFF, 1, forward, last_line)
+                {
+                    run_cmd(engine.insert_page_jump(), ws, files, recorded, status, quit);
+                    scroll_view(new_top, row, ws, line_idx, files, recorded, status, quit);
+                }
+                return;
+            }
         }
         // `i_CTRL-N` / `i_CTRL-P` (Insert mode) — keyword completion from the CURRENT buffer (F-003). The
         // engine has no buffer, so on the FIRST key the frontend resolves the base + candidate set (nvim

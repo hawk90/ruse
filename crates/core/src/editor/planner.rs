@@ -1613,6 +1613,51 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let cursor = reindented_caret(cur, ls, ws, want.len());
             edit(one(Edit::replace(ls, ws, want)), cursor, Mode::Insert, hint)
         }
+        // `i_0_CTRL-D` / `i_^_CTRL-D` — delete all leading whitespace of the line; the caret rides left.
+        Command::InsertDeleteIndent => {
+            let ls = line_start(b, cur);
+            let le = line_end(b, ls);
+            let remove = b[ls..le]
+                .iter()
+                .take_while(|c| matches!(c, b' ' | b'\t'))
+                .count();
+            if remove == 0 {
+                return nop(cur, Mode::Insert);
+            }
+            let cursor = cur.saturating_sub(remove).max(ls);
+            edit(one(Edit::delete(ls, remove)), cursor, Mode::Insert, hint)
+        }
+        // `i_CTRL-G_j` / `i_CTRL-G_k` — the adjacent line, at the column the insert started in (char columns,
+        // like the rest of the motion model). No adjacent line: stay put (nvim beeps).
+        Command::InsertStartColumnLine { down } => {
+            let ls = line_start(b, cur);
+            let target = if *down {
+                let le = line_end(b, cur);
+                (le < crate::motion::content_end(b)).then(|| le + 1)
+            } else {
+                (ls > 0).then(|| line_start(b, ls - 1))
+            };
+            let to = target.map_or(cur, |t| at_col(b, t, st.view.insert_col));
+            nop(to, st.view.mode)
+        }
+        // `i_CTRL-G_U` + `<Left>`/`<Right>`: one char within the line (the undo-group keep is in
+        // `apply_command`).
+        Command::InsertCaretStep { right } => {
+            let ls = line_start(b, cur);
+            let le = line_end(b, cur);
+            let to = if *right {
+                if cur < le {
+                    next_boundary(b, cur)
+                } else {
+                    cur
+                }
+            } else if cur > ls {
+                prev_boundary(b, cur)
+            } else {
+                cur
+            };
+            nop(to, st.view.mode)
+        }
         // `<Tab>` in Insert: insert whitespace at the caret to the next stop. Space style (`expandtab`)
         // inserts spaces up to the next tabstop column even when it started mid-line; tab style inserts one
         // `\t`. Within the line's leading whitespace the stop is the SHIFTWIDTH instead ('smarttab', on by

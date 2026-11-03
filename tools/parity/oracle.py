@@ -194,6 +194,11 @@ def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
 # --- The fixture corpus: ALREADY-IMPLEMENTED ruse ops. `expect` is captured from the oracle, never
 #     hand-written; the (lines, keys) here are the only human-authored part. `<Esc>` is passed
 #     verbatim to nvim_replace_termcodes and is understood identically by the Rust key tokenizer.
+# A 100-line buffer for the page-scroll fixtures, and the setup that gives nvim ruse's 23-row window
+# (an 80x24 terminal with no status line under the text) and ruse's scrolloff.
+HUNDRED = [f"line {i}" for i in range(1, 101)]
+PAGE_SETUP = "set laststatus=0 scrolloff=3"
+
 FIXTURES: list[dict] = [
     {"name": "x_delete_char", "lines": ["hello"], "keys": "x"},
     {"name": "dw_delete_word", "lines": ["foo bar"], "keys": "dw"},
@@ -1261,6 +1266,109 @@ FIXTURES: list[dict] = [
     {"name": "s_ctrl_o_esc", "lines": ["foo bar"], "keys": "vl<C-g><C-o><Esc>x"},
     {"name": "s_ctrl_o_count", "lines": ["foo bar baz"], "keys": "gh<C-o>2eX<Esc>"},
     {"name": "s_cr_on_last_char", "lines": ["ab"], "keys": "gh<CR><Esc>"},
+    # --- #605 page scroll: CTRL-F/CTRL-B, <PageDown>/<PageUp>, <S-Down>/<S-Up>, <S-CR>, and CTRL-D/CTRL-U with
+    #     the 'scroll' a count sets. Viewport-dependent, so nvim is aligned to ruse's 80x24 session (a 23-row
+    #     window: no status line) and ruse's scrolloff=3. Cursor only; `top` is unit-tested in viewport.rs. --
+    {"name": "pg_ctrl_f", "lines": HUNDRED, "keys": "<C-f>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_f_twice", "lines": HUNDRED, "keys": "<C-f><C-f>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_f_count", "lines": HUNDRED, "keys": "2<C-f>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_f_ctrl_b", "lines": HUNDRED, "keys": "<C-f><C-b>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_b_mid", "lines": HUNDRED, "keys": "50Gzt<C-b>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_f_mid", "lines": HUNDRED, "keys": "50Gzt<C-f>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_b_count", "lines": HUNDRED, "keys": "G3<C-b>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_b_at_top", "lines": HUNDRED, "keys": "5G<C-b>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_f_keeps_column", "lines": HUNDRED, "keys": "3l<C-f>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_f_last_page", "lines": HUNDRED, "keys": "G<C-f>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_f_short_buffer", "lines": ["a", "b", "c"], "keys": "<C-f>", "setup": PAGE_SETUP},
+    {"name": "pg_pagedown", "lines": HUNDRED, "keys": "<PageDown>", "setup": PAGE_SETUP},
+    {"name": "pg_s_down", "lines": HUNDRED, "keys": "<S-Down>", "setup": PAGE_SETUP},
+    {"name": "pg_s_cr", "lines": HUNDRED, "keys": "<S-CR>", "setup": PAGE_SETUP},
+    {"name": "pg_pageup", "lines": HUNDRED, "keys": "50Gzt<PageUp>", "setup": PAGE_SETUP},
+    {"name": "pg_s_up", "lines": HUNDRED, "keys": "50Gzt<S-Up>", "setup": PAGE_SETUP},
+    {"name": "pg_d_ctrl_f_aborts", "lines": HUNDRED, "keys": "5Gd<C-f>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_d", "lines": HUNDRED, "keys": "<C-d>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_d_count", "lines": HUNDRED, "keys": "5<C-d>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_d_count_sticks", "lines": HUNDRED, "keys": "5<C-d><C-d>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_u", "lines": HUNDRED, "keys": "50G<C-u>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_u_count_sticks", "lines": HUNDRED, "keys": "50G3<C-u><C-u>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_u_count_for_ctrl_d", "lines": HUNDRED, "keys": "50G4<C-u><C-d>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_d_near_end", "lines": HUNDRED, "keys": "90Gzt<C-d>", "setup": PAGE_SETUP},
+    {"name": "pg_ctrl_u_at_top", "lines": HUNDRED, "keys": "5G<C-u>", "setup": PAGE_SETUP},
+    {"name": "pg_v_ctrl_d", "lines": HUNDRED, "keys": "v<C-d>d", "setup": PAGE_SETUP},
+    {"name": "pg_v_ctrl_f", "lines": HUNDRED, "keys": "V<C-f>d", "setup": PAGE_SETUP},
+    {"name": "pg_i_pagedown", "lines": HUNDRED, "keys": "lix<PageDown>y<Esc>", "setup": PAGE_SETUP},
+    {"name": "pg_i_s_up", "lines": HUNDRED, "keys": "50Gztix<S-Up>y<Esc>", "setup": PAGE_SETUP},
+    {"name": "pg_i_pagedown_dot", "lines": HUNDRED, "keys": "ix<PageDown>y<Esc>j.", "setup": PAGE_SETUP},
+    # --- #605 modified cursor keys: <S-Left>/<C-Left> = b, <S-Right>/<C-Right> = w, <C-Home> = gg, <C-End> =
+    #     line {count} (default last) on its last char; g<Down>/g<Up>/g<Home>/g<End> = gj/gk/g0/g$. -------
+    {"name": "n_c_end", "lines": ["  abc def", "xyz", "  last line"], "keys": "<C-End>"},
+    {"name": "n_c_end_count", "lines": ["  abc def", "xyz", "  last line"], "keys": "2<C-End>"},
+    {"name": "n_c_home", "lines": ["abc def", "xyz", "last line"], "keys": "jj<C-Home>"},
+    {"name": "n_c_home_count", "lines": ["abc def", "xyz", "last line"], "keys": "jj2<C-Home>"},
+    {"name": "n_d_c_end", "lines": ["abc def", "xyz", "last line"], "keys": "jd<C-End>"},
+    {"name": "n_d_c_home", "lines": ["abc def", "xyz", "last line"], "keys": "jd<C-Home>"},
+    {"name": "n_s_right", "lines": ["  abc def", "xyz"], "keys": "w<S-Right>"},
+    {"name": "n_c_right", "lines": ["  abc def", "xyz"], "keys": "w<C-Right>"},
+    {"name": "n_c_left", "lines": ["  abc def", "xyz"], "keys": "w<C-Left>"},
+    {"name": "n_s_left", "lines": ["  abc def", "xyz"], "keys": "$<S-Left>"},
+    {"name": "n_c_right_wraps", "lines": ["  abc def", "xyz"], "keys": "$<C-Right>"},
+    {"name": "n_d_s_right", "lines": ["  abc def", "xyz"], "keys": "d<S-Right>"},
+    {"name": "n_d_c_left", "lines": ["  abc def", "xyz"], "keys": "$d<C-Left>"},
+    {"name": "n_g_end", "lines": ["  abc def", "xyz"], "keys": "wg<End>"},
+    {"name": "n_g_home", "lines": ["  abc def", "xyz"], "keys": "wg<Home>"},
+    {"name": "n_g_down", "lines": ["abc def", "xyz"], "keys": "lg<Down>"},
+    {"name": "n_g_up", "lines": ["abc def", "xyz"], "keys": "jlg<Up>"},
+    {"name": "n_d_g_end", "lines": ["  abc def", "xyz"], "keys": "wdg<End>"},
+    {"name": "n_d_g_home", "lines": ["  abc def", "xyz"], "keys": "wdg<Home>"},
+    # --- #607 Insert-mode modified keys: <S-Left>/<C-Left> a word back, <S-Right>/<C-Right> a word forward
+    #     (across lines), <C-Home> the first char of the file, <C-End> past the last. Caret jumps: the `.`
+    #     record restarts after them. -----------------------------------------------------------------------
+    {"name": "i_s_left", "lines": ["one two three"], "keys": "wiX<S-Left>Y<Esc>"},
+    {"name": "i_c_left", "lines": ["one two three"], "keys": "wiX<C-Left>Y<Esc>"},
+    {"name": "i_s_right", "lines": ["one two three"], "keys": "iX<S-Right>Y<Esc>"},
+    {"name": "i_c_right", "lines": ["one two three"], "keys": "iX<C-Right>Y<Esc>"},
+    {"name": "i_s_right_wraps", "lines": ["one two three", "  four five"], "keys": "$iX<S-Right>Y<Esc>"},
+    {"name": "i_s_left_wraps", "lines": ["one two three", "  four five"], "keys": "jiX<S-Left><S-Left>Y<Esc>"},
+    {"name": "i_c_right_last_word", "lines": ["xyz", "  last"], "keys": "A<C-Right><C-Right>Y<Esc>"},
+    {"name": "i_c_home", "lines": ["  one two", "xyz"], "keys": "jiX<C-Home>Y<Esc>"},
+    {"name": "i_c_end", "lines": ["  one two", "xyz", "  last"], "keys": "iX<C-End>Y<Esc>"},
+    {"name": "i_s_right_dot", "lines": ["one two three", "  four five"], "keys": "iX<S-Right>Y<Esc>j0."},
+    # --- #607 CTRL-G j / k (and <Down>/<Up>, CTRL-J/CTRL-K): a line down / up, to the column where inserting
+    #     started (it restarts where typing resumed after a caret jump). CTRL-G U keeps the next <Left>/<Right>
+    #     in the undo group and in the `.` record. ------------------------------------------------------------
+    {"name": "i_ctrl_g_j", "lines": ["abcdef", "xy", "longer line"], "keys": "lliX<C-g>jY<Esc>"},
+    {"name": "i_ctrl_g_j_start_column", "lines": ["abcdef", "xy", "longer line"], "keys": "lliXYZ<C-g>jY<Esc>"},
+    {"name": "i_ctrl_g_k", "lines": ["abcdef", "xy", "longer line"], "keys": "jjlliX<C-g>kY<Esc>"},
+    {"name": "i_ctrl_g_j_twice", "lines": ["abcdefghijkl", "0123456789", "0123456789abcdef"], "keys": "10liX<C-g>j<C-g>jZ<Esc>"},
+    {"name": "i_ctrl_g_down", "lines": ["abcdef", "xy", "longer line"], "keys": "lliX<C-g><Down>Y<Esc>"},
+    {"name": "i_ctrl_g_ctrl_j", "lines": ["abcdef", "xy", "longer line"], "keys": "lliX<C-g><C-j>Y<Esc>"},
+    {"name": "i_ctrl_g_ctrl_k", "lines": ["abcdef", "xy", "longer line"], "keys": "jjiX<C-g><C-k>Y<Esc>"},
+    {"name": "i_ctrl_g_up", "lines": ["abcdef", "xy", "longer line"], "keys": "jjlliX<C-g><Up>Y<Esc>"},
+    {"name": "i_ctrl_g_j_last_line", "lines": ["abcdef", "xy"], "keys": "jiX<C-g>jY<Esc>"},
+    {"name": "i_ctrl_g_j_dot", "lines": ["abcdef", "xy", "longer line"], "keys": "lliX<C-g>jY<Esc>j."},
+    {"name": "i_ctrl_g_j_restarts_after_jump", "lines": ["abcdefghijkl", "0123456789"], "keys": "iX<Right><Right>Y<C-g>jZ<Esc>"},
+    {"name": "i_ctrl_g_j_jump_without_typing", "lines": ["abcdefghijkl", "0123456789"], "keys": "iX<Right><Right><C-g>jZ<Esc>"},
+    {"name": "i_ctrl_g_j_then_k", "lines": ["abcdefghijkl", "0123456789"], "keys": "lliX<C-g>j<C-g>kZ<Esc>"},
+    {"name": "i_ctrl_g_U_left", "lines": ["abcdef", "xy"], "keys": "iX<C-g>U<Left>Y<Esc>"},
+    {"name": "i_ctrl_g_U_left_dot", "lines": ["abcdef", "xy"], "keys": "iX<C-g>U<Left>Y<Esc>j0."},
+    {"name": "i_ctrl_g_U_right", "lines": ["abcdef", "xy"], "keys": "iX<C-g>U<Right>Y<Esc>"},
+    {"name": "i_ctrl_g_U_right_dot", "lines": ["abcdef", "xyzw"], "keys": "iX<C-g>U<Right>Y<Esc>j0."},
+    {"name": "i_ctrl_g_U_only_next", "lines": ["abcdef", "xyzw"], "keys": "lliX<C-g>U<Left><Left>Y<Esc>j0."},
+    {"name": "i_ctrl_g_U_down_still_jumps", "lines": ["abcdef", "xy", "zzz"], "keys": "iX<C-g>U<Down>Y<Esc>j0."},
+    # --- #607 `0 CTRL-D` / `^ CTRL-D`: delete the typed 0/^ and all of the line's indent. -------------------
+    {"name": "i_zero_ctrl_d", "lines": ["    foo"], "keys": "A0<C-d>X<Esc>"},
+    {"name": "i_zero_ctrl_d_at_start", "lines": ["    foo"], "keys": "I0<C-d>X<Esc>"},
+    {"name": "i_caret_ctrl_d", "lines": ["    foo"], "keys": "I^<C-d>X<Esc>"},
+    {"name": "i_zero_ctrl_d_after_char", "lines": ["    foo"], "keys": "Ax0<C-d>X<Esc>"},
+    {"name": "i_zero_bs_zero_ctrl_d", "lines": ["    foo"], "keys": "A0<BS>0<C-d>X<Esc>"},
+    {"name": "i_zero_ctrl_d_tabs", "lines": ["\t \tfoo"], "keys": "A0<C-d>X<Esc>"},
+    {"name": "i_zero_ctrl_d_dot", "lines": ["    foo", "  bar"], "keys": "A0<C-d>X<Esc>j."},
+    {"name": "i_zero_ctrl_d_no_indent", "lines": ["foo"], "keys": "A0<C-d>X<Esc>"},
+    # --- #607 `.` after <Insert> toggled the session between Insert and Replace replays both parts. -------
+    {"name": "i_insert_replace_dot", "lines": ["abcdef", "wxyz"], "keys": "iab<Insert>XY<Esc>j0."},
+    {"name": "i_insert_replace_insert_dot", "lines": ["abcdef", "wxyz"], "keys": "iab<Insert>XY<Insert>Z<Esc>j0."},
+    {"name": "R_insert_toggle_dot", "lines": ["abcdef", "wxyz"], "keys": "RXY<Insert>Z<Esc>j0."},
+    {"name": "i_insert_replace_bs", "lines": ["abcdef"], "keys": "iab<Insert>XY<BS><BS><BS><Esc>"},
 ]
 
 

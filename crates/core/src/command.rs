@@ -368,6 +368,20 @@ pub enum Command {
     InsertIndent,
     /// `i_CTRL-D` — dedent the current line by one shiftwidth (see [`Command::InsertIndent`]).
     InsertDedent,
+    /// `i_0_CTRL-D` / `i_^_CTRL-D` — delete ALL indent of the current line, staying in Insert; the caret rides
+    /// with the text. (The typed `0`/`^` is removed by a `DeleteBack` the input engine emits first.)
+    InsertDeleteIndent,
+    /// `i_CTRL-G_j` / `i_CTRL-G_k` — move the caret one line down / up to the column where inserting
+    /// started (Vim's `Insstart`: the insert entry, or where typing resumed after a caret jump). A no-op on
+    /// the last / first line.
+    InsertStartColumnLine {
+        down: bool,
+    },
+    /// `i_CTRL-G_U` then `<Left>`/`<Right>` — move the caret one char within the line WITHOUT breaking the
+    /// undo sequence (and, in the input engine, without ending the `.` record).
+    InsertCaretStep {
+        right: bool,
+    },
     /// `<Tab>` in Insert mode: insert whitespace at the caret to reach the next tabstop. With `expandtab`
     /// (space style) this is `tab_width - (vcol % tab_width)` spaces; otherwise a single `\t`. Distinct from
     /// `InsertIndent` (`i_CTRL-T`), which shifts the whole line from its start regardless of caret column.
@@ -1279,6 +1293,19 @@ impl Command {
             Command::CompleteWord { back, text } => format!("complete_word {back} {text}"),
             Command::InsertIndent => "insert_indent".into(),
             Command::InsertDedent => "insert_dedent".into(),
+            Command::InsertDeleteIndent => "insert_delete_indent".into(),
+            Command::InsertStartColumnLine { down } => {
+                format!(
+                    "insert_start_column_line {}",
+                    if *down { "down" } else { "up" }
+                )
+            }
+            Command::InsertCaretStep { right } => {
+                format!(
+                    "insert_caret_step {}",
+                    if *right { "right" } else { "left" }
+                )
+            }
             Command::InsertTab => "insert_tab".into(),
             Command::InsertNewline => "insert_newline".into(),
             Command::OpenLineIndent { kind, level } => {
@@ -1628,6 +1655,21 @@ impl Command {
             }
             "insert_indent" => Command::InsertIndent,
             "insert_dedent" => Command::InsertDedent,
+            "insert_delete_indent" => Command::InsertDeleteIndent,
+            "insert_start_column_line" => Command::InsertStartColumnLine {
+                down: match arg {
+                    Some("down") => true,
+                    Some("up") => false,
+                    _ => return Err(CommandParseError::BadArgument(line.to_string())),
+                },
+            },
+            "insert_caret_step" => Command::InsertCaretStep {
+                right: match arg {
+                    Some("right") => true,
+                    Some("left") => false,
+                    _ => return Err(CommandParseError::BadArgument(line.to_string())),
+                },
+            },
             "insert_tab" => Command::InsertTab,
             "insert_newline" => Command::InsertNewline,
             "open_line_indent" => {
@@ -2314,6 +2356,11 @@ mod tests {
             },
             Command::InsertIndent,
             Command::InsertDedent,
+            Command::InsertDeleteIndent,
+            Command::InsertStartColumnLine { down: true },
+            Command::InsertStartColumnLine { down: false },
+            Command::InsertCaretStep { right: true },
+            Command::InsertCaretStep { right: false },
             Command::InsertTab,
             Command::InsertNewline,
             Command::OpenLineIndent {

@@ -328,6 +328,9 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
         | C::CompleteWord { .. }
         | C::InsertIndent
         | C::InsertDedent
+        | C::InsertDeleteIndent
+        | C::InsertStartColumnLine { .. }
+        | C::InsertCaretStep { .. }
         | C::InsertTab
         | C::InsertNewline
         | C::OpenLineIndent { .. }
@@ -504,6 +507,9 @@ pub(crate) fn with_count(cmd: &Command, n: u32) -> Command {
         | C::CompleteWord { .. }
         | C::InsertIndent
         | C::InsertDedent
+        | C::InsertDeleteIndent
+        | C::InsertStartColumnLine { .. }
+        | C::InsertCaretStep { .. }
         | C::InsertTab
         | C::InsertNewline
         | C::OpenLineIndent { .. }
