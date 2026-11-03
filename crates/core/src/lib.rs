@@ -37,6 +37,7 @@ pub mod pos;
 pub mod register;
 pub mod registry;
 pub mod snapshot;
+mod textobj;
 pub mod trace;
 pub mod transaction;
 pub mod undo;

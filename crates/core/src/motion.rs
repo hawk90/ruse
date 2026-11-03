@@ -687,74 +687,6 @@ pub(crate) fn line_completions(b: &[u8], cur: usize) -> (String, Vec<String>) {
     (base, out)
 }
 
-/// The word plus its trailing whitespace (or leading, if there is no trailing) — Vim `aw` / `aW`.
-/// `{count}iw`: the inner-word span extended forward over `count` alternating class runs (Vim). Each unit is
-/// a maximal run of one class (a word-class run or a whitespace run), so `2iw` = word + following whitespace,
-/// `3iw` = word + ws + word. `count <= 1` is the plain `iw` span.
-fn inner_word_span_n(b: &[u8], cur: usize, big: bool, count: u32) -> (usize, usize) {
-    // An `iw` unit is a maximal run of ONE class — a word-class run OR a whitespace run — so extension must
-    // group whitespace too (unlike `same_group`, which is word-only). For `iW` a word-and-punct run is one.
-    let same_unit = |c: Class, x: Class| {
-        if c == Class::Space {
-            x == Class::Space
-        } else if big {
-            x != Class::Space
-        } else {
-            x == c
-        }
-    };
-    let (s, mut e) = inner_word_span(b, cur, big);
-    for _ in 1..count.max(1) {
-        if e >= b.len() {
-            break;
-        }
-        let c = class(b[e]);
-        while e < b.len() && same_unit(c, class(b[e])) {
-            e += 1;
-        }
-    }
-    (s, e)
-}
-
-/// `{count}aw`: `count` words, each including its trailing whitespace (Vim). `count <= 1` is the plain `aw`
-/// span (which already carries the trailing — or, absent that, leading — whitespace).
-fn a_word_span_n(b: &[u8], cur: usize, big: bool, count: u32) -> (usize, usize) {
-    let (s, mut e) = a_word_span(b, cur, big);
-    for _ in 1..count.max(1) {
-        while e < b.len() && is_ws(b[e]) {
-            e += 1;
-        }
-        if e >= b.len() {
-            break;
-        }
-        let c = class(b[e]);
-        while e < b.len() && same_group(c, class(b[e]), big) {
-            e += 1; // the next word
-        }
-        while e < b.len() && is_ws(b[e]) {
-            e += 1; // its trailing whitespace
-        }
-    }
-    (s, e)
-}
-
-fn a_word_span(b: &[u8], cur: usize, big: bool) -> (usize, usize) {
-    let (s, e) = inner_word_span(b, cur, big);
-    let mut e2 = e;
-    while e2 < b.len() && is_ws(b[e2]) {
-        e2 += 1;
-    }
-    if e2 > e {
-        (s, e2)
-    } else {
-        let mut s2 = s;
-        while s2 > 0 && is_ws(b[s2 - 1]) {
-            s2 -= 1;
-        }
-        (s2, e)
-    }
-}
-
 /// Whether the line starting at `ls` is blank — empty or (a start pointing at) a newline / end of buffer.
 /// Paragraph boundaries in Vim are truly-empty lines (a whitespace-only line is *not* a boundary).
 fn is_blank_line(b: &[u8], ls: usize) -> bool {
@@ -923,10 +855,6 @@ fn prev_section_line(b: &[u8], pos: usize, count: u32, ends: bool) -> usize {
     ls
 }
 
-fn is_space_or_tab(c: u8) -> bool {
-    c == b' ' || c == b'\t'
-}
-
 /// If a sentence terminator (`.`/`!`/`?`), optionally followed by closing `)`/`]`/`"`/`'`, begins at `i`
 /// and is itself followed by whitespace or end-of-buffer, return the byte just past the terminator group
 /// (the exclusive inner-sentence end). Otherwise `None`. All the scanned bytes are ASCII → boundary-safe.
@@ -946,9 +874,9 @@ fn sentence_break_at(b: &[u8], i: usize) -> Option<usize> {
 }
 
 /// Vim `)` — the start of the NEXT sentence after `pos` (the byte after a terminator group + whitespace),
-/// or the buffer end when none. Terminator-based like [`sentence_span`] (blank-line/paragraph sentence
-/// boundaries are not modeled, matching the `is`/`as` object). Lands on a char boundary (starts follow
-/// ASCII whitespace).
+/// or the buffer end when none. Terminator-based: blank-line/paragraph sentence boundaries are not modeled
+/// here (the `is`/`as` objects in `textobj` port Vim's `findsent`, which does model them). Lands on a char
+/// boundary (starts follow ASCII whitespace).
 fn next_sentence_start(b: &[u8], pos: usize) -> usize {
     let n = b.len();
     let mut i = 0usize;
@@ -990,165 +918,6 @@ fn prev_sentence_start(b: &[u8], pos: usize) -> usize {
         }
     }
     best
-}
-
-/// The sentence object (`is` / `as`). A sentence ends at `.`/`!`/`?` (plus any closing quotes/brackets)
-/// followed by whitespace; the next sentence starts after that whitespace. `around` includes the trailing
-/// spaces/tabs. v0 keeps this within the buffer's flat text (blank-line paragraph splitting is not modeled).
-fn sentence_span(b: &[u8], cur: usize, around: bool) -> (usize, usize) {
-    let n = b.len();
-    if n == 0 {
-        return (0, 0);
-    }
-    let cur = cur.min(n - 1);
-    // The start of the sentence containing the cursor: the last sentence start at or before `cur`.
-    let mut s = 0usize;
-    let mut i = 0usize;
-    while i < n {
-        if let Some(j) = sentence_break_at(b, i) {
-            let mut k = j;
-            while k < n && is_ws(b[k]) {
-                k += 1;
-            }
-            if k > cur {
-                break; // the next sentence starts past the cursor — keep the current `s`
-            }
-            if k < n {
-                s = k;
-            }
-            i = k;
-        } else {
-            i += 1;
-        }
-    }
-    // The inner end: the terminator group that closes this sentence (or end of buffer).
-    let mut inner_end = n;
-    let mut t = s;
-    while t < n {
-        if let Some(j) = sentence_break_at(b, t) {
-            inner_end = j;
-            break;
-        }
-        t += 1;
-    }
-    if !around {
-        return (s, inner_end);
-    }
-    let mut e = inner_end;
-    while e < n && is_space_or_tab(b[e]) {
-        e += 1;
-    }
-    (s, e)
-}
-
-/// The delimiter-pair object (`i(`/`a(` etc.). Finds the pair enclosing the cursor (nesting-aware; may span
-/// lines). `around` includes the delimiters, else only the interior. A no-op range `(cur, cur)` if the cursor
-/// is not inside a pair. Delimiters are ASCII bytes, so all returned positions are char boundaries.
-fn pair_span(b: &[u8], cur: usize, open: u8, close: u8, around: bool) -> (usize, usize) {
-    if b.is_empty() {
-        return (0, 0);
-    }
-    let cur = cur.min(b.len() - 1);
-    // The enclosing opener: the cursor's own byte if it is the opener, else scan left counting nesting.
-    let open_pos = if b[cur] == open {
-        Some(cur)
-    } else {
-        let mut depth = 0i32;
-        let mut i = cur;
-        let mut found = None;
-        while i > 0 {
-            i -= 1;
-            if b[i] == close {
-                depth += 1;
-            } else if b[i] == open {
-                if depth == 0 {
-                    found = Some(i);
-                    break;
-                }
-                depth -= 1;
-            }
-        }
-        found
-    };
-    // Vim: when the cursor is not inside a pair, i(/a( uses the next pair FORWARD on the current
-    // line (e.g. `di(` at col 0 of `foo (bar) baz` deletes `bar`). Oracle finding, PR #53.
-    let open_pos = open_pos.or_else(|| {
-        let mut i = cur;
-        while i < b.len() && b[i] != b'\n' {
-            if b[i] == open {
-                return Some(i);
-            }
-            i += 1;
-        }
-        None
-    });
-    let Some(o) = open_pos else {
-        return (cur, cur);
-    };
-    // The matching closer: scan right from the opener, counting nesting.
-    let mut depth = 0i32;
-    let mut close_pos = None;
-    let mut i = o;
-    while i < b.len() {
-        if b[i] == open {
-            depth += 1;
-        } else if b[i] == close {
-            depth -= 1;
-            if depth == 0 {
-                close_pos = Some(i);
-                break;
-            }
-        }
-        i += 1;
-    }
-    let Some(c) = close_pos else {
-        return (cur, cur);
-    };
-    if around {
-        (o, c + 1) // both delimiters are single ASCII bytes
-    } else {
-        (o + 1, c) // interior; empty pair `()` yields an empty (no-op) range
-    }
-}
-
-/// The quote object (`i"`/`a"` etc.), confined to the current line (Vim). Quotes pair up left-to-right; the
-/// target pair is the first whose closing quote is at or after the cursor. `around` includes the quotes plus
-/// trailing whitespace (else leading). No matching pair → a no-op range. Quotes are ASCII → boundary-safe.
-fn quote_span(b: &[u8], cur: usize, q: u8, around: bool) -> (usize, usize) {
-    let ls = line_start(b, cur);
-    let le = line_end(b, cur);
-    let cur = cur.clamp(ls, le);
-    let positions: Vec<usize> = (ls..le).filter(|&i| b[i] == q).collect();
-    let mut pair = None;
-    let mut k = 0;
-    while k + 1 < positions.len() {
-        let (o, c) = (positions[k], positions[k + 1]);
-        if c >= cur {
-            pair = Some((o, c));
-            break;
-        }
-        k += 2;
-    }
-    let Some((o, c)) = pair else {
-        return (cur, cur);
-    };
-    if !around {
-        return (o + 1, c);
-    }
-    // `a"`: prefer trailing whitespace on the line, else leading.
-    let mut e = c + 1;
-    while e < le && is_space_or_tab(b[e]) {
-        e += 1;
-    }
-    if e > c + 1 {
-        (o, e)
-    } else {
-        let mut s = o;
-        while s > ls && is_space_or_tab(b[s - 1]) {
-            s -= 1;
-        }
-        (s, c + 1)
-    }
 }
 
 /// The leading tag NAME of a tag's interior bytes (the run after `<` or `</`): ASCII letters/digits and
@@ -2005,36 +1774,21 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             }
             _ => (cur, cur),
         },
-        // text objects: a range around the cursor (count ignored in v0)
-        Motion::InnerWord => inner_word_span_n(b, cur, false, n),
-        Motion::AWord => a_word_span_n(b, cur, false, n),
-        Motion::InnerBigWord => inner_word_span_n(b, cur, true, n),
-        Motion::ABigWord => a_word_span_n(b, cur, true, n),
+        // Word, sentence, bracket and quote objects: Vim's operator-pending range (see `textobj`), before
+        // the exclusive-linewise reduction an operator applies (`editor::op_span`).
+        Motion::InnerWord
+        | Motion::AWord
+        | Motion::InnerBigWord
+        | Motion::ABigWord
+        | Motion::InnerSentence
+        | Motion::ASentence
+        | Motion::Pair { .. }
+        | Motion::Quote { .. } => {
+            let (s, e, _) = crate::textobj::op_range(b, cur, m, n);
+            (s, e)
+        }
         Motion::InnerParagraph => paragraph_span(b, cur, false),
         Motion::AParagraph => paragraph_span(b, cur, true),
-        Motion::InnerSentence => sentence_span(b, cur, false),
-        Motion::ASentence => sentence_span(b, cur, true),
-        // Delimiters/quotes are ASCII (the input engine only ever produces ASCII ones), so scanning by byte
-        // stays on char boundaries. A non-ASCII delimiter is not a real object → no-op, and guarding here
-        // keeps `as u8` from truncating a multibyte char into a byte that could land mid-codepoint.
-        Motion::Pair {
-            open,
-            close,
-            around,
-        } => {
-            if open.is_ascii() && close.is_ascii() {
-                pair_span(b, cur, open as u8, close as u8, around)
-            } else {
-                (cur, cur)
-            }
-        }
-        Motion::Quote { ch, around } => {
-            if ch.is_ascii() {
-                quote_span(b, cur, ch as u8, around)
-            } else {
-                (cur, cur)
-            }
-        }
         Motion::Tag { around } => tag_span(b, cur, around, n),
         // vertical / linewise motions are not charwise — callers handle Line / line-jumps specially
         Motion::Up

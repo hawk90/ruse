@@ -299,10 +299,14 @@ fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) ->
     // linewise), and an inner block whose braces sit on their own lines (`ci(`/`ci{`). All keep the first
     // line's indent, collapse the rest to one empty line, keep the trailing newline, and enter Insert after
     // the indent — identical machinery, differing only in which line range they act on.
+    // A word/sentence/bracket/quote object goes linewise exactly when Vim's exclusive-linewise rule makes
+    // it so (`ci{` on a block whose closer sits alone after its indent, `cis` on a sentence ending its line).
+    let object_linewise =
+        crate::textobj::owns(*m) && crate::editor::range::op_span(b, cur, *m, count).2;
     let linewise_range = if *m == Motion::Line {
         Some(change_range(b, cur, *m, count))
-    } else if matches!(m, Motion::InnerParagraph | Motion::AParagraph) {
-        let (s, e, _) = crate::editor::range::op_span(b, cur, *m, count); // whole paragraph lines
+    } else if matches!(m, Motion::InnerParagraph | Motion::AParagraph) || object_linewise {
+        let (s, e, _) = crate::editor::range::op_span(b, cur, *m, count); // whole lines
         let content_end = if e > s && b.get(e - 1) == Some(&b'\n') {
             e - 1
         } else {
@@ -310,7 +314,7 @@ fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) ->
         };
         Some((s, content_end))
     } else {
-        crate::editor::range::linewise_inner_block(b, cur, *m).map(|(s, e)| (s + 1, e - 1))
+        None
     };
     if let Some((ls, content_end)) = linewise_range {
         plan_linewise_change(b, ls, content_end, hint)
@@ -2337,6 +2341,39 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::Move(count, m) => {
             // A text object issued in a selection mode (`viw`, `vi(`) sets BOTH ends: anchor at the object's
             // start, cursor on its last char (inclusive selection). A bare motion only moves the cursor.
+            if st.view.mode.selection().is_some() && crate::textobj::owns(*m) {
+                // Word, sentence, bracket and quote objects follow Vim's Visual rules: on a one-char area
+                // they select the object, on a wider one they EXTEND it (`viwiw`, `va(a(`, `visis`). They
+                // turn a linewise selection charwise; bracket and sentence objects any selection.
+                let anchor = st.view.anchor.unwrap_or(cur);
+                let Some((a, c)) = crate::textobj::visual(b, anchor, cur, *m, *count) else {
+                    return nop(cur, st.view.mode);
+                };
+                let to_charwise = st.view.mode.selection() == Some(SelectKind::Linewise)
+                    || matches!(
+                        m,
+                        Motion::Pair { .. } | Motion::InnerSentence | Motion::ASentence
+                    );
+                let mode = match st.view.mode {
+                    Mode::Select { .. } if to_charwise => Mode::Select {
+                        kind: SelectKind::Charwise,
+                    },
+                    _ if to_charwise => Mode::Visual {
+                        kind: SelectKind::Charwise,
+                    },
+                    mode => mode,
+                };
+                return Plan {
+                    action: Action::Nop,
+                    cursor: c,
+                    mode,
+                    is_edit: false,
+                    effects: Vec::new(),
+                    set_register: None,
+                    set_anchor: Some(a),
+                    set_mark: None,
+                };
+            }
             if st.view.mode.selection().is_some() && is_text_object(*m) {
                 let (s, e) = motion::char_span(b, cur, *m, *count);
                 if s >= e {
@@ -2401,8 +2438,18 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         Command::Delete(count, m) => {
             let (s, e, linewise) = op_span(b, cur, *m, *count);
+            // Vi's "d" quirk (nvim `op_delete`): a charwise delete over several lines that starts in the
+            // indent and leaves only blanks after its end goes linewise (`daw` on an empty line, `das` on
+            // a whole-line `dat` tag block). Applied to the text objects; Visual deletes never take it.
+            let (s, e, linewise) = if !linewise && is_text_object(*m) {
+                crate::textobj::delete_reshape(b, s, e)
+            } else {
+                (s, e, linewise)
+            };
             if s >= e {
-                nop(cur, st.view.mode)
+                // An object that selects nothing (`di(` on `(\n)`) still leaves the cursor at its start.
+                let at = if crate::textobj::owns(*m) { s } else { cur };
+                nop(at, st.view.mode)
             } else if linewise && e == b.len() && s > 0 && b[e - 1] != b'\n' {
                 // Deleting the buffer's LAST line while earlier lines remain, where that line has no
                 // trailing newline (so the span itself does not already eat one): Vim removes the line
@@ -2413,7 +2460,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 // branch, since the span already ends in `\n`.)
                 let reg = captured(b, s, e, true);
                 let del_start = s - 1; // the '\n' terminating the previous line (s is a line start, s > 0)
-                let cursor = line_start(b, del_start);
+                let cursor = if crate::textobj::owns(*m) {
+                    motion::first_non_blank(b, line_start(b, del_start))
+                } else {
+                    line_start(b, del_start)
+                };
                 edit_yank(
                     one(Edit::delete(del_start, e - del_start)),
                     cursor,
@@ -2423,7 +2474,14 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 )
             } else {
                 let reg = captured(b, s, e, linewise);
-                edit_yank(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
+                // A linewise object delete rests on the first non-blank of the line that moves up into
+                // place (Vim `beginline(BL_WHITE)`), as `di{` on an indented block does.
+                let cursor = if linewise && crate::textobj::owns(*m) && e < b.len() {
+                    s + (motion::first_non_blank(b, e) - e)
+                } else {
+                    s
+                };
+                edit_yank(one(Edit::delete(s, e - s)), cursor, st.view.mode, hint, reg)
             }
         }
         Command::Change(count, m) => plan_change(b, cur, *count, m, hint),

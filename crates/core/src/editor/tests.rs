@@ -7409,13 +7409,14 @@ mod tag_text_object_tests {
         assert!(!st.register().is_linewise(), "dit multiline stays charwise");
         assert_eq!(st.register().text(), b"\n  hello\n");
 
+        // `dat` on a whole-line block deletes LINEWISE (Vi's `d` quirk, nvim `op_delete`: a multi-line
+        // charwise delete starting in the indent with only blanks after it), while `yat`/`cat` stay
+        // charwise. Pinned against the oracle by the `dat_tag_multiline` fixture.
         let st = at(src, 8, &[dat()]);
         assert_eq!(text(&st), "");
         assert!(
-            !st.register().is_linewise(),
-            "DELIBERATE DIVERGENCE: nvim's `dat` on a whole-line block DELETES linewise, but its \
-             `yat`/`cat` on the same block are charwise; ruse uses one span for d/y/c and matches the \
-             charwise majority. The buffer result is identical either way."
+            st.register().is_linewise(),
+            "dat over whole lines is linewise"
         );
     }
 

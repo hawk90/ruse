@@ -88,17 +88,10 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
             let t = motion::target(b, cur, m, count);
             exclusive_linewise(b, cur.min(t), cur.max(t))
         }
-        // `di(`/`di{`/`di[`/`di<` on a block whose delimiters sit on their OWN lines is LINEWISE (Vim):
-        // delete the whole inner lines, register linewise. Otherwise (single-line, or content sharing the
-        // open/close line) it stays charwise. `a(` is never reshaped — see `linewise_inner_block`.
-        Motion::Pair { around: false, .. } => {
-            if let Some((s, e)) = linewise_inner_block(b, cur, m) {
-                (s + 1, e, true) // [first-inner-line-start, close): whole inner lines incl the final '\n'
-            } else {
-                let (s, e) = motion::char_span(b, cur, m, count);
-                (s, e, false)
-            }
-        }
+        // Word, sentence, bracket and quote objects: Vim's object range, reduced by the exclusive-linewise
+        // rule — so `di{` over a block whose closer sits alone (after any indent) on its line deletes the
+        // whole inner lines linewise, and `dis` on a sentence ending its line takes that line.
+        m if crate::textobj::owns(m) => crate::textobj::op_span(b, cur, m, count),
         // Everything else is the motion's charwise span.
         _ => {
             let (s, e) = motion::char_span(b, cur, m, count);
@@ -240,32 +233,6 @@ pub(crate) fn forced_span(
     }
 }
 
-/// Vim's "linewise inner block": for `i(`/`i{`/`i[`/`i<` when the open delimiter is the LAST char on its
-/// line (a newline immediately follows it) AND the close delimiter is the FIRST on its line (a newline
-/// immediately precedes it), the inner object is LINEWISE — whole inner lines, like `cc`/`dd` — rather than
-/// charwise. Returns the inner charwise span `(s, e)` (`s` = the newline just after the open, `e` = the
-/// close delimiter) when the condition holds, else `None`. `a(` (around) is never linewise, so this only
-/// fires for `around: false`. Empty/single-line/inline-content pairs return `None` (stay charwise).
-pub(crate) fn linewise_inner_block(b: &[u8], cur: usize, m: Motion) -> Option<(usize, usize)> {
-    let Motion::Pair {
-        around: false,
-        open,
-        close,
-    } = m
-    else {
-        return None;
-    };
-    if !open.is_ascii() || !close.is_ascii() {
-        return None;
-    }
-    let (s, e) = motion::char_span(b, cur, m, 1); // == pair_span interior (open+1, close)
-    if s < e && b.get(s) == Some(&b'\n') && b.get(e - 1) == Some(&b'\n') {
-        Some((s, e))
-    } else {
-        None
-    }
-}
-
 /// The byte range a `change` operator covers: for `Motion::Line` it is the *content* of the line(s) (the
 /// newline is kept so `cc` leaves an empty line to type into); else the same charwise span as delete.
 pub(crate) fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize) {
@@ -303,6 +270,10 @@ pub(crate) fn change_range(b: &[u8], cur: usize, m: Motion, count: u32) -> (usiz
             return (cur, e);
         }
         // Cursor on blank → fall through to the ordinary span below.
+    }
+    if crate::textobj::owns(m) {
+        let (s, e, _) = crate::textobj::op_span(b, cur, m, count);
+        return (s, e);
     }
     if m != Motion::Line {
         return motion::char_span(b, cur, m, count);

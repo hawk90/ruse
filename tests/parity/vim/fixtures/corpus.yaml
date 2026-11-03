@@ -33647,6 +33647,2787 @@
           "type": "charwise"
         }
       }
+    },
+    {
+      "name": "tw_diw_trailing_blanks_eol",
+      "lines": [
+        "foo  ",
+        "  bar"
+      ],
+      "keys": "$diw",
+      "expect": {
+        "text": [
+          "foo",
+          "  bar"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "  ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_diw_empty_line",
+      "lines": [
+        "a",
+        "",
+        "b"
+      ],
+      "keys": "jdiw",
+      "expect": {
+        "text": [
+          "a",
+          "",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_empty_line",
+      "lines": [
+        "a",
+        "",
+        "b"
+      ],
+      "keys": "jdaw",
+      "expect": {
+        "text": [
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_last_word_on_line",
+      "lines": [
+        "foo bar",
+        "baz"
+      ],
+      "keys": "wdaw",
+      "expect": {
+        "text": [
+          "foo",
+          "baz"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": " bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_only_word_on_line",
+      "lines": [
+        "foo",
+        "bar"
+      ],
+      "keys": "daw",
+      "expect": {
+        "text": [
+          "",
+          "bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_indented_only_word",
+      "lines": [
+        "  foo",
+        "bar"
+      ],
+      "keys": "wdaw",
+      "expect": {
+        "text": [
+          "  ",
+          "bar"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_yiw_trailing_blanks",
+      "lines": [
+        "foo  ",
+        "bar"
+      ],
+      "keys": "$yiw",
+      "expect": {
+        "text": [
+          "foo  ",
+          "bar"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "  ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "  ",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "tw_yaw_trailing_blanks",
+      "lines": [
+        "foo  ",
+        "bar"
+      ],
+      "keys": "$yaw",
+      "expect": {
+        "text": [
+          "foo  ",
+          "bar"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "  \nbar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "  \nbar",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "tw_daw_on_blank_run",
+      "lines": [
+        "foo   bar"
+      ],
+      "keys": "4ldaw",
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "   bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_on_trailing_blank_run",
+      "lines": [
+        "foo bar  ",
+        "baz"
+      ],
+      "keys": "$daw",
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "  \nbaz",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_d3iw_crosses_line",
+      "lines": [
+        "foo bar",
+        "baz qux"
+      ],
+      "keys": "wd3iw",
+      "expect": {
+        "text": [
+          "foo qux"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar\nbaz ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_d2iw_at_eol",
+      "lines": [
+        "foo bar",
+        "baz qux"
+      ],
+      "keys": "wd2iw",
+      "expect": {
+        "text": [
+          "foo  qux"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar\nbaz",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_d2aw_crosses_line",
+      "lines": [
+        "foo bar",
+        "baz qux"
+      ],
+      "keys": "wd2aw",
+      "expect": {
+        "text": [
+          "foo qux"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar\nbaz ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_d3aw_crosses_line",
+      "lines": [
+        "foo bar",
+        "baz qux zz"
+      ],
+      "keys": "wd3aw",
+      "expect": {
+        "text": [
+          "foo zz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar\nbaz qux ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_d4iw_over_empty_line",
+      "lines": [
+        "foo",
+        "",
+        "bar baz"
+      ],
+      "keys": "d4iw",
+      "expect": {
+        "text": [
+          "baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo\n\nbar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_multibyte",
+      "lines": [
+        "한글 abc",
+        "def"
+      ],
+      "keys": "daw",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "한글 ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_multibyte_eol",
+      "lines": [
+        "abc 한글",
+        "def"
+      ],
+      "keys": "wdaw",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": " 한글",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_diw_empty_buffer",
+      "lines": [
+        ""
+      ],
+      "keys": "diw",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_empty_buffer",
+      "lines": [
+        ""
+      ],
+      "keys": "daw",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_diw_last_line_unterminated",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "$diw",
+      "expect": {
+        "text": [
+          "foo "
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_daw_last_word_buffer",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "$daw",
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": " bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_ciw_trailing_blanks",
+      "lines": [
+        "foo  ",
+        "bar"
+      ],
+      "keys": "$ciwX<Esc>",
+      "expect": {
+        "text": [
+          "fooX",
+          "bar"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "  ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_iw_iw_extends",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "viwiwd",
+      "expect": {
+        "text": [
+          "bar baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_iw_iw_iw_extends",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "viwiwiwd",
+      "expect": {
+        "text": [
+          " baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_aw_aw_extends",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "vawawd",
+      "expect": {
+        "text": [
+          "baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_3iw",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "v3iwd",
+      "expect": {
+        "text": [
+          " baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_2aw",
+      "lines": [
+        "foo bar baz qux"
+      ],
+      "keys": "v2awd",
+      "expect": {
+        "text": [
+          "baz qux"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_iw_across_line",
+      "lines": [
+        "foo bar",
+        "baz qux"
+      ],
+      "keys": "wviwiwiwd",
+      "expect": {
+        "text": [
+          "foo qux"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar\nbaz ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_aw_across_line",
+      "lines": [
+        "foo bar",
+        "baz qux"
+      ],
+      "keys": "wvawawd",
+      "expect": {
+        "text": [
+          "fooqux"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": " bar\nbaz ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_iw_backward",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "$vhiwiwd",
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": " baz",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_iw_after_motion",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "vliwd",
+      "expect": {
+        "text": [
+          " bar baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_v_aw_empty_line",
+      "lines": [
+        "a",
+        "",
+        "b"
+      ],
+      "keys": "jvawd",
+      "expect": {
+        "text": [
+          "a",
+          ""
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\nb",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_V_iw_goes_charwise",
+      "lines": [
+        "foo bar",
+        "baz"
+      ],
+      "keys": "wViwd",
+      "expect": {
+        "text": [
+          "foo ",
+          "baz"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tw_yiw_cursor_to_start",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "$yiw",
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "bar",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "tw_daW_punct_word",
+      "lines": [
+        "a.b c.d",
+        "e"
+      ],
+      "keys": "wdaW",
+      "expect": {
+        "text": [
+          "c.d",
+          "e"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a.b ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_dquote_escaped",
+      "lines": [
+        "a\"b\\\"c\"d"
+      ],
+      "keys": "di\"",
+      "expect": {
+        "text": [
+          "a\"\"d"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "b\\\"c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_dquote_escaped_from_eol",
+      "lines": [
+        "\"a\\\"b\" \"c\""
+      ],
+      "keys": "$di\"",
+      "expect": {
+        "text": [
+          "\"a\\\"b\" \"\""
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_dquote_on_escaped_quote",
+      "lines": [
+        "a\"b\\\"c\"d"
+      ],
+      "keys": "4ldi\"",
+      "expect": {
+        "text": [
+          "a\"\"d"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "b\\\"c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_da_dquote_escaped",
+      "lines": [
+        "x \"a\\\"b\" y"
+      ],
+      "keys": "da\"",
+      "expect": {
+        "text": [
+          "x y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "\"a\\\"b\" ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_dquote_escaped_backslash",
+      "lines": [
+        "\"a\\\\\" b \"c\""
+      ],
+      "keys": "di\"",
+      "expect": {
+        "text": [
+          "\"\" b \"c\""
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\\\\",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_dquote_multibyte_escaped",
+      "lines": [
+        "x \"한\\\"글\" y"
+      ],
+      "keys": "di\"",
+      "expect": {
+        "text": [
+          "x \"\" y"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "한\\\"글",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_dquote_between_strings",
+      "lines": [
+        "\"a\" x \"b\""
+      ],
+      "keys": "4ldi\"",
+      "expect": {
+        "text": [
+          "\"a\"\"b\""
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": " x ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_dquote_on_close",
+      "lines": [
+        "x \"ab\" y"
+      ],
+      "keys": "5ldi\"",
+      "expect": {
+        "text": [
+          "x \"\" y"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_squote_escaped",
+      "lines": [
+        "'a\\'b' c"
+      ],
+      "keys": "di'",
+      "expect": {
+        "text": [
+          "'' c"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\\'b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_d2i_dquote",
+      "lines": [
+        "x \"ab\" y"
+      ],
+      "keys": "d2i\"",
+      "expect": {
+        "text": [
+          "x  y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "\"ab\"",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_v_i_dquote_i_dquote",
+      "lines": [
+        "x \"ab\" y"
+      ],
+      "keys": "vi\"i\"d",
+      "expect": {
+        "text": [
+          "x  y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "\"ab\"",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_v_a_dquote",
+      "lines": [
+        "x \"ab\" y"
+      ],
+      "keys": "va\"d",
+      "expect": {
+        "text": [
+          "x y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "\"ab\" ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_di_backtick_escaped",
+      "lines": [
+        "`a\\`b` c"
+      ],
+      "keys": "di`",
+      "expect": {
+        "text": [
+          "`` c"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a\\`b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_v_a_dquote_a_dquote",
+      "lines": [
+        "\"a\" \"b\" c"
+      ],
+      "keys": "va\"a\"d",
+      "expect": {
+        "text": [
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\"a\" \"b\" ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tq_ci_dquote_escaped",
+      "lines": [
+        "x \"a\\\"b\" y"
+      ],
+      "keys": "ci\"X<Esc>",
+      "expect": {
+        "text": [
+          "x \"X\" y"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "a\\\"b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_dis_on_gap",
+      "lines": [
+        "Hi. Bye."
+      ],
+      "keys": "3ldis",
+      "expect": {
+        "text": [
+          "Hi.Bye."
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": " ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_on_gap",
+      "lines": [
+        "Hi. Bye."
+      ],
+      "keys": "3ldas",
+      "expect": {
+        "text": [
+          "Hi."
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": " Bye.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_dis_line_break",
+      "lines": [
+        "Hi.",
+        "Bye."
+      ],
+      "keys": "dis",
+      "expect": {
+        "text": [
+          "Bye."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Hi.\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_line_break",
+      "lines": [
+        "Hi.",
+        "Bye."
+      ],
+      "keys": "das",
+      "expect": {
+        "text": [
+          "Bye."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Hi.\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_last_sentence",
+      "lines": [
+        "Hi there. Bye."
+      ],
+      "keys": "$das",
+      "expect": {
+        "text": [
+          "Hi there."
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": " Bye.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_first_sentence",
+      "lines": [
+        "Hi there. Bye."
+      ],
+      "keys": "das",
+      "expect": {
+        "text": [
+          "Bye."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Hi there. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_middle",
+      "lines": [
+        "A b. C d. E f."
+      ],
+      "keys": "wwdas",
+      "expect": {
+        "text": [
+          "C d. E f."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "A b. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_dis_middle",
+      "lines": [
+        "A b. C d. E f."
+      ],
+      "keys": "wwdis",
+      "expect": {
+        "text": [
+          " C d. E f."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "A b.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_dis_two_space_gap",
+      "lines": [
+        "Hi.  Bye."
+      ],
+      "keys": "3ldis",
+      "expect": {
+        "text": [
+          "Hi.Bye."
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "  ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_d2is",
+      "lines": [
+        "A b. C d. E f."
+      ],
+      "keys": "d2is",
+      "expect": {
+        "text": [
+          "C d. E f."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "A b. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_d2as",
+      "lines": [
+        "A b. C d. E f."
+      ],
+      "keys": "d2as",
+      "expect": {
+        "text": [
+          "E f."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "A b. C d. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_d3is",
+      "lines": [
+        "A b. C d. E f."
+      ],
+      "keys": "d3is",
+      "expect": {
+        "text": [
+          " E f."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "A b. C d.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_multibyte",
+      "lines": [
+        "가나. 다라. 마바."
+      ],
+      "keys": "4ldas",
+      "expect": {
+        "text": [
+          "가나. 마바."
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "다라. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_paragraph_boundary",
+      "lines": [
+        "Hi there",
+        "",
+        "Bye now."
+      ],
+      "keys": "das",
+      "expect": {
+        "text": [
+          "",
+          "Bye now."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Hi there\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_dis_paragraph_boundary",
+      "lines": [
+        "Hi there",
+        "",
+        "Bye now."
+      ],
+      "keys": "Gdis",
+      "expect": {
+        "text": [
+          "Hi there",
+          "",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Bye now.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_dis_empty_line",
+      "lines": [
+        "Hi.",
+        "",
+        "Bye."
+      ],
+      "keys": "jdis",
+      "expect": {
+        "text": [
+          "Hi.",
+          "Bye."
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_dis_empty_buffer",
+      "lines": [
+        ""
+      ],
+      "keys": "dis",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_no_terminator",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "wdas",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_closing_paren",
+      "lines": [
+        "(Hi.) Bye."
+      ],
+      "keys": "das",
+      "expect": {
+        "text": [
+          "Bye."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "(Hi.) ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_v_is_is",
+      "lines": [
+        "A b. C d. E f."
+      ],
+      "keys": "visisd",
+      "expect": {
+        "text": [
+          "C d. E f."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "A b. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_v_as_as",
+      "lines": [
+        "A b. C d. E f. G h."
+      ],
+      "keys": "vasasd",
+      "expect": {
+        "text": [
+          "E f. G h."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "A b. C d. ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_cis",
+      "lines": [
+        "Hi. Bye."
+      ],
+      "keys": "wcisX<Esc>",
+      "expect": {
+        "text": [
+          "X Bye."
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Hi.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_das_after_blank_line",
+      "lines": [
+        "Hi.",
+        "",
+        "Bye."
+      ],
+      "keys": "Gdas",
+      "expect": {
+        "text": [
+          "Hi.",
+          "",
+          ""
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Bye.",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "ts_v_is_on_gap",
+      "lines": [
+        "Hi. Bye."
+      ],
+      "keys": "3lvisd",
+      "expect": {
+        "text": [
+          "Hi.Bye."
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": " ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_2di_paren_inner_cursor",
+      "lines": [
+        "((a))"
+      ],
+      "keys": "2l2di(",
+      "expect": {
+        "text": [
+          "()"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "(a)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_d2i_paren_inner_cursor",
+      "lines": [
+        "((a))"
+      ],
+      "keys": "2ld2i(",
+      "expect": {
+        "text": [
+          "()"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "(a)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_2di_paren_col0",
+      "lines": [
+        "((a))"
+      ],
+      "keys": "2di(",
+      "expect": {
+        "text": [
+          "((a))"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_2da_paren",
+      "lines": [
+        "x((a)b)y"
+      ],
+      "keys": "3l2da(",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "((a)b)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_3di_paren_too_deep",
+      "lines": [
+        "((a))"
+      ],
+      "keys": "2l3di(",
+      "expect": {
+        "text": [
+          "((a))"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_paren_next_line",
+      "lines": [
+        "foo",
+        "(bar)"
+      ],
+      "keys": "di(",
+      "expect": {
+        "text": [
+          "foo",
+          "()"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_paren_later_on_line",
+      "lines": [
+        "foo (bar)"
+      ],
+      "keys": "di(",
+      "expect": {
+        "text": [
+          "foo ()"
+        ],
+        "cursor": [
+          1,
+          5
+        ],
+        "reg_unnamed": {
+          "text": "bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_paren_on_close",
+      "lines": [
+        "(a(b)c)"
+      ],
+      "keys": "4ldi(",
+      "expect": {
+        "text": [
+          "(a()c)"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_paren_on_open",
+      "lines": [
+        "(a(b)c)"
+      ],
+      "keys": "2ldi(",
+      "expect": {
+        "text": [
+          "(a()c)"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_2di_brace_multiline",
+      "lines": [
+        "{",
+        "  x {",
+        "    y",
+        "  }",
+        "}"
+      ],
+      "keys": "2j2di{",
+      "expect": {
+        "text": [
+          "{",
+          "}"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  x {\n    y\n  }\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_paren_multibyte",
+      "lines": [
+        "(한(글)x)"
+      ],
+      "keys": "3l2di(",
+      "expect": {
+        "text": [
+          "()"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "한(글)x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_v_i_paren_i_paren",
+      "lines": [
+        "((a))"
+      ],
+      "keys": "2lvi(i(d",
+      "expect": {
+        "text": [
+          "(())"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_v_a_paren_a_paren",
+      "lines": [
+        "x((a) b)y"
+      ],
+      "keys": "3lva(a(d",
+      "expect": {
+        "text": [
+          "xy"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "((a) b)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_v_2i_paren",
+      "lines": [
+        "((a))"
+      ],
+      "keys": "2lv2i(d",
+      "expect": {
+        "text": [
+          "()"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "(a)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_v_i_paren_whole_inner",
+      "lines": [
+        "(a(b)c)"
+      ],
+      "keys": "3lvi(i(d",
+      "expect": {
+        "text": [
+          "(a()c)"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_paren_none",
+      "lines": [
+        "foo"
+      ],
+      "keys": "di(",
+      "expect": {
+        "text": [
+          "foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_bracket_count",
+      "lines": [
+        "[[a]]"
+      ],
+      "keys": "2l2di[",
+      "expect": {
+        "text": [
+          "[]"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "[a]",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_paren_empty_inline",
+      "lines": [
+        "x()y"
+      ],
+      "keys": "2ldi(",
+      "expect": {
+        "text": [
+          "x()y"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_v_i_paren_grows",
+      "lines": [
+        "((ab))"
+      ],
+      "keys": "2lvi(i(d",
+      "expect": {
+        "text": [
+          "()"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "(ab)",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_2di_paren_forward",
+      "lines": [
+        "x (a (b))"
+      ],
+      "keys": "2di(",
+      "expect": {
+        "text": [
+          "x (a ())"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tp_di_paren_escaped",
+      "lines": [
+        "(a \\) b)"
+      ],
+      "keys": "ldi(",
+      "expect": {
+        "text": [
+          "()"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "a \\) b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_brace_indented",
+      "lines": [
+        "    if x {",
+        "        foo",
+        "    }"
+      ],
+      "keys": "jdi{",
+      "expect": {
+        "text": [
+          "    if x {",
+          "    }"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "        foo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_ci_brace_indented",
+      "lines": [
+        "    if x {",
+        "        foo",
+        "    }"
+      ],
+      "keys": "jci{X<Esc>",
+      "expect": {
+        "text": [
+          "    if x {",
+          "        X",
+          "    }"
+        ],
+        "cursor": [
+          2,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "        foo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_yi_brace_indented",
+      "lines": [
+        "    if x {",
+        "        foo",
+        "    }"
+      ],
+      "keys": "jyi{",
+      "expect": {
+        "text": [
+          "    if x {",
+          "        foo",
+          "    }"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "        foo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "        foo\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "tb_ci_paren_empty_lines",
+      "lines": [
+        "(",
+        ")"
+      ],
+      "keys": "ci(X<Esc>",
+      "expect": {
+        "text": [
+          "(",
+          "X)"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_paren_empty_lines",
+      "lines": [
+        "(",
+        ")"
+      ],
+      "keys": "di(",
+      "expect": {
+        "text": [
+          "(",
+          ")"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_paren_args",
+      "lines": [
+        "f(",
+        "  a,",
+        "  b",
+        "  )"
+      ],
+      "keys": "jdi(",
+      "expect": {
+        "text": [
+          "f(",
+          "  )"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "  a,\n  b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_brace_tab_indent",
+      "lines": [
+        "{",
+        "\tfoo",
+        "\t}"
+      ],
+      "keys": "jdi{",
+      "expect": {
+        "text": [
+          "{",
+          "\t}"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "\tfoo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_brace_content_on_open",
+      "lines": [
+        "{ foo",
+        "  bar",
+        "  }"
+      ],
+      "keys": "jdi{",
+      "expect": {
+        "text": [
+          "{",
+          "  }"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": " foo\n  bar",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_brace_close_trailing",
+      "lines": [
+        "{",
+        "  foo",
+        "  } x"
+      ],
+      "keys": "jdi{",
+      "expect": {
+        "text": [
+          "{",
+          "  } x"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "  foo\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_brace_open_trailing_blank",
+      "lines": [
+        "{  ",
+        "foo",
+        "}"
+      ],
+      "keys": "jdi{",
+      "expect": {
+        "text": [
+          "{",
+          "}"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  \nfoo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_da_brace_indented",
+      "lines": [
+        "    if x {",
+        "        foo",
+        "    }"
+      ],
+      "keys": "jda{",
+      "expect": {
+        "text": [
+          "    if x "
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "{\n        foo\n    }",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_v_i_brace_indented",
+      "lines": [
+        "    if x {",
+        "        foo",
+        "    }"
+      ],
+      "keys": "jvi{d",
+      "expect": {
+        "text": [
+          "    if x {",
+          "    }"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "        foo\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_brace_close_after_content",
+      "lines": [
+        "{",
+        "  foo }"
+      ],
+      "keys": "jdi{",
+      "expect": {
+        "text": [
+          "{",
+          "}"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  foo ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_brace_indented_two_lines",
+      "lines": [
+        "  {",
+        "    a",
+        "    b",
+        "  }",
+        "z"
+      ],
+      "keys": "jdi{",
+      "expect": {
+        "text": [
+          "  {",
+          "  }",
+          "z"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "    a\n    b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_ci_brace_indented_two_lines",
+      "lines": [
+        "  {",
+        "    a",
+        "    b",
+        "  }",
+        "z"
+      ],
+      "keys": "jci{X<Esc>",
+      "expect": {
+        "text": [
+          "  {",
+          "    X",
+          "  }",
+          "z"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "    a\n    b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "tb_di_brace_cursor_in_indent",
+      "lines": [
+        "    {",
+        "  a",
+        "    }"
+      ],
+      "keys": "di{",
+      "expect": {
+        "text": [
+          "    {",
+          "    }"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "  a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }
