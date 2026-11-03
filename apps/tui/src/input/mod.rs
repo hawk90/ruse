@@ -486,6 +486,9 @@ pub enum InputProfile {
     Native,
 }
 
+/// A command line set aside by [`InputEngine::suspend_cmdline`] (opaque; `None` when none was open).
+pub struct SuspendedCmdline(Option<CmdLine>);
+
 /// The Normal/Visual input state, held as three **orthogonal axes** — `count`, the operator-pending `op`,
 /// and the one-shot `awaiting` key-expectation — plus sticky repeat state. `feed` resolves them in a fixed
 /// precedence (mode → awaiting tier → base keys), so the hierarchy is explicit, not encoded in field order.
@@ -722,6 +725,18 @@ impl InputEngine {
                 .collect::<Vec<_>>()
                 .join("  "),
         )
+    }
+
+    /// Set aside the open command line (a `gQ` Ex-mode line that stays open while its command runs), so
+    /// keys a `:normal` feeds reach Normal mode instead of the line (#807). [`Self::resume_cmdline`] puts
+    /// it back.
+    pub fn suspend_cmdline(&mut self) -> SuspendedCmdline {
+        SuspendedCmdline(self.cmdline.take())
+    }
+
+    /// Restore a command line [`Self::suspend_cmdline`] set aside, replacing any line left open since.
+    pub fn resume_cmdline(&mut self, saved: SuspendedCmdline) {
+        self.cmdline = saved.0;
     }
 
     /// Open the command-line namespace with `prefix` (`:`/`/`), optionally as `gQ` Ex mode.
@@ -3660,7 +3675,16 @@ impl InputEngine {
                     KeyCode::Char('+') => self.action(Command::UndoNewer),
                     // `gQ` — enter Ex mode (F-026 #3). `Q` alone is NOT Ex at the pinned Neovim
                     // revision, so only this two-key form opens it; the line re-prompts until `:visual`.
+                    // Like `:`, it ends the command: the count is dropped and a `CTRL-O` one-shot returns
+                    // to Insert once the Ex line closes. Under an operator or in Visual it only cancels
+                    // (Vim's `checkclearopq`): `dgQ` edits nothing and opens no Ex mode (#806).
                     KeyCode::Char('Q') => {
+                        let refused = self.normal.op.is_some()
+                            || matches!(mode, Mode::Visual { .. } | Mode::Select { .. });
+                        self.reset();
+                        if refused {
+                            return Feed::Ignored;
+                        }
                         self.open_cmdline(':', true);
                         Feed::Pending
                     }

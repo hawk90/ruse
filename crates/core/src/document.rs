@@ -45,6 +45,9 @@ pub struct Document {
     saved_node: Option<MonotonicSeq>,
     /// The line Vim's `U` restores ([`Document::line_undo`]).
     line_undo: LineUndo,
+    /// An open undo block ([`Document::begin_undo_block`]): `Some(joining)`, where `joining` turns true once
+    /// the block's first change is recorded and every later change then joins its undo group.
+    undo_block: Option<bool>,
 }
 
 impl Document {
@@ -62,6 +65,7 @@ impl Document {
             anchor_index: Arc::new(AnchorIndex::default()),
             saved_node: None,
             line_undo: LineUndo::default(),
+            undo_block: None,
         };
         d.rebuild_index();
         d
@@ -182,7 +186,12 @@ impl Document {
             self.revision
         );
         self.anchors.apply_edits(&txn.edits);
-        let (origin, hint) = (txn.origin, txn.group_hint);
+        let (origin, mut hint) = (txn.origin, txn.group_hint);
+        match self.undo_block {
+            Some(true) => hint = GroupHint::JoinPrev,
+            Some(false) => self.undo_block = Some(true),
+            None => {}
+        }
         // Without an explicit start cursor, the change began at the start of its first edited line.
         let cursor = txn.cursor.unwrap_or_else(|| {
             txn.edits
@@ -194,6 +203,25 @@ impl Document {
             .record(txn.edits, inverse, origin, hint, self.revision, cursor);
         self.rebuild_index();
         Ok(self.revision)
+    }
+
+    /// Open an undo block: every change recorded until [`Document::end_undo_block`] joins the group of the
+    /// block's first change, so one `u` undoes them all (INV-UNDO). This is how Vim treats keys that were
+    /// not typed (`:normal`, `:g/pat/normal`): no undo sync happens between them. A block already open is
+    /// left as it is, so nested blocks fold into the outermost.
+    pub fn begin_undo_block(&mut self) {
+        self.undo_block.get_or_insert(false);
+    }
+
+    /// Close the undo block [`Document::begin_undo_block`] opened; the next change starts a group as usual.
+    pub fn end_undo_block(&mut self) {
+        self.undo_block = None;
+    }
+
+    /// Whether an undo block is open.
+    #[must_use]
+    pub fn in_undo_block(&self) -> bool {
+        self.undo_block.is_some()
     }
 
     /// Undo the last change **group** on the current lineage, returning the new revision, or `None` at the
@@ -380,5 +408,34 @@ mod text_arc_tests {
         .unwrap();
         assert_eq!(&**snapshot, b"abc", "the held snapshot is unchanged");
         assert_eq!(d.bytes(), b"abcd", "the live document advanced");
+    }
+
+    /// #852: every change inside an undo block undoes as one step, even ones that ask for a fresh group;
+    /// after the block the next change starts its own group again.
+    #[test]
+    fn an_undo_block_undoes_as_one_step() {
+        let mut d = Document::new(DocumentId(1), b"abc".to_vec());
+        let put = |d: &mut Document, at: usize, s: &[u8]| {
+            let list = EditList::new(vec![Edit::insert(at, s.to_vec())]).unwrap();
+            let txn = Transaction::new(d.revision(), list, TransactionOrigin::UserInput)
+                .with_hint(GroupHint::BreakBefore);
+            d.apply(txn).unwrap();
+        };
+        d.begin_undo_block();
+        d.begin_undo_block(); // nested: folds into the outer block
+        put(&mut d, 0, b"1");
+        put(&mut d, 0, b"2");
+        d.end_undo_block();
+        assert!(!d.in_undo_block());
+        put(&mut d, 0, b"3");
+        assert_eq!(d.bytes(), b"321abc");
+        d.undo();
+        assert_eq!(
+            d.bytes(),
+            b"21abc",
+            "the change after the block is its own step"
+        );
+        d.undo();
+        assert_eq!(d.bytes(), b"abc", "the block's changes undo together");
     }
 }

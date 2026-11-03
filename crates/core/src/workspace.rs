@@ -938,6 +938,13 @@ impl Workspace {
         self.docs.get(slot).and_then(Option::as_ref)
     }
 
+    /// The buffer `id`, mutably, or `None` if it is not live (an undo block or anchor owner that outlived
+    /// a buffer switch).
+    pub fn document_mut(&mut self, id: DocumentId) -> Option<&mut Document> {
+        let slot = (id.0 as usize).checked_sub(1)?;
+        self.docs.get_mut(slot).and_then(Option::as_mut)
+    }
+
     /// The `DocumentId` of the buffer the FOCUSED window currently shows.
     #[must_use]
     pub fn focused_buffer(&self) -> DocumentId {

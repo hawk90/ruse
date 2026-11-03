@@ -9,10 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ruse_core::{Command, DocumentId, Effect, Mode, SubRange, TransactionOrigin, Workspace};
+use ruse_core::{Command, DocumentId, Effect, SubRange, TransactionOrigin, Workspace};
 
 use crate::highlight;
-use crate::input::{Feed, InputEngine};
 use crate::persist;
 use crate::ui::prompts::{prompt_recovery, RecoveryChoice};
 
@@ -210,117 +209,10 @@ fn put_error(cmd: &Command, ws: &mut Workspace) -> Option<String> {
     })
 }
 
-/// Execute `:[range]normal[!] {keys}` (`:help :normal`). The key payload is resolved to key events and fed
-/// through the SAME input→`Command` pipeline the macro-replay path uses (`engine.feed` → [`run_cmd`]) — this
-/// is "replay this key string once (per line)", not a second key interpreter. With no range it runs ONCE at
-/// the current cursor (column preserved); with a range it runs once per line, cursor at column 0 of each line.
-///
-/// Line iteration matches Vim exactly (verified against nvim v0.12.4): the loop runs over the ORIGINAL
-/// `[line1, line2]`, and each step targets `min(lnum, last_line)` of the CURRENT buffer — so `:%normal dd`
-/// deletes every line, and `:%normal o-` appends one line per original line (both reproduced in tests). After
-/// each line an implicit `<Esc>` terminates any open Insert/pending command, forcing Normal (Vim's rule).
-///
-/// `bang` (`:normal!`, ignore user mappings) is accepted but inert: this editor has no user remaps yet.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn run_normal(
-    engine: &mut InputEngine,
-    ws: &mut Workspace,
-    range: Option<SubRange>,
-    keys: &str,
-    files: &Files,
-    recorded: &mut Vec<Command>,
-    status: &mut String,
-    quit: &mut bool,
-) {
-    let events = crate::keys::parse_normal_keys(keys);
-    match range {
-        // No range: run once at the cursor, column preserved (Vim `:normal {keys}`).
-        None => run_normal_line(engine, ws, &events, files, recorded, status, quit),
-        Some(range) => {
-            let (line1, line2) = resolve_normal_range(ws, range);
-            for lnum in line1..=line2 {
-                // Place the cursor at column 0 of the target line — clamped to the CURRENT last line, so a
-                // range that outlives shrinking edits (`:%normal dd`) keeps operating on the surviving lines.
-                let snapshot = ws.focused().doc.text_arc();
-                let last = line_count(&snapshot).max(1);
-                let target = lnum.min(last);
-                let off = ruse_core::pos::nth_line_start(&snapshot, target - 1);
-                ws.place_focused_cursor(off);
-                run_normal_line(engine, ws, &events, files, recorded, status, quit);
-            }
-        }
-    }
-}
-
-/// Execute `:g/pat/normal[!] {keys}` (`:help :g`) as a frontend two-pass. PASS 1 marks every matching (or,
-/// for `:v` / `:g!`, non-matching) line via [`Workspace::global_marks`] against the untouched buffer; PASS 2
-/// replays `{keys}` as Normal-mode input on each marked line through the SAME per-line runner `:normal` uses
-/// ([`run_normal_line`] → `engine.feed` → [`run_cmd`], cursor at column 0, implicit `<Esc>` after).
-///
-/// The marks are STABLE the way Vim's are (verified against nvim v0.12.4): as a line's `{keys}` grow or
-/// shrink the buffer, every not-yet-processed mark shifts by that line's net line-count delta — so lines a
-/// `normal` INSERTS are never re-matched (`:g/x/normal o-` drops one line under EACH match, not a cascade),
-/// and later marks still target their original text after a DELETE (`:g/pat/normal dd` equals `:g/pat/d`).
-///
-/// `bang` (`:g/pat/normal!`) is accepted but inert — this editor has no user remaps yet. Writes a Vim-style
-/// status: "Pattern not found" when the pattern marks nothing, a regex error, else "N lines changed".
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn run_global_normal(
-    engine: &mut InputEngine,
-    ws: &mut Workspace,
-    range: SubRange,
-    pattern: &str,
-    negate: bool,
-    keys: &str,
-    files: &Files,
-    recorded: &mut Vec<Command>,
-    status: &mut String,
-    quit: &mut bool,
-) {
-    // PASS 1: the 1-based line numbers to act on (ascending), computed against the untouched buffer.
-    let mut marks = match ws.global_marks(range, pattern, negate) {
-        Ok(m) => m,
-        Err(e) => {
-            *status = regex_error_msg(&e);
-            return;
-        }
-    };
-    if marks.is_empty() {
-        // Vim only echoes this for `:g` (no `E486`).
-        *status = format!("Pattern not found: {pattern}");
-        return;
-    }
-    let acted = marks.len();
-    let events = crate::keys::parse_normal_keys(keys);
-    // PASS 2: replay the keys on each marked line, shifting the remaining marks by each line's net delta.
-    for i in 0..marks.len() {
-        let lnum = marks[i];
-        // Place the cursor at column 0 of the (shift-adjusted) target line, clamped to the CURRENT last
-        // line so a mark that outlives shrinking edits still lands on a live line.
-        let snapshot = ws.focused().doc.text_arc();
-        let before = line_count(&snapshot).max(1);
-        let target = lnum.min(before);
-        let off = ruse_core::pos::nth_line_start(&snapshot, target - 1);
-        ws.place_focused_cursor(off);
-        drop(snapshot);
-        run_normal_line(engine, ws, &events, files, recorded, status, quit);
-        // Shift every not-yet-processed mark by this line's net line-count change (Vim's stable marks):
-        // inserted lines push later marks down; deleted lines pull them up — so nothing is re-processed.
-        let after = line_count(&ws.focused().doc.text_arc()).max(1);
-        let delta = after as isize - before as isize;
-        if delta != 0 {
-            for m in marks.iter_mut().skip(i + 1) {
-                *m = (*m as isize + delta).max(1) as usize;
-            }
-        }
-    }
-    *status = format!("{acted} lines changed");
-}
-
 /// Resolve a `:normal` [`SubRange`] to an INCLUSIVE 1-based `(line1, line2)`. `%` = the whole file, `.`/none
 /// = the cursor line, `N,M` = the numbers clamped to the buffer. The end is clamped to the current line
 /// count; the START is not, so an out-of-range start (`line1 > line2`) simply runs zero iterations.
-fn resolve_normal_range(ws: &Workspace, range: SubRange) -> (usize, usize) {
+pub(crate) fn resolve_normal_range(ws: &Workspace, range: SubRange) -> (usize, usize) {
     let snapshot = ws.focused().doc.text_arc();
     let total = line_count(&snapshot).max(1);
     match range {
@@ -330,66 +222,6 @@ fn resolve_normal_range(ws: &Workspace, range: SubRange) -> (usize, usize) {
             (line, line)
         }
         SubRange::Lines(a, b) => (a.max(1), b.min(total)),
-    }
-}
-
-/// Run one `:normal` pass over `events` at the current cursor, then apply the implicit `<Esc>` (Vim's rule:
-/// an unterminated Insert is auto-closed and any pending command is aborted, leaving Normal mode). Each key
-/// is fed with the LIVE mode (re-read after every command, so `i`→Insert routes the next keys as text).
-fn run_normal_line(
-    engine: &mut InputEngine,
-    ws: &mut Workspace,
-    events: &[KeyEvent],
-    files: &Files,
-    recorded: &mut Vec<Command>,
-    status: &mut String,
-    quit: &mut bool,
-) {
-    for &ev in events {
-        let mode = ws.focused().view.mode();
-        let feed = engine.feed(ev, mode);
-        drive_feed(feed, ws, files, recorded, status, quit);
-    }
-    // Implicit `<Esc>` — terminate insert / abort any pending command through the engine (so dot-repeat and
-    // insert sessions close exactly as a typed Esc would).
-    let mode = ws.focused().view.mode();
-    let feed = engine.feed(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), mode);
-    drive_feed(feed, ws, files, recorded, status, quit);
-    // Belt-and-suspenders: guarantee Normal even if the engine leaves a non-Insert non-Normal mode (Visual)
-    // on Esc — the per-line invariant `:normal` relies on for the next iteration's column-0 placement.
-    if ws.focused().view.mode() != Mode::Normal {
-        run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
-    }
-}
-
-/// Apply one engine outcome during a `:normal` run. A finished `Command` (or a dot-repeat `Replay` list) is
-/// applied via [`run_cmd`], exactly as the event loop does; `Pending`/`Ignored` are absorbed. A nested ex
-/// line (`:normal :…<CR>`) is NOT executed in this MVP — a rare form, deliberately left inert.
-fn drive_feed(
-    feed: Feed,
-    ws: &mut Workspace,
-    files: &Files,
-    recorded: &mut Vec<Command>,
-    status: &mut String,
-    quit: &mut bool,
-) {
-    match feed {
-        Feed::Cmd(cmd) => run_cmd(cmd, ws, files, recorded, status, quit),
-        Feed::Replay(cmds) => {
-            for cmd in cmds {
-                run_cmd(cmd, ws, files, recorded, status, quit);
-            }
-        }
-        // Nested ex from `:normal` is out of scope for this slice; Pending/Ignored are absorbed. A cmdline
-        // `c_CTRL-R` word-insert has no interactive command line in this replay context, so it is inert too;
-        // the `!{motion}` filter operator likewise needs the interactive `:{range}!` cmdline, so it is inert.
-        Feed::ExecuteEx(_)
-        | Feed::CmdlineInsertUnder { .. }
-        | Feed::FilterMotion { .. }
-        | Feed::FilterSpan(_)
-        | Feed::CountCmdline { .. }
-        | Feed::Pending
-        | Feed::Ignored => {}
     }
 }
 
@@ -664,7 +496,7 @@ pub(crate) fn apply_effect(
 /// Buffer line count for the `:w` write report, matching Vim: an empty buffer is 1 line; otherwise it is
 /// the newline count, plus one when the last line has no trailing newline (`"a\nb"` and `"a\nb\n"` are both
 /// 2 lines).
-fn line_count(buf: &[u8]) -> usize {
+pub(crate) fn line_count(buf: &[u8]) -> usize {
     if buf.is_empty() {
         return 1;
     }
@@ -738,7 +570,7 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
-    use crate::input::Ex;
+    use crate::input::{Ex, Feed, InputEngine};
     use ruse_core::{Command, SplitDir};
 
     /// #1069: a C0 punctuation chord matches in both encodings — the kitty protocol's `CTRL-]` and the
@@ -1053,23 +885,15 @@ mod dispatch_tests {
         range: Option<SubRange>,
         keys: &str,
     ) -> (String, usize) {
-        let mut engine = InputEngine::new();
         let mut ws = Workspace::new(buf.as_bytes().to_vec());
         ws.place_focused_cursor(cursor0);
-        let files = Files::new();
-        let mut recorded = Vec::new();
-        let mut status = String::new();
-        let mut quit = false;
-        run_normal(
-            &mut engine,
-            &mut ws,
-            range,
-            keys,
-            &files,
-            &mut recorded,
-            &mut status,
-            &mut quit,
-        );
+        let range = match range {
+            None => String::new(),
+            Some(SubRange::WholeFile) => "%".into(),
+            Some(SubRange::CurrentLine) => ".".into(),
+            Some(SubRange::Lines(a, b)) => format!("{a},{b}"),
+        };
+        ex_run(&mut ws, &format!("{range}normal {keys}"));
         let bytes = String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap();
         (bytes, ws.focused().view.cursor())
     }
@@ -1129,24 +953,9 @@ mod dispatch_tests {
     /// [`run_normal_oracle`], every expectation is the buffer nvim v0.12.4 produces for the SAME `:g`
     /// line, captured headlessly by hand (`parity_compare` cannot drive ex commands — it feeds raw keys).
     fn run_global_normal_oracle(buf: &str, pattern: &str, negate: bool, keys: &str) -> String {
-        let mut engine = InputEngine::new();
         let mut ws = Workspace::new(buf.as_bytes().to_vec());
-        let files = Files::new();
-        let mut recorded = Vec::new();
-        let mut status = String::new();
-        let mut quit = false;
-        run_global_normal(
-            &mut engine,
-            &mut ws,
-            SubRange::WholeFile,
-            pattern,
-            negate,
-            keys,
-            &files,
-            &mut recorded,
-            &mut status,
-            &mut quit,
-        );
+        let verb = if negate { "v" } else { "g" };
+        ex_run(&mut ws, &format!("{verb}/{pattern}/normal {keys}"));
         String::from_utf8(ws.focused().doc.bytes().to_vec()).unwrap()
     }
 

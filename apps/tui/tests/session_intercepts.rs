@@ -628,3 +628,35 @@ fn visual_colon_leaves_the_cursor_at_the_selection_start() {
     // `'<,'>` still names the whole selection.
     assert_eq!(run("a\nb\nc\n", "jVj:d<CR>").text(), "a\n");
 }
+
+// ---- `:normal` and `:g/pat/normal` take the typed-key path (#689, #852, #853) ---------------------------
+
+#[test]
+fn normal_runs_a_nested_ex_line_and_the_outer_macro_resumes_after_it() {
+    // nvim v0.12.6: `@b` with b = `:normal x^Mx` deletes two chars — the `x` after the `:normal` still
+    // runs, so the replay queue survives the nested run.
+    assert_eq!(
+        run("abcd\nwxyz\n", "qb:normal x<CR>xqj0@b").text(),
+        "cd\nyz\n"
+    );
+    // A `:` line inside `:normal` runs (`:exe "normal :s/a/X/\r"` in nvim); it used to be dropped.
+    assert_eq!(run("a\nb\n", ":normal :s/a/X/\r<CR>").text(), "X\nb\n");
+}
+
+#[test]
+fn normal_that_recurses_stops_with_e192() {
+    // `@a` where a = `:normal @a^M` never ends; Vim stops at 'maxmapdepth' with E192, ruse earlier.
+    let h = run("abc\n", "qa:normal @a<CR>q@a");
+    assert_eq!(h.emsg(), "E192");
+    assert_eq!(h.text(), "abc\n");
+}
+
+#[test]
+fn g_normal_skips_lines_an_earlier_pass_deleted_or_joined() {
+    // nvim v0.12.6: the `x2` line is gone when its turn comes, so it is not acted on.
+    assert_eq!(
+        run("x1\nx2\ny\nz\n", ":g/x/normal jdd<CR>").text(),
+        "x1\ny\nz\n"
+    );
+    assert_eq!(run("x1\nx2\ny\n", ":g/x/normal J<CR>").text(), "x1 x2\ny\n");
+}

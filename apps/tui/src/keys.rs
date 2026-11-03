@@ -51,6 +51,12 @@ pub struct MacroState {
     line_run: Option<(usize, usize, Vec<u8>)>,
 }
 
+/// The replay state [`MacroState::suspend_replay`] set aside.
+pub struct SuspendedReplay {
+    queue: VecDeque<KeyEvent>,
+    line_run: Option<(usize, usize, Vec<u8>)>,
+}
+
 /// What the session should do with a key after [`MacroState::step`] has processed it.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Step {
@@ -101,6 +107,30 @@ impl MacroState {
             self.budget = 0;
         }
         k
+    }
+
+    /// Set aside the keys still queued (and any linewise run), so a `:normal` can run the replays its own
+    /// keys start to completion before the outer replay resumes. The recursion budget stays shared.
+    pub fn suspend_replay(&mut self) -> SuspendedReplay {
+        SuspendedReplay {
+            queue: std::mem::take(&mut self.queue),
+            line_run: self.line_run.take(),
+        }
+    }
+
+    /// Put back what [`MacroState::suspend_replay`] set aside, after anything still queued.
+    pub fn resume_replay(&mut self, saved: SuspendedReplay) {
+        let inner = std::mem::replace(&mut self.queue, saved.queue);
+        self.queue.extend(inner);
+        if saved.line_run.is_some() {
+            self.line_run = saved.line_run;
+        }
+    }
+
+    /// Pop the next queued replay key WITHOUT resetting the budget when empty (a nested drain: the outer
+    /// expansion still owns the budget).
+    pub fn pop_replay(&mut self) -> Option<KeyEvent> {
+        self.queue.pop_front()
     }
 
     /// Enqueue register bytes for replay, honouring the shared recursion budget. Returns `false` if the

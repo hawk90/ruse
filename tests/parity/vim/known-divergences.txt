@@ -35,7 +35,6 @@ sc_fail_c_f_not_found_then_X # c with a failed motion still enters Insert (#1085
 sc_mac_failed_motion_aborts_replay # a failure does not abort the replay (#1085)
 sc_mac_failed_find_aborts_rest # a failure does not abort the replay (#1085)
 sc_mac_undo_after_replay # undo after @a (#939)
-sc_mac_normal_runs_register # :normal @a (#689)
 sc_mac_empty_recording_clears # qaq does not empty the register (#1091)
 sc_reg_named_delete_shifts_numbered # a named delete skips the numbered ring (#1091)
 sc_reg_numbered_dot_increments # "1p. does not walk the ring (#816)

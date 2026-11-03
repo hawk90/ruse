@@ -50,6 +50,40 @@ impl Edit {
         }
     }
 
+    /// The one edit that turns `old` into `new`, leaving the whole lines they share at the start and the
+    /// end in place (#735). A line command (`:m`, `:t`, `:put`, `:r`, `:{range}!`, `:sort`) that rebuilds
+    /// the buffer then records only the lines it touched: an undo entry holds those, and anchors on the
+    /// untouched lines (marks, `:g` line marks) do not collapse. Both ends stop at a line boundary.
+    #[must_use]
+    pub fn lines_changed(old: &[u8], new: Vec<u8>) -> Edit {
+        let common = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+        // The shared head, cut back to just after its last newline.
+        let head = old[..common]
+            .iter()
+            .rposition(|&b| b == b'\n')
+            .map_or(0, |i| i + 1);
+        let room = (old.len() - head).min(new.len() - head);
+        let same_tail = old[head..]
+            .iter()
+            .rev()
+            .zip(new[head..].iter().rev())
+            .take(room)
+            .take_while(|(a, b)| a == b)
+            .count();
+        // The shared tail, cut forward to the start of a line: just after a newline that both sides keep
+        // in front of it, or at the head.
+        let mut tail = same_tail;
+        while tail > 0 {
+            let (at, nat) = (old.len() - tail, new.len() - tail);
+            if (at == head || old[at - 1] == b'\n') && (nat == head || new[nat - 1] == b'\n') {
+                break;
+            }
+            tail -= 1;
+        }
+        let ins = new[head..new.len() - tail].to_vec();
+        Edit::replace(head, old.len() - tail - head, ins)
+    }
+
     /// Signed length change this edit makes to the document: `ins.len() - del`.
     #[must_use]
     pub fn delta(&self) -> isize {
@@ -197,6 +231,36 @@ impl EditList {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #735: a rebuilt buffer becomes one edit over the lines that changed, cut at line boundaries.
+    #[test]
+    fn lines_changed_keeps_the_shared_lines_in_place() {
+        let check = |old: &str, new: &str, pos: usize, del: usize, ins: &str| {
+            let e = Edit::lines_changed(old.as_bytes(), new.as_bytes().to_vec());
+            assert_eq!(
+                (e.pos.0, e.del, e.ins.as_slice()),
+                (pos, del, ins.as_bytes())
+            );
+            let list = EditList::new(vec![e]).unwrap();
+            assert_eq!(
+                list.apply_to(old.as_bytes()),
+                new.as_bytes(),
+                "{old:?} -> {new:?}"
+            );
+        };
+        // `:put` after line 2: only an insertion at the start of line 3.
+        check("a\nb\nc\n", "a\nb\nx\nc\n", 4, 0, "x\n");
+        // `:m0` of line 3: lines 1-3 change, nothing after them.
+        check("a\nb\nc\nd\n", "c\na\nb\nd\n", 0, 6, "c\na\nb\n");
+        // A shared prefix inside a line is not kept: the edit starts at that line's start.
+        check("ab\nac\n", "ac\nab\n", 0, 6, "ac\nab\n");
+        // Identical buffers: an empty edit.
+        check("a\nb\n", "a\nb\n", 4, 0, "");
+        // Appending to a buffer without a final newline, and emptying a buffer.
+        check("a\nb", "a\nb\nc", 2, 1, "b\nc");
+        check("a\nb\n", "", 0, 4, "");
+        check("", "a\n", 0, 0, "a\n");
+    }
 
     #[test]
     fn overlapping_edits_are_rejected() {

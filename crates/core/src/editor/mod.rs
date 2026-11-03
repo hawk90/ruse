@@ -1518,8 +1518,8 @@ impl EditorState {
             cursor
         };
 
-        let list = EditList::new(vec![Edit::replace(0, bytes.len(), new_bytes)])
-            .expect("a single whole-buffer replace is well-formed");
+        let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
+            .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
         self.doc.apply(txn).expect("line relocate applies cleanly");
@@ -1600,8 +1600,8 @@ impl EditorState {
             .take(last_idx)
             .map(<[u8]>::len)
             .sum();
-        let list = EditList::new(vec![Edit::replace(0, orig_len, new_bytes)])
-            .expect("a single whole-buffer replace is well-formed");
+        let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
+            .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
         self.doc.apply(txn).expect("line put applies cleanly");
@@ -1678,8 +1678,8 @@ impl EditorState {
             .take(target_idx)
             .map(<[u8]>::len)
             .sum();
-        let list = EditList::new(vec![Edit::replace(0, orig_len, new_bytes)])
-            .expect("a single whole-buffer replace is well-formed");
+        let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
+            .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
         self.doc.apply(txn).expect("line read applies cleanly");
@@ -1781,8 +1781,8 @@ impl EditorState {
             .take(target_idx)
             .map(<[u8]>::len)
             .sum();
-        let list = EditList::new(vec![Edit::replace(0, orig_len, new_bytes)])
-            .expect("a single whole-buffer replace is well-formed");
+        let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
+            .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
         self.doc.apply(txn).expect("line filter applies cleanly");
@@ -1875,8 +1875,8 @@ impl EditorState {
             .map(<[u8]>::len)
             .sum::<usize>()
             .min(new_bytes.len());
-        let list = EditList::new(vec![Edit::replace(0, bytes.len(), new_bytes)])
-            .expect("a single whole-buffer replace is well-formed");
+        let list = EditList::new(vec![Edit::lines_changed(self.doc.bytes(), new_bytes)])
+            .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, TransactionOrigin::UserInput)
             .with_hint(GroupHint::BreakBefore);
         self.doc.apply(txn).expect("sort applies cleanly");

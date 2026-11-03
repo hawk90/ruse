@@ -36,6 +36,11 @@ use crate::{pty, term_buffer};
 /// Rows of context kept above and below the cursor when scrolling (Vim's `scrolloff`).
 const SCROLLOFF: usize = 3;
 
+/// How deep `:normal` may nest (`:normal :normal …`, or a macro that runs `:normal @a` on itself) before it
+/// fails with E192. Vim's limit is 'maxmapdepth' (1000); each level here is a few session frames on the
+/// Rust stack, so ruse stops earlier.
+const MAX_NORMAL_DEPTH: usize = 20;
+
 /// Append a recovery-journal frame after every Nth change (revision bump) of a file buffer — a coarse
 /// hard-kill safety net. Idle ticks never write (#858). A panic, fatal signal or I/O error journals every
 /// modified buffer's exact latest state separately (`recover`). Full incremental journaling is post-MVP.
@@ -405,6 +410,8 @@ pub(crate) struct Session {
     /// deferred edit-applies) lives behind the coordinator; the loop just drives it (CAP-LSP-COORD).
     pub(crate) lsp: LspCoordinator,
     pub(crate) status: String,
+    /// How many `:normal` runs are in progress (nested ones count each).
+    normal_depth: usize,
 }
 
 impl Session {
@@ -517,6 +524,7 @@ impl Session {
             terminals: HashMap::new(),
             lsp: LspCoordinator::new(cwd, trusted),
             status,
+            normal_depth: 0,
         }
     }
 
@@ -1166,17 +1174,18 @@ impl Session {
             }
             return;
         }
-        // The command palette dispatches the selected command by its stable id, through the normal command
-        // path (so it undoes/records like any other).
+        // The command palette dispatches the selected command by its stable id, through the same path as a
+        // typed key's command (so it is resolved, undone and recorded like any other, #689).
         if let Some(outcome) = palette.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                let cmd = palette.as_ref().and_then(|p| p.selected().cloned());
-                if let Some(cmd) = cmd {
-                    run_cmd(cmd, ws, files, recorded, status, quit);
-                }
-            }
+            let cmd = match outcome {
+                PickOutcome::Accept => palette.as_ref().and_then(|p| p.selected().cloned()),
+                _ => None,
+            };
             if !matches!(outcome, PickOutcome::Continue) {
                 *palette = None;
+            }
+            if let Some(cmd) = cmd {
+                self.run_resolved_cmd(cmd, frame);
             }
             return;
         }
@@ -1884,150 +1893,7 @@ impl Session {
                 });
             }
             Feed::Pending | Feed::Ignored => {}
-            Feed::Cmd(cmd) => {
-                // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
-                // has no substitute history); like the current-line `&`, it calls `substitute` directly.
-                if matches!(cmd, Command::RepeatSubstituteGlobal) {
-                    *status = match &last_substitute {
-                        Some((pat, rep, flags)) => {
-                            match ws.substitute(ruse_core::SubRange::WholeFile, pat, rep, *flags) {
-                                Ok(out) if out.replacements == 0 => {
-                                    format!("E486: pattern not found: {pat}")
-                                }
-                                Ok(out) => {
-                                    format!(
-                                        "{} substitutions on {} lines",
-                                        out.replacements, out.lines
-                                    )
-                                }
-                                Err(e) => crate::app::dispatch::regex_error_msg(&e),
-                            }
-                        }
-                        None => "E33: No previous substitute regular expression".to_string(),
-                    };
-                    return;
-                }
-                // `&` — repeat the last `:s` on the CURRENT LINE, DROPPING its flags (Vim: no `g`/`i`/`I`,
-                // so only the first match on the cursor's line is replaced). Same frontend resolution as
-                // `g&`, but scoped to the current line and forced to default flags.
-                if matches!(cmd, Command::RepeatSubstituteLine) {
-                    *status = match &last_substitute {
-                        Some((pat, rep, _flags)) => {
-                            match ws.substitute(
-                                ruse_core::SubRange::CurrentLine,
-                                pat,
-                                rep,
-                                ruse_core::SubFlags::default(),
-                            ) {
-                                Ok(out) if out.replacements == 0 => {
-                                    format!("E486: pattern not found: {pat}")
-                                }
-                                Ok(out) => {
-                                    format!(
-                                        "{} substitutions on {} lines",
-                                        out.replacements, out.lines
-                                    )
-                                }
-                                Err(e) => crate::app::dispatch::regex_error_msg(&e),
-                            }
-                        }
-                        None => "E33: No previous substitute regular expression".to_string(),
-                    };
-                    return;
-                }
-                // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
-                // mutation. Like `*`/`gd`, the engine has no buffer, so the frontend reads the focused
-                // buffer's bytes + cursor here and formats the message via the pure `ruse_core::info` helpers.
-                if let Some(msg) = info_status(&cmd, ws) {
-                    *status = msg;
-                    return;
-                }
-                // `[i`/`]i`/`[I`/`]I` (keyword under cursor): the engine has no buffer, so resolve the
-                // keyword here and scan the buffer lines. `[i`/`]i` echo the count'th match on the status
-                // line; `[I`/`]I` open a view-only listing overlay. Purely a display command (never planned).
-                // No keyword under the cursor → `E349` (like nvim; note `*`/`gd` use `E348`, a different code).
-                if let Command::ShowKeywordLines { above, list, count } = cmd {
-                    match ws.word_under_cursor() {
-                        Some(keyword) => {
-                            let pane = ws.focused();
-                            let bytes = pane.doc.bytes();
-                            let cursor_line =
-                                ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
-                            let matches = ruse_core::keyword_line_numbers(bytes, &keyword);
-                            if list {
-                                let rows: Vec<(usize, String)> =
-                                    ruse_core::keyword_list(&matches, cursor_line, above)
-                                        .into_iter()
-                                        .map(|l| (l, ruse_core::line_text(bytes, l)))
-                                        .collect();
-                                *status = format!("{} line(s) matching \"{keyword}\"", rows.len());
-                                *keyword_lines_picker =
-                                    Some(crate::ui::keyword_lines_picker::open(&rows));
-                            } else {
-                                *status = match ruse_core::keyword_echo(
-                                    &matches,
-                                    cursor_line,
-                                    above,
-                                    count as usize,
-                                ) {
-                                    ruse_core::KeywordEcho::Line(l) => {
-                                        ruse_core::line_text(bytes, l)
-                                    }
-                                    ruse_core::KeywordEcho::CurrentLine => {
-                                        "E387: Match is on current line".into()
-                                    }
-                                    ruse_core::KeywordEcho::NotFound => {
-                                        "E389: Couldn't find pattern".into()
-                                    }
-                                };
-                            }
-                        }
-                        None => *status = "E349: No identifier under cursor".into(),
-                    }
-                    return;
-                }
-                // `*`/`#` (word under cursor): the planner resolves the keyword and searches; record the same
-                // pattern as the last search (direction too, so `#` then `n` continues backward) and for
-                // hlsearch. No keyword on the line → E348 and nothing runs.
-                if !note_word_search(&cmd, ws, engine, search_hl, status) {
-                    return;
-                }
-                // A search (`/pat`, `?pat`, `n`, `N`, bare, under an operator or `!`) whose pattern matches
-                // nowhere fails with E486 and nothing runs (#901).
-                if search_misses(&cmd, ws, status) {
-                    return;
-                }
-                // `gd`/`gD` (declaration under cursor, TEXT heuristic — not LSP): like `*`/`#`, the engine
-                // has no buffer, so resolve the keyword here and rewrite to a concrete whole-file first-match
-                // jump. `gd` and `gD` are currently identical (matching nvim v0.12.4). Set the last-search to
-                // the whole-word pattern forward so a following `n` continues from the landing spot (nvim's
-                // `gd` sets `@/` too). `global` is unused for now — the `gd` block-scope refinement reads it.
-                let cmd = if let Command::GotoDeclaration { .. } = cmd {
-                    match ws.word_under_cursor() {
-                        Some(word) => {
-                            let pat = format!("\\<{word}\\>");
-                            engine.set_last_search(pat.clone(), true);
-                            Command::GotoFirstMatch(pat)
-                        }
-                        None => {
-                            *status = "E348: No string under cursor".into();
-                            return;
-                        }
-                    }
-                } else {
-                    cmd
-                };
-                // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
-                let cmd = resolve_tree_aware(cmd, ws, highlighters, line_idx, snapshot);
-                // A completed search turns on hlsearch for that pattern (F-009 #1).
-                if let Some(p) = search_pattern(&cmd) {
-                    *search_hl = Some(p);
-                }
-                // Refresh the read-only special registers `"/ ": ". "%` before dispatch so a `"/p` /
-                // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
-                sync_special_registers(ws, engine, last_ex_line, files);
-                run_cmd(cmd, ws, files, recorded, status, quit);
-            }
+            Feed::Cmd(cmd) => self.run_resolved_cmd(cmd, frame),
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
@@ -2037,6 +1903,161 @@ impl Session {
                 }
             }
         }
+    }
+
+    /// Run a finished engine `Command` the way a typed key's is run (#689): the frontend-resolved ones
+    /// (`&`/`g&`, the INFO commands, `[i`/`[I`, `*`/`#`, a missed search, `gd`, tree-aware `=`) are resolved
+    /// here, hlsearch and the special registers are refreshed, then it is recorded and applied. The
+    /// command palette dispatches through this too, so a command picked there behaves as when typed.
+    fn run_resolved_cmd(&mut self, cmd: Command, frame: &FrameCtx) {
+        let Session {
+            ws,
+            files,
+            highlighters,
+            line_idx,
+            recorded,
+            engine,
+            quit,
+            search_hl,
+            last_substitute,
+            last_ex_line,
+            keyword_lines_picker,
+            status,
+            ..
+        } = self;
+        let snapshot = &frame.snapshot;
+        // `g&` — repeat the last `:s` over the WHOLE FILE with its flags. Resolved here (the engine
+        // has no substitute history); like the current-line `&`, it calls `substitute` directly.
+        if matches!(cmd, Command::RepeatSubstituteGlobal) {
+            *status = match &last_substitute {
+                Some((pat, rep, flags)) => {
+                    match ws.substitute(ruse_core::SubRange::WholeFile, pat, rep, *flags) {
+                        Ok(out) if out.replacements == 0 => {
+                            format!("E486: pattern not found: {pat}")
+                        }
+                        Ok(out) => {
+                            format!("{} substitutions on {} lines", out.replacements, out.lines)
+                        }
+                        Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                    }
+                }
+                None => "E33: No previous substitute regular expression".to_string(),
+            };
+            return;
+        }
+        // `&` — repeat the last `:s` on the CURRENT LINE, DROPPING its flags (Vim: no `g`/`i`/`I`,
+        // so only the first match on the cursor's line is replaced). Same frontend resolution as
+        // `g&`, but scoped to the current line and forced to default flags.
+        if matches!(cmd, Command::RepeatSubstituteLine) {
+            *status = match &last_substitute {
+                Some((pat, rep, _flags)) => {
+                    match ws.substitute(
+                        ruse_core::SubRange::CurrentLine,
+                        pat,
+                        rep,
+                        ruse_core::SubFlags::default(),
+                    ) {
+                        Ok(out) if out.replacements == 0 => {
+                            format!("E486: pattern not found: {pat}")
+                        }
+                        Ok(out) => {
+                            format!("{} substitutions on {} lines", out.replacements, out.lines)
+                        }
+                        Err(e) => crate::app::dispatch::regex_error_msg(&e),
+                    }
+                }
+                None => "E33: No previous substitute regular expression".to_string(),
+            };
+            return;
+        }
+        // INFO commands (`ga`/`:ascii`, `CTRL-G`, `g CTRL-G`): print to the status line, no buffer
+        // mutation. Like `*`/`gd`, the engine has no buffer, so the frontend reads the focused
+        // buffer's bytes + cursor here and formats the message via the pure `ruse_core::info` helpers.
+        if let Some(msg) = info_status(&cmd, ws) {
+            *status = msg;
+            return;
+        }
+        // `[i`/`]i`/`[I`/`]I` (keyword under cursor): the engine has no buffer, so resolve the
+        // keyword here and scan the buffer lines. `[i`/`]i` echo the count'th match on the status
+        // line; `[I`/`]I` open a view-only listing overlay. Purely a display command (never planned).
+        // No keyword under the cursor → `E349` (like nvim; note `*`/`gd` use `E348`, a different code).
+        if let Command::ShowKeywordLines { above, list, count } = cmd {
+            match ws.word_under_cursor() {
+                Some(keyword) => {
+                    let pane = ws.focused();
+                    let bytes = pane.doc.bytes();
+                    let cursor_line = ruse_core::pos::line_of(bytes, pane.view.cursor()) + 1;
+                    let matches = ruse_core::keyword_line_numbers(bytes, &keyword);
+                    if list {
+                        let rows: Vec<(usize, String)> =
+                            ruse_core::keyword_list(&matches, cursor_line, above)
+                                .into_iter()
+                                .map(|l| (l, ruse_core::line_text(bytes, l)))
+                                .collect();
+                        *status = format!("{} line(s) matching \"{keyword}\"", rows.len());
+                        *keyword_lines_picker = Some(crate::ui::keyword_lines_picker::open(&rows));
+                    } else {
+                        *status = match ruse_core::keyword_echo(
+                            &matches,
+                            cursor_line,
+                            above,
+                            count as usize,
+                        ) {
+                            ruse_core::KeywordEcho::Line(l) => ruse_core::line_text(bytes, l),
+                            ruse_core::KeywordEcho::CurrentLine => {
+                                "E387: Match is on current line".into()
+                            }
+                            ruse_core::KeywordEcho::NotFound => {
+                                "E389: Couldn't find pattern".into()
+                            }
+                        };
+                    }
+                }
+                None => *status = "E349: No identifier under cursor".into(),
+            }
+            return;
+        }
+        // `*`/`#` (word under cursor): the planner resolves the keyword and searches; record the same
+        // pattern as the last search (direction too, so `#` then `n` continues backward) and for
+        // hlsearch. No keyword on the line → E348 and nothing runs.
+        if !note_word_search(&cmd, ws, engine, search_hl, status) {
+            return;
+        }
+        // A search (`/pat`, `?pat`, `n`, `N`, bare, under an operator or `!`) whose pattern matches
+        // nowhere fails with E486 and nothing runs (#901).
+        if search_misses(&cmd, ws, status) {
+            return;
+        }
+        // `gd`/`gD` (declaration under cursor, TEXT heuristic — not LSP): like `*`/`#`, the engine
+        // has no buffer, so resolve the keyword here and rewrite to a concrete whole-file first-match
+        // jump. `gd` and `gD` are currently identical (matching nvim v0.12.4). Set the last-search to
+        // the whole-word pattern forward so a following `n` continues from the landing spot (nvim's
+        // `gd` sets `@/` too). `global` is unused for now — the `gd` block-scope refinement reads it.
+        let cmd = if let Command::GotoDeclaration { .. } = cmd {
+            match ws.word_under_cursor() {
+                Some(word) => {
+                    let pat = format!("\\<{word}\\>");
+                    engine.set_last_search(pat.clone(), true);
+                    Command::GotoFirstMatch(pat)
+                }
+                None => {
+                    *status = "E348: No string under cursor".into();
+                    return;
+                }
+            }
+        } else {
+            cmd
+        };
+        // Tree-aware `=` (F-015): if the focused buffer has a live syntax tree, resolve the reindent
+        let cmd = resolve_tree_aware(cmd, ws, highlighters, line_idx, snapshot);
+        // A completed search turns on hlsearch for that pattern (F-009 #1).
+        if let Some(p) = search_pattern(&cmd) {
+            *search_hl = Some(p);
+        }
+        // Refresh the read-only special registers `"/ ": ". "%` before dispatch so a `"/p` /
+        // `C-r :` / `".p` / `"%p` in this command reads the live values (`:help quote_/`).
+        sync_special_registers(ws, engine, last_ex_line, files);
+        run_cmd(cmd, ws, files, recorded, status, quit);
     }
 
     /// Run a finished `:`-line (F-026): split it at its `|` separators (`:help :bar`) and run each command
@@ -2323,11 +2344,7 @@ impl Session {
             Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),
             // `:[range]normal[!] {keys}` replays the key payload through the input `engine` → the same
             // `Command` pipeline as typed keys / macro replay.
-            Ex::Normal { range, keys, .. } => {
-                crate::app::dispatch::run_normal(
-                    engine, ws, range, &keys, files, recorded, status, quit,
-                );
-            }
+            Ex::Normal { range, keys, .. } => self.ex_normal(range, &keys, frame),
             // `:[range]g/pat/cmd` (F-009 #4): two-pass mark-then-execute over the focused window. The `d`/`s`
             // payloads run in core; a `normal` payload replays keys per marked line through the engine.
             Ex::Global(spec) => match &spec.cmd {
@@ -2340,18 +2357,7 @@ impl Session {
                     };
                 }
                 crate::input::GlobalPayload::Normal { keys, .. } => {
-                    crate::app::dispatch::run_global_normal(
-                        engine,
-                        ws,
-                        spec.range,
-                        &spec.pattern,
-                        spec.negate,
-                        keys,
-                        files,
-                        recorded,
-                        status,
-                        quit,
-                    );
+                    self.ex_global_normal(spec.range, &spec.pattern, spec.negate, keys, frame);
                 }
             },
             // `:checkhealth` (F-030): gather the frontend snapshot (guard/profile/highlighter) and render
@@ -2723,6 +2729,215 @@ impl Session {
             }
             Ex::Unknown(s) => *status = format!("E492: Not an editor command: {s}"),
         }
+    }
+
+    /// A frame for a key a `:normal` feeds: the buffer snapshot, line index and pane geometry as they are
+    /// now (earlier keys of the same `:normal` may have edited, split or switched), with `frame`'s size.
+    fn nested_frame(&mut self, frame: &FrameCtx) -> FrameCtx {
+        let (revision, snapshot) = {
+            let f = self.ws.focused();
+            (f.doc.revision(), f.doc.text_arc())
+        };
+        self.line_idx.refresh(revision, &snapshot);
+        let rects = window_rects(
+            frame.cols,
+            frame.text_rows,
+            self.ws.window_count(),
+            self.ws.split_dir(),
+        );
+        FrameCtx {
+            revision,
+            snapshot,
+            rects,
+            cols: frame.cols,
+            text_rows: frame.text_rows,
+        }
+    }
+
+    /// Feed one key of a `:normal` through the whole session key path (#689), then run any replay it
+    /// started (`@a`, `Q`, a linewise-Visual `@`) to completion, as Vim executes it inside the `:normal`.
+    fn nested_key(&mut self, key: KeyEvent, frame: &FrameCtx) {
+        let f = self.nested_frame(frame);
+        self.route(key, true, &f);
+        while !self.quit {
+            if let Some(line) = self.macros.next_line_run() {
+                let b = self.ws.focused().doc.bytes();
+                let lines =
+                    ruse_core::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
+                let at = ruse_core::pos::nth_line_start(b, line.min(lines.saturating_sub(1)));
+                self.ws.place_focused_cursor(at);
+            }
+            let Some(k) = self.macros.pop_replay() else {
+                break;
+            };
+            let f = self.nested_frame(frame);
+            self.route(k, true, &f);
+        }
+    }
+
+    /// One `:normal` pass of `events` at the cursor, then the implicit `<Esc>` that aborts an unfinished
+    /// command and ends Insert (`:help :normal`). Every key takes the typed-key path, so the session's own
+    /// resolution (`*`, `gd`, `H`/`M`/`L`, `&`, `@`, a nested `:` line, …) applies, which `engine.feed`
+    /// alone skipped (#689).
+    fn normal_pass(&mut self, events: &[KeyEvent], frame: &FrameCtx) {
+        for &ev in events {
+            if self.quit {
+                return;
+            }
+            self.nested_key(ev, frame);
+        }
+        if self.quit {
+            return;
+        }
+        self.nested_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), frame);
+        // The next line's column-0 placement relies on Normal (an Esc leaves Visual too, but not every
+        // state a key can leave behind).
+        if self.ws.focused().view.mode() != Mode::Normal {
+            let Session {
+                ws,
+                files,
+                recorded,
+                status,
+                quit,
+                ..
+            } = self;
+            run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
+        }
+    }
+
+    /// Run `body` as a `:normal`: refuse past [`MAX_NORMAL_DEPTH`] nested levels (E192), set aside the
+    /// replay queue and an open `gQ` line (#807) so the keys reach Normal mode and the outer keys resume
+    /// after, and record every change as one undo step (#852: Vim does not sync undo between keys that
+    /// were not typed).
+    fn as_normal(&mut self, body: impl FnOnce(&mut Session)) {
+        if self.normal_depth >= MAX_NORMAL_DEPTH {
+            self.status = "E192: Recursive use of :normal too deep".into();
+            return;
+        }
+        self.normal_depth += 1;
+        let replay = self.macros.suspend_replay();
+        let line = self.engine.suspend_cmdline();
+        let doc = self.ws.focused_buffer();
+        let opened = !self.ws.focused().doc.in_undo_block();
+        if opened {
+            self.ws.focused_doc_mut().begin_undo_block();
+        }
+        body(self);
+        if opened {
+            if let Some(d) = self.ws.document_mut(doc) {
+                d.end_undo_block();
+            }
+        }
+        self.engine.resume_cmdline(line);
+        self.macros.resume_replay(replay);
+        self.normal_depth -= 1;
+    }
+
+    /// Execute `:[range]normal[!] {keys}` (`:help :normal`). With no range it runs ONCE at the cursor
+    /// (column kept); with a range it runs once per line, cursor at column 0. As in Vim (nvim v0.12.4), the
+    /// loop runs over the ORIGINAL `[line1, line2]` and each step targets `min(lnum, last_line)` of the
+    /// CURRENT buffer, so `:%normal dd` deletes every line. `bang` (no user mappings) is inert: ruse has
+    /// none yet.
+    fn ex_normal(&mut self, range: Option<ruse_core::SubRange>, keys: &str, frame: &FrameCtx) {
+        let events = crate::keys::parse_normal_keys(keys);
+        self.as_normal(|s| match range {
+            None => s.normal_pass(&events, frame),
+            Some(range) => {
+                let (line1, line2) = crate::app::dispatch::resolve_normal_range(&s.ws, range);
+                for lnum in line1..=line2 {
+                    if s.quit {
+                        break;
+                    }
+                    let b = s.ws.focused().doc.bytes();
+                    let last = crate::app::dispatch::line_count(b).max(1);
+                    let off = ruse_core::pos::nth_line_start(b, lnum.min(last) - 1);
+                    s.ws.place_focused_cursor(off);
+                    s.normal_pass(&events, frame);
+                }
+            }
+        });
+    }
+
+    /// Execute `:[range]g/pat/normal {keys}` (`:help :g`): PASS 1 marks every matching (`:v`/`:g!`:
+    /// non-matching) line; PASS 2 runs `{keys}` as a `:normal` at column 0 of each marked line that still
+    /// exists. The marks are anchors that move with the edits (#853, INV-ANCHOR), so a mark follows its
+    /// line wherever earlier passes moved it, and a line the keys deleted (or joined into another) is
+    /// skipped, as Vim's line marks are. Lines the keys insert are never marked.
+    fn ex_global_normal(
+        &mut self,
+        range: ruse_core::SubRange,
+        pattern: &str,
+        negate: bool,
+        keys: &str,
+        frame: &FrameCtx,
+    ) {
+        use ruse_core::{AnchorPolicy, Bias};
+        let marks = match self.ws.global_marks(range, pattern, negate) {
+            Ok(m) => m,
+            Err(e) => {
+                self.status = regex_error_msg(&e);
+                return;
+            }
+        };
+        if marks.is_empty() {
+            // Vim only echoes this for `:g` (no `E486`).
+            self.status = format!("Pattern not found: {pattern}");
+            return;
+        }
+        let acted = marks.len();
+        let doc_id = self.ws.focused_buffer();
+        // Each line is held by two anchors: its start (pushed right by text inserted before it) and the
+        // start of the next line (held left). A deleted line collapses them together.
+        let anchors: Vec<_> = {
+            let doc = self.ws.focused_doc_mut();
+            let spans: Vec<(usize, usize)> = marks
+                .iter()
+                .map(|&l| {
+                    let b = doc.bytes();
+                    let s = ruse_core::pos::nth_line_start(b, l - 1).min(b.len());
+                    let e = ruse_core::pos::nth_line_start(b, l).min(b.len());
+                    (s, e)
+                })
+                .collect();
+            spans
+                .into_iter()
+                .map(|(s, e)| {
+                    (
+                        doc.create_anchor(s, Bias::After, AnchorPolicy::Clamp),
+                        doc.create_anchor(e, Bias::Before, AnchorPolicy::Clamp),
+                        s == e,
+                    )
+                })
+                .collect()
+        };
+        let events = crate::keys::parse_normal_keys(keys);
+        self.as_normal(|s| {
+            for &(start, end, empty_buffer) in &anchors {
+                if s.quit || s.ws.focused_buffer() != doc_id {
+                    break;
+                }
+                let doc = s.ws.focused().doc;
+                let (Some(a), Some(z)) = (doc.resolve_anchor(start), doc.resolve_anchor(end))
+                else {
+                    continue;
+                };
+                let (a, z) = (a.offset.0, z.offset.0);
+                let b = doc.bytes();
+                let at_line_start = a == 0 || b.get(a - 1) == Some(&b'\n');
+                if !(a < z || empty_buffer) || !at_line_start {
+                    continue; // the line was deleted, or joined into the one before it
+                }
+                s.ws.place_focused_cursor(a);
+                s.normal_pass(&events, frame);
+            }
+        });
+        if let Some(doc) = self.ws.document_mut(doc_id) {
+            for (start, end, _) in anchors {
+                doc.remove_anchor(start);
+                doc.remove_anchor(end);
+            }
+        }
+        self.status = format!("{acted} lines changed");
     }
 
     /// Test seam: run ONE Ex command (`line`, no leading `:`) against `ws` through the session's Ex

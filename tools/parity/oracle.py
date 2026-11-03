@@ -2319,6 +2319,26 @@ FIXTURES: list[dict] = [
     {"name": "sc_edge_blank_lines_dip", "lines": ["", "", ""], "keys": "jdip"},
     {"name": "sc_edge_blank_lines_J", "lines": ["", "", ""], "keys": "3J"},
     {"name": "sc_edge_blank_lines_brace", "lines": ["", "", ""], "keys": "j}x"},
+    #     :NORMAL / :G NORMAL (#689, #852, #853) and gQ (#806, #807): `:normal` keys take the typed-key path
+    #     (session-resolved `*`/`#`/`H`/`L`/`&`), the whole run is one undo step, and `:g` marks follow their
+    #     lines and drop deleted ones.
+    {"name": "normal_star_resolved", "lines": ["foo bar", "baz foo"], "keys": ":normal *x<CR>"},
+    {"name": "normal_hash_resolved", "lines": ["foo bar", "baz foo"], "keys": "j$:normal #x<CR>"},
+    {"name": "normal_L_resolved", "lines": ["one", "two"], "keys": ":normal Lx<CR>"},
+    {"name": "normal_H_resolved", "lines": ["one", "two"], "keys": "j:normal Hx<CR>"},
+    {"name": "normal_amp_resolved", "lines": ["aa", "aa"], "keys": ":s/a/b/<CR>j:normal &<CR>"},
+    {"name": "normal_one_undo_step", "lines": ["abc def"], "keys": ":normal xwx<CR>u", "setup": UNDO_SETUP},
+    {"name": "normal_range_one_undo_step", "lines": ["a", "b", "c"], "keys": ":%normal A;<CR>u", "setup": UNDO_SETUP},
+    {"name": "normal_range_undo_redo", "lines": ["a", "b", "c"], "keys": ":%normal A;<CR>u<C-r>", "setup": UNDO_SETUP},
+    {"name": "g_normal_one_undo_step", "lines": ["ax", "bx", "c"], "keys": ":g/x/normal A;<CR>u", "setup": UNDO_SETUP},
+    {"name": "g_normal_yank_to_end", "lines": ["a x", "b", "c x", "d"], "keys": ":g/x/normal yyGp<CR>"},
+    {"name": "g_normal_deletes_marked_line", "lines": ["a", "a", "b", "c"], "keys": ":g/a/normal jdd<CR>"},
+    {"name": "g_normal_moves_marked_line", "lines": ["x1", "y", "x2", "z"], "keys": ":g/x/normal ddp<CR>"},
+    {"name": "g_normal_deletes_line_above", "lines": ["a", "x", "b", "x"], "keys": ":g/x/normal kdd<CR>"},
+    {"name": "gQ_drops_count", "lines": ["abcdef"], "keys": "3gQvi<CR>x"},
+    {"name": "gQ_under_operator_cancels", "lines": ["foo bar baz"], "keys": "dgQvi<CR>w"},
+    {"name": "gQ_from_insert_ctrl_o", "lines": ["abcd"], "keys": "i<C-o>gQvi<CR>Z<Esc>"},
+    {"name": "gQ_normal_runs_in_normal_mode", "lines": ["foo bar", "baz"], "keys": "gQnormal x<CR>vi<CR>"},
 ]
 
 

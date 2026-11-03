@@ -56231,6 +56231,499 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "normal_star_resolved",
+      "lines": [
+        "foo bar",
+        "baz foo"
+      ],
+      "keys": ":normal *x<CR>",
+      "expect": {
+        "text": [
+          "foo bar",
+          "baz oo"
+        ],
+        "cursor": [
+          2,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "normal_hash_resolved",
+      "lines": [
+        "foo bar",
+        "baz foo"
+      ],
+      "keys": "j$:normal #x<CR>",
+      "expect": {
+        "text": [
+          "oo bar",
+          "baz foo"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "normal_L_resolved",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": ":normal Lx<CR>",
+      "expect": {
+        "text": [
+          "one",
+          "wo"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "t",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "normal_H_resolved",
+      "lines": [
+        "one",
+        "two"
+      ],
+      "keys": "j:normal Hx<CR>",
+      "expect": {
+        "text": [
+          "ne",
+          "two"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "o",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "normal_amp_resolved",
+      "lines": [
+        "aa",
+        "aa"
+      ],
+      "keys": ":s/a/b/<CR>j:normal &<CR>",
+      "expect": {
+        "text": [
+          "ba",
+          "ba"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "normal_one_undo_step",
+      "lines": [
+        "abc def"
+      ],
+      "keys": ":normal xwx<CR>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "abc def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "normal_range_one_undo_step",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":%normal A;<CR>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "normal_range_undo_redo",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":%normal A;<CR>u<C-r>",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "a;",
+          "b;",
+          "c;"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_normal_one_undo_step",
+      "lines": [
+        "ax",
+        "bx",
+        "c"
+      ],
+      "keys": ":g/x/normal A;<CR>u",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ax",
+          "bx",
+          "c"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_normal_yank_to_end",
+      "lines": [
+        "a x",
+        "b",
+        "c x",
+        "d"
+      ],
+      "keys": ":g/x/normal yyGp<CR>",
+      "expect": {
+        "text": [
+          "a x",
+          "b",
+          "c x",
+          "d",
+          "a x",
+          "c x"
+        ],
+        "cursor": [
+          6,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c x\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "c x\n",
+          "type": "linewise"
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_normal_deletes_marked_line",
+      "lines": [
+        "a",
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": ":g/a/normal jdd<CR>",
+      "expect": {
+        "text": [
+          "a",
+          "b",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_normal_moves_marked_line",
+      "lines": [
+        "x1",
+        "y",
+        "x2",
+        "z"
+      ],
+      "keys": ":g/x/normal ddp<CR>",
+      "expect": {
+        "text": [
+          "y",
+          "x1",
+          "z",
+          "x2"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_normal_deletes_line_above",
+      "lines": [
+        "a",
+        "x",
+        "b",
+        "x"
+      ],
+      "keys": ":g/x/normal kdd<CR>",
+      "expect": {
+        "text": [
+          "x",
+          "x"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gQ_drops_count",
+      "lines": [
+        "abcdef"
+      ],
+      "keys": "3gQvi<CR>x",
+      "expect": {
+        "text": [
+          "bcdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gQ_under_operator_cancels",
+      "lines": [
+        "foo bar baz"
+      ],
+      "keys": "dgQvi<CR>w",
+      "expect": {
+        "text": [
+          "foo bar baz"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "gQ_from_insert_ctrl_o",
+      "lines": [
+        "abcd"
+      ],
+      "keys": "i<C-o>gQvi<CR>Z<Esc>",
+      "expect": {
+        "text": [
+          "Zabcd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gQ_normal_runs_in_normal_mode",
+      "lines": [
+        "foo bar",
+        "baz"
+      ],
+      "keys": "gQnormal x<CR>vi<CR>",
+      "expect": {
+        "text": [
+          "oo bar",
+          "baz"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }
