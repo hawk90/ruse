@@ -166,7 +166,7 @@ fn map_one(a: usize, pos: usize, del: usize, ins: usize, bias: Bias) -> (usize, 
 /// shifted into the frame the edits before it leave — the same answer as applying them one by one, also
 /// for touching edits (#758). Returns the new offset and whether it sat strictly inside a deleted span.
 fn map_byte_inside(es: &[Edit], o: usize, bias: Bias) -> (usize, bool) {
-    let i = es.partition_point(|e| e.end() < o);
+    let i = es.partition_point(|e| e.end().0 < o);
     let mut shift: isize = es[..i].iter().map(Edit::delta).sum();
     let mut cur = (o as isize + shift) as usize;
     let mut inside = false;
@@ -191,14 +191,14 @@ impl AnchorStore {
     }
 
     /// Create a byte anchor at `offset` (bytes) with the given bias and span-delete policy.
-    pub fn insert(&mut self, offset: usize, bias: Bias, policy: AnchorPolicy) -> AnchorId {
-        self.insert_tracked(offset, Track::Byte(bias), policy)
+    pub fn insert(&mut self, offset: BytePos, bias: Bias, policy: AnchorPolicy) -> AnchorId {
+        self.insert_tracked(offset.0, Track::Byte(bias), policy)
     }
 
     /// Create a LINE anchor at `offset` (anchor-store §3.1): it follows line inserts and deletes, keeps
     /// its column through an edit inside its line, and does `gravity` when its line is deleted.
-    pub fn insert_line(&mut self, offset: usize, gravity: LineGravity) -> AnchorId {
-        self.insert_tracked(offset, Track::Line(gravity), AnchorPolicy::Clamp)
+    pub fn insert_line(&mut self, offset: BytePos, gravity: LineGravity) -> AnchorId {
+        self.insert_tracked(offset.0, Track::Line(gravity), AnchorPolicy::Clamp)
     }
 
     fn insert_tracked(&mut self, offset: usize, track: Track, policy: AnchorPolicy) -> AnchorId {
@@ -437,12 +437,12 @@ impl AnchorStore {
         for e in es {
             let (ws, we) = match &map {
                 Some(m) => {
-                    let ls = crate::pos::line_start(m.old, e.pos.0);
-                    let ws = crate::pos::line_start(m.old, ls.saturating_sub(1));
-                    let le = crate::pos::line_end(m.old, e.end());
-                    (ws, crate::pos::line_end(m.old, le + 1))
+                    let ls = crate::pos::raw::line_start(m.old, e.pos.0);
+                    let ws = crate::pos::raw::line_start(m.old, ls.saturating_sub(1));
+                    let le = crate::pos::raw::line_end(m.old, e.end().0);
+                    (ws, crate::pos::raw::line_end(m.old, le + 1))
                 }
-                None => (e.pos.0, e.end()),
+                None => (e.pos.0, e.end().0),
             };
             match regions.last_mut() {
                 Some(last) if ws <= last.1 => {
@@ -505,9 +505,13 @@ impl AnchorStore {
 /// deleted span swallowed.
 fn map_anchor(a: &Anchor, o: usize, es: &[Edit], map: Option<&LineMap<'_>>) -> (usize, bool) {
     match (a.track, map) {
-        (Track::Line(g), Some(m)) => match m.map(o, g) {
+        (Track::Line(g), Some(m)) => match m.map_offset(o, g) {
             Some(p) => (p, false),
-            None => (m.map(o, LineGravity::Keep).expect("Keep never drops"), true),
+            None => (
+                m.map_offset(o, LineGravity::Keep)
+                    .expect("Keep never drops"),
+                true,
+            ),
         },
         (Track::Line(_), None) => (map_byte_inside(es, o, Bias::After).0, false),
         (Track::Byte(bias), _) => {
@@ -537,8 +541,8 @@ fn partition(n: usize, pred: impl Fn(usize) -> bool) -> usize {
 /// Where one byte anchor at `o` goes through `edits` — the store's rule for a single position, for a
 /// caller holding one outside the store. `O(log E)` plus the edits touching `o`.
 #[must_use]
-pub fn map_byte(edits: &EditList, o: usize, bias: Bias) -> usize {
-    map_byte_inside(edits.edits(), o, bias).0
+pub fn map_byte(edits: &EditList, o: BytePos, bias: Bias) -> BytePos {
+    BytePos(map_byte_inside(edits.edits(), o.0, bias).0)
 }
 
 /// A position a [`crate::Document`] carries through its changes for an owner that keeps it outside the
@@ -548,7 +552,7 @@ pub fn map_byte(edits: &EditList, o: usize, bias: Bias) -> usize {
 /// marks.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Tracked {
-    pub pos: Option<usize>,
+    pub pos: Option<BytePos>,
     pub track: Track,
     pub restore: bool,
 }
@@ -556,7 +560,7 @@ pub struct Tracked {
 impl Tracked {
     /// A position followed by line (a Vim mark) that undo does not restore.
     #[must_use]
-    pub fn line(pos: Option<usize>, gravity: LineGravity) -> Tracked {
+    pub fn line(pos: Option<BytePos>, gravity: LineGravity) -> Tracked {
         Tracked {
             pos,
             track: Track::Line(gravity),
@@ -574,7 +578,10 @@ impl Tracked {
     /// Carry this position through one change.
     pub fn apply(&mut self, edits: &EditList, map: &LineMap<'_>) {
         self.pos = self.pos.and_then(|p| match self.track {
-            Track::Byte(bias) => Some(crate::motion::snap(map.new, map_byte(edits, p, bias))),
+            Track::Byte(bias) => Some(BytePos(crate::motion::snap(
+                map.new,
+                map_byte_inside(edits.edits(), p.0, bias).0,
+            ))),
             Track::Line(g) => map.map(p, g),
         });
     }
@@ -634,7 +641,7 @@ impl<'a> LineMap<'a> {
     /// The edit's span starts and ends at line starts and it inserts whole lines (`dd`, `O`).
     fn start_aligned(&self, e: &Edit) -> bool {
         self.line_start_at(e.pos.0)
-            && self.line_start_at(e.end())
+            && self.line_start_at(e.end().0)
             && (e.ins.is_empty() || e.ins.ends_with(b"\n"))
     }
 
@@ -642,14 +649,14 @@ impl<'a> LineMap<'a> {
     /// newline-led lines (`dd` of the last line, `o`).
     fn end_aligned(&self, e: &Edit) -> bool {
         self.old.get(e.pos.0) == Some(&b'\n')
-            && (e.end() == self.old.len() || self.old.get(e.end()) == Some(&b'\n'))
+            && (e.end().0 == self.old.len() || self.old.get(e.end().0) == Some(&b'\n'))
             && (e.ins.is_empty() || e.ins.starts_with(b"\n"))
     }
 
     /// The new-text offset of column `col` on the line starting at `ls` (clamped onto the line).
     fn at_col(&self, ls: usize, col: usize) -> usize {
         let ls = ls.min(self.new.len());
-        let le = crate::pos::line_end(self.new, ls);
+        let le = crate::pos::raw::line_end(self.new, ls);
         ls + col.min(le - ls)
     }
 
@@ -660,17 +667,22 @@ impl<'a> LineMap<'a> {
         if p == self.new.len() && p > 0 && self.new[p - 1] == b'\n' {
             p -= 1;
         }
-        crate::pos::line_start(self.new, p)
+        crate::pos::raw::line_start(self.new, p)
     }
 
     /// Where the position at `o` (an old-text offset) goes, or `None` when its line was deleted and
     /// `gravity` is [`LineGravity::Drop`]. Always a char boundary of the new text.
     #[must_use]
-    pub fn map(&self, o: usize, gravity: LineGravity) -> Option<usize> {
+    pub fn map(&self, o: BytePos, gravity: LineGravity) -> Option<BytePos> {
+        self.map_offset(o.0, gravity).map(BytePos)
+    }
+
+    /// [`LineMap::map`] over a bare offset, for the store's own sweep.
+    fn map_offset(&self, o: usize, gravity: LineGravity) -> Option<usize> {
         let o = o.min(self.old.len());
-        let ls = crate::pos::line_start(self.old, o);
+        let ls = crate::pos::raw::line_start(self.old, o);
         let col = o - ls;
-        let mut i = self.edits.partition_point(|e| e.end() < ls);
+        let mut i = self.edits.partition_point(|e| e.end().0 < ls);
         let mut delta = self.prefix[i];
         let mut out = None;
         while let Some(e) = self.edits.get(i) {
@@ -678,7 +690,7 @@ impl<'a> LineMap<'a> {
                 break;
             }
             let base = (e.pos.0 as isize + delta) as usize;
-            if e.end() == ls && e.pos.0 < ls && (self.start_aligned(e) || !self.end_aligned(e)) {
+            if e.end().0 == ls && e.pos.0 < ls && (self.start_aligned(e) || !self.end_aligned(e)) {
                 // Ends at this line's start: lines above it went or a join reached up to it.
                 delta += e.delta();
                 i += 1;
@@ -690,7 +702,7 @@ impl<'a> LineMap<'a> {
                 i += 1;
                 continue;
             }
-            if self.start_aligned(e) && ls < e.end() {
+            if self.start_aligned(e) && ls < e.end().0 {
                 // This line is one of a replaced block of whole lines, or of a block moved elsewhere.
                 let j = crate::pos::count_newlines(&self.old[e.pos.0..ls]);
                 out = Some(match self.moved(e, j, col, false) {
@@ -706,21 +718,21 @@ impl<'a> LineMap<'a> {
                 });
             } else if e.pos.0 < ls {
                 // A charwise edit runs into this line from above.
-                let le = crate::pos::line_end(self.old, ls);
-                out = Some(if e.end() > le {
+                let le = crate::pos::raw::line_end(self.old, ls);
+                out = Some(if e.end().0 > le {
                     match gravity {
                         LineGravity::Drop => None,
                         LineGravity::Keep => Some(base + e.ins.len()),
-                        LineGravity::Cursor => Some(crate::pos::line_start(self.new, base)),
+                        LineGravity::Cursor => Some(crate::pos::raw::line_start(self.new, base)),
                     }
                 } else if e.ins.is_empty() && !self.is_join(e) {
                     // A charwise delete across lines (#1125): nvim's `op_delete` cuts both ends without
                     // moving marks, then joins with no space, which adds the kept head's length. The
                     // head is measured in the new text: an earlier edit of this change on the head's
                     // line (#1148) can have shortened or split it.
-                    let start = crate::pos::line_start(self.new, base);
+                    let start = crate::pos::raw::line_start(self.new, base);
                     Some(self.at_col(start, base - start + col))
-                } else if o >= e.end() {
+                } else if o >= e.end().0 {
                     Some((o as isize + delta + e.delta()) as usize)
                 } else {
                     Some(base + e.ins.len())
@@ -740,7 +752,7 @@ impl<'a> LineMap<'a> {
     fn is_join(&self, e: &Edit) -> bool {
         let blank = |c: &u8| *c == b' ' || *c == b'\t';
         self.old.get(e.pos.0) == Some(&b'\n')
-            && self.old[e.pos.0 + 1..e.end()].iter().all(blank)
+            && self.old[e.pos.0 + 1..e.end().0].iter().all(blank)
             && e.ins.iter().all(blank)
     }
 
@@ -752,7 +764,7 @@ impl<'a> LineMap<'a> {
         if !e.ins.is_empty() {
             return None;
         }
-        let gone = &self.old[e.pos.0 + usize::from(lead)..e.end()];
+        let gone = &self.old[e.pos.0 + usize::from(lead)..e.end().0];
         let gone = if lead {
             gone
         } else {
@@ -816,15 +828,15 @@ impl<'a> LineMap<'a> {
             LineGravity::Drop => None,
             // The line after the block; past the buffer end, the last line.
             LineGravity::Keep => {
-                let after = base + e.ins.len() + usize::from(lead && e.end() < self.old.len());
+                let after = base + e.ins.len() + usize::from(lead && e.end().0 < self.old.len());
                 Some(self.at_col(self.new_line_start(after), col))
             }
             // Column 0 of the line before the deleted ones: the block's last line, else the one above.
             LineGravity::Cursor => Some(match starts.last() {
                 Some(&s) => base + s,
-                None if lead => crate::pos::line_start(self.new, base),
+                None if lead => crate::pos::raw::line_start(self.new, base),
                 None if base == 0 => 0,
-                None => crate::pos::line_start(self.new, base - 1),
+                None => crate::pos::raw::line_start(self.new, base - 1),
             }),
         }
     }
@@ -843,9 +855,9 @@ mod tests {
     fn bias_truth_table_at_insertion_point() {
         // Two anchors sharing offset 3; an insertion of 2 bytes lands exactly at 3.
         let mut store = AnchorStore::new();
-        let before = store.insert(3, Bias::Before, AnchorPolicy::Clamp);
-        let after = store.insert(3, Bias::After, AnchorPolicy::Clamp);
-        let edits = EditList::new(vec![Edit::insert(3, b"XY".to_vec())]).unwrap();
+        let before = store.insert(BytePos(3), Bias::Before, AnchorPolicy::Clamp);
+        let after = store.insert(BytePos(3), Bias::After, AnchorPolicy::Clamp);
+        let edits = EditList::new(vec![Edit::insert(BytePos(3), b"XY".to_vec())]).unwrap();
         store.apply_edits(&edits);
         // Before clings left (unchanged); After clings right (advances past the inserted bytes).
         assert_eq!(at(&store, before), 3, "Before bias must not grow");
@@ -859,22 +871,22 @@ mod tests {
     #[test]
     fn anchor_shifts_when_edit_is_left_of_it() {
         let mut store = AnchorStore::new();
-        let a = store.insert(10, Bias::After, AnchorPolicy::Clamp);
+        let a = store.insert(BytePos(10), Bias::After, AnchorPolicy::Clamp);
         // insert 3 bytes at 2 (wholly left) → anchor shifts by +3.
-        store.apply_edits(&EditList::new(vec![Edit::insert(2, b"abc".to_vec())]).unwrap());
+        store.apply_edits(&EditList::new(vec![Edit::insert(BytePos(2), b"abc".to_vec())]).unwrap());
         assert_eq!(at(&store, a), 13);
         // delete 4 bytes at 0 (wholly left) → shifts by -4.
-        store.apply_edits(&EditList::new(vec![Edit::delete(0, 4)]).unwrap());
+        store.apply_edits(&EditList::new(vec![Edit::delete(BytePos(0), 4)]).unwrap());
         assert_eq!(at(&store, a), 9);
     }
 
     #[test]
     fn span_delete_clamp_vs_invalidate() {
         let mut store = AnchorStore::new();
-        let clamp = store.insert(4, Bias::After, AnchorPolicy::Clamp);
-        let inval = store.insert(4, Bias::After, AnchorPolicy::Invalidate);
+        let clamp = store.insert(BytePos(4), Bias::After, AnchorPolicy::Clamp);
+        let inval = store.insert(BytePos(4), Bias::After, AnchorPolicy::Invalidate);
         // delete [2,6): both anchors sit strictly inside the deleted span → collapse to pos=2.
-        store.apply_edits(&EditList::new(vec![Edit::delete(2, 4)]).unwrap());
+        store.apply_edits(&EditList::new(vec![Edit::delete(BytePos(2), 4)]).unwrap());
         let rc = store.resolve(clamp);
         let ri = store.resolve(inval);
         assert_eq!(rc.offset.0, 2);
@@ -887,10 +899,10 @@ mod tests {
     fn boundary_at_end_of_deleted_span() {
         // anchor at pos+del (the right edge of a deletion): After -> collapse start, Before -> start.
         let mut store = AnchorStore::new();
-        let a_after = store.insert(6, Bias::After, AnchorPolicy::Clamp);
-        let a_before = store.insert(6, Bias::Before, AnchorPolicy::Clamp);
+        let a_after = store.insert(BytePos(6), Bias::After, AnchorPolicy::Clamp);
+        let a_before = store.insert(BytePos(6), Bias::Before, AnchorPolicy::Clamp);
         // delete [2,6), no insertion: pos=2, end=6, insn=0.
-        store.apply_edits(&EditList::new(vec![Edit::delete(2, 4)]).unwrap());
+        store.apply_edits(&EditList::new(vec![Edit::delete(BytePos(2), 4)]).unwrap());
         assert_eq!(
             at(&store, a_after),
             2,
@@ -939,14 +951,14 @@ mod tests {
     fn batch_equals_sequential_fixed_cases() {
         // three disjoint edits; an anchor between the second and third.
         let edits = vec![
-            Edit::insert(1, b"AA".to_vec()),
-            Edit::delete(5, 2),
-            Edit::replace(9, 1, b"ZZZ".to_vec()),
+            Edit::insert(BytePos(1), b"AA".to_vec()),
+            Edit::delete(BytePos(5), 2),
+            Edit::replace(BytePos(9), 1, b"ZZZ".to_vec()),
         ];
         for &off in &[0usize, 1, 3, 5, 7, 9, 10, 12] {
             for bias in [Bias::Before, Bias::After] {
                 let mut store = AnchorStore::new();
-                let id = store.insert(off, bias, AnchorPolicy::Clamp);
+                let id = store.insert(BytePos(off), bias, AnchorPolicy::Clamp);
                 store.apply_edits(&EditList::new(edits.clone()).unwrap());
                 let got = at(&store, id);
                 let (want, _) = sequential(
@@ -1009,7 +1021,7 @@ mod tests {
                     AnchorPolicy::Invalidate
                 };
                 let mut store = AnchorStore::new();
-                let id = store.insert(off, bias, policy);
+                let id = store.insert(BytePos(off), bias, policy);
                 store.apply_edits(&list);
                 let got = store.resolve(id);
                 let (want_off, want_inv) = sequential(off, bias, policy, list.edits());
@@ -1027,7 +1039,7 @@ mod tests {
     #[test]
     fn stale_id_is_not_resolvable() {
         let mut store = AnchorStore::new();
-        let id = store.insert(1, Bias::After, AnchorPolicy::Clamp);
+        let id = store.insert(BytePos(1), Bias::After, AnchorPolicy::Clamp);
         assert!(store.remove(id));
         assert!(
             store.try_resolve(id).is_none(),
@@ -1040,18 +1052,24 @@ mod tests {
     fn touching_edits_compose_like_sequential() {
         // #758: `[del 2..4, ins@4]` and `[replace 2..4, ins@4]`, anchor at 4 with After bias.
         for (edits, want) in [
-            (vec![Edit::delete(2, 2), Edit::insert(4, b"Z".to_vec())], 3),
             (
                 vec![
-                    Edit::replace(2, 2, b"Q".to_vec()),
-                    Edit::insert(4, b"Z".to_vec()),
+                    Edit::delete(BytePos(2), 2),
+                    Edit::insert(BytePos(4), b"Z".to_vec()),
+                ],
+                3,
+            ),
+            (
+                vec![
+                    Edit::replace(BytePos(2), 2, b"Q".to_vec()),
+                    Edit::insert(BytePos(4), b"Z".to_vec()),
                 ],
                 4,
             ),
         ] {
             let list = EditList::new(edits).unwrap();
             let mut store = AnchorStore::new();
-            let id = store.insert(4, Bias::After, AnchorPolicy::Clamp);
+            let id = store.insert(BytePos(4), Bias::After, AnchorPolicy::Clamp);
             store.apply_edits(&list);
             let (seq, _) = sequential(4, Bias::After, AnchorPolicy::Clamp, list.edits());
             assert_eq!(at(&store, id), seq);
@@ -1063,12 +1081,12 @@ mod tests {
     fn a_replacement_keeps_each_bias_in_order() {
         // #941: replace [2,6) with 3 bytes. Inside anchors take their bias at the insertion, as nvim moves
         // an extmark (delete, then insert), so no same-bias pair inverts.
-        let list = EditList::new(vec![Edit::replace(2, 4, b"XYZ".to_vec())]).unwrap();
+        let list = EditList::new(vec![Edit::replace(BytePos(2), 4, b"XYZ".to_vec())]).unwrap();
         let mut store = AnchorStore::new();
         let ids: Vec<(usize, Bias, AnchorId)> = [1usize, 2, 3, 5, 6, 7]
             .iter()
             .flat_map(|&o| [Bias::Before, Bias::After].map(|b| (o, b)))
-            .map(|(o, b)| (o, b, store.insert(o, b, AnchorPolicy::Clamp)))
+            .map(|(o, b)| (o, b, store.insert(BytePos(o), b, AnchorPolicy::Clamp)))
             .collect();
         store.apply_edits(&list);
         // nvim 0.12.6 `nvim_buf_set_text(0, 0, 2, 0, 6, {"XYZ"})` over extmarks at these columns:
@@ -1097,41 +1115,48 @@ mod tests {
     fn line(old: &str, edits: Vec<Edit>, o: usize, g: LineGravity) -> Option<usize> {
         let list = EditList::new(edits).unwrap();
         let new = list.apply_to(old.as_bytes());
-        LineMap::new(old.as_bytes(), &new, &list).map(o, g)
+        LineMap::new(old.as_bytes(), &new, &list)
+            .map(BytePos(o), g)
+            .map(|p| p.0)
     }
 
     #[test]
     fn a_line_anchor_keeps_its_column_through_an_edit_in_its_line() {
         // nvim: `5|ma0x`a` lands on col 4 again (the mark did not move left).
         assert_eq!(
-            line("abcdefgh\n", vec![Edit::delete(0, 1)], 4, LineGravity::Drop),
+            line(
+                "abcdefgh\n",
+                vec![Edit::delete(BytePos(0), 1)],
+                4,
+                LineGravity::Drop
+            ),
             Some(4)
         );
         // `0iZZ<Esc>`: the column stays 4 too.
-        let ins = vec![Edit::insert(0, b"ZZ".to_vec())];
+        let ins = vec![Edit::insert(BytePos(0), b"ZZ".to_vec())];
         assert_eq!(line("abcdefgh\n", ins, 4, LineGravity::Drop), Some(4));
         // A column past the shortened line clamps onto its end.
-        let del = vec![Edit::delete(0, 5)];
+        let del = vec![Edit::delete(BytePos(0), 5)];
         assert_eq!(line("abcdefgh\nx\n", del, 7, LineGravity::Drop), Some(3));
     }
 
     #[test]
     fn a_line_anchor_follows_whole_lines_inserted_or_deleted_above() {
         // `O` above line 2: "x\n" at 2 moves the mark on `b` (2) to 4.
-        let o = vec![Edit::insert(2, b"x\n".to_vec())];
+        let o = vec![Edit::insert(BytePos(2), b"x\n".to_vec())];
         assert_eq!(line("a\nb\n", o, 2, LineGravity::Drop), Some(4));
         // `dd` of line 1 moves the mark on line 3 up a line, column kept.
-        let dd = vec![Edit::delete(0, 2)];
+        let dd = vec![Edit::delete(BytePos(0), 2)];
         assert_eq!(line("a\nb\ncde\n", dd, 6, LineGravity::Drop), Some(4));
         // An edit after the line leaves it.
-        let after = vec![Edit::delete(4, 2)];
+        let after = vec![Edit::delete(BytePos(4), 2)];
         assert_eq!(line("a\nb\ncde\n", after, 2, LineGravity::Drop), Some(2));
     }
 
     #[test]
     fn a_deleted_line_drops_keeps_or_moves_the_cursor() {
         let text = "a\nbcd\ne\n";
-        let dd = || vec![Edit::delete(2, 4)];
+        let dd = || vec![Edit::delete(BytePos(2), 4)];
         assert_eq!(line(text, dd(), 4, LineGravity::Drop), None);
         // Keep: the line that took its place, column kept, clamped onto the line's end (`e\n`: 3).
         assert_eq!(line(text, dd(), 4, LineGravity::Keep), Some(3));
@@ -1139,7 +1164,7 @@ mod tests {
         assert_eq!(line(text, dd(), 4, LineGravity::Cursor), Some(0));
         // The last line deleted through its leading `\n` ("a\nb" minus "\nb"): Keep lands on the new last
         // line, Cursor on column 0 of it.
-        let last = || vec![Edit::delete(1, 2)];
+        let last = || vec![Edit::delete(BytePos(1), 2)];
         assert_eq!(line("a\nb", last(), 2, LineGravity::Drop), None);
         assert_eq!(line("a\nb", last(), 2, LineGravity::Keep), Some(0));
         assert_eq!(line("a\nb", last(), 2, LineGravity::Cursor), Some(0));
@@ -1148,7 +1173,7 @@ mod tests {
     #[test]
     fn a_replaced_block_keeps_marks_on_the_lines_left() {
         // `:2,3!` filtering two lines into one: line 2's mark stays, line 3's is dropped.
-        let f = || vec![Edit::replace(2, 6, b"XY\n".to_vec())];
+        let f = || vec![Edit::replace(BytePos(2), 6, b"XY\n".to_vec())];
         let text = "a\nbbb\nc\nd\n";
         assert_eq!(line(text, f(), 3, LineGravity::Drop), Some(3));
         assert_eq!(line(text, f(), 6, LineGravity::Drop), None);
@@ -1159,7 +1184,7 @@ mod tests {
     #[test]
     fn a_join_moves_the_next_lines_marks_onto_the_joined_line() {
         // `J` on "aa\n  bbbb": "\n  " becomes " ". nvim moves the mark at col 2 (`b`) to col 3.
-        let j = || vec![Edit::replace(2, 3, b" ".to_vec())];
+        let j = || vec![Edit::replace(BytePos(2), 3, b" ".to_vec())];
         assert_eq!(line("aa\n  bbbb", j(), 5, LineGravity::Drop), Some(3));
         // In the removed indent: onto the first joined char.
         assert_eq!(line("aa\n  bbbb", j(), 4, LineGravity::Drop), Some(3));
@@ -1170,36 +1195,51 @@ mod tests {
     #[test]
     fn a_charwise_delete_across_lines_adds_the_kept_head() {
         // nvim `d/i` from `f` of "abcdef\nghijklmnop": the mark on `l` (col 5) goes to col 5 + 5 = 10.
-        let d = || vec![Edit::delete(5, 4)];
+        let d = || vec![Edit::delete(BytePos(5), 4)];
         let text = "abcdef\nghijklmnop\n";
         assert_eq!(line(text, d(), 12, LineGravity::Drop), Some(10));
         // In the deleted part of the last line: col 1 + 5.
         assert_eq!(line(text, d(), 8, LineGravity::Drop), Some(6));
         // Past the joined line's end: clamped onto it.
-        let long = vec![Edit::delete(1, 8)];
+        let long = vec![Edit::delete(BytePos(1), 8)];
         assert_eq!(line(text, long, 15, LineGravity::Drop), Some(9));
         // An earlier edit of the same change shortens the kept head (#1148): the head is the 3 bytes
         // "bcd" left of the cut in the new text, so `l` lands at col 5 + 3, not past an underflow.
-        let two = vec![Edit::delete(0, 1), Edit::delete(4, 5)];
+        let two = vec![Edit::delete(BytePos(0), 1), Edit::delete(BytePos(4), 5)];
         assert_eq!(line(text, two, 12, LineGravity::Drop), Some(8));
     }
 
     #[test]
     fn a_moved_block_takes_its_marks_along() {
         // `:2m3` as the block deleted and inserted after line 3: the mark on `b` follows it.
-        let m = || vec![Edit::delete(2, 2), Edit::insert(6, b"b\n".to_vec())];
+        let m = || {
+            vec![
+                Edit::delete(BytePos(2), 2),
+                Edit::insert(BytePos(6), b"b\n".to_vec()),
+            ]
+        };
         let text = "a\nb\nc\nd\n";
         assert_eq!(line(text, m(), 2, LineGravity::Drop), Some(4));
         // The line it passed moves up; the lines around stay.
         assert_eq!(line(text, m(), 4, LineGravity::Drop), Some(2));
         assert_eq!(line(text, m(), 6, LineGravity::Drop), Some(6));
         // Upward: `:3m0`.
-        let up = || vec![Edit::insert(0, b"c\n".to_vec()), Edit::delete(4, 2)];
+        let up = || {
+            vec![
+                Edit::insert(BytePos(0), b"c\n".to_vec()),
+                Edit::delete(BytePos(4), 2),
+            ]
+        };
         assert_eq!(line(text, up(), 4, LineGravity::Drop), Some(0));
         assert_eq!(line(text, up(), 0, LineGravity::Drop), Some(2));
         // A plain delete still drops.
         assert_eq!(
-            line(text, vec![Edit::delete(2, 2)], 2, LineGravity::Drop),
+            line(
+                text,
+                vec![Edit::delete(BytePos(2), 2)],
+                2,
+                LineGravity::Drop
+            ),
             None
         );
     }
@@ -1207,22 +1247,22 @@ mod tests {
     #[test]
     fn opening_a_line_below_leaves_the_line_above() {
         // `o` as "\nx" at the end of an EMPTY line: the mark on it stays (an end-aligned insert).
-        let o = vec![Edit::insert(2, b"\nx".to_vec())];
+        let o = vec![Edit::insert(BytePos(2), b"\nx".to_vec())];
         assert_eq!(line("a\n\nb\n", o, 2, LineGravity::Drop), Some(2));
         // Splitting a line keeps its marks on the first half, clamped (nvim `i<CR>`).
-        let split = vec![Edit::insert(2, b"\n".to_vec())];
+        let split = vec![Edit::insert(BytePos(2), b"\n".to_vec())];
         assert_eq!(line("abcdefgh\n", split, 5, LineGravity::Drop), Some(2));
     }
 
     #[test]
     fn line_anchors_in_the_store() {
         let old = b"a\nb\nc\n".to_vec();
-        let list = EditList::new(vec![Edit::delete(2, 2)]).unwrap();
+        let list = EditList::new(vec![Edit::delete(BytePos(2), 2)]).unwrap();
         let new = list.apply_to(&old);
         let mut store = AnchorStore::new();
-        let drop = store.insert_line(2, LineGravity::Drop);
-        let keep = store.insert_line(2, LineGravity::Keep);
-        let below = store.insert_line(4, LineGravity::Drop);
+        let drop = store.insert_line(BytePos(2), LineGravity::Drop);
+        let keep = store.insert_line(BytePos(2), LineGravity::Keep);
+        let below = store.insert_line(BytePos(4), LineGravity::Drop);
         store.apply_change(&old, &new, &list);
         assert!(store.resolve(drop).invalidated);
         assert_eq!(store.resolve(keep).offset.0, 2);
@@ -1236,12 +1276,15 @@ mod tests {
         // at the top reads as moving that line (`:m0`), so the mark on it goes to the top, past the
         // byte anchor at 1. The order must be rebuilt, not left inverted.
         let old = b"aaaaa\na\n\n\n".to_vec();
-        let list =
-            EditList::new(vec![Edit::delete(9, 1), Edit::insert(0, b"\n".to_vec())]).unwrap();
+        let list = EditList::new(vec![
+            Edit::delete(BytePos(9), 1),
+            Edit::insert(BytePos(0), b"\n".to_vec()),
+        ])
+        .unwrap();
         let new = list.apply_to(&old);
         let mut store = AnchorStore::new();
-        let mark = store.insert_line(9, LineGravity::Drop);
-        let byte = store.insert(1, Bias::Before, AnchorPolicy::Clamp);
+        let mark = store.insert_line(BytePos(9), LineGravity::Drop);
+        let byte = store.insert(BytePos(1), Bias::Before, AnchorPolicy::Clamp);
         store.apply_change(&old, &new, &list);
         store.assert_invariants(new.len());
         assert_eq!(store.resolve(mark).offset.0, 0);
@@ -1250,7 +1293,7 @@ mod tests {
         let order: Vec<usize> = store.resolved().iter().map(|r| r.1.offset.0).collect();
         assert_eq!(order, [0, 2]);
         // The next change starts from a rebuilt order and keeps both anchors right.
-        let next = EditList::new(vec![Edit::insert(1, b"z".to_vec())]).unwrap();
+        let next = EditList::new(vec![Edit::insert(BytePos(1), b"z".to_vec())]).unwrap();
         let newer = next.apply_to(&new);
         store.apply_change(&new, &newer, &next);
         store.assert_invariants(newer.len());

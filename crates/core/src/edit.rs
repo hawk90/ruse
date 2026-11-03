@@ -23,9 +23,9 @@ pub struct Edit {
 
 impl Edit {
     /// Pure insertion of `bytes` at `pos` (no deletion).
-    pub fn insert(pos: usize, bytes: impl Into<Vec<u8>>) -> Edit {
+    pub fn insert(pos: BytePos, bytes: impl Into<Vec<u8>>) -> Edit {
         Edit {
-            pos: BytePos(pos),
+            pos,
             del: 0,
             ins: bytes.into(),
         }
@@ -33,18 +33,18 @@ impl Edit {
 
     /// Pure deletion of `del` bytes at `pos` (no insertion).
     #[must_use]
-    pub fn delete(pos: usize, del: usize) -> Edit {
+    pub fn delete(pos: BytePos, del: usize) -> Edit {
         Edit {
-            pos: BytePos(pos),
+            pos,
             del,
             ins: Vec::new(),
         }
     }
 
     /// Replace `del` bytes at `pos` with `bytes`.
-    pub fn replace(pos: usize, del: usize, bytes: impl Into<Vec<u8>>) -> Edit {
+    pub fn replace(pos: BytePos, del: usize, bytes: impl Into<Vec<u8>>) -> Edit {
         Edit {
-            pos: BytePos(pos),
+            pos,
             del,
             ins: bytes.into(),
         }
@@ -81,7 +81,7 @@ impl Edit {
             tail -= 1;
         }
         let ins = new[head..new.len() - tail].to_vec();
-        Edit::replace(head, old.len() - tail - head, ins)
+        Edit::replace(BytePos(head), old.len() - tail - head, ins)
     }
 
     /// Signed length change this edit makes to the document: `ins.len() - del`.
@@ -92,8 +92,8 @@ impl Edit {
 
     /// End of the affected interval, `pos + del`.
     #[must_use]
-    pub fn end(&self) -> usize {
-        self.pos.0 + self.del
+    pub fn end(&self) -> BytePos {
+        BytePos(self.pos.0 + self.del)
     }
 }
 
@@ -128,7 +128,7 @@ impl EditList {
         edits.sort_by_key(|e| e.pos.0);
         for w in edits.windows(2) {
             let (a, b) = (&w[0], &w[1]);
-            if b.pos.0 == a.pos.0 || b.pos.0 < a.end() {
+            if b.pos.0 == a.pos.0 || b.pos.0 < a.end().0 {
                 return Err(EditError::Overlap {
                     first_pos: a.pos.0,
                     second_pos: b.pos.0,
@@ -147,7 +147,7 @@ impl EditList {
         debug_assert!(
             edits
                 .windows(2)
-                .all(|w| w[1].pos.0 >= w[0].end() && w[1].pos.0 != w[0].pos.0),
+                .all(|w| w[1].pos.0 >= w[0].end().0 && w[1].pos.0 != w[0].pos.0),
             "from_sorted given overlapping or unsorted edits"
         );
         EditList { edits }
@@ -169,7 +169,7 @@ impl EditList {
     /// reported *before* any mutation (atomicity, F-001).
     pub fn check_bounds(&self, len: usize) -> Result<(), EditError> {
         for e in &self.edits {
-            if e.pos.0 > len || e.end() > len {
+            if e.pos.0 > len || e.end().0 > len {
                 return Err(EditError::OutOfRange {
                     pos: e.pos.0,
                     del: e.del,
@@ -189,7 +189,7 @@ impl EditList {
         for e in &self.edits {
             out.extend_from_slice(&buf[cur..e.pos.0]);
             out.extend_from_slice(&e.ins);
-            cur = e.end();
+            cur = e.end().0;
         }
         out.extend_from_slice(&buf[cur..]);
         out
@@ -206,7 +206,7 @@ impl EditList {
         let mut delta: isize = 0;
         for e in &self.edits {
             let new_pos = (e.pos.0 as isize + delta) as usize;
-            let removed = buf[e.pos.0..e.end()].to_vec();
+            let removed = buf[e.pos.0..e.end().0].to_vec();
             delta += e.delta();
             // Forward edits that *touch* (the next starts exactly where the previous ends) invert to the
             // same position — e.g. `delete[a,b)` then `insert@b`. Merging them into one edit keeps the
@@ -265,13 +265,16 @@ mod tests {
     #[test]
     fn overlapping_edits_are_rejected() {
         // deleting [2,5) and inserting at 3 (inside the deleted span) is not disjoint.
-        let err = EditList::new(vec![Edit::delete(2, 3), Edit::insert(3, b"x".to_vec())]);
+        let err = EditList::new(vec![
+            Edit::delete(BytePos(2), 3),
+            Edit::insert(BytePos(3), b"x".to_vec()),
+        ]);
         assert!(matches!(err, Err(EditError::Overlap { .. })));
         // two inserts at the same gap are ambiguous → rejected.
         assert!(matches!(
             EditList::new(vec![
-                Edit::insert(4, b"a".to_vec()),
-                Edit::insert(4, b"b".to_vec())
+                Edit::insert(BytePos(4), b"a".to_vec()),
+                Edit::insert(BytePos(4), b"b".to_vec())
             ]),
             Err(EditError::Overlap { .. })
         ));
@@ -280,7 +283,11 @@ mod tests {
     #[test]
     fn adjacent_edits_are_disjoint() {
         // delete [2,4) then insert at 4 (touching at a point, not overlapping) is allowed.
-        let list = EditList::new(vec![Edit::insert(4, b"x".to_vec()), Edit::delete(2, 2)]).unwrap();
+        let list = EditList::new(vec![
+            Edit::insert(BytePos(4), b"x".to_vec()),
+            Edit::delete(BytePos(2), 2),
+        ])
+        .unwrap();
         assert_eq!(list.edits().len(), 2);
         assert_eq!(list.edits()[0].pos.0, 2); // sorted ascending
     }
@@ -290,8 +297,8 @@ mod tests {
         let buf = b"hello world".to_vec();
         // replace "hello" with "HI", delete " world" tail's "world" -> two disjoint edits.
         let fwd = EditList::new(vec![
-            Edit::replace(0, 5, b"HI".to_vec()),
-            Edit::delete(6, 5),
+            Edit::replace(BytePos(0), 5, b"HI".to_vec()),
+            Edit::delete(BytePos(6), 5),
         ])
         .unwrap();
         fwd.check_bounds(buf.len()).unwrap();
@@ -305,7 +312,7 @@ mod tests {
 
     #[test]
     fn out_of_range_is_reported_before_apply() {
-        let list = EditList::new(vec![Edit::delete(3, 10)]).unwrap();
+        let list = EditList::new(vec![Edit::delete(BytePos(3), 10)]).unwrap();
         assert_eq!(
             list.check_bounds(5),
             Err(EditError::OutOfRange {

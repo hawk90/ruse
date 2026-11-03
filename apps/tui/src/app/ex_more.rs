@@ -86,7 +86,7 @@ pub(crate) fn filter_keep(
     let re = ruse_core::pattern::Regex::compile(pat, ws.focused().view.search_options())?;
     let bang = *bang;
     Ok(Box::new(move |line: &str| {
-        re.find_at(line, 0).is_some() != bang
+        re.find_at(line, ruse_core::BytePos(0)).is_some() != bang
     }))
 }
 

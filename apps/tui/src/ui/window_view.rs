@@ -396,7 +396,8 @@ pub(crate) struct PaneText<'a> {
 impl<'a> PaneText<'a> {
     /// The number of lines (the slot after a final newline is no line, #677).
     pub(crate) fn line_count(&self) -> usize {
-        let end = ruse_core::motion::off_phantom(self.bytes, self.bytes.len());
+        let end =
+            ruse_core::motion::off_phantom(self.bytes, ruse_core::BytePos(self.bytes.len())).0;
         self.idx.line_of(end) + 1
     }
 

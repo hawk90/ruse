@@ -123,14 +123,14 @@ fn resolve(
         let b = pane.doc.bytes();
         let nlines =
             (b.split(|&c| c == b'\n').count() - usize::from(b.ends_with(b"\n"))).max(1) as i64;
-        let cur = (ruse_core::pos::line_of(b, pane.view.cursor().0) as i64 + 1).min(nlines);
+        let cur = (ruse_core::pos::line_of(b, pane.view.cursor()) as i64 + 1).min(nlines);
         let visual = pane
             .view
             .last_visual_bounds()
             .map(|(BytePos(s), BytePos(e), _)| {
                 (
-                    ruse_core::pos::line_of(b, s) as i64 + 1,
-                    ruse_core::pos::line_of(b, e) as i64 + 1,
+                    ruse_core::pos::line_of(b, ruse_core::BytePos(s)) as i64 + 1,
+                    ruse_core::pos::line_of(b, ruse_core::BytePos(e)) as i64 + 1,
                 )
             });
         (nlines, cur, visual)
@@ -329,7 +329,7 @@ fn mark_line(ws: &Workspace, c: u8, visual: Option<(i64, i64)>) -> Option<Option
         _ => return None,
     };
     let b = ws.focused().doc.bytes();
-    Some(pos.map(|p| ruse_core::pos::line_of(b, p.0) as i64 + 1))
+    Some(pos.map(|p| ruse_core::pos::line_of(b, p) as i64 + 1))
 }
 
 /// The pattern of a `/pat/` or `?pat?` address that starts at byte `from` of `s`: the text up to the next

@@ -17,15 +17,15 @@ fn bench_line_math(c: &mut Criterion) {
         let bytes = source(n);
         let end = bytes.len(); // worst case: last byte → the scan covers the whole buffer
         g.bench_with_input(BenchmarkId::new("line_of_end", n), &bytes, |b, by| {
-            b.iter(|| pos::line_of(by, end))
+            b.iter(|| pos::line_of(by, ruse_core::BytePos(end)))
         });
         g.bench_with_input(BenchmarkId::new("line_start_end", n), &bytes, |b, by| {
-            b.iter(|| pos::line_start(by, end))
+            b.iter(|| pos::line_start(by, ruse_core::BytePos(end)).0)
         });
         g.bench_with_input(
             BenchmarkId::new("nth_line_start_last", n),
             &bytes,
-            |b, by| b.iter(|| pos::nth_line_start(by, n)),
+            |b, by| b.iter(|| pos::nth_line_start(by, n).0),
         );
     }
     g.finish();

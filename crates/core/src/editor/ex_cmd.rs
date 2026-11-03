@@ -292,7 +292,7 @@ impl EditorState {
             ExCmd::Mark { line, name } => {
                 let b = self.doc.bytes();
                 let n = crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
-                let at = crate::pos::nth_line_start(b, (*line).clamp(1, n.max(1)) - 1);
+                let at = crate::pos::raw::nth_line_start(b, (*line).clamp(1, n.max(1)) - 1);
                 self.view.set_named_mark(*name, at);
                 ExOutcome::Done
             }

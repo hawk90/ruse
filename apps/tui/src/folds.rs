@@ -693,7 +693,7 @@ mod tests {
     /// Apply one edit at `pos` deleting `del` bytes and inserting `ins`.
     fn edit(doc: &mut Document, pos: usize, del: usize, ins: &str) {
         let edits = ruse_core::EditList::new(vec![ruse_core::Edit::replace(
-            pos,
+            ruse_core::BytePos(pos),
             del,
             ins.as_bytes().to_vec(),
         )])

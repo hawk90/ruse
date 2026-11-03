@@ -11,7 +11,8 @@
 //! exactly as Vim's `g CTRL-G` reports.
 
 use crate::motion::{next_boundary, next_grapheme, vcol_of};
-use crate::pos::{line_end, line_of, line_start};
+use crate::pos::raw::{line_end, line_of, line_start};
+use crate::pos::BytePos;
 
 /// Reverse digraph table (codepoint → Vim digraph name) for the `Digr` field of `ga`/`:ascii`, covering
 /// the C0 controls, space, ASCII punctuation, and the Latin-1 supplement (codepoints `<= 0xFF`) — the
@@ -99,7 +100,8 @@ fn ascii_transchar(cp: u32) -> String {
 /// DIVERGENCE: a base char with combining marks is reported for its base codepoint only (Vim can list the
 /// composing codepoints too); and see [`DIGRAPHS`] for the `> 0xFF` digraph omission.
 #[must_use]
-pub fn ascii_info(bytes: &[u8], cursor: usize) -> String {
+pub fn ascii_info(bytes: &[u8], cursor: BytePos) -> String {
+    let cursor = cursor.0;
     let Some(c) = char_under(bytes, cursor) else {
         return "NUL".to_string();
     };
@@ -128,7 +130,8 @@ pub fn ascii_info(bytes: &[u8], cursor: usize) -> String {
 /// as nvim v0.12.6 prints them: `61 `, `e2 82 ac `, `65 + cc 81 `; `NUL` on an empty line. A byte that is
 /// not valid UTF-8 prints alone.
 #[must_use]
-pub fn utf8_info(bytes: &[u8], cursor: usize) -> String {
+pub fn utf8_info(bytes: &[u8], cursor: BytePos) -> String {
+    let cursor = cursor.0;
     if cursor >= bytes.len() || bytes[cursor] == b'\n' {
         return "NUL".to_string();
     }
@@ -167,7 +170,8 @@ fn line_count(bytes: &[u8]) -> usize {
 /// `"foo.txt" --No lines in buffer--` for an empty buffer. `name` is the display name the frontend owns
 /// (`None` → `[No Name]`); the percentage is `cursor_line * 100 / total_lines` (integer), as Vim computes.
 #[must_use]
-pub fn file_info(name: Option<&str>, modified: bool, bytes: &[u8], cursor: usize) -> String {
+pub fn file_info(name: Option<&str>, modified: bool, bytes: &[u8], cursor: BytePos) -> String {
+    let cursor = cursor.0;
     let name = name.unwrap_or("[No Name]");
     let lines = line_count(bytes);
     if lines == 0 {
@@ -208,13 +212,14 @@ fn col_print(col: usize, vcol: usize) -> String {
 /// under the cursor is off by its extra cells in the `Col` vcol field; tabs and Latin/accented text are
 /// exact. `tabstop` sizes `<Tab>` expansion.
 #[must_use]
-pub fn cursor_pos_info(bytes: &[u8], cursor: usize, tabstop: usize) -> String {
+pub fn cursor_pos_info(bytes: &[u8], cursor: BytePos, tabstop: usize) -> String {
+    let cursor = cursor.0;
     if line_count(bytes) == 0 {
         return "--No lines in buffer--".to_string();
     }
     // A cursor on the slot after a final newline reads as the last line's last char: that slot is no line
     // (#677), so it must not report `Line 2 of 1`.
-    let cursor = crate::motion::off_phantom(bytes, cursor.min(bytes.len()));
+    let cursor = crate::motion::off_phantom_at(bytes, cursor.min(bytes.len()));
     let start = line_start(bytes, cursor);
     let lend = line_end(bytes, cursor);
 
@@ -280,27 +285,39 @@ mod tests {
     #[test]
     fn ascii_printable_no_digraph() {
         // `<H>  72,  Hex 48,  Octal 110` — capital H has no digraph, so the full word `Octal` and no `Digr`.
-        assert_eq!(ascii_info(b"Hello", 0), "<H>  72,  Hex 48,  Octal 110");
-        assert_eq!(ascii_info(b"a", 0), "<a>  97,  Hex 61,  Octal 141");
+        assert_eq!(
+            ascii_info(b"Hello", BytePos(0)),
+            "<H>  72,  Hex 48,  Octal 110"
+        );
+        assert_eq!(ascii_info(b"a", BytePos(0)), "<a>  97,  Hex 61,  Octal 141");
     }
 
     #[test]
     fn ascii_with_digraph_switches_to_oct_and_appends_digr() {
         // Space and Tab have digraphs (SP/HT): the field abbreviates to `Oct` and appends `Digr`.
-        assert_eq!(ascii_info(b"a b", 1), "< >  32,  Hex 20,  Oct 040, Digr SP");
-        assert_eq!(ascii_info(b"\t", 0), "<^I>  9,  Hex 09,  Oct 011, Digr HT");
-        assert_eq!(ascii_info(b"~", 0), "<~>  126,  Hex 7e,  Oct 176, Digr '?");
+        assert_eq!(
+            ascii_info(b"a b", BytePos(1)),
+            "< >  32,  Hex 20,  Oct 040, Digr SP"
+        );
+        assert_eq!(
+            ascii_info(b"\t", BytePos(0)),
+            "<^I>  9,  Hex 09,  Oct 011, Digr HT"
+        );
+        assert_eq!(
+            ascii_info(b"~", BytePos(0)),
+            "<~>  126,  Hex 7e,  Oct 176, Digr '?"
+        );
     }
 
     #[test]
     fn ascii_multibyte_latin1() {
         // `<é> 233, Hex 00e9, Oct 351, Digr e'` — 2-byte é, 4-wide hex, digraph present.
         assert_eq!(
-            ascii_info("é".as_bytes(), 0),
+            ascii_info("é".as_bytes(), BytePos(0)),
             "<é> 233, Hex 00e9, Oct 351, Digr e'"
         );
         assert_eq!(
-            ascii_info("ÿ".as_bytes(), 0),
+            ascii_info("ÿ".as_bytes(), BytePos(0)),
             "<ÿ> 255, Hex 00ff, Oct 377, Digr y:"
         );
     }
@@ -309,20 +326,20 @@ mod tests {
     fn ascii_multibyte_beyond_latin1_has_no_digraph() {
         // CJK / emoji: no digraph in the curated table → `Octal`; emoji hex widens to 8.
         assert_eq!(
-            ascii_info("中".as_bytes(), 0),
+            ascii_info("中".as_bytes(), BytePos(0)),
             "<中> 20013, Hex 4e2d, Octal 47055"
         );
         assert_eq!(
-            ascii_info("😀".as_bytes(), 0),
+            ascii_info("😀".as_bytes(), BytePos(0)),
             "<😀> 128512, Hex 0001f600, Octal 373000"
         );
     }
 
     #[test]
     fn ascii_empty_line_and_eob_report_nul() {
-        assert_eq!(ascii_info(b"", 0), "NUL");
-        assert_eq!(ascii_info(b"\n", 0), "NUL"); // cursor on the newline of an empty line.
-        assert_eq!(ascii_info(b"ab\n", 3), "NUL"); // past end.
+        assert_eq!(ascii_info(b"", BytePos(0)), "NUL");
+        assert_eq!(ascii_info(b"\n", BytePos(0)), "NUL"); // cursor on the newline of an empty line.
+        assert_eq!(ascii_info(b"ab\n", BytePos(3)), "NUL"); // past end.
     }
 
     // --- CTRL-G --------------------------------------------------------------------------------------
@@ -332,11 +349,11 @@ mod tests {
         let b = b"Hello world foo\nsecond line here\nthird line\nfourth\nfifth line end\n";
         // Cursor on line 1 -> 20%; a byte on line 5 (the 'd' of "end", just before the final \n) -> 100%.
         assert_eq!(
-            file_info(Some("f5.txt"), false, b, 0),
+            file_info(Some("f5.txt"), false, b, BytePos(0)),
             "\"f5.txt\" 5 lines --20%--"
         );
         assert_eq!(
-            file_info(Some("f5.txt"), false, b, b.len() - 2),
+            file_info(Some("f5.txt"), false, b, BytePos(b.len() - 2)),
             "\"f5.txt\" 5 lines --100%--"
         );
     }
@@ -344,7 +361,7 @@ mod tests {
     #[test]
     fn file_info_modified_flag_and_singular() {
         assert_eq!(
-            file_info(Some("f5.txt"), true, b"only\n", 0),
+            file_info(Some("f5.txt"), true, b"only\n", BytePos(0)),
             "\"f5.txt\" [Modified] 1 line --100%--"
         );
     }
@@ -352,15 +369,15 @@ mod tests {
     #[test]
     fn file_info_unnamed_and_empty() {
         assert_eq!(
-            file_info(None, false, b"x\n", 0),
+            file_info(None, false, b"x\n", BytePos(0)),
             "\"[No Name]\" 1 line --100%--"
         );
         assert_eq!(
-            file_info(None, false, b"", 0),
+            file_info(None, false, b"", BytePos(0)),
             "\"[No Name]\" --No lines in buffer--"
         );
         assert_eq!(
-            file_info(Some("e.txt"), false, b"", 0),
+            file_info(Some("e.txt"), false, b"", BytePos(0)),
             "\"e.txt\" --No lines in buffer--"
         );
     }
@@ -368,7 +385,7 @@ mod tests {
     #[test]
     fn file_info_noeol_counts_the_line() {
         assert_eq!(
-            file_info(Some("n.txt"), false, b"abc", 0),
+            file_info(Some("n.txt"), false, b"abc", BytePos(0)),
             "\"n.txt\" 1 line --100%--"
         );
     }
@@ -381,7 +398,7 @@ mod tests {
         let b = b"Hello world foo\nsecond line here\nthird line\nfourth\nfifth line end\n";
         let cursor = b"Hello world foo\nsecond line here\nth".len(); // byte 35 -> 'i'
         assert_eq!(
-            cursor_pos_info(b, cursor, 8),
+            cursor_pos_info(b, BytePos(cursor), 8),
             "Col 3 of 10; Line 3 of 5; Word 7 of 12; Byte 36 of 66"
         );
     }
@@ -390,7 +407,7 @@ mod tests {
     fn cursor_pos_words_are_whitespace_separated() {
         // Punctuation does NOT split words (unlike `w`): "foo,bar baz.qux" is 2 words.
         assert_eq!(
-            cursor_pos_info(b"foo,bar baz.qux\n", 0, 8),
+            cursor_pos_info(b"foo,bar baz.qux\n", BytePos(0), 8),
             "Col 1 of 15; Line 1 of 1; Word 1 of 2; Byte 1 of 16"
         );
     }
@@ -398,7 +415,7 @@ mod tests {
     #[test]
     fn cursor_pos_word_zero_on_leading_whitespace() {
         assert_eq!(
-            cursor_pos_info(b"  leading spaces\n", 0, 8),
+            cursor_pos_info(b"  leading spaces\n", BytePos(0), 8),
             "Col 1 of 16; Line 1 of 1; Word 0 of 2; Byte 1 of 17"
         );
     }
@@ -407,7 +424,7 @@ mod tests {
     fn cursor_pos_tab_expands_vcol() {
         // "a\tbc": Col byte 2 (the Tab) sits at vcol 8; the line is 4 bytes / 10 vcols.
         assert_eq!(
-            cursor_pos_info(b"a\tbc\n", 1, 8),
+            cursor_pos_info(b"a\tbc\n", BytePos(1), 8),
             "Col 2-8 of 4-10; Line 1 of 1; Word 1 of 2; Byte 2 of 5"
         );
     }
@@ -416,7 +433,7 @@ mod tests {
     fn cursor_pos_multibyte_adds_char_field() {
         // "café x": cursor on the space (byte 5). Char field appears; Col shows byte-vcol.
         assert_eq!(
-            cursor_pos_info("café x\n".as_bytes(), 5, 8),
+            cursor_pos_info("café x\n".as_bytes(), BytePos(5), 8),
             "Col 6-5 of 7-6; Line 1 of 1; Word 1 of 2; Char 5 of 7; Byte 6 of 8"
         );
     }
@@ -425,14 +442,17 @@ mod tests {
     fn cursor_pos_noeol_counts_phantom_eol() {
         // "abc" (no trailing newline): total bytes count the phantom EOL -> 4.
         assert_eq!(
-            cursor_pos_info(b"abc", 2, 8),
+            cursor_pos_info(b"abc", BytePos(2), 8),
             "Col 3 of 3; Line 1 of 1; Word 1 of 1; Byte 3 of 4"
         );
     }
 
     #[test]
     fn cursor_pos_empty_buffer() {
-        assert_eq!(cursor_pos_info(b"", 0, 8), "--No lines in buffer--");
+        assert_eq!(
+            cursor_pos_info(b"", BytePos(0), 8),
+            "--No lines in buffer--"
+        );
     }
 
     #[test]

@@ -55,7 +55,7 @@ fn plan_block_insert(
                 keep.splice(r.out_l..r.out_l, seed.iter().copied());
             }
             if r.de > r.ds || !keep.is_empty() {
-                edits.push(Edit::replace(r.ds, r.de - r.ds, keep));
+                edits.push(Edit::replace(BytePos(r.ds), r.de - r.ds, keep));
             }
         }
         (top.ds + top.out_l, top.ds + top.out_l)
@@ -74,7 +74,7 @@ fn plan_block_insert(
             }
         } else {
             if pre > 0 {
-                edits.push(Edit::insert(at, vec![b' '; pre]));
+                edits.push(Edit::insert(BytePos(at), vec![b' '; pre]));
             }
             at + pre
         };
@@ -186,11 +186,21 @@ fn plan_selection_span(
             } else {
                 (s, s)
             };
-            edit_yank(one(Edit::delete(s, e - s)), cursor, Mode::Normal, hint, reg)
+            edit_yank(
+                one(Edit::delete(BytePos(s), e - s)),
+                cursor,
+                Mode::Normal,
+                hint,
+                reg,
+            )
         }
-        OpKind::Change if s < e => {
-            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
-        }
+        OpKind::Change if s < e => edit_yank(
+            one(Edit::delete(BytePos(s), e - s)),
+            s,
+            Mode::Insert,
+            hint,
+            reg,
+        ),
         // Empty selection: just leave Visual (Change still opens Insert).
         OpKind::Change => nop(s, Mode::Insert),
         OpKind::Delete => nop(s, Mode::Normal),
@@ -204,7 +214,10 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
         return nop(cur, Mode::Normal);
     };
     let (lo, hi) = (anchor.min(cur), anchor.max(cur));
-    let (first, last) = (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi));
+    let (first, last) = (
+        crate::pos::raw::line_of(b, lo),
+        crate::pos::raw::line_of(b, hi),
+    );
     let lines = (last - first + 1) as u32;
     // The shared line planners keep the mode they were called in; a Visual operator ends the selection.
     let ts = st.view.indent.tab_width;
@@ -339,7 +352,7 @@ fn plan_linewise_change(
         }
     } else {
         edit_yank(
-            one(Edit::delete(indent_end, content_end - indent_end)),
+            one(Edit::delete(BytePos(indent_end), content_end - indent_end)),
             indent_end,
             Mode::Insert,
             hint,
@@ -421,12 +434,13 @@ impl SearchSpan {
     fn lines(self, b: &[u8], cur: usize) -> (usize, usize) {
         match self {
             SearchSpan::Empty => {
-                let l = crate::pos::line_of(b, cur);
+                let l = crate::pos::raw::line_of(b, cur);
                 (l, l)
             }
-            SearchSpan::Chars { lo, hi } => {
-                (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi - 1))
-            }
+            SearchSpan::Chars { lo, hi } => (
+                crate::pos::raw::line_of(b, lo),
+                crate::pos::raw::line_of(b, hi - 1),
+            ),
             SearchSpan::Lines { first, last } => (first, last),
         }
     }
@@ -514,7 +528,10 @@ fn search_char_span(
     let (lo2, hi2, linewise) = exclusive_linewise(b, lo, hi);
     let adjusted = linewise || hi2 != hi;
     if linewise {
-        let (first, last) = (crate::pos::line_of(b, lo2), crate::pos::line_of(b, hi2 - 1));
+        let (first, last) = (
+            crate::pos::raw::line_of(b, lo2),
+            crate::pos::raw::line_of(b, hi2 - 1),
+        );
         return (SearchSpan::Lines { first, last }, adjusted);
     }
     if hi2 <= lo2 {
@@ -589,8 +606,8 @@ fn search_line_target(
         })
     };
     let pos = walk_count(cur, count, step)?;
-    let last_line = crate::pos::line_of(b, b.len());
-    let match_line = crate::pos::line_of(b, pos);
+    let last_line = crate::pos::raw::line_of(b, b.len());
+    let match_line = crate::pos::raw::line_of(b, pos);
     Some((match_line as i64 + i64::from(n)).clamp(0, last_line as i64) as usize)
 }
 
@@ -613,7 +630,7 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
             ..
         } => {
             let target = search_line_target(st, b, cur, *count, pattern, *backward, *n)?;
-            let cur_line = crate::pos::line_of(b, cur);
+            let cur_line = crate::pos::raw::line_of(b, cur);
             Some((cur_line.min(target), cur_line.max(target)))
         }
         Command::Search {
@@ -656,15 +673,18 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
         } => {
             let (s, e) = search_object_match(st, b, cur, *count, pattern, *backward)?;
             Some((
-                crate::pos::line_of(b, s),
-                crate::pos::line_of(b, prev_boundary(b, e)),
+                crate::pos::raw::line_of(b, s),
+                crate::pos::raw::line_of(b, prev_boundary(b, e)),
             ))
         }
         Command::OpToMark { name, linewise, .. } => {
             let mark = st.view.named_mark(*name)?.0.min(b.len());
             let (lo, hi) = (cur.min(mark), cur.max(mark));
             let lines = if *linewise {
-                (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi))
+                (
+                    crate::pos::raw::line_of(b, lo),
+                    crate::pos::raw::line_of(b, hi),
+                )
             } else if lo >= hi {
                 SearchSpan::Empty.lines(b, cur)
             } else {
@@ -778,12 +798,15 @@ fn plan_search_line(
     };
     if matches!(op, SearchOp::Move) {
         // Column 0 of the target line (snapped/clamped in `commit`).
-        return nop(crate::pos::nth_line_start(b, target_line), st.view.mode);
+        return nop(
+            crate::pos::raw::nth_line_start(b, target_line),
+            st.view.mode,
+        );
     }
     // Linewise over the cursor's line .. target line (inclusive), regardless of search direction.
-    let cur_line = crate::pos::line_of(b, cur);
+    let cur_line = crate::pos::raw::line_of(b, cur);
     let (first, last) = (cur_line.min(target_line), cur_line.max(target_line));
-    let landing = crate::pos::nth_line_start(b, target_line);
+    let landing = crate::pos::raw::nth_line_start(b, target_line);
     plan_search_lines(st, b, cur, op, first, last, false, landing, hint)
 }
 
@@ -803,8 +826,8 @@ fn plan_search_lines(
     landing: usize,
     hint: GroupHint,
 ) -> Plan {
-    let first_ls = crate::pos::nth_line_start(b, first);
-    let last_ls = crate::pos::nth_line_start(b, last);
+    let first_ls = crate::pos::raw::nth_line_start(b, first);
+    let last_ls = crate::pos::raw::nth_line_start(b, last);
     if let Some(span_op) = op.span_op() {
         return plan_op_over_span(
             st,
@@ -884,7 +907,7 @@ fn apply_op(
         MarkOp::Delete | MarkOp::Yank | MarkOp::Case(_) if s >= e => nop(cur, mode),
         MarkOp::Delete if !linewise => {
             let reg = captured(b, s, e, false);
-            edit_yank(one(Edit::delete(s, e - s)), s, mode, hint, reg)
+            edit_yank(one(Edit::delete(BytePos(s), e - s)), s, mode, hint, reg)
         }
         MarkOp::Delete => {
             let reg = captured(b, s, e, true);
@@ -906,7 +929,7 @@ fn apply_op(
                 want_col(b, line, st.view.curswant, st.view.indent.tab_width)
             };
             edit_yank(
-                one(Edit::delete(del_start, e - del_start)),
+                one(Edit::delete(BytePos(del_start), e - del_start)),
                 at - shift,
                 mode,
                 hint,
@@ -923,7 +946,13 @@ fn apply_op(
             // The register captures the removed content charwise (a partial-line change like `c$` pastes
             // inline).
             let reg = captured(b, s, e, false);
-            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+            edit_yank(
+                one(Edit::delete(BytePos(s), e - s)),
+                s,
+                Mode::Insert,
+                hint,
+                reg,
+            )
         }
         MarkOp::Yank => Plan {
             action: Action::Nop,
@@ -947,7 +976,12 @@ fn apply_op(
             if recased == b[s..e] {
                 nop(rest, mode)
             } else {
-                edit(one(Edit::replace(s, e - s, recased)), at, mode, hint)
+                edit(
+                    one(Edit::replace(BytePos(s), e - s, recased)),
+                    at,
+                    mode,
+                    hint,
+                )
             }
         }
         MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } | MarkOp::Comment => {
@@ -1029,11 +1063,17 @@ fn plan_op_over_span(
         MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } | MarkOp::Comment
     ) {
         let (first, last) = if linewise {
-            (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi))
+            (
+                crate::pos::raw::line_of(b, lo),
+                crate::pos::raw::line_of(b, hi),
+            )
         } else if lo >= hi {
             return nop(cur, st.view.mode);
         } else {
-            (crate::pos::line_of(b, lo), crate::pos::line_of(b, hi - 1))
+            (
+                crate::pos::raw::line_of(b, lo),
+                crate::pos::raw::line_of(b, hi - 1),
+            )
         };
         return match op {
             MarkOp::Shift { left } => {
@@ -1042,8 +1082,8 @@ fn plan_op_over_span(
             }
             MarkOp::Reindent => plan_reindent(st, first, last, hint),
             MarkOp::Format { keep } => {
-                let start = crate::pos::nth_line_start(b, first);
-                let end = line_end(b, crate::pos::nth_line_start(b, last));
+                let start = crate::pos::raw::nth_line_start(b, first);
+                let end = line_end(b, crate::pos::raw::nth_line_start(b, last));
                 plan_format_lines(st, cur, start, end, keep, end_adjusted, hint)
             }
             MarkOp::Comment => plan_comment(st, first, last, cur.min(lo), hint),
@@ -1140,11 +1180,23 @@ fn plan_search_object(
         },
         SearchOp::Delete => {
             let reg = captured(b, s, e, false);
-            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
+            edit_yank(
+                one(Edit::delete(BytePos(s), e - s)),
+                s,
+                Mode::Normal,
+                hint,
+                reg,
+            )
         }
         SearchOp::Change => {
             let reg = captured(b, s, e, false);
-            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+            edit_yank(
+                one(Edit::delete(BytePos(s), e - s)),
+                s,
+                Mode::Insert,
+                hint,
+                reg,
+            )
         }
         SearchOp::Yank => {
             let reg = captured(b, s, e, false);
@@ -1187,7 +1239,7 @@ fn plan_virtual_replace_type(
     let le = line_end(b, cur);
     let (edits, push, cursor) = if cur >= le {
         // End-of-line: nothing to overwrite — append (backspace deletes it).
-        (one(Edit::insert(cur, typed)), Some(None), cur + tn)
+        (one(Edit::insert(BytePos(cur), typed)), Some(None), cur + tn)
     } else if b[cur] == b'\t' {
         // Over a TAB: it spans `w` virtual columns to the next tabstop. While more than one column
         // remains, INSERT before the tab (it shrinks, backspace regrows it); on the LAST column, replace
@@ -1196,10 +1248,10 @@ fn plan_virtual_replace_type(
         let vcol = motion::vcol_of(b, ls, cur, st.view.indent.tab_width);
         let w = st.view.indent.tab_width.max(1) - (vcol % st.view.indent.tab_width.max(1));
         if w > 1 {
-            (one(Edit::insert(cur, typed)), Some(None), cur + tn)
+            (one(Edit::insert(BytePos(cur), typed)), Some(None), cur + tn)
         } else {
             (
-                one(Edit::replace(cur, 1, typed)),
+                one(Edit::replace(BytePos(cur), 1, typed)),
                 Some(Some(vec![b'\t'])),
                 cur + tn,
             )
@@ -1208,7 +1260,7 @@ fn plan_virtual_replace_type(
         // Over a normal char: overwrite it (remember the original for `<BS>`), like Replace.
         let nb = next_boundary(b, cur);
         (
-            one(Edit::replace(cur, nb - cur, typed)),
+            one(Edit::replace(BytePos(cur), nb - cur, typed)),
             Some(Some(b[cur..nb].to_vec())),
             cur + tn,
         )
@@ -1290,7 +1342,7 @@ fn plan_virtual_replace_char(
     // (p advanced by at least one `tn` per iteration, so this never precedes the line start).
     let cursor = ls + p - tn;
     edit(
-        one(Edit::replace(cur, le - cur, new_tail)),
+        one(Edit::replace(BytePos(cur), le - cur, new_tail)),
         cursor,
         Mode::Normal,
         hint,
@@ -1328,7 +1380,7 @@ fn failed_motion(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Optio
     if op || visual {
         let anchor = visual.then(|| st.view.anchor.unwrap_or(cur));
         if let Some(at) = crate::textobj::word_object_fails(b, cur, anchor, m, count) {
-            let at = motion::off_phantom(b, at);
+            let at = motion::off_phantom_at(b, at);
             let (ls, le) = (line_start(b, at), line_end(b, at));
             let at = if at >= le && le > ls {
                 prev_grapheme(b, le)
@@ -1580,7 +1632,7 @@ fn block_replace(block: &Block, c: char, hint: GroupHint) -> Plan {
             if !short {
                 ins.extend(std::iter::repeat_n(b' ', r.out_r + extra));
             }
-            Edit::replace(r.ds, r.de - r.ds, ins)
+            Edit::replace(BytePos(r.ds), r.de - r.ds, ins)
         })
         .collect();
     let at = block.rows[0].ds;
@@ -1617,11 +1669,11 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
                 .rows
                 .iter()
                 .filter(|r| r.de > r.ds)
-                .map(|r| Edit::replace(r.ds, r.de - r.ds, vec![b' '; r.out_l + r.out_r]))
+                .map(|r| Edit::replace(BytePos(r.ds), r.de - r.ds, vec![b' '; r.out_l + r.out_r]))
                 .collect();
             let reg = Register::blockwise_width(block.yank_text(b), block.width());
             let top = block.rows[0];
-            let first = crate::pos::line_of(b, top.ls);
+            let first = crate::pos::raw::line_of(b, top.ls);
             (
                 dels,
                 reg,
@@ -1638,7 +1690,7 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
                 s
             };
             (
-                vec![Edit::delete(s0, e - s0)],
+                vec![Edit::delete(BytePos(s0), e - s0)],
                 captured(b, s, e, true),
                 s0,
                 None,
@@ -1650,7 +1702,7 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
                 return nop(s, Mode::Normal);
             }
             (
-                vec![Edit::delete(s, e - s)],
+                vec![Edit::delete(BytePos(s), e - s)],
                 captured(b, s, e, false),
                 s,
                 None,
@@ -1725,7 +1777,7 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
             }
             (SelectKind::Blockwise, RegKind::Linewise) if swap => {
                 let (_, last) = block_lines.expect("a block selection records its lines");
-                let at = crate::pos::nth_line_start(&b2, last).min(b2.len());
+                let at = crate::pos::raw::nth_line_start(&b2, last).min(b2.len());
                 applied(put(&reg, at, true))
             }
             (SelectKind::Blockwise, RegKind::Charwise) if !reg.text().contains(&b'\n') => {
@@ -1735,7 +1787,7 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
                 let mut edits = Vec::new();
                 let mut cursor = c2;
                 for line in first..=last {
-                    let ls = crate::pos::nth_line_start(&b2, line);
+                    let ls = crate::pos::raw::nth_line_start(&b2, line);
                     if ls > b2.len() || line_cells(&b2, ls, ts) < vcol {
                         continue;
                     }
@@ -1748,7 +1800,7 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
                     if line == first {
                         cursor = at + reg.text().len() - 1;
                     }
-                    edits.push(Edit::insert(at, reg.text().to_vec()));
+                    edits.push(Edit::insert(BytePos(at), reg.text().to_vec()));
                 }
                 let list = EditList::new(edits).expect("one insert per line");
                 (list.apply_to(&b2), cursor)
@@ -1798,7 +1850,7 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
     Plan {
         action: Action::Txn {
             edits: one(Edit::replace(
-                p,
+                BytePos(p),
                 b.len() - p - q,
                 b3[p..b3.len() - q].to_vec(),
             )),
@@ -1843,18 +1895,28 @@ fn replace_selection_with(
                 // charwise even for whole lines, as nvim stores it (`gHX` leaves `"abc\n"`, `v`).
                 let reg = captured(b, s, e, false);
                 edit_yank(
-                    one(Edit::replace(s, e - s, ins)),
+                    one(Edit::replace(BytePos(s), e - s, ins)),
                     s + n,
                     Mode::Insert,
                     hint,
                     reg,
                 )
             } else {
-                edit(one(Edit::insert(s, ins)), s + n, Mode::Insert, hint)
+                edit(
+                    one(Edit::insert(BytePos(s), ins)),
+                    s + n,
+                    Mode::Insert,
+                    hint,
+                )
             }
         }
         // No anchor (not really in a selection): degrade to a plain insert-and-enter-Insert.
-        None => edit(one(Edit::insert(cur, ins)), cur + n, Mode::Insert, hint),
+        None => edit(
+            one(Edit::insert(BytePos(cur), ins)),
+            cur + n,
+            Mode::Insert,
+            hint,
+        ),
     }
 }
 
@@ -1936,7 +1998,7 @@ fn hspace_end(b: &[u8], from: usize) -> usize {
 /// LINE (Vim's linewise mark jump), clamped into range.
 fn mark_line_target(b: &[u8], pos: usize) -> usize {
     let p = pos.min(b.len());
-    motion::first_non_blank(b, crate::pos::line_start(b, p))
+    motion::first_non_blank(b, crate::pos::raw::line_start(b, p))
 }
 
 /// A charwise mark jump target: snap `pos` to a char boundary, then apply Vim's Normal-mode end-of-line
@@ -2096,12 +2158,12 @@ fn plan_join(
         edits.push(
             if onto_empty && first > del_start + 1 && b[del_start + 1] != b'\n' {
                 Edit::replace(
-                    del_start,
+                    BytePos(del_start),
                     first - del_start,
                     b[del_start + 1..first].to_vec(),
                 )
             } else {
-                Edit::replace(del_start, del_len, sep)
+                Edit::replace(BytePos(del_start), del_len, sep)
             },
         );
         le = next_le; // end of the next line to join (original coords)
@@ -2265,7 +2327,7 @@ fn plan_end_comment(
         return None;
     }
     Some(edit(
-        one(Edit::replace(ls + i, cur - (ls + i), end.clone())),
+        one(Edit::replace(BytePos(ls + i), cur - (ls + i), end.clone())),
         ls + i + end.len(),
         Mode::Insert,
         hint,
@@ -2288,7 +2350,7 @@ fn plan_open_comment(
             let mut ins = vec![b'\n'];
             ins.extend_from_slice(&prefix);
             edit(
-                one(Edit::insert(le, ins)),
+                one(Edit::insert(BytePos(le), ins)),
                 le + 1 + prefix.len(),
                 Mode::Insert,
                 hint,
@@ -2298,7 +2360,7 @@ fn plan_open_comment(
             let mut ins = prefix.clone();
             ins.push(b'\n');
             edit(
-                one(Edit::insert(ls, ins)),
+                one(Edit::insert(BytePos(ls), ins)),
                 ls + prefix.len(),
                 Mode::Insert,
                 hint,
@@ -2323,7 +2385,7 @@ fn plan_open_comment(
             ins.extend_from_slice(&prefix);
             let cursor = cut + ins.len();
             edit(
-                one(Edit::replace(cut, after - cut, ins)),
+                one(Edit::replace(BytePos(cut), after - cut, ins)),
                 cursor,
                 Mode::Insert,
                 hint,
@@ -2362,7 +2424,12 @@ fn leave_autoindent(st: &EditorState, cur: usize, p: Plan, hint: GroupHint) -> P
     } else {
         p.cursor
     };
-    edit(one(Edit::delete(cut, le - cut)), cursor, Mode::Insert, hint)
+    edit(
+        one(Edit::delete(BytePos(cut), le - cut)),
+        cursor,
+        Mode::Insert,
+        hint,
+    )
 }
 
 pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
@@ -2454,7 +2521,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 ins.extend_from_slice(&pad);
                 ins.push(b'\n');
                 edit(
-                    one(Edit::insert(le + 1, ins)),
+                    one(Edit::insert(BytePos(le + 1), ins)),
                     le + 1 + pad.len(),
                     Mode::Insert,
                     hint,
@@ -2463,7 +2530,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 ins.push(b'\n');
                 ins.extend_from_slice(&pad);
                 edit(
-                    one(Edit::insert(le, ins)),
+                    one(Edit::insert(BytePos(le), ins)),
                     le + 1 + pad.len(),
                     Mode::Insert,
                     hint,
@@ -2472,7 +2539,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 ins.extend_from_slice(&pad);
                 ins.push(b'\n');
                 edit(
-                    one(Edit::insert(ls, ins)),
+                    one(Edit::insert(BytePos(ls), ins)),
                     ls + pad.len(),
                     Mode::Insert,
                     hint,
@@ -2489,7 +2556,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 le
             };
             edit(
-                one(Edit::insert(at, b"\n".to_vec())),
+                one(Edit::insert(BytePos(at), b"\n".to_vec())),
                 le + 1,
                 Mode::Insert,
                 hint,
@@ -2498,7 +2565,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         Command::OpenAbove => {
             let ls = line_start(b, cur);
             edit(
-                one(Edit::insert(ls, b"\n".to_vec())),
+                one(Edit::insert(BytePos(ls), b"\n".to_vec())),
                 ls,
                 Mode::Insert,
                 hint,
@@ -2526,7 +2593,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                         cut -= 1;
                     }
                     if cur == le && cut < le {
-                        return edit(one(Edit::delete(cut, le - cut)), cut, Mode::Normal, hint);
+                        return edit(
+                            one(Edit::delete(BytePos(cut), le - cut)),
+                            cut,
+                            Mode::Normal,
+                            hint,
+                        );
                     }
                 }
             }
@@ -2557,12 +2629,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 // Overwrite the char under the cursor; remember its original bytes for `<BS>` restore.
                 let nb = next_boundary(b, cur);
                 (
-                    one(Edit::replace(cur, nb - cur, typed)),
+                    one(Edit::replace(BytePos(cur), nb - cur, typed)),
                     Some(Some(b[cur..nb].to_vec())),
                 )
             } else {
                 // At end-of-line there is nothing to overwrite: append, remembered as `None` (backspace deletes).
-                (one(Edit::insert(cur, typed)), Some(None))
+                (one(Edit::insert(BytePos(cur), typed)), Some(None))
             };
             Plan {
                 action: Action::ReplaceTxn {
@@ -2592,8 +2664,8 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             Some(entry) => {
                 let start = prev_boundary(b, cur); // the last typed char occupies [start, cur)
                 let edits = match entry {
-                    Some(orig) => one(Edit::replace(start, cur - start, orig.clone())),
-                    None => one(Edit::delete(start, cur - start)),
+                    Some(orig) => one(Edit::replace(BytePos(start), cur - start, orig.clone())),
+                    None => one(Edit::delete(BytePos(start), cur - start)),
                 };
                 Plan {
                     action: Action::ReplaceTxn {
@@ -2635,7 +2707,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     let mut repl = pad;
                     repl.extend_from_slice(&bytes);
                     return edit(
-                        one(Edit::replace(ls, cur - ls, repl)),
+                        one(Edit::replace(BytePos(ls), cur - ls, repl)),
                         cursor,
                         Mode::Insert,
                         hint,
@@ -2648,7 +2720,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             if let Some(p) = auto_wrap(st, b, cur, *c, hint) {
                 return p;
             }
-            edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
+            edit(
+                one(Edit::insert(BytePos(cur), bytes)),
+                cur + n,
+                Mode::Insert,
+                hint,
+            )
         }
         // `i_CTRL-R{reg}` — splice the named register's raw bytes at the caret, staying in Insert with the
         // cursor after the inserted text. An empty register is a no-op. `"` reads the unnamed register (via
@@ -2659,7 +2736,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 return nop(cur, Mode::Insert);
             }
             let n = bytes.len();
-            edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
+            edit(
+                one(Edit::insert(BytePos(cur), bytes)),
+                cur + n,
+                Mode::Insert,
+                hint,
+            )
         }
         // `i_CTRL-R=<expr><CR>` — evaluate the expression (a minimal-honest arithmetic/string calculator,
         // NOT full Vimscript) and splice the formatted result at the caret, staying in Insert. A malformed
@@ -2670,7 +2752,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 return nop(cur, Mode::Insert);
             }
             let n = bytes.len();
-            edit(one(Edit::insert(cur, bytes)), cur + n, Mode::Insert, hint)
+            edit(
+                one(Edit::insert(BytePos(cur), bytes)),
+                cur + n,
+                Mode::Insert,
+                hint,
+            )
         }
         // A bracketed paste (#600): one literal splice at the caret, mode unchanged.
         Command::InsertPaste(text) => {
@@ -2687,7 +2774,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             }
             let n = text.len();
             edit(
-                one(Edit::insert(cur, text.as_bytes().to_vec())),
+                one(Edit::insert(BytePos(cur), text.as_bytes().to_vec())),
                 cur + n,
                 st.view.mode,
                 hint,
@@ -2707,7 +2794,11 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             });
             let n = text.len();
             edit(
-                one(Edit::replace(cur, end - cur, text.as_bytes().to_vec())),
+                one(Edit::replace(
+                    BytePos(cur),
+                    end - cur,
+                    text.as_bytes().to_vec(),
+                )),
                 cur + n,
                 st.view.mode,
                 hint,
@@ -2725,7 +2816,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 ))),
                 set_mark: Some(MarkWrite::Set(cur)),
                 ..edit(
-                    one(Edit::insert(cur, text.as_bytes().to_vec())),
+                    one(Edit::insert(BytePos(cur), text.as_bytes().to_vec())),
                     cur + n,
                     st.view.mode,
                     hint,
@@ -2742,7 +2833,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             // If the word motion did not move (e.g. only whitespace precedes), delete one grapheme instead.
             let start = if wb < cur { wb } else { prev_boundary(b, cur) };
             edit(
-                one(Edit::delete(start, cur - start)),
+                one(Edit::delete(BytePos(start), cur - start)),
                 start,
                 Mode::Insert,
                 hint,
@@ -2757,7 +2848,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 if ls == 0 {
                     return nop(cur, Mode::Insert);
                 }
-                return edit(one(Edit::delete(ls - 1, 1)), ls - 1, Mode::Insert, hint);
+                return edit(
+                    one(Edit::delete(BytePos(ls - 1), 1)),
+                    ls - 1,
+                    Mode::Insert,
+                    hint,
+                );
             }
             let mut fnb = ls;
             while fnb < cur && matches!(b[fnb], b' ' | b'\t') {
@@ -2772,7 +2868,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 floor
             };
             edit(
-                one(Edit::delete(start, cur - start)),
+                one(Edit::delete(BytePos(start), cur - start)),
                 start,
                 Mode::Insert,
                 hint,
@@ -2794,7 +2890,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             let bytes = text.as_bytes().to_vec();
             let n = bytes.len();
             edit(
-                one(Edit::replace(start, cur - start, bytes)),
+                one(Edit::replace(BytePos(start), cur - start, bytes)),
                 start + n,
                 Mode::Insert,
                 hint,
@@ -2813,7 +2909,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 .indent
                 .rebuilt(&b[ls..ls + ws], (cols / sw + 1) * sw);
             let cursor = reindented_caret(cur, ls, ws, want.len());
-            edit(one(Edit::replace(ls, ws, want)), cursor, Mode::Insert, hint)
+            edit(
+                one(Edit::replace(BytePos(ls), ws, want)),
+                cursor,
+                Mode::Insert,
+                hint,
+            )
         }
         // `i_CTRL-D` — dedent the current line by one shiftwidth; the caret rides left (never before the line
         // start). A no-op when there is no leading whitespace.
@@ -2831,7 +2932,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 .indent
                 .rebuilt(&b[ls..ls + ws], cols.saturating_sub(1) / sw * sw);
             let cursor = reindented_caret(cur, ls, ws, want.len());
-            edit(one(Edit::replace(ls, ws, want)), cursor, Mode::Insert, hint)
+            edit(
+                one(Edit::replace(BytePos(ls), ws, want)),
+                cursor,
+                Mode::Insert,
+                hint,
+            )
         }
         // `i_0_CTRL-D` / `i_^_CTRL-D` — delete all leading whitespace of the line; the caret rides left.
         Command::InsertDeleteIndent | Command::InsertDeleteIndentRestore => {
@@ -2845,7 +2951,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 return nop(cur, Mode::Insert);
             }
             let cursor = cur.saturating_sub(remove).max(ls);
-            edit(one(Edit::delete(ls, remove)), cursor, Mode::Insert, hint)
+            edit(
+                one(Edit::delete(BytePos(ls), remove)),
+                cursor,
+                Mode::Insert,
+                hint,
+            )
         }
         // `i_CTRL-G_j` / `i_CTRL-G_k` — the adjacent line, at the column the insert started in (char columns,
         // like the rest of the motion model). No adjacent line: stay put (nvim beeps).
@@ -2888,7 +2999,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             let (from, run) = st.view.indent.tab(b, ls, cur);
             let cursor = from + run.len();
             edit(
-                one(Edit::replace(from, cur - from, run)),
+                one(Edit::replace(BytePos(from), cur - from, run)),
                 cursor,
                 Mode::Insert,
                 hint,
@@ -2923,14 +3034,14 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             ins.extend_from_slice(&pad);
             let cursor = cut + ins.len();
             edit(
-                one(Edit::replace(cut, after - cut, ins)),
+                one(Edit::replace(BytePos(cut), after - cut, ins)),
                 cursor,
                 Mode::Insert,
                 hint,
             )
         }
         Command::InsertNewline => edit(
-            one(Edit::insert(cur, b"\n".to_vec())),
+            one(Edit::insert(BytePos(cur), b"\n".to_vec())),
             cur + 1,
             Mode::Insert,
             hint,
@@ -2959,7 +3070,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 ins.push(b'\n');
                 ins.extend_from_slice(&pad);
             }
-            edit(one(Edit::insert(at, ins)), cursor, Mode::Insert, hint)
+            edit(
+                one(Edit::insert(BytePos(at), ins)),
+                cursor,
+                Mode::Insert,
+                hint,
+            )
         }
         // A closer (`}`/`)`/`]`) typed as the line's sole leading content realigns the line to its matching
         // opener's indent, then inserts the closer — smartindent-like (F-015 Phase 3a). Deterministic bytes
@@ -2989,13 +3105,18 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     let mut repl = pad;
                     repl.extend_from_slice(&typed);
                     edit(
-                        one(Edit::replace(ls, cur - ls, repl)),
+                        one(Edit::replace(BytePos(ls), cur - ls, repl)),
                         cursor,
                         Mode::Insert,
                         hint,
                     )
                 }
-                None => edit(one(Edit::insert(cur, typed)), cur + n, Mode::Insert, hint),
+                None => edit(
+                    one(Edit::insert(BytePos(cur), typed)),
+                    cur + n,
+                    Mode::Insert,
+                    hint,
+                ),
             }
         }
         Command::DeleteBack => {
@@ -3006,7 +3127,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             if let Some((from, pad)) = stepped {
                 // `'smarttab'` in the indent / `'softtabstop'`: back to the previous stop (nvim's `ins_bs`).
                 return edit(
-                    one(Edit::replace(from, cur - from, vec![b' '; pad])),
+                    one(Edit::replace(BytePos(from), cur - from, vec![b' '; pad])),
                     from + pad,
                     Mode::Insert,
                     hint,
@@ -3023,7 +3144,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 } else {
                     prev_boundary(b, cur)
                 };
-                edit(one(Edit::delete(p, cur - p)), p, st.view.mode, hint)
+                edit(
+                    one(Edit::delete(BytePos(p), cur - p)),
+                    p,
+                    st.view.mode,
+                    hint,
+                )
             }
         }
         Command::DeleteUnder(count) => {
@@ -3037,7 +3163,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             } else {
                 let reg = captured(b, cur, end, false);
                 edit_yank(
-                    one(Edit::delete(cur, end - cur)),
+                    one(Edit::delete(BytePos(cur), end - cur)),
                     cur,
                     st.view.mode,
                     hint,
@@ -3053,7 +3179,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             if end <= cur {
                 nop(cur, st.view.mode)
             } else {
-                edit(one(Edit::delete(cur, end - cur)), cur, st.view.mode, hint)
+                edit(
+                    one(Edit::delete(BytePos(cur), end - cur)),
+                    cur,
+                    st.view.mode,
+                    hint,
+                )
             }
         }
         Command::ReplaceChar(count, c) => {
@@ -3068,7 +3199,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 // `{count}r<CR>`: replace the count chars with a SINGLE line break (Vim splits the line),
                 // leaving the cursor on the first char of the new line — never `count` newlines.
                 edit(
-                    one(Edit::replace(cur, end - cur, b"\n".to_vec())),
+                    one(Edit::replace(BytePos(cur), end - cur, b"\n".to_vec())),
                     cur + 1,
                     st.view.mode,
                     hint,
@@ -3082,7 +3213,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 }
                 let last = cur + one_ch.len() * (*count as usize - 1);
                 edit(
-                    one(Edit::replace(cur, end - cur, bytes)),
+                    one(Edit::replace(BytePos(cur), end - cur, bytes)),
                     last,
                     st.view.mode,
                     hint,
@@ -3109,7 +3240,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 } else {
                     let cursor = cur + flipped.len();
                     edit(
-                        one(Edit::replace(cur, end - cur, flipped)),
+                        one(Edit::replace(BytePos(cur), end - cur, flipped)),
                         cursor,
                         st.view.mode,
                         hint,
@@ -3122,11 +3253,11 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         Command::IncrementNumber(delta) => {
             // `CTRL-A`/`CTRL-X`: adjust the number at or after the cursor on the current line. A `0x`-prefixed
             // hex literal increments in hex (`0x1f`→`0x20`); otherwise a decimal (with optional `-` sign).
-            let ls = crate::pos::line_start(b, cur);
+            let ls = crate::pos::raw::line_start(b, cur);
             let le = line_end(b, cur);
             match incr_number(b, ls, le, cur, *delta) {
                 Some((start, old_len, bytes, cursor)) => edit(
-                    one(Edit::replace(start, old_len, bytes)),
+                    one(Edit::replace(BytePos(start), old_len, bytes)),
                     cursor,
                     st.view.mode,
                     hint,
@@ -3193,7 +3324,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 steps += 1;
                 let this = if *sequential { delta * steps } else { *delta };
                 if let Some((start, old_len, bytes, _cursor)) = incr_number(b, ls, le, from, this) {
-                    edits.push(Edit::replace(start, old_len, bytes));
+                    edits.push(Edit::replace(BytePos(start), old_len, bytes));
                 } else {
                     steps -= 1; // a line with no number does not advance the sequence
                 }
@@ -3584,8 +3715,8 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             if s >= e {
                 nop(cur, st.view.mode)
             } else {
-                let first_line = crate::pos::line_of(b, s);
-                let last_line = crate::pos::line_of(b, e - 1);
+                let first_line = crate::pos::raw::line_of(b, s);
+                let last_line = crate::pos::raw::line_of(b, e - 1);
                 let lines = (last_line - first_line + 1) as u32;
                 plan_shift(st, line_start(b, s), lines, !*left, hint)
             }
@@ -3596,8 +3727,8 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             if s >= e {
                 nop(cur, st.view.mode)
             } else {
-                let first = crate::pos::line_of(b, s);
-                let last = crate::pos::line_of(b, e - 1);
+                let first = crate::pos::raw::line_of(b, s);
+                let last = crate::pos::raw::line_of(b, e - 1);
                 plan_reindent(st, first, last, hint)
             }
         }
@@ -3623,8 +3754,8 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     true,
                 );
                 let at = if linewise { cur.min(landing) } else { s };
-                let first = crate::pos::line_of(b, s);
-                let last = crate::pos::line_of(b, e - 1);
+                let first = crate::pos::raw::line_of(b, s);
+                let last = crate::pos::raw::line_of(b, e - 1);
                 plan_comment(st, first, last, at, hint)
             }
         }
@@ -3815,7 +3946,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                     .iter()
                     .filter_map(|r| recase_span(b, r.s, r.e, *case, recase).map(|new| (r, new)))
                     .filter(|(r, new)| new[..] != b[r.s..r.e])
-                    .map(|(r, new)| Edit::replace(r.s, r.e - r.s, new))
+                    .map(|(r, new)| Edit::replace(BytePos(r.s), r.e - r.s, new))
                     .collect();
                 let at = block.rows[0].ds;
                 return match EditList::new(edits) {
@@ -3830,7 +3961,12 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             match std::str::from_utf8(&b[s..e]) {
                 Ok(text) => {
                     let new = recase(text, *case).into_bytes();
-                    edit(one(Edit::replace(s, e - s, new)), s, Mode::Normal, hint)
+                    edit(
+                        one(Edit::replace(BytePos(s), e - s, new)),
+                        s,
+                        Mode::Normal,
+                        hint,
+                    )
                 }
                 Err(_) => nop(s, Mode::Normal),
             }
@@ -3853,7 +3989,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                         .map(|ch| if ch == '\n' { '\n' } else { *c })
                         .collect();
                     edit(
-                        one(Edit::replace(s, e - s, new.into_bytes())),
+                        one(Edit::replace(BytePos(s), e - s, new.into_bytes())),
                         s,
                         Mode::Normal,
                         hint,
@@ -4073,7 +4209,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 let reg = captured(b, s, e, false);
                 Plan {
                     action: Action::Txn {
-                        edits: one(Edit::delete(s, e - s)),
+                        edits: one(Edit::delete(BytePos(s), e - s)),
                         hint,
                     },
                     cursor: s,
@@ -4118,7 +4254,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
             if cur < le {
                 let reg = captured(b, cur, le, false);
                 edit_kill(
-                    one(Edit::delete(cur, le - cur)),
+                    one(Edit::delete(BytePos(cur), le - cur)),
                     cur,
                     st.view.mode,
                     hint,
@@ -4127,7 +4263,13 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
             } else if le < b.len() {
                 // Point at EOL: kill the single newline byte, joining the following line.
                 let reg = captured(b, le, le + 1, false);
-                edit_kill(one(Edit::delete(le, 1)), le, st.view.mode, hint, reg)
+                edit_kill(
+                    one(Edit::delete(BytePos(le), 1)),
+                    le,
+                    st.view.mode,
+                    hint,
+                    reg,
+                )
             } else {
                 nop(cur, st.view.mode)
             }
@@ -4142,7 +4284,13 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 nop(cur, st.view.mode)
             } else {
                 let reg = captured(b, s, e, false);
-                edit_kill(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
+                edit_kill(
+                    one(Edit::delete(BytePos(s), e - s)),
+                    s,
+                    st.view.mode,
+                    hint,
+                    reg,
+                )
             }
         }
         // `M-DEL` (Emacs backward-kill-word, D-051): kill `count` words backward (the `WordBack` span) into
@@ -4156,7 +4304,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 let reg = captured(b, target, cur, false);
                 Plan {
                     action: Action::Txn {
-                        edits: one(Edit::delete(target, cur - target)),
+                        edits: one(Edit::delete(BytePos(target), cur - target)),
                         hint,
                     },
                     cursor: target,
@@ -4186,7 +4334,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
             match j {
                 Some(j) if j > ls && j < le => Plan {
                     action: Action::Txn {
-                        edits: one(Edit::replace(j - 1, 2, vec![b[j], b[j - 1]])),
+                        edits: one(Edit::replace(BytePos(j - 1), 2, vec![b[j], b[j - 1]])),
                         hint,
                     },
                     cursor: j + 1,
@@ -4215,7 +4363,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 new.extend_from_slice(&b[end1..start2]); // the original separator
                 new.extend_from_slice(&b[start1..end1]); // first word moves to the back
                 edit(
-                    one(Edit::replace(start1, end2 - start1, new)),
+                    one(Edit::replace(BytePos(start1), end2 - start1, new)),
                     end2,
                     st.view.mode,
                     hint,
@@ -4235,7 +4383,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                     let cursor = cur + recased.len();
                     Plan {
                         action: Action::Txn {
-                            edits: one(Edit::replace(cur, end - cur, recased)),
+                            edits: one(Edit::replace(BytePos(cur), end - cur, recased)),
                             hint,
                         },
                         cursor,
@@ -4261,14 +4409,14 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                     nop(s + 1, st.view.mode)
                 } else {
                     edit(
-                        one(Edit::replace(s, e - s, b" ".to_vec())),
+                        one(Edit::replace(BytePos(s), e - s, b" ".to_vec())),
                         s + 1,
                         st.view.mode,
                         hint,
                     )
                 }
             } else if e > s {
-                edit(one(Edit::delete(s, e - s)), s, st.view.mode, hint)
+                edit(one(Edit::delete(BytePos(s), e - s)), s, st.view.mode, hint)
             } else {
                 nop(cur, st.view.mode)
             }
@@ -4276,7 +4424,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
         // `C-o` (Emacs open-line, D-051): insert a newline at point but leave point BEFORE it (opens a blank
         // line below without moving onto it). Unlike Vim `o`, no mode change and no register write.
         Command::EmacsOpenLine => edit(
-            one(Edit::insert(cur, b"\n".to_vec())),
+            one(Edit::insert(BytePos(cur), b"\n".to_vec())),
             cur,
             st.view.mode,
             hint,
@@ -4296,7 +4444,13 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
             let e = if le < b.len() { le + 1 } else { le }; // include the terminating newline when present
             if e > ls {
                 let reg = captured(b, ls, e, false);
-                edit_kill(one(Edit::delete(ls, e - ls)), ls, st.view.mode, hint, reg)
+                edit_kill(
+                    one(Edit::delete(BytePos(ls), e - ls)),
+                    ls,
+                    st.view.mode,
+                    hint,
+                    reg,
+                )
             } else {
                 nop(cur, st.view.mode)
             }
@@ -4336,7 +4490,7 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                         .map(MarkWrite::Set);
                     Plan {
                         action: Action::Txn {
-                            edits: one(Edit::replace(s, e - s, recased)),
+                            edits: one(Edit::replace(BytePos(s), e - s, recased)),
                             hint,
                         },
                         cursor: follow(cur),
@@ -4371,7 +4525,12 @@ fn plan_emacs(st: &EditorState, b: &[u8], cur: usize, hint: GroupHint, cmd: &Com
                 } else {
                     vec![b' ']
                 };
-                edit(one(Edit::replace(s, e - s, repl)), s, st.view.mode, hint)
+                edit(
+                    one(Edit::replace(BytePos(s), e - s, repl)),
+                    s,
+                    st.view.mode,
+                    hint,
+                )
             }
         }
         // `M-<` / `M->` (Emacs beginning/end-of-buffer, D-051): move point to the ABSOLUTE buffer start/end
@@ -4454,7 +4613,7 @@ fn plan_set_indents(
             first_cursor = ls + want.len();
         }
         if b[ls..fnb] != want[..] {
-            edits.push(Edit::replace(ls, fnb - ls, want));
+            edits.push(Edit::replace(BytePos(ls), fnb - ls, want));
         }
     }
     if edits.is_empty() {
@@ -4517,7 +4676,7 @@ fn auto_wrap(st: &EditorState, b: &[u8], cur: usize, c: char, hint: GroupHint) -
     // 'formatoptions' `l`: a line already longer than 'textwidth' when this insert began is left alone.
     if st.view.format.has('l') {
         if let Some((line, len)) = st.view.insstart_line {
-            if line == crate::pos::line_of(b, cur) && len > tw {
+            if line == crate::pos::raw::line_of(b, cur) && len > tw {
                 return None;
             }
         }
@@ -4541,7 +4700,7 @@ fn auto_wrap(st: &EditorState, b: &[u8], cur: usize, c: char, hint: GroupHint) -
     let typed = c.encode_utf8(&mut buf).as_bytes();
     text.splice(at..at, typed.iter().copied());
     Some(edit(
-        one(Edit::replace(ls, le - ls, text)),
+        one(Edit::replace(BytePos(ls), le - ls, text)),
         ls + at + typed.len(),
         Mode::Insert,
         hint,
@@ -4643,7 +4802,7 @@ fn plan_format_lines(
         return nop(cursor, Mode::Normal);
     }
     edit(
-        one(Edit::replace(start, end - start, new)),
+        one(Edit::replace(BytePos(start), end - start, new)),
         cursor,
         Mode::Normal,
         hint,
@@ -4656,9 +4815,9 @@ fn plan_format_lines(
 /// empty `'commentstring'` changes nothing.
 fn plan_comment(st: &EditorState, first: usize, last: usize, at: usize, hint: GroupHint) -> Plan {
     let b = st.bytes();
-    let start = crate::pos::nth_line_start(b, first);
-    let end = line_end(b, crate::pos::nth_line_start(b, last));
-    let at_line = crate::pos::line_of(b, at).clamp(first, last);
+    let start = crate::pos::raw::nth_line_start(b, first);
+    let end = line_end(b, crate::pos::raw::nth_line_start(b, last));
+    let at_line = crate::pos::raw::line_of(b, at).clamp(first, last);
     let at_col = at - line_start(b, at);
     let lines: Vec<&[u8]> = b[start..end].split(|&c| c == b'\n').collect();
     let Some(new_lines) = format::toggle_comment(&lines, &st.view.format.commentstring) else {
@@ -4673,7 +4832,7 @@ fn plan_comment(st: &EditorState, first: usize, last: usize, at: usize, hint: Gr
         return nop(cursor, Mode::Normal);
     }
     edit(
-        one(Edit::replace(start, end - start, new)),
+        one(Edit::replace(BytePos(start), end - start, new)),
         cursor,
         Mode::Normal,
         hint,
@@ -4730,7 +4889,7 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
             first_cursor = ls + want.len();
         }
         if b[ls..fnb] != want[..] {
-            edits.push(Edit::replace(ls, fnb - ls, want));
+            edits.push(Edit::replace(BytePos(ls), fnb - ls, want));
         }
     }
 
@@ -4857,7 +5016,7 @@ fn plan_shift_times(
                 first_new_ws.clone_from(&want);
             }
             if b[ls..ls + ws] != want[..] {
-                edits.push(Edit::replace(ls, ws, want));
+                edits.push(Edit::replace(BytePos(ls), ws, want));
             }
         }
         if le >= b.len() {
@@ -4947,7 +5106,7 @@ fn block_op(b: &[u8], block: &Block, op: OpKind, hint: GroupHint) -> Plan {
             .rows
             .iter()
             .filter(|r| r.de > r.ds)
-            .map(|r| Edit::replace(r.ds, r.de - r.ds, vec![b' '; r.out_l + r.out_r]))
+            .map(|r| Edit::replace(BytePos(r.ds), r.de - r.ds, vec![b' '; r.out_l + r.out_r]))
             .collect()
     };
     match op {
@@ -5103,7 +5262,7 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, 
         let row_le = line_end(b, rs);
         if session.to_eol {
             // `$A`: append at THIS row's own end (ragged), never a fixed column.
-            edits.push(Edit::insert(row_le, typed.to_vec()));
+            edits.push(Edit::insert(BytePos(row_le), typed.to_vec()));
             continue;
         }
         // Non-append + short row: skipped (Vim leaves lines shorter than the block's left edge untouched).
@@ -5115,7 +5274,7 @@ fn block_replicate(b: &[u8], cur: usize, session: BlockInsert, hint: GroupHint, 
         let mut ins = vec![b' '; pre];
         ins.extend_from_slice(typed);
         ins.extend(std::iter::repeat_n(b' ', post));
-        edits.push(Edit::replace(at, del, ins));
+        edits.push(Edit::replace(BytePos(at), del, ins));
     }
     if edits.is_empty() {
         return nop(rest_cursor);
@@ -5230,7 +5389,7 @@ fn paste_block(
             cursor = at + pre;
         }
         if del > 0 || !ins.is_empty() {
-            edits.push(Edit::replace(at, del, ins));
+            edits.push(Edit::replace(BytePos(at), del, ins));
         }
         line = (le + 1 < b.len()).then_some(le + 1);
     }
@@ -5238,8 +5397,8 @@ fn paste_block(
         // Merge into a bottom-most edit already sitting at the buffer end (avoids two inserts at one
         // position, which the disjoint-edit invariant forbids); otherwise append as its own edit.
         match edits.last_mut() {
-            Some(last) if last.end() == b.len() => last.ins.extend_from_slice(&tail),
-            _ => edits.push(Edit::insert(b.len(), tail)),
+            Some(last) if last.end().0 == b.len() => last.ins.extend_from_slice(&tail),
+            _ => edits.push(Edit::insert(BytePos(b.len()), tail)),
         }
     }
     if edits.is_empty() {
@@ -5374,7 +5533,7 @@ fn paste(
     };
     let mk = |at: usize, bytes: Vec<u8>, cursor: usize| Plan {
         action: Action::Txn {
-            edits: one(Edit::insert(at, bytes)),
+            edits: one(Edit::insert(BytePos(at), bytes)),
             hint: GroupHint::BreakBefore,
         },
         cursor,

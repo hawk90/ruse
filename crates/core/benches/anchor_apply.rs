@@ -18,10 +18,11 @@ fn bench_store(c: &mut Criterion) {
     for &n in &[1_000usize, 100_000, 400_000] {
         let mut store = AnchorStore::new();
         for i in 0..n {
-            store.insert(i * 10, Bias::After, AnchorPolicy::Clamp);
+            store.insert(ruse_core::BytePos(i * 10), Bias::After, AnchorPolicy::Clamp);
         }
         let mid = n * 5;
-        let edit = EditList::new(vec![Edit::insert(mid, b"x".to_vec())]).expect("valid");
+        let edit = EditList::new(vec![Edit::insert(ruse_core::BytePos(mid), b"x".to_vec())])
+            .expect("valid");
         store.apply_edits(&edit); // the one re-sort after the inserts, untimed
         g.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| store.apply_edits(&edit));
@@ -43,7 +44,9 @@ fn bench_g_normal(c: &mut Criterion) {
         let mid = (lines / 2) * line.len();
         g.bench_with_input(BenchmarkId::from_parameter(lines), &lines, |b, _| {
             b.iter(|| {
-                let list = EditList::new(vec![Edit::insert(mid, b"x".to_vec())]).expect("valid");
+                let list =
+                    EditList::new(vec![Edit::insert(ruse_core::BytePos(mid), b"x".to_vec())])
+                        .expect("valid");
                 let txn = Transaction::new(doc.revision(), list, TransactionOrigin::UserInput);
                 doc.apply(txn).expect("in range");
             });

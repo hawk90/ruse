@@ -64,7 +64,7 @@ pub(crate) fn search_spans(b: &[u8], pattern: &str, opts: pattern::Options) -> V
     };
     re.search_all(hay)
         .into_iter()
-        .map(|m| (m.start, m.end))
+        .map(|m| (m.start.0, m.end.0))
         .collect()
 }
 

@@ -71,7 +71,7 @@ fn newlines(bytes: &[u8]) -> isize {
 fn changes_lines(pre: &[u8], list: &EditList) -> bool {
     list.edits()
         .iter()
-        .any(|e| e.ins.contains(&b'\n') || pre[e.pos.0..e.end()].contains(&b'\n'))
+        .any(|e| e.ins.contains(&b'\n') || pre[e.pos.0..e.end().0].contains(&b'\n'))
 }
 
 impl LineUndo {
@@ -100,8 +100,8 @@ impl LineUndo {
             return;
         };
         let lo = first.pos.0;
-        let one_line =
-            !pre[lo..last.end()].contains(&b'\n') && !edits.iter().any(|e| e.ins.contains(&b'\n'));
+        let one_line = !pre[lo..last.end().0].contains(&b'\n')
+            && !edits.iter().any(|e| e.ins.contains(&b'\n'));
         if one_line {
             if std::mem::take(&mut self.armed) {
                 let line = line_of(pre, lo);
@@ -128,8 +128,8 @@ impl LineUndo {
         // A delete of whole lines (it starts at a line start, or runs to the buffer end) drops the line.
         let whole_lines = edits.iter().any(|e| {
             let p = e.pos.0;
-            pre[p..e.end()].contains(&b'\n')
-                && (p == 0 || pre[p - 1] == b'\n' || e.end() == pre.len())
+            pre[p..e.end().0].contains(&b'\n')
+                && (p == 0 || pre[p - 1] == b'\n' || e.end().0 == pre.len())
         });
         if whole_lines {
             self.saved = None;
@@ -158,7 +158,7 @@ impl LineUndo {
         };
         let mut shift: isize = 0;
         for ed in list.edits() {
-            let (p, end, ins) = (ed.pos.0, ed.end(), ed.ins.as_slice());
+            let (p, end, ins) = (ed.pos.0, ed.end().0, ed.ins.as_slice());
             let survives = if p > e {
                 true
             } else if p == e && ed.del == 0 && s < e {
@@ -229,6 +229,7 @@ impl LineUndo {
 mod tests {
     use super::*;
     use crate::edit::Edit;
+    use crate::pos::BytePos;
 
     fn list(edits: Vec<Edit>) -> EditList {
         EditList::new(edits).unwrap()
@@ -243,7 +244,7 @@ mod tests {
     fn on_line(line: usize) -> LineUndo {
         let mut u = LineUndo::default();
         u.prime(4 * line, true);
-        u.on_edit(TEXT, &list(vec![Edit::delete(4 * line, 1)]), false);
+        u.on_edit(TEXT, &list(vec![Edit::delete(BytePos(4 * line), 1)]), false);
         u
     }
 
@@ -254,14 +255,18 @@ mod tests {
         assert_eq!(u.saved.as_ref().unwrap().text, b"def");
         // A second change on the same line keeps the first copy.
         u.prime(4, true);
-        u.on_edit(b"abc\nef\nghi\n", &list(vec![Edit::delete(4, 1)]), false);
+        u.on_edit(
+            b"abc\nef\nghi\n",
+            &list(vec![Edit::delete(BytePos(4), 1)]),
+            false,
+        );
         assert_eq!(u.saved.as_ref().unwrap().text, b"def");
     }
 
     #[test]
     fn an_unarmed_change_does_not_save() {
         let mut u = LineUndo::default();
-        u.on_edit(TEXT, &list(vec![Edit::delete(0, 1)]), false);
+        u.on_edit(TEXT, &list(vec![Edit::delete(BytePos(0), 1)]), false);
         assert_eq!(saved_line(&u), None);
     }
 
@@ -269,11 +274,19 @@ mod tests {
     fn lines_added_or_removed_above_move_the_saved_line() {
         let mut u = on_line(2);
         // A new line above (`yyP` on line 0): the saved line moves down.
-        u.on_edit(TEXT, &list(vec![Edit::insert(0, b"new\n".to_vec())]), true);
+        u.on_edit(
+            TEXT,
+            &list(vec![Edit::insert(BytePos(0), b"new\n".to_vec())]),
+            true,
+        );
         assert_eq!(saved_line(&u), Some(3));
         // Joining the two lines above it (`J` on line 0) moves it back up.
         let mut u = on_line(2);
-        u.on_edit(TEXT, &list(vec![Edit::replace(3, 1, b" ".to_vec())]), true);
+        u.on_edit(
+            TEXT,
+            &list(vec![Edit::replace(BytePos(3), 1, b" ".to_vec())]),
+            true,
+        );
         assert_eq!(saved_line(&u), Some(1));
     }
 
@@ -281,15 +294,19 @@ mod tests {
     fn splitting_joining_or_deleting_the_line_drops_it() {
         // `J` on the saved line joins the next one into it.
         let mut u = on_line(1);
-        u.on_edit(TEXT, &list(vec![Edit::replace(7, 1, b" ".to_vec())]), true);
+        u.on_edit(
+            TEXT,
+            &list(vec![Edit::replace(BytePos(7), 1, b" ".to_vec())]),
+            true,
+        );
         assert_eq!(saved_line(&u), None);
         // `dd` anywhere drops it, as nvim does.
         let mut u = on_line(0);
-        u.on_edit(TEXT, &list(vec![Edit::delete(8, 4)]), true);
+        u.on_edit(TEXT, &list(vec![Edit::delete(BytePos(8), 4)]), true);
         assert_eq!(saved_line(&u), None);
         // An undo that removes the line.
         let mut u = on_line(1);
-        u.on_reapply(TEXT, &list(vec![Edit::delete(3, 4)]));
+        u.on_reapply(TEXT, &list(vec![Edit::delete(BytePos(3), 4)]));
         assert_eq!(saved_line(&u), None);
     }
 

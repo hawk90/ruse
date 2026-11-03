@@ -133,47 +133,78 @@ pub fn count_newlines(bytes: &[u8]) -> usize {
         .fold(0usize, |n, &b| n.wrapping_add(usize::from(b == b'\n')))
 }
 
-/// The 0-based row of `byte` — the number of `\n` before it.
+/// The 0-based row of `at` — the number of `\n` before it.
 #[must_use]
-pub fn line_of(bytes: &[u8], byte: usize) -> usize {
-    count_newlines(&bytes[..byte.min(bytes.len())])
+pub fn line_of(bytes: &[u8], at: BytePos) -> usize {
+    raw::line_of(bytes, at.0)
 }
 
-/// The byte offset where the line CONTAINING `byte` starts (just after the previous `\n`, or 0).
+/// Where the line CONTAINING `at` starts (just after the previous `\n`, or 0).
 #[must_use]
-pub fn line_start(bytes: &[u8], byte: usize) -> usize {
-    bytes[..byte.min(bytes.len())]
-        .iter()
-        .rposition(|&c| c == b'\n')
-        .map_or(0, |i| i + 1)
+pub fn line_start(bytes: &[u8], at: BytePos) -> BytePos {
+    BytePos(raw::line_start(bytes, at.0))
 }
 
-/// The byte offset where the line CONTAINING `byte` ends (at the next `\n`, or the buffer end).
+/// Where the line CONTAINING `at` ends (at the next `\n`, or the buffer end).
 #[must_use]
-pub fn line_end(bytes: &[u8], byte: usize) -> usize {
-    let p = byte.min(bytes.len());
-    bytes[p..]
-        .iter()
-        .position(|&c| c == b'\n')
-        .map_or(bytes.len(), |i| p + i)
+pub fn line_end(bytes: &[u8], at: BytePos) -> BytePos {
+    BytePos(raw::line_end(bytes, at.0))
 }
 
-/// The byte offset where the 0-based `line`-th line starts (clamped to `bytes.len()`).
+/// Where the 0-based `line`-th line starts (clamped to `bytes.len()`).
 #[must_use]
-pub fn nth_line_start(bytes: &[u8], line: usize) -> usize {
-    if line == 0 {
-        return 0;
+pub fn nth_line_start(bytes: &[u8], line: usize) -> BytePos {
+    BytePos(raw::nth_line_start(bytes, line))
+}
+
+/// The line math over bare byte offsets, for the core's own single-unit arithmetic (motions, operators,
+/// the undo cursor, the anchor sweep). It is inside the crate boundary, so it stays untyped (RFC-0022
+/// rule 1); the `pub` functions above are the typed face a frontend calls.
+pub(crate) mod raw {
+    use super::count_newlines;
+
+    /// The 0-based row of `byte` — the number of `\n` before it.
+    #[must_use]
+    pub(crate) fn line_of(bytes: &[u8], byte: usize) -> usize {
+        count_newlines(&bytes[..byte.min(bytes.len())])
     }
-    let mut seen = 0;
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b'\n' {
-            seen += 1;
-            if seen == line {
-                return i + 1;
+
+    /// The byte offset where the line CONTAINING `byte` starts (just after the previous `\n`, or 0).
+    #[must_use]
+    pub(crate) fn line_start(bytes: &[u8], byte: usize) -> usize {
+        bytes[..byte.min(bytes.len())]
+            .iter()
+            .rposition(|&c| c == b'\n')
+            .map_or(0, |i| i + 1)
+    }
+
+    /// The byte offset where the line CONTAINING `byte` ends (at the next `\n`, or the buffer end).
+    #[must_use]
+    pub(crate) fn line_end(bytes: &[u8], byte: usize) -> usize {
+        let p = byte.min(bytes.len());
+        bytes[p..]
+            .iter()
+            .position(|&c| c == b'\n')
+            .map_or(bytes.len(), |i| p + i)
+    }
+
+    /// The byte offset where the 0-based `line`-th line starts (clamped to `bytes.len()`).
+    #[must_use]
+    pub(crate) fn nth_line_start(bytes: &[u8], line: usize) -> usize {
+        if line == 0 {
+            return 0;
+        }
+        let mut seen = 0;
+        for (i, &b) in bytes.iter().enumerate() {
+            if b == b'\n' {
+                seen += 1;
+                if seen == line {
+                    return i + 1;
+                }
             }
         }
+        bytes.len()
     }
-    bytes.len()
 }
 
 #[cfg(test)]

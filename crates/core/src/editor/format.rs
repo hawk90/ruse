@@ -819,8 +819,8 @@ impl FmtBuf {
             0
         };
         let s = std::str::from_utf8(&line[lead..]).ok()?;
-        let m = re.find_at(s, 0)?;
-        let end = lead + m.end;
+        let m = re.find_at(s, crate::pos::BytePos(0))?;
+        let end = lead + m.end.0;
         if end >= line.len() {
             return None;
         }

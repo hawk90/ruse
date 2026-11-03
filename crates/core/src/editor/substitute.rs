@@ -184,13 +184,13 @@ pub(crate) fn find_substitutions(
             let matches: Vec<Match> = if global {
                 re.find_all(line)
             } else {
-                re.find_at(line, 0).into_iter().collect()
+                re.find_at(line, BytePos(0)).into_iter().collect()
             };
             for m in matches {
                 out.push(Substitution {
-                    start: BytePos(ls + m.start),
-                    end: BytePos(ls + m.end),
-                    replacement: expand_replacement(replacement, &line[m.start..m.end]),
+                    start: BytePos(ls + m.start.0),
+                    end: BytePos(ls + m.end.0),
+                    replacement: expand_replacement(replacement, &line[m.start.0..m.end.0]),
                     line: li,
                 });
             }
@@ -226,7 +226,7 @@ pub(crate) fn find_substitutions(
             li += 1; // joined into the line above by an earlier match
             continue;
         }
-        let Some((ws, mut m)) = re.find_whole_at(hay, ls) else {
+        let Some((BytePos(ws), mut m)) = re.find_whole_at(hay, BytePos(ls)) else {
             return; // no match anywhere below
         };
         if ws > le {
@@ -238,15 +238,15 @@ pub(crate) fn find_substitutions(
         let mut col = ls;
         let mut prev_end: Option<usize> = None;
         loop {
-            if m.start >= n {
+            if m.start.0 >= n {
                 return; // `\n\zs` at the end of the last line: past the buffer
             }
-            if m.start > lines[cur].1 {
-                cur = line_of(m.start); // a `\zs` after a line break reports a later line
+            if m.start.0 > lines[cur].1 {
+                cur = line_of(m.start.0); // a `\zs` after a line break reports a later line
             }
             let mut do_again = false;
             let mut stop = false;
-            if prev_end == Some(col) && m.start == m.end && m.end == col {
+            if prev_end == Some(col) && m.start.0 == m.end.0 && m.end.0 == col {
                 // An empty match right where the previous one ended does not count (Vim).
                 if col >= lines[cur].1 {
                     stop = true;
@@ -254,20 +254,20 @@ pub(crate) fn find_substitutions(
                     col += hay[col..].chars().next().map_or(1, char::len_utf8);
                 }
             } else {
-                col = m.end;
+                col = m.end.0;
                 prev_end = Some(col);
                 // A match through the last line break replaces up to it; the break stays.
-                stop = m.end >= n;
+                stop = m.end.0 >= n;
                 out.push(Substitution {
-                    start: BytePos(m.start),
-                    end: BytePos(m.end.min(n - 1).max(m.start)),
-                    replacement: expand_replacement(replacement, &hay[m.start..m.end]),
+                    start: BytePos(m.start.0),
+                    end: BytePos(m.end.0.min(n - 1).max(m.start.0)),
+                    replacement: expand_replacement(replacement, &hay[m.start.0..m.end.0]),
                     line: group,
                 });
-                let end_line = line_of(m.end);
+                let end_line = line_of(m.end.0);
                 if end_line > cur {
                     cur = end_line;
-                    *consumed = Some(m.end);
+                    *consumed = Some(m.end.0);
                     if cur <= last {
                         do_again = true;
                     } else {
@@ -278,8 +278,8 @@ pub(crate) fn find_substitutions(
             if stop || cur > last || !(global || do_again) {
                 break;
             }
-            match re.find_whole_at(hay, col) {
-                Some((ws, next)) if ws <= lines[cur].1 => m = next,
+            match re.find_whole_at(hay, BytePos(col)) {
+                Some((BytePos(ws), next)) if ws <= lines[cur].1 => m = next,
                 _ => break,
             }
         }

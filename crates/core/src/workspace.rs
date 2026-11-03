@@ -182,7 +182,7 @@ impl Workspace {
                 continue;
             };
             let mut t = v.tracked();
-            t.push(Tracked::line(Some(v.cursor().0), LineGravity::Cursor));
+            t.push(Tracked::line(Some(v.cursor()), LineGravity::Cursor));
             let at = doc.pin_tracked(&t);
             self.pins.push((ViewId(i), at..at + t.len()));
         }
@@ -218,7 +218,7 @@ impl Workspace {
                 .split_last()
                 .expect("the cursor is pinned last");
             v.untrack(marks);
-            let cursor = cursor.pos.unwrap_or(0).min(doc.len());
+            let cursor = cursor.pos.map_or(0, |p| p.0).min(doc.len());
             v.set_cursor(BytePos(crate::motion::snap(doc.bytes(), cursor)));
         }
         (doc, view)
@@ -368,11 +368,11 @@ impl Workspace {
         let lines = crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
         let view = self.views[vid.0].as_mut().expect("focused view live");
         let line = match range {
-            SubRange::CurrentLine => crate::pos::line_of(b, view.cursor().0),
+            SubRange::CurrentLine => crate::pos::raw::line_of(b, view.cursor().0),
             SubRange::WholeFile => lines.saturating_sub(1),
             SubRange::Lines(_, last) => last.clamp(1, lines.max(1)) - 1,
         };
-        view.set_named_mark(name, crate::pos::nth_line_start(b, line));
+        view.set_named_mark(name, crate::pos::raw::nth_line_start(b, line));
     }
 
     /// Place the FOCUSED view's cursor at byte offset `pos` (the frontend uses this to scroll a
@@ -1252,7 +1252,10 @@ impl Workspace {
         if s >= e {
             return None;
         }
-        Some((crate::pos::line_of(b, s), crate::pos::line_of(b, e - 1)))
+        Some((
+            crate::pos::raw::line_of(b, s),
+            crate::pos::raw::line_of(b, e - 1),
+        ))
     }
 
     /// The 0-based inclusive line range of the focused buffer that the operator span of `cmd` covers (a
@@ -1321,14 +1324,14 @@ impl Workspace {
         let b = pane.doc.bytes();
         let cur = pane.view.cursor().0;
         // Char column of the caret on the current line.
-        let ls = crate::pos::line_start(b, cur);
+        let ls = crate::pos::raw::line_start(b, cur);
         let col = std::str::from_utf8(b.get(ls..cur)?).ok()?.chars().count();
         // The adjacent row. `checked_sub` guards "no line above" on the first line; a row past the last
         // line resolves to an empty slice below, which yields no char (so "no line below" also → None).
-        let row = crate::pos::line_of(b, cur);
+        let row = crate::pos::raw::line_of(b, cur);
         let target = if above { row.checked_sub(1)? } else { row + 1 };
-        let ts = crate::pos::nth_line_start(b, target);
-        let te = crate::pos::line_end(b, ts);
+        let ts = crate::pos::raw::nth_line_start(b, target);
+        let te = crate::pos::raw::line_end(b, ts);
         std::str::from_utf8(b.get(ts..te)?).ok()?.chars().nth(col)
     }
 
@@ -1407,7 +1410,7 @@ impl Workspace {
         let p = self.focused();
         let b = p.doc.bytes();
         let spans = crate::editor::line_spans(b);
-        let cursor_line = crate::pos::line_of(b, p.view.cursor().0);
+        let cursor_line = crate::pos::raw::line_of(b, p.view.cursor().0);
         let (first, last) = crate::editor::resolve_line_range(range, &spans, cursor_line);
         (first + 1, last + 1)
     }
@@ -1424,7 +1427,7 @@ impl Workspace {
         } else {
             crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'))
         };
-        addr.insert_index(crate::pos::line_of(b, p.view.cursor().0), nlines)
+        addr.insert_index(crate::pos::raw::line_of(b, p.view.cursor().0), nlines)
     }
 
     /// Set one `:set` option on the focused view and as the global value every View created afterward

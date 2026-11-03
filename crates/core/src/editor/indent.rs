@@ -9,7 +9,7 @@
 //! [`super::format::open_leader`] instead; the planner tries that first.
 
 use super::{IndentConfig, IndentStyle};
-use crate::pos::{line_end, line_start};
+use crate::pos::raw::{line_end, line_start};
 
 /// `'cinwords'` at its nvim default: the keywords after which `'smartindent'` indents the next line.
 pub(crate) const DEFAULT_CINWORDS: &str = "if,else,while,do,for,switch";

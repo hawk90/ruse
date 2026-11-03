@@ -115,7 +115,7 @@ mod tests {
         for byte in 0..=bytes.len() {
             assert_eq!(
                 idx.line_of(byte),
-                pos::line_of(bytes, byte),
+                pos::line_of(bytes, ruse_core::BytePos(byte)),
                 "line_of @ {byte}"
             );
         }
@@ -123,7 +123,7 @@ mod tests {
         for line in 0..=lines + 2 {
             assert_eq!(
                 idx.nth_line_start(line),
-                pos::nth_line_start(bytes, line),
+                pos::nth_line_start(bytes, line).0,
                 "nth_line_start @ {line}"
             );
         }
@@ -154,7 +154,7 @@ mod tests {
                     _ => {
                         let len = doc.len();
                         let p = p % (len + 1);
-                        let list = EditList::new(vec![Edit::replace(p, d.min(len - p), ins)])
+                        let list = EditList::new(vec![Edit::replace(ruse_core::BytePos(p), d.min(len - p), ins)])
                             .expect("one edit");
                         doc.sync_undo();
                         doc.apply(Transaction::new(doc.revision(), list, TransactionOrigin::UserInput))
@@ -164,11 +164,11 @@ mod tests {
                 let bytes = doc.bytes();
                 idx.refresh_for(doc.id(), doc.revision(), bytes);
                 for b in 0..=bytes.len() {
-                    proptest::prop_assert_eq!(idx.line_of(b), pos::line_of(bytes, b));
+                    proptest::prop_assert_eq!(idx.line_of(b), pos::line_of(bytes, ruse_core::BytePos(b)));
                 }
                 let lines = bytes.iter().filter(|&&b| b == b'\n').count();
                 for l in 0..=lines + 1 {
-                    proptest::prop_assert_eq!(idx.nth_line_start(l), pos::nth_line_start(bytes, l));
+                    proptest::prop_assert_eq!(idx.nth_line_start(l), pos::nth_line_start(bytes, l).0);
                 }
             }
         }

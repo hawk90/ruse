@@ -216,8 +216,8 @@ pub(crate) fn run_prg_operator(
         let b = pane.doc.bytes();
         let (BytePos(s), BytePos(e)) = pane.view.selection_span(b)?;
         Some((
-            ruse_core::pos::line_of(b, s),
-            ruse_core::pos::line_of(b, e.saturating_sub(1).max(s)),
+            ruse_core::pos::line_of(b, ruse_core::BytePos(s)),
+            ruse_core::pos::line_of(b, ruse_core::BytePos(e.saturating_sub(1).max(s))),
         ))
     };
     let (prg, range, to_last, visual) = match cmd {
@@ -276,7 +276,7 @@ pub(crate) fn run_prg_operator(
                     - usize::from(out.raw.last() == Some(&b'\n'));
                 let b = ws.focused().doc.bytes();
                 let line = (first + n.max(1) - 1).min(ruse_core::pos::count_newlines(b));
-                let ls = ruse_core::pos::nth_line_start(b, line);
+                let ls = ruse_core::pos::nth_line_start(b, line).0;
                 let at = ls
                     + b[ls..]
                         .iter()
@@ -562,7 +562,7 @@ pub(crate) fn resolve_normal_range(ws: &Workspace, range: SubRange) -> (usize, u
     match range {
         SubRange::WholeFile => (1, total),
         SubRange::CurrentLine => {
-            let line = ruse_core::pos::line_of(&snapshot, ws.focused().view.cursor().0) + 1;
+            let line = ruse_core::pos::line_of(&snapshot, ws.focused().view.cursor()) + 1;
             (line, line)
         }
         SubRange::Lines(a, b) => (a.max(1), b.min(total)),

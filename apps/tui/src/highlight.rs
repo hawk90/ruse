@@ -466,8 +466,8 @@ fn input_edit(old: &[u8], new: &[u8]) -> Option<InputEdit> {
 /// line math (tree-sitter columns are byte offsets within the line).
 fn point_at(src: &[u8], byte: usize) -> Point {
     Point {
-        row: ruse_core::pos::line_of(src, byte),
-        column: byte.min(src.len()) - ruse_core::pos::line_start(src, byte),
+        row: ruse_core::pos::line_of(src, ruse_core::BytePos(byte)),
+        column: byte.min(src.len()) - ruse_core::pos::line_start(src, ruse_core::BytePos(byte)).0,
     }
 }
 
@@ -526,7 +526,8 @@ impl CachedSearch {
             // is fully inside it — searching the slice and offsetting is complete for what render paints.
             if let Ok(hay) = std::str::from_utf8(&bytes[vis.clone()]) {
                 for m in re.find_all(hay) {
-                    self.spans.push((vis.start + m.start, vis.start + m.end));
+                    self.spans
+                        .push((vis.start + m.start.0, vis.start + m.end.0));
                 }
             }
         }
@@ -900,7 +901,8 @@ fn inline_decorations(
             // `![alt](url)`: hide the raw markup on the source line and reserve a placeholder BLOCK below
             // it (F-031 slice 3a). Real pixels replace the block on a graphics-capable terminal (3b).
             "image" => {
-                let after_line = ruse_core::pos::line_of(src, base + node.start_byte());
+                let after_line =
+                    ruse_core::pos::line_of(src, ruse_core::BytePos(base + node.start_byte()));
                 // The alt text (`image_description`) labels the placeholder; the destination
                 // (`link_destination`) is the file the render loop reads for real pixels.
                 let child_range = |kind: &str| -> Option<(usize, usize)> {

@@ -36,6 +36,8 @@
 
 use regex::Regex as RawRegex;
 
+use crate::pos::BytePos;
+
 /// The magic level a pattern starts in (it may switch mid-pattern with `\v`/`\V`/`\m`/`\M`). `Magic` is
 /// Vim's default and matches the `'magic'` option being on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -91,9 +93,9 @@ pub enum RegexError {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Match {
     /// Byte offset of the (possibly `\zs`-adjusted) match start.
-    pub start: usize,
+    pub start: BytePos,
     /// Byte offset of the (possibly `\ze`-adjusted) match end.
-    pub end: usize,
+    pub end: BytePos,
 }
 
 /// A compiled Vim-dialect pattern (C-REGEX). Holds the wrapped engine and the empty capture groups that
@@ -192,19 +194,19 @@ impl Regex {
     /// the reported start. Vim's `:s` and `:g` take a match as belonging to the line its whole match
     /// starts on, even when a `\zs` after a `\n` reports a start on a later line.
     #[must_use]
-    pub fn find_whole_at(&self, hay: &str, from: usize) -> Option<(usize, Match)> {
-        let hit = self.next(hay, from)?;
+    pub fn find_whole_at(&self, hay: &str, from: BytePos) -> Option<(BytePos, Match)> {
+        let hit = self.next(hay, from.0)?;
         if phantom_line(hay, hit) {
             return None;
         }
-        Some((hit.whole.0, hit.rep))
+        Some((BytePos(hit.whole.0), hit.rep))
     }
 
     /// The first match at a byte offset `>= from`, honoring the `\zs`/`\ze` reported span. `None` if
     /// there is no match from `from` to the end (the caller wraps for `/`-search).
     #[must_use]
-    pub fn find_at(&self, hay: &str, from: usize) -> Option<Match> {
-        let hit = self.next(hay, from)?;
+    pub fn find_at(&self, hay: &str, from: BytePos) -> Option<Match> {
+        let hit = self.next(hay, from.0)?;
         if phantom_line(hay, hit) {
             return None; // the only thing left to match is the slot past the last line
         }
@@ -266,7 +268,7 @@ impl Regex {
                 }
                 let m = hit.rep;
                 let step = |at: usize| at + hay[at..].chars().next().map_or(1, char::len_utf8);
-                if substitute && prev_end == Some(col) && m.start == m.end && m.end == col {
+                if substitute && prev_end == Some(col) && m.start.0 == m.end.0 && m.end.0 == col {
                     // An empty match where the previous one ended does not count.
                     if col >= le {
                         break;
@@ -278,22 +280,22 @@ impl Regex {
                     continue;
                 }
                 out.push(m);
-                if m.end > le {
+                if m.end.0 > le {
                     break; // it ran onto a later line
                 }
                 if substitute {
-                    col = m.end;
+                    col = m.end.0;
                     prev_end = Some(col);
                     if col >= le && !self.multiline {
                         break;
                     }
                 } else if m.start == m.end {
-                    if m.end >= le {
+                    if m.end.0 >= le {
                         break;
                     }
-                    col = step(m.end);
+                    col = step(m.end.0);
                 } else {
-                    col = m.end;
+                    col = m.end.0;
                 }
             }
             if next <= ls {
@@ -333,7 +335,10 @@ impl Regex {
         if self.zs.is_empty() && self.ze.is_empty() {
             return Hit {
                 whole: (s, e),
-                rep: Match { start: s, end: e },
+                rep: Match {
+                    start: BytePos(s),
+                    end: BytePos(e),
+                },
             };
         }
         // The match at a start does not depend on where the search began, so this is the same one.
@@ -341,7 +346,10 @@ impl Regex {
             Some(caps) => self.hit(&caps, 0),
             None => Hit {
                 whole: (s, e),
-                rep: Match { start: s, end: e },
+                rep: Match {
+                    start: BytePos(s),
+                    end: BytePos(e),
+                },
             },
         }
     }
@@ -398,8 +406,8 @@ impl Regex {
         Hit {
             whole: (base + whole.start(), base + whole.end()),
             rep: Match {
-                start: base + rep.start,
-                end: base + rep.end,
+                start: BytePos(base + rep.start.0),
+                end: BytePos(base + rep.end.0),
             },
         }
     }
@@ -418,7 +426,10 @@ impl Regex {
         };
         let start = marker(&self.zs).unwrap_or(whole.start());
         let end = marker(&self.ze).unwrap_or(whole.end()).max(start);
-        Match { start, end }
+        Match {
+            start: BytePos(start),
+            end: BytePos(end),
+        }
     }
 }
 
@@ -1796,7 +1807,7 @@ mod tests {
 
     fn find(pat: &str, hay: &str) -> Option<(usize, usize)> {
         let re = Regex::compile(pat, Options::default()).expect("compiles");
-        re.find_at(hay, 0).map(|m| (m.start, m.end))
+        re.find_at(hay, BytePos(0)).map(|m| (m.start.0, m.end.0))
     }
 
     /// #803: the pattern ends at the delimiter Vim's `skip_regexp` finds — not one inside `[...]`, not an
@@ -1832,7 +1843,7 @@ mod tests {
             } else {
                 re.search_all(hay)
             };
-            all.iter().map(|m| (m.start, m.end)).collect()
+            all.iter().map(|m| (m.start.0, m.end.0)).collect()
         };
         assert_eq!(
             spans(r"\<API\>", "x API를 API\nxAPI API", false),
@@ -1911,15 +1922,21 @@ mod tests {
     fn no_match_in_the_slot_after_the_final_newline() {
         let re = Regex::compile("^", Options::default()).unwrap();
         let hay = "abc\ndef\n";
-        assert_eq!(re.find_at(hay, 1).map(|m| m.start), Some(4));
-        assert_eq!(re.find_at(hay, 5), None);
-        let starts: Vec<usize> = re.find_all(hay).iter().map(|m| m.start).collect();
+        assert_eq!(re.find_at(hay, BytePos(1)).map(|m| m.start.0), Some(4));
+        assert_eq!(re.find_at(hay, BytePos(5)), None);
+        let starts: Vec<usize> = re.find_all(hay).iter().map(|m| m.start.0).collect();
         assert_eq!(starts, vec![0, 4]);
         let re = Regex::compile("^$", Options::default()).unwrap();
-        assert_eq!(re.find_at(hay, 0), None);
-        assert_eq!(re.find_at("abc\n\ndef\n", 5), None);
+        assert_eq!(re.find_at(hay, BytePos(0)), None);
+        assert_eq!(re.find_at("abc\n\ndef\n", BytePos(5)), None);
         // A haystack without a final newline (one line, an empty buffer) keeps its end match.
-        assert_eq!(re.find_at("", 0), Some(Match { start: 0, end: 0 }));
+        assert_eq!(
+            re.find_at("", BytePos(0)),
+            Some(Match {
+                start: BytePos(0),
+                end: BytePos(0)
+            })
+        );
         assert_eq!(find("$", "abc"), Some((3, 3)));
     }
 
@@ -1944,12 +1961,12 @@ mod tests {
         // all-lowercase pattern → case-insensitive
         assert!(Regex::compile("foo", ci)
             .unwrap()
-            .find_at("a FOO b", 0)
+            .find_at("a FOO b", BytePos(0))
             .is_some());
         // an uppercase in the pattern → case-sensitive, so `FOO` won't match `foo`
         assert!(Regex::compile("Foo", ci)
             .unwrap()
-            .find_at("a foo b", 0)
+            .find_at("a foo b", BytePos(0))
             .is_none());
     }
 
@@ -1959,7 +1976,7 @@ mod tests {
         let ms: Vec<_> = re
             .find_all("aa b aaa")
             .iter()
-            .map(|m| (m.start, m.end))
+            .map(|m| (m.start.0, m.end.0))
             .collect();
         assert_eq!(ms, vec![(0, 2), (5, 8)]);
     }
@@ -1969,7 +1986,7 @@ mod tests {
             .expect("compiles")
             .find_all(hay)
             .iter()
-            .map(|m| (m.start, m.end))
+            .map(|m| (m.start.0, m.end.0))
             .collect()
     }
 
@@ -2023,7 +2040,7 @@ mod tests {
                 .expect("compiles")
                 .search_all(hay)
                 .iter()
-                .map(|m| (m.start, m.end))
+                .map(|m| (m.start.0, m.end.0))
                 .collect()
         };
         assert_eq!(spans(r"\<", "xx foo bar"), vec![(0, 0), (3, 3), (7, 7)]);
@@ -2072,7 +2089,13 @@ mod tests {
     fn non_greedy_star() {
         // `\{-}` is Vim's non-greedy `*` — `a.\{-}b` matches the SHORTEST `a…b`.
         let re = Regex::compile("a.\\{-}b", Options::default()).unwrap();
-        assert_eq!(re.find_at("axbxb", 0), Some(Match { start: 0, end: 3 }));
+        assert_eq!(
+            re.find_at("axbxb", BytePos(0)),
+            Some(Match {
+                start: BytePos(0),
+                end: BytePos(3)
+            })
+        );
     }
 
     /// Rejects, never fakes: unrepresentable atoms return a typed error (design §2).

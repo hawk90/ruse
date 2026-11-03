@@ -19,7 +19,7 @@
 //!   - `]I` — list the matching lines strictly below the cursor; if there are none, list the current
 //!     line (nvim's fallback when the cursor sits on the last / only match).
 
-use crate::pos::{line_end, nth_line_start};
+use crate::pos::raw::{line_end, nth_line_start};
 
 /// A Word-class byte (alnum + `_` + non-ASCII), mirroring `motion::class`'s `Class::Word`. ruse has no
 /// `iskeyword`; keyword boundaries follow this class everywhere (`*`/`#`/`gd`), so `[i`/`]i` do too.

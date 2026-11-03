@@ -815,7 +815,8 @@ pub(crate) fn block_at(
         lo + width.max(1) - 1
     };
     let ls = line_start(b, cursor);
-    let last = crate::pos::nth_line_start(b, crate::pos::line_of(b, ls) + height.max(1) - 1);
+    let last =
+        crate::pos::raw::nth_line_start(b, crate::pos::raw::line_of(b, ls) + height.max(1) - 1);
     block_from(b, ls, last.max(ls), lo, hi, ts)
 }
 

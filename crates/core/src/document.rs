@@ -143,14 +143,14 @@ impl Document {
     /// Create a LINE anchor at `offset` that follows line inserts and deletes as a Vim mark does
     /// (anchor-store §3.1).
     pub fn create_line_anchor(&mut self, offset: BytePos, gravity: LineGravity) -> AnchorId {
-        let id = self.anchors.insert_line(offset.0, gravity);
+        let id = self.anchors.insert_line(offset, gravity);
         self.rebuild_index();
         id
     }
 
     /// Create a long-lived anchor at `offset` with the given [`Bias`] and span-delete [`AnchorPolicy`].
     pub fn create_anchor(&mut self, offset: BytePos, bias: Bias, policy: AnchorPolicy) -> AnchorId {
-        let id = self.anchors.insert(offset.0, bias, policy);
+        let id = self.anchors.insert(offset, bias, policy);
         self.rebuild_index();
         id
     }
@@ -163,7 +163,7 @@ impl Document {
     ) -> Vec<AnchorId> {
         let ids = specs
             .into_iter()
-            .map(|(offset, bias, policy)| self.anchors.insert(offset.0, bias, policy))
+            .map(|(offset, bias, policy)| self.anchors.insert(offset, bias, policy))
             .collect();
         self.rebuild_index();
         ids
@@ -292,7 +292,7 @@ impl Document {
         let saved: Vec<Option<usize>> = tracked
             .iter()
             .filter(|t| t.restore)
-            .map(|t| t.pos)
+            .map(|t| t.pos.map(|p| p.0))
             .collect();
         let old = std::mem::replace(&mut self.text, Arc::new(new_text));
         self.track_change(&old, &txn.edits, tracked);
@@ -317,7 +317,7 @@ impl Document {
             txn.edits
                 .edits()
                 .first()
-                .map_or(0, |e| crate::pos::line_start(&self.text, e.pos.0))
+                .map_or(BytePos(0), |e| crate::pos::line_start(&self.text, e.pos))
         });
         let group_before = self.undo.current_group();
         self.undo
@@ -414,7 +414,7 @@ impl Document {
     /// After each group's last list, the restorable `tracked` positions take the values that group saved,
     /// and the group keeps the ones they replace for the way back (Vim swaps `uh_namedm`, #686).
     fn replay(&mut self, step: UndoStep, cursor: usize, tracked: &mut [Tracked]) -> UndoCursor {
-        let cur_line = crate::pos::line_of(&self.text, cursor);
+        let cur_line = crate::pos::raw::line_of(&self.text, cursor);
         let mut entries = Vec::new();
         let mut uh = (0, 0);
         let mut lines_before = undo_cursor::line_count(&self.text);
@@ -425,14 +425,14 @@ impl Document {
                 before = tracked
                     .iter()
                     .filter(|t| t.restore)
-                    .map(|t| t.pos)
+                    .map(|t| t.pos.map(|p| p.0))
                     .collect();
             }
             if i == step.tail {
                 lines_before = undo_cursor::line_count(&self.text);
                 if step.forward {
                     // A redo's `uh_cursor` is in the text before the change, which is the text right now.
-                    uh = undo_cursor::line_col(&self.text, step.cursor);
+                    uh = undo_cursor::line_col(&self.text, step.cursor.0);
                 }
             }
             let old = Arc::clone(&self.text);
@@ -448,7 +448,7 @@ impl Document {
         }
         if !step.forward {
             // An undo's `uh_cursor` is in the text the undo restores.
-            uh = undo_cursor::line_col(&self.text, step.cursor);
+            uh = undo_cursor::line_col(&self.text, step.cursor.0);
         }
         let lines = undo_cursor::line_count(&self.text);
         let mut placed = undo_cursor::place(&entries, uh, cur_line, lines);
@@ -466,7 +466,7 @@ impl Document {
         let len = self.text.len();
         for (t, s) in tracked.iter_mut().filter(|t| t.restore).zip(saved.iter()) {
             if let Some(p) = *s {
-                t.pos = Some(crate::motion::snap(&self.text, p.min(len)));
+                t.pos = Some(BytePos(crate::motion::snap(&self.text, p.min(len))));
             }
         }
         *saved = before;
@@ -507,11 +507,11 @@ impl Document {
         let cursor = cursor.0;
         let (s, e, text, col) = self.line_undo.swap(&self.text, cursor)?;
         let len = text.len();
-        let list =
-            EditList::new(vec![Edit::replace(s, e - s, text)]).expect("one edit is disjoint");
+        let list = EditList::new(vec![Edit::replace(BytePos(s), e - s, text)])
+            .expect("one edit is disjoint");
         let txn = Transaction::new(self.revision, list, origin)
             .with_hint(GroupHint::BreakBefore)
-            .with_cursor(cursor);
+            .with_cursor(BytePos(cursor));
         self.apply_inner(txn, false, tracked)
             .expect("the saved line's span is in range");
         Some(BytePos(s + col.min(len)))
@@ -607,7 +607,7 @@ impl Document {
             );
         }
         for t in &self.pinned {
-            if let Some(p) = t.pos {
+            if let Some(BytePos(p)) = t.pos {
                 assert!(p <= len, "pinned position {p} past the end {len}");
             }
         }
@@ -648,7 +648,7 @@ mod text_arc_tests {
         let snapshot = d.text_arc();
         d.apply(Transaction::new(
             d.revision(),
-            EditList::new(vec![Edit::insert(3, b"d".to_vec())]).unwrap(),
+            EditList::new(vec![Edit::insert(BytePos(3), b"d".to_vec())]).unwrap(),
             TransactionOrigin::UserInput,
         ))
         .unwrap();
@@ -662,7 +662,7 @@ mod text_arc_tests {
     fn an_undo_block_undoes_as_one_step() {
         let mut d = Document::new(DocumentId(1), b"abc".to_vec());
         let put = |d: &mut Document, at: usize, s: &[u8]| {
-            let list = EditList::new(vec![Edit::insert(at, s.to_vec())]).unwrap();
+            let list = EditList::new(vec![Edit::insert(BytePos(at), s.to_vec())]).unwrap();
             let txn = Transaction::new(d.revision(), list, TransactionOrigin::UserInput)
                 .with_hint(GroupHint::BreakBefore);
             d.apply(txn).unwrap();
@@ -686,7 +686,7 @@ mod text_arc_tests {
     }
 
     fn put_continue(d: &mut Document, at: usize, s: &[u8]) {
-        let list = EditList::new(vec![Edit::insert(at, s.to_vec())]).unwrap();
+        let list = EditList::new(vec![Edit::insert(BytePos(at), s.to_vec())]).unwrap();
         d.apply(Transaction::new(
             d.revision(),
             list,

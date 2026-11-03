@@ -248,7 +248,7 @@ proptest! {
                         .iter()
                         .map(|(p, d, ins)| {
                             let p = p % (len + 1);
-                            Edit::replace(p, (*d).min(len - p), ins.clone())
+                            Edit::replace(ruse_core::BytePos(p), (*d).min(len - p), ins.clone())
                         })
                         .collect();
                     let Ok(list) = EditList::new(edits) else { continue };
@@ -550,7 +550,7 @@ proptest! {
                         ins.extend_from_slice(x);
                         ins.push(b'\n');
                     }
-                    Some((Edit::insert(model.line_start(at), ins), Lines::Insert(at, l.clone())))
+                    Some((Edit::insert(ruse_core::BytePos(model.line_start(at)), ins), Lines::Insert(at, l.clone())))
                 }
                 LineOp::Delete(f, c) => {
                     if n == 1 {
@@ -559,7 +559,7 @@ proptest! {
                     let from = f % n;
                     let count = (*c).min(n - from).min(n - 1);
                     let (s, e) = (model.line_start(from), model.line_start(from + count));
-                    Some((Edit::delete(s, e - s), Lines::Delete(from, count)))
+                    Some((Edit::delete(ruse_core::BytePos(s), e - s), Lines::Delete(from, count)))
                 }
                 LineOp::DeleteAfterNewline(i) => {
                     if n == 1 {
@@ -567,14 +567,14 @@ proptest! {
                     }
                     let i = 1 + i % (n - 1);
                     let s = model.line_start(i) - 1;
-                    Some((Edit::delete(s, model.lines[i].len() + 1), Lines::Delete(i, 1)))
+                    Some((Edit::delete(ruse_core::BytePos(s), model.lines[i].len() + 1), Lines::Delete(i, 1)))
                 }
                 LineOp::OpenBelow(i, l) => {
                     let i = i % n;
                     let mut ins = vec![b'\n'];
                     ins.extend_from_slice(l);
                     let at = model.line_start(i) + model.lines[i].len();
-                    Some((Edit::insert(at, ins), Lines::Insert(i + 1, vec![l.clone()])))
+                    Some((Edit::insert(ruse_core::BytePos(at), ins), Lines::Insert(i + 1, vec![l.clone()])))
                 }
                 LineOp::InLine(i, a, d, s) => {
                     let i = i % n;
@@ -587,7 +587,7 @@ proptest! {
                     if text.is_empty() || (del == 0 && s.is_empty()) {
                         continue;
                     }
-                    let e = Edit::replace(model.line_start(i) + at, del, s.clone());
+                    let e = Edit::replace(ruse_core::BytePos(model.line_start(i) + at), del, s.clone());
                     Some((e, Lines::InLine(i, text)))
                 }
                 LineOp::Mark(l, c, g, k) => {
@@ -598,8 +598,8 @@ proptest! {
                     model.marks.push(MarkModel { pos: Some((l, c)), gravity: *g, kind: *k });
                     match k {
                         0 => anchors.push((idx, doc.create_line_anchor(BytePos(at), *g))),
-                        1 => tracked.push((idx, Tracked::line(Some(at), *g))),
-                        _ => tracked.push((idx, Tracked::line(Some(at), *g).restored())),
+                        1 => tracked.push((idx, Tracked::line(Some(ruse_core::BytePos(at)), *g))),
+                        _ => tracked.push((idx, Tracked::line(Some(ruse_core::BytePos(at)), *g).restored())),
                     }
                     None
                 }
@@ -668,7 +668,7 @@ proptest! {
             for (i, t) in &tracked {
                 let m = model.marks[*i];
                 prop_assert_eq!(
-                    t.pos,
+                    t.pos.map(|p| p.0),
                     m.pos.map(|p| model.offset(p)),
                     "tracked mark {} {:?} after {:?}", i, m, op
                 );

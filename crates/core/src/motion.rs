@@ -275,7 +275,7 @@ pub(crate) fn snap(b: &[u8], pos: usize) -> usize {
 
 // Line boundaries are the one implementation in `crate::pos`; re-exported here so motion call sites
 // (`line_start`/`line_end`) read unchanged.
-pub(crate) use crate::pos::{line_end, line_start};
+pub(crate) use crate::pos::raw::{line_end, line_start};
 
 pub(crate) fn col_of(b: &[u8], start: usize, pos: usize) -> usize {
     std::str::from_utf8(&b[start..pos])
@@ -865,14 +865,14 @@ fn indent_end(b: &[u8], start: usize, end: usize) -> usize {
 /// built. Verified against nvim v0.12.4.
 pub(crate) fn line_completions(b: &[u8], cur: usize) -> (String, Vec<String>) {
     // `base`: the caret line's post-indent text up to the caret (empty when the caret sits within indent).
-    let ls = crate::pos::line_start(b, cur);
+    let ls = crate::pos::raw::line_start(b, cur);
     let bi = indent_end(b, ls, cur);
     let base = std::str::from_utf8(&b[bi..cur]).unwrap_or("").to_string();
     // Line geometry: `n` rows total, the caret on row `cr`. Scan backward from `cr` with wraparound.
     // The slot after a final newline is a row only while the caret is on it (a line being typed); else it
     // is no line and offers no empty candidate (#677).
-    let cr = crate::pos::line_of(b, cur);
-    let last = crate::pos::line_of(b, b.len());
+    let cr = crate::pos::raw::line_of(b, cur);
+    let last = crate::pos::raw::line_of(b, b.len());
     let n = if b.last() == Some(&b'\n') && cr < last {
         last
     } else {
@@ -882,8 +882,8 @@ pub(crate) fn line_completions(b: &[u8], cur: usize) -> (String, Vec<String>) {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for i in 1..n {
         let row = (cr + n - i) % n; // cr-1, cr-2, …, 0, n-1, …, cr+1 — every row but the caret's
-        let rs = crate::pos::nth_line_start(b, row);
-        let re = crate::pos::line_end(b, rs);
+        let rs = crate::pos::raw::nth_line_start(b, row);
+        let re = crate::pos::raw::line_end(b, rs);
         let ri = indent_end(b, rs, re);
         let Ok(content) = std::str::from_utf8(&b[ri..re]) else {
             continue;
@@ -1245,7 +1245,13 @@ pub(crate) fn content_end(b: &[u8]) -> usize {
 /// empty), where Vim leaves it. Any other position, and every position of an unterminated buffer, is
 /// returned unchanged.
 #[must_use]
-pub fn off_phantom(b: &[u8], pos: usize) -> usize {
+pub fn off_phantom(b: &[u8], pos: crate::pos::BytePos) -> crate::pos::BytePos {
+    crate::pos::BytePos(off_phantom_at(b, pos.0))
+}
+
+/// [`off_phantom`] over a bare offset, for the core's own motions.
+#[must_use]
+pub(crate) fn off_phantom_at(b: &[u8], pos: usize) -> usize {
     if pos < b.len() || b.last() != Some(&b'\n') {
         return pos;
     }
@@ -1687,7 +1693,7 @@ pub(crate) fn fails(
     let last_line = le >= content_end(b);
     // Where the motion leaves an on-char caret: never on a non-empty line's break or the phantom slot.
     let clamp = |t: usize| {
-        let t = off_phantom(b, t.min(b.len()));
+        let t = off_phantom_at(b, t.min(b.len()));
         let (tls, tle) = (line_start(b, t), line_end(b, t));
         if t == tle && tle > tls {
             prev_grapheme(b, tle)
@@ -1753,7 +1759,7 @@ pub(crate) fn fails(
 
 /// The cursor target for a bare move (`w`, `3l`, `k`, …), applying `count`.
 #[must_use]
-pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
+pub(crate) fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     let n = count.max(1);
     let cur0 = cursor.min(b.len());
     // Char-search resolves the count-th match directly (repeating a single `t` step would stick in place).
@@ -1778,7 +1784,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     // A terminated buffer's last byte is its final newline, so a count past EOF lands on the last line's last
     // char instead (#677).
     if m == Motion::GotoByte {
-        let t = off_phantom(b, (n as usize).saturating_sub(1).min(b.len()));
+        let t = off_phantom_at(b, (n as usize).saturating_sub(1).min(b.len()));
         return snap(b, t.min(b.len().saturating_sub(1)));
     }
     // Bracket match jumps to a single computed position (count is not a repeat; `count%` is deferred).
@@ -2050,7 +2056,7 @@ fn repeat_step(n: u32, start: usize, f: impl Fn(usize) -> usize) -> usize {
 /// which covers its last char. The linewise paragraph objects (whole lines) and the Emacs motions (whose
 /// point may sit after the final newline, so `kill-word` there can take it) are exempt.
 #[must_use]
-pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usize) {
+pub(crate) fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usize) {
     let (s, e) = char_span_raw(b, cursor, m, count);
     let exempt = matches!(
         m,
@@ -2337,7 +2343,7 @@ mod backward_word_end_tests {
 mod vim_line_model_tests {
     //! The v0.1.3 motion cluster at the `target`/`char_span` level: empty lines as words (#746), counted
     //! `dw` (#742), multibyte `e` (#741), `}` from a blank line (#748), `;` after `t` (#802).
-    use super::{char_span, off_phantom, target, Motion};
+    use super::{char_span, target, Motion};
 
     fn till(forward: bool, repeat: bool) -> Motion {
         Motion::FindChar {
@@ -2412,16 +2418,16 @@ mod vim_line_model_tests {
 
     #[test]
     fn off_phantom_moves_only_the_slot_after_a_final_newline() {
-        assert_eq!(off_phantom(b"ab\n", 3), 1);
-        assert_eq!(off_phantom(b"a\n\n", 3), 2);
+        assert_eq!(super::off_phantom_at(b"ab\n", 3), 1);
+        assert_eq!(super::off_phantom_at(b"a\n\n", 3), 2);
         assert_eq!(
-            off_phantom(b"ab", 2),
+            super::off_phantom_at(b"ab", 2),
             2,
             "an unterminated end is the last line's end"
         );
-        assert_eq!(off_phantom(b"", 0), 0);
+        assert_eq!(super::off_phantom_at(b"", 0), 0);
         assert_eq!(
-            off_phantom("a가\n".as_bytes(), 5),
+            super::off_phantom_at("a가\n".as_bytes(), 5),
             1,
             "lands on a char boundary"
         );

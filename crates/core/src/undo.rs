@@ -16,7 +16,7 @@
 use std::collections::HashSet;
 
 use crate::edit::EditList;
-use crate::pos::Revision;
+use crate::pos::{BytePos, Revision};
 use crate::transaction::{GroupHint, TransactionOrigin};
 
 /// Monotonic creation-order key over undo nodes — the chronological index key, and the identity behind
@@ -63,7 +63,7 @@ pub struct UndoStep {
     pub forward: bool,
     /// The last group's `uh_cursor`: a byte offset into the text from BEFORE the group's change, which
     /// is the text after an undo and the text before a redo.
-    pub cursor: usize,
+    pub cursor: BytePos,
 }
 
 /// The in-memory undo history for one document.
@@ -161,8 +161,9 @@ impl UndoHistory {
         origin: TransactionOrigin,
         hint: GroupHint,
         result_revision: Revision,
-        cursor: usize,
+        cursor: BytePos,
     ) -> UndoNodeId {
+        let cursor = cursor.0;
         // Stability §1: an undo node's parent must exist.
         debug_assert!(
             self.current.0 < self.nodes.len(),
@@ -238,7 +239,7 @@ impl UndoHistory {
             groups,
             tail: 0,
             forward: false,
-            cursor,
+            cursor: BytePos(cursor),
         })
     }
 
@@ -277,7 +278,7 @@ impl UndoHistory {
             groups,
             tail: 0,
             forward: true,
-            cursor: self.nodes[first.0].cursor,
+            cursor: BytePos(self.nodes[first.0].cursor),
         })
     }
 
@@ -362,7 +363,7 @@ impl UndoHistory {
             groups,
             tail,
             forward,
-            cursor,
+            cursor: BytePos(cursor),
         })
     }
 
@@ -530,7 +531,7 @@ mod tests {
             origin,
             hint,
             Revision::ZERO,
-            0,
+            BytePos(0),
         );
         h.current_group()
     }
@@ -559,7 +560,7 @@ mod tests {
             TransactionOrigin::UserInput,
             GroupHint::BreakBefore,
             Revision::ZERO,
-            0,
+            BytePos(0),
         );
         let a_seq = h.current_seq();
         h.undo();
@@ -569,7 +570,7 @@ mod tests {
             TransactionOrigin::UserInput,
             GroupHint::BreakBefore,
             Revision::ZERO,
-            0,
+            BytePos(0),
         );
         let b_seq = h.current_seq();
         // g- lands on A (the branched-away state), g+ returns to B.

@@ -706,30 +706,38 @@ impl View {
         t.extend(
             self.named_marks[..26]
                 .iter()
-                .map(|&m| Tracked::line(m, Drop).restored()),
+                .map(|&m| Tracked::line(m.map(BytePos), Drop).restored()),
         );
         let (va, ve) = self
             .last_visual
             .map_or((None, None), |(a, e, _)| (Some(a), Some(e)));
-        t.push(Tracked::line(va, Keep).restored());
-        t.push(Tracked::line(ve, Keep).restored());
+        t.push(Tracked::line(va.map(BytePos), Keep).restored());
+        t.push(Tracked::line(ve.map(BytePos), Keep).restored());
         t.extend(
             self.named_marks[26..]
                 .iter()
-                .map(|&m| Tracked::line(m, Keep)),
+                .map(|&m| Tracked::line(m.map(BytePos), Keep)),
         );
-        t.push(Tracked::line(self.last_insert, Drop));
-        t.push(Tracked::line(self.change_start, Keep));
-        t.push(Tracked::line(self.change_end, Keep));
+        t.push(Tracked::line(self.last_insert.map(BytePos), Drop));
+        t.push(Tracked::line(self.change_start.map(BytePos), Keep));
+        t.push(Tracked::line(self.change_end.map(BytePos), Keep));
         debug_assert_eq!(t.len(), TRACKED_FIXED);
-        t.extend(self.changes.iter().map(|&p| Tracked::line(Some(p), Keep)));
-        t.extend(self.jumps.iter().map(|&p| Tracked::line(Some(p), Keep)));
+        t.extend(
+            self.changes
+                .iter()
+                .map(|&p| Tracked::line(Some(BytePos(p)), Keep)),
+        );
+        t.extend(
+            self.jumps
+                .iter()
+                .map(|&p| Tracked::line(Some(BytePos(p)), Keep)),
+        );
         t
     }
 
     /// Take back the positions [`View::tracked`] gave out, as the Document left them.
     pub(crate) fn untrack(&mut self, t: &[Tracked]) {
-        let pos = |i: usize| t.get(i).and_then(|t| t.pos);
+        let pos = |i: usize| t.get(i).and_then(|t| t.pos).map(|p| p.0);
         for i in 0..26 {
             self.named_marks[i] = pos(i);
         }
@@ -767,7 +775,7 @@ impl View {
         check("the cursor", self.cursor);
         for (i, t) in self.tracked().iter().enumerate() {
             if let Some(p) = t.pos {
-                check(&format!("tracked position {i}"), p);
+                check(&format!("tracked position {i}"), p.0);
             }
         }
         for (what, p) in [
@@ -923,7 +931,7 @@ impl View {
             let line_col = |p: usize| {
                 let p = p.min(b.len());
                 let ls = line_start(b, p);
-                (crate::pos::line_of(b, p), p - ls)
+                (crate::pos::raw::line_of(b, p), p - ls)
             };
             let add = self.changes.last().is_none_or(|&last| {
                 let ((line, col), (l, c)) = (line_col(pos), line_col(last));
@@ -988,7 +996,7 @@ impl View {
     /// appears once, at its newest place; then, with the cursor past the newest entry, drop that entry when
     /// it is on the cursor's line `now` (a phantom jump, nvim #9805). The walk cursor follows its entry.
     fn clean_jumps(&mut self, b: &[u8], now: usize) {
-        let line = |p: usize| crate::pos::line_of(b, p.min(b.len()));
+        let line = |p: usize| crate::pos::raw::line_of(b, p.min(b.len()));
         let lines: Vec<usize> = self.jumps.iter().map(|&p| line(p)).collect();
         let len = self.jumps.len();
         let mut kept = Vec::with_capacity(len);
@@ -1467,7 +1475,7 @@ fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
     match (st.view.mode.selection(), st.view.anchor) {
         (Some(kind), Some(anchor)) => {
             let (lo, hi) = (anchor.min(cur), anchor.max(cur));
-            let lines = crate::pos::line_of(b, hi) - crate::pos::line_of(b, lo) + 1;
+            let lines = crate::pos::raw::line_of(b, hi) - crate::pos::raw::line_of(b, lo) + 1;
             let ts = st.view.indent.tab_width;
             let cols = match kind {
                 SelectKind::Charwise if lines == 1 => {
@@ -1491,7 +1499,8 @@ fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
             let ts = st.view.indent.tab_width;
             let ls = line_start(b, cur);
             let start_col = vcols_at(b, cur, ts).0;
-            let end_ls = crate::pos::nth_line_start(b, crate::pos::line_of(b, cur) + g.lines - 1);
+            let end_ls =
+                crate::pos::raw::nth_line_start(b, crate::pos::raw::line_of(b, cur) + g.lines - 1);
             let end = match g.kind {
                 _ if g.to_eol => line_end(b, end_ls),
                 SelectKind::Charwise if g.lines == 1 => at_vcol(b, ls, start_col + g.cols - 1, ts),
@@ -1695,7 +1704,7 @@ impl EditorState {
     fn substitute_join(&mut self, range: SubRange) -> SubOutcome {
         let bytes = self.doc.bytes();
         let lines = line_spans(bytes);
-        let cursor_line = crate::pos::line_of(bytes, self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(bytes, self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let joined = last - first + 1 + usize::from(last + 1 < lines.len());
         if joined <= 1 {
@@ -1711,7 +1720,7 @@ impl EditorState {
         }
         let seams = joined - 1;
         let edits: Vec<Edit> = (first..first + seams)
-            .map(|li| Edit::delete(lines[li].1, 1))
+            .map(|li| Edit::delete(BytePos(lines[li].1), 1))
             .collect();
         let cursor = lines[first + seams].0 - seams;
         let list = EditList::new(edits).expect("line breaks are disjoint and ordered");
@@ -1758,7 +1767,7 @@ impl EditorState {
         // (start, end-excluding-newline) per line, without the slot after a final newline, so a zero-width
         // pattern (`^`, `$`, `x*`) never substitutes there (`:%s/^/#/` on "abc\ndef\n" appends no line).
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
         // 1-based inclusive from the user, clamped into range and put in order.
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
 
@@ -1820,7 +1829,7 @@ impl EditorState {
             .iter()
             .map(|s| {
                 lines_seen.insert(s.line);
-                Edit::replace(s.start.0, s.end.0 - s.start.0, s.replacement.clone())
+                Edit::replace(s.start, s.end.0 - s.start.0, s.replacement.clone())
             })
             .collect();
         let replacements = edits.len();
@@ -1913,7 +1922,7 @@ impl EditorState {
                     .take_while(|_| !crate::interrupt::breakcheck())
                     .filter(|&li| {
                         let (ls, le) = lines[li];
-                        re.find_at(&hay[ls..le], 0).is_some() != negate
+                        re.find_at(&hay[ls..le], BytePos(0)).is_some() != negate
                     })
                     .collect(),
             ));
@@ -1937,7 +1946,7 @@ impl EditorState {
                     let ws = match next {
                         Some((from, ws)) if from <= ls && ws.is_none_or(|w| w >= ls) => ws,
                         _ => {
-                            let ws = re.find_whole_at(hay, ls).map(|(w, _)| w);
+                            let ws = re.find_whole_at(hay, BytePos(ls)).map(|(w, _)| w.0);
                             next = Some((ls, ws));
                             ws
                         }
@@ -2005,7 +2014,7 @@ impl EditorState {
                 }
                 let edits: Vec<Edit> = ranges
                     .iter()
-                    .map(|&(s, e)| Edit::delete(s, e - s))
+                    .map(|&(s, e)| Edit::delete(BytePos(s), e - s))
                     .collect();
                 // Vim runs `:d` once per marked line, so each deleted line goes through the unnamed register
                 // and shifts the numbered ring in turn: `""` and `"1` end on the last one (#1100).
@@ -2025,7 +2034,7 @@ impl EditorState {
                 // that was the end), at its first non-blank.
                 let last = marked[marked.len() - 1] + 1 - marked.len();
                 let nb = self.doc.bytes();
-                let line_start = crate::pos::nth_line_start(nb, last).min(nb.len());
+                let line_start = crate::pos::raw::nth_line_start(nb, last).min(nb.len());
                 let line_start = if line_start == nb.len() && nb.ends_with(b"\n") {
                     nb[..nb.len() - 1]
                         .iter()
@@ -2084,7 +2093,7 @@ impl EditorState {
             return 0;
         };
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let (fs, _) = lines[first];
         let (_, le) = lines[last];
@@ -2107,7 +2116,7 @@ impl EditorState {
         self.view
             .registers
             .delete(reg, Register::linewise(lines_text));
-        let list = EditList::new(vec![Edit::delete(start, end - start)])
+        let list = EditList::new(vec![Edit::delete(BytePos(start), end - start)])
             .expect("a single line-range delete is well-formed");
         // Vim moves the cursor to the range's first line (keeping its column) before deleting, so that is
         // where `u` puts it back (nvim 0.12.6: `4l:3d<CR>u` -> line 3, column 4).
@@ -2115,14 +2124,14 @@ impl EditorState {
         let undo_at = snap(bytes, (fs + col).min(lines[first].1));
         let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore)
-            .with_cursor(undo_at);
+            .with_cursor(BytePos(undo_at));
         self.apply_txn(txn)
             .expect("line-range delete applies cleanly");
         self.view.last_was_edit = true;
         // On the line that took their place, or the new last line (never the slot after a final newline,
         // nor past the end of an unterminated last line), at its first non-blank.
         let nb = self.doc.bytes();
-        let at = motion::off_phantom(nb, start.min(nb.len()));
+        let at = motion::off_phantom_at(nb, start.min(nb.len()));
         self.view.cursor = motion::first_non_blank(nb, line_start(nb, at));
         self.settle_offsets();
         self.view.curswant = self.wanted_col(); // Vim's `beginline` resets the wanted column (#1104)
@@ -2143,7 +2152,7 @@ impl EditorState {
             return 0;
         };
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let (fs, _) = lines[first];
         let (_, le) = lines[last];
@@ -2167,7 +2176,7 @@ impl EditorState {
             return 0;
         };
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         // Position the cursor at the range's first line so the reused join starts there; the count is the
         // line span, which `plan_join` clamps to `.max(2)` — so a single-line range joins the current line
@@ -2209,7 +2218,7 @@ impl EditorState {
             return 0;
         };
         let lines = line_spans(hay);
-        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &lines, cursor_line);
         let count = (last - first + 1) as u32;
         let want = self.view.curswant;
@@ -2290,7 +2299,7 @@ impl EditorState {
             return Some(0);
         }
         let spans = line_spans(hay);
-        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
         // `line_spans` counts a phantom empty line after a trailing '\n'; the split/pop `lines` vec does
         // not, so clamp to the vec.
@@ -2304,7 +2313,7 @@ impl EditorState {
             return None;
         }
         if !copy && (ins == first || ins == last + 1) {
-            let ls = crate::pos::nth_line_start(bytes, last).min(bytes.len());
+            let ls = crate::pos::raw::nth_line_start(bytes, last).min(bytes.len());
             self.view.cursor = self.relocated_cursor(bytes, ls);
             return Some(0);
         }
@@ -2328,7 +2337,7 @@ impl EditorState {
             text.push('\n');
         }
         let new_bytes = text.into_bytes();
-        let ls = crate::pos::nth_line_start(&new_bytes, adj + count - 1).min(new_bytes.len());
+        let ls = crate::pos::raw::nth_line_start(&new_bytes, adj + count - 1).min(new_bytes.len());
         let cursor = self.relocated_cursor(&new_bytes, ls);
 
         // A move is the block deleted at its place and inserted at the destination, so the line anchors on
@@ -2337,26 +2346,38 @@ impl EditorState {
         // a `\n`. The one shape that does not split that way (the last line moved onto an empty line just
         // above it) takes the whole-region rewrite, whose marks keep their lines.
         let old = self.doc.bytes();
-        let at = |line: usize| crate::pos::nth_line_start(old, line).min(old.len());
+        let at = |line: usize| crate::pos::raw::nth_line_start(old, line).min(old.len());
         let (s, e, p) = (at(first), at(last + 1), at(ins));
         let mut block = old[s..e].to_vec();
         let edits = if copy {
             None
         } else if had_trailing_nl || (e < old.len() && p < old.len()) {
             Some(if p < s {
-                vec![Edit::insert(p, block), Edit::delete(s, e - s)]
+                vec![
+                    Edit::insert(BytePos(p), block),
+                    Edit::delete(BytePos(s), e - s),
+                ]
             } else {
-                vec![Edit::delete(s, e - s), Edit::insert(p, block)]
+                vec![
+                    Edit::delete(BytePos(s), e - s),
+                    Edit::insert(BytePos(p), block),
+                ]
             })
         } else if e < old.len() {
             // After the unterminated last line: `\n` + the block without its own.
             block.pop();
             block.insert(0, b'\n');
-            Some(vec![Edit::delete(s, e - s), Edit::insert(p, block)])
+            Some(vec![
+                Edit::delete(BytePos(s), e - s),
+                Edit::insert(BytePos(p), block),
+            ])
         } else if p + 1 < s {
             // The unterminated last line moves up: cut it with the `\n` before it.
             block.push(b'\n');
-            Some(vec![Edit::insert(p, block), Edit::delete(s - 1, e - s + 1)])
+            Some(vec![
+                Edit::insert(BytePos(p), block),
+                Edit::delete(BytePos(s - 1), e - s + 1),
+            ])
         } else {
             None
         };
@@ -2421,7 +2442,7 @@ impl EditorState {
         let nlines = buf_lines.len();
         // Destination as a 0-based insert index in `0..=nlines` (Vim `:put N` = "after line N", `:0put` =
         // top; a bare `:put` = after the cursor's line).
-        let cursor_line = crate::pos::line_of(buf, self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(buf, self.view.cursor);
         let Some(ins) = addr.insert_index(cursor_line, nlines) else {
             return 0; // a relative address off the buffer inserts nothing
         };
@@ -2501,7 +2522,7 @@ impl EditorState {
             v
         };
         let nlines = buf_lines.len();
-        let cursor_line = crate::pos::line_of(buf, self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(buf, self.view.cursor);
         let Some(ins) = addr.insert_index(cursor_line, nlines) else {
             return 0; // a relative address off the buffer inserts nothing
         };
@@ -2549,7 +2570,7 @@ impl EditorState {
             return None;
         }
         let spans = line_spans(bytes);
-        let cursor_line = crate::pos::line_of(bytes, self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(bytes, self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
         let mut out = Vec::new();
         for &(s, e) in &spans[first..=last] {
@@ -2584,7 +2605,7 @@ impl EditorState {
             return 0;
         }
         let spans = line_spans(hay);
-        let cursor_line = crate::pos::line_of(buf, self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(buf, self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
         let last = last.min(nlines - 1);
         let first = first.min(last);
@@ -2623,7 +2644,7 @@ impl EditorState {
             .expect("a single edit is well-formed");
         let txn = Transaction::new(self.doc.revision(), list, self.origin)
             .with_hint(GroupHint::BreakBefore)
-            .with_cursor(last_start);
+            .with_cursor(BytePos(last_start));
         self.apply_txn(txn).expect("line filter applies cleanly");
         self.view.last_was_edit = true;
         let nb = self.doc.bytes();
@@ -2653,7 +2674,7 @@ impl EditorState {
             self.view.indent.tab_width = new_ts;
             return false;
         }
-        let cursor_line = crate::pos::line_of(&bytes, self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(&bytes, self.view.cursor);
         // The wanted column the cursor returns to, measured with the tabstop in force now (Vim computes
         // it when it is needed, so a `:set ts` since the last move counts).
         if self.view.curswant != range::MAXCOL {
@@ -2729,7 +2750,7 @@ impl EditorState {
             return Ok(0);
         }
         let spans = line_spans(hay);
-        let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
+        let cursor_line = crate::pos::raw::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = resolve_line_range(range, &spans, cursor_line);
         let last = last.min(lines.len() - 1);
         let first = first.min(last);
@@ -2752,9 +2773,9 @@ impl EditorState {
         // The comparable key for one line, honoring `/pattern/`, `r`, `i`, and `n`.
         let key_of = |line: &str| -> SortKey {
             let base: &str = match &compiled {
-                Some(re) => match re.find_at(line, 0) {
-                    Some(m) if opts.use_match => &line[m.start..m.end],
-                    Some(m) => &line[m.end..],
+                Some(re) => match re.find_at(line, BytePos(0)) {
+                    Some(m) if opts.use_match => &line[m.start.0..m.end.0],
+                    Some(m) => &line[m.end.0..],
                     None => "",
                 },
                 None => line,
@@ -2846,12 +2867,13 @@ impl EditorState {
         }
         let es: Vec<Edit> = edits
             .iter()
-            .map(|(s, e, t)| Edit::replace(s.0, e.0 - s.0, t.clone().into_bytes()))
+            .map(|(s, e, t)| Edit::replace(*s, e.0 - s.0, t.clone().into_bytes()))
             .collect();
         let Ok(list) = EditList::new(es) else {
             return false; // overlapping edits — refuse rather than corrupt the buffer
         };
-        let cursor = crate::anchor::map_byte(&list, self.view.cursor, crate::anchor::Bias::After);
+        let cursor =
+            crate::anchor::map_byte(&list, BytePos(self.view.cursor), crate::anchor::Bias::After).0;
         let txn =
             Transaction::new(self.doc.revision(), list, origin).with_hint(GroupHint::BreakBefore);
         if self.apply_txn(txn).is_err() {
@@ -3506,7 +3528,7 @@ fn undo_step(
 
 fn undo_target(st: &EditorState, placed: crate::undo_cursor::UndoCursor, mode: Mode) -> usize {
     let b = st.doc.bytes();
-    let ls = crate::pos::nth_line_start(b, placed.line);
+    let ls = crate::pos::raw::nth_line_start(b, placed.line);
     let le = line_end(b, ls);
     let at = match placed.col {
         Some(col) => snap(b, (ls + col).min(le)),
@@ -3585,7 +3607,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             );
             let txn = Transaction::new(st.doc.revision(), edits, st.origin)
                 .with_hint(hint)
-                .with_cursor(start);
+                .with_cursor(BytePos(start));
             // The plan built the edits from the current buffer, so apply cannot be stale or out of range.
             st.apply_txn(txn)
                 .expect("planned transaction applies cleanly");
@@ -3607,7 +3629,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
             );
             let txn = Transaction::new(st.doc.revision(), edits, st.origin)
                 .with_hint(hint)
-                .with_cursor(start);
+                .with_cursor(BytePos(start));
             st.apply_txn(txn)
                 .expect("planned transaction applies cleanly");
             if pop {
@@ -3685,7 +3707,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
                 );
                 let txn = Transaction::new(st.doc.revision(), edits, st.origin)
                     .with_hint(hint)
-                    .with_cursor(start);
+                    .with_cursor(BytePos(start));
                 st.apply_txn(txn)
                     .expect("planned transaction applies cleanly");
             }
@@ -3739,10 +3761,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // re-applied: nvim's `u_undoredo` and `changed_lines` (#1168).
     if let Some(m) = undo_marks {
         let b = st.doc.bytes();
-        st.view.change_start = Some(crate::pos::nth_line_start(b, m.start));
-        st.view.change_end = Some(crate::pos::nth_line_start(b, m.end));
-        if let Some(line) = m.last_change {
-            let pos = crate::pos::nth_line_start(b, line);
+        st.view.change_start = Some(crate::pos::raw::nth_line_start(b, m.start_line));
+        st.view.change_end = Some(crate::pos::raw::nth_line_start(b, m.end_line));
+        if let Some(line) = m.last_change_line {
+            let pos = crate::pos::raw::nth_line_start(b, line);
             st.view.push_change(b, pos, false);
         }
     }
@@ -3813,7 +3835,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         && !leaving_entry
         && entry_terminated
     {
-        st.view.cursor = motion::off_phantom(st.doc.bytes(), st.view.cursor);
+        st.view.cursor = motion::off_phantom_at(st.doc.bytes(), st.view.cursor);
     }
     // A yank/delete/change writes its captured span into the pending register (or unnamed when none),
     // mirroring the unnamed slot on a named write; append (`"A`) is handled inside the store. An Emacs kill
@@ -4262,7 +4284,7 @@ fn track_insert_start(
         st.view.insstart = Some(st.view.cursor);
         let ls = line_start(b, st.view.cursor);
         st.view.insstart_line = Some((
-            crate::pos::line_of(b, st.view.cursor),
+            crate::pos::raw::line_of(b, st.view.cursor),
             range::line_cells(b, ls, st.view.indent.tab_width),
         ));
         st.view.insert_jumped = false;

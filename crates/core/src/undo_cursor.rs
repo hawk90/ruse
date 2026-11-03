@@ -15,7 +15,8 @@
 //! those lines, any other edit covers every line it touches.
 
 use crate::edit::EditList;
-use crate::pos::{count_newlines, line_of, line_start};
+use crate::pos::count_newlines;
+use crate::pos::raw::{line_of, line_start};
 
 /// One Vim-style undo entry, in the coordinates of the text AFTER its list was applied.
 pub(crate) struct Entry {
@@ -115,11 +116,11 @@ pub struct UndoCursor {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct ChangeMarks {
     /// The `[` mark's line.
-    pub start: usize,
+    pub start_line: usize,
     /// The `]` mark's line.
-    pub end: usize,
+    pub end_line: usize,
     /// The `.` mark's line, or `None` when no entry changed a line.
-    pub last_change: Option<usize>,
+    pub last_change_line: Option<usize>,
 }
 
 /// Vim's `[`/`]`/`.` bookkeeping in `u_undoredo` over one group's `entries`, in the order they were
@@ -159,9 +160,9 @@ pub(crate) fn change_marks(
     let lines = lines_after.max(1) as isize;
     let line = |n: isize| (n.clamp(1, lines) - 1) as usize;
     ChangeMarks {
-        start: line(start),
-        end: line(end),
-        last_change: dot.map(line),
+        start_line: line(start),
+        end_line: line(end),
+        last_change_line: dot.map(line),
     }
 }
 
@@ -224,6 +225,7 @@ pub(crate) fn line_count(text: &[u8]) -> usize {
 mod tests {
     use super::*;
     use crate::edit::Edit;
+    use crate::pos::BytePos;
 
     fn run(old: &str, edits: Vec<Edit>) -> Vec<(usize, usize, usize)> {
         let list = EditList::new(edits).expect("disjoint");
@@ -236,15 +238,18 @@ mod tests {
     #[test]
     fn a_charwise_edit_covers_the_lines_it_touches() {
         // `x` on line 2: one line, changed.
-        assert_eq!(run("ab\ncd\nef", vec![Edit::delete(3, 1)]), [(1, 1, 0)]);
+        assert_eq!(
+            run("ab\ncd\nef", vec![Edit::delete(BytePos(3), 1)]),
+            [(1, 1, 0)]
+        );
         // Inserting `x\ny` mid-line 1 leaves two lines where there was one.
         assert_eq!(
-            run("ab\ncd", vec![Edit::insert(1, b"x\ny".to_vec())]),
+            run("ab\ncd", vec![Edit::insert(BytePos(1), b"x\ny".to_vec())]),
             [(0, 2, 0)]
         );
         // A join: two lines become one.
         assert_eq!(
-            run("ab\ncd", vec![Edit::replace(2, 1, b" ".to_vec())]),
+            run("ab\ncd", vec![Edit::replace(BytePos(2), 1, b" ".to_vec())]),
             [(0, 1, 0)]
         );
     }
@@ -252,17 +257,23 @@ mod tests {
     #[test]
     fn a_whole_line_edit_covers_only_those_lines() {
         // Deleting line 2 (`dd`): nothing is left in the entry, which sits under line 1.
-        assert_eq!(run("ab\ncd\nef", vec![Edit::delete(3, 3)]), [(1, 0, 0)]);
+        assert_eq!(
+            run("ab\ncd\nef", vec![Edit::delete(BytePos(3), 3)]),
+            [(1, 0, 0)]
+        );
         // Putting a line above line 1 (`P`).
         assert_eq!(
-            run("ab\ncd", vec![Edit::insert(0, b"xy\n".to_vec())]),
+            run("ab\ncd", vec![Edit::insert(BytePos(0), b"xy\n".to_vec())]),
             [(0, 1, 0)]
         );
         // Lines further down are numbered after the earlier edits of the same list.
         assert_eq!(
             run(
                 "ab\ncd\nef",
-                vec![Edit::insert(0, b"x\ny\n".to_vec()), Edit::delete(6, 1)]
+                vec![
+                    Edit::insert(BytePos(0), b"x\ny\n".to_vec()),
+                    Edit::delete(BytePos(6), 1)
+                ]
             ),
             [(0, 2, 0), (4, 1, 0)]
         );
@@ -272,7 +283,10 @@ mod tests {
     fn unchanged_leading_lines_are_skipped() {
         // Replacing two lines where the first stays the same: the change starts one line down.
         assert_eq!(
-            run("ab\ncd\nef", vec![Edit::replace(0, 5, b"ab\nXY".to_vec())]),
+            run(
+                "ab\ncd\nef",
+                vec![Edit::replace(BytePos(0), 5, b"ab\nXY".to_vec())]
+            ),
             [(0, 2, 1)]
         );
     }
@@ -299,14 +313,20 @@ mod tests {
     #[test]
     fn a_line_put_below_an_unterminated_last_line_is_an_entry_of_its_own() {
         // `dd` on the unterminated last line takes the newline before it: the entry is the line alone.
-        assert_eq!(run("ab\ncd", vec![Edit::delete(2, 3)]), [(1, 0, 0)]);
+        assert_eq!(
+            run("ab\ncd", vec![Edit::delete(BytePos(2), 3)]),
+            [(1, 0, 0)]
+        );
         // Undoing it puts the line back below line 1.
         assert_eq!(
-            run("ab", vec![Edit::insert(2, b"\ncd".to_vec())]),
+            run("ab", vec![Edit::insert(BytePos(2), b"\ncd".to_vec())]),
             [(1, 1, 0)]
         );
         // A charwise edit at the end of the text is not one: it changes the last line.
-        assert_eq!(run("ab", vec![Edit::insert(2, b"x".to_vec())]), [(0, 1, 0)]);
+        assert_eq!(
+            run("ab", vec![Edit::insert(BytePos(2), b"x".to_vec())]),
+            [(0, 1, 0)]
+        );
     }
 
     #[test]
@@ -317,10 +337,10 @@ mod tests {
             newsize,
             same: 0,
         };
-        let m = |start, end, last_change| ChangeMarks {
-            start,
-            end,
-            last_change,
+        let m = |start_line, end_line, last_change_line| ChangeMarks {
+            start_line,
+            end_line,
+            last_change_line,
         };
         // Undoing `dw` on line 2: `[`, `]` and `.` all on line 2.
         assert_eq!(change_marks(&[e(1, 1, 1)], 2, 2), m(1, 1, Some(1)));

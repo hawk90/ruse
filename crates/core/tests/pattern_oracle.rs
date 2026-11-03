@@ -55,9 +55,10 @@ fn check(case: &Case) -> Result<(), String> {
         ..RegexOptions::default()
     };
     let compiled = Regex::compile(case.pat, opts);
-    let got = compiled
-        .as_ref()
-        .map(|re| re.find_at(case.hay, 0).map(|m| (m.start, m.end)));
+    let got = compiled.as_ref().map(|re| {
+        re.find_at(case.hay, ruse_core::BytePos(0))
+            .map(|m| (m.start.0, m.end.0))
+    });
     match (case.expect, case.nvim, &got) {
         (Expect::Unsupported, _, Err(RegexError::Unsupported(_))) => Ok(()),
         (Expect::Unsupported, _, _) => Err(format!("expected Unsupported, got {got:?}")),

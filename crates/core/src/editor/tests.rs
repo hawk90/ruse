@@ -9070,7 +9070,7 @@ mod final_newline_slot_tests {
     #[test]
     fn info_and_completion_skip_the_phantom_line() {
         // `g CTRL-G` on the slot reads as the last line, not `Line 2 of 1`.
-        let info = crate::info::cursor_pos_info(b"abc\n", 4, 8);
+        let info = crate::info::cursor_pos_info(b"abc\n", BytePos(4), 8);
         assert!(info.contains("Line 1 of 1"), "{info}");
         // CTRL-X CTRL-L offers the real empty line but no candidate for the slot after the final newline.
         let (_, cands) = crate::motion::line_completions(b"x\n\ny\n", 0);

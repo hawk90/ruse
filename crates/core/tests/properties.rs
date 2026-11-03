@@ -133,14 +133,14 @@ fn edit_command() -> impl Strategy<Value = Command> {
 fn edit() -> impl Strategy<Value = Edit> {
     prop_oneof![
         (0usize..30, prop::collection::vec(any::<u8>(), 0..4))
-            .prop_map(|(p, b)| Edit::insert(p, b)),
-        (0usize..30, 0usize..8).prop_map(|(p, d)| Edit::delete(p, d)),
+            .prop_map(|(p, b)| Edit::insert(ruse_core::BytePos(p), b)),
+        (0usize..30, 0usize..8).prop_map(|(p, d)| Edit::delete(ruse_core::BytePos(p), d)),
         (
             0usize..30,
             0usize..8,
             prop::collection::vec(any::<u8>(), 0..4)
         )
-            .prop_map(|(p, d, b)| Edit::replace(p, d, b)),
+            .prop_map(|(p, d, b)| Edit::replace(ruse_core::BytePos(p), d, b)),
     ]
 }
 
@@ -245,7 +245,7 @@ proptest! {
             let es = list.edits();
             for w in es.windows(2) {
                 prop_assert!(
-                    w[0].end() <= w[1].pos.0,
+                    w[0].end().0 <= w[1].pos.0,
                     "edits overlap or are unsorted: {:?} then {:?}", w[0], w[1]
                 );
             }
@@ -354,7 +354,7 @@ fn lined() -> impl Strategy<Value = Vec<u8>> {
 /// An edit over a `lined()` buffer, inserting from the same alphabet.
 fn lined_edit() -> impl Strategy<Value = Edit> {
     let ins = prop::collection::vec(prop_oneof![Just(b'x'), Just(b'\n')], 0..4);
-    (0usize..42, 0usize..6, ins).prop_map(|(p, d, b)| Edit::replace(p, d, b))
+    (0usize..42, 0usize..6, ins).prop_map(|(p, d, b)| Edit::replace(ruse_core::BytePos(p), d, b))
 }
 
 /// The five ways an anchor can follow an edit.
@@ -403,11 +403,11 @@ proptest! {
             let map = LineMap::new(&old, doc.bytes(), &list);
             for w in &mut want {
                 match w.2 {
-                    Track::Byte(b) => w.1 = map_byte(&list, w.1, b),
-                    Track::Line(g) => match map.map(w.1, g) {
-                        Some(p) => w.1 = p,
+                    Track::Byte(b) => w.1 = map_byte(&list, ruse_core::BytePos(w.1), b).0,
+                    Track::Line(g) => match map.map(ruse_core::BytePos(w.1), g) {
+                        Some(p) => w.1 = p.0,
                         None => {
-                            w.1 = map.map(w.1, LineGravity::Keep).expect("Keep never drops");
+                            w.1 = map.map(ruse_core::BytePos(w.1), LineGravity::Keep).expect("Keep never drops").0;
                             w.3 = true;
                         }
                     },
@@ -434,9 +434,9 @@ proptest! {
         let Ok(list) = EditList::new(raw) else { return Ok(()); };
         let (a, b) = (a.min(b), a.max(b));
         for bias in [Bias::Before, Bias::After] {
-            prop_assert!(map_byte(&list, a, bias) <= map_byte(&list, b, bias));
+            prop_assert!(map_byte(&list, ruse_core::BytePos(a), bias) <= map_byte(&list, ruse_core::BytePos(b), bias));
         }
-        prop_assert!(map_byte(&list, a, Bias::Before) <= map_byte(&list, a, Bias::After));
+        prop_assert!(map_byte(&list, ruse_core::BytePos(a), Bias::Before) <= map_byte(&list, ruse_core::BytePos(a), Bias::After));
     }
 
     /// The line rule lands in the new text, on a char boundary, and a position on a line no edit
@@ -457,19 +457,19 @@ proptest! {
         }
         let utf8 = std::str::from_utf8(&new).is_ok();
         for g in [LineGravity::Drop, LineGravity::Keep, LineGravity::Cursor] {
-            if let Some(p) = map.map(o, g) {
+            if let Some(ruse_core::BytePos(p)) = map.map(ruse_core::BytePos(o), g) {
                 prop_assert!(p <= new.len());
                 // Edits of raw bytes can break UTF-8; on valid text the result is a char boundary.
                 prop_assert!(!utf8 || new.is_empty() || p == new.len() || (new[p] & 0xC0) != 0x80);
             }
         }
         // A line strictly between edits (no edit within a line of it) keeps its column.
-        let ls = ruse_core::pos::line_start(&init, o);
-        let le = ruse_core::pos::line_end(&init, o);
-        let near = list.edits().iter().any(|e| e.pos.0 <= le + 1 && e.end() + 1 >= ls);
+        let ls = ruse_core::pos::line_start(&init, ruse_core::BytePos(o)).0;
+        let le = ruse_core::pos::line_end(&init, ruse_core::BytePos(o)).0;
+        let near = list.edits().iter().any(|e| e.pos.0 <= le + 1 && e.end().0 + 1 >= ls);
         if !near && std::str::from_utf8(&init).is_ok() && std::str::from_utf8(&new).is_ok() {
-            let p = map.map(o, LineGravity::Drop).expect("an untouched line is not deleted");
-            prop_assert_eq!(p - ruse_core::pos::line_start(&new, p), o - ls);
+            let p = map.map(ruse_core::BytePos(o), LineGravity::Drop).expect("an untouched line is not deleted").0;
+            prop_assert_eq!(p - ruse_core::pos::line_start(&new, ruse_core::BytePos(p)).0, o - ls);
         }
     }
 }

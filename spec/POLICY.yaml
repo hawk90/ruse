@@ -14,6 +14,11 @@
 
 version: 1
 
+# The test that provides each evidence name already enforced in code (spec-validate checks the name is cited
+# and the file exists). Evidence names not listed here are still target state.
+evidence_tests:
+  no-usize-coords: crates/core/tests/no_usize_coords.rs   # RFC-0022 rule 5 source scan (INV-POS-TYPED)
+
 principles:
   ENG-TXN-001:
     title: Document mutations are transactional
@@ -40,7 +45,7 @@ principles:
       summary: Coordinates carry their unit; long-lived positions are anchors with affinity.
       evidence: [no-usize-coords, anchor-transform-property-test]
     antipattern: { summary: usize coordinates / raw-offset positions., refs: [TEXT-1, TEXT-2, TEXT-4] }
-    enforcement: [type-check, property-test]
+    enforcement: [type-check, property-test, source-scan]
 
   ENG-DOCVIEW-001:
     title: Document does not know View

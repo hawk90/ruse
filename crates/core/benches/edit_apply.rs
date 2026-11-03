@@ -29,7 +29,7 @@ fn bench_apply(c: &mut Criterion) {
                 |mut doc| {
                     let txn = Transaction::new(
                         doc.revision(),
-                        EditList::new(vec![Edit::insert(mid, b"x".to_vec())])
+                        EditList::new(vec![Edit::insert(ruse_core::BytePos(mid), b"x".to_vec())])
                             .expect("single insert is valid"),
                         TransactionOrigin::UserInput,
                     );
