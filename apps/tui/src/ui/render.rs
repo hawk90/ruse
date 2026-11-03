@@ -456,7 +456,7 @@ pub(crate) fn search_pattern(cmd: &Command) -> Option<String> {
 pub(crate) fn render(
     out: &mut io::Stdout,
     ws: &Workspace,
-    cmd_line: Option<(char, &str)>,
+    cmd_line: Option<(char, &str, Option<usize>)>,
     status: &str,
     spans: &[highlight::Span],
     virt_lines: &[highlight::VirtLine],
@@ -676,8 +676,14 @@ pub(crate) fn render(
         }
     }
 
-    let bar = match cmd_line {
-        Some((prefix, text)) => format!("{prefix}{text}"),
+    // The command line shows control chars as `^X` (a literal `<CR>` typed with `c_CTRL-V` is `^M`) and
+    // puts the terminal caret on its own caret, not at the end (F-026 line editor).
+    let cmd_shown = cmd_line.map(|(prefix, text, caret)| {
+        let (shown, col) = crate::input::display_with_caret(text, caret.unwrap_or(usize::MAX));
+        (format!("{prefix}{shown}"), col)
+    });
+    let bar = match &cmd_shown {
+        Some((shown, _)) => shown.clone(),
         None => {
             let mode = match focus.view.mode() {
                 Mode::Normal => "NORMAL",
@@ -733,8 +739,8 @@ pub(crate) fn render(
     flush_diff(out, &cur, prev, sync)?;
     *prev = cur;
 
-    if let Some((_, text)) = cmd_line {
-        let ccol = (text.chars().count() as u16 + 1).min(cols.saturating_sub(1));
+    if let Some((_, caret_col)) = cmd_shown {
+        let ccol = (u16::try_from(caret_col + 1).unwrap_or(u16::MAX)).min(cols.saturating_sub(1));
         queue!(
             out,
             cursor::MoveTo(ccol, rows.saturating_sub(1)),

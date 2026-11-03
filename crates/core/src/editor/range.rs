@@ -491,6 +491,11 @@ pub(crate) fn cluster_cells(b: &[u8], i: usize, le: usize, v: usize, ts: usize) 
         let ts = ts.max(1);
         return (i + 1, ts - v % ts);
     }
+    // An ASCII char not followed by a combining mark is one cell: skip the line-wide grapheme scan, which
+    // made walking a long line quadratic (the wanted column is measured after every command, #1090).
+    if b[i] < 0x80 && b.get(i + 1).is_none_or(|&n| n < 0x80 || i + 1 >= le) {
+        return (i + 1, 1);
+    }
     let j = motion::next_grapheme(b, i).clamp(i + 1, le.max(i + 1));
     let w = std::str::from_utf8(&b[i..j])
         .ok()

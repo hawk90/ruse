@@ -339,12 +339,18 @@ key-expectation tiers are still engine code ahead of the layer lookup; §Priorit
 **v0 Command-line mode (VIM-MODE-7)** (PRD F-026). The `:`/`/` line is owned by the engine (`input/cmdline.rs`).
 
 - **Command-line is a real input-mode**, the `Cmdline` value already listed in the Mode-axes table above — one
-  mode owner. It carries a *prompt* (`:` ex vs `/`/`?` search) and the line buffer. The caret field stays at the end of the
-  line until the line editor lands (#612).
+  mode owner. It carries a *prompt* (`:` ex vs `/`/`?` search), the line buffer and a caret (a char index).
 - **The engine routes it**, like Insert: a `Cmdline` branch turns keys into command-line edits; `<CR>` dispatches
-  the ex/search command; `<Esc>` and `C-c` abort, `C-h` deletes back, `C-j` runs the line, `C-u`/`C-w` delete
-  to the start / one word, and no other chord appends its letter (#599; the rest of the line editor is #612).
-  The frontend only renders the prompt + buffer + caret.
+  the ex/search command; `<Esc>` and `C-c` abort, `C-j` runs the line, and no unbound chord appends its letter
+  (#599). The line editor (`:help cmdline-editing`, #612) is the pure `CmdLine` in `input/cmdline.rs`:
+  `<Left>`/`<Right>`, `<Home>`/`<End>` = `C-b`/`C-e`, `<S-Left>`/`<C-Left>` and `<S-Right>`/`<C-Right>` (by
+  space-separated word), `<BS>`/`C-h` and `<Del>` around the caret (on an empty line they abandon it, #811),
+  `C-u`/`C-w` before the caret, `<Insert>` overstrike, `C-v`/`C-q` literal or numeric-code entry (`C-v <CR>`
+  types `^M`), `C-k` digraphs, and `C-r {reg}` / `C-r C-r {reg}` / `C-r C-o {reg}` / `C-r C-w` / `C-r C-a` /
+  `C-r C-l` (the frontend reads the register or buffer text and splices it at the caret). `<S-Up>`/`<S-Down>` and
+  `<PageUp>`/`<PageDown>` walk history unfiltered like `C-p`/`C-n`; `<Up>`/`<Down>` filter by the text before the
+  caret. The Emacs `M-x` minibuffer shares the editor with Emacs keys (`C-g` quits; `C-a`/`C-e`/`C-b`/`C-f`/`C-d`/
+  `C-k`). The frontend only renders the prompt + buffer (control chars as `^X`) + caret.
 - **Precedence** stays the fixed ladder (input-mode → key-expectation tier → base keys); `Cmdline` sits at
   the input-mode level beside Insert, so it is total and testable by the same no-leak property.
 
@@ -358,8 +364,9 @@ restores the typed draft. The ring + recall walk live in a pure, unit-tested `Cm
 in [buffer-arena-and-global-state.md](buffer-arena-and-global-state.md) slice 4, #947), and incsearch highlights
 through `apps/tui/src/highlight.rs` (it ignores `ignorecase`/`smartcase`, #824).
 
-**Deferred:** the full line editor and `C-r` register insertion (#612), `wildmenu`/`wildmode` completion (#613),
-and the full INPUT-RESOLVE timeout/priority machinery above.
+**Deferred:** `wildmenu`/`wildmode` completion (#613), `c_CTRL-R_CTRL-F`/`_CTRL-P` and `C-r =` on the `:` line,
+`c_CTRL-^`, the `'digraph'` `{char1} <BS> {char2}` form, and the full INPUT-RESOLVE timeout/priority machinery
+above.
 
 ### How a profile plugs in (INPUT-PROFILE)
 

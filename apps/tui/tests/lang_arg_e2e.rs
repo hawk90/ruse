@@ -47,6 +47,8 @@ fn step(engine: &mut InputEngine, st: &mut EditorState, key: KeyEvent) -> Feed {
             _ => {}
         },
         Feed::CmdlineInsertUnder { .. }
+        | Feed::CmdlineInsertLine
+        | Feed::CmdlineInsertRegister(_)
         | Feed::FilterMotion { .. }
         | Feed::FilterSpan(_)
         | Feed::CountCmdline { .. }

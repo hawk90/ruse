@@ -1603,7 +1603,11 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
                 let sp = if forward { next_boundary(&b2, c2) } else { c2 };
                 let mut out = b2[..sp].to_vec();
                 out.push(b'\n');
-                for _ in 0..count.max(1) {
+                // Bounded like every other put (`paste`'s `MAX_PASTE_BYTES`), so a hostile count cannot
+                // exhaust memory.
+                let reps =
+                    (count.max(1) as usize).min(((1 << 26) / reg.text().len().max(1)).max(1));
+                for _ in 0..reps {
                     out.extend_from_slice(reg.text());
                 }
                 out.extend_from_slice(&b2[sp..]);

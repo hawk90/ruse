@@ -3636,9 +3636,9 @@ mod tests {
         assert_eq!(parse_ex("references"), Ex::References);
         assert_eq!(parse_ex("refs"), Ex::References);
         assert_eq!(parse_ex("ref"), Ex::References);
-        // `:codeaction` / `:ca` (F-014 LSP code actions).
+        // `:codeaction` (F-014 LSP code actions); `:ca` is nvim's `:cabbrev`, not an alias (#609).
         assert_eq!(parse_ex("codeaction"), Ex::CodeAction);
-        assert_eq!(parse_ex("ca"), Ex::CodeAction);
+        assert!(matches!(parse_ex("ca"), Ex::Unknown(_)));
         // `:diagnostics` / `:diags` / `:diag` (F-014 diagnostics list); `:d` is still delete.
         assert_eq!(parse_ex("diagnostics"), Ex::Diagnostics);
         assert_eq!(parse_ex("diags"), Ex::Diagnostics);
@@ -4515,6 +4515,7 @@ mod state_machine_props {
                         || !e.activations.is_empty()
                         || e.insert.ctrl_g
                         || e.insert.ctrl_r
+                        || e.insert.keep_undo // `CTRL-G U` arms the next `<Left>`/`<Right>` (#1076)
                         || e.cmdline.is_some(); // an open command-line namespace is real pending state (F-026)
                     prop_assert!(has_state, "Feed::Pending but the engine is idle");
                 } else {
