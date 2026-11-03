@@ -1376,6 +1376,25 @@ fn single_char(s: &str) -> Option<char> {
     cs.next().is_none().then_some(c)
 }
 
+/// An empty pattern with no last search to borrow ([`reuse_last_search`]). `Display` is the status message
+/// Vim shows: `E476` for `:g` (`ex_global` reports it after `E35`), `E35` for `:sort`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum NoPreviousPattern {
+    /// `:g//` / `:v//`.
+    Global,
+    /// `:sort //`.
+    Sort,
+}
+
+impl std::fmt::Display for NoPreviousPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            NoPreviousPattern::Global => "E476: Invalid command",
+            NoPreviousPattern::Sort => "E35: No previous regular expression",
+        })
+    }
+}
+
 /// Fill an empty pattern from the last search pattern, as Vim does for every Ex command that takes one
 /// (#804): `:s//repl/`, `:g//cmd` / `:v//cmd`, `:sort //`, and the `:s//` inside `:g/pat/s//repl/`, which
 /// gets the `:g` pattern (Vim's `:g` makes its pattern the last search before it runs the command). A
@@ -1385,7 +1404,10 @@ fn single_char(s: &str) -> Option<char> {
 /// The status message when an empty pattern has nothing to borrow: `E476` for `:g` (Vim's `ex_global`
 /// reports it after `E35`), `E35` for `:sort`. An empty `:s` pattern is left for the regex compiler to
 /// refuse, as before.
-pub(crate) fn reuse_last_search(ex: &mut Ex, last_search: Option<&str>) -> Result<(), String> {
+pub(crate) fn reuse_last_search(
+    ex: &mut Ex,
+    last_search: Option<&str>,
+) -> Result<(), NoPreviousPattern> {
     match ex {
         Ex::Substitute(spec) => {
             if spec.pattern.is_empty() {
@@ -1396,9 +1418,7 @@ pub(crate) fn reuse_last_search(ex: &mut Ex, last_search: Option<&str>) -> Resul
         }
         Ex::Global(spec) => {
             if spec.pattern.is_empty() {
-                spec.pattern = last_search
-                    .ok_or_else(|| "E476: Invalid command".to_string())?
-                    .to_string();
+                spec.pattern = last_search.ok_or(NoPreviousPattern::Global)?.to_string();
             }
             if let GlobalPayload::Core(GlobalCmd::Substitute { pattern, .. }) = &mut spec.cmd {
                 if pattern.is_empty() {
@@ -1407,11 +1427,7 @@ pub(crate) fn reuse_last_search(ex: &mut Ex, last_search: Option<&str>) -> Resul
             }
         }
         Ex::Sort(_, opts) if opts.pattern.as_deref() == Some("") => {
-            opts.pattern = Some(
-                last_search
-                    .ok_or_else(|| "E35: No previous regular expression".to_string())?
-                    .to_string(),
-            );
+            opts.pattern = Some(last_search.ok_or(NoPreviousPattern::Sort)?.to_string());
         }
         _ => {}
     }
@@ -1489,7 +1505,7 @@ mod reuse_last_search_tests {
         ));
         let mut ex = parse_ex("g//d");
         assert_eq!(
-            reuse_last_search(&mut ex, None),
+            reuse_last_search(&mut ex, None).map_err(|e| e.to_string()),
             Err("E476: Invalid command".to_string())
         );
     }
@@ -1501,7 +1517,7 @@ mod reuse_last_search_tests {
         assert!(matches!(&ex, Ex::Sort(_, o) if o.pattern.as_deref() == Some("x")));
         let mut ex = parse_ex("sort //");
         assert_eq!(
-            reuse_last_search(&mut ex, None),
+            reuse_last_search(&mut ex, None).map_err(|e| e.to_string()),
             Err("E35: No previous regular expression".to_string())
         );
     }

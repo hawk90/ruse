@@ -2447,7 +2447,7 @@ impl Session {
             // before the command runs, so `:g/pat/s//X/` substitutes `pat` (Vim, #804).
             mut ex @ Ex::Global(_) => {
                 if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
-                    *status = msg;
+                    *status = msg.to_string();
                     return;
                 }
                 let Ex::Global(spec) = ex else {
@@ -2813,7 +2813,7 @@ impl Session {
             // `:[range]sort[!] [i][n][r][u] [/pattern/]` — sort the range's lines (whole file with no range).
             mut ex @ Ex::Sort(..) => {
                 if let Err(msg) = crate::input::reuse_last_search(&mut ex, engine.last_search()) {
-                    *status = msg;
+                    *status = msg.to_string();
                     return;
                 }
                 let Ex::Sort(range, spec) = ex else {
