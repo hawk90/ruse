@@ -22,11 +22,26 @@ pub enum Eol {
 }
 
 /// The original on-disk shape to restore on save.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct FileFormat {
     pub eol: Eol,
     /// A leading UTF-8 BOM (`EF BB BF`) was present and must be re-emitted.
     pub bom: bool,
+    /// Vim's `'endofline'` (#1107): a write ends the last line with a newline. Set when the file was
+    /// missing, empty, or ended in one; clear only for a file opened without one, which ruse keeps that way
+    /// (byte-preserve, as nvim with `'nofixeol'`). So a new or emptied-and-retyped buffer saves as `a\n`.
+    pub final_newline: bool,
+}
+
+/// A new buffer: LF, no BOM, and `'endofline'` set, as in Vim.
+impl Default for FileFormat {
+    fn default() -> Self {
+        FileFormat {
+            eol: Eol::Lf,
+            bom: false,
+            final_newline: true,
+        }
+    }
 }
 
 const BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
@@ -47,7 +62,12 @@ impl FileFormat {
         } else {
             Eol::Lf
         };
-        FileFormat { eol, bom }
+        let final_newline = body.is_empty() || body.ends_with(b"\n");
+        FileFormat {
+            eol,
+            bom,
+            final_newline,
+        }
     }
 
     /// Normalise raw file bytes into clean editor bytes: drop the BOM, fold `\r\n` → `\n`. The
@@ -160,14 +180,25 @@ mod tests {
     #[test]
     fn empty_file_is_lf_no_bom() {
         let fmt = FileFormat::detect(b"");
-        assert_eq!(
-            fmt,
-            FileFormat {
-                eol: Eol::Lf,
-                bom: false
-            }
-        );
+        assert_eq!(fmt, FileFormat::default());
         assert_eq!(fmt.to_disk(b""), b"");
+    }
+
+    /// #1107: `'endofline'` follows the file as read; a missing, empty or BOM-only file has it.
+    #[test]
+    fn final_newline_follows_the_file() {
+        for (raw, want) in [
+            (&b""[..], true),
+            (b"\xEF\xBB\xBF", true),
+            (b"a\n", true),
+            (b"a\r\n", true),
+            (b"a", false),
+            (b"a\nb", false),
+            (b"a\r", false),
+        ] {
+            assert_eq!(FileFormat::detect(raw).final_newline, want, "{raw:?}");
+        }
+        assert!(FileFormat::default().final_newline);
     }
 
     /// #860: `:r` text is cleaned by its own format, so the target buffer's save adds exactly one `\r`.

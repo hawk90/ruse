@@ -15,7 +15,8 @@ fn insert_then_write_then_quit() {
     let file = dir.file("f.txt", b"orig\n");
     let mut ed = Editor::start(&dir, &[&file]);
     ed.keys(&format!("inew {ESC}:w\r"));
-    assert_eq!(std::fs::read(&file).unwrap(), b"new orig\n");
+    // #1110: the editor keeps running, so poll the file instead of reading it once.
+    assert_eq!(support::wait_for_file(&file, b"new orig\n"), b"new orig\n");
     assert!(ed.is_running());
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
@@ -28,7 +29,8 @@ fn wq_creates_a_missing_file() {
     let mut ed = Editor::start(&dir, &[&file]);
     ed.keys(&format!("ihello{ESC}:wq\r"));
     assert_eq!(ed.exit_status(), 0);
-    assert!(std::fs::read(&file).unwrap().starts_with(b"hello"));
+    // #1107: a new buffer has `'endofline'`, so it saves with a final newline, as in nvim.
+    assert_eq!(std::fs::read(&file).unwrap(), b"hello\n");
 }
 
 #[test]
@@ -395,13 +397,26 @@ fn signal_journals_every_modified_buffer() {
 }
 
 /// #1085: an emptied buffer saves as an empty file (nvim v0.12.6 writes 0 bytes for `ggdG:w`, its
-/// `ML_EMPTY` buffer), while one empty line saves as `\n`. Text typed into an emptied buffer is not pinned
-/// here: nvim then writes a final newline (`ia` gives `a\n`, `o` gives `\n\n`), ruse does not yet (#1085).
+/// `ML_EMPTY` buffer), while one empty line saves as `\n`. #1107: text typed into it keeps the file's
+/// `'endofline'`, so `ia` gives `a\n`, as in nvim. Not pinned: `o` there gives `\n` where nvim writes
+/// `\n\n`, because the bytes `\n` cannot tell one empty line from an emptied buffer plus `o`.
 #[test]
 fn an_emptied_buffer_saves_like_nvim() {
     assert_eq!(edit_and_save(b"a\nb\n", "ggdG"), b"");
     assert_eq!(edit_and_save(b"a\n", "S"), b"\n");
     assert_eq!(edit_and_save(b"a", "dd"), b"");
+    assert_eq!(edit_and_save(b"a\nb\n", "ggdGia"), b"a\n");
+    assert_eq!(edit_and_save(b"", "ihello"), b"hello\n");
+}
+
+/// #1107: a file opened without a final newline keeps it missing (F-008 byte-preserve), as nvim does with
+/// `'nofixeol'`: `ob` gives `a\nb`, and emptied and retyped it still has none. `:set fixeol` adds it.
+#[test]
+fn a_file_without_a_final_newline_keeps_it_missing() {
+    assert_eq!(edit_and_save(b"a", "ob"), b"a\nb");
+    assert_eq!(edit_and_save(b"a", "ddix"), b"x");
+    assert_eq!(edit_and_save(b"a\nb", "ggdGia"), b"a");
+    assert_eq!(edit_and_save(b"a", ":set fixeol\r"), b"a\n");
 }
 
 /// The command line shows a `c_CTRL-V` literal `<CR>` as `^M` and puts the terminal caret on its own caret

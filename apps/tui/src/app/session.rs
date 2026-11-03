@@ -1582,6 +1582,16 @@ impl Session {
                 KeyCode::Char('v') => {
                     crate::folds::open_cursor_fold(fv, cur_line);
                 }
+                // A `z` command nvim has but ruse lacks (`zh`, `zs`, `zx`, spelling, …) stays a no-op; one
+                // nvim lacks too beeps there (`nv_zet` → `clearopbeep`), stopping a macro or `:normal`
+                // (#1111).
+                KeyCode::Char(c)
+                    if key.modifiers.is_empty()
+                        && !"abcdefghijklmnoprstuvwxyzACDEFGHLMNOPRWX0123456789+-.^="
+                            .contains(c) =>
+                {
+                    ws.beep();
+                }
                 _ => {}
             }
             return;
@@ -2019,6 +2029,20 @@ impl Session {
                 });
             }
             Feed::Pending | Feed::Ignored => {}
+            // An unknown key (#1111): record the failure, so a macro or `:normal` stops here.
+            Feed::Beep { clear_register } => {
+                if clear_register {
+                    run_cmd(
+                        Command::SetRegister(None),
+                        ws,
+                        files,
+                        recorded,
+                        status,
+                        quit,
+                    );
+                }
+                ws.beep();
+            }
             Feed::Cmd(cmd) => self.run_resolved_cmd(cmd, frame),
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.

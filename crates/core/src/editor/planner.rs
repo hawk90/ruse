@@ -1258,9 +1258,11 @@ fn failed_motion(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Optio
     if op && visual {
         return None;
     }
-    // A failed word object leaves the cursor where Vim's scan stopped (`daw` on blanks: their end).
-    if op {
-        if let Some(at) = crate::textobj::word_object_fails(b, cur, m, count) {
+    // A failed word object leaves the cursor where Vim's scan stopped (`daw` on blanks: their end). In
+    // Visual the anchor stays, so the selection reaches there (`vaw` on a blank line, #1111).
+    if op || visual {
+        let anchor = visual.then(|| st.view.anchor.unwrap_or(cur));
+        if let Some(at) = crate::textobj::word_object_fails(b, cur, anchor, m, count) {
             let at = motion::off_phantom(b, at);
             let (ls, le) = (line_start(b, at), line_end(b, at));
             let at = if at >= le && le > ls {
@@ -1975,7 +1977,9 @@ fn plan_join(
         le = line_end(b, del_start + del_len); // end of the next line to join (original coords)
     }
     if edits.is_empty() {
-        return nop(cur, mode);
+        // No line below to join: Vim's `nv_join` beeps on the last line, stopping a macro or a `:normal`
+        // (#1111). A count past the end joins what is there instead.
+        return beep(cur, mode);
     }
     edit(
         EditList::new(edits).expect("join seams are disjoint and ordered"),
@@ -2546,7 +2550,8 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let le = line_end(b, cur);
             let (end, reached) = advance_graphemes(b, cur, *count, le);
             if !reached {
-                nop(cur, st.view.mode)
+                // Vim beeps (`nv_replace`), so a macro or `:normal` stops here (#1111).
+                beep(cur, st.view.mode)
             } else if *c == '\n' {
                 // `{count}r<CR>`: replace the count chars with a SINGLE line break (Vim splits the line),
                 // leaving the cursor on the first char of the new line — never `count` newlines.
@@ -3382,6 +3387,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::RepeatSubstituteGlobal => nop(cur, st.view.mode),
         // `&` — resolved in the frontend (current-line, flagless repeat); a no-op in the pure core.
         Command::RepeatSubstituteLine => nop(cur, st.view.mode),
+        // Nothing to undo or redo: Vim's `u_doit` beeps ("Already at oldest change"), which stops a macro
+        // replay or a `:normal` (#1111).
+        Command::Undo if !st.doc.can_undo() => beep(cur, st.view.mode),
+        Command::Redo if !st.doc.can_redo() => beep(cur, st.view.mode),
         Command::Undo => Plan {
             action: Action::Undo,
             cursor: cur,

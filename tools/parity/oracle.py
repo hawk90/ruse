@@ -2581,6 +2581,37 @@ FIXTURES: list[dict] = [
     {"name": "nl_vput_count_linewise", "lines": ["foo", "bar"], "keys": "yyjV2p"},
     {"name": "nl_vput_count_P", "lines": ["foo bar"], "keys": "yiwwviw3P"},
     {"name": "nl_vput_count_line_reg_over_chars", "lines": ["foo", "bar baz"], "keys": "yyjwviw2p"},
+    #     SILENT FAILURES (#1111): `u` with nothing to undo, `J` on the last line, `r` past the line end and
+    #     an unknown key beep and abort a macro or a `:normal`. The undo fixtures clear the undo entry the
+    #     harness's `nvim_buf_set_lines` makes, so nvim starts with no history, as ruse does. `x` on an empty
+    #     line and `<Esc>` in Normal do not fail.
+    {"name": "nl_fail_u_nothing_normal", "lines": ["abc", "def"], "keys": ":normal ujx<CR>",
+     "setup": 'set ul=-1 | exe "normal! a \\<BS>\\<Esc>" | set ul=1000'},
+    {"name": "nl_mac_u_nothing_aborts", "lines": ["ujx", "abc", "def"], "keys": "\"ay$j@a",
+     "setup": 'set ul=-1 | exe "normal! a \\<BS>\\<Esc>" | set ul=1000'},
+    {"name": "nl_fail_u_count_stops", "lines": ["abc"], "keys": "x:normal 2uiy<CR>",
+     "setup": 'set ul=-1 | exe "normal! a \\<BS>\\<Esc>" | set ul=1000'},
+    {"name": "nl_fail_J_last_line_normal", "lines": ["ab"], "keys": ":normal Jx<CR>"},
+    {"name": "nl_mac_J_last_line_aborts", "lines": ["Jx", "ab"], "keys": "\"ay$j@a"},
+    {"name": "nl_J_count_past_end_clamps", "lines": ["ab", "cd"], "keys": ":normal 3Jx<CR>"},
+    {"name": "nl_fail_gJ_last_line_normal", "lines": ["ab"], "keys": ":normal gJx<CR>"},
+    {"name": "nl_fail_vJ_one_last_line", "lines": ["ab"], "keys": ":normal VJx<CR>"},
+    {"name": "nl_fail_r_past_end_normal", "lines": ["ab"], "keys": ":normal 3rzx<CR>"},
+    {"name": "nl_mac_r_past_end_aborts", "lines": ["3rzx", "ab"], "keys": "\"ay$j@a"},
+    {"name": "nl_x_empty_line_goes_on", "lines": ["", "ab"], "keys": ":normal xjx<CR>"},
+    {"name": "nl_esc_in_normal_goes_on", "lines": ["ab", "cd"], "keys": ":let @a=\"\\<Esc>jx\"<CR>@a"},
+    {"name": "nl_op_esc_goes_on", "lines": ["ab", "cd"], "keys": ":let @a=\"d\\<Esc>jx\"<CR>@a"},
+    {"name": "nl_fail_unknown_Z_normal", "lines": ["ab", "cd"], "keys": ":normal Zqjx<CR>"},
+    {"name": "nl_fail_unknown_g_normal", "lines": ["ab", "cd"], "keys": ":normal gKjx<CR>"},
+    {"name": "nl_fail_unknown_z_normal", "lines": ["ab", "cd"], "keys": ":normal zZjx<CR>"},
+    {"name": "nl_fail_unknown_after_count", "lines": ["ab", "cd"], "keys": ":normal 3Zqjx<CR>"},
+    {"name": "nl_fail_unknown_after_register", "lines": ["ab", "cd"], "keys": ":normal \"aZqjx<CR>"},
+    {"name": "nl_fail_unknown_in_visual", "lines": ["ab", "cd"], "keys": ":normal vZqjx<CR>"},
+    {"name": "nl_fail_unknown_motion_cancels_op", "lines": ["ab", "cd"], "keys": ":normal dZjx<CR>"},
+    {"name": "nl_mac_unknown_key_aborts", "lines": ["Zqx", "ab"], "keys": "\"ay$j@a"},
+    {"name": "nl_vaw_blank_line", "lines": ["   "], "keys": "vawd"},
+    {"name": "nl_vaw_blank_line_mid", "lines": ["   "], "keys": "lvawd"},
+    {"name": "nl_vaw_blank_line_then_word", "lines": ["   ", "ab"], "keys": "vawd"},
     #     COMMAND-LINE EDITOR (#612, #811): the caret moves and edits mid-line; `c_CTRL-V` types a literal key;
     #     `<BS>`/`<Del>` on an empty line abandon it. Each line's effect shows in the buffer.
     {"name": "cl_left_then_type", "lines": ["abc"], "keys": ":normal ib<Left>a<CR>"},

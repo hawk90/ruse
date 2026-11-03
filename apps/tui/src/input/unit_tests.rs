@@ -90,7 +90,12 @@ mod tests {
         assert_eq!(feed("ygM"), Feed::Cmd(Command::Yank(50, Motion::MidLine)));
         // `gm` (screen-line middle) is DEFERRED — it needs the window width, which the engine lacks — so it
         // aborts as operator-pending rather than aliasing `gM` (see the GSecond note).
-        assert_eq!(feed("gm"), Feed::Ignored);
+        assert_eq!(
+            feed("gm"),
+            Feed::Beep {
+                clear_register: false
+            }
+        );
     }
 
     #[test]
@@ -1093,7 +1098,12 @@ mod tests {
             })
         );
         // An unwired bracket command aborts cleanly.
-        assert_eq!(feed("]x"), Feed::Ignored);
+        assert_eq!(
+            feed("]x"),
+            Feed::Beep {
+                clear_register: false
+            }
+        );
     }
 
     #[test]
@@ -3068,7 +3078,12 @@ mod tests {
         // re-arm — so the following motion is a bare move.
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('>'), Mode::Normal), Feed::Pending);
-        assert_eq!(e.feed(k('<'), Mode::Normal), Feed::Ignored);
+        assert_eq!(
+            e.feed(k('<'), Mode::Normal),
+            Feed::Beep {
+                clear_register: false
+            }
+        );
         assert_eq!(
             e.feed(k('j'), Mode::Normal),
             Feed::Cmd(Command::Move(1, Motion::Down))
@@ -3112,7 +3127,12 @@ mod tests {
     fn lone_g_is_pending_then_cancels_on_non_g() {
         let mut e = InputEngine::new();
         assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
-        assert_eq!(e.feed(k('z'), Mode::Normal), Feed::Ignored);
+        assert_eq!(
+            e.feed(k('z'), Mode::Normal),
+            Feed::Beep {
+                clear_register: false
+            }
+        );
     }
 
     #[test]
@@ -3735,7 +3755,12 @@ mod dot_repeat_tests {
     #[test]
     fn dot_with_no_prior_change_is_a_clean_noop() {
         let mut e = InputEngine::new();
-        assert_eq!(e.feed(k('.'), Mode::Normal), Feed::Ignored);
+        assert_eq!(
+            e.feed(k('.'), Mode::Normal),
+            Feed::Beep {
+                clear_register: false
+            }
+        );
         assert!(e.last_change.is_none());
     }
 
@@ -3848,7 +3873,12 @@ mod dot_repeat_tests {
         e.feed(k('y'), Mode::Normal);
         e.feed(k('w'), Mode::Normal);
         assert!(e.last_change.is_none());
-        assert_eq!(e.feed(k('.'), Mode::Normal), Feed::Ignored);
+        assert_eq!(
+            e.feed(k('.'), Mode::Normal),
+            Feed::Beep {
+                clear_register: false
+            }
+        );
     }
 
     #[test]
@@ -4071,7 +4101,12 @@ mod search_tests {
     #[test]
     fn slash_opens_search_and_n_repeats() {
         let mut e = InputEngine::new();
-        assert_eq!(e.feed(k('n'), Mode::Normal), Feed::Ignored); // no prior search yet
+        assert_eq!(
+            e.feed(k('n'), Mode::Normal),
+            Feed::Beep {
+                clear_register: false
+            }
+        ); // no prior search yet
         assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
         // Submitting the pattern yields a bare-move Search AND records it for `n`/`N`.
         assert_eq!(

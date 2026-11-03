@@ -18,14 +18,14 @@ const KITTY_FLAGS: u8 = 3;
 /// The sequences to PUSH on enter, in application order. Popped in reverse by [`exit`].
 ///
 /// Order: keyboard encoding first (so the very next keypress is already disambiguated), then the
-/// screen modes. Kitty uses the stack form `CSI > <flags> u` (paired with `CSI < u` on exit);
-/// xterm modifyOtherKeys has no stack, so it is reset explicitly on exit.
+/// screen modes. Kitty uses the stack form `CSI > <flags> u` (paired with `CSI < u` on exit).
+/// xterm modifyOtherKeys (`CSI > 4 ; 2 m`) is never pushed (#772): the input parser (crossterm) cannot
+/// decode its `CSI 27 ; mods ; code ~` keys and drops them, so asking for it loses every Ctrl chord.
 pub fn enter(ledger: &Ledger) -> Vec<u8> {
     let mut out = Vec::new();
     match ledger.key_encoding() {
         KeyEncoding::Kitty => out.extend_from_slice(format!("\x1b[>{KITTY_FLAGS}u").as_bytes()),
-        KeyEncoding::Xterm => out.extend_from_slice(b"\x1b[>4;2m"),
-        KeyEncoding::Legacy => {}
+        KeyEncoding::Xterm | KeyEncoding::Legacy => {}
     }
     if ledger.enabled(Capability::BracketedPaste) {
         out.extend_from_slice(b"\x1b[?2004h");
@@ -57,8 +57,7 @@ pub fn exit(ledger: &Ledger) -> Vec<u8> {
     }
     match ledger.key_encoding() {
         KeyEncoding::Kitty => out.extend_from_slice(b"\x1b[<u"), // pop the pushed flags
-        KeyEncoding::Xterm => out.extend_from_slice(b"\x1b[>4;0m"), // reset modifyOtherKeys
-        KeyEncoding::Legacy => {}
+        KeyEncoding::Xterm | KeyEncoding::Legacy => {}           // nothing was pushed
     }
     out
 }
@@ -95,6 +94,19 @@ mod tests {
         );
         assert_eq!(enter(&l), b"\x1b[>3u");
         assert_eq!(exit(&l), b"\x1b[<u");
+    }
+
+    #[test]
+    fn modify_other_keys_is_never_requested() {
+        // #772: `CSI > 4 ; 2 m` makes the terminal send `CSI 27 ; 5 ; 117 ~` for C-u, which the input
+        // parser drops. Even a ledger that believes in it pushes and pops nothing.
+        let mut l = Ledger::with_defaults();
+        l.set_override(
+            Capability::KeyEncoding,
+            CapValue::Encoding(KeyEncoding::Xterm),
+        );
+        assert!(enter(&l).is_empty());
+        assert!(exit(&l).is_empty());
     }
 
     #[test]

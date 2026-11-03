@@ -128,7 +128,6 @@ mod tests {
         (ledger, fenced)
     }
 
-    const XTERM_ENTER: &[u8] = b"\x1b[>4;2m\x1b[?2004h";
     const PASTE_ONLY: &[u8] = b"\x1b[?2004h";
 
     #[test]
@@ -140,19 +139,19 @@ mod tests {
             ("linux", "", KeyEncoding::Legacy, false, b""),
             ("ansi", "", KeyEncoding::Legacy, false, b""),
             ("vt100", "", KeyEncoding::Legacy, false, b""),
-            ("xterm", "", KeyEncoding::Xterm, true, XTERM_ENTER),
-            ("xterm-256color", "", KeyEncoding::Xterm, true, XTERM_ENTER),
+            ("xterm", "", KeyEncoding::Legacy, true, PASTE_ONLY),
+            ("xterm-256color", "", KeyEncoding::Legacy, true, PASTE_ONLY),
             ("screen", "", KeyEncoding::Legacy, true, PASTE_ONLY),
-            ("screen-256color", "", KeyEncoding::Xterm, true, XTERM_ENTER),
+            ("screen-256color", "", KeyEncoding::Legacy, true, PASTE_ONLY),
             ("tmux", "", KeyEncoding::Legacy, true, PASTE_ONLY),
-            ("tmux-256color", "", KeyEncoding::Xterm, true, XTERM_ENTER),
+            ("tmux-256color", "", KeyEncoding::Legacy, true, PASTE_ONLY),
             ("rxvt-unicode", "", KeyEncoding::Legacy, false, b""),
             (
                 "rxvt-unicode-256color",
                 "",
-                KeyEncoding::Xterm,
+                KeyEncoding::Legacy,
                 true,
-                XTERM_ENTER,
+                PASTE_ONLY,
             ),
             (
                 "xterm-kitty",
@@ -166,9 +165,9 @@ mod tests {
             (
                 "xterm-256color",
                 "truecolor",
-                KeyEncoding::Xterm,
+                KeyEncoding::Legacy,
                 true,
-                XTERM_ENTER,
+                PASTE_ONLY,
             ),
             ("dumb", "truecolor", KeyEncoding::Legacy, false, b""),
             ("linux", "24bit", KeyEncoding::Legacy, false, b""),
@@ -230,7 +229,8 @@ mod tests {
         );
         assert!(fenced);
         assert!(!l.enabled(Capability::BracketedPaste));
-        assert_eq!(caps::sequences::enter(&l), b"\x1b[>4;2m");
+        // Nothing left to push: modifyOtherKeys is never requested (#772).
+        assert!(caps::sequences::enter(&l).is_empty());
     }
 
     #[test]

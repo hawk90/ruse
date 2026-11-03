@@ -33,11 +33,13 @@ pub(crate) fn with_ff(fmt: FileFormat, opts: FileOpts) -> FileFormat {
     }
 }
 
-/// The buffer text to write (with the final newline `:set fixeol` adds) and its on-disk bytes.
+/// The buffer text to write (with the final newline `'endofline'` or `:set fixeol` adds) and its on-disk
+/// bytes.
 pub(crate) fn encode(text: &[u8], fmt: FileFormat, fixeol: bool) -> (Vec<u8>, Vec<u8>) {
     let mut source = text.to_vec();
-    // `:set fixeol` (opt-in) ADDS a trailing `\n` before `to_disk`, so a CRLF file gets `\r\n`.
-    if fixeol && !source.is_empty() && source.last() != Some(&b'\n') {
+    // The newline is added before `to_disk`, so a CRLF file gets `\r\n`. A file opened without a final
+    // newline keeps it missing unless `:set fixeol` (#1107).
+    if (fixeol || fmt.final_newline) && !source.is_empty() && source.last() != Some(&b'\n') {
         source.push(b'\n');
     }
     let disk = fmt.to_disk(&source);

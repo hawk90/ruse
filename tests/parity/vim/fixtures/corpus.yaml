@@ -63568,6 +63568,667 @@
       }
     },
     {
+      "name": "nl_fail_u_nothing_normal",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": ":normal ujx<CR>",
+      "setup": "set ul=-1 | exe \"normal! a \\<BS>\\<Esc>\" | set ul=1000",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_mac_u_nothing_aborts",
+      "lines": [
+        "ujx",
+        "abc",
+        "def"
+      ],
+      "keys": "\"ay$j@a",
+      "setup": "set ul=-1 | exe \"normal! a \\<BS>\\<Esc>\" | set ul=1000",
+      "expect": {
+        "text": [
+          "ujx",
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ujx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "nl_fail_u_count_stops",
+      "lines": [
+        "abc"
+      ],
+      "keys": "x:normal 2uiy<CR>",
+      "setup": "set ul=-1 | exe \"normal! a \\<BS>\\<Esc>\" | set ul=1000",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_J_last_line_normal",
+      "lines": [
+        "ab"
+      ],
+      "keys": ":normal Jx<CR>",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_mac_J_last_line_aborts",
+      "lines": [
+        "Jx",
+        "ab"
+      ],
+      "keys": "\"ay$j@a",
+      "expect": {
+        "text": [
+          "Jx",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Jx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "nl_J_count_past_end_clamps",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal 3Jx<CR>",
+      "expect": {
+        "text": [
+          "abcd"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": " ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_gJ_last_line_normal",
+      "lines": [
+        "ab"
+      ],
+      "keys": ":normal gJx<CR>",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_vJ_one_last_line",
+      "lines": [
+        "ab"
+      ],
+      "keys": ":normal VJx<CR>",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_r_past_end_normal",
+      "lines": [
+        "ab"
+      ],
+      "keys": ":normal 3rzx<CR>",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_mac_r_past_end_aborts",
+      "lines": [
+        "3rzx",
+        "ab"
+      ],
+      "keys": "\"ay$j@a",
+      "expect": {
+        "text": [
+          "3rzx",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "3rzx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "nl_x_empty_line_goes_on",
+      "lines": [
+        "",
+        "ab"
+      ],
+      "keys": ":normal xjx<CR>",
+      "expect": {
+        "text": [
+          "",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_esc_in_normal_goes_on",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":let @a=\"\\<Esc>jx\"<CR>@a",
+      "expect": {
+        "text": [
+          "ab",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "nl_op_esc_goes_on",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":let @a=\"d\\<Esc>jx\"<CR>@a",
+      "expect": {
+        "text": [
+          "ab",
+          "d"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "nl_fail_unknown_Z_normal",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal Zqjx<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_unknown_g_normal",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal gKjx<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_unknown_z_normal",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal zZjx<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_unknown_after_count",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal 3Zqjx<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_unknown_after_register",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal \"aZqjx<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_unknown_in_visual",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal vZqjx<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_fail_unknown_motion_cancels_op",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": ":normal dZjx<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nl_mac_unknown_key_aborts",
+      "lines": [
+        "Zqx",
+        "ab"
+      ],
+      "keys": "\"ay$j@a",
+      "expect": {
+        "text": [
+          "Zqx",
+          "ab"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "Zqx",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "nl_vaw_blank_line",
+      "lines": [
+        "   "
+      ],
+      "keys": "vawd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "   ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "nl_vaw_blank_line_mid",
+      "lines": [
+        "   "
+      ],
+      "keys": "lvawd",
+      "expect": {
+        "text": [
+          " "
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "nl_vaw_blank_line_then_word",
+      "lines": [
+        "   ",
+        "ab"
+      ],
+      "keys": "vawd",
+      "expect": {
+        "text": [
+          ""
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "   \nab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "cl_left_then_type",
       "lines": [
         "abc"

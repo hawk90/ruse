@@ -100,8 +100,8 @@ fn edit_variants() {
     ed.keys(":e new.txt\r");
     assert!(ed.screen_bytes().contains("\"new.txt\" [New]"));
     ed.keys(&format!("ihello{ESC}:w\r"));
-    // ruse keeps a missing final newline unless `:set fixeol` (nvim adds one).
-    assert_eq!(read(&dir, "new.txt"), "hello");
+    // A new file has 'endofline', so it gets a final newline, as in nvim (#1107).
+    assert_eq!(read(&dir, "new.txt"), "hello\n");
     ed.keys(":q\r");
     assert_eq!(ed.exit_status(), 0);
 }
@@ -132,12 +132,16 @@ fn unnamed_buffer_takes_the_name_it_is_written_to() {
     ed.keys(":w out.txt\r");
     assert_eq!(
         read(&dir, "out.txt"),
-        "hi",
-        "no final newline without fixeol"
+        "hi\n",
+        "a new buffer has 'endofline', as in nvim (#1107)"
     );
     ed.keys("x:w\r:q\r");
     assert_eq!(ed.exit_status(), 0);
-    assert_eq!(read(&dir, "out.txt"), "h", ":w now writes the adopted file");
+    assert_eq!(
+        read(&dir, "out.txt"),
+        "h\n",
+        ":w now writes the adopted file"
+    );
 }
 
 /// `:e ++ff=dos` reads CRLF line endings off a file whose bare `\n` would otherwise make it LF, and the

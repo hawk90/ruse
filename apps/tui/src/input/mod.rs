@@ -125,6 +125,10 @@ pub enum Feed {
     Pending,
     /// Nothing bound.
     Ignored,
+    /// Nothing bound, and Vim beeps (`nv_error`): the frontend records the failure, so the rest of a macro
+    /// or a `:normal` is not run (#1111). `clear_register` abandons a `"x` prefix already handed to the
+    /// core, as [`Feed::Ignored`]'s caller does with `Command::SetRegister(None)`.
+    Beep { clear_register: bool },
 }
 
 /// The command-line completion keys (`:help cmdline-completion`).
@@ -1333,10 +1337,12 @@ impl InputEngine {
     /// An abort also abandons a `"x` prefix already handed to the core (`"b<Esc>p` pastes the UNNAMED
     /// register in nvim): clear the core's pending register in place of the bare `Ignored`.
     fn drop_aborted_register(&self, had_register: bool, feed: Feed) -> Feed {
-        if had_register && feed == Feed::Ignored {
-            Feed::Cmd(Command::SetRegister(None))
-        } else {
-            feed
+        match feed {
+            Feed::Ignored if had_register => Feed::Cmd(Command::SetRegister(None)),
+            Feed::Beep { .. } => Feed::Beep {
+                clear_register: had_register,
+            },
+            feed => feed,
         }
     }
 
@@ -1365,7 +1371,29 @@ impl InputEngine {
             }
             UnmatchedKey::Ignore | UnmatchedKey::Abort => {
                 self.reset();
-                Feed::Ignored
+                // An unknown key in Normal, Visual or after an operator beeps in Vim (`nv_error` →
+                // `clearopbeep`), which flushes the keys not typed. `<Esc>` beeps without flushing
+                // (`nv_esc`), and a bare modifier or lock key is no key at all (#1111). An unbound chord
+                // stays a plain no-op: several are nvim commands ruse resolves elsewhere or lacks (Visual
+                // `<C-d>` scrolls in nvim), and failing them would stop a macro nvim runs on.
+                let no_key = is_chord(key)
+                    || matches!(
+                        key.code,
+                        KeyCode::Esc
+                            | KeyCode::Modifier(_)
+                            | KeyCode::Null
+                            | KeyCode::CapsLock
+                            | KeyCode::NumLock
+                            | KeyCode::ScrollLock
+                            | KeyCode::Media(_)
+                    );
+                if no_key {
+                    Feed::Ignored
+                } else {
+                    Feed::Beep {
+                        clear_register: false,
+                    }
+                }
             }
             UnmatchedKey::ReplaceSelection => {
                 self.reset();
@@ -1890,6 +1918,19 @@ impl InputEngine {
     fn action(&mut self, cmd: Command) -> Feed {
         self.reset();
         Feed::Cmd(cmd)
+    }
+
+    /// `{count}u` / `{count}<C-r>`: the command `count` times, so the step past the oldest (newest) change
+    /// fails and stops a macro or `:normal`, as Vim's `u_doit` loop does (#1111). Capped: nvim keeps at
+    /// most `'undolevels'` (1000) steps, so a hostile count cannot allocate without bound.
+    fn counted(&mut self, cmd: Command) -> Feed {
+        let n = self.mcount().min(10_000) as usize;
+        self.reset();
+        if n == 1 {
+            Feed::Cmd(cmd)
+        } else {
+            Feed::Replay(vec![cmd; n])
+        }
     }
 
     /// `gh`/`gH`/`g CTRL-H`: enter Visual of `kind` then switch it to Select, so the anchor is set as for
@@ -3093,7 +3134,7 @@ impl InputEngine {
             // `CTRL-O` / `CTRL-I` walk the jumplist back / forward; `CTRL-R` redoes. Normal only.
             'o' if !op && selection.is_none() => self.action(Command::GotoOlderJump),
             'i' if !op && selection.is_none() => self.action(Command::GotoNewerJump),
-            'r' if !op && selection.is_none() => self.action(Command::Redo),
+            'r' if !op && selection.is_none() => self.counted(Command::Redo),
             _ => {
                 let ns = if op {
                     Ns::OperatorPending
@@ -3560,7 +3601,7 @@ impl InputEngine {
             // that the session's macro layer leaves a `q` to an armed operator, #679). Only the doubling key
             // passes the operator-pending guard, so an armed operator here IS `gq` / `gw`.
             KeyCode::Char('q' | 'w') if self.normal.op.is_some() => self.op_linewise(),
-            KeyCode::Char('u') => self.action(Command::Undo),
+            KeyCode::Char('u') => self.counted(Command::Undo),
             // `U` — undo the latest changes on the last changed line (a count does nothing).
             KeyCode::Char('U') => self.action(Command::LineUndo),
             KeyCode::Tab => self.action(Command::GotoNewerJump),

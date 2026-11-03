@@ -53,6 +53,19 @@ impl Drop for Scratch {
     }
 }
 
+/// Read `path` until it holds `want` or a bounded deadline passes, then return what it holds. On a loaded CI
+/// runner a write can land after the editor's output went quiet, so a single read right after `:w` races.
+pub fn wait_for_file(path: &Path, want: &[u8]) -> Vec<u8> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let on_disk = std::fs::read(path).unwrap_or_default();
+        if on_disk == want || Instant::now() >= deadline {
+            return on_disk;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// The real binary, running on a PTY.
 pub struct Editor {
     master: File,

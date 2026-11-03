@@ -46,6 +46,11 @@ timeout regime). Push/pop-on-exit (was TERM-KBD-2) is the set/reset LIFECYCLE of
 separate fact. F-010 derives all four from `nvim.keyenc.*`; the negotiation is fenced by DA1 exactly
 as `CSI ? u` `CSI c` in `tui_query_kitty_keyboard`.
 
+`nvim.keyenc.xterm` gap (#772): nvim asks for modifyOtherKeys (`CSI > 4 ; 2 m`) under xterm and tmux and
+decodes the `CSI 27 ; mods ; code ~` keys it gets back; ruse's input parser (crossterm 0.29) cannot, so ruse
+never asks and stays on the legacy encoding there (tmux 3.8 with `extended-keys on` then sends `C-u` as
+`0x15`). The `CSI code ; mods u` form is decoded whenever it arrives.
+
 **⚠️ TERMIN-2/3/4**: disambiguate `Ctrl+I`/Tab, `Ctrl+M`/Enter, `Ctrl+[`/Esc; report release/repeat. This
 enables ruse's rich profile bindings (architecture §1) without the legacy timeout footgun. Always
 pop/reset flags on exit (guards a common real-world corruption bug).

@@ -37,5 +37,5 @@ items:
   attestation:
   - S
   status: targeted
-  note: F-010 TERM-KBD-3 — xterm modifyOtherKeys (XTMODKEYS) legacy encoding
+  note: F-010 TERM-KBD-3 — xterm modifyOtherKeys (XTMODKEYS); not requested until the input parser decodes its `CSI 27;mods;code~` keys (#772), so xterm and tmux stay on the legacy encoding
   family: FAM-TERMINAL-CAPABILITY

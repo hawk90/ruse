@@ -90,7 +90,7 @@ fn insert_cursor_key_restarts_the_dot_record() {
 
 /// #605: `ZZ` is `:x` and `ZQ` is `:q!` — the same Ex quit policy, so window-close vs exit and the
 /// E37/E162 refusals live in one place. A shifted `Z` (how some terminals deliver it) works too, and
-/// any other second key aborts without leaving the engine armed.
+/// any other second key fails without leaving the engine armed.
 #[test]
 fn zz_and_zq_run_the_ex_quit_policy() {
     let mut e = InputEngine::new();
@@ -104,7 +104,13 @@ fn zz_and_zq_run_the_ex_quit_policy() {
     assert_eq!(e.feed(shifted('Z'), normal), Feed::Pending);
     assert_eq!(e.feed(shifted('Q'), normal), Feed::ExecuteEx("q!".into()));
     assert_eq!(e.feed(key(KeyCode::Char('Z')), normal), Feed::Pending);
-    assert_eq!(e.feed(key(KeyCode::Char('x')), normal), Feed::Ignored);
+    // `Zx` is no command: nvim beeps, which stops a macro (#1111).
+    assert_eq!(
+        e.feed(key(KeyCode::Char('x')), normal),
+        Feed::Beep {
+            clear_register: false
+        }
+    );
     assert_eq!(
         e.feed(key(KeyCode::Char('x')), normal),
         Feed::Cmd(Command::DeleteUnder(1)),

@@ -26,6 +26,11 @@ benches:
     line_of_end/10000: "61 us"
     line_of_end/100000: "623 us"
     nth_line_start_last/100000: "2.13 ms"
+  long_line:                        # #1109 two 1 MB Hangul lines: one screen-column walk per command (was
+                                    # quadratic: one `j` did not finish in minutes). Recorded 2026-11-03.
+    long_line/dollar: "330 us"
+    long_line/j_k_at_end: "35 ms"
+    long_line/visual_block_yank: "69 ms"
 
   # apps/tui
   highlight_parse:                  # #2 syntax cost — full reparse vs incremental+viewport (F-015 #3)

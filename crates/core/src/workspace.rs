@@ -181,6 +181,12 @@ impl Workspace {
         std::mem::take(&mut self.beeped)
     }
 
+    /// Record a failure the frontend found itself (an unknown key, Vim's `nv_error`), so it flushes the
+    /// untyped keys as for a failed command (#1111).
+    pub fn beep(&mut self) {
+        self.beeped = true;
+    }
+
     /// Install the OS-clipboard provider backing `"+`/`"*` (`:help quoteplus`). The frontend calls this once
     /// at startup with a real shell-out provider; tests inject an in-memory double. Without it the workspace
     /// keeps the [`NoClipboard`] default, so `"+p` is a graceful no-op and `"+y` silently drops.

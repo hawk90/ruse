@@ -434,11 +434,11 @@ fn noeol_marker(buf: &[u8]) -> &'static str {
     }
 }
 
-/// Whether `save` should append a final `\n` to the buffer before writing: only under `:set fixeol` (OFF by
-/// default — byte-preserve stays the honest default), and only when the buffer is non-empty and lacks one.
-/// Mirrors Vim's `fixendofline` opt-in; an empty buffer is left empty (Vim writes no newline into one).
-fn needs_final_newline(buf: &[u8], fixeol: bool) -> bool {
-    fixeol && !buf.is_empty() && buf.last() != Some(&b'\n')
+/// Whether `save` should append a final `\n` to the buffer before writing: only when `add` (the buffer's
+/// `'endofline'` or `:set fixeol`; a file opened without a final newline has neither by default), and only
+/// when the buffer is non-empty and lacks one. An empty buffer is left empty (Vim writes no newline into one).
+fn needs_final_newline(buf: &[u8], add: bool) -> bool {
+    add && !buf.is_empty() && buf.last() != Some(&b'\n')
 }
 
 /// Returns whether the focused buffer reached disk.
@@ -454,7 +454,8 @@ pub(crate) fn save(ws: &mut Workspace, files: &Files, status: &mut String, fixeo
     // e.g. a CRLF file gets `\r\n`. Default (byte-preserve) leaves the bytes untouched.
     let doc_bytes = ws.focused().doc.bytes();
     let mut source = doc_bytes.to_vec();
-    if needs_final_newline(&source, fixeol) {
+    // A buffer with `'endofline'` (a new file, or one read with a final newline) always gets it (#1107).
+    if needs_final_newline(&source, fixeol || bf.fmt.final_newline) {
         source.push(b'\n');
     }
     // Restore the original encoding/line-endings (F-008 #2), then write durably (fsync + rename, #1).

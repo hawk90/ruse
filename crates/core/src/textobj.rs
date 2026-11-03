@@ -1126,9 +1126,16 @@ fn object(
     }
 }
 
-/// Where a failed word object (`aw`/`iw`/`aW`/`iW` under an operator) leaves the cursor, or `None` when it
-/// does not fail (#1089).
-pub(crate) fn word_object_fails(b: &[u8], cursor: usize, m: Motion, count: u32) -> Option<usize> {
+/// Where a failed word object (`aw`/`iw`/`aW`/`iW` under an operator, or in Visual with the anchor
+/// `visual`) leaves the cursor, or `None` when it does not fail (#1089). In Visual the selection then
+/// reaches that spot, as Vim keeps the moved cursor: `vaw` on a blank line selects to its end (#1111).
+pub(crate) fn word_object_fails(
+    b: &[u8],
+    cursor: usize,
+    visual: Option<usize>,
+    m: Motion,
+    count: u32,
+) -> Option<usize> {
     let (include, big) = match m {
         Motion::InnerWord => (false, false),
         Motion::AWord => (true, false),
@@ -1138,7 +1145,8 @@ pub(crate) fn word_object_fails(b: &[u8], cursor: usize, m: Motion, count: u32) 
     };
     let buf = Buf::new(b);
     let cur = cursor.min(b.len()).min(buf.last);
-    current_word_at(&buf, cur, None, count, include, big).err()
+    let visual = visual.map(|v| v.min(buf.last));
+    current_word_at(&buf, cur, visual, count, include, big).err()
 }
 
 /// Whether `m` is one of the objects this module computes.

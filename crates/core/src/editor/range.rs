@@ -496,7 +496,7 @@ pub(crate) fn cluster_cells(b: &[u8], i: usize, le: usize, v: usize, ts: usize) 
     if b[i] < 0x80 && b.get(i + 1).is_none_or(|&n| n < 0x80 || i + 1 >= le) {
         return (i + 1, 1);
     }
-    let j = motion::next_grapheme(b, i).clamp(i + 1, le.max(i + 1));
+    let j = grapheme_end(b, i, le);
     let w = std::str::from_utf8(&b[i..j])
         .ok()
         .and_then(|s| s.chars().next())
@@ -504,6 +504,40 @@ pub(crate) fn cluster_cells(b: &[u8], i: usize, le: usize, v: usize, ts: usize) 
         .unwrap_or(1)
         .max(1);
     (j, w)
+}
+
+/// The end of the grapheme cluster that starts at the cluster boundary `i` of a line ending at `le`.
+/// Segments a small window after `i`, doubled until the cluster ends inside it, so the cost is the
+/// cluster's length, not the line's: [`motion::next_grapheme`] re-validates and re-segments the whole line
+/// on every call, which made walking a long non-ASCII line quadratic (#1109). A window cut inside a
+/// character is trimmed to the last whole one; bytes that are not UTF-8 are one cluster each, like the
+/// char-boundary fallback.
+fn grapheme_end(b: &[u8], i: usize, le: usize) -> usize {
+    use unicode_segmentation::GraphemeCursor;
+    let le = le.min(b.len()).max(i + 1);
+    let mut window = 8; // two 4-byte characters: most clusters end inside it
+    loop {
+        let end = (i + window).min(le);
+        // The window's valid prefix, and whether no more text can join a cluster at its end: the window
+        // reached the line end, or an invalid byte (not just a character cut by the window) follows.
+        let (s, last) = match std::str::from_utf8(&b[i..end]) {
+            Ok(s) => (s, end == le),
+            Err(e) => {
+                let s = std::str::from_utf8(&b[i..i + e.valid_up_to()]).unwrap_or_default();
+                (s, end == le || e.error_len().is_some())
+            }
+        };
+        if s.is_empty() {
+            return motion::next_boundary(b, i).clamp(i + 1, le);
+        }
+        let mut gc = GraphemeCursor::new(0, s.len(), true);
+        match gc.next_boundary(s, 0) {
+            // A boundary inside the window is final; one at its end only when nothing can follow.
+            Ok(Some(rel)) if rel < s.len() || last => return i + rel,
+            _ if last => return i + s.len(),
+            _ => window *= 2,
+        }
+    }
 }
 
 /// The virtual columns `[start, end]` (inclusive) the cluster at `pos` covers on its line; at the line end
@@ -831,4 +865,42 @@ pub(crate) fn advance_graphemes(b: &[u8], from: usize, count: u32, limit: usize)
         end = nb;
     }
     (end, true)
+}
+
+#[cfg(test)]
+mod grapheme_end_tests {
+    use super::*;
+
+    /// #1109: the windowed segmentation agrees with whole-line segmentation on every cluster, including
+    /// clusters longer than the first window and flag pairs that need the text before them.
+    #[test]
+    fn windowed_clusters_match_whole_line_segmentation() {
+        let zwj_family = "👨\u{200d}👩\u{200d}👧\u{200d}👦".repeat(3); // > 64 bytes, joined
+        let marks = format!("a{}", "\u{301}".repeat(40)); // one base and 40 combining marks: 81 bytes
+        for line in [
+            "가나다 abc",
+            "e\u{301}x\u{301}\u{302}",
+            "🇰🇷🇯🇵🇺🇸x",
+            zwj_family.as_str(),
+            marks.as_str(),
+            "\t한\tx",
+        ] {
+            let b = format!("{line}\nnext").into_bytes();
+            let le = line.len();
+            let mut i = 0;
+            while i < le {
+                let want = motion::next_grapheme(&b, i).clamp(i + 1, le);
+                assert_eq!(grapheme_end(&b, i, le), want, "{line:?} at {i}");
+                i = want;
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_bytes_are_one_cluster_each() {
+        let b = b"\xffa\xfe\n";
+        assert_eq!(grapheme_end(b, 0, 3), 1);
+        assert_eq!(grapheme_end(b, 1, 3), 2);
+        assert_eq!(grapheme_end(b, 2, 3), 3);
+    }
 }

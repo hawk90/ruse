@@ -36,3 +36,7 @@ harness = false
 [[bench]]
 name = "line_math"
 harness = false
+
+[[bench]]
+name = "long_line"
+harness = false

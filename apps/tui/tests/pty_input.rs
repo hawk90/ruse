@@ -126,6 +126,46 @@ fn kitty_alt_key_is_esc_then_the_key() {
     );
 }
 
+/// #772: modifyOtherKeys (`CSI > 4 ; 2 m`) is never requested, under xterm or tmux, because its Ctrl keys
+/// (`CSI 27 ; 5 ; 117 ~`, which tmux 3.8 sends with `extended-keys on`) cannot be decoded.
+#[test]
+fn modify_other_keys_is_never_requested() {
+    for term in ["TERM=xterm-256color", "TERM=tmux-256color", "TERM=xterm"] {
+        let dir = Scratch::new();
+        dir.file("f.txt", b"abc\n");
+        let mut ed = Editor::start_env(&dir, &[Path::new("f.txt")], &[term]);
+        ed.raw_chunks(&[b":q\r"]);
+        assert_eq!(ed.exit_status(), 0, "{term}");
+        ed.settle();
+        assert!(!ed.screen_bytes().contains("\u{1b}[>4;"), "{term}");
+    }
+}
+
+/// Ctrl keys in the `CSI code ; mods u` form (kitty, or tmux with `extended-keys-format csi-u`) decode on
+/// the command line and in Insert mode: `C-u` clears the line, `C-w` deletes a word.
+#[test]
+fn csi_u_ctrl_keys_decode_without_the_kitty_push() {
+    assert_eq!(vim(b"x\n", &[b":abc", b"\x1b[117;5u", b"s/x/y/\r"]), b"y\n");
+    assert_eq!(
+        vim(b"x\n", &[b"ione two", b"\x1b[119;5u", b"Z", b"\x1b"]),
+        b"one Zx\n"
+    );
+}
+
+/// The xterm form `CSI 27 ; mods ; code ~` cannot be decoded and is dropped, but only that key: the next
+/// keys still arrive (TUX-2, no input breakage after a keyboard-protocol failure).
+#[test]
+fn an_undecodable_modify_other_keys_key_drops_only_itself() {
+    assert_eq!(
+        vim(b"x\n", &[b":abc", b"\x1b[27;5;117~", b"\x15s/x/y/\r"]),
+        b"y\n"
+    );
+    assert_eq!(
+        vim(b"x\n", &[b"ione", b"\x1b[27;5;119~", b"Z", b"\x1b"]),
+        b"oneZx\n"
+    );
+}
+
 /// A bracketed paste of `body`, as one byte string.
 fn paste(body: &[u8]) -> Vec<u8> {
     [&b"\x1b[200~"[..], body, b"\x1b[201~"].concat()
