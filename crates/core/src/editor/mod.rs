@@ -593,12 +593,6 @@ impl View {
         self.pending_register
     }
 
-    /// The view's registers (read-only).
-    #[must_use]
-    pub fn registers(&self) -> &RegisterStore {
-        &self.registers
-    }
-
     /// Place the cursor at byte offset `pos` (the frontend uses this to follow a `:s///c` match; the
     /// caller passes an on-boundary offset). View-local; does not touch the document.
     pub fn set_cursor(&mut self, pos: usize) {
@@ -896,6 +890,12 @@ fn prepare_selection_op(st: &mut EditorState, cmd: &Command) {
 /// `"0` survives intervening deletes (Vim `:help quote0`).
 enum RegWrite {
     Edit(Register),
+    /// An `Edit` over a motion that always uses `"1` (`d%`, `d}`, `d/pat` — nvim's `use_reg_one`), so even a
+    /// span within one line shifts the numbered ring (#749). [`apply_command`] promotes `Edit` to it.
+    EditRingOne(Register),
+    /// The text a Visual put (`v_p`) replaced: deleted into the unnamed register and the delete rings, never
+    /// into the register being put (`viw"ap` leaves `"a` as it was, #707).
+    Replaced(Register),
     /// A yank: the captured [`Register`] plus the `(start, end)` byte span (half-open) it was taken from,
     /// used to set the `[`/`]` change marks — a yank leaves the buffer unchanged, so the span cannot be
     /// recovered from an [`EditList`] the way an edit's affected range can.
@@ -967,6 +967,13 @@ impl EditorState {
     #[must_use]
     pub(crate) fn into_parts(self) -> (Document, View) {
         (self.doc, self.view)
+    }
+
+    /// Exchange this context's register store with `store`. The [`crate::workspace::Workspace`] owns the
+    /// one editor-global store (D-057 slice 2, #944) and lends it into the focused view for one command, so a
+    /// View at rest in the arena holds an empty store and a yank reaches every buffer and split.
+    pub(crate) fn swap_registers(&mut self, store: &mut RegisterStore) {
+        std::mem::swap(&mut self.view.registers, store);
     }
 
     /// Set the indentation config the shift operators (`>>`/`<<`) use. Runtime config loading is deferred;
@@ -2686,6 +2693,12 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     st.view.last_was_kill = false;
     match plan.set_register {
         Some(RegWrite::Edit(reg)) => st.view.registers.delete(st.view.pending_register, reg),
+        Some(RegWrite::EditRingOne(reg)) => {
+            st.view
+                .registers
+                .delete_ring(st.view.pending_register, reg, true);
+        }
+        Some(RegWrite::Replaced(reg)) => st.view.registers.delete(None, reg),
         Some(RegWrite::Yank(reg, _)) => st.view.registers.yank(st.view.pending_register, reg),
         Some(RegWrite::KillAppend(reg)) => {
             if was_kill {
@@ -2804,7 +2817,15 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         let b = st.doc.bytes();
         col_of(b, line_start(b, entry_cursor), entry_cursor)
     };
-    let p = plan(st, cmd);
+    let mut p = plan(st, cmd);
+    if uses_reg_one(cmd) {
+        if let Some(RegWrite::Edit(reg)) = p.set_register.take() {
+            p.set_register = Some(RegWrite::EditRingOne(reg));
+        }
+    }
+    if let Some(refused) = refuse_unwritable_register(st, &p) {
+        p = refused;
+    }
     let effects = commit(st, p);
     track_insert_start(st, cmd, entry_mode, entry_cursor, entry_rev, entry_col);
     // Opening a line drops the line `U` would restore (nvim's `open_line`). After `o`/`O` the first typed
@@ -2849,6 +2870,62 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     }
     update_curswant(st, cmd, entry_mode);
     effects
+}
+
+/// Whether `cmd` deletes or changes over a motion that always fills `"1` (nvim's `use_reg_one`: `%`, `(`,
+/// `)`, `{`, `}`, `` ` ``, `/`, `?`, `n`, `N`, `*`, `#`), even within one line (#749).
+fn uses_reg_one(cmd: &Command) -> bool {
+    use crate::command::{MarkOp, SearchOp};
+    let search_op = |op: &SearchOp| matches!(op, SearchOp::Delete | SearchOp::Change);
+    match cmd {
+        Command::Delete(_, m) | Command::Change(_, m) => matches!(
+            m,
+            Motion::MatchBracket
+                | Motion::ParagraphFwd
+                | Motion::ParagraphBack
+                | Motion::SentenceFwd
+                | Motion::SentenceBack
+        ),
+        Command::OpToMark { op, .. } => matches!(op, MarkOp::Delete | MarkOp::Change),
+        Command::Search { op, .. } | Command::SearchWordUnder { op, .. } => search_op(op),
+        _ => false,
+    }
+}
+
+/// A yank, delete or change naming a register it cannot write (`"/dd`, `":yy`, `"%cw` — the read-only
+/// registers, #1022) fails as nvim's `op_delete`/`op_yank` do: nothing is captured or deleted, the cursor
+/// goes to the start of the text the operator covered, a selection ends, and a change still enters Insert
+/// there. `None` when the plan writes no register or may write the one named.
+fn refuse_unwritable_register(st: &EditorState, p: &Plan) -> Option<Plan> {
+    let start = match p.set_register.as_ref()? {
+        RegWrite::Yank(_, (s, _)) => *s,
+        RegWrite::Edit(_) | RegWrite::EditRingOne(_) => match &p.action {
+            Action::Txn { edits, .. } => edits.edits().first().map_or(p.cursor, |e| e.pos.0),
+            _ => p.cursor,
+        },
+        RegWrite::Replaced(_)
+        | RegWrite::KillAppend(_)
+        | RegWrite::KillPrepend(_)
+        | RegWrite::Write(_) => return None,
+    };
+    if RegisterStore::is_writable(st.view.pending_register) {
+        return None;
+    }
+    let mode = if p.mode == Mode::Insert {
+        Mode::Insert
+    } else {
+        Mode::Normal
+    };
+    Some(Plan {
+        action: Action::Nop,
+        cursor: start.min(st.doc.bytes().len()),
+        mode,
+        is_edit: false,
+        effects: vec![Effect::Beep],
+        set_register: None,
+        set_anchor: None,
+        set_mark: None,
+    })
 }
 
 /// Maintain Vim's `Insstart` column ([`View::insert_col`]) after a command: set at Insert entry; inside

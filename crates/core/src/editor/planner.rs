@@ -1697,7 +1697,9 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
     while q > 0 && (b[b.len() - q] & 0xC0) == 0x80 {
         q -= 1;
     }
-    let set_register = swap.then_some(RegWrite::Edit(deleted));
+    // The replaced text goes to the unnamed register, not the one being put (nvim deletes with no register
+    // named, #707).
+    let set_register = swap.then_some(RegWrite::Replaced(deleted));
     if b3 == b {
         return Plan {
             set_register,

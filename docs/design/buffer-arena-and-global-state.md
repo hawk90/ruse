@@ -251,7 +251,10 @@ Do not re-litigate; the `Workspace` is the single owner.
 2. **Slice 2 — register store to the Workspace (the ownership move).**
    Move `RegisterStore` off `View`; extend `from_parts`/`into_parts` + the ~20 swap-trick ops to lend the
    global store; give the oracle a test constructor. Fixes the split-clone register-divergence bug. This is
-   the reviewable core of D-057.
+   the reviewable core of D-057. **Landed (#944)** in a narrower form: the `Workspace` owns the store and the
+   swap-trick lends it into the swapped-out `View` (`Workspace::lend`/`reclaim`), so `from_parts`/`into_parts`
+   and the oracle's `EditorState` path are unchanged; a View at rest holds an empty store. Scope taken: one
+   store per workspace (Vim), which answers the register-scope open question.
 3. **Slice 3 — uppercase/global marks + cross-buffer jumplist.**
    Add the Workspace `NamedMap` for `mA`-`mZ` as `(DocumentId, Anchor)`; convert jumplist entries to
    `(DocumentId, Anchor)`; wire `` `A ``/`:marks` merge; frontend `focus_buffer`-then-place. Optionally

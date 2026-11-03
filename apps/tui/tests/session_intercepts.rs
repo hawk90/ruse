@@ -672,3 +672,15 @@ fn a_failed_motion_ends_a_recursive_macro() {
     // Keys typed after the failure still run: only the replay is flushed.
     assert_eq!(run("abc\n", "$wx").text(), "ab\n");
 }
+
+#[test]
+fn registers_are_shared_by_buffers_and_splits() {
+    // Vim registers are global (#944, nvim v0.12.6): a yank in one split pastes in the other, a yank in one
+    // buffer pastes in a new one, and a macro recorded in one buffer replays in the next.
+    assert_eq!(
+        run("one\ntwo\n", ":split<CR>yy<C-w>wjp").text(),
+        "one\ntwo\none\n"
+    );
+    assert_eq!(run("one\ntwo\n", "yy:enew<CR>p").text(), "\none");
+    assert_eq!(run("one\n", "qaA!<Esc>q:enew<CR>@a").text(), "!");
+}

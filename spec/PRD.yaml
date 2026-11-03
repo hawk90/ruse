@@ -252,7 +252,8 @@ features:
     # NOW IMPLEMENTED (register.rs; unit-tested — census-tracing/formal acceptance is a follow-up): the
     # numbered ring `"1`-`"9`, small-delete `"-`, and black-hole `"_` registers, plus `:registers`/`:reg`
     # (F-026 command engine + a picker). Also implemented: expression `"=` (crates/core/src/expr.rs) and
-    # clipboard `"+`/`"*` (crates/core/src/clipboard.rs); open register bugs include #708, #749, #796 and #816.
+    # clipboard `"+`/`"*` (crates/core/src/clipboard.rs); open register bugs include #708 and #796 (#749, #816
+    # and #1022 fixed: ring rules, "1p. walking the ring, read-only and unknown names).
     # Visual `p`/`P` shapes the put by the selection and register kinds, as nvim does (#704).
     # MACROS (q record / @ replay) ship per D-055, with open bugs #787 and #812: recording
     # captures RAW KEYSTROKES and stores them as bytes in these same a-z registers, replayed by re-feeding the
@@ -1053,6 +1054,9 @@ features:
       add buffer Disposition (Listed/Unlisted/Hidden) + BufferKind (Ordinary/Scratch/NoFile/Interactive). This
       is the cross-buffer layer over the existing F-007 arena; it unblocks global marks, buffer/file pickers,
       an editable q:, the "# register, and the "other buffers" completion source (D-057).
+    # done (#944, D-057 slice 2): the register store is Workspace-owned, so a yank reaches every buffer and
+    # split (core unit tests in workspace.rs). "# reads the alternate file name (#1022). Marks, the cross-buffer
+    # jumplist, buffer disposition/kind and q: remain.
     trace:
       # Census-N/A (like F-007, D-043): this is ruse WORKSPACE ARCHITECTURE (C-WORKSPACE/C-VIEW ownership +
       # C-POSHIST/C-REGISTER scope) — "where editor-global state is owned" is an INV-DOC-VIEW/INV-NO-GLOBAL-STATE

@@ -3834,6 +3834,12 @@ fn sync_special_registers(
         engine.last_inserted_text(),
         file,
     );
+    // `"#` is the alternate buffer's file name, shown the same way (#1022).
+    let alternate = ws
+        .alternate()
+        .and_then(|id| files.get(&id))
+        .map(|bf| bf.path.display().to_string());
+    ws.set_alternate_register(alternate);
 }
 
 /// Dispatch the key after a `C-w` prefix (F-007 MVP window commands): `w`/`C-w` focus next, `s` split

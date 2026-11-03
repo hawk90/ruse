@@ -230,9 +230,9 @@ fn put_error(cmd: &Command, ws: &mut Workspace) -> Option<String> {
     let name = ws.focused().view.pending_register();
     // A register written with nothing (`qaq`) puts nothing without an error (#1091); the read-only
     // registers are synced from frontend state, so only their text says whether they hold anything.
-    let reg = ws.focused().view.registers().get(name);
+    let reg = ws.registers().get(name);
     let holds = match name {
-        Some(':' | '/' | '.' | '%') => !reg.is_empty(),
+        Some(':' | '/' | '.' | '%' | '#') => !reg.is_empty(),
         _ => reg.is_set(),
     };
     if matches!(name, Some('_' | '+' | '*' | '=')) || holds {
@@ -243,6 +243,7 @@ fn put_error(cmd: &Command, ws: &mut Workspace) -> Option<String> {
         Some('/') => "E35: No previous regular expression".into(),
         Some('.') => "E29: No inserted text yet".into(),
         Some('%') => "E32: No file name".into(),
+        Some('#') => "E23: No alternate file".into(),
         Some(c) => format!("E353: Nothing in register {c}"),
         None => "E353: Nothing in register \"".into(),
     })

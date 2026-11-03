@@ -2556,6 +2556,7 @@ impl InputEngine {
                         || c == ':'
                         || c == '.'
                         || c == '%'
+                        || c == '#'
                         || c.is_ascii_alphanumeric() =>
                 {
                     self.action(Command::InsertRegister(c))
@@ -3589,11 +3590,17 @@ impl InputEngine {
             KeyCode::Char('*') => self.word_search(true, true),
             KeyCode::Char('#') => self.word_search(false, true),
             // Dot-repeat: replay the last recorded change at the current cursor (D-047). A leading `N`
-            // overrides the change's count (Vim `3.`). `.` itself never rewrites the record, so `..`
-            // repeats the same change; with no prior change it is a clean no-op (the Normal namespace's
+            // overrides the change's count (Vim `3.`). `.` itself never rewrites the record (beyond the
+            // numbered-register step below), so `..` repeats the same change; with no prior change it is a clean no-op (the Normal namespace's
             // `closed/ignore` policy — Vim rings the bell).
             KeyCode::Char('.') => {
-                if let Some(intent) = self.last_change.clone() {
+                if let Some(intent) = self.last_change.as_mut() {
+                    // A change that named `"1`-`"8` repeats with the next numbered register, and the record
+                    // keeps it, so `"1p...` walks the delete ring (nvim `do_redo`, #816); `"9` stays.
+                    if let Some(c @ '1'..='8') = intent.register {
+                        intent.register = char::from_digit(c.to_digit(10).unwrap_or(0) + 1, 10);
+                    }
+                    let intent = intent.clone();
                     let count = (self.normal.typed() > 0).then_some(self.normal.typed());
                     self.reset();
                     Feed::Replay(intent.replay(count))
@@ -4171,11 +4178,13 @@ impl InputEngine {
                             || c == '*'
                             // The read-only special registers `"/ ": ". "%` as a paste SOURCE (`"/p`,
                             // `".p`, `"%p`): arm them like any slot; the following `p`/`P` reads the
-                            // frontend-synced value. A yank/delete naming one is swallowed (read-only).
+                            // frontend-synced value. A yank/delete naming one fails (read-only, #1022).
                             || c == '/'
                             || c == ':'
                             || c == '.'
-                            || c == '%' =>
+                            || c == '%'
+                            // `"#` — the alternate file name (`:help quote#`).
+                            || c == '#' =>
                     {
                         self.normal.reg_count = mul_raw(self.normal.reg_count, self.normal.count);
                         self.normal.count = 0;

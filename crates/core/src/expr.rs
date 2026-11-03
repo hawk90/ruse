@@ -42,6 +42,8 @@ pub enum ExprError {
     DivByZero,
     /// An integer computation overflowed `i64`.
     Overflow,
+    /// Parentheses nest 1000 deep or more (nvim's E1169 "Expression too recursive").
+    TooDeep,
 }
 
 impl fmt::Display for ExprError {
@@ -52,6 +54,7 @@ impl fmt::Display for ExprError {
             ExprError::Type(m) => write!(f, "type error: {m}"),
             ExprError::DivByZero => write!(f, "division by zero"),
             ExprError::Overflow => write!(f, "integer overflow"),
+            ExprError::TooDeep => write!(f, "expression too recursive"),
         }
     }
 }
@@ -71,6 +74,7 @@ pub fn eval(input: &str) -> Result<String, ExprError> {
     let mut p = Parser {
         tokens: &tokens,
         pos: 0,
+        depth: 0,
     };
     let value = p.parse_concat()?;
     if p.pos != p.tokens.len() {
@@ -383,7 +387,12 @@ fn next_char(input: &str, i: usize) -> char {
 struct Parser<'a> {
     tokens: &'a [Token],
     pos: usize,
+    /// Open parentheses around the current position.
+    depth: usize,
 }
+
+/// Parenthesis nesting at which nvim gives E1169 "Expression too recursive" (999 levels evaluate).
+const MAX_DEPTH: usize = 1000;
 
 impl Parser<'_> {
     fn peek(&self) -> Option<&Token> {
@@ -444,25 +453,29 @@ impl Parser<'_> {
         Ok(left)
     }
 
-    /// unary := ('-' | '+') unary | primary
+    /// unary := ('-' | '+')* primary — a loop, not recursion, so a long run of signs cannot overflow the
+    /// stack (nvim takes any number of them, #756). The signs apply innermost first.
     fn parse_unary(&mut self) -> Result<Value, ExprError> {
-        match self.peek() {
-            Some(Token::Minus) => {
-                self.bump();
-                let v = self.parse_unary()?;
-                negate(v)
-            }
-            Some(Token::Plus) => {
-                self.bump();
-                let v = self.parse_unary()?;
+        let mut signs = Vec::new();
+        while let Some(t @ (Token::Minus | Token::Plus)) = self.peek() {
+            signs.push(*t == Token::Minus);
+            self.bump();
+        }
+        let mut v = self.parse_primary()?;
+        for minus in signs.into_iter().rev() {
+            v = if minus {
+                negate(v)?
+            } else {
                 // Unary plus only validates that the operand is numeric (matching arithmetic's type rule).
                 match v {
-                    Value::Int(_) | Value::Float(_) => Ok(v),
-                    Value::Str(_) => Err(ExprError::Type("unary '+' needs a number".into())),
+                    Value::Int(_) | Value::Float(_) => v,
+                    Value::Str(_) => {
+                        return Err(ExprError::Type("unary '+' needs a number".into()))
+                    }
                 }
-            }
-            _ => self.parse_primary(),
+            };
         }
+        Ok(v)
     }
 
     /// primary := Int | Float | Str | '(' concat ')'
@@ -472,7 +485,14 @@ impl Parser<'_> {
             Some(Token::Float(f)) => Ok(Value::Float(*f)),
             Some(Token::Str(s)) => Ok(Value::Str(s.clone())),
             Some(Token::LParen) => {
+                // Nesting is the one recursion left; nvim refuses the 1000th level (E1169, #756), which
+                // also keeps a pasted run of `(` from overflowing the stack and aborting the process.
+                self.depth += 1;
+                if self.depth >= MAX_DEPTH {
+                    return Err(ExprError::TooDeep);
+                }
                 let v = self.parse_concat()?;
+                self.depth -= 1;
                 match self.bump() {
                     Some(Token::RParen) => Ok(v),
                     _ => Err(ExprError::Parse("missing ')'".into())),
@@ -718,5 +738,30 @@ mod tests {
         ] {
             let _ = eval(s);
         }
+    }
+
+    /// #756: deep nesting is an error at nvim's limit (999 levels evaluate, 1000 give E1169), and a long run
+    /// of parens or signs never overflows the stack. Run on an 8 MiB stack, the main thread's, where the
+    /// editor evaluates `"=` (a debug build needs about 2.5 KiB a level, more than a 2 MiB test thread has).
+    #[test]
+    fn deep_nesting_is_bounded_like_nvim() {
+        let run = || {
+            let nest = |n: usize| format!("{}1{}", "(".repeat(n), ")".repeat(n));
+            assert_eq!(eval(&nest(999)), Ok("1".into()));
+            assert_eq!(eval(&nest(1000)), Err(ExprError::TooDeep));
+            assert_eq!(eval(&"(".repeat(2_000_000)), Err(ExprError::TooDeep));
+            assert_eq!(
+                eval(&format!("{}1", "-".repeat(1_000_001))),
+                Ok("-1".into())
+            );
+            assert_eq!(eval(&format!("{}1", "-+".repeat(500_000))), Ok("1".into()));
+            assert!(eval(&format!("{}'a'", "+".repeat(3))).is_err());
+        };
+        std::thread::Builder::new()
+            .stack_size(8 << 20)
+            .spawn(run)
+            .expect("spawn")
+            .join()
+            .expect("deep expressions evaluate without a panic");
     }
 }

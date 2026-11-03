@@ -81,8 +81,8 @@ kill ring, the clipboard bridge). Per RFC-0012 that superset is **deferred**; bu
 is used daily is exactly the over-investment the pivot rejects. What **ships in v0** is the smallest slice
 that gets the *hard-to-retrofit* semantics right:
 
-- **A typed register store** (`crates/core/src/register.rs`), held on `View`, not the per-workspace store yet
-  (D-057): the unnamed `""`, named `"a`–`"z` / append `"A`–`"Z`, yank `"0`, numbered `"1`–`"9`, small-delete `"-`,
+- **A typed register store** (`crates/core/src/register.rs`), owned by the `Workspace` and lent into the
+  focused View for one command (D-057 slice 2, #944), so every buffer and split shares it: the unnamed `""`, named `"a`–`"z` / append `"A`–`"Z`, yank `"0`, numbered `"1`–`"9`, small-delete `"-`,
   blackhole `"_`, the clipboard `"+`/`"*` through an injected provider, the expression `"=`, and read-only specials.
 - **A charwise/linewise type** governing **paste geometry**. This is the load-bearing decision: charwise
   pastes insert inline next to the cursor; linewise pastes open a whole new line below (`p`) / above (`P`).
@@ -206,9 +206,10 @@ point at the same `Slot`.
 | Register | Behavior |
 | --- | --- |
 | `"_` blackhole | Write: content discarded, **no** `Slot` allocated, `unnamed` **not** repointed, numbered ring **not** shifted, kill ring **not** touched. Read: empty. |
-| `"=` expression | Read: evaluate ruse expression surface → ephemeral `Slot` (type = `Char`, or `Line` if result ends in `\n`). Never stored. |
+| `"=` expression | Read: evaluate ruse expression surface → ephemeral `Slot` (type = `Char`, or `Line` if result ends in `\n`, #1022). Never stored. |
 | `"+` / `"*` | Bridged (§5). Read pulls from clipboard/primary into an ephemeral `Slot`; write pushes to it (and mirrors to internal store per config). |
-| `"%` `"#` `".` `":` `"/` | Read-only projections computed from editor state on read. Writes are an `ErrorCode::ReadOnlyRegister` (INV-ERR-CLASS), not a panic. |
+| `"%` `"#` `".` `":` `"/` | Read-only projections computed from editor state on read (`"#` = the alternate file name; `"#p` with none is E23). An operator naming `"%` `".` `":` `"/` fails as in nvim: nothing is captured or deleted, the cursor goes to the start of the covered text, a change still enters Insert (#1022). nvim lets `"#` be written, and the text goes to `"0`; ruse does the same. |
+| `"~` and unknown names | No register: the `"` prefix fails and the keys after it run unprefixed; a store read is empty, never the unnamed register (#1022). |
 
 ### 2. The Emacs kill ring as a VIEW/policy over the same store
 
@@ -307,14 +308,18 @@ Notation: *touched* register(s) written; *ring* = numbered shift behavior. "smal
 | `"ayy` | `Line` | `"a` (replace) + mirror `"0`? **no** | unchanged | → slot | unchanged¹ |
 | `"Ayy` (append) | `Line` | `"a` **appended** (new sealed content = old ⧺ new) | unchanged | → slot | unchanged |
 | `"add` | `Line` | `"a` (replace) | **shift**² | → slot | unchanged |
+| `d%` `d}` `d)` `` d`a `` `d/pat` `dn` `d*` (within a line) | `Char` | `"1` and `"-` | **shift** (nvim `use_reg_one`) | → slot | unchanged |
+| `"0yy` / `"1dw` / `"-dw` (explicit) | as captured | the named slot | a delete shifts per the rows above | → slot | `"0yy` only |
 | `"_dd` (blackhole) | none | nothing | unchanged | unchanged | unchanged |
 | `p` / `P` | reads `""` | — | — | — | — |
 | `"ap` | reads `"a` | — | — | — | — |
 | Visual `p` (paste over selection) | see §3.3 | swaps | — | replaced text → `""` | — |
 
 ¹ Explicit named yank `"ayy` sets `"a` and `""` and leaves `"0` unchanged (checked against the pinned nvim).
-² A named **delete** `"add` writes `"a`, `""` and the numbered ring (checked against the pinned nvim). Model: a delete always feeds the numbered ring unless target is `"_`; a named register is an
-*additional* destination. (See differential test T-08.)
+² A named **delete** `"add` writes `"a`, `""` and the numbered ring (checked against the pinned nvim). Model (nvim
+`op_delete`): the named register takes the text first; a whole-line-or-more delete, or one over a `use_reg_one` motion,
+then shifts the ring into `"1` whatever was named (`"+dd` too), and `""` follows `"1` unless the delete appended
+(`"Add`); a within-line delete with no register named also fills `"-` (#749). (See differential test T-08.)
 
 Read side (`p`/`P`/`gp`/`gP`/`]p`/`[p`) dereferences the addressed slot and pastes per its `RegisterType`
 (§4).
@@ -424,8 +429,8 @@ INV-PLUGIN-NO-CORE), never the live `arena`. `RegisterAddr` is a typed enum
 
 ## Failure modes
 
-- **Read-only register write** (`"%` etc.) → `ErrorCode::ReadOnlyRegister` (typed error, INV-ERR-CLASS), no
-  state change.
+- **Read-only register write** (`"%` etc.) → the operator fails (`Effect::Beep`, no message, as nvim) with no
+  register or buffer change (#1022).
 - **`M-y` not after yank** → `ErrorCode::YankPopNotAfterYank`; ring untouched.
 - **Stale `SlotId`** (evicted by `max_kill` bound) → resolves to *absent*; paste of an absent register is a
   no-op with a status note, not a panic (INV-HANDLE).
@@ -505,7 +510,7 @@ persistence is enabled, OQ-4). Undoing a paste removes inserted Document text vi
 
 ## Migration strategy
 
-The typed store ships on `View`. Remaining: the `C-REGISTER` contract (#1023), the move to the Workspace (D-057), and
+The typed store is owned by the `Workspace` (D-057 slice 2, #944). Remaining: the `C-REGISTER` contract (#1023), and
 the Emacs surface (§3.2, #653) as command handlers over the same store. The differential corpus below gates each
 merge.
 

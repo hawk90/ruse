@@ -15,7 +15,9 @@
 //! its arena slots into an [`EditorState`], the UNCHANGED `plan`/`commit`/`apply_command` pipeline
 //! runs, and the pair is swapped back. Nothing else can reference the Document during that window (one
 //! command at a time, single-threaded; other Views hold only its id), so the move is sound and the
-//! single-window path stays byte-identical to F-007 step (a).
+//! single-window path stays byte-identical to F-007 step (a). The register store is editor-global
+//! (D-057 slice 2, #944): the Workspace owns it and lends it into the swapped-out View for that window
+//! ([`Workspace::lend`] / [`Workspace::reclaim`]), so a View at rest holds an empty store.
 //!
 //! **Layout (flat, MVP).** The MVP layout is a flat list of Windows with one split direction
 //! ([`SplitDir`]) and a focus index — enough for equal `:split`/`:vsplit` into 2+ panes, `C-w w`
@@ -31,7 +33,7 @@ use crate::editor::{
 };
 use crate::effect::Effect;
 use crate::pattern::RegexError;
-use crate::register::RegKind;
+use crate::register::{RegKind, RegisterStore};
 use crate::transaction::TransactionOrigin;
 
 /// A handle to a [`View`] in the workspace arena (INV-HANDLE). Distinct from [`DocumentId`] (a buffer)
@@ -123,6 +125,9 @@ pub struct Workspace {
     clipboard: Box<dyn Clipboard>,
     /// A command applied since the last [`Workspace::take_beep`] failed ([`Effect::Beep`], #1085).
     beeped: bool,
+    /// The editor-global register store (Vim registers are shared by every buffer and window; D-057
+    /// slice 2, #944). Lent into the focused View for one command by [`Workspace::lend`].
+    registers: RegisterStore,
 }
 
 impl Workspace {
@@ -146,7 +151,28 @@ impl Workspace {
             default_smart_case: false,
             clipboard: Box::new(NoClipboard),
             beeped: false,
+            registers: RegisterStore::new(),
         }
+    }
+
+    /// The swap-trick's first half: an [`EditorState`] over `doc`/`view` holding the workspace register
+    /// store. Every `lend` is paired with a [`Workspace::reclaim`], or the store is lost.
+    fn lend(&mut self, doc: Document, view: View) -> EditorState {
+        let mut st = EditorState::from_parts(doc, view);
+        st.swap_registers(&mut self.registers);
+        st
+    }
+
+    /// The swap-trick's second half: take the register store back from `st` and split it into parts.
+    fn reclaim(&mut self, mut st: EditorState) -> (Document, View) {
+        st.swap_registers(&mut self.registers);
+        st.into_parts()
+    }
+
+    /// The editor-global register store (read-only).
+    #[must_use]
+    pub fn registers(&self) -> &RegisterStore {
+        &self.registers
     }
 
     /// Whether a command failed (Vim beeped) since the last call, clearing the flag. The frontend flushes the
@@ -182,9 +208,9 @@ impl Workspace {
         let view = self.views[vid.0].take().expect("view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("doc live");
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         st.set_search_case(self.default_ignore_case, self.default_smart_case);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
     }
@@ -315,7 +341,7 @@ impl Workspace {
         let slot = Self::doc_slot(did);
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
 
         // `"+`/`"*` (`:help quoteplus`): this command touches the system clipboard when the one-shot pending
         // register is `+`/`*` (a `"+y`/`"+p`/`"+d`), or it is an `i_CTRL-R` insert directly from `+`/`*`. The
@@ -343,7 +369,7 @@ impl Workspace {
             self.clipboard.set(&String::from_utf8_lossy(&bytes));
         }
 
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -360,9 +386,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         st.set_cursor(pos);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -376,9 +402,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         st.set_register_raw(name, bytes);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -400,12 +426,17 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         st.set_special_registers(search, last_ex, inserted, file);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
+    }
+
+    /// Sync `"#`, the alternate file name (`:help quote#`); `None` when there is no alternate file.
+    pub fn set_alternate_register(&mut self, name: Option<String>) {
+        self.registers.set_alternate(name);
     }
 
     /// The raw bytes of a named register of the FOCUSED view (D-055 macro replay; the swap-trick). Empty
@@ -416,9 +447,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let bytes = st.registers().get(name).text().to_vec();
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -434,7 +465,7 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let regs = st.registers();
         let mut out = Vec::new();
         // Vim `:reg` order: unnamed, the yank register "0, the numbered delete-ring "1–"9, the small-delete
@@ -449,7 +480,7 @@ impl Workspace {
                 out.push((name, r.kind(), r.text().to_vec()));
             }
         }
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -463,9 +494,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let marks = st.marks_snapshot();
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -478,9 +509,9 @@ impl Workspace {
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let out = st.jumps_snapshot();
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
         out
@@ -492,9 +523,9 @@ impl Workspace {
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let out = st.changes_snapshot();
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
         out
@@ -515,9 +546,9 @@ impl Workspace {
         let slot = Self::doc_slot(did);
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let result = st.substitute(range, pattern, replacement, flags);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -542,9 +573,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let out = st.substitute_preview(range, pattern, replacement, flags);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -565,9 +596,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let out = st.substitute_count(range, pattern, flags);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -582,9 +613,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let out = st.apply_substitutions(subs);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -605,9 +636,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let result = st.global(range, pattern, negate, cmd);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -635,9 +666,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let result = st.global_marks(range, pattern, negate);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -657,9 +688,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.delete_lines_into(range, reg);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -676,9 +707,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         st.apply_edits(edits, origin);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -697,9 +728,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.yank_lines_into(range, reg);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -715,9 +746,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.join_lines(range, no_space);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -733,9 +764,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.shift_lines(range, left, levels);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -750,9 +781,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.move_lines(range, dest);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -767,9 +798,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.copy_lines(range, dest);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -787,14 +818,14 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         if crate::register::RegisterStore::is_clipboard(reg) {
             if let Some(text) = self.clipboard.get() {
                 st.sync_clipboard_in(text.into_bytes());
             }
         }
         let n = st.put_lines(addr, reg);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -811,9 +842,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.read_lines(addr, text, cursor_on_last);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -830,9 +861,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let out = st.range_text(range);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -847,9 +878,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.filter_lines(range, text);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -871,9 +902,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         let n = st.sort_lines(range, opts);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -903,12 +934,10 @@ impl Workspace {
 
     /// Split the focused Window into a second Window onto the SAME buffer, in direction `dir`, and
     /// focus the new pane (Vim opens and focuses the new split). The new View is a CLONE of the focused
-    /// View — same buffer id, same cursor/scroll/registers/config snapshot — so both panes start at the
+    /// View — same buffer id, same cursor/scroll/config snapshot — so both panes start at the
     /// same place then diverge independently (F-007 acceptance #1). `dir` sets the whole flat layout's
-    /// tiling (MVP: one direction, no tree). Returns the new [`ViewId`].
-    ///
-    /// Registers/config are cloned here rather than shared live — a documented post-MVP Vim-parity
-    /// refinement (global registers across Views), tracked with folds/session in the F-007 backlog.
+    /// tiling (MVP: one direction, no tree). Returns the new [`ViewId`]. Registers are not cloned: the
+    /// Workspace owns the one store both panes share (#944).
     pub fn split(&mut self, dir: SplitDir) -> ViewId {
         self.split = dir;
         let src = self.windows[self.focus].view;
@@ -1196,9 +1225,9 @@ impl Workspace {
         let did = view.doc();
         let slot = Self::doc_slot(did);
         let doc = self.docs[slot].take().expect("focused doc live");
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         st.set_indent(tab_width, indent_style);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
     }
@@ -1226,9 +1255,9 @@ impl Workspace {
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
 
-        let st = EditorState::from_parts(doc, view);
+        let st = self.lend(doc, view);
         let lines = st.span_lines(cmd);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
 
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
@@ -1344,9 +1373,9 @@ impl Workspace {
         let view = self.views[vid.0].take().expect("focused view live");
         let slot = Self::doc_slot(view.doc());
         let doc = self.docs[slot].take().expect("focused doc live");
-        let mut st = EditorState::from_parts(doc, view);
+        let mut st = self.lend(doc, view);
         st.set_option(opt);
-        let (doc, view) = st.into_parts();
+        let (doc, view) = self.reclaim(st);
         self.docs[slot] = Some(doc);
         self.views[vid.0] = Some(view);
     }
@@ -1468,6 +1497,58 @@ mod tests {
             b"hi\n",
             "no clipboard tool -> \"+p is inert, not a crash"
         );
+    }
+
+    const PASTE: Command = Command::Paste {
+        after: true,
+        count: 1,
+        move_after: false,
+    };
+
+    /// #944: registers are editor-global (Vim, D-057 slice 2): `yy` in buffer A, then `p` in buffer B
+    /// pastes the line, and `"ayy` in A reaches `"ap` in B.
+    #[test]
+    fn a_yank_in_one_buffer_pastes_in_another() {
+        let mut w = Workspace::new(b"from a\n".to_vec());
+        w.apply(&Command::Yank(1, Mo::Line));
+        w.apply(&Command::SetRegister(Some('a')));
+        w.apply(&Command::Yank(1, Mo::Line));
+        let b = w.add_buffer(b"b\n".to_vec(), Some("b".into()));
+        assert!(w.focus_buffer(b));
+        w.apply(&PASTE);
+        w.apply(&Command::SetRegister(Some('a')));
+        w.apply(&PASTE);
+        assert_eq!(w.focused().doc.bytes(), b"b\nfrom a\nfrom a\n");
+        assert_eq!(w.register_bytes(None), b"from a\n");
+    }
+
+    /// #944: a split shares the one store, so a yank in one pane pastes in the other.
+    #[test]
+    fn a_yank_in_one_split_pastes_in_the_other() {
+        let mut w = Workspace::new(b"one\ntwo\n".to_vec());
+        w.split(SplitDir::Horizontal);
+        w.apply(&Command::Yank(1, Mo::Line));
+        w.focus_next();
+        w.apply(&Command::Move(1, Mo::Down));
+        w.apply(&PASTE);
+        assert_eq!(w.focused().doc.bytes(), b"one\ntwo\none\n");
+        assert_eq!(w.registers().unnamed().text(), b"one\n");
+    }
+
+    /// #1022: `"#p` puts the alternate file name the frontend synced; a write naming a read-only register
+    /// fails and leaves the buffer and registers alone.
+    #[test]
+    fn hash_register_reads_the_alternate_and_read_only_writes_fail() {
+        let mut w = Workspace::new(b"ab\n".to_vec());
+        w.set_alternate_register(Some("other.txt".into()));
+        w.apply(&Command::SetRegister(Some('#')));
+        w.apply(&PASTE);
+        assert_eq!(w.focused().doc.bytes(), b"aother.txtb\n");
+        w.apply(&Command::SetRegister(Some('/')));
+        let effects = w.apply(&Command::Delete(1, Mo::Line));
+        assert!(effects.contains(&Effect::Beep), "\"/dd fails");
+        assert_eq!(w.focused().doc.bytes(), b"aother.txtb\n");
+        assert!(!w.registers().unnamed().is_set());
     }
 
     /// F-007 #1: splitting shows two Views of ONE Document with INDEPENDENT cursors and scroll.
