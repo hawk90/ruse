@@ -17,8 +17,9 @@ use ruse_core::{
 };
 
 use crate::app::dispatch::{
-    buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, match_count_message, may_quit,
-    open_file_into_buffer, quit_window, regex_error_msg, run_cmd, run_repeat, BufferFile, Files,
+    attach_file, buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl,
+    match_count_message, may_quit, open_file_into_buffer, quit_window, regex_error_msg, run_cmd,
+    run_repeat, Files, Highlighters,
 };
 use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
@@ -510,23 +511,10 @@ impl Session {
         // Syntax highlighting lives in the frontend (core stays dep-free): one highlighter PER file buffer,
         // keyed by DocumentId (F-007 multi-buffer).
         let mut files: Files = HashMap::new();
-        let mut highlighters: HashMap<DocumentId, highlight::CachedHighlight> = HashMap::new();
+        let mut highlighters: Highlighters = HashMap::new();
         if let Some(p) = path.as_ref() {
             ws.set_focused_buffer_name(p.display().to_string());
-            files.insert(
-                file_buf,
-                BufferFile {
-                    path: p.clone(),
-                    fmt,
-                },
-            );
-            if let Some(h) = p
-                .extension()
-                .and_then(|e| e.to_str())
-                .and_then(highlight::CachedHighlight::for_ext)
-            {
-                highlighters.insert(file_buf, h);
-            }
+            attach_file(&mut files, &mut highlighters, file_buf, p.clone(), fmt);
         }
         // Profile selection (F-012 / F-013): `emacs` = Emacs, `native` = Native, else Vim.
         let emacs_profile = profile == "emacs";

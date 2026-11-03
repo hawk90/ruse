@@ -10,10 +10,9 @@ use std::path::{Path, PathBuf};
 use ruse_core::{DocumentId, SubRange, Workspace};
 
 use crate::app::dispatch::{
-    buffer_for_path, line_count, open_file_with, resolve_normal_range, BufferFile, Files,
+    attach_file, buffer_for_path, line_count, open_file_with, resolve_normal_range, Files,
     Highlighters,
 };
-use crate::highlight;
 use crate::input::{EditSpec, FileFormatOpt, FileOpts, WriteSpec, WriteTarget};
 use crate::persist;
 use crate::persist::encoding::{Eol, FileFormat};
@@ -180,21 +179,8 @@ pub(crate) fn adopt_file(
     name: &str,
     fmt: FileFormat,
 ) {
-    let path = PathBuf::from(name);
     ws.set_focused_buffer_name(name);
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .and_then(highlight::CachedHighlight::for_ext)
-    {
-        Some(h) => {
-            highlighters.insert(id, h);
-        }
-        None => {
-            highlighters.remove(&id);
-        }
-    }
-    files.insert(id, BufferFile { path, fmt });
+    attach_file(files, highlighters, id, PathBuf::from(name), fmt);
 }
 
 /// Append `bytes` to the existing regular file `path` and sync it (`:w >>`). A missing file is an error, as
@@ -433,13 +419,12 @@ pub(crate) fn reload_focused_file(ws: &mut Workspace, files: &mut Files, opts: F
         Ok(raw) => {
             let fmt = with_ff(FileFormat::detect(&raw), opts);
             ws.reload_focused(fmt.to_buffer(&raw));
-            files.insert(
-                id,
-                BufferFile {
-                    path: path.clone(),
-                    fmt,
-                },
-            );
+            // The path is unchanged, so the buffer keeps its file entry and its highlighter: the reload
+            // continues the buffer's revisions (#687), and the highlighter reparses on a new revision
+            // against the bytes it last saw, so it never shows the pre-reload text (#894).
+            if let Some(bf) = files.get_mut(&id) {
+                bf.fmt = fmt;
+            }
             format!("\"{}\" reloaded", path.display())
         }
         Err(e) => format!("E484: can't open {}: {e}", path.display()),

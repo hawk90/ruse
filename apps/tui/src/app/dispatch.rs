@@ -139,18 +139,36 @@ pub(crate) fn open_file_with(
             None => format!("\"{file}\" {} bytes", raw.len()),
         },
     };
-    if let Some(h) = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .and_then(highlight::CachedHighlight::for_ext)
-    {
-        highlighters.insert(id, h);
-    }
-    files.insert(id, BufferFile { path: p, fmt: f });
+    attach_file(files, highlighters, id, p, f);
     Opened {
         status,
         id: Some(id),
     }
+}
+
+/// Give buffer `id` its file on disk: record `path` and `fmt` in the file registry and attach the
+/// highlighter `path`'s extension selects, dropping any the buffer had (#894). Every way a buffer gets a
+/// file goes through here: the startup file, `:e`/the file picker/LSP jumps, and `:w {file}`/`:saveas`.
+pub(crate) fn attach_file(
+    files: &mut Files,
+    highlighters: &mut Highlighters,
+    id: DocumentId,
+    path: PathBuf,
+    fmt: persist::encoding::FileFormat,
+) {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .and_then(highlight::CachedHighlight::for_ext)
+    {
+        Some(h) => {
+            highlighters.insert(id, h);
+        }
+        None => {
+            highlighters.remove(&id);
+        }
+    }
+    files.insert(id, BufferFile { path, fmt });
 }
 
 /// Whether `key` is `CTRL-<c>`. Shared frontend key predicate. A C0 punctuation chord also matches the key
@@ -563,6 +581,21 @@ mod dispatch_tests {
             KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE),
             ']'
         ));
+    }
+
+    /// #894: attaching a file records its identity and the highlighter its extension selects; a later file
+    /// with no grammar drops the old highlighter instead of keeping the previous language's.
+    #[test]
+    fn attach_file_sets_identity_and_swaps_the_highlighter() {
+        let (mut files, mut hl): (Files, Highlighters) = (HashMap::new(), HashMap::new());
+        let id = DocumentId(1);
+        let fmt = persist::encoding::FileFormat::detect(b"");
+        attach_file(&mut files, &mut hl, id, PathBuf::from("a.rs"), fmt);
+        assert_eq!(files[&id].path, PathBuf::from("a.rs"));
+        assert!(hl.contains_key(&id), "a .rs file is highlighted");
+        attach_file(&mut files, &mut hl, id, PathBuf::from("notes.xyz"), fmt);
+        assert_eq!(files[&id].path, PathBuf::from("notes.xyz"));
+        assert!(!hl.contains_key(&id), "no grammar, no highlighter");
     }
 
     /// `:q` refuses (E37) once the focused buffer is modified; `:q!` quits regardless; a clean `:q` quits.
