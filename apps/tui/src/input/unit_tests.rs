@@ -4509,6 +4509,7 @@ mod state_machine_props {
                         || !e.activations.is_empty()
                         || e.insert.ctrl_g
                         || e.insert.ctrl_r
+                        || e.insert.keep_undo // `CTRL-G U` arms the next `<Left>`/`<Right>` (#1076)
                         || e.cmdline.is_some(); // an open command-line namespace is real pending state (F-026)
                     prop_assert!(has_state, "Feed::Pending but the engine is idle");
                 } else {

@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 25ff9ade12b222eee19d190221e613014f6351d85cb69cb1559c4f3687cdba3f # shrinks to steps = [(KeyEvent { code: Char('r'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Insert)]
+cc 5b65867cbad5ca488efdc4f2af75bc146e05575930a2d1fe85b1a1f8ddf4ba0d # shrinks to steps = [(KeyEvent { code: Char('g'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Insert), (KeyEvent { code: Char('U'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Insert)]
