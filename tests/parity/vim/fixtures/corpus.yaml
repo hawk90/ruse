@@ -40401,6 +40401,1952 @@
           "type": ""
         }
       }
+    },
+    {
+      "name": "os_cj_change_lines",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "cjX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_ck_change_lines",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jckX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_cj_indented",
+      "lines": [
+        "  a",
+        "  b",
+        "c"
+      ],
+      "keys": "cjX<Esc>",
+      "expect": {
+        "text": [
+          "  X",
+          "c"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "  a\n  b\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_cj_multibyte",
+      "lines": [
+        "한글",
+        "가",
+        "c"
+      ],
+      "keys": "cjX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "한글\n가\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_cj_last_line_fails",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "Gcj",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_cG_to_last_line",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "jcGX<Esc>",
+      "expect": {
+        "text": [
+          "a",
+          "X"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b\nc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_c_para_keeps_blank",
+      "lines": [
+        "a",
+        "b",
+        "",
+        "c"
+      ],
+      "keys": "c}X<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_c_para_back",
+      "lines": [
+        "a",
+        "",
+        "b",
+        "c"
+      ],
+      "keys": "Gc{X<Esc>",
+      "expect": {
+        "text": [
+          "a",
+          "X",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_c_mark_line",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "majc'aX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_c_forced_linewise",
+      "lines": [
+        "a",
+        "b",
+        "c"
+      ],
+      "keys": "cVjX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a\nb\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_3cc_last_line_fails",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "j3cc",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_c3w_one_line",
+      "lines": [
+        "a b"
+      ],
+      "keys": "c3wX<Esc>",
+      "expect": {
+        "text": [
+          "X"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_v_dollar_d",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "v$d",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_v_dollar_c",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "v$cX<Esc>",
+      "expect": {
+        "text": [
+          "Xdef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_v_dollar_yP",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "v$yP",
+      "expect": {
+        "text": [
+          "abc",
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "abc\n",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "os_v_dollar_last_line",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "jv$y",
+      "expect": {
+        "text": [
+          "abc",
+          "def"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "def",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "def",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "os_v_dollar_j_d",
+      "lines": [
+        "abc",
+        "def",
+        "ghi"
+      ],
+      "keys": "v$jd",
+      "expect": {
+        "text": [
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\ndef\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_v_dollar_empty_line",
+      "lines": [
+        "",
+        "def"
+      ],
+      "keys": "v$d",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_v_dollar_multibyte",
+      "lines": [
+        "한글",
+        "def"
+      ],
+      "keys": "v$d",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "한글\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_a_empty_line",
+      "lines": [
+        "",
+        "abc"
+      ],
+      "keys": "aX<Esc>",
+      "expect": {
+        "text": [
+          "X",
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_a_empty_buffer",
+      "lines": [
+        ""
+      ],
+      "keys": "aX<Esc>",
+      "expect": {
+        "text": [
+          "X"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_p_empty_line",
+      "lines": [
+        "q",
+        "",
+        "abc"
+      ],
+      "keys": "yljp",
+      "expect": {
+        "text": [
+          "q",
+          "q",
+          "abc"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "q",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "q",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "os_ctrl_o_p_eol",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "yiwA<C-o>pX<Esc>",
+      "expect": {
+        "text": [
+          "foo barfooX"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "foo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "foo",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "os_dollar_cb",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "$cbX<Esc>",
+      "expect": {
+        "text": [
+          "foo Xr"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "ba",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dollar_ch",
+      "lines": [
+        "abc"
+      ],
+      "keys": "$chX<Esc>",
+      "expect": {
+        "text": [
+          "aXc"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dollar_c0",
+      "lines": [
+        "abc"
+      ],
+      "keys": "$c0X<Esc>",
+      "expect": {
+        "text": [
+          "Xc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dollar_gi",
+      "lines": [
+        "abc def"
+      ],
+      "keys": "iQ<Esc>$giX<Esc>",
+      "expect": {
+        "text": [
+          "QXabc def"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_ctrl_o_mark_mid_line",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": "4lma0A<C-o>`aX<Esc>",
+      "expect": {
+        "text": [
+          "foo Xbar"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_ctrl_o_dd_appends",
+      "lines": [
+        "abc",
+        "de"
+      ],
+      "keys": "A<C-o>ddX<Esc>",
+      "expect": {
+        "text": [
+          "deX"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_ctrl_o_dollar_appends",
+      "lines": [
+        "abc def"
+      ],
+      "keys": "i<C-o>$X<Esc>",
+      "expect": {
+        "text": [
+          "abc defX"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_x_combining",
+      "lines": [
+        "éx"
+      ],
+      "keys": "x",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_x_zwj",
+      "lines": [
+        "👩‍💻x"
+      ],
+      "keys": "x",
+      "expect": {
+        "text": [
+          "x"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "👩‍💻",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_lx_zwj",
+      "lines": [
+        "👩‍💻x"
+      ],
+      "keys": "lx",
+      "expect": {
+        "text": [
+          "👩‍💻"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "x",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_r_combining",
+      "lines": [
+        "éb"
+      ],
+      "keys": "rZ",
+      "expect": {
+        "text": [
+          "Zb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_s_combining",
+      "lines": [
+        "éb"
+      ],
+      "keys": "sZ<Esc>",
+      "expect": {
+        "text": [
+          "Zb"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dl_combining",
+      "lines": [
+        "éb"
+      ],
+      "keys": "dl",
+      "expect": {
+        "text": [
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_lx_combining_eol",
+      "lines": [
+        "éb"
+      ],
+      "keys": "lx",
+      "expect": {
+        "text": [
+          "é"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_2x_combining",
+      "lines": [
+        "ééb"
+      ],
+      "keys": "2x",
+      "expect": {
+        "text": [
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "éé",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dollar_x_combining",
+      "lines": [
+        "abé"
+      ],
+      "keys": "$x",
+      "expect": {
+        "text": [
+          "ab"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "é",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_d_backtick_col0",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "jmakld`a",
+      "expect": {
+        "text": [
+          "a",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_d_backtick_col0_indent",
+      "lines": [
+        "  ab",
+        "  cd",
+        "ef"
+      ],
+      "keys": "jjmaggd`a",
+      "expect": {
+        "text": [
+          "ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  ab\n  cd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_d_backtick_from_indent",
+      "lines": [
+        "  ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "jmakd`a",
+      "expect": {
+        "text": [
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "  ab\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_c_backtick_col0",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "jmaklc`aZ<Esc>",
+      "expect": {
+        "text": [
+          "aZ",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_y_backtick_col0",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "jmakly`a",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "b",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "os_d_search_wrapped",
+      "lines": [
+        "foo",
+        "x",
+        "bar"
+      ],
+      "keys": "Gd/foo<CR>",
+      "expect": {
+        "text": [
+          "bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "foo\nx\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_d_search_wrapped_mid",
+      "lines": [
+        "a foo",
+        "x",
+        "bar"
+      ],
+      "keys": "Gld/foo<CR>",
+      "expect": {
+        "text": [
+          "a ar"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "foo\nx\nb",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dv_g_",
+      "lines": [
+        "c  "
+      ],
+      "keys": "dvg_",
+      "expect": {
+        "text": [
+          "c  "
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dv_g_word",
+      "lines": [
+        "abc  "
+      ],
+      "keys": "dvg_",
+      "expect": {
+        "text": [
+          "c  "
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dv_ge",
+      "lines": [
+        "for"
+      ],
+      "keys": "$dvge",
+      "expect": {
+        "text": [
+          "r"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "fo",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dv_ge_two_lines",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "$dvge",
+      "expect": {
+        "text": [
+          "c",
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "ab",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dv_percent",
+      "lines": [
+        "()"
+      ],
+      "keys": "dv%",
+      "expect": {
+        "text": [
+          ")"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "(",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dvG_keeps_col",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "ldvG",
+      "expect": {
+        "text": [
+          "ad"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dv2G_keeps_col",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "ldv2G",
+      "expect": {
+        "text": [
+          "ad",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dvgg_keeps_col",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jldvgg",
+      "expect": {
+        "text": [
+          "ad"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b\nc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dVw_last_word",
+      "lines": [
+        "abc",
+        "def"
+      ],
+      "keys": "dVw",
+      "expect": {
+        "text": [
+          "def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dvb",
+      "lines": [
+        "abc def"
+      ],
+      "keys": "wdvb",
+      "expect": {
+        "text": [
+          "ef"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc d",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dvt",
+      "lines": [
+        "abc def"
+      ],
+      "keys": "dvtd",
+      "expect": {
+        "text": [
+          " def"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_yy_keeps_col",
+      "lines": [
+        "abc def"
+      ],
+      "keys": "wyyiZ<Esc>",
+      "expect": {
+        "text": [
+          "abc Zdef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "abc def\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc def\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "os_yj_keeps_col",
+      "lines": [
+        "abc def",
+        "ghi"
+      ],
+      "keys": "wyjiZ<Esc>",
+      "expect": {
+        "text": [
+          "abc Zdef",
+          "ghi"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "abc def\nghi\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc def\nghi\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "os_yk_keeps_col",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jwykiZ<Esc>",
+      "expect": {
+        "text": [
+          "abc Zdef",
+          "ghi jkl"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "abc def\nghi jkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "abc def\nghi jkl\n",
+          "type": "linewise"
+        }
+      }
+    },
+    {
+      "name": "os_gUj_keeps_col",
+      "lines": [
+        "abc def",
+        "ghi"
+      ],
+      "keys": "wgUjiZ<Esc>",
+      "expect": {
+        "text": [
+          "ABC ZDEF",
+          "GHI"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_gUk_keeps_col",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "jwgUkiZ<Esc>",
+      "expect": {
+        "text": [
+          "ABC ZDEF",
+          "GHI JKL"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_gUU_line_start",
+      "lines": [
+        "abc def",
+        "ghi jkl"
+      ],
+      "keys": "wgUUiZ<Esc>",
+      "expect": {
+        "text": [
+          "ZABC DEF",
+          "ghi jkl"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_3yy_last_line_fails",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "j3yy",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_3dd_last_line_fails",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "j3dd",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_Vd_keeps_col",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno"
+      ],
+      "keys": "wVd",
+      "expect": {
+        "text": [
+          "ghi jkl",
+          "mno"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "abc def\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_Vjd_keeps_col",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "mno pqr"
+      ],
+      "keys": "wVjd",
+      "expect": {
+        "text": [
+          "mno pqr"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "abc def\nghi jkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_Vd_then_P",
+      "lines": [
+        "PP",
+        "abc",
+        "xyz"
+      ],
+      "keys": "yiwjllVdP",
+      "expect": {
+        "text": [
+          "PP",
+          "abc",
+          "xyz"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "abc\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "PP",
+          "type": "charwise"
+        }
+      }
+    },
+    {
+      "name": "os_dd_keeps_col_in_indent",
+      "lines": [
+        "  x",
+        "  abc",
+        "  def"
+      ],
+      "keys": "ldd",
+      "expect": {
+        "text": [
+          "  abc",
+          "  def"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "  x\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dd_after_dollar",
+      "lines": [
+        "abc def",
+        "ghi"
+      ],
+      "keys": "w$ddiZ<Esc>",
+      "expect": {
+        "text": [
+          "ghZi"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abc def\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dd_short_next_line",
+      "lines": [
+        "ab",
+        "  cd",
+        "ef"
+      ],
+      "keys": "jllldd",
+      "expect": {
+        "text": [
+          "ab",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "  cd\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_dj_keeps_col",
+      "lines": [
+        "abc def",
+        "ghi jkl",
+        "xyz"
+      ],
+      "keys": "wdjiZ<Esc>",
+      "expect": {
+        "text": [
+          "xyZz"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "abc def\nghi jkl\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_G_keeps_col",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "lG",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_G_keeps_col_indent",
+      "lines": [
+        "ab",
+        "  cd"
+      ],
+      "keys": "lG",
+      "expect": {
+        "text": [
+          "ab",
+          "  cd"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_gg_keeps_col",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "jlgg",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
+    },
+    {
+      "name": "os_G_after_dollar",
+      "lines": [
+        "abc",
+        "de"
+      ],
+      "keys": "$G",
+      "expect": {
+        "text": [
+          "abc",
+          "de"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        }
+      }
     }
   ]
 }

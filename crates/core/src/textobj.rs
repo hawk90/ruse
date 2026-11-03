@@ -1144,7 +1144,8 @@ pub(crate) fn op_range(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize
 
 /// The operator span of an object: [`op_range`] reduced by the exclusive-linewise rule (an exclusive span
 /// ending at a line start drops that line break, and goes linewise when it starts in the indent). Returns
-/// `(s, e, linewise)`.
+/// `(s, e, linewise)`. The editor's operator path computes the same through `editor::op_span_full`.
+#[cfg(test)]
 pub(crate) fn op_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usize, bool) {
     let (s, e, exclusive_at_col0) = op_range(b, cursor, m, count);
     if exclusive_at_col0 {

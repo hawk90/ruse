@@ -2475,7 +2475,7 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         let le = line_end(b, st.view.cursor);
         let ls = line_start(b, st.view.cursor);
         if st.view.cursor == le && ls < le {
-            st.view.cursor = prev_boundary(b, le);
+            st.view.cursor = motion::prev_grapheme(b, le);
         }
     }
     // The phantom slot after the final newline is not a line (#677): an on-char caret outside text entry
@@ -2653,7 +2653,7 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
         | Command::OpenAbove => st.view.auto_indent_pending = false,
         _ => {}
     }
-    update_curswant(st, cmd);
+    update_curswant(st, cmd, entry_mode);
     effects
 }
 
@@ -2696,15 +2696,27 @@ fn track_insert_start(
 /// cursor's new char column.
 ///
 /// Insert-mode append column (Vim `i_CTRL-O` at EOL): while `curswant == MAXCOL` in Insert, the caret rests
-/// at the line's END (the append position), and a one-shot `CTRL-O` command that is not itself a column-
-/// setting move (e.g. `dd`) PRESERVES that append intent rather than recomputing it — so `A<C-o>ddX` appends
-/// `X` at the end of the line dd left behind, and `i<C-o>$X` appends at end. Called from [`apply_command`],
-/// the single plan+commit driver, so `cmd` is always in scope.
-fn update_curswant(st: &mut EditorState, cmd: &Command) {
+/// past the line's last char (the append position): a one-shot `CTRL-O` command that leaves the cursor at
+/// the line's end PRESERVES that append intent (e.g. `dd`, so `A<C-o>ddX` appends `X` at the end of the line
+/// `dd` left behind, and `i<C-o>$X` appends at end), and a cursor resting ON the last char steps past it
+/// (nvim's `restart_edit` rule in `edit()`); one landing mid-line (`` A<C-o>`a ``) stays there. Only a
+/// command run FROM Insert keeps the intent: `$cb` or `$gi` (Normal to Insert) put the caret where the
+/// command did (#702). Called from [`apply_command`], the single plan+commit driver, so `cmd` is always in
+/// scope.
+fn update_curswant(st: &mut EditorState, cmd: &Command, entry_mode: Mode) {
     let insert = matches!(st.view.mode, Mode::Insert);
+    let from_insert = insert && matches!(entry_mode, Mode::Insert);
+    // Whether the cursor rests on the line's last char or past it.
+    let at_line_end = |st: &EditorState| {
+        let b = st.doc.bytes();
+        let le = line_end(b, st.view.cursor);
+        st.view.cursor >= le || motion::next_grapheme(b, st.view.cursor) >= le
+    };
     match cmd {
         Command::Move(_, Motion::Up)
         | Command::Move(_, Motion::Down)
+        // `gg`/`G`/`{count}%` move to the wanted column without changing it (`'nostartofline'`).
+        | Command::Move(_, Motion::GotoLine | Motion::LastLine | Motion::GotoPercent)
         | Command::MoveUp
         | Command::MoveDown
         // An undo break moves nothing: `i_<Down><Down>` (a break before each move) keeps the column.
@@ -2738,17 +2750,18 @@ fn update_curswant(st: &mut EditorState, cmd: &Command) {
             let b = st.doc.bytes();
             st.view.curswant = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
         }
-        // Everything else (edits like `dd`/`x`, mode changes): in Insert with an append intent (a one-shot
-        // `CTRL-O` command run while `curswant == MAXCOL`), PRESERVE MAXCOL; otherwise recompute the column.
+        // Everything else (edits like `dd`/`x`, mode changes): a one-shot `CTRL-O` command run while
+        // `curswant == MAXCOL` that leaves the cursor at the line's end PRESERVES MAXCOL; otherwise recompute
+        // the column.
         _ => {
-            if !(insert && st.view.curswant == MAXCOL) {
+            if !(from_insert && st.view.curswant == MAXCOL && at_line_end(st)) {
                 let b = st.doc.bytes();
                 st.view.curswant = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
             }
         }
     }
-    // In Insert, a MAXCOL wanted column parks the caret at the append position (end of line).
-    if insert && st.view.curswant == MAXCOL {
+    // In Insert, a MAXCOL wanted column parks a caret on the last char at the append position (end of line).
+    if insert && st.view.curswant == MAXCOL && at_line_end(st) {
         let b = st.doc.bytes();
         st.view.cursor = line_end(b, st.view.cursor);
     }

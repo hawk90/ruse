@@ -3329,8 +3329,9 @@ mod line_jump_tests {
     }
 
     #[test]
-    fn gg_goes_to_first_line_first_non_blank() {
-        // Start on line 3; gg → first non-blank of line 1 (past the two spaces).
+    fn gg_keeps_the_wanted_column() {
+        // Start on line 3, column 0; gg → line 1 at the wanted column 0, not its first non-blank: nvim's
+        // `'nostartofline'` (`beginline(BL_SOL)` keeps `curswant`).
         let st = run(
             "  abc\ndef\nghi",
             &[
@@ -3339,7 +3340,7 @@ mod line_jump_tests {
                 Command::Move(1, Motion::GotoLine),
             ],
         );
-        assert_eq!(st.cursor(), 2, "gg lands on the first non-blank of line 1");
+        assert_eq!(st.cursor(), 0, "gg keeps column 0 on line 1");
     }
 
     #[test]
@@ -7305,6 +7306,7 @@ mod method_motion_tests {
             CLASS,
             &[
                 Command::Move(3, Motion::GotoLine),
+                Command::Move(1, Motion::LineFirstNonBlank),
                 Command::Delete(1, Motion::MethodStartFwd),
             ],
         );
@@ -7320,6 +7322,7 @@ mod method_motion_tests {
             CLASS,
             &[
                 Command::Move(3, Motion::GotoLine),
+                Command::Move(1, Motion::LineFirstNonBlank),
                 Command::Delete(1, Motion::MethodEndBack),
             ],
         );
@@ -8480,5 +8483,133 @@ mod final_newline_slot_tests {
         assert_eq!(cands, vec!["y".to_string(), String::new()]);
         let (_, cands) = crate::motion::line_completions(b"x\ny\n", 0);
         assert_eq!(cands, vec!["y".to_string()]);
+    }
+}
+
+/// Operator spans and their cursor rules (#693, #696, #706, #711, #712), beside the oracle rows.
+mod operator_span_tests {
+    use crate::command::{ForcedWise, OpKind, WordCase};
+    use crate::editor::*;
+
+    fn run(initial: &[u8], cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    #[test]
+    fn recase_keeps_invalid_utf8_bytes() {
+        // #706: `gUU` and `~` over a stray byte recase the letters around it instead of panicking.
+        let st = run(
+            b"a\xffb\n",
+            &[Command::CaseMotion {
+                count: 1,
+                motion: Motion::Line,
+                case: WordCase::Upcase,
+            }],
+        );
+        assert_eq!(st.bytes(), b"A\xffB\n");
+        let st = run(b"a\xffb\n", &[Command::ToggleCase(3)]);
+        assert_eq!(st.bytes(), b"A\xffB\n");
+    }
+
+    #[test]
+    fn x_and_r_take_a_whole_grapheme() {
+        // #696: a base with its combining mark and a ZWJ emoji sequence are one char.
+        let st = run("e\u{301}x\n".as_bytes(), &[Command::DeleteUnder(1)]);
+        assert_eq!(st.bytes(), b"x\n");
+        assert_eq!(st.register().text(), "e\u{301}".as_bytes());
+        let st = run(
+            "\u{1F469}\u{200D}\u{1F4BB}x\n".as_bytes(),
+            &[Command::DeleteUnder(1)],
+        );
+        assert_eq!(st.bytes(), b"x\n");
+        let st = run("e\u{301}b\n".as_bytes(), &[Command::ReplaceChar(1, 'Z')]);
+        assert_eq!(st.bytes(), b"Zb\n");
+        let st = run("e\u{301}b\n".as_bytes(), &[Command::ReplaceChar(2, 'Z')]);
+        assert_eq!(st.bytes(), b"ZZ\n");
+        // Deleting the last char leaves the cursor at the start of the cluster before it, not inside it.
+        let st = run(
+            "e\u{301}b".as_bytes(),
+            &[Command::Move(1, Motion::Right), Command::DeleteUnder(1)],
+        );
+        assert_eq!(st.cursor(), 0);
+    }
+
+    #[test]
+    fn change_over_a_failed_linewise_motion_stays_in_normal() {
+        // #693: `cj` on the last line and `3cc` there fail like `dj`; `cc` on an empty buffer still enters
+        // Insert.
+        let down = Command::Move(1, Motion::Down);
+        let st = run(b"a\nb", &[down.clone(), Command::Change(1, Motion::Down)]);
+        assert_eq!(st.mode(), Mode::Normal);
+        assert_eq!(st.bytes(), b"a\nb");
+        let st = run(b"a\nb", &[down, Command::Change(3, Motion::Line)]);
+        assert_eq!(st.mode(), Mode::Normal);
+        let st = run(b"", &[Command::Change(1, Motion::Line)]);
+        assert_eq!(st.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn linewise_yank_and_delete_keep_the_wanted_column() {
+        // #712: `wyy` stays on `d`; `jwyk` rests on line 1 at the same column.
+        let st = run(
+            b"abc def\nghi jkl\n",
+            &[
+                Command::Move(1, Motion::WordFwd),
+                Command::Yank(1, Motion::Line),
+            ],
+        );
+        assert_eq!(st.cursor(), 4);
+        let st = run(
+            b"abc def\nghi jkl\n",
+            &[
+                Command::Move(1, Motion::Down),
+                Command::Move(1, Motion::WordFwd),
+                Command::Yank(1, Motion::Up),
+            ],
+        );
+        assert_eq!(st.cursor(), 4);
+        // `ldd` on an indented line keeps column 1 on the line that moves up ('nostartofline').
+        let st = run(
+            b"  x\n  abc\n",
+            &[
+                Command::Move(1, Motion::Right),
+                Command::Delete(1, Motion::Line),
+            ],
+        );
+        assert_eq!(st.cursor(), 1);
+    }
+
+    #[test]
+    fn forced_charwise_toggles_inclusive_motions() {
+        // #711: `dvg_` leaves the motion's end char; `ldvG` reaches the kept column; `dVw` from a line's
+        // last word takes only that line.
+        let forced = |m, wise| Command::OpForced {
+            op: OpKind::Delete,
+            count: 1,
+            motion: m,
+            wise,
+        };
+        let st = run(
+            b"abc  ",
+            &[forced(Motion::LineLastNonBlank, ForcedWise::Charwise)],
+        );
+        assert_eq!(st.bytes(), b"c  ");
+        let st = run(
+            b"ab\ncd",
+            &[
+                Command::Move(1, Motion::Right),
+                forced(Motion::LastLine, ForcedWise::Charwise),
+            ],
+        );
+        assert_eq!(st.bytes(), b"ad");
+        let st = run(
+            b"abc\ndef",
+            &[forced(Motion::WordFwd, ForcedWise::Linewise)],
+        );
+        assert_eq!(st.bytes(), b"def");
     }
 }

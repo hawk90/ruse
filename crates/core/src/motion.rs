@@ -1647,8 +1647,9 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
         let prev = c;
         c = match m {
             // `h`/`l` are bounded by the line; the count stops at its edge.
-            Motion::Left if c > line_start(b, c) => prev_boundary(b, c),
-            Motion::Right if c < line_end(b, c) => next_boundary(b, c),
+            // A step is one grapheme cluster (F-002, #696): a composed char or a ZWJ emoji is one char.
+            Motion::Left if c > line_start(b, c) => prev_grapheme(b, c),
+            Motion::Right if c < line_end(b, c) => next_grapheme(b, c),
             Motion::Left | Motion::Right => c,
             Motion::WrapLeft => wrap_left(b, c),
             Motion::WrapRight => wrap_right(b, c),
@@ -1667,7 +1668,7 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
                 let ls = line_start(b, c);
                 let le = line_end(b, c);
                 if le > ls {
-                    prev_boundary(b, le)
+                    prev_grapheme(b, le)
                 } else {
                     le
                 }

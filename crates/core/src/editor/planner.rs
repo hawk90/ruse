@@ -299,63 +299,21 @@ fn plan_linewise_change(b: &[u8], ls: usize, content_end: usize, hint: GroupHint
     }
 }
 
-/// `c{motion}` / `cc`: delete the change span, capture it to a register, and enter Insert. `cc`/`S` is
-/// the linewise case that preserves the leading indent (Vim autoindent-like).
-fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) -> Plan {
-    // A change is LINEWISE for `cc`/`S` (Motion::Line), the paragraph objects (`cip`/`cap` — paragraphs are
-    // linewise), and an inner block whose braces sit on their own lines (`ci(`/`ci{`). All keep the first
-    // line's indent, collapse the rest to one empty line, keep the trailing newline, and enter Insert after
-    // the indent — identical machinery, differing only in which line range they act on.
-    // A word/sentence/bracket/quote object goes linewise exactly when Vim's exclusive-linewise rule makes
-    // it so (`ci{` on a block whose closer sits alone after its indent, `cis` on a sentence ending its line).
-    let object_linewise =
-        crate::textobj::owns(*m) && crate::editor::range::op_span(b, cur, *m, count).2;
-    let linewise_range = if *m == Motion::Line {
-        Some(change_range(b, cur, *m, count))
-    } else if matches!(m, Motion::InnerParagraph | Motion::AParagraph) || object_linewise {
-        let (s, e, _) = crate::editor::range::op_span(b, cur, *m, count); // whole lines
-        let content_end = if e > s && b.get(e - 1) == Some(&b'\n') {
-            e - 1
-        } else {
-            e
-        };
-        Some((s, content_end))
-    } else {
-        None
-    };
-    if let Some((ls, content_end)) = linewise_range {
-        plan_linewise_change(b, ls, content_end, hint)
-    } else {
-        let (s, e) = change_range(b, cur, *m, count);
-        // Vim's exclusive-linewise rule holds for `c` as for `d`: a span ending at column 0 of a later line
-        // either changes whole lines (`cw` on an empty line, `c}` from a line start) or stops before the
-        // newline ahead of that line.
-        let (s, e) = if crate::editor::range::takes_exclusive_rule(*m) {
-            match crate::editor::range::exclusive_linewise(b, s, e) {
-                (ls, le, true) => return plan_linewise_change(b, ls, le - 1, hint),
-                (s, e, false) => (s, e),
-            }
-        } else {
-            (s, e)
-        };
-        if s >= e {
-            Plan {
-                action: Action::Nop,
-                cursor: s,
-                mode: Mode::Insert,
-                is_edit: false,
-                effects: Vec::new(),
-                set_register: None,
-                set_anchor: None,
-                set_mark: None,
-            }
-        } else {
-            // The register captures the removed content charwise (a partial-line change like `c$` pastes
-            // inline).
-            let reg = captured(b, s, e, false);
-            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
-        }
-    }
+/// `c{motion}` / `cc`: delete the change span, capture it to a register, and enter Insert. A linewise span
+/// (`cc`/`S`, `cj`, `c}` reduced by the exclusive-linewise rule, `cip`, a linewise inner block) keeps the
+/// first line's indent and the trailing newline ([`plan_linewise_change`]); a failed linewise motion stays
+/// in Normal.
+fn plan_change(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    count: u32,
+    m: &Motion,
+    hint: GroupHint,
+) -> Plan {
+    let sp = change_span(b, cur, *m, count);
+    let landing = op_landing(b, cur, *m, count, st.view.curswant, false);
+    apply_op(st, b, cur, MarkOp::Change, sp, landing, hint)
 }
 
 /// `[op]/pat` (forward) or `[op]?pat` (backward) — search `count` times, then apply the pending operator
@@ -463,20 +421,17 @@ fn search_char_landing(
 
 /// The operator span between the cursor and a charwise search `target`, plus whether Vim's
 /// exclusive-linewise rule ADJUSTED its end (`end_adjusted` in nvim's `do_pending_operator`, which moves the
-/// `gq` cursor one line further, #1071). `[cursor, target)` forward, `[target, cursor)` backward; an `e` offset
-/// makes it inclusive through the offset char and exempts it from the rule.
+/// `gq` cursor one line further, #1071). `[cursor, target)` when the landing is after the cursor, else
+/// `[target, cursor)`; an `e` offset makes it inclusive through the offset char and exempts it from the rule.
 fn search_char_span(
     b: &[u8],
     cur: usize,
     target: usize,
-    backward: bool,
     offset: SearchOffset,
 ) -> (SearchSpan, bool) {
-    let (lo, mut hi) = if backward {
-        (target, cur)
-    } else {
-        (cur, target)
-    };
+    // The span runs between the cursor and the landing whichever way the search went: a search that
+    // WRAPPED past the buffer's end lands before the cursor (`Gd/foo` deletes back to `foo`, #710).
+    let (lo, mut hi) = (cur.min(target), cur.max(target));
     if matches!(offset, SearchOffset::End(_)) {
         hi = next_boundary(b, hi);
         return if hi <= lo {
@@ -573,11 +528,7 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
             ..
         } => {
             let target = search_char_landing(st, b, cur, *count, pattern, *backward, *offset)?;
-            Some(
-                search_char_span(b, cur, target, *backward, *offset)
-                    .0
-                    .lines(b, cur),
-            )
+            Some(search_char_span(b, cur, target, *offset).0.lines(b, cur))
         }
         Command::SearchWordUnder {
             forward,
@@ -596,7 +547,7 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
                 SearchOffset::None,
             )?;
             Some(
-                search_char_span(b, cur, target, !forward, SearchOffset::None)
+                search_char_span(b, cur, target, SearchOffset::None)
                     .0
                     .lines(b, cur),
             )
@@ -659,32 +610,39 @@ fn plan_search_char(
     if matches!(op, SearchOp::Move) {
         return nop(target, st.view.mode);
     }
-    let (lo, hi) = match search_char_span(b, cur, target, backward, offset) {
+    let (lo, hi, adjusted) = match search_char_span(b, cur, target, offset) {
         (SearchSpan::Empty, _) => return nop(cur, st.view.mode),
         (SearchSpan::Lines { first, last }, adjusted) => {
-            return plan_search_lines(st, b, cur, op, first, last, adjusted, hint);
+            return plan_search_lines(st, b, cur, op, first, last, adjusted, target, hint);
         }
         (SearchSpan::Chars { lo, hi }, adjusted) => {
             if let Some(span_op) = op.span_op() {
-                return plan_op_over_span(st, b, cur, span_op, lo, hi, false, adjusted, hint);
+                return plan_op_over_span(
+                    st, b, cur, span_op, lo, hi, false, adjusted, target, hint,
+                );
             }
-            (lo, hi)
+            (lo, hi, adjusted)
         }
     };
-    let reg = captured(b, lo, hi, false);
+    let sp = OpSpan {
+        s: lo,
+        e: hi,
+        linewise: false,
+        adjusted,
+        failed: false,
+    };
     match op {
-        SearchOp::Delete => edit_yank(one(Edit::delete(lo, hi - lo)), lo, st.view.mode, hint, reg),
-        SearchOp::Change => edit_yank(one(Edit::delete(lo, hi - lo)), lo, Mode::Insert, hint, reg),
-        SearchOp::Yank => Plan {
-            action: Action::Nop,
-            cursor: lo,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: Some(RegWrite::Yank(reg, (lo, hi))),
-            set_anchor: None,
-            set_mark: None,
-        },
+        SearchOp::Delete => apply_op(
+            st,
+            b,
+            cur,
+            MarkOp::Delete,
+            delete_quirk(b, sp, false),
+            target,
+            hint,
+        ),
+        SearchOp::Change => apply_op(st, b, cur, MarkOp::Change, sp, target, hint),
+        SearchOp::Yank => apply_op(st, b, cur, MarkOp::Yank, sp, target, hint),
         SearchOp::Move
         | SearchOp::Case(_)
         | SearchOp::Shift { .. }
@@ -720,12 +678,14 @@ fn plan_search_line(
     // Linewise over the cursor's line .. target line (inclusive), regardless of search direction.
     let cur_line = crate::pos::line_of(b, cur);
     let (first, last) = (cur_line.min(target_line), cur_line.max(target_line));
-    plan_search_lines(st, b, cur, op, first, last, false, hint)
+    let landing = crate::pos::nth_line_start(b, target_line);
+    plan_search_lines(st, b, cur, op, first, last, false, landing, hint)
 }
 
 /// A search operator applied LINEWISE over lines `first..=last` — a line-offset search (`d/pat/+1`) and an
 /// exclusive search span promoted by Vim's exclusive-linewise rule (`dn` landing at column 0, #799).
-/// `end_adjusted` is that promotion (see [`search_char_span`]).
+/// `end_adjusted` is that promotion (see [`search_char_span`]); `landing` is where the search moved the
+/// cursor.
 #[allow(clippy::too_many_arguments)]
 fn plan_search_lines(
     st: &EditorState,
@@ -735,12 +695,12 @@ fn plan_search_lines(
     first: usize,
     last: usize,
     end_adjusted: bool,
+    landing: usize,
     hint: GroupHint,
 ) -> Plan {
     let first_ls = crate::pos::nth_line_start(b, first);
-    let last_content_end = line_end(b, crate::pos::nth_line_start(b, last));
+    let last_ls = crate::pos::nth_line_start(b, last);
     if let Some(span_op) = op.span_op() {
-        let last_ls = crate::pos::nth_line_start(b, last);
         return plan_op_over_span(
             st,
             b,
@@ -750,62 +710,175 @@ fn plan_search_lines(
             last_ls,
             true,
             end_adjusted,
+            landing,
             hint,
         );
     }
-    if matches!(op, SearchOp::Change) {
-        return plan_linewise_change(b, first_ls, last_content_end, hint);
-    }
-    // Delete / Yank: the whole-line span including the terminating newline (or, when it is the buffer's
-    // final line with no trailing newline, splice away the PREVIOUS line's newline so the line is removed
-    // outright rather than blanked — mirroring the linewise `d{motion}` branch).
-    let reg = captured(b, first_ls, whole_line_span_end(b, last_content_end), true);
-    let (del_start, del_end) =
-        if last_content_end == b.len() && first_ls > 0 && b[last_content_end - 1] != b'\n' {
-            (first_ls - 1, b.len())
-        } else {
-            (first_ls, whole_line_span_end(b, last_content_end))
-        };
-    match op {
-        SearchOp::Delete => {
-            let cursor = line_start(b, del_start);
-            edit_yank(
-                one(Edit::delete(del_start, del_end - del_start)),
-                cursor,
-                st.view.mode,
-                hint,
-                reg,
-            )
-        }
-        SearchOp::Yank => Plan {
-            action: Action::Nop,
-            cursor: first_ls,
-            mode: st.view.mode,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: Some(RegWrite::Yank(
-                reg,
-                (first_ls, whole_line_span_end(b, last_content_end)),
-            )),
-            set_anchor: None,
-            set_mark: None,
-        },
+    let op = match op {
+        SearchOp::Delete => MarkOp::Delete,
+        SearchOp::Change => MarkOp::Change,
+        SearchOp::Yank => MarkOp::Yank,
         SearchOp::Move
-        | SearchOp::Change
         | SearchOp::Case(_)
         | SearchOp::Shift { .. }
         | SearchOp::Reindent
         | SearchOp::Format { .. } => unreachable!("handled above"),
+    };
+    plan_op_over_span(
+        st,
+        b,
+        cur,
+        op,
+        first_ls,
+        last_ls,
+        true,
+        end_adjusted,
+        landing,
+        hint,
+    )
+}
+
+/// One delete / change / yank / recase over a resolved operator span: the tail every operator path shares (a
+/// motion, a forced motion, a mark, a search), so their register, mode and cursor rules agree with nvim
+/// (#693, #712, #1077). `landing` is where the motion left the cursor (see [`op_landing`]).
+/// - Delete: a linewise delete rests on the line that moves up, at the wanted column (`'nostartofline'`,
+///   nvim's `old_col`), or on its first non-blank when the exclusive-linewise rule made the span linewise
+///   (`sp.adjusted`). A linewise delete reaching an unterminated last line also takes the newline before it.
+/// - Change: a linewise span is `cc` over those lines ([`plan_linewise_change`]); a FAILED linewise motion
+///   (`cj` on the last line) stays in Normal.
+/// - Yank / recase: a linewise span rests on the earlier of the cursor and the landing, keeping its column
+///   (`wyy`, `jwyk`, `wgUj`); a charwise one on the span start.
+fn apply_op(
+    st: &EditorState,
+    b: &[u8],
+    cur: usize,
+    op: MarkOp,
+    sp: OpSpan,
+    landing: usize,
+    hint: GroupHint,
+) -> Plan {
+    let OpSpan {
+        s,
+        e,
+        linewise,
+        adjusted,
+        failed,
+    } = sp;
+    let mode = st.view.mode;
+    let rest = if linewise { cur.min(landing) } else { s };
+    match op {
+        MarkOp::Delete | MarkOp::Yank | MarkOp::Case(_) if s >= e => nop(cur, mode),
+        MarkOp::Delete if !linewise => {
+            let reg = captured(b, s, e, false);
+            edit_yank(one(Edit::delete(s, e - s)), s, mode, hint, reg)
+        }
+        MarkOp::Delete => {
+            let reg = captured(b, s, e, true);
+            // The line that ends up under the cursor, as `(its start before the delete, the bytes removed
+            // before it)`: the line below the span, or — when the span runs to an unterminated last line,
+            // whose preceding newline goes too — the line above it.
+            let (del_start, line, shift) = if e == b.len() && s > 0 && b[e - 1] != b'\n' {
+                (s - 1, line_start(b, s - 1), 0)
+            } else {
+                (s, e, e - s)
+            };
+            let at = if adjusted {
+                motion::first_non_blank(b, line)
+            } else {
+                at_col(b, line, st.view.curswant)
+            };
+            edit_yank(
+                one(Edit::delete(del_start, e - del_start)),
+                at - shift,
+                mode,
+                hint,
+                reg,
+            )
+        }
+        MarkOp::Change if linewise && failed => nop(cur, Mode::Normal),
+        MarkOp::Change if linewise => {
+            let content_end = if e > s && b[e - 1] == b'\n' { e - 1 } else { e };
+            plan_linewise_change(b, s, content_end, hint)
+        }
+        MarkOp::Change if s >= e => nop(s, Mode::Insert),
+        MarkOp::Change => {
+            // The register captures the removed content charwise (a partial-line change like `c$` pastes
+            // inline).
+            let reg = captured(b, s, e, false);
+            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
+        }
+        MarkOp::Yank => Plan {
+            action: Action::Nop,
+            cursor: rest,
+            mode,
+            is_edit: false,
+            effects: Vec::new(),
+            set_register: Some(RegWrite::Yank(captured(b, s, e, linewise), (s, e))),
+            set_anchor: None,
+            set_mark: None,
+        },
+        // Recase the span; an all-non-letter span is just a cursor move (Vim). Invalid UTF-8 bytes are kept.
+        MarkOp::Case(case) => {
+            let recased = recase_bytes(&b[s..e], case);
+            // The resting point after the edit: its offset inside the span shifts with the recased prefix.
+            let at = if rest > s && rest <= e {
+                s + recase_bytes(&b[s..rest], case).len()
+            } else {
+                rest
+            };
+            if recased == b[s..e] {
+                nop(rest, mode)
+            } else {
+                edit(one(Edit::replace(s, e - s, recased)), at, mode, hint)
+            }
+        }
+        MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } => {
+            unreachable!("the line operators take plan_op_over_span")
+        }
     }
 }
 
-/// The end of a whole-LINE span: the content end plus its terminating newline where one is present (so a
-/// linewise register/delete carries the trailing `\n`), or the content end at end-of-buffer.
-fn whole_line_span_end(b: &[u8], content_end: usize) -> usize {
-    if content_end < b.len() && b[content_end] == b'\n' {
-        content_end + 1
+/// Recase `bytes`, keeping any invalid UTF-8 byte as it is: a file with stray bytes recases its letters
+/// instead of panicking (#706).
+fn recase_bytes(bytes: &[u8], case: WordCase) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    for chunk in bytes.utf8_chunks() {
+        out.extend_from_slice(recase(chunk.valid(), case).as_bytes());
+        out.extend_from_slice(chunk.invalid());
+    }
+    out
+}
+
+/// The `MarkOp` form of a delete / change / yank.
+fn mark_op(op: OpKind) -> MarkOp {
+    match op {
+        OpKind::Delete => MarkOp::Delete,
+        OpKind::Change => MarkOp::Change,
+        OpKind::Yank => MarkOp::Yank,
+    }
+}
+
+/// Vi's `d` quirk (nvim `op_delete`) on a plain charwise delete: over several lines, starting in the indent
+/// and leaving only blanks after its end, it deletes whole lines (`2d$`, `daw` on an empty line). Objects
+/// take [`crate::textobj::delete_reshape`], every other motion
+/// [`crate::editor::range::delete_promotes_linewise`]. Forced motions and Visual deletes never take it.
+fn delete_quirk(b: &[u8], sp: OpSpan, object: bool) -> OpSpan {
+    if sp.linewise {
+        return sp;
+    }
+    let (s, e, linewise) = if object {
+        crate::textobj::delete_reshape(b, sp.s, sp.e)
     } else {
-        content_end
+        match crate::editor::range::delete_promotes_linewise(b, sp.s, sp.e) {
+            Some((ls, le)) => (ls, le, true),
+            None => (sp.s, sp.e, false),
+        }
+    };
+    OpSpan {
+        s,
+        e,
+        linewise,
+        ..sp
     }
 }
 
@@ -815,7 +888,8 @@ fn whole_line_span_end(b: &[u8], content_end: usize) -> usize {
 /// charwise-EXCLUSIVE, so for the line operators an end resting at column 0 of the far line does NOT pull that
 /// line in (Vim's exclusive-motion rule — the same reduction `ShiftMotion`/`Reindent` apply to a motion).
 /// `end_adjusted` says the exclusive-linewise rule moved the span's end (nvim's `oap->end_adjusted`): `gq`
-/// then leaves the cursor on the line BELOW the formatted block (#1071).
+/// then leaves the cursor on the line BELOW the formatted block (#1071). `landing` is where the motion left
+/// the cursor ([`apply_op`]).
 #[allow(clippy::too_many_arguments)]
 fn plan_op_over_span(
     st: &EditorState,
@@ -826,6 +900,7 @@ fn plan_op_over_span(
     hi: usize,
     linewise: bool,
     end_adjusted: bool,
+    landing: usize,
     hint: GroupHint,
 ) -> Plan {
     // Shift (`>`), reindent (`=`) and format (`gq`/`gw`) operate on whole LINES regardless of the charwise /
@@ -856,49 +931,25 @@ fn plan_op_over_span(
             _ => unreachable!("guarded by matches! above"),
         };
     }
-    let (s, e) = if linewise {
-        let start = line_start(b, lo);
+    let sp = if linewise {
         let le = line_end(b, hi);
-        (start, if le < b.len() { le + 1 } else { le })
+        OpSpan {
+            s: line_start(b, lo),
+            e: if le < b.len() { le + 1 } else { le },
+            linewise: true,
+            adjusted: end_adjusted,
+            failed: false,
+        }
     } else {
-        (lo, hi)
+        OpSpan {
+            s: lo,
+            e: hi,
+            linewise: false,
+            adjusted: end_adjusted,
+            failed: false,
+        }
     };
-    let reg = captured(b, s, e, linewise);
-    match op {
-        MarkOp::Yank => Plan {
-            action: Action::Nop,
-            cursor: s,
-            mode: Mode::Normal,
-            is_edit: false,
-            effects: Vec::new(),
-            set_register: Some(RegWrite::Yank(reg, (s, e))),
-            set_anchor: None,
-            set_mark: None,
-        },
-        MarkOp::Delete if s < e => {
-            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Normal, hint, reg)
-        }
-        MarkOp::Change if s < e => {
-            edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
-        }
-        MarkOp::Change => nop(s, Mode::Insert),
-        MarkOp::Delete => nop(s, Mode::Normal),
-        // Recase the span, reusing `CaseMotion`'s recase path; an all-non-letter span is just a cursor move to
-        // the span start (Vim).
-        MarkOp::Case(case) if s < e => {
-            let src = std::str::from_utf8(&b[s..e]).expect("operator span is on char boundaries");
-            let recased = recase(src, case).into_bytes();
-            if recased == b[s..e] {
-                nop(s, st.view.mode)
-            } else {
-                edit(one(Edit::replace(s, e - s, recased)), s, st.view.mode, hint)
-            }
-        }
-        MarkOp::Case(_) => nop(s, st.view.mode),
-        MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. } => {
-            unreachable!("handled above")
-        }
-    }
+    apply_op(st, b, cur, op, sp, landing, hint)
 }
 
 /// The match `[start, end)` `gn`/`gN` selects (see [`plan_search_object`]), or `None` with no match.
@@ -994,7 +1045,7 @@ fn plan_search_object(
         | SearchOp::Reindent
         | SearchOp::Format { .. } => {
             let span_op = op.span_op().expect("a span op");
-            plan_op_over_span(st, b, cur, span_op, s, e, false, false, hint)
+            plan_op_over_span(st, b, cur, span_op, s, e, false, false, s, hint)
         }
     }
 }
@@ -1406,35 +1457,6 @@ fn recase(text: &str, case: WordCase) -> String {
     }
 }
 
-/// Delete `[s, e)` into the register, linewise or charwise; shared by `d{motion}` and its forced-wise form.
-/// A linewise span that reaches the end of an UNTERMINATED buffer while earlier lines remain removes the
-/// line entirely, which also drops the newline ending the line above, then moves the cursor up to the new
-/// last line (Vim: `jdVj` on `a|b|c` leaves `a`, #709). The register still holds the lines linewise
-/// (`b\nc\n`), not the newline spliced away. A terminated buffer's span already ends in its own `\n`.
-fn plan_delete_span(
-    b: &[u8],
-    s: usize,
-    e: usize,
-    linewise: bool,
-    mode: Mode,
-    hint: GroupHint,
-) -> Plan {
-    let reg = captured(b, s, e, linewise);
-    if linewise && e == b.len() && s > 0 && b[e - 1] != b'\n' {
-        let del_start = s - 1; // the '\n' terminating the previous line (s is a line start, s > 0)
-        let cursor = line_start(b, del_start);
-        edit_yank(
-            one(Edit::delete(del_start, e - del_start)),
-            cursor,
-            mode,
-            hint,
-            reg,
-        )
-    } else {
-        edit_yank(one(Edit::delete(s, e - s)), s, mode, hint, reg)
-    }
-}
-
 /// Capture `b[s..e]` as a register value with the given paste geometry.
 fn captured(b: &[u8], s: usize, e: usize, linewise: bool) -> Register {
     let bytes = b[s..e].to_vec();
@@ -1615,7 +1637,16 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 .map_or(0, |p| motion::snap(b, p.min(b.len())));
             nop(at, Mode::Insert)
         }
-        Command::EnterInsertAfter => nop(next_boundary(b, cur), Mode::Insert),
+        // `a`: Insert after the cursor's char — on an empty line (or past the last char) there is none, so
+        // the caret stays rather than crossing into the next line (#701).
+        Command::EnterInsertAfter => {
+            let at = if cur < line_end(b, cur) {
+                next_grapheme(b, cur)
+            } else {
+                cur
+            };
+            nop(at, Mode::Insert)
+        }
         Command::InsertLineStart => nop(motion::first_non_blank(b, cur), Mode::Insert),
         // `gI` — insert at byte column 0 (line start), BEFORE all indentation, unlike `I` (first non-blank).
         Command::InsertColumnZero => nop(line_start(b, cur), Mode::Insert),
@@ -2087,9 +2118,10 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         Command::DeleteUnder(count) => {
             // `{count}x`: delete `count` chars from the cursor, clamped at end-of-line (Vim). Fewer than
-            // `count` chars left deletes to EOL. The removed span fills the unnamed register (charwise).
+            // `count` chars left deletes to EOL. The removed span fills the unnamed register (charwise). A
+            // char is a grapheme cluster: a base with its composing marks, a ZWJ emoji sequence (#696).
             let le = line_end(b, cur);
-            let end = advance_n(b, cur, *count, le);
+            let (end, _) = advance_graphemes(b, cur, *count, le);
             if end <= cur {
                 nop(cur, st.view.mode)
             } else {
@@ -2118,7 +2150,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // `{count}r{ch}`: replace `count` chars with `ch`. Per Vim it is a NO-OP if fewer than
             // `count` chars remain on the line (never a partial replace). Cursor lands on the last one.
             let le = line_end(b, cur);
-            let (end, reached) = advance_n_checked(b, cur, *count, le);
+            let (end, reached) = advance_graphemes(b, cur, *count, le);
             if !reached {
                 nop(cur, st.view.mode)
             } else if *c == '\n' {
@@ -2154,30 +2186,12 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             // toggled UTF-8 may differ in byte length from the source, so the cursor lands at `cur +
             // flipped.len()`, not the source end.
             let le = line_end(b, cur);
-            let end = advance_n(b, cur, *count, le);
+            let (end, _) = advance_graphemes(b, cur, *count, le);
             if end <= cur {
                 nop(cur, st.view.mode)
             } else {
-                // `[cur, end)` is on char boundaries (`advance_n` walks boundaries), so it is valid UTF-8.
-                let src =
-                    std::str::from_utf8(&b[cur..end]).expect("cursor span is on char boundaries");
-                let mut flipped: Vec<u8> = Vec::with_capacity(end - cur);
-                for ch in src.chars() {
-                    if ch.is_uppercase() {
-                        for c in ch.to_lowercase() {
-                            let mut buf = [0u8; 4];
-                            flipped.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-                        }
-                    } else if ch.is_lowercase() {
-                        for c in ch.to_uppercase() {
-                            let mut buf = [0u8; 4];
-                            flipped.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-                        }
-                    } else {
-                        let mut buf = [0u8; 4];
-                        flipped.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
-                    }
-                }
+                // Invalid UTF-8 bytes are kept as they are (#706).
+                let flipped = recase_bytes(&b[cur..end], WordCase::Toggle);
                 if flipped == b[cur..end] {
                     nop(end, st.view.mode) // nothing was a letter: `~` just moves right
                 } else {
@@ -2383,11 +2397,29 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let Some(mark) = st.view.named_mark(*name) else {
                 return nop(cur, st.view.mode);
             };
-            let mark = mark.min(b.len());
+            let mark = motion::snap(b, mark.min(b.len()));
             let (lo, hi) = (cur.min(mark), cur.max(mark));
-            // `` `a `` is an exclusive charwise motion: a mark at column 0 of a later line adjusts the end.
-            let end_adjusted = !*linewise && lo < hi && hi == line_start(b, hi);
-            plan_op_over_span(st, b, cur, *op, lo, hi, *linewise, end_adjusted, hint)
+            if *linewise {
+                // `'a` lands on the first non-blank of the mark's line.
+                let landing = mark_line_target(b, mark);
+                return plan_op_over_span(st, b, cur, *op, lo, hi, true, false, landing, hint);
+            }
+            // `` `a `` is an exclusive charwise motion: Vim's exclusive-linewise rule (a mark at column 0 of
+            // a later line pulls the end back, linewise from the indent, #710), then — for `d` — Vi's
+            // delete quirk. The line operators keep the plain span and take only the adjusted flag.
+            let sp = exclusive_op_span(b, lo, hi);
+            if matches!(
+                op,
+                MarkOp::Shift { .. } | MarkOp::Reindent | MarkOp::Format { .. }
+            ) {
+                return plan_op_over_span(st, b, cur, *op, lo, hi, false, sp.adjusted, mark, hint);
+            }
+            let sp = if *op == MarkOp::Delete {
+                delete_quirk(b, sp, false)
+            } else {
+                sp
+            };
+            apply_op(st, b, cur, *op, sp, mark, hint)
         }
         // `CTRL-G u`: break the undo group. A pure nop (is_edit = false), so `commit` sets
         // `last_was_edit = false` and the NEXT edit's `GroupHint` becomes `BreakBefore` — a fresh undo
@@ -2465,6 +2497,27 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             let target = match m {
                 Motion::Up => motion::vmove(b, cur, *count, false, st.view.curswant),
                 Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant),
+                // `gg`/`G`/`{count}%` keep the wanted column too (`'nostartofline'`, nvim's
+                // `beginline(BL_SOL)`).
+                Motion::GotoLine | Motion::LastLine | Motion::GotoPercent => at_col(
+                    b,
+                    line_start(b, motion::target(b, cur, *m, *count)),
+                    st.view.curswant,
+                ),
+                // In charwise Visual `$` goes just past the line's last char, so the selection takes the
+                // line break (`v$d` joins the lines, #697).
+                Motion::LineEnd
+                    if matches!(
+                        st.view.mode,
+                        Mode::Visual {
+                            kind: SelectKind::Charwise
+                        } | Mode::Select {
+                            kind: SelectKind::Charwise
+                        }
+                    ) =>
+                {
+                    line_end(b, motion::target(b, cur, *m, *count))
+                }
                 _ => motion::target(b, cur, *m, *count),
             };
             // Normal mode never rests on a non-empty line's trailing newline, whatever the motion: `j`/`k`
@@ -2478,7 +2531,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                     let ls = line_start(b, target);
                     let le = line_end(b, target);
                     if target == le && le > ls {
-                        prev_boundary(b, le)
+                        prev_grapheme(b, le)
                     } else {
                         target
                     }
@@ -2488,101 +2541,34 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             nop(target, st.view.mode)
         }
         Command::Delete(count, m) => {
-            let (s, e, linewise) = op_span(b, cur, *m, *count);
             // Vi's "d" quirk (nvim `op_delete`): a charwise delete over several lines that starts in the
             // indent and leaves only blanks after its end goes linewise (`daw` on an empty line, `das` on
             // a whole-line `dat` tag block, `2d$` over whole lines, #747). Visual deletes never take it.
-            let (s, e, linewise) = if linewise {
-                (s, e, linewise)
-            } else if is_text_object(*m) {
-                crate::textobj::delete_reshape(b, s, e)
-            } else {
-                match crate::editor::range::delete_promotes_linewise(b, s, e) {
-                    Some((ls, le)) => (ls, le, true),
-                    None => (s, e, false),
-                }
-            };
-            if s >= e {
+            let sp = delete_quirk(b, op_span_full(b, cur, *m, *count), is_text_object(*m));
+            if sp.s >= sp.e && crate::textobj::owns(*m) {
                 // An object that selects nothing (`di(` on `(\n)`) still leaves the cursor at its start.
-                let at = if crate::textobj::owns(*m) { s } else { cur };
-                nop(at, st.view.mode)
-            } else if linewise && e == b.len() && s > 0 && b[e - 1] != b'\n' {
-                // Deleting the buffer's LAST line while earlier lines remain, where that line has no
-                // trailing newline (so the span itself does not already eat one): Vim removes the line
-                // entirely (not blank it in place), which means also dropping the newline that ends the
-                // previous line, then moving the cursor up to the new last line. The register still holds
-                // the line content linewise ("beta\n"), not the leading newline we splice away.
-                // (`dG` on a newline-terminated buffer keeps its own trailing newline and takes the plain
-                // branch, since the span already ends in `\n`.)
-                let reg = captured(b, s, e, true);
-                let del_start = s - 1; // the '\n' terminating the previous line (s is a line start, s > 0)
-                let cursor = if crate::textobj::owns(*m) {
-                    motion::first_non_blank(b, line_start(b, del_start))
-                } else {
-                    line_start(b, del_start)
-                };
-                edit_yank(
-                    one(Edit::delete(del_start, e - del_start)),
-                    cursor,
-                    st.view.mode,
-                    hint,
-                    reg,
-                )
-            } else {
-                let reg = captured(b, s, e, linewise);
-                // A linewise object delete rests on the first non-blank of the line that moves up into
-                // place (Vim `beginline(BL_WHITE)`), as `di{` on an indented block does.
-                let cursor = if linewise && crate::textobj::owns(*m) && e < b.len() {
-                    s + (motion::first_non_blank(b, e) - e)
-                } else {
-                    s
-                };
-                edit_yank(one(Edit::delete(s, e - s)), cursor, st.view.mode, hint, reg)
+                return nop(sp.s, st.view.mode);
             }
+            let landing = op_landing(b, cur, *m, *count, st.view.curswant, false);
+            apply_op(st, b, cur, MarkOp::Delete, sp, landing, hint)
         }
-        Command::Change(count, m) => plan_change(b, cur, *count, m, hint),
+        Command::Change(count, m) => plan_change(st, b, cur, *count, m, hint),
         Command::Yank(count, m) => {
-            let (s, e, linewise) = op_span(b, cur, *m, *count);
-            if s >= e {
-                nop(cur, st.view.mode)
-            } else {
-                // Yank captures without editing; Vim leaves the cursor at the start of the yanked span.
-                let reg = captured(b, s, e, linewise);
-                Plan {
-                    action: Action::Nop,
-                    cursor: s,
-                    mode: st.view.mode,
-                    is_edit: false,
-                    effects: Vec::new(),
-                    set_register: Some(RegWrite::Yank(reg, (s, e))),
-                    set_anchor: None,
-                    set_mark: None,
-                }
-            }
+            let sp = op_span_full(b, cur, *m, *count);
+            let landing = op_landing(b, cur, *m, *count, st.view.curswant, true);
+            apply_op(st, b, cur, MarkOp::Yank, sp, landing, hint)
         }
         Command::CaseMotion {
             count,
             motion,
             case,
         } => {
-            let (s, e, _linewise) = op_span(b, cur, *motion, *count);
-            if s >= e {
-                nop(cur, st.view.mode)
-            } else {
-                // `op_span` walks char boundaries, so `[s, e)` is valid UTF-8.
-                let src =
-                    std::str::from_utf8(&b[s..e]).expect("operator span is on char boundaries");
-                let recased = recase(src, *case).into_bytes();
-                if recased == b[s..e] {
-                    nop(s, st.view.mode) // no letters in range: `gu`/`gU`/`g~` just move to the start
-                } else {
-                    edit(one(Edit::replace(s, e - s, recased)), s, st.view.mode, hint)
-                }
-            }
+            let sp = op_span_full(b, cur, *motion, *count);
+            let landing = op_landing(b, cur, *motion, *count, st.view.curswant, false);
+            apply_op(st, b, cur, MarkOp::Case(*case), sp, landing, hint)
         }
-        // Forced-wise operator (`dvj`, `dVe`, `yv}`): compute the reshaped span, then apply the operator
-        // like its plain form. Change uses the charwise change shape (delete span + Insert); the linewise
-        // indent-preserving `cc` special-case is not reused here (forced-linewise change is vanishingly rare).
+        // Forced-wise operator (`dvj`, `dVe`, `yv}`): reshape the span (see `forced_span`), then apply the
+        // operator like its plain form.
         Command::OpForced {
             op,
             count,
@@ -2594,30 +2580,20 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 let target = motion::target(b, cur, *motion, *count);
                 return block_op(b, cur, target, *op, hint, false);
             }
-            let (s, e, linewise) = forced_span(b, cur, *motion, *count, *wise);
-            match op {
-                OpKind::Delete if s < e => plan_delete_span(b, s, e, linewise, st.view.mode, hint),
-                OpKind::Yank if s < e => {
-                    let reg = captured(b, s, e, linewise);
-                    Plan {
-                        action: Action::Nop,
-                        cursor: s,
-                        mode: st.view.mode,
-                        is_edit: false,
-                        effects: Vec::new(),
-                        set_register: Some(RegWrite::Yank(reg, (s, e))),
-                        set_anchor: None,
-                        set_mark: None,
-                    }
-                }
-                OpKind::Change if s < e => {
-                    let reg = captured(b, s, e, linewise);
-                    edit_yank(one(Edit::delete(s, e - s)), s, Mode::Insert, hint, reg)
-                }
-                // Empty span: delete/yank are a clean no-op; change still drops into Insert (Vim).
-                OpKind::Change => nop(s, Mode::Insert),
-                _ => nop(cur, st.view.mode),
+            let sp = forced_span(b, cur, *motion, *count, *wise, st.view.curswant);
+            if sp.s >= sp.e && *op == OpKind::Change && !sp.linewise {
+                // An empty charwise change still drops into Insert (Vim).
+                return nop(sp.s, Mode::Insert);
             }
+            let landing = op_landing(
+                b,
+                cur,
+                *motion,
+                *count,
+                st.view.curswant,
+                *op == OpKind::Yank,
+            );
+            apply_op(st, b, cur, mark_op(*op), sp, landing, hint)
         }
         Command::ShiftRight(count) => plan_shift(st, cur, *count, true, hint),
         Command::ShiftLeft(count) => plan_shift(st, cur, *count, false, hint),
@@ -4175,13 +4151,19 @@ fn paste(
     // bytes are one contiguous insert, so the cursor math below (last pasted byte) still holds.
     let repeat = |unit: &[u8]| unit.repeat(count);
     let one = |e: Edit| EditList::new(vec![e]).expect("single edit is always valid");
+    // A paste run from Insert (`i_CTRL-O p`) returns to Insert; every other paste ends in Normal.
+    let end_mode = if mode == Mode::Insert {
+        Mode::Insert
+    } else {
+        Mode::Normal
+    };
     let mk = |at: usize, bytes: Vec<u8>, cursor: usize| Plan {
         action: Action::Txn {
             edits: one(Edit::insert(at, bytes)),
             hint: GroupHint::BreakBefore,
         },
         cursor,
-        mode: Mode::Normal,
+        mode: end_mode,
         is_edit: true,
         effects: Vec::new(),
         set_register: None,
@@ -4242,8 +4224,10 @@ fn paste(
         if after {
             // Insert after the cursor char; cursor lands on the first pasted byte for multi-line content,
             // else per gravity on/after the last pasted byte. `gp` (move_after) rests just past the paste.
-            let at = if cur < b.len() {
-                next_boundary(b, cur)
+            // On an empty line, or past the last char (`A<C-o>p`), there is no char to paste after: the
+            // text goes in at the cursor, never across the line break (#701).
+            let at = if cur < b.len() && b[cur] != b'\n' {
+                next_grapheme(b, cur)
             } else {
                 cur
             };
