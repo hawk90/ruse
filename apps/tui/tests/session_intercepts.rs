@@ -390,7 +390,7 @@ fn ampersand_repeats_the_last_substitute_on_the_current_line() {
 fn ampersand_without_a_substitute_reports_it() {
     let mut h = Headless::vim("ab\n");
     h.keys("&");
-    assert_eq!(h.status(), "no previous substitute");
+    assert_eq!(h.status(), "E33: No previous substitute regular expression");
 }
 
 #[test]
@@ -549,4 +549,82 @@ fn alt_key_in_the_vim_profile_is_escape_then_the_key() {
     let mut h = Headless::vim("\n");
     h.keys("ihello<M-x>");
     assert_eq!(h.text(), "hell\n");
+}
+
+/// Open `text` with Vim's factory search case, type `keys`, and return the session.
+fn run(text: &str, keys: &str) -> Headless {
+    let mut h = Headless::vim(text).vanilla_search_case();
+    h.keys(keys);
+    h
+}
+
+#[test]
+fn put_from_an_empty_register_is_e353_and_spends_the_register() {
+    let h = run("abc\n", "\"ap");
+    assert_eq!(h.status(), "E353: Nothing in register a");
+    assert_eq!(h.text(), "abc\n");
+    // The `"a` is spent: the next `p` reads the unnamed register (#901, nvim v0.12.6).
+    assert_eq!(run("abc\n", "\"apyl$p").text(), "abca\n");
+    assert_eq!(run("abc\n", "p").status(), "E353: Nothing in register \"");
+    assert_eq!(
+        run("abc\n", "\":p").status(),
+        "E30: No previous command line"
+    );
+    assert_eq!(
+        run("abc\n", "\"_p").status(),
+        "",
+        "the black hole puts nothing quietly"
+    );
+}
+
+#[test]
+fn an_unset_mark_is_e20_and_nothing_runs() {
+    let h = run("abc\ndef\n", "jd'a");
+    assert_eq!(h.status(), "E20: Mark not set");
+    assert_eq!(h.text(), "abc\ndef\n");
+    assert_eq!(h.cursor_row_col(), (2, 0));
+}
+
+#[test]
+fn a_search_that_matches_nowhere_is_e486_and_nothing_runs() {
+    let h = run("abc def\n", "wd/zzz<CR>");
+    assert_eq!(h.status(), "E486: pattern not found: zzz");
+    assert_eq!(h.text(), "abc def\n");
+    assert_eq!(h.cursor_row_col(), (1, 4));
+    // The keys typed after it still run (they are typed, not flushed).
+    assert_eq!(run("abc\n", "l/zzz<CR>x").text(), "ac\n");
+}
+
+#[test]
+fn quiet_substitute_and_global_misses_are_not_errors() {
+    assert_eq!(run("abc\n", ":s/zzz/y/e<CR>").status(), "");
+    assert_eq!(
+        run("abc\n", ":g/zzz/d<CR>").status(),
+        "Pattern not found: zzz"
+    );
+    assert_eq!(
+        run("abc\n", ":foo<CR>").status(),
+        "E492: Not an editor command: foo"
+    );
+}
+
+#[test]
+fn at_at_before_any_macro_is_e748() {
+    let h = run("abc\n", "@@x");
+    assert_eq!(h.emsg(), "E748");
+    assert_eq!(h.text(), "bc\n");
+}
+
+#[test]
+fn visual_colon_leaves_the_cursor_at_the_selection_start() {
+    // nvim v0.12.6: the colon operator moves to the area's start before the line opens; `<Esc>` keeps it.
+    assert_eq!(run("abcd\nefgh\n", "jllvkh:<Esc>").cursor_row_col(), (1, 1));
+    assert_eq!(run("abcd\nefgh\n", "llVj:<Esc>").cursor_row_col(), (1, 0));
+    assert_eq!(run("abcd\nefgh\n", "jllVk:<Esc>").cursor_row_col(), (1, 2));
+    assert_eq!(
+        run("abcd\nefgh\n", "jl<C-v>kl:<Esc>").cursor_row_col(),
+        (1, 1)
+    );
+    // `'<,'>` still names the whole selection.
+    assert_eq!(run("a\nb\nc\n", "jVj:d<CR>").text(), "a\n");
 }

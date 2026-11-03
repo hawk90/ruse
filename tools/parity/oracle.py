@@ -15,10 +15,12 @@ WHY THE SELFTEST GATES EVERYTHING (spec/parity/upstreams.yaml#oracle_selftest):
 
 THE NON-CORRUPTION TECHNIQUE (this harness's answer to that hazard):
     1. Observation is READ-ONLY and happens AFTER mutation, never through a mutating call. Keys are
-       fed with `nvim_feedkeys(nvim_replace_termcodes(keys, true, false, true), 'x', false)` — mode
+       fed with `nvim_feedkeys(nvim_replace_termcodes(keys, true, false, true), 'xt', false)` — mode
        'x' executes synchronously and RETURNS, so every read (`nvim_buf_get_lines`,
        `nvim_win_get_cursor`, `getreg`/`getregtype`) runs against already-settled state. No read
-       command is itself an editing command (the `vim -es` / `execute-kbd-macro` trap).
+       command is itself an editing command (the `vim -es` / `execute-kbd-macro` trap). 't' feeds
+       the keys AS TYPED (#901): untyped keys are flushed after a failed command, never reach a `q`
+       recording, and an untyped `<Esc>` runs a command line instead of abandoning it.
     2. One fresh `nvim` PROCESS per fixture — `-u NONE -i NONE` (no user config, no shada). State
        cannot leak between fixtures because there is no shared process to leak through.
     3. The pin is VERIFIED, not assumed. `nvim --version` is parsed and asserted equal to the
@@ -60,14 +62,27 @@ vim.api.nvim_win_set_cursor(0, {1, 0})
 if input.setup ~= nil and input.setup ~= '' then
   vim.cmd(input.setup)
 end
+vim.v.errmsg = ''
 local tc = vim.api.nvim_replace_termcodes(input.keys, true, false, true)
-vim.api.nvim_feedkeys(tc, 'x', false)
+if input.probe_failed then
+  -- Fed NOT as typed, the keys after a failed command are flushed (Vim's beep_flush and the flush on an
+  -- error message), so a sentinel queued after the keys runs only if no command failed. Nothing else of
+  -- this run is read.
+  _G.ruse_reached = false
+  local sentinel = vim.api.nvim_replace_termcodes('<Cmd>lua _G.ruse_reached = true<CR>', true, false, true)
+  vim.api.nvim_feedkeys(tc .. sentinel, 'x', false)
+  io.write(vim.json.encode({ failed = not _G.ruse_reached }))
+  return
+end
+-- 't': as typed, the way a user's keys arrive, so a failed command does not swallow the keys after it.
+vim.api.nvim_feedkeys(tc, 'xt', false)
 io.write(vim.json.encode({
   text        = vim.api.nvim_buf_get_lines(0, 0, -1, false),
   cursor      = vim.api.nvim_win_get_cursor(0),
   reg_unnamed = { vim.fn.getreg('"'), vim.fn.getregtype('"') },
   reg0        = { vim.fn.getreg('0'), vim.fn.getregtype('0') },
   mode        = vim.api.nvim_get_mode().mode,
+  emsg        = vim.v.errmsg:match('^(E%%d+)') or '',
 }))
 """
 
@@ -149,17 +164,9 @@ def _regtype(rt: str) -> str:
     return rt
 
 
-def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
-    """Run the pinned Neovim on `lines`, feed `keys` in Normal mode, and return the settled state.
-
-    Returns {text, cursor:[row1,col0], reg_unnamed:{text,type}, reg0:{text,type}, mode, nvim_version}.
-    The read happens strictly after synchronous feedkeys — see the module docstring for why that is
-    the whole point. `setup` is an optional ex command (e.g. `set shiftwidth=4 expandtab`) applied to the
-    fresh process before the keys, so a CONFIG-DEPENDENT op can be observed under a config that matches
-    ruse's defaults instead of nvim's factory defaults (see the shift_right_line fixture).
-    """
-    payload = json.dumps({"lines": lines, "keys": keys, "setup": setup})
-    src = _LUA % payload
+def _nvim(payload: dict) -> dict:
+    """One fresh `nvim` process over `payload`; the probe's JSON answer."""
+    src = _LUA % json.dumps(payload)
     with tempfile.NamedTemporaryFile(
         "w", suffix=".lua", delete=False, encoding="utf-8"
     ) as fh:
@@ -170,15 +177,39 @@ def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
             ["nvim", "--headless", "-u", "NONE", "-i", "NONE", "-l", script],
             capture_output=True,
             text=True,
+            timeout=30,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise OracleError(f"nvim timed out on keys={payload['keys']!r}") from exc
     finally:
         Path(script).unlink(missing_ok=True)
     if proc.returncode != 0 or not proc.stdout:
         raise OracleError(
-            f"nvim failed (rc={proc.returncode}) on keys={keys!r}: "
+            f"nvim failed (rc={proc.returncode}) on keys={payload['keys']!r}: "
             f"{proc.stderr.strip() or '<no stderr>'}"
         )
-    raw = json.loads(proc.stdout)
+    return json.loads(proc.stdout)
+
+
+def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
+    """Run the pinned Neovim on `lines`, feed `keys` in Normal mode, and return the settled state.
+
+    Returns {text, cursor:[row1,col0], reg_unnamed:{text,type}, reg0:{text,type}, mode, emsg, failed,
+    nvim_version}. The read happens strictly after synchronous feedkeys — see the module docstring for
+    why that is the whole point. `setup` is an optional ex command (e.g. `set shiftwidth=4 expandtab`)
+    applied to the fresh process before the keys, so a CONFIG-DEPENDENT op can be observed under a
+    config that matches ruse's defaults instead of nvim's factory defaults (see the shift_right_line
+    fixture).
+
+    The keys are fed AS TYPED, so the keys after a failed command still run, as they do for a user.
+    Two error observables (#901) record WHETHER something failed, never the message text: `emsg` is the
+    E-number of the last error message the keys raised (`v:errmsg`, cleared first), or ""; `failed` is
+    whether any command failed, an error or a Normal-mode beep, observed in a second fresh process as
+    Vim flushing the keys queued after the failure (see the probe).
+    """
+    payload = {"lines": lines, "keys": keys, "setup": setup}
+    raw = _nvim(payload)
+    failed = _nvim({**payload, "probe_failed": True})["failed"]
     ru_text, ru_type = raw["reg_unnamed"]
     r0_text, r0_type = raw["reg0"]
     return {
@@ -187,6 +218,8 @@ def run_neovim(lines: list[str], keys: str, setup: str = "") -> dict:
         "reg_unnamed": {"text": ru_text, "type": _regtype(ru_type)},
         "reg0": {"text": r0_text, "type": _regtype(r0_type)},
         "mode": raw["mode"],
+        "emsg": raw["emsg"],
+        "failed": failed,
         "nvim_version": nvim_version(),
     }
 
@@ -489,7 +522,7 @@ FIXTURES: list[dict] = [
     {"name": "c_search_motion", "lines": ["foo bar baz"], "keys": "c/baz<CR>Z<Esc>"},
     #     blockwise $A on ragged lines
     {"name": "block_append_ragged", "lines": ["a", "abc", "ab"], "keys": "<C-v>jj$AX<Esc>"},
-    {"name": "block_change_column", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjcX<Esc>"},
+    {"name": "block_change_column_notation", "lines": ["abc", "def", "ghi"], "keys": "<C-v>jjcX<Esc>"},
     #     ROUND 6 — indent/shift/format (config-dependent), replace-with-newline, quote/tag corners
     {"name": "shift_right_motion_2lines", "lines": ["a", "b", "c"], "keys": ">j", "setup": "set shiftwidth=4 expandtab startofline"},
     {"name": "shift_left_dedents", "lines": ["    ab"], "keys": "<<", "setup": "set shiftwidth=4 expandtab startofline"},
@@ -499,7 +532,7 @@ FIXTURES: list[dict] = [
     {"name": "replace_char_with_newline", "lines": ["abcdef"], "keys": "llr<CR>"},
     #     quote / tag object corners
     {"name": "ci_squote_adjacent", "lines": ["'a' 'b'"], "keys": "ci'Z<Esc>"},
-    {"name": "cit_tag_inner", "lines": ["<p>hi</p>"], "keys": "fhcitZ<Esc>"},
+    {"name": "cit_tag_inner_short", "lines": ["<p>hi</p>"], "keys": "fhcitZ<Esc>"},
     {"name": "di_backtick_quote", "lines": ["x `code` y"], "keys": "fcdi`"},
     {"name": "da_squote_around", "lines": ["say 'hi' ok"], "keys": "fhda'"},
     #     daw on trailing punctuation
@@ -1072,9 +1105,9 @@ FIXTURES: list[dict] = [
     {"name": "split_hide_closes_window", "lines": ["abc"], "keys": ":split<CR>:hide<CR>x"},
     #     OPERATOR / COUNT / PENDING-STATE GRAMMAR (#789 #790 #791 #796 #797 #799 #800). Every count
     #     segment multiplies — before a register prefix, before the operator, after it — and a key that
-    #     cannot continue an armed operator aborts it. CAUTION for the abort fixtures: `feedkeys(..., 'x')`
-    #     FLUSHES the remaining typeahead on the abort's beep, so each one ENDS at the aborting key (the
-    #     typed-key behaviour after an abort was probed separately over RPC, one key per input).
+    #     cannot continue an armed operator aborts it. Each abort fixture ends at the aborting key: they were
+    #     written when the oracle fed keys untyped, which flushes the typeahead on the abort's beep (the
+    #     oracle feeds typed keys since #901, so keys after a failure now run, as they do for a user).
     {"name": "cnt_doubled_after_op", "lines": ["l1", "l2", "l3", "l4", "l5", "l6"], "keys": "d3d"},
     {"name": "cnt_doubled_both", "lines": ["l1", "l2", "l3", "l4", "l5", "l6"], "keys": "2d2d"},
     {"name": "cnt_doubled_yank_paste", "lines": ["l1", "l2", "l3", "l4", "l5", "l6"], "keys": "y2yP"},
@@ -1460,7 +1493,7 @@ FIXTURES: list[dict] = [
     # --- #1063 where `u` / `CTRL-R` leave the cursor: Vim's `u_undoredo` puts it back where the change began
     #     (`uh_cursor`) when that is in or next to the re-applied lines, else on the first changed line. The
     #     setup is an undo break, so `u` stops at the oracle's own `nvim_buf_set_lines`; each case makes ONE
-    #     change, since the oracle's feedkeys are not typed and so form a single undo block. ---------------
+    #     change (written when the oracle's keys were untyped and formed a single undo block). -------------
     {"name": "undo_cursor_insert", "lines": ["x", "y"], "keys": "jiab<Esc>u", "setup": UNDO_SETUP},
     {"name": "undo_cursor_insert_ctrl_o", "lines": ["x", "y"], "keys": "jiab<C-o>u", "setup": UNDO_SETUP},
     {"name": "redo_cursor_insert", "lines": ["x", "y"], "keys": "jiab<Esc>u<C-r>", "setup": UNDO_SETUP},
@@ -1559,7 +1592,7 @@ FIXTURES: list[dict] = [
     {"name": "i_ctrl_u_after_left", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "Aab<Left><C-u><Esc>"},
     {"name": "i_ctrl_u_dot", "lines": ["abc def", "    ghi jkl", "mno"], "keys": "Aab<C-u>cd<Esc>j."},
     # --- #605 small keys: `z+` / `z^` (the lines below / above the window), `{count}:`, `CTRL-\\ CTRL-N`.
-    #     (`q{0-9"}` is unit-tested: the oracle's feedkeys are not typed, so nvim records none of them.) ----
+    #     (`q{0-9"}` is unit-tested; until #901 the oracle's keys were untyped and nvim recorded none.) -----
     {"name": "z_plus", "lines": HUNDRED, "keys": "z+", "setup": PAGE_SETUP},
     {"name": "z_plus_twice", "lines": HUNDRED, "keys": "z+z+", "setup": PAGE_SETUP},
     {"name": "z_plus_count", "lines": HUNDRED, "keys": "50z+", "setup": PAGE_SETUP},
@@ -1988,6 +2021,304 @@ FIXTURES: list[dict] = [
     {"name": "exr_visual_offset", "lines": ["abcd", "  defgh", "ghi", "  jkl"], "keys": "Vj<Esc>G:'<,'>+1d<CR>"},
     {"name": "exr_s_to_dollar", "lines": ["abcd", "  defgh", "ghi", "  jkl"], "keys": ":3,$s/^/X/<CR>"},
     {"name": "exr_j_dot_dollar", "lines": ["abcd", "  defgh", "ghi", "  jkl"], "keys": ":.,$j<CR>"},
+    #     SCENARIO CLASSES (#901): the classes `tools/parity/scenario_classes.py` found thin. Errors assert
+    #     the E-number (`emsg`) and the state after the failure; the keys after a failed command still run,
+    #     as typed keys do. Registers, marks, macros, multibyte text and empty or tiny buffers.
+    #     error: E353 and the special registers' own errors on a put from an empty register ------------
+    {"name": "sc_err_p_empty_unnamed", "lines": ["abc"], "keys": "p"},
+    {"name": "sc_err_p_empty_named", "lines": ["abc"], "keys": '"ap'},
+    {"name": "sc_err_P_empty_named", "lines": ["abc"], "keys": '"aP'},
+    {"name": "sc_err_p_empty_reg0", "lines": ["abc"], "keys": '"0p'},
+    {"name": "sc_err_p_empty_numbered", "lines": ["abc"], "keys": '"1p'},
+    {"name": "sc_err_p_empty_small_delete", "lines": ["abc"], "keys": '"-p'},
+    {"name": "sc_err_p_empty_uppercase", "lines": ["abc"], "keys": '"Ap'},
+    {"name": "sc_err_gp_empty_named", "lines": ["abc"], "keys": '"agp'},
+    {"name": "sc_err_bracket_p_empty_named", "lines": ["abc"], "keys": '"a]p'},
+    {"name": "sc_err_count_p_empty_named", "lines": ["abc"], "keys": '"a3p'},
+    {"name": "sc_err_p_empty_then_keys_run", "lines": ["abc"], "keys": '"ap$x'},
+    {"name": "sc_err_p_empty_register_not_kept", "lines": ["abc"], "keys": '"apyl$p'},
+    {"name": "sc_reg_p_blackhole_is_quiet", "lines": ["abc"], "keys": '"_p'},
+    {"name": "sc_err_p_colon_no_command", "lines": ["abc"], "keys": '":p'},
+    {"name": "sc_err_p_slash_no_pattern", "lines": ["abc"], "keys": '"/p'},
+    {"name": "sc_err_p_dot_no_insert", "lines": ["abc"], "keys": '".p'},
+    {"name": "sc_err_p_percent_no_file", "lines": ["abc"], "keys": '"%p'},
+    {"name": "sc_err_at_colon_no_command", "lines": ["abc"], "keys": "@:"},
+    {"name": "sc_err_dp_not_diff", "lines": ["abc"], "keys": "dp"},
+    {"name": "sc_err_do_not_diff", "lines": ["abc", "def"], "keys": "jdo"},
+    #     error: marks -------------------------------------------------------------------------------------
+    {"name": "sc_err_quote_mark_unset", "lines": ["abc", "def"], "keys": "j'a"},
+    {"name": "sc_err_backtick_mark_unset", "lines": ["abc", "def"], "keys": "jl`a"},
+    {"name": "sc_err_d_quote_mark_unset", "lines": ["abc", "def"], "keys": "d'a"},
+    {"name": "sc_err_y_backtick_mark_unset", "lines": ["abc", "def"], "keys": "y`aP"},
+    {"name": "sc_err_mark_unset_then_keys_run", "lines": ["abc", "def"], "keys": "j'ax"},
+    {"name": "sc_err_mark_on_deleted_line", "lines": ["a", "b", "c"], "keys": "jmaddgg'a"},
+    {"name": "sc_err_ex_range_mark_unset", "lines": ["a", "b", "c"], "keys": ":'a,'bd<CR>"},
+    {"name": "sc_err_bracket_mark_unset", "lines": ["abc", "def"], "keys": "j`["},
+    #     error: search and substitute -------------------------------------------------------------------
+    {"name": "sc_err_search_not_found", "lines": ["abc", "def"], "keys": "/zzz<CR>"},
+    {"name": "sc_err_search_back_not_found", "lines": ["abc", "def"], "keys": "j?zzz<CR>"},
+    {"name": "sc_err_search_not_found_then_keys_run", "lines": ["abc", "def"], "keys": "l/zzz<CR>x"},
+    {"name": "sc_err_d_search_not_found", "lines": ["abc def"], "keys": "d/zzz<CR>"},
+    {"name": "sc_err_c_search_not_found", "lines": ["abc def"], "keys": "c/zzz<CR>"},
+    {"name": "sc_err_y_search_not_found", "lines": ["abc def"], "keys": "y/zzz<CR>P"},
+    {"name": "sc_err_n_no_previous_pattern", "lines": ["abc"], "keys": "n"},
+    {"name": "sc_err_N_no_previous_pattern", "lines": ["abc"], "keys": "N"},
+    {"name": "sc_err_dn_no_previous_pattern", "lines": ["abc"], "keys": "dn"},
+    {"name": "sc_err_n_after_failed_search", "lines": ["abc"], "keys": "/zzz<CR>n"},
+    {"name": "sc_err_star_on_blank_line", "lines": ["", "abc"], "keys": "*"},
+    {"name": "sc_star_on_punctuation_searches_it", "lines": ["...", "abc"], "keys": "*"},
+    {"name": "sc_err_sub_not_found", "lines": ["abc"], "keys": ":s/zzz/y/<CR>"},
+    {"name": "sc_err_sub_all_not_found", "lines": ["abc", "def"], "keys": ":%s/zzz/y/<CR>"},
+    {"name": "sc_sub_e_flag_is_quiet", "lines": ["abc"], "keys": ":s/zzz/y/e<CR>"},
+    {"name": "sc_err_sub_empty_pattern_no_previous", "lines": ["abc"], "keys": ":s//y/<CR>"},
+    {"name": "sc_err_amp_no_previous_sub", "lines": ["abc"], "keys": "&"},
+    {"name": "sc_global_not_found_is_quiet", "lines": ["abc", "def"], "keys": ":g/zzz/d<CR>"},
+    {"name": "sc_err_sub_not_found_cursor_stays", "lines": ["abc", "def"], "keys": "jl:s/zzz/y/<CR>x"},
+    #     error: Ex --------------------------------------------------------------------------------------
+    {"name": "sc_err_ex_unknown_command", "lines": ["abc"], "keys": ":foo<CR>"},
+    {"name": "sc_err_ex_unknown_then_keys_run", "lines": ["abc"], "keys": ":foo<CR>x"},
+    {"name": "sc_err_ex_write_no_file_name", "lines": ["abc"], "keys": ":w<CR>"},
+    {"name": "sc_err_ex_close_last_window", "lines": ["abc"], "keys": ":close<CR>"},
+    {"name": "sc_err_ctrl_w_c_last_window", "lines": ["abc"], "keys": "<C-w>c"},
+    {"name": "sc_err_ex_normal_no_argument", "lines": ["abc"], "keys": ":normal<CR>"},
+    {"name": "sc_err_ex_set_unknown_option", "lines": ["abc"], "keys": ":set nosuchoption<CR>"},
+    {"name": "sc_err_ex_trailing_characters", "lines": ["a", "b"], "keys": ":d x y<CR>"},
+    {"name": "sc_err_ex_bad_pattern", "lines": ["abc"], "keys": ":s/\\(/x/<CR>"},
+    {"name": "sc_err_search_bad_pattern", "lines": ["abc"], "keys": "/a\\{<CR>"},
+    #     failed motions (beep, no E-number) and the state after them -----------------------------------
+    {"name": "sc_fail_f_not_found_then_x", "lines": ["abc"], "keys": "lfzx"},
+    {"name": "sc_fail_d_f_not_found", "lines": ["abc"], "keys": "dfz"},
+    {"name": "sc_fail_d_f_not_found_then_x", "lines": ["abc"], "keys": "dfzx"},
+    {"name": "sc_fail_count_f_too_few", "lines": ["axbxc"], "keys": "3fxx"},
+    {"name": "sc_fail_d_count_t_too_few", "lines": ["axbxc"], "keys": "d3tx"},
+    {"name": "sc_fail_c_f_not_found_then_X", "lines": ["abc"], "keys": "llcfzX<Esc>"},
+    {"name": "sc_fail_y_f_not_found_keeps_register", "lines": ["abc def"], "keys": "yiwwyfzP"},
+    {"name": "sc_fail_F_at_col0", "lines": ["abc"], "keys": "Fax"},
+    {"name": "sc_fail_semicolon_no_previous_find", "lines": ["abc"], "keys": ";x"},
+    {"name": "sc_fail_comma_no_previous_find", "lines": ["abc"], "keys": "l,x"},
+    {"name": "sc_fail_k_on_first_line_then_x", "lines": ["abc", "def"], "keys": "lkx"},
+    {"name": "sc_fail_dk_on_first_line_then_x", "lines": ["abc", "def"], "keys": "dkx"},
+    {"name": "sc_fail_j_on_last_line_then_x", "lines": ["abc", "def"], "keys": "jljx"},
+    {"name": "sc_count_j_past_end_clamps", "lines": ["a", "b", "c"], "keys": "5jx"},
+    {"name": "sc_count_d_j_past_end_clamps", "lines": ["a", "b", "c"], "keys": "jd5j"},
+    {"name": "sc_fail_percent_no_bracket", "lines": ["abc"], "keys": "%x"},
+    {"name": "sc_fail_d_percent_no_bracket", "lines": ["abc"], "keys": "d%"},
+    {"name": "sc_fail_percent_unmatched", "lines": ["(abc"], "keys": "%x"},
+    {"name": "sc_fail_w_at_buffer_end", "lines": ["abc"], "keys": "$wx"},
+    {"name": "sc_fail_b_at_buffer_start", "lines": ["abc"], "keys": "bx"},
+    {"name": "sc_ci_paren_seeks_forward", "lines": ["ab (c) d"], "keys": "ci)X<Esc>"},
+    {"name": "sc_fail_di_quote_no_quote", "lines": ["abc"], "keys": 'di"x'},
+    {"name": "sc_fail_count_r_past_end", "lines": ["abc"], "keys": "l5rx"},
+    {"name": "sc_fail_count_r_past_end_then_x", "lines": ["abc"], "keys": "l5rxx"},
+    {"name": "sc_count_tilde_past_end_clamps", "lines": ["abc"], "keys": "l9~"},
+    {"name": "sc_quiet_x_on_empty_line", "lines": ["", "abc"], "keys": "x"},
+    {"name": "sc_quiet_X_at_col0", "lines": ["abc"], "keys": "X"},
+    {"name": "sc_fail_h_at_col0_then_x", "lines": ["abc"], "keys": "hx"},
+    {"name": "sc_fail_ctrl_a_no_number", "lines": ["abc"], "keys": "<C-a>"},
+    {"name": "sc_fail_gv_no_previous_visual", "lines": ["abc"], "keys": "gvd"},
+    {"name": "sc_quiet_d_brace_back_at_top", "lines": ["abc", "def"], "keys": "d{"},
+    {"name": "sc_quiet_section_back_at_top", "lines": ["abc", "def"], "keys": "[[x"},
+    {"name": "sc_fail_redo_at_newest", "lines": ["abc"], "keys": "x<C-r>", "setup": UNDO_SETUP},
+    {"name": "sc_fail_at_empty_register", "lines": ["abc"], "keys": "@ax"},
+    {"name": "sc_fail_at_at_no_previous", "lines": ["abc"], "keys": "@@x"},
+    #     registers -------------------------------------------------------------------------------------
+    {"name": "sc_reg_two_named_registers", "lines": ["one", "two"], "keys": '"ayyj"byy"ap"bp'},
+    {"name": "sc_reg_append_charwise_to_linewise", "lines": ["one", "two"], "keys": '"ayyj"Ayiw"ap'},
+    {"name": "sc_reg_append_linewise_to_charwise", "lines": ["one", "two"], "keys": '"ayiwj"Ayy"ap'},
+    {"name": "sc_reg_append_to_empty", "lines": ["one", "two"], "keys": '"Ayyj"ap'},
+    {"name": "sc_reg_blackhole_keeps_unnamed", "lines": ["one", "two", "three"], "keys": 'yyj"_ddp'},
+    {"name": "sc_reg_blackhole_x_keeps_unnamed", "lines": ["abc def"], "keys": 'yiw$"_xP'},
+    {"name": "sc_reg_numbered_shift", "lines": ["1", "2", "3", "4"], "keys": 'dddddd"2p'},
+    {"name": "sc_reg_numbered_shift_third", "lines": ["1", "2", "3", "4"], "keys": 'dddddd"3p'},
+    {"name": "sc_reg_yank_skips_numbered", "lines": ["1", "2"], "keys": 'ddyy"1p'},
+    {"name": "sc_reg_small_delete_to_minus", "lines": ["abc def"], "keys": 'dw$"-p'},
+    {"name": "sc_reg_small_delete_skips_numbered", "lines": ["one two", "three"], "keys": 'jddkdw"1p'},
+    {"name": "sc_reg_multiline_charwise_to_numbered", "lines": ["ab", "cd", "ef"], "keys": 'ld}"1p'},
+    {"name": "sc_reg_paragraph_delete_to_numbered", "lines": ["one two", "three"], "keys": 'wd}"1P'},
+    {"name": "sc_reg_named_delete_shifts_numbered", "lines": ["1", "2", "3"], "keys": 'dd"add"1p'},
+    {"name": "sc_reg0_after_yank_then_delete", "lines": ["one", "two", "three"], "keys": 'yyjdd"0p'},
+    {"name": "sc_reg_numbered_dot_increments", "lines": ["1", "2", "3", "x"], "keys": 'dddddd"1pu.'},
+    {"name": "sc_reg_numbered_dot_increments_twice", "lines": ["1", "2", "3", "x"], "keys": 'dddddd"1pu.u.'},
+    {"name": "sc_reg_named_put_count_linewise", "lines": ["one", "two"], "keys": '"ayy"a3p'},
+    {"name": "sc_reg_named_put_count_charwise", "lines": ["ab"], "keys": '"ayl"a3p'},
+    {"name": "sc_reg_colon_after_ex", "lines": ["abc"], "keys": ':s/b/x/<CR>":p'},
+    {"name": "sc_reg_slash_after_search", "lines": ["abc bcd"], "keys": '/bc<CR>"/P'},
+    {"name": "sc_reg_dot_after_insert", "lines": ["abc"], "keys": 'iXY<Esc>$".p'},
+    {"name": "sc_reg_insert_ctrl_r_named", "lines": ["abc"], "keys": '"ayiwA <C-r>a<Esc>'},
+    {"name": "sc_reg_insert_ctrl_r_unnamed", "lines": ["abc def"], "keys": 'yiwA-<C-r>"<Esc>'},
+    {"name": "sc_reg_insert_ctrl_r_linewise", "lines": ["abc", "def"], "keys": 'yyjA<C-r>"<Esc>'},
+    {"name": "sc_reg_insert_ctrl_r_empty", "lines": ["abc"], "keys": "A<C-r>b<Esc>"},
+    {"name": "sc_reg_cmdline_ctrl_r_named", "lines": ["abc", "abc"], "keys": '"ayl:%s/<C-r>a/X/<CR>'},
+    {"name": "sc_reg_execute_yanked_text", "lines": ["dw", "foo bar"], "keys": '"ay$j@a'},
+    {"name": "sc_reg_visual_yank_named", "lines": ["abc def"], "keys": 'v"ay$"ap'},
+    {"name": "sc_reg_visual_delete_named", "lines": ["abc def"], "keys": 'wve"ad0"aP'},
+    {"name": "sc_reg_named_then_unnamed_points", "lines": ["one", "two"], "keys": '"ayyjp'},
+    {"name": "sc_reg_uppercase_append_unnamed_is_whole", "lines": ["a b"], "keys": '"ayiww"Ayiwo<C-r>"<Esc>'},
+    {"name": "sc_reg_x_then_named_paste_order", "lines": ["abc"], "keys": '"ax"bx"ap"bp'},
+    {"name": "sc_reg_yank_multibyte_word", "lines": ["가나 다라"], "keys": 'w"ayiw0"aP'},
+    #     marks -----------------------------------------------------------------------------------------
+    {"name": "sc_mark_jump_line_first_non_blank", "lines": ["  abc", "def"], "keys": "$majj'a"},
+    {"name": "sc_mark_jump_exact_column", "lines": ["abc", "def"], "keys": "llmaj0`a"},
+    {"name": "sc_mark_d_quote_linewise", "lines": ["a", "b", "c", "d"], "keys": "majjd'a"},
+    {"name": "sc_mark_backtick_jump_back", "lines": ["abc def ghi"], "keys": "wmaw`ax"},
+    {"name": "sc_mark_d_backtick_back", "lines": ["abc def ghi"], "keys": "wmawd`a"},
+    {"name": "sc_mark_y_quote_back", "lines": ["a", "b", "c"], "keys": "majjy'aP"},
+    {"name": "sc_mark_moves_with_line_above", "lines": ["a", "b"], "keys": "jmakOx<Esc>gg'ax"},
+    {"name": "sc_mark_moves_with_deleted_line_above", "lines": ["a", "b", "c"], "keys": "jjmaggdd'ax"},
+    {"name": "sc_mark_ex_range", "lines": ["a", "b", "c", "d"], "keys": "jmajmb:'a,'bd<CR>"},
+    {"name": "sc_mark_ex_mark_command", "lines": ["a", "b", "c"], "keys": ":2mark a<CR>gg'ax"},
+    {"name": "sc_mark_ex_k_command", "lines": ["a", "b", "c"], "keys": ":3ka<CR>'ax"},
+    {"name": "sc_mark_overwrite", "lines": ["a", "b", "c"], "keys": "majmagg'ax"},
+    {"name": "sc_mark_uppercase", "lines": ["a", "b", "c"], "keys": "jmAgg'Ax"},
+    {"name": "sc_mark_last_change_line", "lines": ["abc", "def", "ghi"], "keys": "jlxgg'.x"},
+    {"name": "sc_mark_last_change_exact", "lines": ["abc", "def", "ghi"], "keys": "jllxgg`.x"},
+    {"name": "sc_mark_last_insert", "lines": ["abc", "def"], "keys": "jAxy<Esc>gg`^x"},
+    {"name": "sc_mark_change_start_end_after_yank", "lines": ["abc def ghi"], "keys": "wyiw0`]x"},
+    {"name": "sc_mark_change_start_after_put", "lines": ["abc", "def"], "keys": "yyjp`[x"},
+    {"name": "sc_mark_change_end_after_put", "lines": ["abc def"], "keys": "yiw$p`]x"},
+    {"name": "sc_mark_jump_back_after_G", "lines": ["a", "b", "c"], "keys": "jG``x"},
+    {"name": "sc_mark_jump_back_line_after_search", "lines": ["  a", "b", "c x"], "keys": "/x<CR>''x"},
+    {"name": "sc_mark_jump_back_twice", "lines": ["a", "b", "c"], "keys": "G````x"},
+    {"name": "sc_mark_visual_start_end", "lines": ["abcdef"], "keys": "lvll<Esc>0`<x`>x"},
+    {"name": "sc_mark_visual_line_marks", "lines": ["a", "b", "c", "d"], "keys": "jVj<Esc>gg:'<,'>d<CR>"},
+    {"name": "sc_mark_d_to_visual_end", "lines": ["abc def ghi"], "keys": "wviw<Esc>0d`>"},
+    {"name": "sc_mark_multibyte_column", "lines": ["가나다라"], "keys": "llma0`ax"},
+    {"name": "sc_mark_survives_undo", "lines": ["a", "b", "c"], "keys": "jjmaggddu'ax", "setup": UNDO_SETUP},
+    {"name": "sc_mark_c_quote", "lines": ["a", "b", "c"], "keys": "jmajc'aX<Esc>"},
+    #     macros ----------------------------------------------------------------------------------------
+    {"name": "sc_mac_record_replay", "lines": ["abcdef"], "keys": "qaxq@a"},
+    {"name": "sc_mac_count_replay", "lines": ["abcdef"], "keys": "qaxq3@a"},
+    {"name": "sc_mac_at_at_repeats", "lines": ["abcdef"], "keys": "qaxq@a@@"},
+    {"name": "sc_mac_register_holds_keys", "lines": ["abc def"], "keys": 'qadwq"ap'},
+    {"name": "sc_mac_insert_in_macro", "lines": ["a", "b"], "keys": "qaIX<Esc>jq@a"},
+    {"name": "sc_mac_append_uppercase", "lines": ["abcdef"], "keys": "qaxqqAlq0@a"},
+    {"name": "sc_mac_search_in_macro", "lines": ["a x b x c x"], "keys": "qa/x<CR>rYq@a"},
+    {"name": "sc_mac_ex_in_macro", "lines": ["a", "a", "a"], "keys": "qa:s/a/b/<CR>jq@a"},
+    {"name": "sc_mac_dot_after_replay", "lines": ["abcdef"], "keys": "qaxq@a."},
+    {"name": "sc_mac_undo_after_replay", "lines": ["abcdef"], "keys": "qaxxq@au", "setup": UNDO_SETUP},
+    {"name": "sc_mac_line_per_replay", "lines": ["a1", "a2", "a3"], "keys": "qa0xjq@a@a"},
+    {"name": "sc_mac_failed_motion_aborts_replay", "lines": ["a1", "a2", "a3"], "keys": "qa0xjq5@a"},
+    {"name": "sc_mac_failed_find_aborts_rest", "lines": ["abc", "abc"], "keys": "qafzxq0j@a"},
+    #     (A self-calling macro that ends on a failed `j` is left out: ruse has no failure to stop it, so it
+    #     runs to the 100 000-key recursion cap, which is minutes in a debug test build. #1085.)
+    {"name": "sc_mac_at_colon_repeats_ex", "lines": ["a", "a"], "keys": ":s/a/b/<CR>j@:"},
+    {"name": "sc_mac_normal_runs_register", "lines": ["abc", "abc"], "keys": "qaxq:%normal @a<CR>"},
+    {"name": "sc_mac_empty_recording_clears", "lines": ["abc"], "keys": '"ayyqaq"ap'},
+    {"name": "sc_mac_record_with_count_inside", "lines": ["abcdefgh"], "keys": "qa2xq@a"},
+    {"name": "sc_mac_multibyte", "lines": ["가나다라마"], "keys": "qaxq2@a"},
+    {"name": "sc_mac_count_at_at", "lines": ["abcdefgh"], "keys": "qaxq@a3@@"},
+    {"name": "sc_mac_yank_put_in_macro", "lines": ["one", "two"], "keys": "qayypjq@a"},
+    {"name": "sc_mac_visual_in_macro", "lines": ["abc def ghi"], "keys": "qavedq@a"},
+    {"name": "sc_mac_text_object_in_macro", "lines": ["aa bb cc dd"], "keys": "qaciwX<Esc>wq@a"},
+    {"name": "sc_mac_dot_inside_macro", "lines": ["abcdefgh"], "keys": "xqa.q@a"},
+    {"name": "sc_mac_mark_in_macro", "lines": ["a", "b", "c"], "keys": "qamajq@a'ax"},
+    {"name": "sc_mac_ctrl_a_counted_replay", "lines": ["x 1"], "keys": "qa<C-a>q3@a"},
+    {"name": "sc_mac_insert_with_cr", "lines": ["ab"], "keys": "qaA!<CR>x<Esc>q@a"},
+    {"name": "sc_mac_find_repeat_in_macro", "lines": ["a.b.c.d.e"], "keys": "qaf.;xq0@a"},
+    {"name": "sc_mac_search_n_in_macro", "lines": ["x a x b x c"], "keys": "/x<CR>qanrYq@a"},
+    {"name": "sc_mac_execute_unnamed", "lines": ["x", "abc"], "keys": 'yljj@"'},
+    {"name": "sc_mac_execute_reg0", "lines": ["x", "abc"], "keys": "ylj@0"},
+    {"name": "sc_mac_uppercase_replay_same", "lines": ["abcdef"], "keys": "qaxq@A"},
+    {"name": "sc_mac_recorded_register_is_charwise", "lines": ["abc"], "keys": 'qaxq"aP'},
+    {"name": "sc_mac_overwrite_recording", "lines": ["abcdef"], "keys": "qaxqqalq0@a"},
+    {"name": "sc_mac_ex_bar_in_macro", "lines": ["a", "a", "a"], "keys": "qa:s/a/b/|+1<CR>q@a"},
+    {"name": "sc_mac_count_inside_and_outside", "lines": ["abcdefghijkl"], "keys": "qa2xq2@a"},
+    {"name": "sc_mac_linewise_visual_runs_per_line", "lines": ["ab", "cd", "ef"], "keys": "qaxqjVj@a"},
+    {"name": "sc_mac_replay_into_insert", "lines": ["ab"], "keys": "qaAz<Esc>q@a@a"},
+    {"name": "sc_mac_numbered_register_record", "lines": ["abcdef"], "keys": "q1xq@1"},
+    {"name": "sc_mac_motion_only", "lines": ["ab cd ef gh"], "keys": "qawq@ax"},
+    {"name": "sc_mac_counted_insert_replay", "lines": ["ab"], "keys": "qaiX<Esc>q3@a"},
+    {"name": "sc_mac_join_in_macro", "lines": ["a", "b", "c", "d"], "keys": "qaJq@a"},
+    #     Visual `:` / `!` then `<Esc>`: the colon operator leaves the cursor at the area's start (typed `<Esc>`
+    #     abandons the line; an untyped one would run it).
+    {"name": "sc_v_colon_esc_charwise_forward", "lines": ["abcd", "efgh"], "keys": "lvjl:<Esc>x"},
+    {"name": "sc_v_colon_esc_charwise_backward", "lines": ["abcd", "efgh"], "keys": "jllvkh:<Esc>x"},
+    {"name": "sc_v_colon_esc_linewise_forward", "lines": ["abcd", "efgh"], "keys": "llVj:<Esc>x"},
+    {"name": "sc_v_colon_esc_linewise_backward", "lines": ["abcd", "efgh"], "keys": "jllVk:<Esc>x"},
+    {"name": "sc_v_colon_esc_linewise_one_line", "lines": ["abcd", "efgh"], "keys": "llV:<Esc>x"},
+    {"name": "sc_v_colon_esc_linewise_mid", "lines": ["abcd", "efgh", "ijkl"], "keys": "jllVj:<Esc>x"},
+    {"name": "sc_v_colon_esc_block_left_corner", "lines": ["abcd", "efgh"], "keys": "ll<C-v>jh:<Esc>x"},
+    {"name": "sc_v_colon_esc_block_up_right", "lines": ["abcd", "efgh"], "keys": "jl<C-v>kl:<Esc>x"},
+    {"name": "sc_v_bang_esc_charwise", "lines": ["abcd", "efgh"], "keys": "lvjl!<Esc>x"},
+    {"name": "sc_v_colon_esc_then_gv", "lines": ["abcd", "efgh"], "keys": "jllvkh:<Esc>gvd"},
+    #     multibyte -------------------------------------------------------------------------------------
+    {"name": "sc_mb_x_hangul", "lines": ["가나다"], "keys": "lx"},
+    {"name": "sc_mb_count_x_hangul", "lines": ["가나다라"], "keys": "l2x"},
+    {"name": "sc_mb_X_hangul", "lines": ["가나다"], "keys": "$X"},
+    {"name": "sc_mb_dollar_lands_on_char_start", "lines": ["ab가"], "keys": "$x"},
+    {"name": "sc_mb_f_hangul", "lines": ["a가b나c"], "keys": "f나x"},
+    {"name": "sc_mb_t_hangul", "lines": ["a가b나c"], "keys": "t나x"},
+    {"name": "sc_mb_f_not_found", "lines": ["a가b"], "keys": "f나x"},
+    {"name": "sc_mb_r_with_hangul", "lines": ["abc"], "keys": "lr가"},
+    {"name": "sc_mb_r_hangul_with_ascii", "lines": ["가나다"], "keys": "lrx"},
+    {"name": "sc_mb_tilde_latin", "lines": ["äöü"], "keys": "3~"},
+    {"name": "sc_mb_gU_latin_word", "lines": ["straße x"], "keys": "gUiw"},
+    {"name": "sc_mb_dw_mixed", "lines": ["가나 abc 다라"], "keys": "wdw"},
+    {"name": "sc_mb_cw_hangul", "lines": ["가나 다라"], "keys": "cwX<Esc>"},
+    {"name": "sc_mb_yl_p_hangul", "lines": ["가나"], "keys": "ylp"},
+    {"name": "sc_mb_j_keeps_column_by_char", "lines": ["가나다", "abcdef"], "keys": "llj"},
+    {"name": "sc_mb_k_from_ascii_to_hangul", "lines": ["가나다", "abcdef"], "keys": "j$k"},
+    {"name": "sc_mb_emoji_x", "lines": ["a😀b"], "keys": "l2x"},
+    {"name": "sc_mb_emoji_e", "lines": ["😀😀 x"], "keys": "ex"},
+    {"name": "sc_mb_search_hangul", "lines": ["abc 다라 다"], "keys": "/다<CR>nx"},
+    {"name": "sc_mb_star_hangul", "lines": ["가나 x 가나"], "keys": "*x"},
+    {"name": "sc_mb_sub_hangul", "lines": ["가나다"], "keys": ":s/나/X/<CR>"},
+    {"name": "sc_mb_visual_block_hangul", "lines": ["가나다", "라마바"], "keys": "l<C-v>jd"},
+    {"name": "sc_mb_J_hangul", "lines": ["가나", "다라"], "keys": "J"},
+    {"name": "sc_mb_insert_hangul", "lines": ["ab"], "keys": "a가나<Esc>x"},
+    {"name": "sc_mb_A_then_BS", "lines": ["가나"], "keys": "A다<BS><Esc>"},
+    {"name": "sc_mb_di_paren_hangul", "lines": ["(가나)"], "keys": "ldi("},
+    {"name": "sc_mb_percent_over_hangul", "lines": ["(가나)"], "keys": "%x"},
+    #     empty and tiny buffers ------------------------------------------------------------------------
+    {"name": "sc_edge_empty_x", "lines": [""], "keys": "x"},
+    {"name": "sc_edge_empty_X", "lines": [""], "keys": "X"},
+    {"name": "sc_edge_empty_dd", "lines": [""], "keys": "dd"},
+    {"name": "sc_edge_empty_D", "lines": [""], "keys": "D"},
+    {"name": "sc_edge_empty_yy_p", "lines": [""], "keys": "yyp"},
+    {"name": "sc_edge_empty_J", "lines": [""], "keys": "J"},
+    {"name": "sc_edge_empty_tilde", "lines": [""], "keys": "~"},
+    {"name": "sc_edge_empty_r", "lines": [""], "keys": "rx"},
+    {"name": "sc_edge_empty_dw", "lines": [""], "keys": "dw"},
+    {"name": "sc_edge_empty_cw", "lines": [""], "keys": "cwX<Esc>"},
+    {"name": "sc_edge_empty_diw", "lines": [""], "keys": "diw"},
+    {"name": "sc_edge_empty_shift", "lines": [""], "keys": ">>"},
+    {"name": "sc_edge_empty_cc", "lines": [""], "keys": "ccX<Esc>"},
+    {"name": "sc_edge_empty_o", "lines": [""], "keys": "oX<Esc>"},
+    {"name": "sc_edge_empty_O", "lines": [""], "keys": "OX<Esc>"},
+    {"name": "sc_edge_empty_A", "lines": [""], "keys": "AX<Esc>"},
+    {"name": "sc_edge_empty_s", "lines": [""], "keys": "sX<Esc>"},
+    {"name": "sc_edge_empty_vd", "lines": [""], "keys": "vd"},
+    {"name": "sc_edge_empty_Vd", "lines": [""], "keys": "Vd"},
+    {"name": "sc_edge_empty_Vy", "lines": [""], "keys": "Vyp"},
+    {"name": "sc_edge_empty_G_gg", "lines": [""], "keys": "Ggg"},
+    {"name": "sc_edge_empty_count_j", "lines": [""], "keys": "5j"},
+    {"name": "sc_edge_empty_search", "lines": [""], "keys": "/a<CR>"},
+    {"name": "sc_edge_empty_star", "lines": [""], "keys": "*"},
+    {"name": "sc_edge_empty_percent", "lines": [""], "keys": "%"},
+    {"name": "sc_edge_empty_mark", "lines": [""], "keys": "ma'a"},
+    {"name": "sc_edge_empty_ex_delete", "lines": [""], "keys": ":d<CR>"},
+    {"name": "sc_edge_empty_ex_sub", "lines": [""], "keys": ":s/a/b/<CR>"},
+    {"name": "sc_edge_empty_ctrl_a", "lines": [""], "keys": "<C-a>"},
+    {"name": "sc_edge_empty_dot_no_change", "lines": [""], "keys": "."},
+    {"name": "sc_edge_empty_u", "lines": [""], "keys": "u"},
+    {"name": "sc_edge_one_char_x_twice", "lines": ["a"], "keys": "xx"},
+    {"name": "sc_edge_one_char_dd", "lines": ["a"], "keys": "dd"},
+    {"name": "sc_edge_one_char_w", "lines": ["a"], "keys": "wx"},
+    {"name": "sc_edge_one_char_e", "lines": ["a"], "keys": "ex"},
+    {"name": "sc_edge_one_char_diw", "lines": ["a"], "keys": "diw"},
+    {"name": "sc_edge_one_char_daw", "lines": ["a"], "keys": "daw"},
+    {"name": "sc_edge_one_char_p", "lines": ["a"], "keys": "ylp"},
+    {"name": "sc_edge_one_char_J", "lines": ["a"], "keys": "J"},
+    {"name": "sc_edge_blank_caret", "lines": ["   "], "keys": "^x"},
+    {"name": "sc_edge_blank_w", "lines": ["   "], "keys": "wx"},
+    {"name": "sc_edge_blank_dw", "lines": ["   "], "keys": "ldw"},
+    {"name": "sc_edge_blank_diw", "lines": ["   "], "keys": "ldiw"},
+    {"name": "sc_edge_blank_daw", "lines": ["   "], "keys": "daw"},
+    {"name": "sc_edge_blank_cc", "lines": ["   "], "keys": "ccX<Esc>"},
+    {"name": "sc_edge_blank_lines_dap", "lines": ["", "", ""], "keys": "jdap"},
+    {"name": "sc_edge_blank_lines_dip", "lines": ["", "", ""], "keys": "jdip"},
+    {"name": "sc_edge_blank_lines_J", "lines": ["", "", ""], "keys": "3J"},
+    {"name": "sc_edge_blank_lines_brace", "lines": ["", "", ""], "keys": "j}x"},
 ]
 
 
@@ -1996,6 +2327,12 @@ def generate(path: Path) -> int:
     pin = read_pin()
     version_line = nvim_version()
     assert_pin(version_line, pin)
+
+    names = [spec["name"] for spec in FIXTURES]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    if dupes:
+        # The ratchet (known-divergences.txt) names fixtures, so a name must pick out one fixture.
+        raise OracleError(f"duplicate fixture names: {', '.join(dupes)}")
 
     fixtures = []
     for spec in FIXTURES:
@@ -2018,6 +2355,8 @@ def generate(path: Path) -> int:
                     "cursor": state["cursor"],
                     "reg_unnamed": state["reg_unnamed"],
                     "reg0": state["reg0"],
+                    "emsg": state["emsg"],
+                    "failed": state["failed"],
                 },
             }
         )
@@ -2036,11 +2375,15 @@ def generate(path: Path) -> int:
             "nvim_version": version_line,
             "pin_version_label": pin["version_label"],
             "pin_revision": pin["revision"],
-            "captured_observables": ["text", "cursor", "reg_unnamed", "reg0"],
-            "ruse_compare_observables": ["text", "cursor", "reg_unnamed"],
-            "reg0_note": (
-                "reg0 is captured for completeness but excluded from the ruse comparison: ruse's "
-                "core models a single unnamed register (D-026), with no separate yank register."
+            "captured_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg", "failed"],
+            "ruse_compare_observables": ["text", "cursor", "reg_unnamed", "reg0", "emsg"],
+            "feed": "nvim_feedkeys(keys, 'xt'): as typed, so keys after a failed command still run",
+            "error_note": (
+                "emsg is the E-number of the last error message the keys raised (v:errmsg), or ''. "
+                "failed is whether any command failed (an error, or a Normal-mode beep), observed as "
+                "Vim flushing the keys queued after it when they are fed not as typed. Best effort: "
+                "a failure inside a macro replay is not seen. failed is captured but not compared: "
+                "ruse has no bell (#901)."
             ),
         },
         "fixtures": fixtures,
@@ -2109,6 +2452,26 @@ def selftest() -> int:
             ["hello"],
             "yy",
             lambda s: s["reg0"]["type"] == "linewise" and s["reg0"]["text"] == "hello\n",
+        ),
+        # #901: the keys are typed, so a failed `fz` does not swallow the `x` after it; the failure is
+        # still observed (`failed`), and an error carries its E-number (`emsg`).
+        (
+            "typed keys survive a failed motion",
+            ["abc"],
+            "lfzx",
+            lambda s: s["text"] == ["ac"] and s["failed"] and s["emsg"] == "",
+        ),
+        (
+            "a missing pattern is E486",
+            ["abc"],
+            "/zzz<CR>",
+            lambda s: s["emsg"] == "E486" and s["failed"],
+        ),
+        (
+            "a plain edit neither fails nor errs",
+            ["abc"],
+            "x",
+            lambda s: not s["failed"] and not s["emsg"],
         ),
     ]
     for label, lines, keys, ok in known:

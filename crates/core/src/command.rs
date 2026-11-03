@@ -219,6 +219,9 @@ pub enum VisualOp {
     OtherCorner,
     /// `zy`: yank the selection like `y`, but without a block's trailing white space (`:help zy`).
     YankTrim,
+    /// `:`/`!` (`:help v_:`): leave the selection with the cursor at its start, as Vim's colon operator
+    /// does before it opens the command line on `'<,'>`.
+    LeaveAtStart,
 }
 
 /// A motion's forced wise-ness (Vim `o_v` / `o_V` / `o_CTRL-V`): the operator applies the motion but
@@ -1129,6 +1132,7 @@ fn visual_op_token(op: VisualOp) -> String {
         VisualOp::Format => "format".into(),
         VisualOp::OtherCorner => "other_corner".into(),
         VisualOp::YankTrim => "yank_trim".into(),
+        VisualOp::LeaveAtStart => "leave_at_start".into(),
     }
 }
 
@@ -1154,6 +1158,7 @@ fn visual_op_from_token(s: &str) -> Option<VisualOp> {
         "format" => VisualOp::Format,
         "other_corner" => VisualOp::OtherCorner,
         "yank_trim" => VisualOp::YankTrim,
+        "leave_at_start" => VisualOp::LeaveAtStart,
         _ => return None,
     };
     it.next().is_none().then_some(op)
@@ -2720,6 +2725,7 @@ mod tests {
             Command::VisualOp(VisualOp::Format),
             Command::VisualOp(VisualOp::OtherCorner),
             Command::VisualOp(VisualOp::YankTrim),
+            Command::VisualOp(VisualOp::LeaveAtStart),
             Command::BlockInsert(BlockInsertKind::Insert),
             Command::BlockInsert(BlockInsertKind::Append),
             Command::BlockInsert(BlockInsertKind::Change),

@@ -253,6 +253,21 @@ fn plan_visual_op(st: &EditorState, b: &[u8], cur: usize, op: VisualOp, hint: Gr
             set_anchor: Some(cur),
             ..nop(anchor, st.view.mode)
         },
+        // `:`/`!`: Vim's colon operator leaves the cursor at the start of the area — a block's top-left
+        // corner; for lines, the first line's column 0, unless the cursor is the selection's start already,
+        // where it stays (nvim v0.12.6). `'<`/`'>` keep the selection as it was.
+        VisualOp::LeaveAtStart => {
+            let at = match kind {
+                SelectKind::Charwise => lo,
+                SelectKind::Blockwise => {
+                    let col = |p: usize| col_of(b, line_start(b, p), p);
+                    at_col(b, line_start(b, lo), col(anchor).min(col(cur)))
+                }
+                SelectKind::Linewise if cur < anchor => cur,
+                SelectKind::Linewise => line_start(b, anchor),
+            };
+            nop(at, Mode::Normal)
+        }
     }
 }
 

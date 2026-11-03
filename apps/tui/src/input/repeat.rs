@@ -300,7 +300,8 @@ pub(crate) fn change_kind(cmd: &Command) -> ChangeKind {
             VisualOp::Lines(OpKind::Yank)
             | VisualOp::BlockToEol(OpKind::Yank)
             | VisualOp::OtherCorner
-            | VisualOp::YankTrim,
+            | VisualOp::YankTrim
+            | VisualOp::LeaveAtStart,
         )
         | C::OpForced {
             op: OpKind::Yank, ..

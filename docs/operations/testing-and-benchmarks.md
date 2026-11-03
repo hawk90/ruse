@@ -342,8 +342,10 @@ generalize to any oracle:
   -i NONE`); the local `nvim` must equal the census pin (`version_label` in
   [spec/parity/upstreams.yaml](../../spec/parity/upstreams.yaml)) and its version is recorded in every run.
   **Non-corruption is the load-bearing property** (three prior harnesses corrupted their own first
-  observation): feed keys with `nvim_feedkeys(...,'x')` then read state via the API AFTER — never through a
-  call that itself mutates. `oracle.py --selftest` (identity + determinism + hand-verified known ops) GATES
+  observation): feed keys with `nvim_feedkeys(...,'xt')` then read state via the API AFTER — never through a
+  call that itself mutates. The `t` feeds the keys **as typed** (#901): untyped keys are flushed after a
+  failed command, never reach a `q` recording, and an untyped `<Esc>` runs a command line instead of
+  abandoning it, so an untyped oracle records behaviour no user sees. `oracle.py --selftest` (identity + determinism + hand-verified known ops) GATES
   the corpus; `gov parity_oracle` runs it when a pinned nvim is present and otherwise verifies corpus
   integrity only (nvim-optional, so CI without nvim stays green).
 - **Every `expect` is ORACLE-CAPTURED, never hand-written.** For v0 the corpus uses a compact JSON-in-YAML
@@ -351,6 +353,17 @@ generalize to any oracle:
 - **Config-dependent ops** (indent `>>`, etc.) carry a per-fixture `setup` ex-command so nvim runs under
   ruse's defaults (e.g. `set shiftwidth=4 expandtab`) — cross-default comparison is invalid; match config or
   the fixture lies.
+- **Errors are observed as numbers, not text (#901).** Each fixture's `expect` carries `emsg`, the E-number
+  of the last error message the keys raised (`v:errmsg`, cleared first; `""` for none), and `failed`, whether
+  any command failed, an error or a Normal-mode beep (seen in a second process as Vim flushing untyped keys
+  queued after the failure; best effort, a failure inside a macro replay is missed). `emsg` is compared
+  against the E-number of the last error ruse put on the status line (`Headless::emsg`); `failed` is
+  captured only, since ruse has no bell. Error fixtures assert the state after the failure too, usually by
+  typing a key after it.
+- **Coverage by scenario class.** `python3 tools/parity/scenario_classes.py` tags each fixture with the
+  classes its keys touch (motion, operator x motion, text object, Visual, Insert, Ex, register, macro, undo,
+  marks, search, counts, error, multibyte, edge buffers, dot-repeat, config) and names the thin ones;
+  `--list CLASS` prints a class's fixtures. The tagging reads the keys heuristically; it does not run them.
 - **A divergence is allowed only when it is listed (#883).** `apps/tui/tests/parity_compare.rs` types each
   fixture's keys into the headless session (the real key path, #895), `emacs_parity_compare.rs` resolves
   each command by name and also types its default binding (ratcheted separately in

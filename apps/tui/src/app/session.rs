@@ -936,6 +936,11 @@ impl Session {
         let key = match step {
             crate::keys::Step::Dispatch(k) => k,
             crate::keys::Step::Consumed => return,
+            crate::keys::Step::NoPreviousRegister => {
+                engine.take_count();
+                *status = "E748: No previously used register".to_string();
+                return;
+            }
             // `q:` / `q/` / `q?` — open the command-line window (`:help cmdwin`) over that history ring.
             crate::keys::Step::OpenCmdWin(kind) => {
                 engine.open_cmdwin(kind);
@@ -1630,7 +1635,7 @@ impl Session {
                         Err(e) => crate::app::dispatch::regex_error_msg(&e),
                     }
                 }
-                None => "no previous substitute".to_string(),
+                None => "E33: No previous substitute regular expression".to_string(),
             };
             return;
         }
@@ -1852,6 +1857,11 @@ impl Session {
                 if !note_word_search(&cmd, ws, engine, search_hl, status) {
                     return;
                 }
+                // A search (`/pat`, `?pat`, `n`, `N`, bare, under an operator or `!`) whose pattern matches
+                // nowhere fails with E486 and nothing runs (#901).
+                if search_misses(&cmd, ws, status) {
+                    return;
+                }
                 if let Some((first, last)) = ws.span_lines(&cmd) {
                     engine.open_filter_cmdline(&format!("{},{}!", first + 1, last + 1));
                 }
@@ -1890,7 +1900,7 @@ impl Session {
                                 Err(e) => crate::app::dispatch::regex_error_msg(&e),
                             }
                         }
-                        None => "no previous substitute".to_string(),
+                        None => "E33: No previous substitute regular expression".to_string(),
                     };
                     return;
                 }
@@ -1918,7 +1928,7 @@ impl Session {
                                 Err(e) => crate::app::dispatch::regex_error_msg(&e),
                             }
                         }
-                        None => "no previous substitute".to_string(),
+                        None => "E33: No previous substitute regular expression".to_string(),
                     };
                     return;
                 }
@@ -1979,6 +1989,11 @@ impl Session {
                 if !note_word_search(&cmd, ws, engine, search_hl, status) {
                     return;
                 }
+                // A search (`/pat`, `?pat`, `n`, `N`, bare, under an operator or `!`) whose pattern matches
+                // nowhere fails with E486 and nothing runs (#901).
+                if search_misses(&cmd, ws, status) {
+                    return;
+                }
                 // `gd`/`gD` (declaration under cursor, TEXT heuristic — not LSP): like `*`/`#`, the engine
                 // has no buffer, so resolve the keyword here and rewrite to a concrete whole-file first-match
                 // jump. `gd` and `gD` are currently identical (matching nvim v0.12.4). Set the last-search to
@@ -2022,7 +2037,7 @@ impl Session {
     }
 
     /// Run a finished `:`-line (F-026): split it at its `|` separators (`:help :bar`) and run each command
-    /// in turn. As in Vim, a command that fails (an `E…:` status, an unknown command) drops the rest of the
+    /// in turn. As in Vim, a command that fails (an `E…:` status, `E492` if unknown) drops the rest of the
     /// line, and so do a quit and an interactive `:s///c` (which owns the keys until it ends).
     fn execute_ex(&mut self, text: String, frame: &FrameCtx) {
         // Record the executed command-line for Vim's `":` register (`:help quote_:`), without the
@@ -2483,7 +2498,7 @@ impl Session {
                             Err(e) => crate::app::dispatch::regex_error_msg(&e),
                         }
                     }
-                    None => "no previous substitute".to_string(),
+                    None => "E33: No previous substitute regular expression".to_string(),
                 };
             }
             mut ex => {
@@ -2536,13 +2551,12 @@ fn reload_focused_file(ws: &mut Workspace, files: &mut Files) -> String {
 }
 
 /// Whether an Ex command's status reports a failure that ends a `|`-chained line (`:help :bar`): a Vim
-/// error (`E{n}: …`) or an unknown command.
+/// error (`E{n}: …`, an unknown command's `E492` among them).
 fn is_ex_error(status: &str) -> bool {
     let digits = status
         .strip_prefix('E')
         .map(|r| r.bytes().take_while(u8::is_ascii_digit).count());
     matches!(digits, Some(n) if n > 0 && status[1 + n..].starts_with(':'))
-        || status.starts_with("unknown command")
 }
 
 pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
@@ -2902,6 +2916,28 @@ fn note_word_search(
             *status = "E348: No string under cursor".into();
             false
         }
+    }
+}
+
+/// Whether `cmd` is a search whose pattern matches nowhere in the focused buffer; if so the status gets
+/// Vim's `E486` (`:help E486`). The buffer-wide test is the `:g` marking rule, so it agrees with `:g` on
+/// what matches; a pattern that can span a line break (`\n`, `\_x`) is left to the search itself.
+fn search_misses(cmd: &Command, ws: &mut Workspace, status: &mut String) -> bool {
+    let pattern = match cmd {
+        Command::Search { pattern, .. }
+        | Command::SearchNext(pattern)
+        | Command::SearchPrev(pattern) => pattern,
+        _ => return false,
+    };
+    if pattern.is_empty() || pattern.contains("\\n") || pattern.contains("\\_") {
+        return false;
+    }
+    match ws.global_marks(ruse_core::SubRange::WholeFile, pattern, false) {
+        Ok(lines) if lines.is_empty() => {
+            *status = format!("E486: pattern not found: {pattern}");
+            true
+        }
+        _ => false,
     }
 }
 

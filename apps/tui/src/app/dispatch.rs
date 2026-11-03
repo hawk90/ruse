@@ -165,10 +165,51 @@ pub(crate) fn run_cmd(
     status: &mut String,
     quit: &mut bool,
 ) {
+    if let Some(err) = put_error(&cmd, ws).or_else(|| mark_error(&cmd, ws)) {
+        // Nothing runs; a `"x` the command would have read is spent, as in Vim.
+        *status = err;
+        ws.apply(&Command::SetRegister(None));
+        return;
+    }
     recorded.push(cmd.clone());
     for eff in ws.apply(&cmd) {
         apply_effect(eff, ws, files, status, quit);
     }
+}
+
+/// `E20` for a jump to, or an operator over, an unset named mark (`'a`, `` `a ``, `d'a`): nothing runs.
+fn mark_error(cmd: &Command, ws: &Workspace) -> Option<String> {
+    let name = match cmd {
+        Command::GotoNamedMark(c) | Command::GotoNamedMarkLine(c) => *c,
+        Command::OpToMark { name, .. } => *name,
+        _ => return None,
+    };
+    (name.is_ascii_lowercase() && ws.focused().view.named_mark(name).is_none())
+        .then(|| "E20: Mark not set".to_string())
+}
+
+/// The error a Normal-mode put from an EMPTY register fails with (`:help E353`), or `None` when the put
+/// can run. The read-only registers report what is missing instead (nvim v0.12.6). The black hole, the
+/// clipboard and the expression register never fail here.
+fn put_error(cmd: &Command, ws: &mut Workspace) -> Option<String> {
+    if !matches!(
+        cmd,
+        Command::Paste { .. } | Command::PasteIndent { .. } | Command::PasteBlockInner { .. }
+    ) {
+        return None;
+    }
+    let name = ws.focused().view.pending_register();
+    if matches!(name, Some('_' | '+' | '*' | '=')) || !ws.register_bytes(name).is_empty() {
+        return None;
+    }
+    Some(match name {
+        Some(':') => "E30: No previous command line".into(),
+        Some('/') => "E35: No previous regular expression".into(),
+        Some('.') => "E29: No inserted text yet".into(),
+        Some('%') => "E32: No file name".into(),
+        Some(c) => format!("E353: Nothing in register {c}"),
+        None => "E353: Nothing in register \"".into(),
+    })
 }
 
 /// Execute `:[range]normal[!] {keys}` (`:help :normal`). The key payload is resolved to key events and fed
@@ -224,7 +265,7 @@ pub(crate) fn run_normal(
 /// and later marks still target their original text after a DELETE (`:g/pat/normal dd` equals `:g/pat/d`).
 ///
 /// `bang` (`:g/pat/normal!`) is accepted but inert — this editor has no user remaps yet. Writes a Vim-style
-/// status: an E486 when the pattern marks nothing, a regex error, else "N lines changed".
+/// status: "Pattern not found" when the pattern marks nothing, a regex error, else "N lines changed".
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run_global_normal(
     engine: &mut InputEngine,
@@ -247,7 +288,8 @@ pub(crate) fn run_global_normal(
         }
     };
     if marks.is_empty() {
-        *status = format!("E486: pattern not found: {pattern}");
+        // Vim only echoes this for `:g` (no `E486`).
+        *status = format!("Pattern not found: {pattern}");
         return;
     }
     let acted = marks.len();
@@ -617,6 +659,7 @@ pub(crate) fn run_ex(
                 }
             } else {
                 *status = match ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags) {
+                    Ok(out) if out.replacements == 0 && spec.quiet => String::new(),
                     Ok(out) if out.replacements == 0 => {
                         format!("E486: pattern not found: {}", spec.pattern)
                     }
@@ -721,7 +764,8 @@ pub(crate) fn run_ex(
         Ex::Global(spec) => match &spec.cmd {
             crate::input::GlobalPayload::Core(cmd) => {
                 *status = match ws.global(spec.range, &spec.pattern, spec.negate, cmd) {
-                    Ok(0) => format!("E486: pattern not found: {}", spec.pattern),
+                    // Not an error in Vim: `:g` with no match only echoes the message (no `E486`).
+                    Ok(0) => format!("Pattern not found: {}", spec.pattern),
                     Ok(n) => format!("{n} lines changed"),
                     Err(e) => regex_error_msg(&e),
                 };
@@ -806,7 +850,7 @@ pub(crate) fn run_ex(
         // `:[range]normal` is handled in the run loop (it drives the input `engine`, which this fn does not
         // borrow, to replay the keys through the same pipeline); never reaches here.
         Ex::Normal { .. } => {}
-        Ex::Unknown(s) => *status = format!("unknown command: {s}"),
+        Ex::Unknown(s) => *status = format!("E492: Not an editor command: {s}"),
     }
 }
 

@@ -3463,12 +3463,12 @@ mod tests {
         let mut e = InputEngine::new();
         e.feed(k('g'), vis);
         assert_eq!(e.feed(k('q'), vis), op(VisualOp::Format));
-        // `:` / `!` leave Visual and open the command line on the selection's range.
+        // `:` / `!` leave Visual at its start and open the command line on the selection's range.
         let mut e = InputEngine::new();
-        assert_eq!(e.feed(k(':'), vis), Feed::Cmd(Command::EnterNormal));
+        assert_eq!(e.feed(k(':'), vis), op(VisualOp::LeaveAtStart));
         assert_eq!(e.cmdline(), Some((':', "'<,'>", 5)));
         let mut e = InputEngine::new();
-        assert_eq!(e.feed(k('!'), vis), Feed::Cmd(Command::EnterNormal));
+        assert_eq!(e.feed(k('!'), vis), op(VisualOp::LeaveAtStart));
         assert_eq!(e.cmdline(), Some((':', "'<,'>!", 6)));
     }
 

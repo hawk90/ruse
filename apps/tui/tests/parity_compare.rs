@@ -56,6 +56,7 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     let (r_row, r_col) = (r_row as i64, r_col as i64);
     let (r_reg_text, r_reg_type) = ruse_reg(&mut h, '"');
     let (r_reg0_text, r_reg0_type) = ruse_reg(&mut h, '0');
+    let r_emsg = h.emsg().to_string();
 
     // oracle observables.
     let e_text = as_str_vec(&expect["text"]);
@@ -68,6 +69,8 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     let e_reg_type = expect["reg_unnamed"]["type"].as_str().expect("reg type");
     let e_reg0_text = expect["reg0"]["text"].as_str().expect("reg0 text");
     let e_reg0_type = expect["reg0"]["type"].as_str().expect("reg0 type");
+    // The E-number of the last error the keys raised (#901); `failed` (a beep) is captured, not compared.
+    let e_emsg = expect["emsg"].as_str().expect("emsg");
 
     let mut diffs: Vec<String> = Vec::new();
     if r_text != e_text {
@@ -87,6 +90,9 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
             "reg0 {:?}/{} != {:?}/{}",
             r_reg0_text, r_reg0_type, e_reg0_text, e_reg0_type
         ));
+    }
+    if r_emsg != e_emsg {
+        diffs.push(format!("emsg {r_emsg:?} != {e_emsg:?}"));
     }
     diffs
 }
@@ -110,7 +116,9 @@ fn parity_ruse_vs_neovim_oracle() {
     assert!(!fixtures.is_empty(), "corpus has no fixtures");
 
     println!("\n=== ruse vs neovim parity ({oracle_version}) ===");
-    println!("compared observables: text, cursor, reg_unnamed, reg0 (the yank register)\n");
+    println!(
+        "compared observables: text, cursor, reg_unnamed, reg0 (the yank register), emsg (the last E-number)\n"
+    );
 
     let mut verified = 0usize;
     let mut divergent_names: Vec<String> = Vec::new();
@@ -179,11 +187,22 @@ fn comparator_detects_a_planted_mismatch() {
         !fixture_diffs(&cursor).is_empty(),
         "a wrong cursor went unnoticed"
     );
-    let mut reg = fx;
+    let mut reg = fx.clone();
     reg["expect"]["reg_unnamed"]["text"] = Value::from("planted mismatch");
     assert!(
         !fixture_diffs(&reg).is_empty(),
         "a wrong register went unnoticed"
+    );
+    let mut emsg = fx;
+    let planted = if emsg["expect"]["emsg"] == "E999" {
+        ""
+    } else {
+        "E999"
+    };
+    emsg["expect"]["emsg"] = Value::from(planted);
+    assert!(
+        !fixture_diffs(&emsg).is_empty(),
+        "a wrong error went unnoticed"
     );
 }
 
