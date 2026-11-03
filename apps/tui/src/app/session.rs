@@ -2115,7 +2115,7 @@ impl Session {
                 return;
             }
             Err(e) => {
-                *status = e;
+                *status = e.to_string();
                 return;
             }
         };

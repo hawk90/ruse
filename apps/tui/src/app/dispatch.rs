@@ -383,6 +383,24 @@ pub(crate) enum ExRange {
     Goto(usize),
 }
 
+/// Why [`resolve_ex_range`] refused a range.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum ExRangeError {
+    /// An address above the last line or below 0 (`E16`).
+    InvalidRange,
+    /// `'<`/`'>` before any Visual selection ended (`E20`).
+    MarkNotSet,
+}
+
+impl std::fmt::Display for ExRangeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ExRangeError::InvalidRange => "E16: Invalid range",
+            ExRangeError::MarkNotSet => "E20: Mark not set",
+        })
+    }
+}
+
 /// Resolve the leading range of an ex line (`:help :range`) against the focused buffer, so the numeric
 /// range parser sees `N` or `N,M`. An address is a line number, `.` (the cursor's line), `$` (the last
 /// line) or `'<`/`'>` (the last Visual selection, `:help v_:`), followed by any `+N`/`-N` offsets; a bare
@@ -393,8 +411,7 @@ pub(crate) enum ExRange {
 /// As in Vim, an address above the last line or below 0 is `E16: Invalid range` for every range-taking
 /// command (#1079), while a range with no command just goes to the line, clamped. A line without a range
 /// comes back unchanged. Other marks (`'a`) are left for the parser.
-pub(crate) fn resolve_ex_range(line: &str, ws: &Workspace) -> Result<ExRange, String> {
-    const E16: &str = "E16: Invalid range";
+pub(crate) fn resolve_ex_range(line: &str, ws: &Workspace) -> Result<ExRange, ExRangeError> {
     let rest = line.trim_start_matches([' ', ':']);
     let pane = ws.focused();
     let b = pane.doc.bytes();
@@ -433,7 +450,7 @@ pub(crate) fn resolve_ex_range(line: &str, ws: &Workspace) -> Result<ExRange, St
             }
             Some(b'\'') if matches!(s.get(i + 1), Some(b'<' | b'>')) => {
                 let Some((first, last)) = visual else {
-                    return Err("E20: Mark not set".into());
+                    return Err(ExRangeError::MarkNotSet);
                 };
                 i += 2;
                 Some(if s[i - 1] == b'<' { first } else { last })
@@ -484,13 +501,13 @@ pub(crate) fn resolve_ex_range(line: &str, ws: &Workspace) -> Result<ExRange, St
     if tail.trim().is_empty() {
         // Going to a line clamps past the end (`:99`), but not below the start (`:-5` on line 3 is E16).
         if last < 0 {
-            return Err(E16.into());
+            return Err(ExRangeError::InvalidRange);
         }
         return Ok(ExRange::Goto(last.clamp(1, nlines) as usize));
     }
     let used = &addrs[addrs.len().saturating_sub(2)..];
     if used.iter().any(|&a| a < 0 || a > nlines) {
-        return Err(E16.into());
+        return Err(ExRangeError::InvalidRange);
     }
     let range = match used {
         [a, b] => format!("{a},{b}"),
@@ -1153,7 +1170,7 @@ mod dispatch_tests {
             resolve_ex_range(line, &ws)
         };
         let line = |s: &str| Ok(ExRange::Line(s.to_string()));
-        let e16 = Err("E16: Invalid range".to_string());
+        let e16 = Err(ExRangeError::InvalidRange);
         assert_eq!(resolve(0, "2,$d"), line("2,4d"));
         assert_eq!(resolve(1, ".,$d"), line("2,4d"));
         assert_eq!(resolve(1, ".,.+1d"), line("2,3d"));
@@ -1201,7 +1218,7 @@ mod dispatch_tests {
         assert_eq!(resolve(0, "$"), Ok(ExRange::Goto(4)));
         assert_eq!(resolve(2, "-"), Ok(ExRange::Goto(2)));
         assert_eq!(resolve(0, "0"), Ok(ExRange::Goto(1)));
-        assert_eq!(resolve(0, "'<,'>d"), Err("E20: Mark not set".to_string()));
+        assert_eq!(resolve(0, "'<,'>d"), Err(ExRangeError::MarkNotSet));
         // A buffer without a final newline has the same lines; an empty buffer has one.
         let ws = Workspace::new(b"a\nb".to_vec());
         assert_eq!(resolve_ex_range("3d", &ws), e16);
