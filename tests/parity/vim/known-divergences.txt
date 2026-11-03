@@ -3,10 +3,6 @@
 # fixture that now verifies (delete its line). One fixture name per line, then `# reason`.
 # Add a line only for a new fixture ruse does not match yet, never to silence a regression.
 
-sc_star_on_punctuation_searches_it # * with no keyword searches the non-blank text (#1087)
-sc_err_sub_empty_pattern_no_previous # E476, ruse has no E-number (#1087)
-sc_err_ex_bad_pattern # E476, ruse has no E-number (#1087)
-sc_err_search_bad_pattern # E870, ruse has no E-number (#1087)
 sc_mark_survives_undo # marks do not follow line edits, so undo cannot restore one (#686)
 sc_err_mark_on_deleted_line # a mark on a deleted line survives (#686)
 sc_mark_moves_with_line_above # a mark does not follow a line opened above (#686)

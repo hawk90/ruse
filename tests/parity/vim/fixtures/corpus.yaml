@@ -53196,6 +53196,152 @@
       }
     },
     {
+      "name": "sc_star_on_punctuation_escapes_magic",
+      "lines": [
+        "x  .*.",
+        "a.b",
+        ".*. y"
+      ],
+      "keys": "$*",
+      "expect": {
+        "text": [
+          "x  .*.",
+          "a.b",
+          ".*. y"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_star_on_punctuation_then_n",
+      "lines": [
+        "  ;;",
+        ";; b ;;",
+        ";;"
+      ],
+      "keys": "*nx",
+      "expect": {
+        "text": [
+          "  ;;",
+          ";; b ;",
+          ";;"
+        ],
+        "cursor": [
+          2,
+          5
+        ],
+        "reg_unnamed": {
+          "text": ";",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_hash_on_punctuation_searches_back",
+      "lines": [
+        "/?",
+        "a /? b"
+      ],
+      "keys": "j0#x",
+      "expect": {
+        "text": [
+          "/?",
+          " /? b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_star_prefers_keyword_after_punctuation",
+      "lines": [
+        ".:. foo",
+        ".:.",
+        "foo"
+      ],
+      "keys": "*x",
+      "expect": {
+        "text": [
+          ".:. foo",
+          ".:.",
+          "oo"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "f",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_gstar_on_punctuation",
+      "lines": [
+        "~[",
+        "x~[y"
+      ],
+      "keys": "g*x",
+      "expect": {
+        "text": [
+          "~[",
+          "x[y"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "~",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
       "name": "sc_err_sub_not_found",
       "lines": [
         "abc"
@@ -53346,6 +53492,101 @@
         "reg_unnamed": {
           "text": "",
           "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_global_delete_fills_unnamed",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "c"
+      ],
+      "keys": ":g/a/d<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "c"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a2\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_global_delete_range_then_p",
+      "lines": [
+        "a1",
+        "a2",
+        "b",
+        "a3",
+        "a4"
+      ],
+      "keys": ":2,4g/a/d<CR>p",
+      "expect": {
+        "text": [
+          "a1",
+          "b",
+          "a4",
+          "a3"
+        ],
+        "cursor": [
+          4,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "sc_global_delete_numbered_ring",
+      "lines": [
+        "a1",
+        "b",
+        "a2",
+        "c",
+        "a3"
+      ],
+      "keys": ":g/a/d<CR>\"3p",
+      "expect": {
+        "text": [
+          "b",
+          "c",
+          "a1"
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a3\n",
+          "type": "linewise"
         },
         "reg0": {
           "text": "",
@@ -53643,6 +53884,216 @@
         },
         "emsg": "E870",
         "failed": true
+      }
+    },
+    {
+      "name": "sc_err_search_unmatched_open",
+      "lines": [
+        "abc"
+      ],
+      "keys": "/\\(<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E54",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_err_search_unmatched_close",
+      "lines": [
+        "abc"
+      ],
+      "keys": "/\\)<CR>x",
+      "expect": {
+        "text": [
+          "bc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "a",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E55",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_err_ex_unmatched_close",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":s/\\)/x/<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E476",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_err_ex_bad_brace",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":s/a\\{/x/<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E476",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_err_ex_global_bad_pattern",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":g/\\(/d<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E476",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_err_ex_sort_bad_pattern",
+      "lines": [
+        "b",
+        "a"
+      ],
+      "keys": ":sort /\\(/<CR>",
+      "expect": {
+        "text": [
+          "b",
+          "a"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E54",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_err_sub_count_bad_pattern",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":s/\\(/x/n<CR>",
+      "expect": {
+        "text": [
+          "abc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E476",
+        "failed": true
+      }
+    },
+    {
+      "name": "sc_sub_empty_pattern_after_search",
+      "lines": [
+        "abc"
+      ],
+      "keys": "/b<CR>:s//y/<CR>",
+      "expect": {
+        "text": [
+          "ayc"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
       }
     },
     {

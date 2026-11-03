@@ -110,7 +110,7 @@ fn zz_and_zq_run_the_ex_quit_policy() {
         Feed::Cmd(Command::DeleteUnder(1)),
         "the aborted Z leaves nothing armed"
     );
-    assert_eq!(parse_ex("x"), Ex::ExitWrite);
+    assert!(is_exit_write(&parse_ex("x")));
     assert_eq!(parse_ex("q!"), Ex::QuitForce);
 }
 
@@ -135,6 +135,20 @@ fn emacs_counted_char_motions_still_cross_lines() {
     assert_eq!(st.cursor(), 1);
 }
 
+/// Whether `ex` is `:x` (write when modified, then close the window).
+fn is_exit_write(ex: &Ex) -> bool {
+    matches!(
+        ex,
+        Ex::Write(ruse_tui::input::WriteSpec {
+            quit: true,
+            if_modified: true,
+            bang: false,
+            range: None,
+            ..
+        })
+    )
+}
+
 /// #611: the quit and window-close family parses with Vim's abbreviations.
 #[test]
 fn quit_family_parses() {
@@ -142,9 +156,16 @@ fn quit_family_parses() {
         assert_eq!(parse_ex(q), Ex::Quit, ":{q}");
     }
     for q in ["x", "xi", "xit", "exi", "exit"] {
-        assert_eq!(parse_ex(q), Ex::ExitWrite, ":{q}");
+        assert!(is_exit_write(&parse_ex(q)), ":{q}");
     }
-    assert_eq!(parse_ex("wq"), Ex::SaveQuit);
+    assert!(matches!(
+        parse_ex("wq"),
+        Ex::Write(ruse_tui::input::WriteSpec {
+            quit: true,
+            if_modified: false,
+            ..
+        })
+    ));
     for q in ["qa", "qal", "qall", "quita", "quital", "quitall"] {
         assert_eq!(parse_ex(q), Ex::QuitAll { force: false }, ":{q}");
         assert_eq!(
