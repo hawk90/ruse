@@ -293,7 +293,11 @@ back. This is **not** an engine capability — the engine only offers:
 - `find_all(hay, range)` — an iterator of non-overlapping matches (for all-per-line).
 
 The **substitute command** ([editing-language.md](editing-language.md) / F-009) computes the effective "replace
-all vs first" as **`g_flag XOR gdefault`** and then calls `find_at` once per line or iterates `find_all`. Placing
+all vs first" as **`g_flag XOR gdefault`** and then calls `find_at` once per line or iterates `find_all`. A
+pattern with a line-break item (`\n`, `\_x`, `\_[…]`, `[\n]` — `Regex::multiline`, Vim's `re_multiline`) is
+instead matched against the whole buffer from each line (`Regex::find_whole_at`), following nvim's `do_sub`:
+a match belongs to the line its whole match starts on, the line it ends on is searched again while it is in
+the range, and the last line's break matches `\n` but stays in the buffer (#715). Placing
 `gdefault` here (not in `C-REGEX`) keeps the engine a pure matcher and matches Vim's own layering (it is a
 substitute option, orthogonal to the pattern). Documented here only because VIM-SEARCH-1 flags it as a
 get-it-exactly-right item; the **Exact** obligation is on the command layer, and the differential corpus asserts
@@ -302,7 +306,9 @@ the XOR truth table (T-09).
 Related command-layer items also **out of the engine** but noted for completeness: replacement items
 (`& \0`–`\9` `~ \u \U \l \L \e \E \r \n \t \=expr`) are expanded by the substitute layer using the engine's
 `Captures`; `:s///\=` runs the ruse expression surface (Non-goals). The engine's contribution is correct
-`Captures` (including `\zs`/`\ze`-adjusted group 0).
+`Captures` (including `\zs`/`\ze`-adjusted group 0). In the replacement, `\r` (and a literal CR) splits the line
+and `\n` inserts a NUL, as in Vim (#698). Where a pattern ends inside an Ex command or a search line is the
+engine's `skip_regexp` (Vim's), so a delimiter inside `[…]` does not end it (#803).
 
 ### 7. Engine selection (router: by capability, then context/profile)
 
