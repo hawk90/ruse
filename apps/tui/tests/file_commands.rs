@@ -185,25 +185,25 @@ fn writes_and_renames_set_the_alternate_file() {
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys(":w other.txt\r\"#p:w\r");
     assert_eq!(
-        read(&dir, "f.txt"),
+        read_written(&dir, "f.txt", "xother.txt\n"),
         "xother.txt\n",
         "`#` is the name written to"
     );
     ed.keys(":e #\rx:w\r");
     assert_eq!(
-        read(&dir, "other.txt"),
+        read_written(&dir, "other.txt", "\n"),
         "\n",
         ":e # opened the written copy"
     );
     ed.keys(":sav moved.txt\r0\"#P:w\r");
     assert_eq!(
-        read(&dir, "moved.txt"),
+        read_written(&dir, "moved.txt", "other.txt\n"),
         "other.txt\n",
         ":sav left the old name as `#`"
     );
     ed.keys(":file renamed.txt\r0\"#P:w\r");
     assert_eq!(
-        read(&dir, "renamed.txt"),
+        read_written(&dir, "renamed.txt", "moved.txtother.txt\n"),
         "moved.txtother.txt\n",
         ":file renames the buffer and keeps the old name as `#`"
     );
@@ -228,24 +228,24 @@ fn find_drop_and_visual_open_files() {
         .screen_bytes()
         .contains("E345: Can't find file \"g.txt\" in path"));
     ed.keys(&format!(":find sub/g.txt\rA1{ESC}:w\r"));
-    assert_eq!(read(&dir, "sub/g.txt"), "g1\n");
+    assert_eq!(read_written(&dir, "sub/g.txt", "g1\n"), "g1\n");
     ed.keys(&format!(":find h.txt\rA2{ESC}:w\r"));
     assert_eq!(
-        read(&dir, "sub/h.txt"),
+        read_written(&dir, "sub/h.txt", "h2\n"),
         "h2\n",
         "found next to the current file"
     );
     ed.keys(&format!(":sf f.txt\rA3{ESC}:w\r"));
     assert_eq!(
-        read(&dir, "f.txt"),
+        read_written(&dir, "f.txt", "f3\n"),
         "f3\n",
         "found in the working directory"
     );
     // Two windows now, one on f.txt: from the other one, `:drop` goes back to it.
     ed.keys(&format!("\u{17}w:drop f.txt\rA4{ESC}:w\r"));
-    assert_eq!(read(&dir, "f.txt"), "f34\n");
+    assert_eq!(read_written(&dir, "f.txt", "f34\n"), "f34\n");
     ed.keys(&format!(":vi sub/g.txt\rA5{ESC}:w\r"));
-    assert_eq!(read(&dir, "sub/g.txt"), "g15\n");
+    assert_eq!(read_written(&dir, "sub/g.txt", "g15\n"), "g15\n");
     ed.keys(":qa!\r");
     assert_eq!(ed.exit_status(), 0);
 }
@@ -261,19 +261,23 @@ fn cd_keeps_buffers_on_their_files() {
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys(&format!(":cd sub\rA1{ESC}:w\r"));
     assert_eq!(
-        read(&dir, "f.txt"),
+        read_written(&dir, "f.txt", "f1\n"),
         "f1\n",
         "the buffer still writes its own file"
     );
     assert!(!dir.path("sub/f.txt").exists());
     ed.keys(&format!(":e g.txt\rA2{ESC}:w\r"));
     assert_eq!(
-        read(&dir, "sub/g.txt"),
+        read_written(&dir, "sub/g.txt", "g2\n"),
         "g2\n",
         "a relative name is under the new directory"
     );
     ed.keys(&format!(":cd -\r:e f.txt\rA3{ESC}:w\r"));
-    assert_eq!(read(&dir, "f.txt"), "f13\n", "`:cd -` went back");
+    assert_eq!(
+        read_written(&dir, "f.txt", "f13\n"),
+        "f13\n",
+        "`:cd -` went back"
+    );
     ed.keys(":cd nosuch\r");
     assert!(ed
         .screen_bytes()
@@ -291,7 +295,11 @@ fn keepalt_keeps_the_alternate_file() {
     dir.file("h.txt", b"\n");
     let mut ed = Editor::start(&dir, &[Path::new("f.txt")]);
     ed.keys(":e g.txt\r:keepalt e h.txt\r\"#P:w\r");
-    assert_eq!(read(&dir, "h.txt"), "f.txt\n", "`#` is still f.txt");
+    assert_eq!(
+        read_written(&dir, "h.txt", "f.txt\n"),
+        "f.txt\n",
+        "`#` is still f.txt"
+    );
     ed.keys(":qa!\r");
     assert_eq!(ed.exit_status(), 0);
 }
