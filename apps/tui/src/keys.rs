@@ -341,6 +341,11 @@ pub fn legacy_ctrl_alias(c: char) -> Option<char> {
 const MOD_TAG: u8 = b'm';
 /// The function-key tag after `0x80`: `0x80 'f' {n}` is `F(n)`.
 const FN_TAG: u8 = b'f';
+/// The modifiers no plain byte holds, so only the [`MOD_TAG`] prefix carries them.
+const CARRIED: KeyModifiers = KeyModifiers::ALT
+    .union(KeyModifiers::SUPER)
+    .union(KeyModifiers::HYPER)
+    .union(KeyModifiers::META);
 /// The modifiers [`MOD_TAG`] carries, by bit.
 const MOD_BITS: [(KeyModifiers, u8); 5] = [
     (KeyModifiers::CONTROL, 1),
@@ -355,8 +360,7 @@ const MOD_BITS: [(KeyModifiers, u8); 5] = [
 /// chords to their bytes, matching the control bytes a terminal actually sends. A modifier no byte holds
 /// (`Alt`, `Ctrl` on a char with no control byte) rides the [`MOD_TAG`] prefix (#812).
 pub fn encode(key: KeyEvent) -> Option<Vec<u8>> {
-    let carried =
-        KeyModifiers::ALT | KeyModifiers::SUPER | KeyModifiers::HYPER | KeyModifiers::META;
+    let carried = CARRIED;
     let mut extra = key.modifiers & carried;
     let mut base = KeyEvent::new(key.code, key.modifiers - carried);
     let mut bytes = plain_bytes(base);
@@ -496,11 +500,31 @@ pub fn decode(bytes: &[u8]) -> Vec<KeyEvent> {
         let (key, width) = decode_one(bytes, i, b);
         if let Some(mut key) = key {
             key.modifiers |= mods;
-            out.push(key);
+            out.push(if mods.is_empty() { key } else { canonical(key) });
         }
         i += width;
     }
     out
+}
+
+/// A tagged key as [`encode`] would read it back: a `Ctrl` chord with a control byte (`<C-2>`, `<C-]>`,
+/// `<C-[>`) collapses to the key that byte decodes as (`<C-Space>`, `<C-5>`, `<Esc>`), keeping the
+/// modifiers the tag carries. Without this a tag spelling `Ctrl` on such a char decodes to a key that
+/// re-encodes as the control byte and decodes as another key (#1150).
+fn canonical(key: KeyEvent) -> KeyEvent {
+    let carried = CARRIED;
+    let extra = key.modifiers & carried;
+    let base = KeyEvent::new(key.code, key.modifiers - carried);
+    if !base.modifiers.contains(KeyModifiers::CONTROL) {
+        return key;
+    }
+    match plain_bytes(base).map(|b| decode_one(&b, 0, b[0])) {
+        Some((Some(mut k), _)) => {
+            k.modifiers |= extra;
+            k
+        }
+        _ => key,
+    }
 }
 
 /// One key from `bytes[i]` (`b`), and the bytes it took; `None` for an unrecognised byte, which is skipped.
@@ -666,6 +690,33 @@ mod tests {
         m.step(ch('b'), false, true);
         assert_eq!(m.step(ctrl('q'), false, true), Step::Dispatch(ctrl('q')));
         assert!(m.is_recording());
+    }
+
+    #[test]
+    fn a_tagged_ctrl_chord_with_a_control_byte_decodes_as_that_byte() {
+        // `0x80 'm' {Ctrl|Super|Hyper} '2'` (#1150): `<C-2>` is NUL, so it reads as `<C-Space>` with the
+        // tag's other modifiers, the key its re-encoding decodes as.
+        let with = KeyEvent::new;
+        let sh = KeyModifiers::SUPER | KeyModifiers::HYPER;
+        let k = decode(&[0x80, MOD_TAG, 13, b'2']);
+        assert_eq!(
+            k,
+            vec![with(KeyCode::Char(' '), KeyModifiers::CONTROL | sh)]
+        );
+        assert_eq!(decode(&encode_all(&k)), k);
+        // `<C-]>` reads as `<C-5>`, `<C-[>` as `<Esc>`; a chord with no control byte keeps its char.
+        assert_eq!(
+            decode(&[0x80, MOD_TAG, 3, b']']),
+            vec![with(
+                KeyCode::Char('5'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT
+            )]
+        );
+        assert_eq!(
+            decode(&[0x80, MOD_TAG, 5, b'[']),
+            vec![with(KeyCode::Esc, KeyModifiers::SUPER)]
+        );
+        assert_eq!(decode(&[0x80, MOD_TAG, 1, b'1']), vec![ctrl('1')]);
     }
 
     #[test]
