@@ -27,8 +27,9 @@ use crate::input::{
     WriteTarget,
 };
 use crate::terminal::guard::TermGuard;
+use crate::ui::overlay::{Accepted, Overlay};
 use crate::ui::palette::focused_context;
-use crate::ui::picker::{PickOutcome, Picker};
+use crate::ui::picker::PickOutcome;
 use crate::ui::prompts::{confirm_key, confirm_prompt, prompt_recovery, Confirm, RecoveryChoice};
 use crate::ui::render::{render, search_pattern};
 use crate::ui::{
@@ -452,28 +453,9 @@ pub(crate) struct Session {
     /// The last shell command run by `:!`, `:{range}!` or `:r !` (after expansion) — what a `!` in the next
     /// one expands to, so `:!!` repeats it (`:help :!`).
     last_shell: Option<String>,
-    /// The modal picker overlays (F-004 / F-013 NAT-3), all `Picker<T>` over different payloads: command
-    /// palette (`C-p`), buffer-line jump (`C-l`), buffer switch (`C-b`), file finder (`C-f`). At most one is open.
-    pub(crate) palette: Option<Picker<Command>>,
-    pub(crate) line_picker: Option<Picker<usize>>,
-    pub(crate) buffer_picker: Option<Picker<DocumentId>>,
-    pub(crate) file_picker: Option<Picker<PathBuf>>,
-    /// F-014: the LSP references picker — `(uri, line, character)` locations; Enter jumps (same/cross file).
-    pub(crate) ref_picker: Option<Picker<(String, u32, u32)>>,
-    /// F-014: the LSP code-action picker — Enter applies the selected action's WorkspaceEdit.
-    pub(crate) action_picker: Option<Picker<crate::lsp::protocol::CodeAction>>,
-    /// F-014: the diagnostics list picker — payload is the diagnostic's start byte; Enter jumps there.
-    pub(crate) diag_picker: Option<Picker<usize>>,
-    /// F-029: the `:registers` viewer — payload is the register name; view-only (Enter just closes).
-    pub(crate) reg_picker: Option<Picker<char>>,
-    /// `:digraphs` listing — payload is the glyph; view-only (Enter just closes), like `reg_picker`.
-    pub(crate) digraph_picker: Option<Picker<char>>,
-    /// `[I`/`]I` keyword-line listing — payload is the match's 1-based line number; view-only (Enter closes).
-    pub(crate) keyword_lines_picker: Option<Picker<usize>>,
-    /// F-003: the `:marks` viewer — payload is the mark's byte offset; Enter jumps the cursor there.
-    pub(crate) marks_picker: Option<Picker<usize>>,
-    /// F-003: the shared `:jumps` / `:changes` position viewer — payload is a byte offset; Enter jumps.
-    pub(crate) pos_picker: Option<Picker<usize>>,
+    /// The open modal picker overlay (F-004 / F-013 NAT-3): command palette, line jump, buffer switch, file
+    /// finder, the LSP pickers and the view-only listings. One slot, so at most one is open (#879).
+    pub(crate) overlay: Option<Overlay>,
     /// F-011: live terminal buffers keyed by their placeholder DocumentId (unix-only). `Prefix::TermEscape`
     /// tracks a `CTRL-\` awaiting `CTRL-N` (the Terminal → Terminal-Normal escape).
     #[cfg(unix)]
@@ -595,18 +577,7 @@ impl Session {
             last_substitute: None,
             last_ex_line: None,
             last_shell: None,
-            palette: None,
-            line_picker: None,
-            buffer_picker: None,
-            file_picker: None,
-            ref_picker: None,
-            action_picker: None,
-            diag_picker: None,
-            reg_picker: None,
-            digraph_picker: None,
-            keyword_lines_picker: None,
-            marks_picker: None,
-            pos_picker: None,
+            overlay: None,
             #[cfg(unix)]
             terminals: HashMap::new(),
             lsp: LspCoordinator::new(cwd, trusted),
@@ -804,10 +775,10 @@ impl Session {
             &mut self.status,
         );
         if let Some(locs) = self.lsp.take_refs() {
-            self.ref_picker = Some(ref_picker::open(locs, self.lsp.cwd()));
+            self.overlay = Some(Overlay::Refs(ref_picker::open(locs, self.lsp.cwd())));
         }
         if let Some(actions) = self.lsp.take_actions() {
-            self.action_picker = Some(action_picker::open(actions));
+            self.overlay = Some(Overlay::Actions(action_picker::open(actions)));
         }
     }
 
@@ -1015,24 +986,11 @@ impl Session {
     /// Whether a modal overlay owns the keystream: a `:s///c` confirm loop or an open picker. The macro
     /// layer must not take its `q`/`@` (#851).
     fn overlay_open(&self) -> bool {
-        self.confirm.is_some()
-            || self.swap.is_some()
-            || self.palette.is_some()
-            || self.line_picker.is_some()
-            || self.buffer_picker.is_some()
-            || self.file_picker.is_some()
-            || self.ref_picker.is_some()
-            || self.action_picker.is_some()
-            || self.diag_picker.is_some()
-            || self.reg_picker.is_some()
-            || self.digraph_picker.is_some()
-            || self.keyword_lines_picker.is_some()
-            || self.marks_picker.is_some()
-            || self.pos_picker.is_some()
+        self.confirm.is_some() || self.swap.is_some() || self.overlay.is_some()
     }
 
     fn route(&mut self, raw_key: KeyEvent, from_replay: bool, frame: &FrameCtx) {
-        let overlay = self.overlay_open();
+        let overlay_open = self.overlay_open();
         let Session {
             ws,
             files,
@@ -1054,18 +1012,7 @@ impl Session {
             search_hl,
             last_substitute,
             last_ex_line,
-            palette,
-            line_picker,
-            buffer_picker,
-            file_picker,
-            ref_picker,
-            action_picker,
-            diag_picker,
-            reg_picker,
-            digraph_picker,
-            keyword_lines_picker,
-            marks_picker,
-            pos_picker,
+            overlay,
             #[cfg(unix)]
             terminals,
             lsp,
@@ -1101,7 +1048,7 @@ impl Session {
         // the engine waits for one (`fq`, `"q`, `gq`, `dq`, a Native leader key), where the `q` or `@` is
         // that key. `q`, `@` and `Q` also work from Visual (nvim 0.12.6, #1068), but not from Select.
         let boundary =
-            !overlay && matches!(prefix, Prefix::None) && engine.pending() == Pending::Base;
+            !overlay_open && matches!(prefix, Prefix::None) && engine.pending() == Pending::Base;
         let mode = ws.focused().view.mode();
         let macro_cmd = boundary && matches!(mode, Mode::Normal | Mode::Visual { .. });
         let step = macros.step_gated(raw_key, from_replay, macro_cmd, macro_cmd);
@@ -1216,54 +1163,32 @@ impl Session {
             return;
         }
         // A picker owns the keystream while open (F-004 / F-013 NAT-3): its transient keymap filters/moves,
-        // Enter accepts (the caller runs the payload-specific action), Esc closes. At most one is open.
-        // The line picker jumps the cursor to the selected line's byte offset.
-        if let Some(outcome) = line_picker.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                let offset = line_picker.as_ref().and_then(|p| p.selected().copied());
-                if let Some(offset) = offset {
-                    ws.place_focused_cursor(offset);
-                }
-            }
+        // Enter accepts (the session runs the payload-specific action below), Esc closes.
+        if let Some(open) = overlay.as_mut() {
+            let (outcome, accepted) = open.on_key(key);
             if !matches!(outcome, PickOutcome::Continue) {
-                *line_picker = None;
+                *overlay = None;
             }
-            return;
-        }
-        // The buffer picker switches the focused window to the selected buffer.
-        if let Some(outcome) = buffer_picker.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                if let Some(id) = buffer_picker.as_ref().and_then(|p| p.selected().copied()) {
+            match accepted {
+                None => {}
+                // The line, diagnostics, marks and position pickers jump the cursor to a byte offset.
+                Some(Accepted::Jump(offset)) => ws.place_focused_cursor(offset),
+                // The buffer picker switches the focused window to the selected buffer.
+                Some(Accepted::Buffer(id)) => {
                     ws.focus_buffer(id);
                 }
-            }
-            if !matches!(outcome, PickOutcome::Continue) {
-                *buffer_picker = None;
-            }
-            return;
-        }
-        // The file picker opens the selected path into a new buffer (the interactive form of `:e`).
-        if let Some(outcome) = file_picker.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                if let Some(p) = file_picker.as_ref().and_then(|p| p.selected().cloned()) {
+                // The file picker opens the selected path into a buffer (the interactive form of `:e`).
+                Some(Accepted::File(p)) => {
                     *status =
                         open_file_into_buffer(&p.display().to_string(), ws, files, highlighters)
                             .status;
                 }
-            }
-            if !matches!(outcome, PickOutcome::Continue) {
-                *file_picker = None;
-            }
-            return;
-        }
-        // F-014: the references picker jumps to the selected location. The `spans` borrow is released by
-        // now (render is done), so opening a cross-file buffer here is free — no defer needed (unlike the
-        // response-loop goto). Same file → move; other file → open then move (the goto path, inline).
-        if let Some(outcome) = ref_picker.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                if let Some((uri, l, c)) = ref_picker.as_ref().and_then(|p| p.selected().cloned()) {
-                    // The open helper focuses the buffer already holding this file (#848), so the
-                    // current file and another open file both move without a second Document.
+                // F-014: the references picker jumps to the selected location. The `spans` borrow is
+                // released by now (render is done), so opening a cross-file buffer here is free — no defer
+                // needed (unlike the response-loop goto). The open helper focuses the buffer already
+                // holding this file (#848), so the current file and another open file both move without a
+                // second Document.
+                Some(Accepted::Location(uri, l, c)) => {
                     let path = crate::lsp::uri_to_path(&uri);
                     let target = std::fs::canonicalize(&path).unwrap_or(path);
                     let opened = open_file_into_buffer(
@@ -1279,94 +1204,15 @@ impl Session {
                         *status = opened.status;
                     }
                 }
-            }
-            if !matches!(outcome, PickOutcome::Continue) {
-                *ref_picker = None;
-            }
-            return;
-        }
-        // F-014: the code-action picker applies the selected action's WorkspaceEdit (the multi-file apply,
-        // inline here since the `spans` borrow is released post-render — like the references jump).
-        if let Some(outcome) = action_picker.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                if let Some(action) = action_picker.as_ref().and_then(|p| p.selected().cloned()) {
+                // F-014: the code-action picker applies the selected action's WorkspaceEdit (inline, as
+                // the `spans` borrow is released post-render — like the references jump).
+                Some(Accepted::Action(action)) => {
                     lsp.apply_code_action(&action, ws, files, highlighters, status);
                 }
-            }
-            if !matches!(outcome, PickOutcome::Continue) {
-                *action_picker = None;
-            }
-            return;
-        }
-        // F-014: the diagnostics picker jumps the cursor to the selected diagnostic's byte offset.
-        if let Some(outcome) = diag_picker.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                if let Some(off) = diag_picker.as_ref().and_then(|p| p.selected().copied()) {
-                    ws.place_focused_cursor(off);
-                }
-            }
-            if !matches!(outcome, PickOutcome::Continue) {
-                *diag_picker = None;
-            }
-            return;
-        }
-        // F-029: the `:registers` viewer is view-only — any non-Continue outcome (Enter / Esc) just closes it.
-        if let Some(outcome) = reg_picker.as_mut().map(|p| p.on_key(key)) {
-            if !matches!(outcome, PickOutcome::Continue) {
-                *reg_picker = None;
-            }
-            return;
-        }
-        // The `:digraphs` listing is view-only — any non-Continue outcome (Enter / Esc) just closes it.
-        if let Some(outcome) = digraph_picker.as_mut().map(|p| p.on_key(key)) {
-            if !matches!(outcome, PickOutcome::Continue) {
-                *digraph_picker = None;
-            }
-            return;
-        }
-        // The `[I`/`]I` keyword-line listing is view-only (Vim only displays) — any non-Continue closes it.
-        if let Some(outcome) = keyword_lines_picker.as_mut().map(|p| p.on_key(key)) {
-            if !matches!(outcome, PickOutcome::Continue) {
-                *keyword_lines_picker = None;
-            }
-            return;
-        }
-        // F-003: the `:marks` viewer jumps the cursor to the selected mark's byte offset on Enter.
-        if let Some(outcome) = marks_picker.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                if let Some(off) = marks_picker.as_ref().and_then(|p| p.selected().copied()) {
-                    ws.place_focused_cursor(off);
-                }
-            }
-            if !matches!(outcome, PickOutcome::Continue) {
-                *marks_picker = None;
-            }
-            return;
-        }
-        // F-003: the `:jumps` / `:changes` position viewer jumps the cursor to the selected offset on Enter.
-        if let Some(outcome) = pos_picker.as_mut().map(|p| p.on_key(key)) {
-            if let PickOutcome::Accept = outcome {
-                if let Some(off) = pos_picker.as_ref().and_then(|p| p.selected().copied()) {
-                    ws.place_focused_cursor(off);
-                }
-            }
-            if !matches!(outcome, PickOutcome::Continue) {
-                *pos_picker = None;
-            }
-            return;
-        }
-        // The command palette dispatches the selected command by its stable id, through the same path as a
-        // typed key's command (so it is resolved, undone and recorded like any other, #689).
-        if let Some(outcome) = palette.as_mut().map(|p| p.on_key(key)) {
-            let cmd = match outcome {
-                PickOutcome::Accept => palette.as_ref().and_then(|p| p.selected().cloned()),
-                _ => None,
-            };
-            if !matches!(outcome, PickOutcome::Continue) {
-                *palette = None;
-            }
-            if let Some(cmd) = cmd {
-                self.run_resolved_cmd(cmd, frame);
+                // The command palette dispatches the selected command by its stable id, through the same
+                // path as a typed key's command (so it is resolved, undone and recorded like any other,
+                // #689).
+                Some(Accepted::Command(cmd)) => self.run_resolved_cmd(cmd, frame),
             }
             return;
         }
@@ -1773,14 +1619,17 @@ impl Session {
         // `C-p` opens the command palette (F-004 #2), context-filtered to the focused view.
         if chord && is_ctrl(key, 'p') {
             engine.take_count();
-            *palette = Some(palette::open(&focused_context(ws), engine));
+            *overlay = Some(Overlay::Palette(palette::open(
+                &focused_context(ws),
+                engine,
+            )));
             return;
         }
         // `C-l` opens the buffer-line fuzzy picker (F-013 NAT-3). Normal-only, so the Emacs profile's
         // non-modal C-l (recenter) is unaffected; C-l is unbound in the Vim/Native Normal grammar.
         if chord && is_ctrl(key, 'l') {
             engine.take_count();
-            *line_picker = Some(line_picker::open(ws.focused().doc.bytes()));
+            *overlay = Some(Overlay::Lines(line_picker::open(ws.focused().doc.bytes())));
             return;
         }
         // Native profile: `C-b` opens the buffer picker and `C-f` the fuzzy file finder (F-013 NAT-3). Normal
@@ -1788,12 +1637,12 @@ impl Session {
         // Vim profile they are Vim's page scroll (below).
         if chord && native && is_ctrl(key, 'b') {
             engine.take_count();
-            *buffer_picker = Some(buffer_picker::open(ws));
+            *overlay = Some(Overlay::Buffers(buffer_picker::open(ws)));
             return;
         }
         if chord && native && is_ctrl(key, 'f') {
             engine.take_count();
-            *file_picker = Some(file_picker::open());
+            *overlay = Some(Overlay::Files(file_picker::open()));
             return;
         }
         let last_line = line_idx.line_of(snapshot.len().saturating_sub(1));
@@ -2178,7 +2027,7 @@ impl Session {
             search_hl,
             last_substitute,
             last_ex_line,
-            keyword_lines_picker,
+            overlay,
             status,
             alt_file,
             ..
@@ -2264,7 +2113,9 @@ impl Session {
                                 .map(|l| (l, ruse_core::line_text(bytes, l)))
                                 .collect();
                         *status = format!("{} line(s) matching \"{keyword}\"", rows.len());
-                        *keyword_lines_picker = Some(crate::ui::keyword_lines_picker::open(&rows));
+                        *overlay = Some(Overlay::Listing(crate::ui::keyword_lines_picker::open(
+                            &rows,
+                        )));
                     } else {
                         *status = match ruse_core::keyword_echo(
                             &matches,
@@ -2496,16 +2347,11 @@ impl Session {
             fixeol_on,
             last_substitute,
             last_shell,
-            diag_picker,
-            reg_picker,
-            digraph_picker,
-            marks_picker,
-            pos_picker,
+            overlay,
             #[cfg(unix)]
             terminals,
             lsp,
             status,
-            keyword_lines_picker,
             alt_file,
             prev_dir,
             ex_filter,
@@ -2702,7 +2548,7 @@ impl Session {
                     *status = "no diagnostics".to_string();
                 } else {
                     *status = format!("{} diagnostic(s)", diags.len());
-                    *diag_picker = Some(diag_picker::open(diags, snapshot));
+                    *overlay = Some(Overlay::Diagnostics(diag_picker::open(diags, snapshot)));
                 }
             }
             // `:registers` (F-029): open a view-only picker over the non-empty registers, so a
@@ -2713,7 +2559,7 @@ impl Session {
                     *status = "no registers set".to_string();
                 } else {
                     *status = format!("{} register(s)", snapshot.len());
-                    *reg_picker = Some(register_picker::open(snapshot));
+                    *overlay = Some(Overlay::Registers(register_picker::open(snapshot)));
                 }
             }
             // `:ascii`/`:as` — the ex synonym of `ga`: print the char-under-cursor's value.
@@ -2725,7 +2571,7 @@ impl Session {
             Ex::Digraphs => {
                 let p = crate::ui::digraph_picker::open();
                 *status = format!("{} digraph(s)", p.rows().len());
-                *digraph_picker = Some(p);
+                *overlay = Some(Overlay::Digraphs(p));
             }
             // `:marks` (F-003): open a picker over the set marks; Enter jumps to the selected one.
             Ex::Marks => {
@@ -2734,13 +2580,16 @@ impl Session {
                     *status = "no marks set".to_string();
                 } else {
                     *status = format!("{} mark(s)", snapshot.len());
-                    *marks_picker = Some(marks_picker::open(snapshot, ws.focused().doc.bytes()));
+                    *overlay = Some(Overlay::Marks(marks_picker::open(
+                        snapshot,
+                        ws.focused().doc.bytes(),
+                    )));
                 }
             }
             // `:[range]mark {x}` / `:[range]k{x}` (#1088).
             Ex::Mark { range, name } => ws.set_mark_on_line(range, name),
             // `:jumps` / `:changes` (F-003): position viewers over the jumplist / change list;
-            // Enter jumps. Both share the `pos_picker` overlay (never open at once).
+            // Enter jumps. Both use the position-viewer overlay.
             ex @ (Ex::Jumps | Ex::Changes) => {
                 let positions = if matches!(ex, Ex::Jumps) {
                     ws.jumps_snapshot()
@@ -2751,7 +2600,10 @@ impl Session {
                     *status = "empty".to_string();
                 } else {
                     *status = format!("{} position(s)", positions.len());
-                    *pos_picker = Some(pos_picker::open(positions, ws.focused().doc.bytes()));
+                    *overlay = Some(Overlay::Positions(pos_picker::open(
+                        positions,
+                        ws.focused().doc.bytes(),
+                    )));
                 }
             }
             // `:terminal` (F-011): spawn a shell in a new PTY-backed buffer, sized to the focused
@@ -2864,7 +2716,7 @@ impl Session {
                             .collect();
                         let at = crate::app::ex_more::line_start(b, last_marked);
                         ws.place_focused_cursor(at);
-                        crate::app::ex_more::show_rows(rows, status, keyword_lines_picker);
+                        crate::app::ex_more::show_rows(rows, status, overlay);
                     }
                     crate::input::GlobalPayload::Normal { keys, .. } => {
                         self.ex_global_normal(spec.range, &spec.pattern, spec.negate, keys, frame);
@@ -3393,7 +3245,7 @@ impl Session {
                     &*keep,
                 );
                 goto_line(last, ws, files, recorded, status, quit);
-                crate::app::ex_more::show_rows(rows, status, keyword_lines_picker);
+                crate::app::ex_more::show_rows(rows, status, overlay);
             }
             // `:z` (#609): a window of lines around the addressed one; the cursor goes to the line nvim's
             // `ex_z` picks, at column 0 when that is another line.
@@ -3455,7 +3307,7 @@ impl Session {
                     let at = crate::app::ex_more::line_start(b, curs);
                     ws.place_focused_cursor(at);
                 }
-                crate::app::ex_more::show_rows(rows, status, keyword_lines_picker);
+                crate::app::ex_more::show_rows(rows, status, overlay);
             }
             // `:=` (#609): the last line number of the range, or of the buffer.
             Ex::LineNumber(range) => {
@@ -4146,31 +3998,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
                     .unwrap_or_default()
             };
             // Overlay match rows painted above the status line — at most one picker is open at a time, so all
-            // three share the same uniform `rows()` paint slot (F-004 / F-013 NAT-3).
-            let overlay_rows: Vec<(String, bool)> = if let Some(p) = s.palette.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.line_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.buffer_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.file_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.ref_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.action_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.diag_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.reg_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.digraph_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.keyword_lines_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.marks_picker.as_ref() {
-                p.rows()
-            } else if let Some(p) = s.pos_picker.as_ref() {
-                p.rows()
+            // share the same uniform `rows()` paint slot (F-004 / F-013 NAT-3).
+            let overlay_rows: Vec<(String, bool)> = if let Some(o) = s.overlay.as_ref() {
+                o.rows()
             } else if s.engine.cmdwin().is_some() {
                 // The command-line window (`q:`/`q/`/`q?`) lists the history ring in the same overlay slot.
                 s.engine.cmdwin_rows()
@@ -4184,30 +4014,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             // The engine's command line also places the terminal caret (F-026 line editor); a picker's caret
             // stays at the end of its query.
             let mut cmd_caret = None;
-            let cmd_line: Option<(char, &str)> = if let Some(p) = s.palette.as_ref() {
-                Some(('>', p.query.as_str())) // command palette prompt
-            } else if let Some(p) = s.line_picker.as_ref() {
-                Some(('#', p.query.as_str())) // line-picker prompt (# = line jump)
-            } else if let Some(p) = s.buffer_picker.as_ref() {
-                Some(('@', p.query.as_str())) // buffer-picker prompt
-            } else if let Some(p) = s.file_picker.as_ref() {
-                Some(('~', p.query.as_str())) // file-picker prompt (~ = find file)
-            } else if let Some(p) = s.ref_picker.as_ref() {
-                Some(('*', p.query.as_str())) // references-picker prompt (* = references to symbol)
-            } else if let Some(p) = s.action_picker.as_ref() {
-                Some(('!', p.query.as_str())) // code-action-picker prompt (! = actions/fixes at cursor)
-            } else if let Some(p) = s.diag_picker.as_ref() {
-                Some(('✗', p.query.as_str())) // diagnostics-picker prompt
-            } else if let Some(p) = s.reg_picker.as_ref() {
-                Some(('"', p.query.as_str())) // registers-viewer prompt (" = registers)
-            } else if let Some(p) = s.digraph_picker.as_ref() {
-                Some(('§', p.query.as_str())) // digraph-listing prompt (§ = digraphs)
-            } else if let Some(p) = s.keyword_lines_picker.as_ref() {
-                Some(('i', p.query.as_str())) // keyword-line listing prompt (i = [I/]I identifiers)
-            } else if let Some(p) = s.marks_picker.as_ref() {
-                Some(('\'', p.query.as_str())) // marks-viewer prompt (' = marks)
-            } else if let Some(p) = s.pos_picker.as_ref() {
-                Some(('↕', p.query.as_str())) // jumps/changes position-viewer prompt
+            let cmd_line: Option<(char, &str)> = if let Some(o) = s.overlay.as_ref() {
+                Some(o.prompt())
             } else if let Some(h) = leader_hint.as_ref() {
                 Some((' ', h.as_str()))
             } else if let Some(kind) = s.engine.cmdwin() {

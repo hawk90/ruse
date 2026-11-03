@@ -10,6 +10,7 @@ pub(crate) mod keyword_lines_picker;
 pub(crate) mod layout;
 pub(crate) mod line_picker;
 pub(crate) mod marks_picker;
+pub(crate) mod overlay;
 pub(crate) mod palette;
 pub(crate) mod picker;
 pub(crate) mod pos_picker;

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use ruse_core::{DocumentId, LineAddr, Workspace};
 
 use crate::app::dispatch::Files;
-use crate::ui::picker::Picker;
+use crate::ui::overlay::Overlay;
 
 /// The alternate file name (`#`) a `:w {file}`, `:sav` or `:file {name}` set (#610). nvim gives the name
 /// an (unlisted) buffer; ruse keeps it here, and it holds while the focused and alternate buffers are the
@@ -52,16 +52,14 @@ pub(crate) fn alternate_name(
 
 /// Show print output (#609): nothing for no rows, one row on the status line, more in the view-only
 /// listing overlay (the message area ruse has), with the last row on the status line.
-pub(crate) fn show_rows(
-    rows: Vec<String>,
-    status: &mut String,
-    listing: &mut Option<Picker<usize>>,
-) {
+pub(crate) fn show_rows(rows: Vec<String>, status: &mut String, listing: &mut Option<Overlay>) {
     match rows.len() {
         0 => {}
         1 => *status = rows.into_iter().next().unwrap_or_default(),
         _ => {
-            *listing = Some(crate::ui::keyword_lines_picker::open_rows(&rows));
+            *listing = Some(Overlay::Listing(
+                crate::ui::keyword_lines_picker::open_rows(&rows),
+            ));
             *status = rows.last().cloned().unwrap_or_default();
         }
     }
