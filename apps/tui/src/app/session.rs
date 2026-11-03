@@ -1662,7 +1662,9 @@ impl Session {
         // scrolloff band. Frontend-only (viewport concern); `{count}` scrolls that many lines.
         if chord && (is_ctrl(key, 'e') || is_ctrl(key, 'y')) {
             let n = engine.take_count().max(1) as usize;
-            let last_line = line_idx.line_of(snapshot.len());
+            // The last real line: the slot after a final newline is no line (#677).
+            let last_line =
+                line_idx.line_of(ruse_core::motion::off_phantom(snapshot, snapshot.len()));
             let cursor_row = line_idx.line_of(ws.focused().view.cursor());
             let (nt, nr) = viewport::scroll_lines(
                 ws.focused().view.top(),
@@ -1782,7 +1784,10 @@ impl Session {
             // The effective count (`2H` = 2nd line from top; `3d2H` = 6H) resolves the target line; the op
             // itself is consumed by `screen_op`. `screen_count` applies the operator*motion multiplication.
             let count = engine.screen_count();
-            let last_line = line_idx.line_of(snapshot.len());
+            // The last real line: the slot after a final newline is no line (#677), so `M` on a short
+            // buffer takes the middle of its lines, not of one more.
+            let last_line =
+                line_idx.line_of(ruse_core::motion::off_phantom(snapshot, snapshot.len()));
             // Under an operator Vim IGNORES 'scrolloff' — `dH`/`dL` operate through the TRUE top/bottom visible
             // line (verified against nvim), whereas the bare cursor-motion keeps the scrolloff margin.
             let scrolloff = if engine.has_op() { 0 } else { SCROLLOFF };

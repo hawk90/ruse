@@ -212,7 +212,9 @@ pub fn cursor_pos_info(bytes: &[u8], cursor: usize, tabstop: usize) -> String {
     if line_count(bytes) == 0 {
         return "--No lines in buffer--".to_string();
     }
-    let cursor = cursor.min(bytes.len());
+    // A cursor on the slot after a final newline reads as the last line's last char: that slot is no line
+    // (#677), so it must not report `Line 2 of 1`.
+    let cursor = crate::motion::off_phantom(bytes, cursor.min(bytes.len()));
     let start = line_start(bytes, cursor);
     let lend = line_end(bytes, cursor);
 

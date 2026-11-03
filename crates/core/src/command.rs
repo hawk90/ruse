@@ -919,9 +919,19 @@ fn motion_token(m: Motion) -> String {
         Motion::MethodEndFwd => "method_end_fwd",
         Motion::MethodEndBack => "method_end_back",
         // A single whitespace-free token so the `<count> <motion>` split still works: the char is its decimal
-        // scalar value; `f`/`t` and forward/back are flags. e.g. `find_char:120:1:0` = `fx`.
-        Motion::FindChar { ch, forward, till } => {
-            return format!("find_char:{}:{}:{}", ch as u32, forward as u8, till as u8)
+        // scalar value; `f`/`t` and forward/back are flags. e.g. `find_char:120:1:0` = `fx`. A `;`/`,` repeat
+        // appends `:r` (`find_char:120:1:1:r` = `;` after `tx`), so the older three-field form still parses.
+        Motion::FindChar {
+            ch,
+            forward,
+            till,
+            repeat,
+        } => {
+            let r = if repeat { ":r" } else { "" };
+            return format!(
+                "find_char:{}:{}:{}{r}",
+                ch as u32, forward as u8, till as u8
+            );
         }
         // Delimiter/quote text objects carry their char(s) + around flag as a single whitespace-free token,
         // mirroring `find_char` so the `<count> <motion>` split still holds.
@@ -942,10 +952,20 @@ fn motion_from_token(s: &str) -> Option<Motion> {
         let ch = char::from_u32(it.next()?.parse().ok()?)?;
         let forward = it.next()? == "1";
         let till = it.next()? == "1";
+        let repeat = match it.next() {
+            None => false,
+            Some("r") => true,
+            Some(_) => return None, // trailing garbage
+        };
         if it.next().is_some() {
             return None; // trailing garbage
         }
-        return Some(Motion::FindChar { ch, forward, till });
+        return Some(Motion::FindChar {
+            ch,
+            forward,
+            till,
+            repeat,
+        });
     }
     if let Some(rest) = s.strip_prefix("pair:") {
         let mut it = rest.split(':');
@@ -2538,6 +2558,7 @@ mod tests {
                     ch: 'x',
                     forward: true,
                     till: false,
+                    repeat: false,
                 },
             ),
             Command::Delete(
@@ -2546,6 +2567,7 @@ mod tests {
                     ch: ')',
                     forward: true,
                     till: true,
+                    repeat: false,
                 },
             ),
             Command::Move(
@@ -2554,6 +2576,16 @@ mod tests {
                     ch: '가',
                     forward: false,
                     till: false,
+                    repeat: false,
+                },
+            ),
+            Command::Move(
+                1,
+                Motion::FindChar {
+                    ch: 'x',
+                    forward: true,
+                    till: true,
+                    repeat: true,
                 },
             ),
             Command::Move(1, Motion::LastLine),

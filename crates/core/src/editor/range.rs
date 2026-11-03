@@ -36,6 +36,64 @@ pub(crate) fn is_text_object(m: Motion) -> bool {
 /// span is **linewise** (its register geometry and paste shape). Linewise motions delete whole lines;
 /// paragraph motions (`d}`) become linewise per Vim's exclusive-linewise rule; everything else is charwise.
 pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize, bool) {
+    let (s, e, linewise) = op_span_unforced(b, cur, m, count);
+    // The exclusive word, sentence and byte motions take the same exclusive-linewise rule as `}` (Vim
+    // applies it to every exclusive charwise motion): `jdb` from column 0 deletes the line above, `dw` on an
+    // empty line deletes that line (#746). Not under a forced wise (`dvw`), which first toggles the motion
+    // inclusive.
+    if !linewise && takes_exclusive_rule_on_span(m) {
+        exclusive_linewise(b, s, e)
+    } else {
+        (s, e, linewise)
+    }
+}
+
+/// Exclusive charwise motions whose operator span (not just their target) takes [`exclusive_linewise`] in
+/// [`op_span`]. `w`/`W` stop at their line end under an operator, so the span, not the bare target, is what
+/// the rule reshapes. `<BS>` is exempt (Vim sets `CA_NO_ADJ_OP_END` for it), as are the Emacs motions.
+/// Whether `m`'s charwise operator span takes Vim's exclusive-linewise rule at all — the target-based
+/// motions of [`takes_exclusive_linewise`] or the span-based ones. `c{motion}` applies it to its span.
+pub(crate) fn takes_exclusive_rule(m: Motion) -> bool {
+    takes_exclusive_linewise(m) || takes_exclusive_rule_on_span(m)
+}
+
+fn takes_exclusive_rule_on_span(m: Motion) -> bool {
+    matches!(
+        m,
+        Motion::WordFwd
+            | Motion::BigWordFwd
+            | Motion::WordBack
+            | Motion::BigWordBack
+            | Motion::SentenceFwd
+            | Motion::SentenceBack
+            | Motion::GotoByte
+    )
+}
+
+/// Vim's linewise promotion for a charwise `d{motion}` (nvim `op_delete`): a span over more than one line
+/// whose start is in its line's indent and whose end leaves only white space on its last line deletes
+/// whole lines instead. `2d$` on `ab|cd|ef` takes the first two lines (#747), `d2w` from the indent of
+/// `foo |  bar` takes both, while `3dw` ending mid-line stays charwise. Delete only, not Visual or a forced
+/// wise. Returns the whole-line span `[first line start, after the last line's newline)` when it applies.
+pub(crate) fn delete_promotes_linewise(b: &[u8], s: usize, e: usize) -> Option<(usize, usize)> {
+    if s >= e {
+        return None;
+    }
+    let last = prev_boundary(b, e);
+    let ls = line_start(b, s);
+    if ls == line_start(b, last) {
+        return None; // a single line
+    }
+    let in_indent = b[ls..s].iter().all(|&c| c == b' ' || c == b'\t');
+    let le = line_end(b, last);
+    let tail_blank = b[e.min(le)..le].iter().all(|&c| c == b' ' || c == b'\t');
+    if !(in_indent && tail_blank) {
+        return None;
+    }
+    Some((ls, if le < b.len() { le + 1 } else { le }))
+}
+
+fn op_span_unforced(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, usize, bool) {
     // Whole-lines span from the cursor's line through the target's line, inclusive of the final newline.
     let whole_lines = |t: usize| {
         let start = line_start(b, cur.min(t));
@@ -65,6 +123,11 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
         // `dd` / `{count}dd`: whole lines from the cursor's line down.
         Motion::Line => {
             let start = line_start(b, cur);
+            // A count reaching past the last line clamps, but on the last line itself there is no line
+            // below to reach: `2dd` / `2yy` there fail (Vim `cursor_down` from the last line), a no-op.
+            if count > 1 && line_end(b, cur) + 1 >= b.len() {
+                return (cur, cur, true);
+            }
             let mut end = start;
             for _ in 0..count.max(1) {
                 let le = line_end(b, end);
@@ -84,6 +147,12 @@ pub(crate) fn op_span(b: &[u8], cur: usize, m: Motion, count: u32) -> (usize, us
         }
         // Paragraph, section, unmatched-bracket and method motions: exclusive charwise, reduced by Vim's
         // exclusive-linewise rule (see `takes_exclusive_linewise`).
+        // `}` takes its span from `char_span`, which makes a landing on the last char at the end of the
+        // buffer inclusive.
+        Motion::ParagraphFwd => {
+            let (s, e) = motion::char_span(b, cur, m, count);
+            exclusive_linewise(b, s, e)
+        }
         m if takes_exclusive_linewise(m) => {
             let t = motion::target(b, cur, m, count);
             exclusive_linewise(b, cur.min(t), cur.max(t))
@@ -190,7 +259,7 @@ pub(crate) fn forced_span(
     count: u32,
     wise: ForcedWise,
 ) -> (usize, usize, bool) {
-    let (s0, e0, was_line) = op_span(b, cur, m, count);
+    let (s0, e0, was_line) = op_span_unforced(b, cur, m, count);
     match wise {
         ForcedWise::Linewise => {
             // Whole lines from the cursor's line THROUGH the line the motion lands on (Vim `dV}` includes

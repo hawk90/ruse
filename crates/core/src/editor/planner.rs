@@ -128,6 +128,13 @@ fn plan_selection_span(
         let content_end = if e > s && b[e - 1] == b'\n' { e - 1 } else { e };
         return plan_linewise_change(b, s, content_end, hint);
     }
+    // A charwise Visual `d`/`c` cannot take the final newline: Vim has no line after the last one to join,
+    // so `v}d` at the end of `a\nb\n` leaves one empty line rather than an empty buffer (#677).
+    let e = if !line && op != OpKind::Yank && st.view.caret == CaretGravity::OnChar {
+        e.min(motion::content_end(b)).max(s)
+    } else {
+        e
+    };
     let reg = captured(b, s, e, line);
     match op {
         // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal.
@@ -320,6 +327,17 @@ fn plan_change(b: &[u8], cur: usize, count: u32, m: &Motion, hint: GroupHint) ->
         plan_linewise_change(b, ls, content_end, hint)
     } else {
         let (s, e) = change_range(b, cur, *m, count);
+        // Vim's exclusive-linewise rule holds for `c` as for `d`: a span ending at column 0 of a later line
+        // either changes whole lines (`cw` on an empty line, `c}` from a line start) or stops before the
+        // newline ahead of that line.
+        let (s, e) = if crate::editor::range::takes_exclusive_rule(*m) {
+            match crate::editor::range::exclusive_linewise(b, s, e) {
+                (ls, le, true) => return plan_linewise_change(b, ls, le - 1, hint),
+                (s, e, false) => (s, e),
+            }
+        } else {
+            (s, e)
+        };
         if s >= e {
             Plan {
                 action: Action::Nop,
@@ -1388,6 +1406,35 @@ fn recase(text: &str, case: WordCase) -> String {
     }
 }
 
+/// Delete `[s, e)` into the register, linewise or charwise; shared by `d{motion}` and its forced-wise form.
+/// A linewise span that reaches the end of an UNTERMINATED buffer while earlier lines remain removes the
+/// line entirely, which also drops the newline ending the line above, then moves the cursor up to the new
+/// last line (Vim: `jdVj` on `a|b|c` leaves `a`, #709). The register still holds the lines linewise
+/// (`b\nc\n`), not the newline spliced away. A terminated buffer's span already ends in its own `\n`.
+fn plan_delete_span(
+    b: &[u8],
+    s: usize,
+    e: usize,
+    linewise: bool,
+    mode: Mode,
+    hint: GroupHint,
+) -> Plan {
+    let reg = captured(b, s, e, linewise);
+    if linewise && e == b.len() && s > 0 && b[e - 1] != b'\n' {
+        let del_start = s - 1; // the '\n' terminating the previous line (s is a line start, s > 0)
+        let cursor = line_start(b, del_start);
+        edit_yank(
+            one(Edit::delete(del_start, e - del_start)),
+            cursor,
+            mode,
+            hint,
+            reg,
+        )
+    } else {
+        edit_yank(one(Edit::delete(s, e - s)), s, mode, hint, reg)
+    }
+}
+
 /// Capture `b[s..e]` as a register value with the given paste geometry.
 fn captured(b: &[u8], s: usize, e: usize, linewise: bool) -> Register {
     let bytes = b[s..e].to_vec();
@@ -1483,24 +1530,32 @@ fn plan_join(
     let mut cursor = cur;
     let mut removed = 0usize;
     let mut le = line_end(b, cur);
+    // The last byte of the text joined so far (`None` while it is empty): Vim's `sumsize`/`endcurr1`. An
+    // empty line taking part adds nothing, so `a`+``+`b` joins to `a b`, and `foo`+`` to `foo` (#677).
+    let first_ls = line_start(b, cur);
+    let mut joined_last: Option<u8> = (le > first_ls).then(|| b[le - 1]);
     for _ in 0..joins {
-        if le >= b.len() {
-            break; // no next line to join
+        // No next line to join. A final newline ends the last line; it is no seam, so `J` on the last line
+        // of `a\nb\n` leaves it alone instead of turning it into a trailing space (#677).
+        if le + 1 >= b.len() {
+            break;
         }
+        let next_le = line_end(b, le + 1);
         let (del_start, del_len, sep): (usize, usize, Vec<u8>) = if no_space {
             (le, 1, Vec::new()) // gJ: remove only the newline, keep the next line's leading whitespace
         } else {
+            // One space, unless the next line is empty (after its indent) or opens with `)`, the text
+            // joined so far is empty, or it already ends in white space.
             let ws_end = hspace_end(b, le + 1);
-            let next_is_close = ws_end < b.len() && b[ws_end] == b')';
-            let cur_ends_ws = le > line_start(b, le) && is_hspace(b[le - 1]);
-            let cur_empty = le == line_start(b, le);
-            let sep = if next_is_close || cur_ends_ws || cur_empty {
-                Vec::new()
-            } else {
-                b" ".to_vec()
-            };
+            let next_empty = ws_end >= next_le;
+            let next_is_close = !next_empty && b[ws_end] == b')';
+            let space = !next_empty && !next_is_close && joined_last.is_some_and(|c| !is_hspace(c));
+            let sep = if space { b" ".to_vec() } else { Vec::new() };
             (le, ws_end - le, sep)
         };
+        if hspace_end(b, le + 1) < next_le {
+            joined_last = Some(b[next_le - 1]);
+        }
         cursor = del_start - removed; // Vim rests the cursor on the join seam
         removed += del_len - sep.len();
         edits.push(Edit::replace(del_start, del_len, sep));
@@ -2412,39 +2467,40 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant),
                 _ => motion::target(b, cur, *m, *count),
             };
-            // Normal mode never rests on a non-empty line's trailing newline: `j`/`k` overshooting a short
-            // line (or `$`'s MAXCOL), AND `w`/`W` past the last word (which move to end-of-line when there
-            // is no next word), pull back onto the last char. Restricted to these motions — `^` on an
-            // all-blank line legitimately rests at the line end, and the Emacs word motions are separate
-            // variants (`EmacsWord*`) with between-char gravity. Insert/Visual keep the past-end column.
-            // `l` stops ON the last char too. Visual may reach the newline (`vl` at the end selects it, as
-            // nvim does) and Insert rests after the last char.
-            let target = if matches!(
-                m,
-                Motion::Up | Motion::Down | Motion::WordFwd | Motion::BigWordFwd | Motion::Right
-            ) && matches!(st.view.mode, Mode::Normal)
-            {
-                let ls = line_start(b, target);
-                let le = line_end(b, target);
-                if target == le && le > ls {
-                    prev_boundary(b, le)
+            // Normal mode never rests on a non-empty line's trailing newline, whatever the motion: `j`/`k`
+            // overshooting a short line (or `$`'s MAXCOL), `w`/`W` past the last word, `l`, `go` onto a
+            // newline byte and `^` on an all-blank line (Vim's `BL_FIX`) all pull back onto the last char.
+            // The phantom slot after the final newline is handled for every mode in `commit` (#677).
+            // Visual may reach the newline (`vl` at the end selects it, as nvim does), Insert rests after the
+            // last char, and the Emacs profile (between-char gravity) is never clamped.
+            let target =
+                if matches!(st.view.mode, Mode::Normal) && st.view.caret == CaretGravity::OnChar {
+                    let ls = line_start(b, target);
+                    let le = line_end(b, target);
+                    if target == le && le > ls {
+                        prev_boundary(b, le)
+                    } else {
+                        target
+                    }
                 } else {
                     target
-                }
-            } else {
-                target
-            };
+                };
             nop(target, st.view.mode)
         }
         Command::Delete(count, m) => {
             let (s, e, linewise) = op_span(b, cur, *m, *count);
             // Vi's "d" quirk (nvim `op_delete`): a charwise delete over several lines that starts in the
             // indent and leaves only blanks after its end goes linewise (`daw` on an empty line, `das` on
-            // a whole-line `dat` tag block). Applied to the text objects; Visual deletes never take it.
-            let (s, e, linewise) = if !linewise && is_text_object(*m) {
+            // a whole-line `dat` tag block, `2d$` over whole lines, #747). Visual deletes never take it.
+            let (s, e, linewise) = if linewise {
+                (s, e, linewise)
+            } else if is_text_object(*m) {
                 crate::textobj::delete_reshape(b, s, e)
             } else {
-                (s, e, linewise)
+                match crate::editor::range::delete_promotes_linewise(b, s, e) {
+                    Some((ls, le)) => (ls, le, true),
+                    None => (s, e, false),
+                }
             };
             if s >= e {
                 // An object that selects nothing (`di(` on `(\n)`) still leaves the cursor at its start.
@@ -2540,10 +2596,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             let (s, e, linewise) = forced_span(b, cur, *motion, *count, *wise);
             match op {
-                OpKind::Delete if s < e => {
-                    let reg = captured(b, s, e, linewise);
-                    edit_yank(one(Edit::delete(s, e - s)), s, st.view.mode, hint, reg)
-                }
+                OpKind::Delete if s < e => plan_delete_span(b, s, e, linewise, st.view.mode, hint),
                 OpKind::Yank if s < e => {
                     let reg = captured(b, s, e, linewise);
                     Plan {

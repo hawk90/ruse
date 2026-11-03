@@ -529,6 +529,18 @@ fn findsent(buf: &Buf, p: &mut usize, forward: bool, mut count: u32) -> bool {
     true
 }
 
+/// The landing of the `)` / `(` motions (Vim `nv_brace` → `findsent`): an empty line is a sentence of its
+/// own. A count that runs off the buffer fails and the cursor stays at `p`.
+pub(crate) fn sentence_motion(b: &[u8], p: usize, forward: bool, count: u32) -> usize {
+    let buf = Buf::new(b);
+    let mut pos = p.min(buf.last);
+    if findsent(&buf, &mut pos, forward, count.max(1)) {
+        pos
+    } else {
+        p
+    }
+}
+
 /// Vim `find_first_blank`: back to the first of the blanks before `p`.
 fn find_first_blank(buf: &Buf, p: &mut usize) {
     while buf.decl(p) != -1 {

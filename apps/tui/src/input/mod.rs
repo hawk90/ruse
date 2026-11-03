@@ -2908,7 +2908,13 @@ impl InputEngine {
             }
             KeyCode::Char(';') => {
                 if let Some((ch, forward, till)) = self.last_find {
-                    return self.motion(Motion::FindChar { ch, forward, till });
+                    // A repeat: after `t`/`T` the core skips the char the cursor stopped before (#802).
+                    return self.motion(Motion::FindChar {
+                        ch,
+                        forward,
+                        till,
+                        repeat: true,
+                    });
                 }
             }
             KeyCode::Char(',') => {
@@ -2918,6 +2924,7 @@ impl InputEngine {
                         ch,
                         forward: !forward,
                         till,
+                        repeat: true,
                     });
                 }
             }
@@ -3393,7 +3400,12 @@ impl InputEngine {
                 return match key.code {
                     KeyCode::Char(ch) => {
                         self.last_find = Some((ch, forward, till));
-                        self.motion(Motion::FindChar { ch, forward, till })
+                        self.motion(Motion::FindChar {
+                            ch,
+                            forward,
+                            till,
+                            repeat: false,
+                        })
                     }
                     // A pending construct is in flight, so this is `closed/abort` — the policy
                     // that distinguishes operator-pending from Normal (VS-OBL-3).

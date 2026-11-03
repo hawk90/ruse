@@ -112,11 +112,14 @@ pub enum Motion {
     /// Linewise (only meaningful under an operator: `dd` / `cc`).
     Line,
     /// Char-search within the current line: `f`/`F` land on the `count`-th `ch`; `t`/`T` stop one char
-    /// short of it. `forward` picks the direction, `till` picks find-vs-till. Repeated by `;`/`,`.
+    /// short of it. `forward` picks the direction, `till` picks find-vs-till. Repeated by `;`/`,`, which set
+    /// `repeat`: a repeated `t`/`T` with count 1 skips a match right next to the cursor, so `;` advances
+    /// past the char the last `t` stopped before (Vim without `cpo-;`, #802).
     FindChar {
         ch: char,
         forward: bool,
         till: bool,
+        repeat: bool,
     },
     /// Go to the `count`-th line (1-based), landing on its first non-blank char (`gg`, `{count}G`). Linewise
     /// under an operator.
@@ -339,46 +342,167 @@ fn same_group(a: Class, b: Class, big: bool) -> bool {
     a != Class::Space && b != Class::Space && (big || a == b)
 }
 
-/// Start of the next (small-)word / WORD — Vim `w` / `W`.
-fn next_word_start(b: &[u8], pos: usize, big: bool) -> usize {
-    let mut i = pos.min(b.len());
-    if i < b.len() {
-        let c0 = class(b[i]);
-        if c0 != Class::Space {
-            while i < b.len() && same_group(c0, class(b[i]), big) {
-                i += 1;
+// Vim's word motions walk a line model in which every line ends in a NUL slot, which is the `\n` byte here
+// (or the buffer end of an unterminated last line); the phantom slot after a final `\n` is no line. The
+// helpers below mirror `inc()`/`dec()`/`cls()` of Vim's search.c over that model, so an empty line is a
+// stop of its own (#746) and an operator's last word stops at its line end (#742).
+
+/// Vim `cls()` at `p`: 0 for blank (a line's NUL slot included), else the word class (`big`: any non-blank
+/// is one class).
+fn vcls(b: &[u8], p: usize, big: bool) -> u8 {
+    if p >= line_end(b, p) {
+        return 0;
+    }
+    match class(b[p]) {
+        Class::Space => 0,
+        _ if big => 1,
+        Class::Punct => 1,
+        Class::Word => 2,
+    }
+}
+
+/// Whether `p` is on an empty line (Vim `col == 0 && LINEEMPTY`).
+fn on_empty_line(b: &[u8], p: usize) -> bool {
+    let ls = line_start(b, p);
+    p == ls && line_end(b, ls) == ls
+}
+
+/// Vim `inc()`: the next position and how it got there (0 within the line, 2 onto the line's NUL slot, 1 to
+/// the next line's start), or `None` from the last line's NUL slot.
+fn vinc(b: &[u8], p: usize) -> Option<(usize, u8)> {
+    let le = line_end(b, p);
+    if p < le {
+        let q = next_boundary(b, p);
+        Some((q, if q < le { 0 } else { 2 }))
+    } else if le + 1 < b.len() {
+        Some((le + 1, 1))
+    } else {
+        None
+    }
+}
+
+/// Vim `dec()`: the previous position (0 within the line, 1 back onto the previous line's NUL slot), or
+/// `None` at the buffer start.
+fn vdec(b: &[u8], p: usize) -> Option<(usize, u8)> {
+    if p > line_start(b, p) {
+        Some((prev_boundary(b, p), 0))
+    } else if p > 0 {
+        Some((p - 1, 1))
+    } else {
+        None
+    }
+}
+
+/// Vim `fwd_word` (`w` / `W`), `count` times. `eol` is set under an operator: the LAST word moved over then
+/// stops at its line's NUL slot instead of crossing to the next line ("the end of that word becomes the end
+/// of the operated text", `:help word`), while earlier counts cross freely (`3dw` takes three words over a
+/// line break, #742). Skipping white space stops on an empty line, which counts as a word (#746). A landing
+/// on a NUL slot is the end of the motion; a bare move pulls it back onto the last char.
+fn word_fwd(b: &[u8], pos: usize, big: bool, count: u32, eol: bool) -> usize {
+    let mut p = pos.min(b.len());
+    for left in (0..count.max(1)).rev() {
+        let stop = |i: u8| i >= 1 && eol && left == 0;
+        let sclass = vcls(b, p, big);
+        let last_line = line_end(b, p) + 1 >= b.len();
+        let Some((q, i)) = vinc(b, p) else {
+            return p;
+        };
+        p = q;
+        if (i >= 1 && last_line) || stop(i) {
+            return p;
+        }
+        if sclass != 0 {
+            while vcls(b, p, big) == sclass {
+                let Some((q, i)) = vinc(b, p) else {
+                    return p;
+                };
+                p = q;
+                if stop(i) {
+                    return p;
+                }
+            }
+        }
+        while vcls(b, p, big) == 0 {
+            if on_empty_line(b, p) {
+                break;
+            }
+            let Some((q, i)) = vinc(b, p) else {
+                return p;
+            };
+            p = q;
+            if stop(i) {
+                return p;
             }
         }
     }
-    while i < b.len() && class(b[i]) == Class::Space {
-        i += 1;
-    }
-    i
+    p
 }
 
-/// Start of the current/previous word / WORD — Vim `b` / `B`.
+/// Start of the next (small-)word / WORD — a bare Vim `w` / `W` step.
+fn next_word_start(b: &[u8], pos: usize, big: bool) -> usize {
+    word_fwd(b, pos, big, 1, false)
+}
+
+/// Start of the current/previous word / WORD — Vim `b` / `B` (`bck_word`). An empty line is a stop (#746).
 fn prev_word_start(b: &[u8], pos: usize, big: bool) -> usize {
-    let mut i = pos.min(b.len());
-    if i == 0 {
+    let Some((mut p, _)) = vdec(b, pos.min(b.len())) else {
         return 0;
+    };
+    // Skip the white space before the word; an empty line is a word of its own.
+    while vcls(b, p, big) == 0 {
+        if on_empty_line(b, p) {
+            return p;
+        }
+        match vdec(b, p) {
+            Some((q, _)) => p = q,
+            None => return p,
+        }
     }
-    i -= 1;
-    while i > 0 && class(b[i]) == Class::Space {
-        i -= 1;
+    // Back to the start of this word, then one forward over the overshoot.
+    let c = vcls(b, p, big);
+    while vcls(b, p, big) == c {
+        match vdec(b, p) {
+            Some((q, _)) => p = q,
+            None => return p,
+        }
     }
-    if class(b[i]) == Class::Space {
-        return i;
-    }
-    let cw = class(b[i]);
-    while i > 0 && same_group(cw, class(b[i - 1]), big) {
-        i -= 1;
-    }
-    i
+    vinc(b, p).map_or(p, |(q, _)| q)
 }
 
-/// One past the last byte of the current/next word / WORD (the exclusive end for `de` / `dE`).
+/// The landing of Vim `ge` / `gE` (`bckend_word`): the last char of the previous word, or an empty line
+/// on the way (#746). Stays at the buffer start when there is no earlier word.
+fn prev_word_end(b: &[u8], pos: usize, big: bool) -> usize {
+    let mut p = pos.min(b.len());
+    let sclass = vcls(b, p, big);
+    let Some((q, _)) = vdec(b, p) else {
+        return p;
+    };
+    p = q;
+    if sclass != 0 {
+        while vcls(b, p, big) == sclass {
+            match vdec(b, p) {
+                Some((q, _)) => p = q,
+                None => return p,
+            }
+        }
+    }
+    while vcls(b, p, big) == 0 {
+        if on_empty_line(b, p) {
+            break;
+        }
+        match vdec(b, p) {
+            Some((q, _)) => p = q,
+            None => return p,
+        }
+    }
+    p
+}
+
+/// One past the last byte of the current/next word / WORD (the exclusive end for `de` / `dE`). The scan
+/// starts at the NEXT char, not the next byte: on a multibyte char the next byte is a continuation byte of
+/// the same char, which made `e` re-find the word it sits at the end of (#741).
 pub(crate) fn word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
-    let mut i = (pos + 1).min(b.len());
+    let mut i = next_boundary(b, pos.min(b.len()));
     while i < b.len() && class(b[i]) == Class::Space {
         i += 1;
     }
@@ -445,29 +569,6 @@ pub(crate) fn current_word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
         i += 1;
     }
     i
-}
-
-/// One past the last byte of the PREVIOUS word / WORD before `pos` — the exclusive end for Vim `ge` / `gE`.
-/// Scans left for the first word-end byte (a non-space whose right neighbour is a different group or EOF),
-/// which naturally skips the rest of the word the cursor sits in. `0` when there is no earlier word. The
-/// caller snaps with [`prev_boundary`] so the cursor lands on the last CHAR (multibyte-safe), like `WordEnd`.
-fn prev_word_end_excl(b: &[u8], pos: usize, big: bool) -> usize {
-    let pos = pos.min(b.len());
-    if pos == 0 {
-        return 0;
-    }
-    let mut e = pos - 1;
-    loop {
-        let is_end = class(b[e]) != Class::Space
-            && (e + 1 >= b.len() || !same_group(class(b[e]), class(b[e + 1]), big));
-        if is_end {
-            return e + 1;
-        }
-        if e == 0 {
-            return 0;
-        }
-        e -= 1;
-    }
 }
 
 /// The word-object class of a byte: for `iW`/`aW` (`big`) only whitespace-vs-not matters, so punctuation
@@ -665,8 +766,15 @@ pub(crate) fn line_completions(b: &[u8], cur: usize) -> (String, Vec<String>) {
     let bi = indent_end(b, ls, cur);
     let base = std::str::from_utf8(&b[bi..cur]).unwrap_or("").to_string();
     // Line geometry: `n` rows total, the caret on row `cr`. Scan backward from `cr` with wraparound.
-    let n = crate::pos::line_of(b, b.len()) + 1;
+    // The slot after a final newline is a row only while the caret is on it (a line being typed); else it
+    // is no line and offers no empty candidate (#677).
     let cr = crate::pos::line_of(b, cur);
+    let last = crate::pos::line_of(b, b.len());
+    let n = if b.last() == Some(&b'\n') && cr < last {
+        last
+    } else {
+        last + 1
+    };
     let mut out: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for i in 1..n {
@@ -759,34 +867,75 @@ fn paragraph_span(b: &[u8], cur: usize, around: bool) -> (usize, usize) {
     (s2, block_end)
 }
 
-/// The `}` target: the start of the next blank line strictly after the cursor's line, or the end of the
-/// buffer if there is none. Vim's paragraph-forward motion. Lands on a char boundary (a line start).
-fn next_para_boundary(b: &[u8], pos: usize) -> usize {
+/// One `}` step (Vim `findpar`): the start of the next blank line after the cursor's line that follows a
+/// non-blank one — from a blank line the run of blanks is skipped first (#748) — or `None` when the scan
+/// runs off the last line.
+fn next_para_boundary(b: &[u8], pos: usize) -> Option<usize> {
     let mut ls = line_start(b, pos);
+    let mut did_skip = false;
     loop {
+        if !is_blank_line(b, ls) {
+            did_skip = true;
+        }
         let le = line_end(b, ls);
-        if le >= b.len() {
-            return b.len();
+        if le + 1 >= b.len() {
+            return None;
         }
         ls = le + 1;
-        if is_blank_line(b, ls) {
-            return ls;
+        if did_skip && is_blank_line(b, ls) {
+            return Some(ls);
         }
     }
 }
 
-/// The `{` target: the start of the previous blank line strictly before the cursor's line, or the start of
-/// the buffer if there is none. Vim's paragraph-backward motion. Lands on a char boundary (a line start).
-fn prev_para_boundary(b: &[u8], pos: usize) -> usize {
+/// One `{` step: the start of the previous blank line before the cursor's line that precedes a non-blank
+/// one (the mirror of [`next_para_boundary`]: a run of blanks above the cursor is skipped first), or `None`
+/// when the scan runs off the first line.
+fn prev_para_boundary(b: &[u8], pos: usize) -> Option<usize> {
     let mut ls = line_start(b, pos);
+    let mut did_skip = !is_blank_line(b, ls);
     while ls > 0 {
         let prev_ls = line_start(b, ls - 1);
-        if is_blank_line(b, prev_ls) {
-            return prev_ls;
+        if did_skip && is_blank_line(b, prev_ls) {
+            return Some(prev_ls);
+        }
+        if !is_blank_line(b, prev_ls) {
+            did_skip = true;
         }
         ls = prev_ls;
     }
-    0
+    None
+}
+
+/// `{count}}` / `{count}{`: `count` paragraph steps. A step running off the buffer lands on its edge —
+/// for `}` the LAST CHAR of the last line (never its newline or the phantom slot after it, #677; Vim's `}`
+/// turns inclusive there), for `{` the buffer start — but only as the final step: with count left over the
+/// motion fails and stays put (Vim `findpar` returns false, so `d2}` over one paragraph is a no-op).
+/// Returns the landing and whether it is that end-of-buffer edge, or `None` when the motion fails.
+fn paragraph_landing(b: &[u8], cur: usize, forward: bool, n: u32) -> Option<(usize, bool)> {
+    let mut c = cur;
+    for k in 0..n {
+        let step = if forward {
+            next_para_boundary(b, c)
+        } else {
+            prev_para_boundary(b, c)
+        };
+        match step {
+            Some(t) => c = t,
+            None if k + 1 < n => return None,
+            None if forward => {
+                let le = content_end(b); // the last line's end
+                let ls = line_start(b, le);
+                return Some((if le > ls { prev_boundary(b, le) } else { le }, true));
+            }
+            None => return Some((0, true)),
+        }
+    }
+    Some((c, false))
+}
+
+fn paragraph_target(b: &[u8], cur: usize, forward: bool, n: u32) -> usize {
+    paragraph_landing(b, cur, forward, n).map_or(cur, |(t, _)| t)
 }
 
 /// Whether the line starting at `ls` is a SECTION boundary line. A form-feed (`\x0C`) in column 0 is a
@@ -853,71 +1002,6 @@ fn prev_section_line(b: &[u8], pos: usize, count: u32, ends: bool) -> usize {
         }
     }
     ls
-}
-
-/// If a sentence terminator (`.`/`!`/`?`), optionally followed by closing `)`/`]`/`"`/`'`, begins at `i`
-/// and is itself followed by whitespace or end-of-buffer, return the byte just past the terminator group
-/// (the exclusive inner-sentence end). Otherwise `None`. All the scanned bytes are ASCII → boundary-safe.
-fn sentence_break_at(b: &[u8], i: usize) -> Option<usize> {
-    if i >= b.len() || !matches!(b[i], b'.' | b'!' | b'?') {
-        return None;
-    }
-    let mut j = i + 1;
-    while j < b.len() && matches!(b[j], b')' | b']' | b'"' | b'\'') {
-        j += 1;
-    }
-    if j >= b.len() || is_ws(b[j]) {
-        Some(j)
-    } else {
-        None
-    }
-}
-
-/// Vim `)` — the start of the NEXT sentence after `pos` (the byte after a terminator group + whitespace),
-/// or the buffer end when none. Terminator-based: blank-line/paragraph sentence boundaries are not modeled
-/// here (the `is`/`as` objects in `textobj` port Vim's `findsent`, which does model them). Lands on a char
-/// boundary (starts follow ASCII whitespace).
-fn next_sentence_start(b: &[u8], pos: usize) -> usize {
-    let n = b.len();
-    let mut i = 0usize;
-    while i < n {
-        if let Some(j) = sentence_break_at(b, i) {
-            let mut k = j;
-            while k < n && is_ws(b[k]) {
-                k += 1;
-            }
-            if k > pos {
-                return k.min(n);
-            }
-            i = k.max(i + 1);
-        } else {
-            i += 1;
-        }
-    }
-    n
-}
-
-/// Vim `(` — the start of the current sentence, or the PREVIOUS sentence's start when `pos` is already at
-/// a start (the greatest sentence start strictly less than `pos`, else `0`).
-fn prev_sentence_start(b: &[u8], pos: usize) -> usize {
-    let n = b.len();
-    let mut best = 0usize;
-    let mut i = 0usize;
-    while i < n {
-        if let Some(j) = sentence_break_at(b, i) {
-            let mut k = j;
-            while k < n && is_ws(b[k]) {
-                k += 1;
-            }
-            if k < pos && k < n {
-                best = k;
-            }
-            i = k.max(i + 1);
-        } else {
-            i += 1;
-        }
-    }
-    best
 }
 
 /// The leading tag NAME of a tag's interior bytes (the run after `<` or `</`): ASCII letters/digits and
@@ -1011,6 +1095,25 @@ pub(crate) fn content_end(b: &[u8]) -> usize {
     }
 }
 
+/// Pull an on-char (Vim Normal/Visual) caret off the phantom slot after a buffer's final newline (#677).
+/// That slot is not a line in Vim's model, so a cursor left there by a motion running off the end (`w`,
+/// `}`, `)`, `g_`, …), a linewise delete of the last line, or an undo would make the next typed text land
+/// on an extra unterminated line. It moves onto the last line's last char (its newline when that line is
+/// empty), where Vim leaves it. Any other position, and every position of an unterminated buffer, is
+/// returned unchanged.
+#[must_use]
+pub fn off_phantom(b: &[u8], pos: usize) -> usize {
+    if pos < b.len() || b.last() != Some(&b'\n') {
+        return pos;
+    }
+    let le = b.len() - 1;
+    if le > line_start(b, le) {
+        prev_boundary(b, le)
+    } else {
+        le
+    }
+}
+
 fn down(b: &[u8], cur: usize) -> usize {
     let le = line_end(b, cur);
     // Stop at the last content line: `le >= content_end` covers both a no-newline last line (`le == len`)
@@ -1049,25 +1152,35 @@ pub(crate) fn vmove(b: &[u8], cursor: usize, count: u32, down: bool, want: usize
 
 /// The bare-move landing for a char-search (`f`/`F`/`t`/`T`), or `None` if the `count`-th match does not
 /// exist on the current line. `f`/`F` land on the char; `t`/`T` land one boundary short of it. Search is
-/// confined to the current line (Vim never crosses a newline for these).
+/// confined to the current line (Vim never crosses a newline for these). A `;`/`,` repeat (`repeat`) of a
+/// `t`/`T` with count 1 does not match the char right next to the cursor, which is where the last `t`
+/// stopped short of (Vim `searchc` without `cpo-;`).
 fn find_char_target(
     b: &[u8],
     cursor: usize,
     ch: char,
     forward: bool,
     till: bool,
+    repeat: bool,
     count: u32,
 ) -> Option<usize> {
     let n = count.max(1) as usize;
     let ls = line_start(b, cursor);
     let le = line_end(b, cursor); // newline / end position for this line
     let line = std::str::from_utf8(b.get(ls..le)?).ok()?;
+    let skip = (repeat && till && n == 1).then(|| {
+        if forward {
+            next_boundary(b, cursor)
+        } else {
+            prev_boundary(b, cursor)
+        }
+    });
     if forward {
         // Matches strictly after the cursor, in order; take the n-th.
         let hit = line
             .char_indices()
             .map(|(i, c)| (ls + i, c))
-            .filter(|&(pos, c)| pos > cursor && c == ch)
+            .filter(|&(pos, c)| pos > cursor && c == ch && Some(pos) != skip)
             .nth(n - 1)?
             .0;
         Some(if till { prev_boundary(b, hit) } else { hit })
@@ -1076,7 +1189,7 @@ fn find_char_target(
         let hit = line
             .char_indices()
             .map(|(i, c)| (ls + i, c))
-            .filter(|&(pos, c)| pos < cursor && c == ch)
+            .filter(|&(pos, c)| pos < cursor && c == ch && Some(pos) != skip)
             .rev()
             .nth(n - 1)?
             .0;
@@ -1398,8 +1511,14 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     let n = count.max(1);
     let cur0 = cursor.min(b.len());
     // Char-search resolves the count-th match directly (repeating a single `t` step would stick in place).
-    if let Motion::FindChar { ch, forward, till } = m {
-        return find_char_target(b, cur0, ch, forward, till, count).unwrap_or(cur0);
+    if let Motion::FindChar {
+        ch,
+        forward,
+        till,
+        repeat,
+    } = m
+    {
+        return find_char_target(b, cur0, ch, forward, till, repeat, count).unwrap_or(cur0);
     }
     // Line jumps use the count as an absolute line number (or the last line), not a repeat count.
     if m == Motion::GotoLine {
@@ -1410,13 +1529,11 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     }
     // `{count}go`: the count is an absolute 1-based BYTE offset (not a repeat); a count past EOF lands on the
     // LAST byte (Vim never rests the cursor past the final char). Snapped to a char boundary.
+    // A terminated buffer's last byte is its final newline, so a count past EOF lands on the last line's last
+    // char instead (#677).
     if m == Motion::GotoByte {
-        return snap(
-            b,
-            (n as usize)
-                .saturating_sub(1)
-                .min(b.len().saturating_sub(1)),
-        );
+        let t = off_phantom(b, (n as usize).saturating_sub(1).min(b.len()));
+        return snap(b, t.min(b.len().saturating_sub(1)));
     }
     // Bracket match jumps to a single computed position (count is not a repeat; `count%` is deferred).
     if m == Motion::MatchBracket {
@@ -1439,16 +1556,9 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
         return first_non_blank(b, nth_line_start(b, line));
     }
     // `{count}g_`: the count is `count-1` lines down, then the last non-blank char (not a repeat).
+    // Stops at the last line, never the phantom slot after a final newline (#677).
     if m == Motion::LineLastNonBlank {
-        let mut ls = line_start(b, cur0);
-        for _ in 1..n {
-            let le = line_end(b, ls);
-            if le >= b.len() {
-                break;
-            }
-            ls = le + 1;
-        }
-        return last_non_blank(b, ls);
+        return last_non_blank(b, lines_down(b, cur0, n - 1));
     }
     // `+`/`<CR>` (down), `-` (up), `_` (count-1 down): the count is a line delta (not a repeat), then the
     // first non-blank char of the target line. Clamped at the buffer edges.
@@ -1523,6 +1633,15 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
     if m == Motion::LineEnd && n > 1 {
         return target(b, lines_down(b, cur0, n - 1), m, 1);
     }
+    // `)` / `(`: Vim's `findsent`, ported in `textobj` for `is`/`as`, where an empty line is a sentence of
+    // its own (`)` from `foo bar` stops on the blank line below it).
+    if matches!(m, Motion::SentenceFwd | Motion::SentenceBack) {
+        return crate::textobj::sentence_motion(b, cur0, m == Motion::SentenceFwd, n);
+    }
+    // `}` / `{`: a count that runs out of paragraphs fails as a whole (see `paragraph_target`).
+    if matches!(m, Motion::ParagraphFwd | Motion::ParagraphBack) {
+        return paragraph_target(b, cur0, m == Motion::ParagraphFwd, n);
+    }
     let mut c = cur0;
     for _ in 0..n {
         let prev = c;
@@ -1553,20 +1672,16 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
                     le
                 }
             }
-            Motion::ParagraphFwd => next_para_boundary(b, c),
-            Motion::ParagraphBack => prev_para_boundary(b, c),
-            Motion::SentenceFwd => next_sentence_start(b, c),
-            Motion::SentenceBack => prev_sentence_start(b, c),
             Motion::WordFwd => next_word_start(b, c, false),
             Motion::WordBack => prev_word_start(b, c, false),
             Motion::WordEnd => prev_boundary(b, word_end_excl(b, c, false)), // land ON the last char
-            Motion::WordEndBack => prev_boundary(b, prev_word_end_excl(b, c, false)), // Vim `ge`
+            Motion::WordEndBack => prev_word_end(b, c, false),               // Vim `ge`
             Motion::EmacsWordFwd => emacs_word_fwd(b, c), // Emacs forward-word: two-class, land AFTER the word
             Motion::EmacsWordBack => emacs_word_back(b, c), // Emacs backward-word: two-class mirror
             Motion::BigWordFwd => next_word_start(b, c, true),
             Motion::BigWordBack => prev_word_start(b, c, true),
             Motion::BigWordEnd => prev_boundary(b, word_end_excl(b, c, true)),
-            Motion::BigWordEndBack => prev_boundary(b, prev_word_end_excl(b, c, true)), // Vim `gE`
+            Motion::BigWordEndBack => prev_word_end(b, c, true), // Vim `gE`
             // FindChar / line-jumps are resolved by the early returns above; objects/linewise have no
             // bare-move target.
             Motion::FindChar { .. }
@@ -1604,6 +1719,10 @@ pub fn target(b: &[u8], cursor: usize, m: Motion, count: u32) -> usize {
             | Motion::Pair { .. }
             | Motion::Quote { .. }
             | Motion::Tag { .. }
+            | Motion::ParagraphFwd
+            | Motion::ParagraphBack
+            | Motion::SentenceFwd
+            | Motion::SentenceBack
             | Motion::Line => c,
         };
         // Every step is a pure function of `(b, c)`, so a step that did not move never will: stop. Without
@@ -1678,8 +1797,32 @@ fn repeat_step(n: u32, start: usize, f: impl Fn(usize) -> usize) -> usize {
 
 /// The charwise byte range `[start, end)` an operator (`d`/`c`) covers for a motion + count. Backward
 /// motions produce a range ending at the cursor; `WordEnd` is inclusive (Vim `de`).
+///
+/// A Vim span never takes a terminated buffer's final newline (#677): Vim cannot delete the last line's
+/// end, so a motion running off the end (`d)`, `c}`, `de` past the last word) stops at the last line's end,
+/// which covers its last char. The linewise paragraph objects (whole lines) and the Emacs motions (whose
+/// point may sit after the final newline, so `kill-word` there can take it) are exempt.
 #[must_use]
 pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usize) {
+    let (s, e) = char_span_raw(b, cursor, m, count);
+    let exempt = matches!(
+        m,
+        Motion::InnerParagraph
+            | Motion::AParagraph
+            | Motion::EmacsCharFwd
+            | Motion::EmacsCharBack
+            | Motion::EmacsWordFwd
+            | Motion::EmacsWordBack
+    );
+    if exempt {
+        (s, e)
+    } else {
+        let ce = content_end(b);
+        (s.min(ce), e.min(ce))
+    }
+}
+
+fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usize) {
     let cur = cursor.min(b.len());
     let n = count.max(1);
     match m {
@@ -1688,22 +1831,26 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         Motion::EmacsCharFwd => (cur, target(b, cur, m, n)),
         // `d<BS>` counts the newline as one step, so at column 0 it joins onto the line above (nvim).
         Motion::WrapLeft => (repeat_step(n, cur, |c| prev_boundary(b, c)), cur),
-        // `dw`/`dW`: Vim does NOT let an `w`/`W` operator cross the line's newline. When the motion would
-        // land on a later line, the operated text ends at the END OF THIS LINE — through any trailing
-        // whitespace, but before the newline — so `dw` on the last word EMPTIES the line instead of joining
-        // it to the next. (Captured from nvim: `dw` on ["foo","bar"] → ["","bar"], on ["foo   ","bar"] →
-        // ["","bar"] deleting "foo   ".) When the motion stays on the line, the target is unchanged.
+        // `dw`/`dW`: the LAST word moved over does not cross its line's newline — the operated text ends at
+        // the end of that line, through any trailing white space — so `dw` on the last word EMPTIES the line
+        // instead of joining it to the next (nvim: `dw` on ["foo   ","bar"] → ["","bar"]). Earlier counts
+        // cross line breaks (`3dw`, #742), and an empty line is a word of its own (#746): `dw` there ends at
+        // the next line's start, which the exclusive-linewise rule in `op_span` turns into a linewise delete.
         Motion::WordFwd | Motion::BigWordFwd => {
-            let t = target(b, cur, m, n);
-            let le = line_end(b, cur);
-            (cur, if t > le { le } else { t })
+            (cur, word_fwd(b, cur, m == Motion::BigWordFwd, n, true))
         }
         // `d$` reaches the line end (deletes the last char too), unlike the bare `$` move which stops on it.
         // `d{count}$` reaches the end of the line `count - 1` below.
         Motion::LineEnd => (cur, line_end(b, lines_down(b, cur, n - 1))),
         // Paragraph motions as a charwise span (`c}` / a Visual `}` extend): forward → [cursor, target),
         // backward → [target, cursor). The operator's exclusive-linewise reshaping lives in `editor::op_span`.
-        Motion::ParagraphFwd => (cur, target(b, cur, m, n)),
+        // At the end of the buffer `}` lands ON the last char and is inclusive (Vim), so the span takes it; a
+        // blank-line landing is a line start (its `\n`), the exclusive end.
+        Motion::ParagraphFwd => match paragraph_landing(b, cur, true, n) {
+            None => (cur, cur),
+            Some((t, true)) if t < b.len() && b[t] != b'\n' => (cur, next_boundary(b, t)),
+            Some((t, _)) => (cur, t),
+        },
         Motion::ParagraphBack => (target(b, cur, m, n), cur),
         // Sentence motions are exclusive charwise: forward → [cursor, next), backward → [prev, cursor).
         Motion::SentenceFwd => (cur, target(b, cur, m, n)),
@@ -1726,8 +1873,11 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         Motion::MethodStartBack | Motion::MethodEndBack => (target(b, cur, m, n), cur),
         // inclusive end-of-word (Vim `de` / `dE`).
         Motion::WordEnd | Motion::BigWordEnd => {
+            // Each step starts from the previous landing (the last char of a word), not its exclusive end, so
+            // `2de` on `foo.bar` takes `foo.` (the `.` is a word of its own).
             let big = m == Motion::BigWordEnd;
-            (cur, repeat_step(n, cur, |e| word_end_excl(b, e, big)))
+            let land = repeat_step(n, cur, |p| prev_boundary(b, word_end_excl(b, p, big)));
+            (cur, next_boundary(b, land).max(cur))
         }
         // Emacs `kill-word` (`M-d`): `[cursor, emacs_word_fwd)` — the two-class forward-word span, which
         // (unlike Vim `de`) skips a leading non-word run and stops at `_`/punctuation boundaries.
@@ -1743,7 +1893,7 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         // and including the cursor char (Vim `dge` on `r` of "foo bar" → "fo").
         Motion::WordEndBack | Motion::BigWordEndBack => {
             let big = m == Motion::BigWordEndBack;
-            let e = repeat_step(n, cur, |e| prev_boundary(b, prev_word_end_excl(b, e, big)));
+            let e = repeat_step(n, cur, |e| prev_word_end(b, e, big));
             (e, next_boundary(b, cur))
         }
         // `^` / `|` / `go` / `gM` are exclusive and can point either way (indent / column / byte / line-%,
@@ -1759,13 +1909,16 @@ pub fn char_span(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
         }
         // char-search: forward includes through the landing char (`dfx` incl. x, `dtx` up to x); backward
         // spans from the landing to the cursor. A missing match is a no-op range.
-        Motion::FindChar { ch, forward, till } => {
-            match find_char_target(b, cur, ch, forward, till, n) {
-                None => (cur, cur),
-                Some(t) if forward => (cur, next_boundary(b, t)),
-                Some(t) => (t, cur),
-            }
-        }
+        Motion::FindChar {
+            ch,
+            forward,
+            till,
+            repeat,
+        } => match find_char_target(b, cur, ch, forward, till, repeat, n) {
+            None => (cur, cur),
+            Some(t) if forward => (cur, next_boundary(b, t)),
+            Some(t) => (t, cur),
+        },
         // bracket match: inclusive of both brackets and everything between (Vim `d%`). No match → no-op.
         Motion::MatchBracket => match match_bracket(b, cur) {
             Some(m) if m != cur => {
@@ -1899,6 +2052,101 @@ mod backward_word_end_tests {
     fn dge_is_inclusive_of_both_ends() {
         // `dge` on 'r' of "foo bar" deletes back through the previous word-end, inclusive: [2, 7) → "fo".
         assert_eq!(char_span(b"foo bar", 6, Motion::WordEndBack, 1), (2, 7));
+    }
+}
+
+#[cfg(test)]
+mod vim_line_model_tests {
+    //! The v0.1.3 motion cluster at the `target`/`char_span` level: empty lines as words (#746), counted
+    //! `dw` (#742), multibyte `e` (#741), `}` from a blank line (#748), `;` after `t` (#802).
+    use super::{char_span, off_phantom, target, Motion};
+
+    fn till(forward: bool, repeat: bool) -> Motion {
+        Motion::FindChar {
+            ch: 'x',
+            forward,
+            till: true,
+            repeat,
+        }
+    }
+
+    #[test]
+    fn word_motions_stop_on_empty_lines() {
+        let b = b"foo\n\nbar"; // empty line at 4
+        assert_eq!(target(b, 0, Motion::WordFwd, 1), 4);
+        assert_eq!(target(b, 0, Motion::WordFwd, 2), 5);
+        assert_eq!(target(b, 5, Motion::WordBack, 1), 4);
+        assert_eq!(target(b, 5, Motion::BigWordBack, 1), 4);
+        assert_eq!(target(b, 5, Motion::WordEndBack, 1), 4);
+        // `e` does not stop there (Vim `end_word` skips empty lines).
+        assert_eq!(target(b, 2, Motion::WordEnd, 1), 7);
+        // `dw` on the empty line reaches the next line's start (made linewise by the operator).
+        assert_eq!(char_span(b, 4, Motion::WordFwd, 1), (4, 5));
+    }
+
+    #[test]
+    fn counted_dw_crosses_lines_until_its_last_word() {
+        let b = b"foo bar\nbaz qux";
+        assert_eq!(char_span(b, 0, Motion::WordFwd, 3), (0, 12)); // through "baz "
+        assert_eq!(char_span(b, 0, Motion::WordFwd, 2), (0, 7)); // last word "bar" ends its line
+        assert_eq!(char_span(b, 4, Motion::WordFwd, 1), (4, 7));
+    }
+
+    #[test]
+    fn e_advances_over_multibyte_words() {
+        let b = "가나 다라".as_bytes(); // 가0 나3 sp6 다7 라10
+        assert_eq!(target(b, 0, Motion::WordEnd, 1), 3);
+        assert_eq!(target(b, 3, Motion::WordEnd, 1), 10);
+        assert_eq!(char_span(b, 3, Motion::WordEnd, 1), (3, 13));
+    }
+
+    #[test]
+    fn paragraph_from_a_blank_line_skips_the_blank_run() {
+        let b = b"a\n\n\nb\n\nc"; // blanks at 2, 3 and 6
+        assert_eq!(target(b, 2, Motion::ParagraphFwd, 1), 6);
+        assert_eq!(target(b, 6, Motion::ParagraphBack, 1), 3);
+        // A count that runs out of paragraphs fails; the last step alone lands on the last char.
+        assert_eq!(target(b"a\nbc\n", 0, Motion::ParagraphFwd, 2), 0);
+        assert_eq!(target(b"a\nbc\n", 0, Motion::ParagraphFwd, 1), 3);
+        assert_eq!(char_span(b"a\nbc\n", 0, Motion::ParagraphFwd, 1), (0, 4));
+    }
+
+    #[test]
+    fn repeated_till_skips_the_adjacent_match() {
+        let b = b"axbxcxd";
+        assert_eq!(
+            target(b, 0, till(true, false), 1),
+            0,
+            "`tx` stops before the x at 1"
+        );
+        assert_eq!(
+            target(b, 0, till(true, true), 1),
+            2,
+            "`;` goes on to before the next x"
+        );
+        assert_eq!(
+            target(b, 2, till(true, true), 2),
+            4,
+            "`2;` counts the adjacent match"
+        );
+        assert_eq!(target(b, 6, till(false, true), 1), 4, "`;` after `Tx`");
+    }
+
+    #[test]
+    fn off_phantom_moves_only_the_slot_after_a_final_newline() {
+        assert_eq!(off_phantom(b"ab\n", 3), 1);
+        assert_eq!(off_phantom(b"a\n\n", 3), 2);
+        assert_eq!(
+            off_phantom(b"ab", 2),
+            2,
+            "an unterminated end is the last line's end"
+        );
+        assert_eq!(off_phantom(b"", 0), 0);
+        assert_eq!(
+            off_phantom("a가\n".as_bytes(), 5),
+            1,
+            "lands on a char boundary"
+        );
     }
 }
 

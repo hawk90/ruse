@@ -3501,7 +3501,12 @@ mod find_char_tests {
     use crate::editor::*;
 
     fn find(ch: char, forward: bool, till: bool) -> Motion {
-        Motion::FindChar { ch, forward, till }
+        Motion::FindChar {
+            ch,
+            forward,
+            till,
+            repeat: false,
+        }
     }
 
     fn run(initial: &str, cmds: &[Command]) -> EditorState {
@@ -8219,5 +8224,261 @@ mod visual_op_tests {
         assert_eq!(text(&st), "XYc\nXYf");
         assert!(st.register().is_blockwise());
         assert_eq!(st.register().text(), b"ab\nde");
+    }
+}
+
+/// The empty slot after a final newline is not a line (#677), plus the motions of the v0.1.3 cluster on
+/// buffer shapes the Neovim oracle fixtures cannot express (they replay an UNTERMINATED buffer).
+#[cfg(test)]
+mod final_newline_slot_tests {
+    use crate::editor::*;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    fn text(st: &EditorState) -> String {
+        String::from_utf8(st.bytes().to_vec()).expect("utf8")
+    }
+
+    fn mv(n: u32, m: Motion) -> Command {
+        Command::Move(n, m)
+    }
+
+    /// `cmds`, then type `s` in Insert at the cursor and leave it, as `iZ<Esc>` does.
+    fn then_insert(mut cmds: Vec<Command>, s: &str) -> Vec<Command> {
+        cmds.push(Command::EnterInsert);
+        cmds.extend(s.chars().map(Command::InsertChar));
+        cmds.push(Command::EnterNormal);
+        cmds
+    }
+
+    #[test]
+    fn linewise_delete_of_the_last_line_leaves_the_cursor_on_a_real_line() {
+        // nvim: `Gdd iZ` on `a\nb\n` gives `Za\n`; ruse typed on the phantom slot (`a\nZ`).
+        let cmds = vec![mv(1, Motion::LastLine), Command::Delete(1, Motion::Line)];
+        assert_eq!(text(&run("a\nb\n", &then_insert(cmds, "Z"))), "Za\n");
+        let cmds = vec![mv(1, Motion::Down), Command::Delete(1, Motion::LastLine)];
+        assert_eq!(text(&run("a\nb\n", &then_insert(cmds, "Z"))), "Za\n");
+        // `Gdip` on `a\n\nb\n` keeps the blank line as the last line.
+        let cmds = vec![
+            mv(1, Motion::LastLine),
+            Command::Delete(1, Motion::InnerParagraph),
+        ];
+        assert_eq!(text(&run("a\n\nb\n", &then_insert(cmds, "Z"))), "a\nZ\n");
+    }
+
+    #[test]
+    fn undo_never_rests_on_the_phantom_slot() {
+        // nvim: `Adef<Esc>u iZ` on `abc\n` gives `abZc\n`.
+        let mut cmds = vec![
+            mv(1, Motion::LineEnd),
+            Command::EnterInsert,
+            Command::MoveRight,
+        ];
+        cmds.extend("def".chars().map(Command::InsertChar));
+        cmds.extend([Command::EnterNormal, Command::Undo]);
+        assert_eq!(text(&run("abc\n", &then_insert(cmds, "Z"))), "abZc\n");
+    }
+
+    #[test]
+    fn motions_running_off_the_end_land_on_the_last_char() {
+        // `ww` / `}` / `5g_` / `99go` / `)))` on terminated buffers (nvim).
+        assert_eq!(run("foo bar\n", &[mv(2, Motion::WordFwd)]).cursor(), 6);
+        assert_eq!(run("a\nbc\n", &[mv(1, Motion::ParagraphFwd)]).cursor(), 3);
+        assert_eq!(
+            run("a  \nb  \n", &[mv(5, Motion::LineLastNonBlank)]).cursor(),
+            4
+        );
+        assert_eq!(run("ab\n", &[mv(99, Motion::GotoByte)]).cursor(), 1);
+        assert_eq!(
+            run("A b. C d.\n", &[mv(3, Motion::SentenceFwd)]).cursor(),
+            8
+        );
+        // An empty last line is a real line: the cursor rests on it.
+        assert_eq!(run("a\n\n", &[mv(3, Motion::WordFwd)]).cursor(), 2);
+    }
+
+    #[test]
+    fn x_emptying_an_unterminated_last_line_keeps_that_line() {
+        // `a\nb` + `jx`: the last line is now empty, spelled like a final newline; the cursor stays on it.
+        let st = run("a\nb", &[mv(1, Motion::Down), Command::DeleteUnder(1)]);
+        assert_eq!(text(&st), "a\n");
+        assert_eq!(st.cursor(), 2);
+    }
+
+    #[test]
+    fn operators_never_take_the_final_newline() {
+        // `c}`, `jd)`, `ede`, `v}d` on terminated buffers (nvim).
+        let cmds = vec![Command::Change(1, Motion::ParagraphFwd)];
+        assert_eq!(text(&run("a\nb\n", &then_insert(cmds, "Z"))), "Z\n");
+        let st = run(
+            "a\nb\n",
+            &[mv(1, Motion::Down), Command::Delete(1, Motion::SentenceFwd)],
+        );
+        assert_eq!(text(&st), "a\n\n");
+        let st = run(
+            "foo bar \n",
+            &[mv(2, Motion::WordEnd), Command::Delete(1, Motion::WordEnd)],
+        );
+        assert_eq!(text(&st), "foo ba\n");
+        let st = run(
+            "a\nb\n",
+            &[
+                Command::EnterVisual {
+                    kind: SelectKind::Charwise,
+                },
+                mv(1, Motion::ParagraphFwd),
+                Command::DeleteSelection,
+            ],
+        );
+        assert_eq!(text(&st), "\n");
+    }
+
+    #[test]
+    fn delete_paragraph_at_eof_is_linewise_but_yank_is_charwise() {
+        // nvim `op_delete` promotes `d}` over whole lines; `y}` stays charwise `a\nb`.
+        let st = run("a\nb\n", &[Command::Delete(1, Motion::ParagraphFwd)]);
+        assert_eq!(text(&st), "");
+        assert!(st.register().is_linewise());
+        let st = run("a\nb\n", &[Command::Yank(1, Motion::ParagraphFwd)]);
+        assert_eq!(st.register().text(), b"a\nb");
+        assert!(!st.register().is_linewise());
+    }
+
+    #[test]
+    fn join_never_turns_the_final_newline_into_a_space() {
+        // nvim: `GJ` / `GgJ` leave `a\nb\n`; `5J` gives `a b\n`; `J` on one line is a no-op.
+        let st = run("a\nb\n", &[mv(1, Motion::LastLine), Command::JoinLines(2)]);
+        assert_eq!(text(&st), "a\nb\n");
+        let st = run(
+            "a\nb\n",
+            &[mv(1, Motion::LastLine), Command::JoinLinesNoSpace(2)],
+        );
+        assert_eq!(text(&st), "a\nb\n");
+        let st = run("a\nb\n", &[Command::JoinLines(5)]);
+        assert_eq!(text(&st), "a b\n");
+        assert_eq!(st.cursor(), 1);
+        let st = run("foo bar baz qux\n", &[Command::JoinLines(2)]);
+        assert_eq!(text(&st), "foo bar baz qux\n");
+        let st = run("a\nb\nc\n", &[Command::JoinLines(5)]);
+        assert_eq!(text(&st), "a b c\n");
+        assert_eq!(st.cursor(), 3);
+    }
+
+    #[test]
+    fn ex_ranges_do_not_count_the_phantom_line() {
+        let mut st = EditorState::new(b"a\nb\n".to_vec());
+        assert_eq!(
+            st.delete_lines(SubRange::WholeFile),
+            2,
+            ":%d reports 2 lines"
+        );
+        assert_eq!(text(&st), "");
+        let mut st = EditorState::new(b"a\nb\n".to_vec());
+        assert_eq!(st.join_lines(SubRange::WholeFile, false), 2, ":%j joins 2");
+        assert_eq!(text(&st), "a b\n");
+        let mut st = EditorState::new(b"a\n".to_vec());
+        assert_eq!(
+            st.join_lines(SubRange::WholeFile, false),
+            0,
+            "nothing to join"
+        );
+        assert_eq!(text(&st), "a\n");
+        // `:2d` on `a\nb\n` leaves the cursor on `a`, not the slot after it.
+        let mut st = EditorState::new(b"a\nb\n".to_vec());
+        st.delete_lines(SubRange::Lines(2, 2));
+        assert_eq!(text(&st), "a\n");
+        assert_eq!(st.cursor(), 0);
+        let mut st = EditorState::new(b"a\n\nb\n".to_vec());
+        let out = st
+            .substitute(SubRange::WholeFile, "^$", "x", SubFlags::default())
+            .expect("substitute");
+        assert_eq!(out.replacements, 1);
+        assert_eq!(text(&st), "a\nx\nb\n");
+    }
+
+    #[test]
+    fn line_delete_through_an_unterminated_last_line_takes_the_newline_above() {
+        // #709: `:g/b/d`, `:2,3d`, `jdVj` on unterminated buffers leave no trailing newline (nvim).
+        let mut st = EditorState::new(b"a\nb".to_vec());
+        st.global(SubRange::WholeFile, "b", false, &GlobalCmd::Delete)
+            .expect("global");
+        assert_eq!(text(&st), "a");
+        let mut st = EditorState::new(b"a\n\nb".to_vec());
+        st.global(SubRange::WholeFile, "[ab]", false, &GlobalCmd::Delete)
+            .expect("global");
+        assert_eq!(text(&st), "", "the kept empty line is the whole buffer");
+        let mut st = EditorState::new(b"a\nb\nc".to_vec());
+        st.delete_lines(SubRange::Lines(2, 3));
+        assert_eq!(text(&st), "a");
+        assert_eq!(st.cursor(), 0);
+        let st = run(
+            "a\nb\nc",
+            &[
+                mv(1, Motion::Down),
+                Command::OpForced {
+                    op: OpKind::Delete,
+                    count: 1,
+                    motion: Motion::Down,
+                    wise: ForcedWise::Linewise,
+                },
+            ],
+        );
+        assert_eq!(text(&st), "a");
+        assert!(st.register().is_linewise());
+        assert_eq!(st.register().text(), b"b\nc\n");
+    }
+
+    #[test]
+    fn count_dd_on_the_last_line_fails() {
+        // Vim: `2dd` on the last line has no line below to reach — a no-op, unlike `5dd` higher up.
+        let st = run(
+            "a\nb\n",
+            &[mv(1, Motion::Down), Command::Delete(2, Motion::Line)],
+        );
+        assert_eq!(text(&st), "a\nb\n");
+        assert_eq!(
+            text(&run("a\nb\n", &[Command::Delete(5, Motion::Line)])),
+            ""
+        );
+    }
+
+    #[test]
+    fn word_motions_on_terminated_and_multibyte_buffers() {
+        // #746 `w`/`b`/`ge` stop on an empty line; #741 `e` advances over multibyte words.
+        assert_eq!(run("foo\n\nbar\n", &[mv(1, Motion::WordFwd)]).cursor(), 4);
+        let back = |m| run("foo\n\nbar\n", &[mv(1, Motion::LastLine), mv(1, m)]).cursor();
+        assert_eq!(back(Motion::WordBack), 4);
+        assert_eq!(back(Motion::BigWordBack), 4);
+        assert_eq!(back(Motion::WordEndBack), 4);
+        assert_eq!(
+            run("가나 다라\n", &[mv(2, Motion::WordEnd)]).cursor(),
+            "가나 다".len()
+        );
+        // #742: `3dw` crosses the line break; the last word stops at its line end.
+        let st = run("foo bar\nbaz qux\n", &[Command::Delete(3, Motion::WordFwd)]);
+        assert_eq!(text(&st), "qux\n");
+        let st = run(
+            "foo bar\nbaz\n",
+            &[mv(1, Motion::WordFwd), Command::Delete(3, Motion::WordFwd)],
+        );
+        assert_eq!(text(&st), "foo \n");
+    }
+
+    #[test]
+    fn info_and_completion_skip_the_phantom_line() {
+        // `g CTRL-G` on the slot reads as the last line, not `Line 2 of 1`.
+        let info = crate::info::cursor_pos_info(b"abc\n", 4, 8);
+        assert!(info.contains("Line 1 of 1"), "{info}");
+        // CTRL-X CTRL-L offers the real empty line but no candidate for the slot after the final newline.
+        let (_, cands) = crate::motion::line_completions(b"x\n\ny\n", 0);
+        assert_eq!(cands, vec!["y".to_string(), String::new()]);
+        let (_, cands) = crate::motion::line_completions(b"x\ny\n", 0);
+        assert_eq!(cands, vec!["y".to_string()]);
     }
 }

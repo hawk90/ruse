@@ -1005,13 +1005,9 @@ impl EditorState {
         let bytes = self.doc.bytes();
         let hay = std::str::from_utf8(bytes)
             .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
-        let mut lines = line_spans(hay); // (start, end-excluding-newline) per line
-                                         // The empty span after a final newline is not a line in Vim; a zero-width pattern (`^`, `$`, `x*`)
-                                         // must not substitute on it (`:%s/^/#/` on "abc\ndef\n" would append a "#" line). An empty or
-                                         // non-`\n`-terminated buffer keeps its last span (as in `global_marks`).
-        if hay.ends_with('\n') {
-            lines.pop();
-        }
+        // (start, end-excluding-newline) per line, without the slot after a final newline, so a zero-width
+        // pattern (`^`, `$`, `x*`) never substitutes there (`:%s/^/#/` on "abc\ndef\n" appends no line).
+        let lines = line_spans(hay);
         let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
         let (first, last) = match range {
             SubRange::CurrentLine => (cursor_line, cursor_line),
@@ -1138,15 +1134,10 @@ impl EditorState {
         let bytes = self.doc.bytes();
         let hay = std::str::from_utf8(bytes)
             .map_err(|_| RegexError::Syntax("buffer is not valid UTF-8".into()))?;
+        // `line_spans` has no span for the slot after a final newline, so a `:g`/`:v` never marks or acts on
+        // it (visible under a `normal` payload, which would edit it).
         let lines = line_spans(hay);
-        // `line_spans` appends a phantom empty span for the position after a final newline; Vim does not
-        // count that as a line, so exclude it (a `:g`/`:v` must never mark or act on it — visible under a
-        // `normal` payload, which would edit it). An empty or non-`\n`-terminated buffer keeps its span.
-        let count = if hay.ends_with('\n') {
-            lines.len().saturating_sub(1)
-        } else {
-            lines.len()
-        };
+        let count = lines.len();
         let last_idx = count.saturating_sub(1);
         // `:g` with no range is the WHOLE FILE (unlike `:s`, whose default is the current line).
         let (first, last) = match range {
@@ -1191,13 +1182,26 @@ impl EditorState {
             GlobalCmd::Delete => {
                 // Delete each marked line including its trailing newline; disjoint + ascending, so one
                 // transaction from the original offsets deletes them all atomically.
-                let edits: Vec<Edit> = marked
+                // Adjacent lines merge into one range, so that deleting an UNTERMINATED last line can also
+                // take the newline ending the line above (Vim leaves no blank line behind: `:g/b/d` on
+                // `a\nb` gives `a`, #709) without overlapping the range before it.
+                let mut ranges: Vec<(usize, usize)> = Vec::new();
+                for &li in &marked {
+                    let (ls, le) = lines[li];
+                    let end = if le < hay.len() { le + 1 } else { le };
+                    match ranges.last_mut() {
+                        Some(r) if r.1 == ls => r.1 = end,
+                        _ => ranges.push((ls, end)),
+                    }
+                }
+                if let Some(r) = ranges.last_mut() {
+                    if r.1 == hay.len() && r.0 > 0 && !hay.ends_with('\n') {
+                        r.0 -= 1;
+                    }
+                }
+                let edits: Vec<Edit> = ranges
                     .iter()
-                    .map(|&li| {
-                        let (ls, le) = lines[li];
-                        let end = if le < hay.len() { le + 1 } else { le };
-                        Edit::delete(ls, end - ls)
-                    })
+                    .map(|&(s, e)| Edit::delete(s, e - s))
                     .collect();
                 let list =
                     EditList::new(edits).expect("whole-line deletes are disjoint and ordered");
@@ -1302,8 +1306,11 @@ impl EditorState {
             .apply(txn)
             .expect("line-range delete applies cleanly");
         self.view.last_was_edit = true;
+        // On the line that took their place, or the new last line (never the slot after a final newline,
+        // nor past the end of an unterminated last line), at its first non-blank.
         let nb = self.doc.bytes();
-        self.view.cursor = start.min(nb.len());
+        let at = motion::off_phantom(nb, start.min(nb.len()));
+        self.view.cursor = motion::first_non_blank(nb, line_start(nb, at));
         self.settle_offsets();
         last - first + 1
     }
@@ -1353,12 +1360,19 @@ impl EditorState {
         } else {
             Command::JoinLines(count)
         };
+        let before = crate::pos::count_newlines(self.doc.bytes());
         apply_command(self, &cmd);
         // Unlike `J` (cursor on the join seam), Vim's `:join` leaves the cursor on the FIRST NON-BLANK of the
         // joined line (`ex_join` → `beginline(BL_WHITE)`; nvim v0.12.6). The join keeps `first`'s start.
         let b = self.doc.bytes();
         self.view.cursor = motion::first_non_blank(b, lines[first].0);
-        count.max(2) as usize
+        // The lines that took part: one more than the seams removed (0 when nothing joined).
+        let seams = before - crate::pos::count_newlines(b);
+        if seams == 0 {
+            0
+        } else {
+            seams + 1
+        }
     }
 
     /// `:[range]>` / `:[range]<` — shift the range's lines one indent level right (`left = false`) or left
@@ -2262,6 +2276,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // Every command outside a text-entry session is a new change for `U`; inside one only the first change
     // is (and the first after an undo break, which the transaction's `BreakBefore` hint carries).
     let new_command = !is_text_entry(entry_mode);
+    // Whether the buffer ended in a newline before this command: only then is a cursor left at the end
+    // the phantom slot (see the clamp below). `x` on the one char of an unterminated last line leaves that
+    // line empty, which the byte model spells the same as a final newline.
+    let entry_terminated = st.doc.bytes().last() == Some(&b'\n');
     // The `[`/`]` change-mark span for a Normal-mode edit — read off the plan's edits (post-edit coords)
     // before they are moved into a Transaction. A yank has no edits; its span rides in `RegWrite::Yank`.
     let mut edit_span: Option<(usize, usize)> = None;
@@ -2459,6 +2477,18 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         if st.view.cursor == le && ls < le {
             st.view.cursor = prev_boundary(b, le);
         }
+    }
+    // The phantom slot after the final newline is not a line (#677): an on-char caret outside text entry
+    // never rests there, whatever put it there (a motion running off the end, a linewise delete of the last
+    // line, undo). Exempt where the byte model cannot tell that slot from a real empty last line: leaving
+    // Insert (the caret is on the line just typed into, as after `o` on an unterminated last line), and a
+    // buffer that was unterminated before the command (`x` emptying its last line).
+    if st.view.caret == CaretGravity::OnChar
+        && !is_text_entry(st.view.mode)
+        && !leaving_entry
+        && entry_terminated
+    {
+        st.view.cursor = motion::off_phantom(st.doc.bytes(), st.view.cursor);
     }
     // A yank/delete/change writes its captured span into the pending register (or unnamed when none),
     // mirroring the unnamed slot on a named write; append (`"A`) is handled inside the store. An Emacs kill

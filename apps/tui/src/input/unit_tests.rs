@@ -441,7 +441,8 @@ mod tests {
                 Motion::FindChar {
                     ch: 'x',
                     forward: true,
-                    till: false
+                    till: false,
+                    repeat: false
                 }
             ))
         );
@@ -2634,7 +2635,12 @@ mod tests {
     }
 
     fn fc(ch: char, forward: bool, till: bool) -> Motion {
-        Motion::FindChar { ch, forward, till }
+        Motion::FindChar {
+            ch,
+            forward,
+            till,
+            repeat: false,
+        }
     }
 
     #[test]
@@ -2735,15 +2741,28 @@ mod tests {
         let mut e = InputEngine::new();
         e.feed(k('f'), Mode::Normal);
         e.feed(k('x'), Mode::Normal); // last_find = (x, forward, not-till)
+        let again = |ch, forward, till| Motion::FindChar {
+            ch,
+            forward,
+            till,
+            repeat: true,
+        };
         assert_eq!(
             e.feed(k(';'), Mode::Normal),
-            Feed::Cmd(Command::Move(1, fc('x', true, false))),
+            Feed::Cmd(Command::Move(1, again('x', true, false))),
             "; repeats the last find"
         );
         assert_eq!(
             e.feed(k(','), Mode::Normal),
-            Feed::Cmd(Command::Move(1, fc('x', false, false))),
+            Feed::Cmd(Command::Move(1, again('x', false, false))),
             ", repeats reversed"
+        );
+        // A repeated `t` is marked as a repeat, so the core skips the char it stopped before (#802).
+        e.feed(k('t'), Mode::Normal);
+        e.feed(k('x'), Mode::Normal);
+        assert_eq!(
+            e.feed(k(';'), Mode::Normal),
+            Feed::Cmd(Command::Move(1, again('x', true, true)))
         );
     }
 

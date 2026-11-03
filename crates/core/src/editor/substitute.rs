@@ -121,7 +121,10 @@ pub(crate) fn resolve_line_range(
     }
 }
 
-/// The byte span `(start, end)` of every line (`end` excludes the `\n`). Always at least one line.
+/// The byte span `(start, end)` of every line (`end` excludes the `\n`). Always at least one line. The
+/// empty slot after a final newline is not a line in Vim's model (#677), so a terminated buffer has no span
+/// for it: `:%d` counts two lines in `a\nb\n`, `:%j` stops at the last real line, and a zero-width pattern
+/// never substitutes there. An empty buffer is one empty line.
 pub(crate) fn line_spans(hay: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     let mut start = 0;
@@ -131,7 +134,9 @@ pub(crate) fn line_spans(hay: &str) -> Vec<(usize, usize)> {
             start = i + 1;
         }
     }
-    out.push((start, hay.len())); // the final line (unterminated, or empty after a trailing newline)
+    if start < hay.len() || out.is_empty() {
+        out.push((start, hay.len())); // an unterminated final line, or the empty buffer's one line
+    }
     out
 }
 
