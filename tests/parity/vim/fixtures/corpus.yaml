@@ -67265,6 +67265,951 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "srx_caret_next_line",
+      "lines": [
+        "x",
+        "foo"
+      ],
+      "keys": "/^foo<CR>",
+      "expect": {
+        "text": [
+          "x",
+          "foo"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_dollar_mid_buffer",
+      "lines": [
+        "foo x",
+        "a foo"
+      ],
+      "keys": "/foo$<CR>",
+      "expect": {
+        "text": [
+          "foo x",
+          "a foo"
+        ],
+        "cursor": [
+          2,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_caret_dollar_empty_line",
+      "lines": [
+        "a",
+        "",
+        "b"
+      ],
+      "keys": "/^$<CR>iZ<Esc>",
+      "expect": {
+        "text": [
+          "a",
+          "Z",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_bare_dollar",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "/$<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_bare_dollar_n",
+      "lines": [
+        "ab",
+        "cd",
+        "ef"
+      ],
+      "keys": "/$<CR>n",
+      "expect": {
+        "text": [
+          "ab",
+          "cd",
+          "ef"
+        ],
+        "cursor": [
+          2,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_bare_caret",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "l/^<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_back_caret",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "G$?^<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_back_dollar",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "G$?$<CR>",
+      "expect": {
+        "text": [
+          "ab",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_back_caret_dollar",
+      "lines": [
+        "a",
+        "",
+        "b"
+      ],
+      "keys": "G?^$<CR>iZ<Esc>",
+      "expect": {
+        "text": [
+          "a",
+          "Z",
+          "b"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_zs_at_end",
+      "lines": [
+        "xx foo bar"
+      ],
+      "keys": "/foo\\zs<CR>",
+      "expect": {
+        "text": [
+          "xx foo bar"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_bow_bare",
+      "lines": [
+        "xx foo bar"
+      ],
+      "keys": "/\\<<CR>",
+      "expect": {
+        "text": [
+          "xx foo bar"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_bow_n",
+      "lines": [
+        "xx foo bar"
+      ],
+      "keys": "/\\<<CR>n",
+      "expect": {
+        "text": [
+          "xx foo bar"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_bow_N",
+      "lines": [
+        "xx foo bar"
+      ],
+      "keys": "$/\\<<CR>N",
+      "expect": {
+        "text": [
+          "xx foo bar"
+        ],
+        "cursor": [
+          1,
+          7
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_zs_from_start",
+      "lines": [
+        "foobar foobar"
+      ],
+      "keys": "/foo\\zsbar<CR>",
+      "expect": {
+        "text": [
+          "foobar foobar"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_zs_from_start_n",
+      "lines": [
+        "foobar foobar"
+      ],
+      "keys": "/foo\\zsbar<CR>n",
+      "expect": {
+        "text": [
+          "foobar foobar"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_zs_back",
+      "lines": [
+        "foobar foobar"
+      ],
+      "keys": "$?foo\\zsbar<CR>",
+      "expect": {
+        "text": [
+          "foobar foobar"
+        ],
+        "cursor": [
+          1,
+          10
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_back_overlap",
+      "lines": [
+        "aaa"
+      ],
+      "keys": "$?aa<CR>",
+      "expect": {
+        "text": [
+          "aaa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_N_overlap",
+      "lines": [
+        "aaa"
+      ],
+      "keys": "$/aa<CR>N",
+      "expect": {
+        "text": [
+          "aaa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_fwd_overlap",
+      "lines": [
+        "aaaa"
+      ],
+      "keys": "/aa<CR>",
+      "expect": {
+        "text": [
+          "aaaa"
+        ],
+        "cursor": [
+          1,
+          2
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_fwd_overlap_n",
+      "lines": [
+        "aaaa"
+      ],
+      "keys": "/aa<CR>n",
+      "expect": {
+        "text": [
+          "aaaa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_s_ze_resumes_at_ze",
+      "lines": [
+        "ababab"
+      ],
+      "keys": ":s/\\v(ab)\\zeab/-/g<CR>",
+      "expect": {
+        "text": [
+          "--ab"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_s_eow_g",
+      "lines": [
+        "a b"
+      ],
+      "keys": ":s/\\>/-/g<CR>",
+      "expect": {
+        "text": [
+          "a- b-"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_s_eow_g_words",
+      "lines": [
+        "foo bar"
+      ],
+      "keys": ":s/\\>/-/g<CR>",
+      "expect": {
+        "text": [
+          "foo- bar-"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_s_star_g",
+      "lines": [
+        "abc"
+      ],
+      "keys": ":s/x*/-/g<CR>",
+      "expect": {
+        "text": [
+          "-a-b-c"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_s_alt_eol_g",
+      "lines": [
+        "ab"
+      ],
+      "keys": ":s/a\\|$/-/g<CR>",
+      "expect": {
+        "text": [
+          "-b-"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_s_count_brace",
+      "lines": [
+        "caaa"
+      ],
+      "keys": ":s/a\\{2}/x/<CR>",
+      "expect": {
+        "text": [
+          "cxa"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_s_ws_no_newline",
+      "lines": [
+        "x a",
+        "b"
+      ],
+      "keys": "/a\\s<CR>",
+      "expect": {
+        "text": [
+          "x a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "srx_s_ws_gnd",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "keys": "/\\s<CR>gnd",
+      "expect": {
+        "text": [
+          "a",
+          "b"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "srx_s_zs_g",
+      "lines": [
+        "foobar foobar"
+      ],
+      "keys": ":s/foo\\zsbar/X/g<CR>",
+      "expect": {
+        "text": [
+          "fooX fooX"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_d_search_zero_width",
+      "lines": [
+        "xx foo bar"
+      ],
+      "keys": "d/\\<f<CR>",
+      "expect": {
+        "text": [
+          "foo bar"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "xx ",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_count_search_bow",
+      "lines": [
+        "aa bb cc dd"
+      ],
+      "keys": "2/\\<<CR>",
+      "expect": {
+        "text": [
+          "aa bb cc dd"
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_move_to_dollar",
+      "lines": [
+        "ab cd",
+        "ef"
+      ],
+      "keys": "l/$<CR>",
+      "expect": {
+        "text": [
+          "ab cd",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_d_to_dollar",
+      "lines": [
+        "ab cd",
+        "ef"
+      ],
+      "keys": "ld/$<CR>",
+      "expect": {
+        "text": [
+          "ad",
+          "ef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b c",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_v_to_dollar",
+      "lines": [
+        "ab cd",
+        "ef"
+      ],
+      "keys": "lv/$<CR>d",
+      "expect": {
+        "text": [
+          "aef"
+        ],
+        "cursor": [
+          1,
+          1
+        ],
+        "reg_unnamed": {
+          "text": "b cd\n",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "srx_x_after_dollar",
+      "lines": [
+        "ab",
+        "cd"
+      ],
+      "keys": "/$<CR>x",
+      "expect": {
+        "text": [
+          "a",
+          "cd"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "b",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }

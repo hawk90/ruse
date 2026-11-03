@@ -5,41 +5,61 @@
 
 use crate::pattern;
 
-/// The byte offset of the next Vim-regex match at/after `from`, wrapping to the document start (F-009).
-/// Invalid UTF-8, an unrepresentable/malformed pattern, or no match yields `None` — the caller keeps the
-/// cursor (Vim rings the bell). Replaces the v0 literal `search::find_next`.
+/// The byte offset of the first search match whose landing is at/after `from`, wrapping to the first
+/// match of the document (F-009). Matches are the ones a `/` search sees ([`search_spans`]), compared by
+/// [`landing_key`], so `n` agrees with `/`: a `\zs` match is found by its reported start, and an empty
+/// match (`^`, `$`, `\<`) counts. Invalid UTF-8, an unrepresentable/malformed pattern, or no match yields
+/// `None` — the caller keeps the cursor (Vim rings the bell).
 pub(crate) fn search_fwd(
     b: &[u8],
     pattern: &str,
     from: usize,
     opts: pattern::Options,
 ) -> Option<usize> {
-    let hay = std::str::from_utf8(b).ok()?;
-    let mut from = from.min(hay.len());
-    while from < hay.len() && !hay.is_char_boundary(from) {
-        from += 1; // a regex search must start on a char boundary
-    }
-    let re = pattern::Regex::compile(pattern, opts).ok()?;
-    re.find_at(hay, from)
-        .or_else(|| re.find_at(hay, 0))
-        .map(|m| m.start)
+    let spans = search_spans(b, pattern, opts);
+    spans
+        .iter()
+        .map(|&(s, _)| s)
+        .find(|&s| landing_key(b, s) >= from)
+        .or_else(|| spans.first().map(|&(s, _)| s))
 }
 
-/// Every match of `pattern` in `b`, as `(start, end)` byte spans (end exclusive), in document order.
-/// Zero-width matches are dropped — a text object over an empty span (`gn`) is meaningless and would make
-/// selection/advance loop. Invalid UTF-8 or an unrepresentable/malformed pattern yields an empty list.
-pub(crate) fn match_spans(b: &[u8], pattern: &str, opts: pattern::Options) -> Vec<(usize, usize)> {
+/// Every match a `/` or `?` search can land on, as `(start, end)` byte spans (end exclusive), in
+/// document order: [`pattern::Regex::search_all`], empty matches included. Invalid UTF-8 or an
+/// unrepresentable/malformed pattern yields an empty list.
+pub(crate) fn search_spans(b: &[u8], pattern: &str, opts: pattern::Options) -> Vec<(usize, usize)> {
     let Ok(hay) = std::str::from_utf8(b) else {
         return Vec::new();
     };
     let Ok(re) = pattern::Regex::compile(pattern, opts) else {
         return Vec::new();
     };
-    re.find_all(hay)
+    re.search_all(hay)
         .into_iter()
-        .filter(|m| m.end > m.start)
         .map(|m| (m.start, m.end))
         .collect()
+}
+
+/// [`search_spans`] without the empty matches: the matches `gn` can select. A text object over an
+/// empty span is meaningless and would make selection/advance loop (nvim: `/\s` then `gnd` on "a\nb"
+/// selects nothing).
+pub(crate) fn match_spans(b: &[u8], pattern: &str, opts: pattern::Options) -> Vec<(usize, usize)> {
+    let mut spans = search_spans(b, pattern, opts);
+    spans.retain(|&(s, e)| e > s);
+    spans
+}
+
+/// Where a search compares a match landing at `pos` against the cursor: one character back when `pos`
+/// is the end of a non-empty line (a `$` match), since the Normal cursor is put there afterwards. This is
+/// nvim's `searchit` rule that keeps `/$` and `n` from sticking at the end of a line; the landing itself
+/// stays at `pos`.
+pub(crate) fn landing_key(b: &[u8], pos: usize) -> usize {
+    let at_eol = pos >= b.len() || b[pos] == b'\n';
+    if at_eol && pos > 0 && pos <= b.len() && b[pos - 1] != b'\n' {
+        crate::motion::prev_boundary(b, pos)
+    } else {
+        pos
+    }
 }
 
 /// The last landable cursor byte in `b` — the last char of the last line (Vim never rests the Normal
@@ -90,19 +110,19 @@ pub(crate) fn step_char(b: &[u8], pos: usize, n: i32) -> usize {
     p
 }
 
-/// The byte offset of the previous match starting strictly before `before`, wrapping to the last match.
+/// The byte offset of the previous search match landing strictly before `before`, wrapping to the last
+/// match (see [`search_fwd`] for which matches count).
 pub(crate) fn search_bwd(
     b: &[u8],
     pattern: &str,
     before: usize,
     opts: pattern::Options,
 ) -> Option<usize> {
-    let hay = std::str::from_utf8(b).ok()?;
-    let re = pattern::Regex::compile(pattern, opts).ok()?;
-    let all = re.find_all(hay);
-    all.iter()
+    let spans = search_spans(b, pattern, opts);
+    spans
+        .iter()
         .rev()
-        .find(|m| m.start < before)
-        .or_else(|| all.last())
-        .map(|m| m.start)
+        .map(|&(s, _)| s)
+        .find(|&s| landing_key(b, s) < before)
+        .or_else(|| spans.last().map(|&(s, _)| s))
 }

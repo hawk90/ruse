@@ -5455,8 +5455,7 @@ mod search_tests {
     /// wraps 4 → 0 → 4; on "abc\n\ndef\n" `/^$` + `n` stays on the one empty line (4, 4).
     #[test]
     fn line_anchors_never_match_past_the_final_newline() {
-        // (`n` = `SearchNext`, which goes through `search_fwd`; the `/pat` motion skips zero-width
-        // matches altogether, see `match_spans`.)
+        // (`SearchNext` goes through `search_fwd`, over the same `search_spans` as the `/pat` motion.)
         let next = |p: &str| Command::SearchNext(p.into());
         let st = run("abc\ndef\n", &[next("^$")]);
         assert_eq!(st.cursor(), 0, "no empty line: the search fails");

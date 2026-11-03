@@ -290,7 +290,10 @@ Vim's own two-engine divergence that we are trying to avoid (§7).
 back. This is **not** an engine capability — the engine only offers:
 
 - `find_at(hay, start)` — the next leftmost match (for first-per-line), and
-- `find_all(hay, range)` — an iterator of non-overlapping matches (for all-per-line).
+- `find_all(hay, range)` — an iterator of non-overlapping matches (for all-per-line), scanned per line the way
+  nvim's `do_sub` scans: resume at the reported (`\ze`) end, skip an empty match where the previous match
+  ended, stop a line once the scan reaches its end (#1047, #1048). A `/` search walks `search_all` instead,
+  which keeps every empty match (`/^$`, `/\<`, `/foo\zs`, #705).
 
 The **substitute command** ([editing-language.md](editing-language.md) / F-009) computes the effective "replace
 all vs first" as **`g_flag XOR gdefault`** and then calls `find_at` once per line or iterates `find_all`. A

@@ -9,8 +9,12 @@
 //!   refuse the pattern too (any `RegexError`).
 //! - `Expect::Unsupported`: an atom the wrapped engine cannot express — ruse must return
 //!   `RegexError::Unsupported`, never a guessed match.
+//! - `Expect::Known(n)`: a tracked divergence (issue #n) the wrapped engine cannot close yet. ruse must
+//!   still DISAGREE with nvim: a row that starts agreeing fails, so it is promoted to `Agree` (the same
+//!   ratchet as `tests/parity/vim/known-divergences.txt`).
 //!
-//! All rows are checked before failing, so one run lists every divergence.
+//! All rows are checked before failing, so one run lists every divergence. Rows are grouped by class
+//! (#912); `-- --nocapture` prints the per-class tally.
 
 use ruse_core::{Regex, RegexError, RegexOptions};
 
@@ -30,10 +34,12 @@ pub(crate) enum Nvim {
 pub(crate) enum Expect {
     Agree,
     Unsupported,
+    Known(u32),
 }
 
 #[derive(Debug)]
 pub(crate) struct Case {
+    pub class: &'static str,
     pub pat: &'static str,
     pub hay: &'static str,
     pub ic: bool,
@@ -55,11 +61,68 @@ fn check(case: &Case) -> Result<(), String> {
     match (case.expect, case.nvim, &got) {
         (Expect::Unsupported, _, Err(RegexError::Unsupported(_))) => Ok(()),
         (Expect::Unsupported, _, _) => Err(format!("expected Unsupported, got {got:?}")),
-        (Expect::Agree, Nvim::Error, Err(_)) => Ok(()),
-        (Expect::Agree, Nvim::NoMatch, Ok(None)) => Ok(()),
-        (Expect::Agree, Nvim::Match(s, e), Ok(Some(span))) if *span == (s, e) => Ok(()),
+        (Expect::Known(n), nvim, _) if agrees(nvim, &got) => Err(format!(
+            "known divergence #{n} now agrees with nvim {nvim:?}: mark the row agreed"
+        )),
+        (Expect::Known(_), _, _) => Ok(()),
+        (Expect::Agree, nvim, _) if agrees(nvim, &got) => Ok(()),
         (Expect::Agree, nvim, _) => Err(format!("nvim {nvim:?}, ruse {got:?}")),
     }
+}
+
+type Got<'a> = Result<Option<(usize, usize)>, &'a RegexError>;
+
+/// ruse's answer is nvim's: the same span, no match, or (for a Vim error) any refusal.
+fn agrees(nvim: Nvim, got: &Got) -> bool {
+    match (nvim, got) {
+        (Nvim::Error, Err(_)) | (Nvim::NoMatch, Ok(None)) => true,
+        (Nvim::Match(s, e), Ok(Some(span))) => *span == (s, e),
+        _ => false,
+    }
+}
+
+/// The per-class tally (#912): rows, agreed with nvim, rejected as unsupported, known divergences.
+#[test]
+fn class_table() {
+    let mut classes: Vec<(&str, [usize; 3])> = Vec::new();
+    for c in cases::CASES {
+        let i = match classes.iter().position(|(name, _)| *name == c.class) {
+            Some(i) => i,
+            None => {
+                classes.push((c.class, [0; 3]));
+                classes.len() - 1
+            }
+        };
+        let slot = match c.expect {
+            Expect::Agree => 0,
+            Expect::Unsupported => 1,
+            Expect::Known(_) => 2,
+        };
+        classes[i].1[slot] += 1;
+    }
+    println!("| class | rows | agree | unsupported | known |");
+    println!("|---|---:|---:|---:|---:|");
+    let mut total = [0; 3];
+    for (name, n) in &classes {
+        println!(
+            "| {name} | {} | {} | {} | {} |",
+            n.iter().sum::<usize>(),
+            n[0],
+            n[1],
+            n[2]
+        );
+        for k in 0..3 {
+            total[k] += n[k];
+        }
+    }
+    println!(
+        "| total | {} | {} | {} | {} |",
+        total.iter().sum::<usize>(),
+        total[0],
+        total[1],
+        total[2]
+    );
+    assert_eq!(total.iter().sum::<usize>(), cases::CASES.len());
 }
 
 #[test]

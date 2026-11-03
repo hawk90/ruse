@@ -413,7 +413,8 @@ fn search_char_landing(
     backward: bool,
     offset: SearchOffset,
 ) -> Option<usize> {
-    let spans = match_spans(b, pattern, st.view.search_options());
+    // Every match a search can land on, empty ones included (`/^$`, `/\<`, `/foo\zs`, #705).
+    let spans = search_spans(b, pattern, st.view.search_options());
     if spans.is_empty() {
         return None;
     }
@@ -429,15 +430,23 @@ fn search_char_landing(
     };
     let mut pos = origin;
     let mut landed: Option<usize> = None;
+    // A landing at the end of a line is compared one character back, where the cursor is put (#737).
+    let key = |lp: usize| landing_key(b, lp);
     for _ in 0..count.max(1) {
         let next = if backward {
-            (spans.iter().map(|&sp| landing(sp)).filter(|&lp| lp < pos))
-                .max()
-                .or_else(|| spans.iter().map(|&sp| landing(sp)).max())
+            (spans
+                .iter()
+                .map(|&sp| landing(sp))
+                .filter(|&lp| key(lp) < key(pos)))
+            .max()
+            .or_else(|| spans.iter().map(|&sp| landing(sp)).max())
         } else {
-            (spans.iter().map(|&sp| landing(sp)).filter(|&lp| lp > pos))
-                .min()
-                .or_else(|| spans.iter().map(|&sp| landing(sp)).min())
+            (spans
+                .iter()
+                .map(|&sp| landing(sp))
+                .filter(|&lp| key(lp) > key(pos)))
+            .min()
+            .or_else(|| spans.iter().map(|&sp| landing(sp)).min())
         };
         match next {
             Some(lp) => {
@@ -653,6 +662,14 @@ fn plan_search_char(
 ) -> Plan {
     let Some(target) = search_char_landing(st, b, origin, count, pattern, backward, offset) else {
         return beep(cur, st.view.mode);
+    };
+    // A `$` match is past the line's last character; outside Visual mode the cursor is put back on that
+    // character, also as an operator's end (nvim: `d/$` on "ab cd" from `b` deletes "b c", #737). Visual
+    // mode keeps the real landing, so the selection takes in the line break.
+    let target = if st.view.mode == Mode::Normal {
+        landing_key(b, target)
+    } else {
+        target
     };
     if matches!(op, SearchOp::Move) {
         return nop(target, st.view.mode);

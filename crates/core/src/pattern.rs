@@ -178,33 +178,95 @@ impl Regex {
         Some(self.report(&caps))
     }
 
-    /// Every non-overlapping match in `hay`, left to right (for `hlsearch` highlight and `:s///g`).
+    /// Every match `:s///g` replaces in each line of `hay`, left to right (also `hlsearch`). This is the
+    /// loop of nvim's `do_sub` (v0.12.6), run per line:
     ///
-    /// The scan (including zero-width-match advancement) is delegated to the engine's own
-    /// `captures_iter`, which — unlike a hand-rolled `captures_at` loop — skips an empty match that
-    /// sits right where the previous match ended (`a*` on `"aax"` yields `aa` then the `x` gap, not a
-    /// spurious empty span between them) and, crucially, can never stall: a zero-width match at
-    /// `hay.len()` terminates the iterator instead of spinning forever (the bug this replaces, which
-    /// hung `hlsearch`/`:s///g` on any empty-matching pattern like `/a*` or `/$`). `report` applies any
-    /// `\zs`/`\ze` reported-span override per match.
+    /// - the next match is searched from the REPORTED end of the last one, so a `\ze` lets the next
+    ///   match overlap the rest of the whole match (`:s/\v(ab)\zeab/-/g` on "ababab" gives "--ab");
+    /// - an empty match right where the previous match ended does not count: the scan steps one
+    ///   character instead (`x*` on "abc" is empty before each character, `a*` on "aax" is "aa" only);
+    /// - for a pattern that cannot match a line break, the scan of a line stops once it reaches the end
+    ///   of the line, so an empty match there counts only when the scan got there by a match, not by
+    ///   stepping: `:s/x*/-/g` on "abc" gives "-a-b-c", `:s/\>/-/g` on "a b" gives "a- b-", and
+    ///   `:s/a\|$/-/g` on "ab" gives "-b-".
+    ///
+    /// Each line is scanned on its own (a line's scan restarts the empty-match rule), and the scan never
+    /// stalls: every step either moves past a match or steps one character.
     #[must_use]
     pub fn find_all(&self, hay: &str) -> Vec<Match> {
+        self.scan_lines(hay, true)
+    }
+
+    /// Every match a `/` or `?` search can land on in each line of `hay`, left to right: nvim's
+    /// `searchit` with the default `'cpoptions'` flag `c`. The next match is searched from the reported
+    /// end of the last one, and an empty match steps one character, so unlike [`Regex::find_all`] every
+    /// empty match is kept (`/\<` lands on each word start, `/$` on each line end) and a match that runs
+    /// onto a later line ends its line's scan.
+    #[must_use]
+    pub fn search_all(&self, hay: &str) -> Vec<Match> {
+        self.scan_lines(hay, false)
+    }
+
+    /// The per-line scan behind [`Regex::find_all`] (`substitute`) and [`Regex::search_all`].
+    fn scan_lines(&self, hay: &str, substitute: bool) -> Vec<Match> {
         let mut out: Vec<Match> = Vec::new();
-        let mut trailing_empty_at_eol = false;
-        for caps in self.inner.captures_iter(hay) {
-            if phantom_line(hay, &caps) {
-                break; // it can only be the last candidate
+        let n = hay.len();
+        let mut ls = 0;
+        // The slot after a final "\n" is not a line (see `phantom_line`).
+        while ls < n || (ls == n && !(n > 0 && hay.ends_with('\n'))) {
+            let le = hay[ls..].find('\n').map_or(n, |i| ls + i);
+            let mut next = le + 1;
+            let mut col = ls;
+            let mut prev_end: Option<usize> = None;
+            loop {
+                let Some(caps) = self.inner.captures_at(hay, col) else {
+                    return out; // no match anywhere further down
+                };
+                if phantom_line(hay, &caps) {
+                    return out;
+                }
+                let whole = caps.get(0).expect("group 0 always present").start();
+                if whole > le {
+                    // The leftmost match starts on a later line: no line before it has one.
+                    next = hay[..whole].rfind('\n').map_or(0, |i| i + 1);
+                    break;
+                }
+                let m = self.report(&caps);
+                let step = |at: usize| at + hay[at..].chars().next().map_or(1, char::len_utf8);
+                if substitute && prev_end == Some(col) && m.start == m.end && m.end == col {
+                    // An empty match where the previous one ended does not count.
+                    if col >= le {
+                        break;
+                    }
+                    col = step(col);
+                    if col >= le && !self.multiline {
+                        break;
+                    }
+                    continue;
+                }
+                out.push(m);
+                if m.end > le {
+                    break; // it ran onto a later line
+                }
+                if substitute {
+                    col = m.end;
+                    prev_end = Some(col);
+                    if col >= le && !self.multiline {
+                        break;
+                    }
+                } else if m.start == m.end {
+                    if m.end >= le {
+                        break;
+                    }
+                    col = step(m.end);
+                } else {
+                    col = m.end;
+                }
             }
-            let whole = caps.get(0).expect("group 0 always present");
-            trailing_empty_at_eol = whole.start() == whole.end() && whole.end() == hay.len();
-            out.push(self.report(&caps));
-        }
-        // Vim quirk (verified against nvim v0.12.4): `:s///g` does NOT emit a trailing zero-width match
-        // at end-of-line for an unanchored pattern — `:s/x*/-/g` on "abc" gives "-a-b-c", not "-a-b-c-".
-        // It DOES keep a zero-width EOL match when that is the SOLE match: an empty line yields "-", and
-        // `:s/$/-/` yields "abc-". So drop the trailing empty-at-EOL match only when it follows another.
-        if out.len() > 1 && trailing_empty_at_eol {
-            out.pop();
+            if next <= ls {
+                break; // cannot happen (a match past `le` is on a later line); never loop
+            }
+            ls = next;
         }
         out
     }
@@ -548,6 +610,7 @@ fn lower(pattern: &str, magic0: Magic, ci: bool) -> Result<Lowered, RegexError> 
         groups: 0,
         zs: Vec::new(),
         ze: Vec::new(),
+        captures: 0,
         saw_ic: false,
         saw_noic: false,
         ci,
@@ -580,6 +643,8 @@ struct Parser<'a> {
     lx: Lexer<'a>,
     /// Rust capture groups opened so far (Vim's groups plus the `\zs`/`\ze` markers).
     groups: usize,
+    /// Vim's own `\(` groups opened so far (at most 9, Vim's `NSUBEXP - 1`).
+    captures: usize,
     zs: Vec<usize>,
     ze: Vec<usize>,
     saw_ic: bool,
@@ -822,6 +887,10 @@ impl Parser<'_> {
                 r"\n".to_string()
             }
             Tok::Op('(') => {
+                self.captures += 1;
+                if self.captures > 9 {
+                    return Err(syntax("E51: Too many \\("));
+                }
                 self.groups += 1;
                 format!("({})", self.reg(Paren::Capture)?)
             }
@@ -1642,6 +1711,53 @@ mod tests {
             all("o*", "foo bar"),
             vec![(0, 0), (1, 3), (4, 4), (5, 5), (6, 6)]
         );
+    }
+
+    /// `:s///g` resumes at the reported (`\ze`) end, and keeps an empty match at the end of a line that a
+    /// match (not a one-character step) reached (#1047, #1048; nvim v0.12.6: `:s/\v(ab)\zeab/-/g` on
+    /// "ababab" is "--ab", `:s/\>/-/g` on "a b" is "a- b-", `:s/a\|$/-/g` on "ab" is "-b-"). Each line of a
+    /// multi-line haystack is scanned on its own.
+    #[test]
+    fn find_all_follows_do_sub() {
+        assert_eq!(all(r"\v(ab)\zeab", "ababab"), vec![(0, 2), (2, 4)]);
+        assert_eq!(all(r"\>", "a b"), vec![(1, 1), (3, 3)]);
+        assert_eq!(all(r"\>", "foo bar"), vec![(3, 3), (7, 7)]);
+        assert_eq!(all(r"a\|$", "ab"), vec![(0, 1), (2, 2)]);
+        assert_eq!(all("x*", "ab\ncd"), vec![(0, 0), (1, 1), (3, 3), (4, 4)]);
+        assert_eq!(all("^", "ab\ncd\n"), vec![(0, 0), (3, 3)]);
+    }
+
+    /// A `/` search sees every empty match (`\<` at each word start, `$` at each line end) and resumes at
+    /// the reported end (#705).
+    #[test]
+    fn search_all_keeps_empty_matches() {
+        let spans = |pat: &str, hay: &str| -> Vec<(usize, usize)> {
+            Regex::compile(pat, Options::default())
+                .expect("compiles")
+                .search_all(hay)
+                .iter()
+                .map(|m| (m.start, m.end))
+                .collect()
+        };
+        assert_eq!(spans(r"\<", "xx foo bar"), vec![(0, 0), (3, 3), (7, 7)]);
+        assert_eq!(spans("$", "ab\ncd\n"), vec![(2, 2), (5, 5)]);
+        assert_eq!(spans("^$", "a\n\nb"), vec![(2, 2)]);
+        assert_eq!(spans("x*", "ab"), vec![(0, 0), (1, 1), (2, 2)]);
+        assert_eq!(spans(r"foo\zsbar", "foobar foobar"), vec![(3, 6), (10, 13)]);
+        assert_eq!(spans("aa", "aaa"), vec![(0, 2)]);
+        assert_eq!(spans(r"a\nb", "a\nb\na\nb"), vec![(0, 3), (4, 7)]);
+    }
+
+    /// Vim allows nine `\(` groups (E51 beyond); `\%(` and the `\zs` markers do not count.
+    #[test]
+    fn at_most_nine_capture_groups() {
+        let nine = r"\(a\)".repeat(9);
+        assert!(Regex::compile(&nine, Options::default()).is_ok());
+        assert!(Regex::compile(&format!(r"{nine}\%(b\)\zs"), Options::default()).is_ok());
+        assert!(matches!(
+            Regex::compile(&format!(r"{nine}\(b\)"), Options::default()),
+            Err(RegexError::Syntax(_))
+        ));
     }
 
     /// A belt-and-suspenders wall-clock guard: even if the expectations above were ever loosened, a

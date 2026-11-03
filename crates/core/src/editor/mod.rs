@@ -2286,7 +2286,7 @@ mod range;
 pub(crate) use range::*;
 
 mod search;
-use search::{match_spans, search_bwd, search_fwd, step_char};
+use search::{landing_key, match_spans, search_bwd, search_fwd, search_spans, step_char};
 
 mod substitute;
 /// The options a `:sort` carries (parsed by the frontend from `[!][i][n][r][u] [/pattern/]`). Grouped into
