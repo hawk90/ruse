@@ -514,7 +514,9 @@ fn the_616_options_check_their_values_like_nvim() {
 #[test]
 fn a_line_taller_than_the_window_shows_the_cursors_rows_like_nvim() {
     let text = format!("top\n{}\nend\n", "a".repeat(300));
-    let steps: [(&str, (usize, usize), usize, [usize; 2]); 9] = [
+    /// `(keys, (line, col), top line, skipped columns at so=0 and so=3)`.
+    type TallStep = (&'static str, (usize, usize), usize, [usize; 2]);
+    let steps: [TallStep; 9] = [
         ("j", (2, 0), 2, [0, 0]),
         ("$", (2, 299), 2, [140, 140]),
         ("0", (2, 0), 2, [0, 0]),
