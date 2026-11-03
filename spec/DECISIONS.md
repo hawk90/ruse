@@ -952,6 +952,11 @@ related:
   `scs`); those options' values are also written at the start of the trace. The format stays `v1` with
   additive verbs; older traces parse and replay unchanged. Full design:
   [RFC-0020](../docs/rfc/proposed/RFC-0020-ex-edits-in-the-trace.md).
+  **Amended (#1134, RFC-0020 R6):** the rule is general. Any core state the session writes outside `run_cmd`
+  that a later command reads is recorded as an `ExCmd`: LSP edit lists as `ex_edits` (external input as data,
+  replayed through the same `apply_edits`), the `:keepjumps` switch as `ex_keepjumps`, and register contents no
+  recorded command produced (the `"/ ": ". "%` syncs, clipboard reads, raw macro writes) as `ex_register`. The
+  trace start also writes the registers that already hold a value.
 - **Reason:** Ex edits call `Workspace` ops straight from `Session::execute_ex_one`, and `&`/`g&` return before
   `run_cmd`, so none of them reach the trace: a session that used `:s`, `:g` or `:sort` replays to a different
   document and reports success. Recording raw Ex text would re-resolve history, cursor and IO at replay time;

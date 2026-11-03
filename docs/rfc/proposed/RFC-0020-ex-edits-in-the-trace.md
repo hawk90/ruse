@@ -145,6 +145,40 @@ The trace stays `v1`. The new verbs are additive (INV-ADDITIVE, D-006): a v1 tra
 none of them and replays exactly as before. A trace that uses them fails to parse on an older binary with
 `BadCommand` (an unknown verb), which is the honest failure; there is no silent skip.
 
+### R6. Every core write the session makes outside `run_cmd` is recorded (amendment, #1134)
+
+The re-evaluation condition below ("a non-Ex frontend path found mutating outside `run_cmd`") has fired: LSP
+edits, `:keepjumps` and the register syncs write core state from the session without a `Command`. The rule
+becomes general: **any core state the session writes, that a later command reads, goes through `run_cmd` as an
+`ExCmd`**, by the same R1/R2 principles (resolved values, external input as data, one implementation shared by
+live and replay). Three records cover the paths found:
+
+- **`ExCmd::Edits { origin, edits }`** (verb `ex_edits`): an edit list that came from outside the core — the
+  LSP's formatting, rename, code action and completion edits today. It holds the resolved, disjoint
+  `(start, end, text)` byte edits the session passed to `Workspace::apply_edits`, and the origin
+  (`TransactionOrigin::Lsp`). Replay calls the same `apply_edits`, so the undo group and refusal rule are
+  shared. This is R2, not Alternative 3: the server's response *is* external input, and an edit list is its
+  resolved form; core edits keep recording as commands. The cursor the session places afterwards is the
+  existing `ex_place`.
+- **`ExCmd::KeepJumps(bool)`** (verb `ex_keepjumps 1|0`): the `Workspace::set_keep_jumps` toggle around a
+  `:keepjumps` command, recorded where it is set and cleared. It is a state switch, not an R3 group, because
+  live `:keepjumps` opens no undo block and a group would.
+- **`ExCmd::Register { name, value }`** (verb `ex_register`): register contents the session writes that no
+  recorded command produced. It covers the four read-only registers `"/ ": ". "%` synced by
+  `set_special_registers`, a clipboard read (`"+`/`"*`, external input), and a macro's raw bytes written by
+  `set_register_raw`. It is recorded where the session writes the value, and only when the value differs from
+  the last one recorded for that register. The record carries the register kind (charwise, linewise or
+  blockwise) and the bytes.
+
+This also settles open question 1. The trace start writes the registers that already hold a value (the
+unnamed register, `"0`–`"9`, `"a`–`"z` and `"-`) as `ex_register` lines, after the starting options (R4). So
+`p` of a register filled before the trace replays the same text. Clipboard registers are not snapshotted at
+the start. They are recorded when they are read, since only a read can make them matter.
+
+Limits: one `ex_edits` record holds at most the edit count and bytes that `apply_edits` accepts live. One
+`ex_register` record is bounded by the register size limit already in force (E1240 for a put). A trace line
+past either limit is a typed `TraceError`, never a large allocation (INV-FAIL-BOUNDED).
+
 ## Reference Invariants
 
 - **INV-CMD-SEMANTIC** (depends) — Ex edits become semantic commands on the same `Command` boundary as keys.
@@ -167,7 +201,9 @@ none of them and replays exactly as before. A trace that uses them fails to pars
 ## Security impact
 
 A trace can now hold file and process output (R2), so a saved trace may carry more of the user's data than the
-document. RFC-0012 already notes that traces carry document content; the same caution applies. Replay is safer
+document. With R6 it also holds language-server edits, register contents present at the start, and clipboard
+text that was pasted. RFC-0012 already notes that traces carry document content; the same caution applies,
+and `:trace save` says that registers and clipboard text are included. Replay is safer
 than before, not riskier: it never runs a shell command or reads a file named in the trace.
 
 ## Performance impact
@@ -255,7 +291,7 @@ cursor and undo grouping, with no IO and no re-resolution):
   `[z`/`]z`. A placement after a switch to another buffer is not recorded, since a trace follows one
   document. The caret gravity is one more starting option (`ex_set caretgravity 0|1`, R4), so an Emacs
   session replays with point between characters. ruse reads no mouse input, so there are no mouse moves.
-- **Still outside the trace**: LSP edits (`apply_edits`: formatting, rename, code actions, completion),
+- **Superseded by R6** (the amendment defines the three record kinds below): LSP edits (`apply_edits`: formatting, rename, code actions, completion),
   `:keepjumps`, and the special registers `"/ ": ". "%`. Each needs a record kind this RFC does not define:
   an edit list for LSP edits, a jumplist-suppression marker for `:keepjumps` (its inner Ex edit replays and
   pushes the jump it skipped live), and register contents for the special registers (open question 1). A
@@ -263,8 +299,8 @@ cursor and undo grouping, with no IO and no re-resolution):
 
 ## Open questions
 
-1. Whether registers filled *before* the trace starts (and the clipboard registers `"+`/`"*`) should be
-   snapshotted into the trace header, by the same "external input is data" rule as R2. Not needed for Ex edits;
-   it affects `p`.
+1. ~~Whether registers filled *before* the trace starts (and the clipboard registers `"+`/`"*`) should be
+   snapshotted into the trace header.~~ Settled by R6: start-of-trace `ex_register` lines for the filled
+   registers; clipboard registers recorded when read.
 2. Whether an `\=` replacement whose value depends on anything outside the document should record the text
    it produced per match instead of the expression (D-025 owns the expression surface).
