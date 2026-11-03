@@ -42,6 +42,15 @@ fn plain(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
 
+/// A mark jump's feed as the `` g` ``/`g'` form when `keep` (#1175). Under an operator (`` dg`a ``) the
+/// operator runs over the mark as for `` d`a ``, so the caller passes `keep` only for a bare jump.
+fn keep_jumps_feed(feed: Feed, keep: bool) -> Feed {
+    match feed {
+        Feed::Cmd(cmd) if keep => Feed::KeepJumps(cmd),
+        other => other,
+    }
+}
+
 /// Whether `c` can open a terminal control sequence: ESC or a C1 control (U+0080..=U+009F, CSI and OSC
 /// among them). A paste never carries one (TERM-PASTE-2, SEC-5).
 #[must_use]
@@ -83,6 +92,9 @@ pub enum Feed {
     /// if the original keys were re-typed at the current cursor. Kept distinct from `Cmd` because one
     /// keypress expands to a compound edit, and because the driver must NOT re-record it as a new change.
     Replay(Vec<Command>),
+    /// `` g`{mark} `` / `g'{mark}`: run the jump without changing the jumplist or the `''` mark (`:help g'`),
+    /// as `:keepjumps` would run it. The frontend switches `keepjumps` on around it through the trace.
+    KeepJumps(Command),
     /// A counted [`Repeat`] (`3ihello<Esc>`, `N.` of an insert, an Emacs `C-u N` prefix): applied like
     /// [`Feed::Replay`], one command at a time, but never expanded up front, so a huge count costs no memory
     /// and CTRL-C stops it between repetitions (#683).
@@ -309,13 +321,13 @@ enum Awaiting {
     /// of `gR`). The live count carries through so `3gr{char}` replaces three chars.
     VirtualReplaceChar,
     /// After `` ` `` (backtick): the next key names a mark to jump to — `.` (last change) or a named mark
-    /// `a`–`z`. Any other key aborts.
-    MarkJump,
+    /// `a`–`z`. Any other key aborts. `keep_jumps` is the `` g` `` form: the jump leaves the jumplist alone.
+    MarkJump { keep_jumps: bool },
     /// After `m`: the next key names the mark (`a`–`z`) to SET at the cursor. Any other key aborts.
     SetMarkChar,
     /// After `'` (apostrophe): the next key names a mark to jump to LINEWISE (first non-blank of its line) —
-    /// `.` (last change) or `a`–`z`. Any other key aborts.
-    MarkJumpLine,
+    /// `.` (last change) or `a`–`z`. Any other key aborts. `keep_jumps` is the `g'` form.
+    MarkJumpLine { keep_jumps: bool },
     /// After `"`: the next key is the register NAME (`a`–`z`, or `A`–`Z` to append). It arms a one-shot
     /// pending register that the FOLLOWING yank/delete/change/paste targets — emitted as a
     /// [`Command::SetRegister`] the core applies before that command. `"` itself does not reset the count.
@@ -537,7 +549,7 @@ pub struct SuspendedCmdline(Option<CmdLine>);
 pub struct InputEngine {
     /// Which input profile is active — Vim (modal grammar) or Emacs (non-modal). Chosen at construction.
     input_profile: InputProfile,
-    /// The error the last key failed with, when the engine alone can tell (`n` before any search is E35),
+    /// The error the last key failed with, when the engine alone can tell (`dp` outside diff mode is E99),
     /// for the frontend's status line. Taken with [`InputEngine::take_error`].
     error: Option<&'static str>,
     /// The active profile's layers. Built once — resolution must not allocate per keystroke.
@@ -1579,15 +1591,18 @@ impl InputEngine {
         // Empty pattern → reuse the last search's PATTERN (Vim: `/<CR>` / `?<CR>` repeat it), adopting THIS
         // line's direction. A new offset on the empty line replaces the stored one; no offset part reuses
         // it (so `//e` re-searches the last pattern with `e`, and `//` repeats pattern AND offset).
+        // With no previous pattern the search still runs, with an EMPTY pattern the core fails (E35, #1173).
         let (pattern, offset) = if raw_pattern.is_empty() {
             match &self.last_search {
                 Some((p, _, last_off)) => (p.clone(), off.unwrap_or(*last_off)),
-                None => return Feed::Ignored,
+                None => (String::new(), SearchOffset::None),
             }
         } else {
             (raw_pattern, off.unwrap_or(SearchOffset::None))
         };
-        self.last_search = Some((pattern.clone(), !backward, offset));
+        if !pattern.is_empty() {
+            self.last_search = Some((pattern.clone(), !backward, offset));
+        }
         let cmd = Command::Search {
             op,
             count,
@@ -1605,26 +1620,24 @@ impl InputEngine {
     /// `n` (`opposite = false`) / `N` (`opposite = true`): repeat the last search, REAPPLYING its offset.
     /// `n` keeps the stored direction, `N` flips it. Routed through [`Command::Search`] (carrying the
     /// offset) so the offset-aware match rule advances correctly even when the offset landed the cursor
-    /// before the match. No prior search → the key is unmatched (falls through to the outer namespace).
-    fn repeat_search(&mut self, opposite: bool, key: KeyEvent) -> Feed {
-        match self.last_search.clone() {
-            Some((pattern, forward, offset)) => {
-                let backward = if opposite { forward } else { !forward };
-                // `n`/`N` are motions: `3n` steps three matches and `dn`/`cn`/`gUn` operate up to the match
-                // (#799), through the same operator and count model as `/`.
-                self.span_action(Command::Search {
-                    op: self.search_op(),
-                    count: self.mcount(),
-                    pattern,
-                    backward,
-                    offset,
-                })
-            }
-            None => {
-                self.error = Some("E35: No previous regular expression");
-                self.unmatched(Ns::Normal, key)
-            }
-        }
+    /// before the match. No prior search → a search with an EMPTY pattern, which the core fails and the
+    /// frontend reports as E35: it reaches the core so the wanted column resets and a replay sees it, as nvim's
+    /// `normal_search` sets `w_set_curswant` before it fails (#1173).
+    fn repeat_search(&mut self, opposite: bool) -> Feed {
+        let (pattern, forward, offset) =
+            self.last_search
+                .clone()
+                .unwrap_or((String::new(), true, SearchOffset::None));
+        let backward = if opposite { forward } else { !forward };
+        // `n`/`N` are motions: `3n` steps three matches and `dn`/`cn`/`gUn` operate up to the match
+        // (#799), through the same operator and count model as `/`.
+        self.span_action(Command::Search {
+            op: self.search_op(),
+            count: self.mcount(),
+            pattern,
+            backward,
+            offset,
+        })
     }
 
     /// Record `pattern` as the last search (with its `forward` direction) so `n`/`N` repeat it. Used by the
@@ -2608,7 +2621,14 @@ impl InputEngine {
             self.pending_record_expr = Some(expr.clone());
             return;
         }
-        match change_kind(cmd) {
+        // A search with no previous pattern (`dn`, `cn` before any search) fails before its operator runs, so
+        // it is no change for `.` (nvim's `normal_search` → `clearopbeep`, #1173).
+        let failing_search = matches!(cmd, Command::Search { pattern, .. } if pattern.is_empty());
+        match if failing_search {
+            ChangeKind::NotAChange
+        } else {
+            change_kind(cmd)
+        } {
             ChangeKind::InsertEntering => {
                 self.recording = Some(ChangeIntent {
                     // `gi` repeats as a plain `i` at the NEW cursor (Vim's `nv_edit` turns `gi` into `i`
@@ -3519,7 +3539,7 @@ impl InputEngine {
             }
             // `` ` `` — arm a mark jump; the next key names the mark (`.` = last change, or `a`–`z`).
             KeyCode::Char('`') => {
-                self.normal.awaiting = Awaiting::MarkJump;
+                self.normal.awaiting = Awaiting::MarkJump { keep_jumps: false };
                 return Feed::Pending;
             }
             // `m` — arm a mark SET; the next key names the mark (`a`–`z`).
@@ -3529,7 +3549,7 @@ impl InputEngine {
             }
             // `'` — arm a LINEWISE mark jump; the next key names the mark (`.` or `a`–`z`).
             KeyCode::Char('\'') => {
-                self.normal.awaiting = Awaiting::MarkJumpLine;
+                self.normal.awaiting = Awaiting::MarkJumpLine { keep_jumps: false };
                 return Feed::Pending;
             }
             _ => {}
@@ -3832,8 +3852,8 @@ impl InputEngine {
             // offset (`:help search-offset`), so they route through [`Command::Search`] (which carries the
             // offset) rather than the plain `SearchNext`/`SearchPrev`; the offset-aware match rule advances
             // past the current match even when the offset landed the cursor before it (`s-1`).
-            KeyCode::Char('n') => self.repeat_search(false, key),
-            KeyCode::Char('N') => self.repeat_search(true, key),
+            KeyCode::Char('n') => self.repeat_search(false),
+            KeyCode::Char('N') => self.repeat_search(true),
             // `*`/`#` — search the whole keyword under the cursor forward / backward; operator-aware
             // (`d*`). The planner reads the keyword from the buffer (the engine has no buffer).
             KeyCode::Char('*') => self.word_search(true, true),
@@ -4051,6 +4071,8 @@ impl InputEngine {
                             | 'N'
                             | '*'
                             | '#'
+                            | '`'
+                            | '\''
                     );
                     if ctrl || !g_motion {
                         return self.unmatched(Ns::OperatorPending, key);
@@ -4066,6 +4088,16 @@ impl InputEngine {
                     KeyCode::Char('a') if !ctrl => self.action(Command::AsciiInfo),
                     // `g8` — the UTF-8 bytes of the character under the cursor.
                     KeyCode::Char('8') if !ctrl => self.action(Command::Utf8Info),
+                    // `` g`{mark} `` / `g'{mark}` — a mark jump that leaves the jumplist alone (#1175); under an
+                    // operator the same motion as `` `{mark} ``/`'{mark}`. The count and operator stay armed.
+                    KeyCode::Char('`') if !ctrl => {
+                        self.normal.awaiting = Awaiting::MarkJump { keep_jumps: true };
+                        Feed::Pending
+                    }
+                    KeyCode::Char('\'') if !ctrl => {
+                        self.normal.awaiting = Awaiting::MarkJumpLine { keep_jumps: true };
+                        Feed::Pending
+                    }
                     KeyCode::Char('g') => self.motion(Motion::GotoLine),
                     // `gh` / `gH` / `g CTRL-H` — start Select charwise / linewise / blockwise (`:help gh`).
                     KeyCode::Char(c @ ('h' | 'H'))
@@ -4328,8 +4360,9 @@ impl InputEngine {
                 self.reset();
                 return Feed::ExecuteEx(line.to_string());
             }
-            Awaiting::MarkJump => {
+            Awaiting::MarkJump { keep_jumps } => {
                 self.normal.awaiting = Awaiting::Nothing;
+                let jump = self.normal.op.is_none();
                 // Only a named mark composes with an operator here (`` d`a ``); the special marks do not yet,
                 // so under an operator they abort rather than jump with the operator dropped (#790).
                 if self.normal.op.is_some()
@@ -4340,7 +4373,7 @@ impl InputEngine {
                 {
                     return self.unmatched(Ns::OperatorPending, key);
                 }
-                return match key.code {
+                let feed = match key.code {
                     // `` `^ `` (where Insert stopped), and `` d`< ``/`` d`> `` under an operator (#1088).
                     KeyCode::Char('^') => self.mark_op('^', false),
                     KeyCode::Char(c @ ('<' | '>')) if self.normal.op.is_some() => {
@@ -4363,6 +4396,7 @@ impl InputEngine {
                     // Any other mark name is not wired — abort the pending construct.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
+                return keep_jumps_feed(feed, keep_jumps && jump);
             }
             Awaiting::SetMarkChar => {
                 self.normal.awaiting = Awaiting::Nothing;
@@ -4376,8 +4410,9 @@ impl InputEngine {
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
-            Awaiting::MarkJumpLine => {
+            Awaiting::MarkJumpLine { keep_jumps } => {
                 self.normal.awaiting = Awaiting::Nothing;
+                let jump = self.normal.op.is_none();
                 if self.normal.op.is_some()
                     && !matches!(
                         key.code,
@@ -4386,7 +4421,7 @@ impl InputEngine {
                 {
                     return self.unmatched(Ns::OperatorPending, key);
                 }
-                return match key.code {
+                let feed = match key.code {
                     // `'^`, and `d'<`/`d'>` under an operator (#1088).
                     KeyCode::Char('^') => self.mark_op('^', true),
                     KeyCode::Char(c @ ('<' | '>')) if self.normal.op.is_some() => {
@@ -4409,6 +4444,7 @@ impl InputEngine {
                     // Any other mark name is not wired — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
+                return keep_jumps_feed(feed, keep_jumps && jump);
             }
             Awaiting::RegisterSelect => {
                 self.normal.awaiting = Awaiting::Nothing;

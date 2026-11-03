@@ -1734,6 +1734,9 @@ pub(crate) fn fails(
         // `{count}$` moves `count - 1` lines down first, failing like `j` only on the last line (`5$` on
         // the line above it still reaches the last line's end).
         Motion::LineEnd => n > 1 && last_line,
+        // `{count}dd`/`yy`/`cc`/`>>` move `count - 1` lines down first (`nv_lineop` → `cursor_down`), so on
+        // the last line a count above 1 fails like `j` there (#1176).
+        Motion::Line => op && n > 1 && last_line,
         _ => false,
     }
 }

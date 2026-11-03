@@ -4169,12 +4169,17 @@ mod search_tests {
     #[test]
     fn slash_opens_search_and_n_repeats() {
         let mut e = InputEngine::new();
+        // No prior search yet: a search with no pattern, which the core fails (E35, #1173).
         assert_eq!(
             e.feed(k('n'), Mode::Normal),
-            Feed::Beep {
-                clear_register: false
-            }
-        ); // no prior search yet
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: String::new(),
+                backward: false,
+                offset: SearchOffset::None,
+            })
+        );
         assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
         // Submitting the pattern yields a bare-move Search AND records it for `n`/`N`.
         assert_eq!(
@@ -4377,11 +4382,51 @@ mod search_tests {
     }
 
     #[test]
-    fn empty_search_pattern_is_inert() {
+    fn empty_search_pattern_with_no_previous_search_fails_in_the_core() {
         let mut e = InputEngine::new();
-        assert_eq!(e.feed(k('/'), Mode::Normal), Feed::Pending);
-        // No prior search → empty pattern has nothing to reuse, so it aborts.
-        assert_eq!(e.submit_search(String::new(), false), Feed::Ignored);
+        assert_eq!(e.feed(k('?'), Mode::Normal), Feed::Pending);
+        // No prior search → the empty pattern has nothing to reuse: the search runs with no pattern, which
+        // the core fails (E35, #1173), and nothing is recorded for `n`.
+        assert_eq!(
+            e.submit_search(String::new(), true),
+            Feed::Cmd(Command::Search {
+                op: SearchOp::Move,
+                count: 1,
+                pattern: String::new(),
+                backward: true,
+                offset: SearchOffset::None,
+            })
+        );
+        assert_eq!(e.last_search(), None);
+    }
+
+    #[test]
+    fn g_backtick_and_g_quote_jump_keeping_the_jumplist() {
+        let mut e = InputEngine::new();
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('`'), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('a'), Mode::Normal),
+            Feed::KeepJumps(Command::GotoNamedMark('a'))
+        );
+        assert_eq!(e.feed(k('g'), Mode::Normal), Feed::Pending);
+        assert_eq!(e.feed(k('\''), Mode::Normal), Feed::Pending);
+        assert_eq!(
+            e.feed(k('.'), Mode::Normal),
+            Feed::KeepJumps(Command::GotoLastChangeLine)
+        );
+        // Under an operator it is the operator over the mark, as `` d`a ``.
+        for key in ['d', 'g', '`'] {
+            assert_eq!(e.feed(k(key), Mode::Normal), Feed::Pending);
+        }
+        assert_eq!(
+            e.feed(k('a'), Mode::Normal),
+            Feed::Cmd(Command::OpToMark {
+                op: MarkOp::Delete,
+                name: 'a',
+                linewise: false,
+            })
+        );
     }
 
     #[test]

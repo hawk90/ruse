@@ -141,10 +141,18 @@ fn plan_selection_span(
     };
     let reg = captured(b, s, e, line);
     match op {
-        // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal.
+        // Yank leaves the buffer unchanged, cursor at the selection start (Vim), back to Normal: on a char,
+        // so a start on a line's break (`$vk` reaches past the end, #1176) is its last char.
         OpKind::Yank => Plan {
             action: Action::Nop,
-            cursor: s,
+            cursor: {
+                let (ls, le) = (line_start(b, s), line_end(b, s));
+                if s >= le && le > ls && st.view.caret == CaretGravity::OnChar {
+                    prev_grapheme(b, le)
+                } else {
+                    s
+                }
+            },
             mode: Mode::Normal,
             is_edit: false,
             effects: Vec::new(),
@@ -381,6 +389,11 @@ fn plan_search(
     offset: SearchOffset,
     hint: GroupHint,
 ) -> Plan {
+    // An empty pattern is a search with no previous pattern to repeat (`n` before any search, #1173): it
+    // fails before it searches (E35), an operator with it.
+    if pattern.is_empty() {
+        return beep(cur, st.view.mode);
+    }
     match offset {
         // A LINE offset (`/pat/+1`) reshapes the whole motion into a linewise one; the others (none /
         // `s` / `e`) stay charwise. Split so each keeps its own, simpler geometry.
@@ -590,6 +603,8 @@ pub(crate) fn span_lines(st: &EditorState, cmd: &Command) -> Option<(usize, usiz
     let b = st.bytes();
     let cur = st.view.cursor;
     match cmd {
+        // No previous pattern (#1173): no target.
+        Command::Search { pattern, .. } if pattern.is_empty() => None,
         Command::Search {
             count,
             pattern,
@@ -4729,6 +4744,72 @@ fn plan_reindent(st: &EditorState, first_line: usize, last_line: usize, hint: Gr
     }
 }
 
+/// The byte offset in `line` (one line's bytes, no newline) of a Normal-mode cursor at the wanted column
+/// `want` (Vim's `coladvance`): the char covering that virtual column, the last char past the end or at
+/// [`MAXCOL`], `0` on an empty line.
+fn line_col_cursor(line: &[u8], want: usize, ts: usize) -> usize {
+    let last = || motion::prev_grapheme(line, line.len());
+    if line.is_empty() {
+        0
+    } else if want == MAXCOL {
+        last()
+    } else {
+        let at = want_col(line, 0, want, ts);
+        if at >= line.len() {
+            last()
+        } else {
+            at
+        }
+    }
+}
+
+/// What a refused operator was ([`refused_linewise_cursor`]).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum RefusedOp {
+    Delete,
+    Change,
+    Yank,
+}
+
+/// Where a LINEWISE operator `cmd` leaves the cursor when its register cannot be written (#1174): nvim has
+/// already run `do_pending_operator`, which put the cursor on the START of the range (`oap->start`: the
+/// earlier of the cursor and the motion's landing, a linewise Visual selection's first line at column 0);
+/// `op_delete` then fails, and under 'nostartofline' a delete goes back to the old wanted column on that line.
+/// `cc` lands on the first non-blank first (`nv_lineop`'s `beginline(BL_WHITE)`). `None` for a command whose
+/// range start this does not know.
+pub(super) fn refused_linewise_cursor(
+    st: &EditorState,
+    cmd: &Command,
+    op: RefusedOp,
+) -> Option<usize> {
+    let b = st.bytes();
+    let cur = st.view.cursor;
+    let ts = st.view.indent.tab_width;
+    let start = if st.view.mode.selection().is_some() {
+        line_start(b, st.view.anchor?.min(cur))
+    } else {
+        let landing = match *cmd {
+            Command::Delete(_, Motion::Line) | Command::Yank(_, Motion::Line) => cur,
+            Command::Change(_, Motion::Line) => motion::first_non_blank(b, line_start(b, cur)),
+            Command::Delete(n, m) | Command::Change(n, m) | Command::Yank(n, m) => {
+                op_landing(b, cur, m, n, st.view.curswant, ts, op == RefusedOp::Yank)
+            }
+            Command::OpToMark {
+                name,
+                linewise: true,
+                ..
+            } => mark_line_target(b, st.view.named_mark(name)?),
+            _ => return None,
+        };
+        cur.min(landing)
+    };
+    if op != RefusedOp::Delete {
+        return Some(start);
+    }
+    let ls = line_start(b, start);
+    Some(ls + line_col_cursor(&b[ls..line_end(b, ls)], st.view.curswant, ts))
+}
+
 fn plan_shift(st: &EditorState, cur: usize, count: u32, right: bool, hint: GroupHint) -> Plan {
     plan_shift_times(st, cur, count, right, 1, hint)
 }
@@ -4750,7 +4831,8 @@ fn plan_shift_times(
     // configured style — Vim's `shift_line` → `set_indent`: under `noexpandtab` the result is tabs at the
     // tabstop plus a spaces remainder, under `expandtab` all spaces (a leading tab becomes spaces).
     let mut edits: Vec<Edit> = Vec::new();
-    let mut first_new_ws = 0usize;
+    // The first line's rebuilt leading whitespace, for the cursor below.
+    let mut first_new_ws: Vec<u8> = Vec::new();
     let mut ls = first_ls;
     for i in 0..count.max(1) {
         let le = line_end(b, ls);
@@ -4765,7 +4847,7 @@ fn plan_shift_times(
         };
         if let Some(want) = want {
             if i == 0 {
-                first_new_ws = want.len();
+                first_new_ws.clone_from(&want);
             }
             if b[ls..ls + ws] != want[..] {
                 edits.push(Edit::replace(ls, ws, want));
@@ -4777,14 +4859,17 @@ fn plan_shift_times(
         ls = le + 1;
     }
 
-    // Cursor: first non-blank of the FIRST shifted line, computed against the POST-edit buffer: the rebuilt
-    // whitespace replaces the old, so the first non-blank moves to `ls + new_ws` (an empty line got no indent,
-    // so the cursor stays at its start). The all-blank-line case (fnb past the last char) is pulled back onto
-    // the last char by `commit`'s Normal-mode clamp.
+    // Cursor: the FIRST shifted line at the wanted column, as nvim's `op_shift` → `beginline(BL_SOL | BL_FIX)`,
+    // which under 'nostartofline' is `coladvance(curswant)` (#1176): `$>>` stays at the line's end, `w>>`
+    // keeps its column. Computed against the POST-edit line (the rebuilt whitespace replaces the old); an
+    // empty line got no indent, so the cursor stays at its start.
     let cursor = if right && first_ls >= first_le {
         first_ls
     } else {
-        first_ls + first_new_ws
+        let (_, old_ws) = indent_cols(&b[first_ls..first_le], st.view.indent.tab_width);
+        let mut line = first_new_ws;
+        line.extend_from_slice(&b[first_ls + old_ws..first_le]);
+        first_ls + line_col_cursor(&line, st.view.curswant, st.view.indent.tab_width)
     };
 
     if edits.is_empty() {

@@ -2197,8 +2197,12 @@ impl Session {
                     return;
                 }
                 // A search (`/pat`, `?pat`, `n`, `N`, bare, under an operator or `!`) whose pattern matches
-                // nowhere fails with E486 and nothing runs (#901).
+                // nowhere fails with E486 and nothing runs (#901); with no previous pattern, E35 (#1173).
                 if search_misses(&cmd, ws, status) {
+                    return;
+                }
+                if no_previous_pattern(&cmd) {
+                    *status = E35.into();
                     return;
                 }
                 if let Some((first, last)) = ws.span_lines(&cmd) {
@@ -2235,6 +2239,19 @@ impl Session {
                 ws.beep();
             }
             Feed::Cmd(cmd) => self.run_resolved_cmd(cmd, frame),
+            // `` g`a `` / `g'a` (#1175): the jump runs under `keepjumps`, switched through the trace (RFC-0020
+            // R6) as `:keepjumps` is, so a replay skips the jumplist entry too. Already on (`:keepjumps normal
+            // g`a`), it stays on.
+            Feed::KeepJumps(cmd) => {
+                let kept = self.ws.keep_jumps();
+                if !kept {
+                    run_ex(ExCmd::KeepJumps(true), &mut self.ws, &mut self.recorded);
+                }
+                self.run_resolved_cmd(cmd, frame);
+                if !kept {
+                    run_ex(ExCmd::KeepJumps(false), &mut self.ws, &mut self.recorded);
+                }
+            }
             // `.` (dot-repeat) replays the last change; record and apply each concrete command so the
             // trace (F-022) captures the resolved edit, not the `.` keypress.
             Feed::Replay(cmds) => {
@@ -2369,6 +2386,13 @@ impl Session {
         // nowhere fails with E486 and nothing runs (#901). The core fails it too (a beep, nothing moved or
         // edited); it still runs so the wanted column resets, as nvim's `normal_search` sets
         // `w_set_curswant` before it searches (#1171).
+        // `n`/`N`/`/<CR>` before any search fail with E35 (#1173). The core fails the empty pattern (a beep,
+        // nothing moved); it runs, recorded, so the wanted column resets as nvim's `normal_search` resets it.
+        if no_previous_pattern(&cmd) {
+            run_cmd(cmd, ws, files, recorded, status, quit);
+            *status = E35.into();
+            return;
+        }
         if search_misses(&cmd, ws, status) {
             if matches!(cmd, Command::Search { .. }) {
                 let err = std::mem::take(status);
@@ -4548,6 +4572,13 @@ fn note_word_search(
             false
         }
     }
+}
+
+const E35: &str = "E35: No previous regular expression";
+
+/// Whether `cmd` is a search the engine issued with no previous pattern to repeat (an empty one, #1173).
+fn no_previous_pattern(cmd: &Command) -> bool {
+    matches!(cmd, Command::Search { pattern, .. } if pattern.is_empty())
 }
 
 /// Whether `cmd` is a search whose pattern matches nowhere in the focused buffer; if so the status gets

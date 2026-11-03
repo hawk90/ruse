@@ -33,7 +33,7 @@ fn enter() -> KeyEvent {
 fn step(engine: &mut InputEngine, st: &mut EditorState, key: KeyEvent) -> Feed {
     let out = engine.feed(key, st.mode());
     match &out {
-        Feed::Cmd(cmd) => {
+        Feed::Cmd(cmd) | Feed::KeepJumps(cmd) => {
             apply_command(st, cmd);
         }
         Feed::Replay(cmds) => {

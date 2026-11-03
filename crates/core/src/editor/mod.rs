@@ -3914,7 +3914,7 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     }
     // A refused register still ran the operator in nvim (`op_delete` fails inside `do_pending_operator`,
     // which has already set the wanted column), so it is not a failure that keeps the column (#1171).
-    let refused = refuse_unwritable_register(st, &p);
+    let refused = refuse_unwritable_register(st, cmd, &p);
     let was_refused = refused.is_some();
     if let Some(refused) = refused {
         p = refused;
@@ -4016,7 +4016,12 @@ fn keeps_curswant_on_failure(st: &EditorState, cmd: &Command, beeped: bool) -> b
     let keeps = |m: &Motion| {
         matches!(
             m,
-            Motion::Left
+            // `j`/`k` (`nv_down`/`nv_up`) and `{count}dd` past the end (`nv_lineop`) fail in `cursor_down`/
+            // `cursor_up` before anything sets the column (#1176).
+            Motion::Up
+                | Motion::Down
+                | Motion::Line
+                | Motion::Left
                 | Motion::Right
                 | Motion::WrapLeft
                 | Motion::WrapRight
@@ -4047,7 +4052,10 @@ fn keeps_curswant_on_failure(st: &EditorState, cmd: &Command, beeped: bool) -> b
         Command::GotoOlderJump
         | Command::GotoNewerJump
         | Command::GotoOlderChange
-        | Command::GotoNewerChange => beeped,
+        | Command::GotoNewerChange
+        // `{count}>>` on the last line (`nv_lineop`'s `cursor_down`).
+        | Command::ShiftRight(_)
+        | Command::ShiftLeft(_) => beeped,
         // These always edit when they succeed.
         Command::IncrementNumber(_)
         | Command::JoinLines(_)
@@ -4119,13 +4127,21 @@ fn uses_reg_one(cmd: &Command) -> bool {
 /// registers, #1022) fails as nvim's `op_delete`/`op_yank` do: nothing is captured or deleted, the cursor
 /// goes to the start of the text the operator covered, a selection ends, and a change still enters Insert
 /// there. `None` when the plan writes no register or may write the one named.
-fn refuse_unwritable_register(st: &EditorState, p: &Plan) -> Option<Plan> {
-    let start = match p.set_register.as_ref()? {
-        RegWrite::Yank(_, (s, _)) => *s,
-        RegWrite::Edit(_) | RegWrite::EditRingOne(_) => match &p.action {
-            Action::Txn { edits, .. } => edits.edits().first().map_or(p.cursor, |e| e.pos.0),
-            _ => p.cursor,
-        },
+fn refuse_unwritable_register(st: &EditorState, cmd: &Command, p: &Plan) -> Option<Plan> {
+    let (start, linewise, op) = match p.set_register.as_ref()? {
+        RegWrite::Yank(reg, (s, _)) => (*s, reg.is_linewise(), planner::RefusedOp::Yank),
+        RegWrite::Edit(reg) | RegWrite::EditRingOne(reg) => (
+            match &p.action {
+                Action::Txn { edits, .. } => edits.edits().first().map_or(p.cursor, |e| e.pos.0),
+                _ => p.cursor,
+            },
+            reg.is_linewise(),
+            if p.mode == Mode::Insert {
+                planner::RefusedOp::Change
+            } else {
+                planner::RefusedOp::Delete
+            },
+        ),
         RegWrite::Replaced(_)
         | RegWrite::KillAppend(_)
         | RegWrite::KillPrepend(_)
@@ -4139,6 +4155,11 @@ fn refuse_unwritable_register(st: &EditorState, p: &Plan) -> Option<Plan> {
     } else {
         Mode::Normal
     };
+    // A linewise range starts on its first line (#1174); the edit's start can be the newline before it.
+    let start = linewise
+        .then(|| planner::refused_linewise_cursor(st, cmd, op))
+        .flatten()
+        .unwrap_or(start);
     Some(Plan {
         action: Action::Nop,
         cursor: start.min(st.doc.bytes().len()),
@@ -4224,6 +4245,9 @@ fn update_curswant(st: &mut EditorState, cmd: &Command, entry_mode: Mode, kept_c
         | Command::MoveDown
         // An undo break moves nothing: `i_<Down><Down>` (a break before each move) keeps the column.
         | Command::BreakUndo
+        // Starting (or switching) Visual moves nothing: `$v` keeps the end-of-line column, so `$V>` shifts
+        // with the cursor at the line's end (nvim's `n_start_visual_mode` leaves `w_curswant` alone, #1176).
+        | Command::EnterVisual { .. }
         // A `"x` prefix (or the register a failed `p` spends) moves nothing either (nvim 0.12.6:
         // `/a<CR>:1t$<CR>"add` keeps the search's column).
         | Command::SetRegister(_) => {} // keep the sticky column
