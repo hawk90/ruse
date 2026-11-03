@@ -65,6 +65,35 @@ pub(crate) fn write_report(
     )
 }
 
+/// Why a write could not be made. `Display` is the status line: nvim's message where it has one.
+#[derive(Debug)]
+pub(crate) enum FileError {
+    /// The atomic write itself failed (`write failed: …`, the message `:w` has always shown).
+    Write(io::Error),
+    /// `E139`: another buffer holds the target file.
+    LoadedElsewhere,
+    /// `E17` (no `!`; `shown` is the absolute path) or `E502` (with `!`; the name as typed).
+    Directory { shown: String, bang: bool },
+    /// `E13`: the target exists and there is no `!`.
+    Exists,
+}
+
+impl std::fmt::Display for FileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FileError::Write(e) => write!(f, "write failed: {e}"),
+            FileError::LoadedElsewhere => f.write_str("E139: File is loaded in another buffer"),
+            FileError::Directory { shown, bang: true } => {
+                write!(f, "E502: \"{shown}\" is a directory")
+            }
+            FileError::Directory { shown, bang: false } => {
+                write!(f, "E17: \"{shown}\" is a directory")
+            }
+            FileError::Exists => f.write_str("E13: File exists (add ! to override)"),
+        }
+    }
+}
+
 /// Whether `range` covers every line of the focused buffer (`:1,$w` writes the whole buffer, so it marks it
 /// saved and needs no `!` on its own file, as in Vim).
 fn covers_whole(ws: &Workspace, range: SubRange) -> bool {
@@ -80,7 +109,7 @@ fn write_own(
     source: &[u8],
     disk: &[u8],
     mark_saved: bool,
-) -> Result<String, String> {
+) -> Result<String, FileError> {
     match persist::atomic::save(path, disk) {
         Ok(()) => {
             if mark_saved {
@@ -101,7 +130,7 @@ fn write_own(
         Err(e) => {
             // Expected external failure (§7): surface it in the status bar, log once, keep the buffer.
             tracing::warn!(event = "save.failed", path = %path.display(), error = %e);
-            Err(format!("write failed: {e}"))
+            Err(FileError::Write(e))
         }
     }
 }
@@ -115,22 +144,26 @@ fn check_other_target(
     target: &Path,
     name: &str,
     bang: bool,
-) -> Result<bool, String> {
+) -> Result<bool, FileError> {
     if buffer_for_path(files, target).is_some_and(|other| other != id) {
-        return Err("E139: File is loaded in another buffer".into());
+        return Err(FileError::LoadedElsewhere);
     }
     match fs::metadata(target) {
-        Ok(m) if m.is_dir() && bang => Err(format!("E502: \"{name}\" is a directory")),
+        Ok(m) if m.is_dir() && bang => Err(FileError::Directory {
+            shown: name.to_string(),
+            bang,
+        }),
         Ok(m) if m.is_dir() => {
             let abs = std::path::absolute(target).unwrap_or_else(|_| target.to_path_buf());
-            Err(format!("E17: \"{}\" is a directory", abs.display()))
+            Err(FileError::Directory {
+                shown: abs.display().to_string(),
+                bang,
+            })
         }
-        Ok(_) if !bang => Err("E13: File exists (add ! to override)".into()),
+        Ok(_) if !bang => Err(FileError::Exists),
         Ok(_) => Ok(false),
         // A dangling symlink or unreadable entry still exists for `E13`.
-        Err(_) if fs::symlink_metadata(target).is_ok() && !bang => {
-            Err("E13: File exists (add ! to override)".into())
-        }
+        Err(_) if fs::symlink_metadata(target).is_ok() && !bang => Err(FileError::Exists),
         Err(_) => Ok(true),
     }
 }
@@ -250,13 +283,15 @@ pub(crate) fn ex_write(
                     Some(_) if !whole && !spec.bang => {
                         Err("E140: Use ! to write partial buffer".to_string())
                     }
-                    Some((path, _)) => write_own(ws, id, path, &source, &disk, whole),
+                    Some((path, _)) => {
+                        write_own(ws, id, path, &source, &disk, whole).map_err(|e| e.to_string())
+                    }
                 }
             } else {
                 let name = name.as_deref().expect("a write to another file names it");
                 let target = PathBuf::from(name);
                 match check_other_target(files, id, &target, name, spec.bang) {
-                    Err(e) => Err(e),
+                    Err(e) => Err(e.to_string()),
                     Ok(new) => match persist::atomic::save(&target, &disk) {
                         Ok(()) => {
                             // A buffer with no file takes the name it is first written to (Vim's
@@ -319,7 +354,7 @@ pub(crate) fn ex_saveas(
     let new = match check_other_target(files, id, &target, name, bang) {
         Ok(new) => new,
         Err(e) => {
-            *status = e;
+            *status = e.to_string();
             return false;
         }
     };
@@ -369,12 +404,12 @@ pub(crate) fn ex_write_all(
         let (source, disk) = encode(&text, bf.fmt, fixeol);
         match write_own(ws, b.id, &bf.path, &source, &disk, true) {
             Ok(msg) => last = Some(msg),
-            Err(msg) => error = Some(msg),
+            Err(e) => error = Some(e.to_string()),
         }
     }
     match (error, last) {
         (Some(e), _) => {
-            *status = e;
+            *status = e.to_string();
             false
         }
         (None, Some(msg)) => {
