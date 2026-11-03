@@ -951,11 +951,11 @@ pub fn assign_value(
                     if new.is_empty() || new.contains("%s") {
                         Ok(())
                     } else {
-                        Err("E537: 'commentstring' must be empty or contain %s".to_string())
+                        Err(ruse_core::editor::OptionValueError::NoPercentS)
                     }
                 }
             };
-            checked.map_err(ValueError::Message)?;
+            checked.map_err(|e| ValueError::Message(e.to_string()))?;
             Ok(OptVal::Text(Cow::Owned(new)))
         }
         _ => Err(ValueError::Invalid),

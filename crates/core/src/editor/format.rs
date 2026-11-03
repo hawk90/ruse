@@ -67,24 +67,51 @@ pub(crate) fn parse_comments(s: &str) -> Vec<ComPart> {
     out
 }
 
-/// Whether `'comments'` is valid (nvim's `did_set_comments`): the error message if not.
-pub(crate) fn check_comments(s: &str) -> Result<(), String> {
+/// Why a `'formatoptions'` / `'comments'` / `'commentstring'` value is rejected; `Display` is nvim's
+/// message.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OptionValueError {
+    /// `E539: Illegal character <c>`: a letter no flag uses.
+    IllegalChar(char),
+    /// `E524: Missing colon`: a `'comments'` part without `:`.
+    MissingColon,
+    /// `E525: Zero length string`: a `'comments'` part with an empty leader.
+    ZeroLength,
+    /// `E537`: a `'commentstring'` without `%s`.
+    NoPercentS,
+}
+
+impl std::fmt::Display for OptionValueError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OptionValueError::IllegalChar(c) => write!(f, "E539: Illegal character <{c}>"),
+            OptionValueError::MissingColon => f.write_str("E524: Missing colon"),
+            OptionValueError::ZeroLength => f.write_str("E525: Zero length string"),
+            OptionValueError::NoPercentS => {
+                f.write_str("E537: 'commentstring' must be empty or contain %s")
+            }
+        }
+    }
+}
+
+/// Whether `'comments'` is valid (nvim's `did_set_comments`).
+pub(crate) fn check_comments(s: &str) -> Result<(), OptionValueError> {
     let b = s.as_bytes();
     let mut i = 0;
     while i < b.len() {
         while i < b.len() && b[i] != b':' {
             let c = b[i];
             if !(b"nbsmexflrO".contains(&c) || c.is_ascii_digit() || c == b'-') {
-                return Err(format!("E539: Illegal character <{}>", c as char));
+                return Err(OptionValueError::IllegalChar(c as char));
             }
             i += 1;
         }
         if i >= b.len() {
-            return Err("E524: Missing colon".into());
+            return Err(OptionValueError::MissingColon);
         }
         i += 1;
         if i >= b.len() || b[i] == b',' {
-            return Err("E525: Zero length string".into());
+            return Err(OptionValueError::ZeroLength);
         }
         while i < b.len() && b[i] != b',' {
             if b[i] == b'\\' && i + 1 < b.len() {
@@ -1191,9 +1218,9 @@ pub(crate) fn eat_space(c: char) -> bool {
 }
 
 /// Whether `'formatoptions'` is valid (nvim's `FO_ALL`): the error message if not.
-pub(crate) fn check_formatoptions(s: &str) -> Result<(), String> {
+pub(crate) fn check_formatoptions(s: &str) -> Result<(), OptionValueError> {
     match s.chars().find(|c| !"tcro/q2vlb1mMBn,aw]jp".contains(*c)) {
-        Some(c) => Err(format!("E539: Illegal character <{c}>")),
+        Some(c) => Err(OptionValueError::IllegalChar(c)),
         None => Ok(()),
     }
 }
@@ -1340,15 +1367,10 @@ mod tests {
     #[test]
     fn check_comments_errors() {
         assert!(check_comments(DEFAULT_COMMENTS).is_ok());
-        assert_eq!(
-            check_comments("abc").unwrap_err(),
-            "E539: Illegal character <a>"
-        );
-        assert_eq!(
-            check_comments(":,").unwrap_err(),
-            "E525: Zero length string"
-        );
-        assert_eq!(check_comments("b").unwrap_err(), "E524: Missing colon");
+        let msg = |s: &str| check_comments(s).unwrap_err().to_string();
+        assert_eq!(msg("abc"), "E539: Illegal character <a>");
+        assert_eq!(msg(":,"), "E525: Zero length string");
+        assert_eq!(msg("b"), "E524: Missing colon");
     }
 
     #[test]

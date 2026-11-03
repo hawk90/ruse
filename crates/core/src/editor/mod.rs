@@ -165,7 +165,7 @@ impl EditorOption {
 ///
 /// # Errors
 /// `E539: Illegal character <c>` for a letter no flag uses.
-pub fn check_formatoptions(value: &str) -> Result<(), String> {
+pub fn check_formatoptions(value: &str) -> Result<(), OptionValueError> {
     format::check_formatoptions(value)
 }
 
@@ -173,7 +173,7 @@ pub fn check_formatoptions(value: &str) -> Result<(), String> {
 ///
 /// # Errors
 /// `E539` for a bad flag, `E524` for a part without `:`, `E525` for an empty leader.
-pub fn check_comments(value: &str) -> Result<(), String> {
+pub fn check_comments(value: &str) -> Result<(), OptionValueError> {
     format::check_comments(value)
 }
 
@@ -3316,6 +3316,7 @@ pub use ex_cmd::{
 };
 
 mod format;
+pub use format::OptionValueError;
 mod indent;
 mod planner;
 pub use planner::plan;
