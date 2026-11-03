@@ -87,8 +87,16 @@ register I/O, which lives in the core `Workspace`:
   keys onto the replay queue. `{count}@{reg}` repeats, `@@` replays the last register, `@:` re-drives the last
   Ex line, and `Q` replays the last recorded register. The prefix keys match an unchorded key with SHIFT
   allowed, since a terminal reports `Q` as SHIFT+`Q` (#681); a chord is never a register name.
-- **Recursion guard:** a cap on total replayed keys per top-level `@` (e.g. 100k) so a self-invoking macro
-  terminates with a status line instead of hanging.
+- **Recursion guard:** a cap of 100,000 replayed keys for everything one TYPED key expands to (its `@`, the
+  `@`s and `:normal`s that replay reaches), so a self-invoking macro terminates with a status line instead of
+  hanging. The budget is reseeded only by a typed key, never by the queue running dry: a body whose length
+  divides the cap empties the queue exactly as the budget runs out, and reseeding there looped forever
+  (#787).
+- **Interrupt:** CTRL-C (`C-g` under Emacs) stops a replay between two keys, as nvim's `got_int` does: the
+  session polls the terminal while replay keys remain (`breakcheck.rs` →
+  `ruse_core::interrupt`), drops the keys still queued, closes the replay's undo step, and shows
+  `Interrupted`. The CTRL-C itself is then read as a key (nvim's `process_ctrl_c`), so an interrupted Insert
+  ends. While a replay runs the screen repaints at most every 100 ms, not once per key.
 
 ## 5. Scope
 

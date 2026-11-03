@@ -33,6 +33,7 @@ pub mod editor;
 pub mod effect;
 pub mod expr;
 pub mod info;
+pub mod interrupt;
 pub mod keymap;
 pub mod keyword;
 mod line_undo;

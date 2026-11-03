@@ -418,7 +418,12 @@ pub(crate) fn emacs_repeat(cmd: Command, count: u32) -> Feed {
     if count <= 1 {
         Feed::Cmd(cmd)
     } else {
-        Feed::Replay(vec![cmd; count as usize])
+        // Lazily: a huge `C-u` count must not build `count` commands up front (#683).
+        Feed::Repeat(super::Repeat {
+            unit: vec![cmd],
+            times: count,
+            ..super::Repeat::default()
+        })
     }
 }
 

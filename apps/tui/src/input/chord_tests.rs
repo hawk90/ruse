@@ -423,7 +423,7 @@ fn insert_ctrl_c_leaves_insert_without_the_count_repeat() {
         e.feed(leave, Mode::Insert)
     };
     assert_eq!(run(ctrl('c')), Feed::Cmd(Command::EnterNormal));
-    assert!(matches!(run(special(KeyCode::Esc)), Feed::Replay(_)));
+    assert!(matches!(run(special(KeyCode::Esc)), Feed::Repeat(_)));
 }
 
 /// In Select, Replace and a pending digraph a chord neither types nor replaces.

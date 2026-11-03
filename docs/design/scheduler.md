@@ -339,7 +339,11 @@ pub enum CancelReason { Superseded, DeadlineMissed, Shutdown, BudgetRevoked, Deg
 1. **In-process Rust jobs** (parse, index, search, regex) — cooperative. The job body calls
    `cx.cancel.checkpoint()?` at a documented granularity (per node / per line / per N match steps — the same
    step budget that bounds ReDoS, D-028). A job that never checks is a bug caught by the cancel-grace watchdog
-   (below).
+   (below). *Shipped today, before the scheduler:* the synchronous commands that can run long on the main
+   thread (a macro or `:normal` replay, a counted repeat, the `:g` marking pass, the `:s` scan, `:earlier` /
+   `:later`) call the user-interrupt checkpoint `ruse_core::interrupt::breakcheck` once per step; the TUI's
+   hook (`apps/tui/src/breakcheck.rs`) polls the terminal for CTRL-C (`C-g` under Emacs) at most every
+   20 ms, as nvim's `got_int` (#898). It is the `UserAbort` path in miniature.
 2. **External processes** (LSP, git, formatters, `=`/`!` filter operators from D-025) — cancel closes stdin /
    sends the cancel request / on grace-timeout `SIGTERM` then `SIGKILL`. The process's CPU is metered and its
    slot freed.

@@ -82,13 +82,20 @@ pub enum EditorOption {
     /// (Vim's `sw=0`).
     ShiftWidth(usize),
     /// `'tabstop'` (`ts`) — the columns a `<Tab>` character spans (`editor.tab_width`): rendering, virtual
-    /// columns, `<Tab>` insertion stops and the tabs+spaces mix of a `noexpandtab` indent. Clamped to `1..`.
+    /// columns, `<Tab>` insertion stops and the tabs+spaces mix of a `noexpandtab` indent. Clamped to
+    /// `1..=`[`MAX_TABSTOP`].
     TabStop(usize),
     /// `'expandtab'` (`et`) — indent with spaces (`true`) vs a tab (`false`).
     ExpandTab(bool),
     /// `'textwidth'` (`tw`) — the width `gq`/`gw` wrap to; `0` means use the 79-column fallback.
     TextWidth(usize),
 }
+
+/// The largest value a number option holds (nvim's C `int`).
+pub const MAX_OPTION_INT: usize = i32::MAX as usize;
+
+/// The largest `'tabstop'` (nvim's `TABSTOP_MAX`).
+pub const MAX_TABSTOP: usize = 9999;
 
 /// The indent config a shift/indent operator (`>>`/`<<`) reads: `editor.tab_width` (`'tabstop'`),
 /// `editor.shift_width` (`'shiftwidth'`) and `editor.indent_style` (`'expandtab'`). Grouped so the "config"
@@ -1053,8 +1060,9 @@ impl EditorState {
     /// `editor.indent_style`. Sets the tabstop AND the shiftwidth to `tab_width` (the common `ts=sw` case);
     /// `:set shiftwidth`/`:set tabstop` ([`EditorState::set_option`]) set them apart.
     pub fn set_indent(&mut self, tab_width: usize, indent_style: IndentStyle) {
-        self.view.indent.tab_width = tab_width.max(1);
-        self.view.indent.shift_width = tab_width.max(1);
+        let tab_width = tab_width.clamp(1, MAX_TABSTOP);
+        self.view.indent.tab_width = tab_width;
+        self.view.indent.shift_width = tab_width;
         self.view.indent.style = indent_style;
     }
 
@@ -1071,8 +1079,10 @@ impl EditorState {
         match opt {
             EditorOption::IgnoreCase(v) => self.view.search_case.ignore = v,
             EditorOption::SmartCase(v) => self.view.search_case.smart = v,
-            EditorOption::ShiftWidth(n) => self.view.indent.shift_width = n,
-            EditorOption::TabStop(n) => self.view.indent.tab_width = n.max(1),
+            // Clamped to nvim's bounds (a C `int`; `'tabstop'` 1..=9999), so an API caller cannot make
+            // `>>` or a `<Tab>` allocate without limit (#684); `:set` rejects a value past them first.
+            EditorOption::ShiftWidth(n) => self.view.indent.shift_width = n.min(MAX_OPTION_INT),
+            EditorOption::TabStop(n) => self.view.indent.tab_width = n.clamp(1, MAX_TABSTOP),
             EditorOption::ExpandTab(v) => {
                 self.view.indent.style = if v {
                     IndentStyle::Space
@@ -1080,7 +1090,7 @@ impl EditorState {
                     IndentStyle::Tab
                 }
             }
-            EditorOption::TextWidth(n) => self.view.text_width = n,
+            EditorOption::TextWidth(n) => self.view.text_width = n.min(MAX_OPTION_INT),
         }
     }
 
@@ -1179,15 +1189,8 @@ impl EditorState {
         // pattern (`^`, `$`, `x*`) never substitutes there (`:%s/^/#/` on "abc\ndef\n" appends no line).
         let lines = line_spans(hay);
         let cursor_line = crate::pos::line_of(hay.as_bytes(), self.view.cursor);
-        let (first, last) = match range {
-            SubRange::CurrentLine => (cursor_line, cursor_line),
-            SubRange::WholeFile => (0, lines.len().saturating_sub(1)),
-            // 1-based inclusive from the user; clamp into range.
-            SubRange::Lines(a, b) => (
-                a.saturating_sub(1).min(lines.len().saturating_sub(1)),
-                b.saturating_sub(1).min(lines.len().saturating_sub(1)),
-            ),
-        };
+        // 1-based inclusive from the user, clamped into range and put in order.
+        let (first, last) = resolve_line_range(range, &lines, cursor_line);
 
         let mut out: Vec<Substitution> = Vec::new();
         find_substitutions(
@@ -1317,25 +1320,34 @@ impl EditorState {
         // it (visible under a `normal` payload, which would edit it).
         let lines = line_spans(hay);
         let count = lines.len();
-        let last_idx = count.saturating_sub(1);
         // `:g` with no range is the WHOLE FILE (unlike `:s`, whose default is the current line).
-        let (first, last) = match range {
-            SubRange::CurrentLine | SubRange::WholeFile => (0, last_idx),
-            SubRange::Lines(a, b) => (
-                a.saturating_sub(1).min(last_idx),
-                b.saturating_sub(1).min(last_idx),
-            ),
+        let range = match range {
+            SubRange::CurrentLine => SubRange::WholeFile,
+            r => r,
         };
+        let (first, last) = resolve_line_range(range, &lines, 0);
         if count == 0 {
             return Ok(Vec::new());
         }
+        // CTRL-C during the marking pass abandons the whole `:g`, as nvim's `ex_global` does: nothing is
+        // marked, so nothing runs.
+        let abandon = |marks: Vec<usize>| {
+            if crate::interrupt::interrupted() {
+                Vec::new()
+            } else {
+                marks
+            }
+        };
         if !re.multiline() {
-            return Ok((first..=last)
-                .filter(|&li| {
-                    let (ls, le) = lines[li];
-                    re.find_at(&hay[ls..le], 0).is_some() != negate
-                })
-                .collect());
+            return Ok(abandon(
+                (first..=last)
+                    .take_while(|_| !crate::interrupt::breakcheck())
+                    .filter(|&li| {
+                        let (ls, le) = lines[li];
+                        re.find_at(&hay[ls..le], 0).is_some() != negate
+                    })
+                    .collect(),
+            ));
         }
         // A pattern that can match a line break marks the line its match STARTS on (`:g/a\nb/` marks the
         // `a` line). Searched in the whole buffer, ending in a line break so the last line's `\n` matches;
@@ -1348,20 +1360,23 @@ impl EditorState {
             &owned
         };
         let mut next: Option<(usize, Option<usize>)> = None; // (searched from, leftmost whole start)
-        Ok((first..=last)
-            .filter(|&li| {
-                let (ls, le) = lines[li];
-                let ws = match next {
-                    Some((from, ws)) if from <= ls && ws.is_none_or(|w| w >= ls) => ws,
-                    _ => {
-                        let ws = re.find_whole_at(hay, ls).map(|(w, _)| w);
-                        next = Some((ls, ws));
-                        ws
-                    }
-                };
-                ws.is_some_and(|w| w <= le) != negate
-            })
-            .collect())
+        Ok(abandon(
+            (first..=last)
+                .take_while(|_| !crate::interrupt::breakcheck())
+                .filter(|&li| {
+                    let (ls, le) = lines[li];
+                    let ws = match next {
+                        Some((from, ws)) if from <= ls && ws.is_none_or(|w| w >= ls) => ws,
+                        _ => {
+                            let ws = re.find_whole_at(hay, ls).map(|(w, _)| w);
+                            next = Some((ls, ws));
+                            ws
+                        }
+                    };
+                    ws.is_some_and(|w| w <= le) != negate
+                })
+                .collect(),
+        ))
     }
 
     pub fn global(
@@ -2434,7 +2449,9 @@ mod range;
 pub(crate) use range::*;
 
 mod search;
-use search::{landing_key, match_spans, search_bwd, search_fwd, search_spans, step_char};
+use search::{
+    landing_key, match_spans, search_bwd, search_fwd, search_spans, step_char, walk_count,
+};
 
 mod substitute;
 /// The options a `:sort` carries (parsed by the frontend from `[!][i][n][r][u] [/pattern/]`). Grouped into

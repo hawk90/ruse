@@ -288,6 +288,25 @@ impl Editor {
         self.settle();
     }
 
+    /// Write `bytes` to the child's terminal and return at once, without settling: for input that must
+    /// arrive while the child is busy (CTRL-C during a long command).
+    pub fn send(&mut self, bytes: &[u8]) {
+        self.write_bounded(bytes);
+    }
+
+    /// Wait for the child to exit within `limit` and return its status, or `None` if it is still running
+    /// then.
+    pub fn exit_within(&mut self, limit: Duration) -> Option<i32> {
+        let start = Instant::now();
+        while start.elapsed() < limit {
+            if let Some(status) = self.try_status() {
+                return Some(status);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        self.try_status()
+    }
+
     /// Write `bytes` to the child's terminal, failing the test instead of blocking forever when the child
     /// stops reading. Small writes go in one piece (so a short sequence lands in one read); large ones in
     /// `PIECE`-byte pieces, each after a bounded wait for room in the PTY input queue.

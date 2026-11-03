@@ -502,7 +502,25 @@ fn parse_set_option(opt: &str) -> Option<Ex> {
                 "foldlevel" | "fdl" => return Some(Ex::SetFoldLevel(v.parse().ok()?)),
                 _ => {}
             }
-            let n: usize = v.parse().ok()?;
+            let is = |names: [&str; 2]| names.contains(&k);
+            let numeric =
+                is(["shiftwidth", "sw"]) || is(["tabstop", "ts"]) || is(["textwidth", "tw"]);
+            let n: usize = match v.parse() {
+                Ok(n) => n,
+                // Too many digits for any number option.
+                Err(_) if numeric && !v.is_empty() && v.bytes().all(|c| c.is_ascii_digit()) => {
+                    return Some(Ex::Fail(format!("E474: Invalid argument: {opt}")));
+                }
+                Err(_) => return None,
+            };
+            // nvim's bounds (v0.12.6, #684): a number option holds a C `int`, and `'tabstop'` is 1..=9999
+            // (`TABSTOP_MAX`). An unbounded `'shiftwidth'` let `>>` allocate without limit.
+            if is(["tabstop", "ts"]) && n == 0 {
+                return Some(Ex::Fail(format!("E487: Argument must be positive: {opt}")));
+            }
+            if (is(["tabstop", "ts"]) && n > 9999) || (numeric && n > i32::MAX as usize) {
+                return Some(Ex::Fail(format!("E474: Invalid argument: {opt}")));
+            }
             match k {
                 "shiftwidth" | "sw" => EditorOption::ShiftWidth(n),
                 "tabstop" | "ts" => EditorOption::TabStop(n),
@@ -1923,6 +1941,10 @@ fn parse_buffer(line: &str) -> Option<Ex> {
     // Accept `:b 2`, `:b2`, `:buffer 2`. The remainder must be a bare buffer number (verbs like `bnext`
     // are matched literally before this, so they never reach here).
     let n: u64 = rest.trim().parse().ok()?;
+    if n == 0 {
+        // Buffer numbers start at 1 (nvim v0.12.6, #870).
+        return Some(Ex::Fail("E939: Positive count required".into()));
+    }
     Some(Ex::Buffer(BufTarget::Number(n)))
 }
 

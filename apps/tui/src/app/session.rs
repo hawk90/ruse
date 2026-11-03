@@ -15,7 +15,7 @@ use ruse_core::{CaretGravity, Command, DocumentId, Mode, OpenKind, SplitDir, Tra
 
 use crate::app::dispatch::{
     buffer_list_line, dest_in_range, focused_buffer_label, is_ctrl, match_count_message, may_quit,
-    open_file_into_buffer, quit_window, regex_error_msg, run_cmd, BufferFile, Files,
+    open_file_into_buffer, quit_window, regex_error_msg, run_cmd, run_repeat, BufferFile, Files,
 };
 use crate::app::ex_range::ExRange;
 use crate::app::lsp_coordinator::LspCoordinator;
@@ -74,6 +74,9 @@ fn next_char_start(b: &[u8], at: usize) -> usize {
 /// hard-kill safety net. Idle ticks never write (#858). A panic, fatal signal or I/O error journals every
 /// modified buffer's exact latest state separately (`recover`). Full incremental journaling is post-MVP.
 const JOURNAL_THROTTLE: u32 = 8;
+
+/// How often the event loop repaints while a macro replay runs (see `run`).
+const REPLAY_PAINT: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// F-011: when a terminal is live the event loop polls for a key with this timeout (≈30fps) instead of
 /// blocking, so asynchronous PTY output renders within one tick. Only the terminal-active path polls.
@@ -820,12 +823,22 @@ impl Session {
         poll_ms
     }
 
+    /// Whether keys of a macro replay are still to run (the event loop paints less often meanwhile).
+    pub(crate) fn replaying(&self) -> bool {
+        self.macros.replay_pending()
+    }
+
     /// The next key the session queued for itself, if any, with its `from_replay` flag: the key half of a
     /// split Alt chord (typed, #896), else the next key of a macro replay (`@{reg}`, `@:`). The caller runs
     /// a full frame before each one and feeds it to [`Session::on_key`] before reading the terminal.
     pub(crate) fn next_queued(&mut self) -> Option<(KeyEvent, bool)> {
         if let Some(k) = self.meta_tail.take() {
             return Some((k, false));
+        }
+        // CTRL-C between two replayed keys stops the replay (a runaway macro, #787 / #898).
+        if self.macros.replay_pending() && ruse_core::interrupt::breakcheck() {
+            self.settle_interrupt();
+            return None;
         }
         // A linewise-Visual `@{reg}` runs on each line from its column 0, clamped to the last line.
         if let Some(line) = self.macros.next_line_run() {
@@ -898,10 +911,22 @@ impl Session {
         if self.failed_since(&status_before) {
             self.macros.flush_replay();
         }
+        self.settle_interrupt();
         if self.quit {
             Flow::Quit
         } else {
             Flow::Continue
+        }
+    }
+
+    /// After a key: if CTRL-C interrupted what it ran ([`ruse_core::interrupt`]), every loop on the way out
+    /// has stopped; drop the keys still to replay (nvim flushes typeahead on `got_int`), close the replay's
+    /// undo step, say so, and clear the interrupt for the next command.
+    fn settle_interrupt(&mut self) {
+        if ruse_core::interrupt::take() {
+            self.macros.interrupt_replay();
+            self.end_macro_undo();
+            self.status = "Interrupted".to_string();
         }
     }
 
@@ -948,8 +973,10 @@ impl Session {
                     run_cmd(cmd, ws, files, recorded, status, quit);
                 }
             }
+            Feed::Repeat(r) => run_repeat(r, ws, files, recorded, status, quit),
             _ => {}
         }
+        self.settle_interrupt();
         if self.quit {
             Flow::Quit
         } else {
@@ -1125,6 +1152,10 @@ impl Session {
                         macros.replay(b"\x1b");
                         macros.replay_lines(first, last, bytes);
                     }
+                    return;
+                }
+                // An empty register replays nothing however large the count (#685).
+                if crate::keys::decode(&bytes).is_empty() {
                     return;
                 }
                 for _ in 0..n {
@@ -2113,6 +2144,10 @@ impl Session {
                     run_cmd(cmd, ws, files, recorded, status, quit);
                 }
             }
+            Feed::Repeat(r) => {
+                sync_special_registers(ws, engine, last_ex_line, files, alt_file);
+                run_repeat(r, ws, files, recorded, status, quit);
+            }
         }
     }
 
@@ -2839,18 +2874,8 @@ impl Session {
             }
             // `:earlier`/`:later` walk chronological undo time by recording + applying N of the
             // g-/g+ commands (done HERE so they land in `recorded` for trace fidelity).
-            Ex::Earlier(n) => {
-                for _ in 0..n {
-                    run_cmd(Command::UndoOlder, ws, files, recorded, status, quit);
-                }
-                *status = format!("{n} change(s) earlier");
-            }
-            Ex::Later(n) => {
-                for _ in 0..n {
-                    run_cmd(Command::UndoNewer, ws, files, recorded, status, quit);
-                }
-                *status = format!("{n} change(s) later");
-            }
+            Ex::Earlier(n) => time_travel(true, n, ws, files, recorded, status, quit),
+            Ex::Later(n) => time_travel(false, n, ws, files, recorded, status, quit),
             // `:e[!] [++ff] [+cmd] [{file}]` (F-007, #610): open a file into a buffer (shared with the file
             // picker), or re-read the focused buffer's own file, which unsaved changes block (`E37`) without `!`.
             // A `+cmd` runs once the file is open (after this dispatch, which holds the session's fields).
@@ -3567,6 +3592,11 @@ impl Session {
     /// Returns whether a command failed: the rest of the replay it started is dropped then, and the caller
     /// drops the rest of its `:normal` keys too (#1085).
     fn nested_key(&mut self, key: KeyEvent, frame: &FrameCtx) -> bool {
+        // CTRL-C stops a `:normal` (and the `:g` or range driving it) between keys.
+        if ruse_core::interrupt::breakcheck() {
+            self.macros.flush_replay();
+            return true;
+        }
         let f = self.nested_frame(frame);
         let status_before = self.status.clone();
         self.route(key, true, &f);
@@ -3581,6 +3611,10 @@ impl Session {
                     ruse_core::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
                 let at = ruse_core::pos::nth_line_start(b, line.min(lines.saturating_sub(1)));
                 self.ws.place_focused_cursor(at);
+            }
+            if ruse_core::interrupt::breakcheck() {
+                self.macros.flush_replay();
+                return true;
             }
             let Some(k) = self.macros.pop_replay() else {
                 break;
@@ -3737,7 +3771,7 @@ impl Session {
             Some(range) => {
                 let (line1, line2) = crate::app::dispatch::resolve_normal_range(&s.ws, range);
                 for lnum in line1..=line2 {
-                    if s.quit {
+                    if s.quit || ruse_core::interrupt::interrupted() {
                         break;
                     }
                     let b = s.ws.focused().doc.bytes();
@@ -3782,30 +3816,33 @@ impl Session {
         // start of the next line (held left). A deleted line collapses them together.
         let anchors: Vec<_> = {
             let doc = self.ws.focused_doc_mut();
-            let spans: Vec<(usize, usize)> = marks
-                .iter()
-                .map(|&l| {
-                    let b = doc.bytes();
-                    let s = ruse_core::pos::nth_line_start(b, l - 1).min(b.len());
-                    let e = ruse_core::pos::nth_line_start(b, l).min(b.len());
-                    (s, e)
-                })
+            // Every line start in one pass: a start per mark looked up by a scan from the top made a `:g`
+            // over many lines quadratic before it ran a single pass.
+            let b = doc.bytes();
+            let starts: Vec<usize> = std::iter::once(0)
+                .chain(newline_offsets(b).map(|i| i + 1))
                 .collect();
+            let start = |l: usize| starts.get(l).copied().unwrap_or(b.len());
+            let spans: Vec<(usize, usize)> =
+                marks.iter().map(|&l| (start(l - 1), start(l))).collect();
+            // One index rebuild for all of them, not one per anchor.
+            let ids = doc.create_anchors(spans.iter().flat_map(|&(s, e)| {
+                [
+                    (s, Bias::After, AnchorPolicy::Clamp),
+                    (e, Bias::Before, AnchorPolicy::Clamp),
+                ]
+            }));
             spans
-                .into_iter()
-                .map(|(s, e)| {
-                    (
-                        doc.create_anchor(s, Bias::After, AnchorPolicy::Clamp),
-                        doc.create_anchor(e, Bias::Before, AnchorPolicy::Clamp),
-                        s == e,
-                    )
-                })
+                .iter()
+                .zip(ids.as_chunks::<2>().0)
+                .map(|(&(s, e), &[a, z])| (a, z, s == e))
                 .collect()
         };
         let events = crate::keys::parse_normal_keys(keys);
         self.as_normal(|s| {
             for &(start, end, empty_buffer) in &anchors {
-                if s.quit || s.ws.focused_buffer() != doc_id {
+                if s.quit || s.ws.focused_buffer() != doc_id || ruse_core::interrupt::interrupted()
+                {
                     break;
                 }
                 let doc = s.ws.focused().doc;
@@ -3824,10 +3861,7 @@ impl Session {
             }
         });
         if let Some(doc) = self.ws.document_mut(doc_id) {
-            for (start, end, _) in anchors {
-                doc.remove_anchor(start);
-                doc.remove_anchor(end);
-            }
+            doc.remove_anchors(anchors.into_iter().flat_map(|(start, end, _)| [start, end]));
         }
         self.status = format!("{acted} lines changed");
     }
@@ -3854,6 +3888,42 @@ impl Session {
         std::mem::swap(&mut s.ws, ws);
         s
     }
+}
+
+/// `:earlier {n}` (`older`) / `:later {n}`: `n` steps of `g-` / `g+`, recorded and applied one by one so
+/// each lands in the trace. The walk stops at the end of the undo time line, where a step changes nothing,
+/// so a huge count costs no more steps than there are changes (#685); CTRL-C stops it too.
+fn time_travel(
+    older: bool,
+    n: u32,
+    ws: &mut Workspace,
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    let cmd = if older {
+        Command::UndoOlder
+    } else {
+        Command::UndoNewer
+    };
+    for _ in 0..n {
+        let before = ws.focused().doc.revision();
+        run_cmd(cmd.clone(), ws, files, recorded, status, quit);
+        if ws.focused().doc.revision() == before || ruse_core::interrupt::breakcheck() {
+            break;
+        }
+    }
+    let dir = if older { "earlier" } else { "later" };
+    *status = format!("{n} change(s) {dir}");
+}
+
+/// The offsets of every `\n` in `b`, in order.
+fn newline_offsets(b: &[u8]) -> impl Iterator<Item = usize> + '_ {
+    b.iter()
+        .enumerate()
+        .filter(|&(_, &c)| c == b'\n')
+        .map(|(i, _)| i)
 }
 
 /// Whether an Ex command's status reports a failure that ends a `|`-chained line (`:help :bar`): a Vim
@@ -3948,6 +4018,8 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // xclip/clip, resolved once). Degrades to a no-op when no clipboard tool is on PATH, so a headless run
     // still works — `"+p` just pastes nothing.
     s.ws.set_clipboard(Box::new(crate::clipboard::SystemClipboard::detect()));
+    // CTRL-C (`C-g` in Emacs) interrupts a long command: the core's checkpoints poll the terminal (#898).
+    crate::breakcheck::install(profile == "emacs");
 
     // The previous frame's cell grid — the render diff emits only what changes against it (F-006).
     // Starts empty so the first frame paints in full.
@@ -3962,6 +4034,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
     // Inside tmux the graphics escapes must be wrapped so tmux forwards them (needs `allow-passthrough on`).
     let in_tmux = std::env::var_os("TMUX").is_some();
     let mut resident: HashSet<graphics::ImageId> = HashSet::new();
+    let mut last_paint = std::time::Instant::now();
 
     while !s.quit {
         // SIGTERM / SIGHUP (#857): end the session; the caller journals every modified buffer and the
@@ -3971,200 +4044,209 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         }
         let (cols, term_rows) = ct_terminal::size().unwrap_or((80, 24));
         let frame = s.pre_frame(cols, term_rows);
-        let (revision, snapshot, rects) = (frame.revision, &frame.snapshot, &frame.rects);
-        // Highlight only the VISIBLE byte range of the focused buffer (F-015 #3): the union of the
-        // viewports of every pane showing it. The tree is reparsed incrementally on edit (keyed on
-        // revision); the viewport-bounded query keeps the per-keystroke cost O(viewport), not O(buffer).
-        let visible = visible_byte_range(&s.ws, rects, &s.line_idx, snapshot.len());
-        // Syntax highlighting is the FOCUSED buffer's own grammar (F-007): each file buffer has its own
-        // highlighter in the registry; a scratch/no-file buffer has none, so it paints unhighlighted.
-        let focused_id = s.ws.focused_buffer();
-        // F-031 3b-2b: reserve taller image blocks on a graphics-capable terminal (no-op after the first).
-        if let Some(h) = s.highlighters.get_mut(&focused_id) {
-            h.set_image_rows(image_rows);
-        }
-        let (spans, virt_lines): (&[highlight::Span], &[highlight::VirtLine]) =
-            match s.highlighters.get_mut(&focused_id) {
-                Some(h) => h.spans_and_virt(revision, snapshot, visible.clone()),
-                None => (&[], &[]),
+        // A macro replay repaints at most every `REPLAY_PAINT`, not once per replayed key: nvim does not
+        // redraw while it executes typeahead, and a frame per key made a 100,000-key replay take half a
+        // minute (#787). A typed key is always painted.
+        let paint = !s.replaying() || last_paint.elapsed() >= REPLAY_PAINT;
+        if paint {
+            last_paint = std::time::Instant::now();
+            let (revision, snapshot, rects) = (frame.revision, &frame.snapshot, &frame.rects);
+            // Highlight only the VISIBLE byte range of the focused buffer (F-015 #3): the union of the
+            // viewports of every pane showing it. The tree is reparsed incrementally on edit (keyed on
+            // revision); the viewport-bounded query keeps the per-keystroke cost O(viewport), not O(buffer).
+            let visible = visible_byte_range(&s.ws, rects, &s.line_idx, snapshot.len());
+            // Syntax highlighting is the FOCUSED buffer's own grammar (F-007): each file buffer has its own
+            // highlighter in the registry; a scratch/no-file buffer has none, so it paints unhighlighted.
+            let focused_id = s.ws.focused_buffer();
+            // F-031 3b-2b: reserve taller image blocks on a graphics-capable terminal (no-op after the first).
+            if let Some(h) = s.highlighters.get_mut(&focused_id) {
+                h.set_image_rows(image_rows);
+            }
+            let (spans, virt_lines): (&[highlight::Span], &[highlight::VirtLine]) =
+                match s.highlighters.get_mut(&focused_id) {
+                    Some(h) => h.spans_and_virt(revision, snapshot, visible.clone()),
+                    None => (&[], &[]),
+                };
+            // The focused pane's extra reverse-video highlights: a `:s///c` confirm match, else the
+            // incsearch pattern being typed in `/`…`?`, else the last search (hlsearch) — F-009 #1. The
+            // search matches are viewport-cached (CachedSearch), not a per-frame full-buffer regex.
+            let focus_hl: Vec<(usize, usize)> = if let Some(c) = &s.confirm {
+                c.subs
+                    .get(c.idx)
+                    .map(|s| vec![(s.start, s.end)])
+                    .unwrap_or_default()
+            } else {
+                let active = match s.engine.cmdline() {
+                    // Incsearch: the pattern being typed, only when `incsearch` is on.
+                    Some(('/', buf, _)) | Some(('?', buf, _))
+                        if s.incsearch_on && !buf.is_empty() =>
+                    {
+                        Some(buf.to_string())
+                    }
+                    // Hlsearch: the last completed search, only when `hlsearch` is on.
+                    _ if s.hlsearch_on => s.search_hl.clone(),
+                    _ => None,
+                };
+                active
+                    .map(|p| {
+                        cached_search
+                            .spans(revision, snapshot, visible.clone(), &p)
+                            .to_vec()
+                    })
+                    .unwrap_or_default()
             };
-        // The focused pane's extra reverse-video highlights: a `:s///c` confirm match, else the
-        // incsearch pattern being typed in `/`…`?`, else the last search (hlsearch) — F-009 #1. The
-        // search matches are viewport-cached (CachedSearch), not a per-frame full-buffer regex.
-        let focus_hl: Vec<(usize, usize)> = if let Some(c) = &s.confirm {
-            c.subs
-                .get(c.idx)
-                .map(|s| vec![(s.start, s.end)])
-                .unwrap_or_default()
-        } else {
-            let active = match s.engine.cmdline() {
-                // Incsearch: the pattern being typed, only when `incsearch` is on.
-                Some(('/', buf, _)) | Some(('?', buf, _)) if s.incsearch_on && !buf.is_empty() => {
-                    Some(buf.to_string())
-                }
-                // Hlsearch: the last completed search, only when `hlsearch` is on.
-                _ if s.hlsearch_on => s.search_hl.clone(),
-                _ => None,
+            // Overlay match rows painted above the status line — at most one picker is open at a time, so all
+            // three share the same uniform `rows()` paint slot (F-004 / F-013 NAT-3).
+            let overlay_rows: Vec<(String, bool)> = if let Some(p) = s.palette.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.line_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.buffer_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.file_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.ref_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.action_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.diag_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.reg_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.digraph_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.keyword_lines_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.marks_picker.as_ref() {
+                p.rows()
+            } else if let Some(p) = s.pos_picker.as_ref() {
+                p.rows()
+            } else if s.engine.cmdwin().is_some() {
+                // The command-line window (`q:`/`q/`/`q?`) lists the history ring in the same overlay slot.
+                s.engine.cmdwin_rows()
+            } else {
+                // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
+                s.lsp.hover_overlay().unwrap_or_default()
             };
-            active
-                .map(|p| {
-                    cached_search
-                        .spans(revision, snapshot, visible.clone(), &p)
-                        .to_vec()
+            // The Native leader (which-key) hint owns the command line while armed (F-013 NAT-2), shown with a
+            // Space prefix — below the overlay, above the ordinary `:`/`/` line (none can co-occur).
+            let leader_hint = s.engine.leader_hint();
+            // The engine's command line also places the terminal caret (F-026 line editor); a picker's caret
+            // stays at the end of its query.
+            let mut cmd_caret = None;
+            let cmd_line: Option<(char, &str)> = if let Some(p) = s.palette.as_ref() {
+                Some(('>', p.query.as_str())) // command palette prompt
+            } else if let Some(p) = s.line_picker.as_ref() {
+                Some(('#', p.query.as_str())) // line-picker prompt (# = line jump)
+            } else if let Some(p) = s.buffer_picker.as_ref() {
+                Some(('@', p.query.as_str())) // buffer-picker prompt
+            } else if let Some(p) = s.file_picker.as_ref() {
+                Some(('~', p.query.as_str())) // file-picker prompt (~ = find file)
+            } else if let Some(p) = s.ref_picker.as_ref() {
+                Some(('*', p.query.as_str())) // references-picker prompt (* = references to symbol)
+            } else if let Some(p) = s.action_picker.as_ref() {
+                Some(('!', p.query.as_str())) // code-action-picker prompt (! = actions/fixes at cursor)
+            } else if let Some(p) = s.diag_picker.as_ref() {
+                Some(('✗', p.query.as_str())) // diagnostics-picker prompt
+            } else if let Some(p) = s.reg_picker.as_ref() {
+                Some(('"', p.query.as_str())) // registers-viewer prompt (" = registers)
+            } else if let Some(p) = s.digraph_picker.as_ref() {
+                Some(('§', p.query.as_str())) // digraph-listing prompt (§ = digraphs)
+            } else if let Some(p) = s.keyword_lines_picker.as_ref() {
+                Some(('i', p.query.as_str())) // keyword-line listing prompt (i = [I/]I identifiers)
+            } else if let Some(p) = s.marks_picker.as_ref() {
+                Some(('\'', p.query.as_str())) // marks-viewer prompt (' = marks)
+            } else if let Some(p) = s.pos_picker.as_ref() {
+                Some(('↕', p.query.as_str())) // jumps/changes position-viewer prompt
+            } else if let Some(h) = leader_hint.as_ref() {
+                Some((' ', h.as_str()))
+            } else if let Some(kind) = s.engine.cmdwin() {
+                // The command-line window's prompt glyph (`:`/`/`/`?`) with a short hint that `<CR>` runs the line.
+                Some((kind, "[cmdwin] <CR> run  <Esc> close"))
+            } else {
+                s.engine.cmdline().map(|(pfx, t, caret)| {
+                    cmd_caret = Some(caret);
+                    (pfx, t)
                 })
-                .unwrap_or_default()
-        };
-        // Overlay match rows painted above the status line — at most one picker is open at a time, so all
-        // three share the same uniform `rows()` paint slot (F-004 / F-013 NAT-3).
-        let overlay_rows: Vec<(String, bool)> = if let Some(p) = s.palette.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.line_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.buffer_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.file_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.ref_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.action_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.diag_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.reg_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.digraph_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.keyword_lines_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.marks_picker.as_ref() {
-            p.rows()
-        } else if let Some(p) = s.pos_picker.as_ref() {
-            p.rows()
-        } else if s.engine.cmdwin().is_some() {
-            // The command-line window (`q:`/`q/`/`q?`) lists the history ring in the same overlay slot.
-            s.engine.cmdwin_rows()
-        } else {
-            // F-014: an LSP hover result shares the overlay slot (no picker can be open here).
-            s.lsp.hover_overlay().unwrap_or_default()
-        };
-        // The Native leader (which-key) hint owns the command line while armed (F-013 NAT-2), shown with a
-        // Space prefix — below the overlay, above the ordinary `:`/`/` line (none can co-occur).
-        let leader_hint = s.engine.leader_hint();
-        // The engine's command line also places the terminal caret (F-026 line editor); a picker's caret
-        // stays at the end of its query.
-        let mut cmd_caret = None;
-        let cmd_line: Option<(char, &str)> = if let Some(p) = s.palette.as_ref() {
-            Some(('>', p.query.as_str())) // command palette prompt
-        } else if let Some(p) = s.line_picker.as_ref() {
-            Some(('#', p.query.as_str())) // line-picker prompt (# = line jump)
-        } else if let Some(p) = s.buffer_picker.as_ref() {
-            Some(('@', p.query.as_str())) // buffer-picker prompt
-        } else if let Some(p) = s.file_picker.as_ref() {
-            Some(('~', p.query.as_str())) // file-picker prompt (~ = find file)
-        } else if let Some(p) = s.ref_picker.as_ref() {
-            Some(('*', p.query.as_str())) // references-picker prompt (* = references to symbol)
-        } else if let Some(p) = s.action_picker.as_ref() {
-            Some(('!', p.query.as_str())) // code-action-picker prompt (! = actions/fixes at cursor)
-        } else if let Some(p) = s.diag_picker.as_ref() {
-            Some(('✗', p.query.as_str())) // diagnostics-picker prompt
-        } else if let Some(p) = s.reg_picker.as_ref() {
-            Some(('"', p.query.as_str())) // registers-viewer prompt (" = registers)
-        } else if let Some(p) = s.digraph_picker.as_ref() {
-            Some(('§', p.query.as_str())) // digraph-listing prompt (§ = digraphs)
-        } else if let Some(p) = s.keyword_lines_picker.as_ref() {
-            Some(('i', p.query.as_str())) // keyword-line listing prompt (i = [I/]I identifiers)
-        } else if let Some(p) = s.marks_picker.as_ref() {
-            Some(('\'', p.query.as_str())) // marks-viewer prompt (' = marks)
-        } else if let Some(p) = s.pos_picker.as_ref() {
-            Some(('↕', p.query.as_str())) // jumps/changes position-viewer prompt
-        } else if let Some(h) = leader_hint.as_ref() {
-            Some((' ', h.as_str()))
-        } else if let Some(kind) = s.engine.cmdwin() {
-            // The command-line window's prompt glyph (`:`/`/`/`?`) with a short hint that `<CR>` runs the line.
-            Some((kind, "[cmdwin] <CR> run  <Esc> close"))
-        } else {
-            s.engine.cmdline().map(|(pfx, t, caret)| {
-                cmd_caret = Some(caret);
-                (pfx, t)
-            })
-        };
-        // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
-        // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
-        // `term_views` lends each grid to the renderer. On non-unix this is always empty.
-        #[cfg(unix)]
-        let term_views: crate::ui::render::TermViews = {
-            let live: std::collections::HashSet<DocumentId> =
-                s.ws.buffers().iter().map(|b| b.id).collect();
-            s.terminals.retain(|id, _| live.contains(id));
-            for (i, rect) in rects.iter().enumerate().take(s.ws.window_count()) {
-                let doc = s.ws.pane(i).view.doc();
-                if let Some(t) = s.terminals.get_mut(&doc) {
-                    t.resize(rect.h.max(1), rect.w.max(1));
-                }
-            }
-            for t in s.terminals.values_mut() {
-                t.drain();
-            }
-            s.terminals.iter().map(|(id, t)| (*id, t.grid())).collect()
-        };
-        #[cfg(not(unix))]
-        let term_views = crate::ui::render::TermViews::new();
-        // F-014: sync the focused buffer with its server + poll all clients (diagnostics + response
-        // dispatch) — the coordinator owns all of it; deferred edits/refs are applied after render.
-        s.lsp
-            .sync_and_poll(&s.ws, &s.files, revision, snapshot, &mut s.status);
-        let focus_diags = s.lsp.diagnostics_for(s.ws.focused_buffer());
-        // F-031 3b-2c: read each visible image's pixel dimensions (IHDR only) so render can size it to its
-        // natural aspect and centre it. Cheap — only the 24-byte header, only when graphics are on.
-        let image_dims = read_image_dims(has_graphics, virt_lines);
-        // A mid-session recovery prompt (#859) cleared the terminal: repaint every cell this frame.
-        if crate::ui::prompts::take_screen_clobbered() {
-            prev_frame = screen::Screen::new(0, 0);
-        }
-        // The wildmenu and `c_CTRL-D` listing belong to the engine's own `:` line (#613).
-        let cmd_menu = if cmd_caret.is_some() {
-            crate::ui::render::CmdMenu {
-                pum: s.engine.cmdline_wild(),
-                listing: s.engine.cmdline_listing(),
-            }
-        } else {
-            crate::ui::render::CmdMenu::default()
-        };
-        let images = render(
-            &mut out,
-            &s.ws,
-            cmd_line.map(|(pfx, t)| (pfx, t, cmd_caret)),
-            &cmd_menu,
-            &s.status,
-            spans,
-            virt_lines,
-            rects,
-            &mut prev_frame,
-            sync_output,
-            &focus_hl,
-            &overlay_rows,
-            &term_views,
-            focus_diags,
-            s.lsp.completion_view(),
-            has_graphics,
-            &image_dims,
-            s.folds
-                .get(&s.ws.focused_buffer())
-                .map_or(&[][..], Vec::as_slice),
-            &s.line_idx,
-        )?;
-        // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
-        // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).
-        if has_graphics {
-            let read_png = |path: &str| -> Option<Vec<u8>> {
-                let meta = std::fs::metadata(path).ok()?;
-                if meta.len() > (16 << 20) {
-                    return None; // coarse decode-bomb / runaway guard (16 MiB)
-                }
-                let bytes = std::fs::read(path).ok()?;
-                graphics::png_dimensions(&bytes).is_some().then_some(bytes)
             };
-            graphics::graphics_pass(&mut out, &images, &mut resident, in_tmux, read_png)?;
+            // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
+            // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
+            // `term_views` lends each grid to the renderer. On non-unix this is always empty.
+            #[cfg(unix)]
+            let term_views: crate::ui::render::TermViews = {
+                let live: std::collections::HashSet<DocumentId> =
+                    s.ws.buffers().iter().map(|b| b.id).collect();
+                s.terminals.retain(|id, _| live.contains(id));
+                for (i, rect) in rects.iter().enumerate().take(s.ws.window_count()) {
+                    let doc = s.ws.pane(i).view.doc();
+                    if let Some(t) = s.terminals.get_mut(&doc) {
+                        t.resize(rect.h.max(1), rect.w.max(1));
+                    }
+                }
+                for t in s.terminals.values_mut() {
+                    t.drain();
+                }
+                s.terminals.iter().map(|(id, t)| (*id, t.grid())).collect()
+            };
+            #[cfg(not(unix))]
+            let term_views = crate::ui::render::TermViews::new();
+            // F-014: sync the focused buffer with its server + poll all clients (diagnostics + response
+            // dispatch) — the coordinator owns all of it; deferred edits/refs are applied after render.
+            s.lsp
+                .sync_and_poll(&s.ws, &s.files, revision, snapshot, &mut s.status);
+            let focus_diags = s.lsp.diagnostics_for(s.ws.focused_buffer());
+            // F-031 3b-2c: read each visible image's pixel dimensions (IHDR only) so render can size it to its
+            // natural aspect and centre it. Cheap — only the 24-byte header, only when graphics are on.
+            let image_dims = read_image_dims(has_graphics, virt_lines);
+            // A mid-session recovery prompt (#859) cleared the terminal: repaint every cell this frame.
+            if crate::ui::prompts::take_screen_clobbered() {
+                prev_frame = screen::Screen::new(0, 0);
+            }
+            // The wildmenu and `c_CTRL-D` listing belong to the engine's own `:` line (#613).
+            let cmd_menu = if cmd_caret.is_some() {
+                crate::ui::render::CmdMenu {
+                    pum: s.engine.cmdline_wild(),
+                    listing: s.engine.cmdline_listing(),
+                }
+            } else {
+                crate::ui::render::CmdMenu::default()
+            };
+            let images = render(
+                &mut out,
+                &s.ws,
+                cmd_line.map(|(pfx, t)| (pfx, t, cmd_caret)),
+                &cmd_menu,
+                &s.status,
+                spans,
+                virt_lines,
+                rects,
+                &mut prev_frame,
+                sync_output,
+                &focus_hl,
+                &overlay_rows,
+                &term_views,
+                focus_diags,
+                s.lsp.completion_view(),
+                has_graphics,
+                &image_dims,
+                s.folds
+                    .get(&s.ws.focused_buffer())
+                    .map_or(&[][..], Vec::as_slice),
+                &s.line_idx,
+            )?;
+            // F-031 slice 3b-2b: the graphics pass — after the cell flush, draw real pixels for the focused
+            // pane's image blocks on a graphics-capable terminal (else the placeholder painted above stands).
+            if has_graphics {
+                let read_png = |path: &str| -> Option<Vec<u8>> {
+                    let meta = std::fs::metadata(path).ok()?;
+                    if meta.len() > (16 << 20) {
+                        return None; // coarse decode-bomb / runaway guard (16 MiB)
+                    }
+                    let bytes = std::fs::read(path).ok()?;
+                    graphics::png_dimensions(&bytes).is_some().then_some(bytes)
+                };
+                graphics::graphics_pass(&mut out, &images, &mut resident, in_tmux, read_png)?;
+            }
         }
         s.post_render(&frame);
         // Keys the session queued come before the terminal: the key half of a split Alt chord (#896), then
@@ -4173,7 +4255,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         let (raw_key, from_replay) = match s.next_queued() {
             Some(queued) => queued,
             None => {
-                let ev = if let Some(ms) = s.poll_ms() {
+                // Input read ahead while a long command polled for CTRL-C comes first, in order.
+                let ev = if let Some(ev) = crate::breakcheck::pop() {
+                    ev
+                } else if let Some(ms) = s.poll_ms() {
                     if event::poll(std::time::Duration::from_millis(ms))? {
                         event::read()?
                     } else {

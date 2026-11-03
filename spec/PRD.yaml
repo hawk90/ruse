@@ -255,7 +255,8 @@ features:
     # clipboard `"+`/`"*` (crates/core/src/clipboard.rs); open register bugs include #708 and #796 (#749, #816
     # and #1022 fixed: ring rules, "1p. walking the ring, read-only and unknown names).
     # Visual `p`/`P` shapes the put by the selection and register kinds, as nvim does (#704).
-    # MACROS (q record / @ replay) ship per D-055, with open bugs #787 and #812: recording
+    # MACROS (q record / @ replay) ship per D-055, with open bug #812 (#787 fixed: the recursion cap now
+    # always ends a self-invoking macro, and CTRL-C interrupts a replay, #898): recording
     # captures RAW KEYSTROKES and stores them as bytes in these same a-z registers, replayed by re-feeding the
     # input engine (so `"ap` shows a macro and yanked text runs as one). This is a distinct mechanism from
     # dot-repeat/trace (which record resolved Commands), and not an F-029 acceptance criterion. See macros.md.

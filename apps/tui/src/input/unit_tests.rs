@@ -1727,12 +1727,16 @@ mod tests {
                 Feed::Cmd(Command::InsertChar(c))
             );
         }
-        let mut tail: Vec<Command> = Vec::new();
-        for _ in 0..2 {
-            tail.extend("hello".chars().map(Command::InsertChar));
-        }
-        tail.push(Command::EnterNormal);
-        assert_eq!(e.feed(esc(), Mode::Insert), Feed::Replay(tail));
+        // The repeats are lazy (#683): the body twice more, then the `<Esc>`.
+        assert_eq!(
+            e.feed(esc(), Mode::Insert),
+            Feed::Repeat(Repeat {
+                head: Vec::new(),
+                unit: "hello".chars().map(Command::InsertChar).collect(),
+                times: 2,
+                tail: vec![Command::EnterNormal],
+            })
+        );
     }
 
     #[test]
@@ -1748,11 +1752,12 @@ mod tests {
         );
         assert_eq!(
             e.feed(esc(), Mode::Insert),
-            Feed::Replay(vec![
-                Command::OpenBelow,
-                Command::InsertChar('x'),
-                Command::EnterNormal,
-            ])
+            Feed::Repeat(Repeat {
+                head: Vec::new(),
+                unit: vec![Command::OpenBelow, Command::InsertChar('x')],
+                times: 1,
+                tail: vec![Command::EnterNormal],
+            })
         );
     }
 
@@ -2133,7 +2138,11 @@ mod tests {
         assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
         assert_eq!(
             e.feed(k('a'), Mode::Insert),
-            Feed::Replay(vec![Command::InsertChar('a'); 16])
+            Feed::Repeat(Repeat {
+                unit: vec![Command::InsertChar('a')],
+                times: 16,
+                ..Repeat::default()
+            })
         );
 
         // count == 1 keeps the grapheme-aware bare motion — the no-argument path is unchanged.
@@ -2352,7 +2361,11 @@ mod tests {
         assert_eq!(e.feed(k('2'), Mode::Insert), Feed::Pending);
         assert_eq!(
             e.feed(enter, Mode::Insert),
-            Feed::Replay(vec![Command::InsertNewline; 2])
+            Feed::Repeat(Repeat {
+                unit: vec![Command::InsertNewline],
+                times: 2,
+                ..Repeat::default()
+            })
         );
         assert_eq!(e.feed(ctrl('u'), Mode::Insert), Feed::Pending);
         assert_eq!(e.feed(k('3'), Mode::Insert), Feed::Pending);

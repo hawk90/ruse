@@ -83,6 +83,10 @@ pub enum Feed {
     /// if the original keys were re-typed at the current cursor. Kept distinct from `Cmd` because one
     /// keypress expands to a compound edit, and because the driver must NOT re-record it as a new change.
     Replay(Vec<Command>),
+    /// A counted [`Repeat`] (`3ihello<Esc>`, `N.` of an insert, an Emacs `C-u N` prefix): applied like
+    /// [`Feed::Replay`], one command at a time, but never expanded up front, so a huge count costs no memory
+    /// and CTRL-C stops it between repetitions (#683).
+    Repeat(Repeat),
     /// A completed `:`-line to execute (F-026). The command-line namespace owns the buffer while it is
     /// being typed; on `<CR>` it hands the finished text to the frontend to parse+run as an ex command.
     ExecuteEx(String),
@@ -568,10 +572,10 @@ pub struct InputEngine {
     pending_insert_count: u32,
     /// The count-on-insert replication tail (VIM-CNT-INS) produced when a count-prefixed insert session
     /// closes on `<Esc>`: the `(count - 1)` extra repeats of the typed text plus the `EnterNormal` that
-    /// leaves Insert. [`feed`](Self::feed) takes it and returns it as a [`Feed::Replay`] in place of the
+    /// leaves Insert. [`feed`](Self::feed) takes it and returns it as a [`Feed::Repeat`] in place of the
     /// bare `EnterNormal`, so the repeats apply as ONE undo group (consecutive edits coalesce). `None`
     /// for a count-less insert and for every non-insert command.
-    pending_insert_replay: Option<Vec<Command>>,
+    pending_insert_replay: Option<Repeat>,
     /// The operator+count armed when `/` opened the search line, held across the minibuffer's pattern entry
     /// so `submit_search` can fold them into the finished command (`d/pat`, `2/pat`). `/` captures this
     /// BEFORE `reset()` wipes the axes; `None` between searches. See [`InputEngine::submit_search`].
@@ -2240,13 +2244,13 @@ impl InputEngine {
             }
         }
         // Count-on-insert (VIM-CNT-INS): a count-prefixed insert session that just closed on `<Esc>`
-        // stages its extra repeats + trailing `EnterNormal` here — return them as one `Feed::Replay` in
+        // stages its extra repeats + trailing `EnterNormal` here — return them as one `Feed::Repeat` in
         // place of the bare `EnterNormal` so the whole `3ihello` collapses into a single undo group.
         // The tail REPLACES only the closing `EnterNormal`: a key that emitted more than that (`<C-v>65<Esc>`
         // resolves the code AND leaves Insert; `<C-@>` re-inserts AND leaves) keeps its leading commands (#797).
-        if let Some(tail) = self.pending_insert_replay.take() {
+        if let Some(mut tail) = self.pending_insert_replay.take() {
             if !interrupt {
-                let mut cmds = match out {
+                let cmds = match out {
                     Feed::Cmd(Command::EnterNormal) => Vec::new(),
                     Feed::Replay(mut cmds) if cmds.last() == Some(&Command::EnterNormal) => {
                         cmds.pop();
@@ -2260,8 +2264,8 @@ impl InputEngine {
                         Vec::new()
                     }
                 };
-                cmds.extend(tail);
-                return Feed::Replay(cmds);
+                tail.head = cmds;
+                return Feed::Repeat(tail);
             }
         }
         match (select_return, out) {
@@ -2407,7 +2411,7 @@ impl InputEngine {
                 if *cmd == Command::EnterNormal {
                     let closed = self.recording.take();
                     // Count-on-insert (VIM-CNT-INS): if a count preceded the entry, stage the extra repeats
-                    // so `feed` returns them as ONE undo-grouped `Feed::Replay` in place of this `<Esc>`.
+                    // so `feed` returns them as ONE undo-grouped `Feed::Repeat` in place of this `<Esc>`.
                     if let Some(rec) = &closed {
                         self.pending_insert_replay = rec.count_replay_tail();
                         // Remember the typed text for `i_CTRL-A` / `i_CTRL-@` (Vim's `".` register). Unlike
@@ -3668,7 +3672,7 @@ impl InputEngine {
                     let intent = intent.clone();
                     let count = (self.normal.typed() > 0).then_some(self.normal.typed());
                     self.reset();
-                    Feed::Replay(intent.replay(count))
+                    intent.replay(count).into_feed()
                 } else {
                     self.unmatched(Ns::Normal, key)
                 }
@@ -4358,6 +4362,7 @@ pub(crate) mod digraph; // `pub(crate)`: the `:digraphs` listing overlay (ui) re
 use digraph::digraph;
 
 mod repeat;
+pub use repeat::Repeat;
 use repeat::{change_kind, ChangeIntent, ChangeKind};
 
 mod ex;

@@ -4,6 +4,47 @@
 
 use ruse_core::{Command, MarkOp, OpKind, SearchOp, VisualOp};
 
+/// A counted repetition the frontend applies lazily (#683): `head`, then `unit` `times` times, then `tail`.
+/// A count-prefixed insert (`999999999ix<Esc>`), `N.` of one, or an Emacs `C-u N` prefix expands to this
+/// rather than to a materialised list, so a huge count allocates nothing up front; the frontend checks
+/// for CTRL-C between repetitions ([`ruse_core::interrupt`]) and always applies `tail` (the `<Esc>` that
+/// leaves Insert), as nvim leaves Insert when an interrupted count-insert stops.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct Repeat {
+    /// Applied once, first.
+    pub head: Vec<Command>,
+    /// Applied `times` times after `head`.
+    pub unit: Vec<Command>,
+    /// How many times `unit` is applied.
+    pub times: u32,
+    /// Applied once, last — even after an interrupt.
+    pub tail: Vec<Command>,
+}
+
+impl Repeat {
+    /// As a [`Feed`](super::Feed): a plain [`Feed::Replay`](super::Feed::Replay) when nothing repeats.
+    #[must_use]
+    pub fn into_feed(mut self) -> super::Feed {
+        if self.times == 0 || self.unit.is_empty() {
+            self.head.append(&mut self.tail);
+            super::Feed::Replay(self.head)
+        } else {
+            super::Feed::Repeat(self)
+        }
+    }
+
+    /// Every command in order, expanded (for tests and small repeats; the frontend iterates instead).
+    #[must_use]
+    pub fn expand(&self) -> Vec<Command> {
+        let mut out = self.head.clone();
+        for _ in 0..self.times {
+            out.extend(self.unit.iter().cloned());
+        }
+        out.extend(self.tail.iter().cloned());
+        out
+    }
+}
+
 /// A recorded **change-intent** for Vim dot-repeat (D-025 / D-047): the buffer-modifying command that
 /// began the change, plus — for changes that enter Insert — the exact commands typed until `<Esc>`.
 ///
@@ -33,11 +74,13 @@ pub(crate) struct ChangeIntent {
 }
 
 impl ChangeIntent {
-    /// The ordered command list `.` replays. `count` — a leading `N` on the `.` — REPLACES the lead's
-    /// count (Vim `3.` repeats with count 3); `None` keeps the recorded count. Insert text is replayed
-    /// verbatim. For a PURE insert-entry (`3i`/`3o`/`3A`) the count is the number of TIMES the typed text
-    /// is inserted (VIM-CNT-INS): `.` re-inserts it `entry_count` times, `N.` overrides that to `N`.
-    pub(crate) fn replay(&self, count: Option<u32>) -> Vec<Command> {
+    /// The ordered commands `.` replays, as a [`Repeat`]: the lead (and register selection), the typed body,
+    /// then its extra repeats. `count` — a leading `N` on the `.` — REPLACES the lead's count (Vim `3.`
+    /// repeats with count 3); `None` keeps the recorded count. Insert text is replayed verbatim. For a PURE
+    /// insert-entry (`3i`/`3o`/`3A`) the count is the number of TIMES the typed text is inserted
+    /// (VIM-CNT-INS): `.` re-inserts it `entry_count` times, `N.` overrides that to `N`. The repeats are not
+    /// expanded here, so a huge count costs no memory up front (#683).
+    pub(crate) fn replay(&self, count: Option<u32>) -> Repeat {
         let lead = match count {
             Some(n) => with_count(&self.lead, n),
             None => self.lead.clone(),
@@ -50,26 +93,30 @@ impl ChangeIntent {
             1
         };
         let (body, had_enter) = self.body();
-        let mut cmds =
-            Vec::with_capacity(1 + self.insert.len() + usize::from(self.register.is_some()));
+        let mut head =
+            Vec::with_capacity(2 + self.insert.len() + usize::from(self.register.is_some()));
         // Re-select the register first, so the replayed change writes to the same slot (`"ax` then `.`).
         if let Some(expr) = &self.expr {
-            cmds.push(Command::SetExprRegister(expr.clone()));
+            head.push(Command::SetExprRegister(expr.clone()));
         } else if self.register.is_some() {
-            cmds.push(Command::SetRegister(self.register));
+            head.push(Command::SetRegister(self.register));
         }
-        cmds.push(lead);
-        cmds.extend(body.iter().cloned());
-        if reps > 1 {
-            let unit = self.repeat_unit();
-            for _ in 1..reps {
-                cmds.extend(unit.iter().cloned());
-            }
+        head.push(lead);
+        head.extend(body.iter().cloned());
+        Repeat {
+            head,
+            unit: if reps > 1 {
+                self.repeat_unit()
+            } else {
+                Vec::new()
+            },
+            times: reps - 1,
+            tail: if had_enter {
+                vec![Command::EnterNormal]
+            } else {
+                Vec::new()
+            },
         }
-        if had_enter {
-            cmds.push(Command::EnterNormal);
-        }
-        cmds
     }
 
     /// The LIVE count-on-insert tail (VIM-CNT-INS) emitted on the terminating `<Esc>` when a count
@@ -77,17 +124,16 @@ impl ChangeIntent {
     /// applied as the keys were typed, so this is the `(entry_count - 1)` extra repeats followed by the
     /// `EnterNormal` that leaves Insert (the original `<Esc>`'s `EnterNormal` is replaced by this list).
     /// `None` when there is nothing to replicate (count <= 1, or not a pure insert-entry).
-    pub(crate) fn count_replay_tail(&self) -> Option<Vec<Command>> {
+    pub(crate) fn count_replay_tail(&self) -> Option<Repeat> {
         if self.entry_count <= 1 || !self.is_plain_insert_entry() {
             return None;
         }
-        let unit = self.repeat_unit();
-        let mut cmds = Vec::with_capacity(unit.len() * (self.entry_count as usize - 1) + 1);
-        for _ in 1..self.entry_count {
-            cmds.extend(unit.iter().cloned());
-        }
-        cmds.push(Command::EnterNormal);
-        Some(cmds)
+        Some(Repeat {
+            head: Vec::new(),
+            unit: self.repeat_unit(),
+            times: self.entry_count - 1,
+            tail: vec![Command::EnterNormal],
+        })
     }
 
     /// The typed insert body EXCLUDING the terminating `EnterNormal` — the exact commands `i_CTRL-A`

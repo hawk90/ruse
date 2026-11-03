@@ -10,19 +10,17 @@ use std::collections::VecDeque;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// The recursion guard for macro replay (D-055): the maximum keys ONE top-level `@` may expand to, across
-/// any nested `@` it triggers. A self-invoking macro hits this and stops rather than hanging.
+/// The recursion guard for macro replay (D-055): the maximum keys ONE typed key may expand to, across
+/// every `@` (and `:normal`) its replay triggers. A self-invoking macro hits this and stops rather than
+/// hanging; CTRL-C stops it sooner.
 pub const MACRO_KEY_CAP: u32 = 100_000;
 
 /// Enqueue a replayed macro's decoded keys onto `queue`, honouring `budget` — the remaining key allowance
-/// shared across a whole top-level `@` expansion (nested `@`s draw from the same budget, so recursion
-/// terminates). A top-level `@` (empty queue, spent budget) starts a fresh [`MACRO_KEY_CAP`]. Returns
-/// `false` if the macro was TRUNCATED at the cap (the caller shows a status), `true` if fully enqueued.
+/// shared across everything one typed key expands to (nested `@`s draw from the same budget, so recursion
+/// terminates). Returns `false` if the macro was TRUNCATED at the cap (the caller shows a status), `true`
+/// if fully enqueued.
 pub fn enqueue_macro(queue: &mut VecDeque<KeyEvent>, budget: &mut u32, bytes: &[u8]) -> bool {
     let mut keys = decode(bytes);
-    if queue.is_empty() && *budget == 0 {
-        *budget = MACRO_KEY_CAP; // top-level `@`: a fresh budget for its whole expansion
-    }
     let take = keys.len().min(*budget as usize);
     let full = take == keys.len();
     keys.truncate(take);
@@ -98,15 +96,10 @@ impl MacroState {
         self.recording.is_some()
     }
 
-    /// Pop the next queued replay key, or `None` when the queue is empty. Draining to empty resets the
-    /// recursion budget, so the NEXT top-level `@` starts fresh. The session calls this before reading the
-    /// terminal; a `None` key came from the terminal (a *typed* key).
+    /// Pop the next queued replay key, or `None` when the queue is empty. The session calls this before
+    /// reading the terminal; a `None` key came from the terminal (a *typed* key).
     pub fn next_replay(&mut self) -> Option<KeyEvent> {
-        let k = self.queue.pop_front();
-        if k.is_none() {
-            self.budget = 0;
-        }
-        k
+        self.queue.pop_front()
     }
 
     /// Set aside the keys still queued (and any linewise run), so a `:normal` can run the replays its own
@@ -144,6 +137,12 @@ impl MacroState {
     /// nvim runs as a `:normal` of its own.
     pub fn flush_replay(&mut self) {
         self.queue.clear();
+    }
+
+    /// Drop every key still to replay, the rest of a linewise-Visual run included: CTRL-C interrupted it.
+    pub fn interrupt_replay(&mut self) {
+        self.queue.clear();
+        self.line_run = None;
     }
 
     /// Enqueue register bytes for replay, honouring the shared recursion budget. Returns `false` if the
@@ -208,6 +207,12 @@ impl MacroState {
         normal: bool,
         q_cmd: bool,
     ) -> Step {
+        // A typed key starts a fresh recursion budget for everything it replays. The budget is never reset
+        // by the queue running dry: a self-invoking macro whose length divides the cap empties the queue
+        // exactly as the budget runs out, and resetting there let it run forever (#787).
+        if !from_replay {
+            self.budget = MACRO_KEY_CAP;
+        }
         // A typed bare `q` STOPS a live recording — unless it is the register-name for a pending `q`/`@`
         // (e.g. `@q` while recording runs macro q; it must not be read as a stop).
         if q_cmd && !from_replay && !self.pending_q && !self.pending_at {
@@ -694,8 +699,7 @@ mod tests {
     #[test]
     fn enqueue_macro_pushes_decoded_keys_within_budget() {
         let mut q = VecDeque::new();
-        let mut budget = 0;
-        // A top-level @ (empty queue, no budget) seeds MACRO_KEY_CAP, then enqueues "ax".
+        let mut budget = MACRO_KEY_CAP; // what a typed key seeds
         assert!(enqueue_macro(&mut q, &mut budget, b"ax"));
         assert_eq!(q, VecDeque::from(vec![ch('a'), ch('x')]));
         assert_eq!(
@@ -911,6 +915,39 @@ mod tests {
         assert_eq!(budget, 0, "budget exhausted");
         // The 3 taken keys were appended after the sentinel.
         assert_eq!(q.len(), 1 + 3);
+    }
+
+    /// #787: a self-invoking macro stops at the cap whatever its length. The budget used to be reseeded
+    /// whenever the queue ran dry with the budget spent, which happens exactly when the body length divides
+    /// the cap (`@a` = `xx@a`, 4 keys), so the replay never ended. The session loop is modelled here: drain
+    /// the queue, resolving each `@a` the replay reaches.
+    #[test]
+    fn a_self_invoking_macro_stops_at_the_cap_for_every_body_length() {
+        for body in [
+            &b"@a"[..],
+            b"x@a",
+            b"xx@a",
+            b"xxx@a",
+            b"xxxxxxx@a",
+            b"xxxxxxxx@a",
+        ] {
+            let mut m = MacroState::new();
+            m.step(ch('@'), false, true);
+            assert_eq!(m.step(ch('a'), false, true), Step::Replay('a'));
+            assert!(m.replay(body));
+            let mut ran = 0u32;
+            while let Some(k) = m.next_replay() {
+                ran += 1;
+                assert!(ran <= MACRO_KEY_CAP, "body {body:?} ran past the cap");
+                if let Step::Replay(_) = m.step(k, true, true) {
+                    m.replay(body);
+                }
+            }
+            assert!(
+                ran > MACRO_KEY_CAP / 2,
+                "body {body:?} stopped early at {ran}"
+            );
+        }
     }
 
     #[test]

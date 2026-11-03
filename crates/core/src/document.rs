@@ -124,6 +124,32 @@ impl Document {
         id
     }
 
+    /// Create many anchors at once, rebuilding the anchor index once instead of once per anchor (a `:g`
+    /// over many lines marks two per line; one by one that was quadratic).
+    pub fn create_anchors(
+        &mut self,
+        specs: impl IntoIterator<Item = (usize, Bias, AnchorPolicy)>,
+    ) -> Vec<AnchorId> {
+        let ids = specs
+            .into_iter()
+            .map(|(offset, bias, policy)| self.anchors.insert(offset, bias, policy))
+            .collect();
+        self.rebuild_index();
+        ids
+    }
+
+    /// Remove many anchors at once (see [`Document::create_anchors`]). Returns how many were live.
+    pub fn remove_anchors(&mut self, ids: impl IntoIterator<Item = AnchorId>) -> usize {
+        let removed = ids
+            .into_iter()
+            .filter(|&id| self.anchors.remove(id))
+            .count();
+        if removed > 0 {
+            self.rebuild_index();
+        }
+        removed
+    }
+
     /// Remove an anchor. Returns whether it was live.
     pub fn remove_anchor(&mut self, id: AnchorId) -> bool {
         let removed = self.anchors.remove(id);

@@ -60,6 +60,7 @@ fn run(lines: &[&str], keys: &str) -> (Vec<String>, usize, usize, Mode) {
         let cmds = match engine.feed(key, st.mode()) {
             Feed::Cmd(cmd) => vec![cmd],
             Feed::Replay(cmds) => cmds,
+            Feed::Repeat(r) => r.expand(),
             _ => Vec::new(),
         };
         for cmd in &cmds {

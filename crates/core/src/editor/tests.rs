@@ -9050,3 +9050,78 @@ mod history_list_tests {
         assert_eq!(effects, vec![Effect::Beep]);
     }
 }
+
+/// Resource bounds in the core (#682, #683, #684, #733): hostile inputs return at once and stay bounded.
+#[cfg(test)]
+mod resource_bound_tests {
+    use crate::editor::*;
+
+    fn st(text: &str) -> EditorState {
+        EditorState::new(text.as_bytes().to_vec())
+    }
+
+    #[test]
+    fn a_reversed_line_range_is_taken_in_order() {
+        // #733: `Lines(3, 1)` from an API caller underflowed; it means lines 1..=3, as `:3,1d` does.
+        let mut s = st("a\nb\nc\nd\n");
+        assert_eq!(s.delete_lines(SubRange::Lines(3, 1)), 3);
+        assert_eq!(s.as_str().unwrap(), "d\n");
+        let mut s = st("a\nb\nc\nd\n");
+        assert_eq!(s.yank_lines(SubRange::Lines(2, 1)), 2);
+        let mut s = st("a\nb\nc\n");
+        let out = s
+            .substitute(SubRange::Lines(3, 2), "[a-c]", "x", SubFlags::default())
+            .unwrap();
+        assert_eq!(out.replacements, 2);
+        assert_eq!(s.as_str().unwrap(), "a\nx\nx\n");
+        let s = st("a\nb\nc\n");
+        assert_eq!(
+            s.global_marks(SubRange::Lines(3, 1), "[ac]", false)
+                .unwrap(),
+            vec![0, 2]
+        );
+    }
+
+    #[test]
+    fn number_options_are_clamped_to_nvims_bounds() {
+        // #684: an API caller cannot make `>>` allocate a 16 GiB indent.
+        let mut s = st("abc\n");
+        s.set_option(EditorOption::ShiftWidth(1 << 34));
+        s.set_option(EditorOption::TabStop(1 << 34));
+        assert_eq!(s.view.indent.shift_width, MAX_OPTION_INT);
+        assert_eq!(s.view.indent.tab_width, MAX_TABSTOP);
+        s.set_option(EditorOption::TabStop(0));
+        assert_eq!(s.view.indent.tab_width, 1);
+    }
+
+    #[test]
+    fn virtual_replace_with_a_huge_count_is_bounded() {
+        // #683: the surplus past the line end is appended at once and capped like a put (64 MiB).
+        let mut s = st("ab\ncd\n");
+        apply_command(&mut s, &Command::VirtualReplaceChar(999_999_999, 'x'));
+        let line = s.bytes().split(|&c| c == b'\n').next().unwrap().len();
+        assert_eq!(
+            line,
+            2 + (1 << 26),
+            "the two chars it overwrote, then the capped surplus"
+        );
+        assert!(s.bytes().ends_with(b"\ncd\n"));
+    }
+
+    #[test]
+    fn a_raised_interrupt_stops_a_global_and_a_substitute() {
+        let mut s = st("a\na\na\n");
+        crate::interrupt::raise();
+        assert_eq!(
+            s.global(SubRange::WholeFile, "a", false, &GlobalCmd::Delete)
+                .unwrap(),
+            0
+        );
+        let out = s
+            .substitute(SubRange::WholeFile, "a", "b", SubFlags::default())
+            .unwrap();
+        assert!(crate::interrupt::take());
+        assert_eq!(out.replacements, 0);
+        assert_eq!(s.as_str().unwrap(), "a\na\na\n");
+    }
+}

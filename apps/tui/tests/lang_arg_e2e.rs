@@ -41,6 +41,11 @@ fn step(engine: &mut InputEngine, st: &mut EditorState, key: KeyEvent) -> Feed {
                 apply_command(st, c);
             }
         }
+        Feed::Repeat(r) => {
+            for c in &r.expand() {
+                apply_command(st, c);
+            }
+        }
         Feed::ExecuteEx(text) => match parse_ex(text) {
             Ex::Lmap { lhs, rhs } => engine.set_lang_mapping(lhs, rhs),
             Ex::Lunmap { lhs } => engine.clear_lang_mapping(lhs),

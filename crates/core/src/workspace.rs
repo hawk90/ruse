@@ -1065,9 +1065,7 @@ impl Workspace {
     /// Whether a `DocumentId` still has a live buffer slot (for tests / retirement assertions).
     #[must_use]
     pub fn doc_is_live(&self, id: DocumentId) -> bool {
-        self.docs
-            .get(Self::doc_slot(id))
-            .is_some_and(Option::is_some)
+        self.document(id).is_some() // id 0 is no buffer (#870), never a slot underflow
     }
 
     /// The document of buffer `id`, or `None` for a retired slot. Read-only, so a frontend can observe an

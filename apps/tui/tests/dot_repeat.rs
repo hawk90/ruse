@@ -42,6 +42,13 @@ fn last_replay(text: &str, keys: &str) -> Vec<Command> {
                 }
                 replayed = cmds;
             }
+            Feed::Repeat(r) => {
+                let cmds = r.expand();
+                for cmd in &cmds {
+                    apply_command(&mut st, cmd);
+                }
+                replayed = cmds;
+            }
             _ => {}
         }
     }

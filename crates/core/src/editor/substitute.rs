@@ -121,7 +121,12 @@ pub(crate) fn resolve_line_range(
     match range {
         SubRange::CurrentLine => (cursor_line.min(last), cursor_line.min(last)),
         SubRange::WholeFile => (0, last),
-        SubRange::Lines(a, b) => (a.saturating_sub(1).min(last), b.saturating_sub(1).min(last)),
+        // A reversed range is taken in order (#733), as the Ex parser already swaps `:3,1d`; an API
+        // caller passing one must not underflow.
+        SubRange::Lines(a, b) => {
+            let (a, b) = (a.min(b), a.max(b));
+            (a.saturating_sub(1).min(last), b.saturating_sub(1).min(last))
+        }
     }
 }
 
@@ -170,6 +175,10 @@ pub(crate) fn find_substitutions(
 ) {
     if !re.multiline() {
         for (li, &(ls, le)) in lines.iter().enumerate().take(last + 1).skip(first) {
+            // CTRL-C stops the scan; the matches found so far are still substituted, as in nvim.
+            if crate::interrupt::breakcheck() {
+                return;
+            }
             let line = &hay[ls..le];
             let matches: Vec<Match> = if global {
                 re.find_all(line)
@@ -208,6 +217,9 @@ pub(crate) fn find_substitutions(
     let mut global = global;
     let mut li = first;
     while li <= last {
+        if crate::interrupt::breakcheck() {
+            return;
+        }
         let (ls, le) = lines[li];
         if consumed.is_some_and(|e| ls <= e) {
             li += 1; // joined into the line above by an earlier match

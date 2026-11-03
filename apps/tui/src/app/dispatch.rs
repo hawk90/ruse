@@ -191,6 +191,33 @@ pub(crate) fn run_cmd(
     }
 }
 
+/// Apply a counted [`crate::input::Repeat`] one command at a time, as [`run_cmd`] runs each (#683). CTRL-C
+/// ([`ruse_core::interrupt`]) stops it between repetitions; the tail (the `<Esc>` that leaves Insert) runs
+/// anyway, so an interrupted `999999999ix<Esc>` still ends in Normal mode, as in nvim.
+pub(crate) fn run_repeat(
+    r: crate::input::Repeat,
+    ws: &mut Workspace,
+    files: &Files,
+    recorded: &mut Vec<Command>,
+    status: &mut String,
+    quit: &mut bool,
+) {
+    for cmd in r.head {
+        run_cmd(cmd, ws, files, recorded, status, quit);
+    }
+    for _ in 0..r.times {
+        if *quit || ruse_core::interrupt::breakcheck() {
+            break;
+        }
+        for cmd in &r.unit {
+            run_cmd(cmd.clone(), ws, files, recorded, status, quit);
+        }
+    }
+    for cmd in r.tail {
+        run_cmd(cmd, ws, files, recorded, status, quit);
+    }
+}
+
 /// `E20` for a jump to, or an operator over, an unset named mark (`'a`, `` `a ``, `d'a`): nothing runs.
 fn mark_error(cmd: &Command, ws: &Workspace) -> Option<String> {
     let view = &ws.focused().view;
@@ -235,6 +262,22 @@ fn put_error(cmd: &Command, ws: &mut Workspace) -> Option<String> {
         Some(':' | '/' | '.' | '%' | '#') => !reg.is_empty(),
         _ => reg.is_set(),
     };
+    // nvim's `do_put` refuses a characterwise one-line put whose result would pass `INT_MAX` bytes
+    // (`yiw999999999p`, v0.12.6) at once, rather than building it (#898).
+    let count = match cmd {
+        Command::Paste { count, .. }
+        | Command::PasteIndent { count, .. }
+        | Command::PasteBlockInner { count, .. } => *count,
+        _ => 1,
+    };
+    let len = reg.text().len();
+    if reg.kind() == ruse_core::RegKind::Charwise
+        && !reg.text().contains(&b'\n')
+        && len > 0
+        && u64::from(count) * len as u64 > i32::MAX as u64
+    {
+        return Some("E1240: Resulting text too long".into());
+    }
     if matches!(name, Some('_' | '+' | '*' | '=')) || holds {
         return None;
     }

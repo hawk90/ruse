@@ -53,6 +53,11 @@ fn run(engine: &mut InputEngine, text: &str, seq: &str) -> (String, usize) {
                     apply_command(&mut st, cmd);
                 }
             }
+            Feed::Repeat(r) => {
+                for cmd in &r.expand() {
+                    apply_command(&mut st, cmd);
+                }
+            }
             _ => {}
         }
     }

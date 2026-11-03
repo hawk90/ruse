@@ -1,6 +1,11 @@
 use super::*;
 use crate::RegKind;
 
+/// The most bytes one counted repeat of text may produce (`{count}p`, `{count}gr`): 64 MiB is far beyond
+/// any interactive intent, and clamping the count keeps a hostile one (a digit run that saturates) from
+/// requesting a multi-gigabyte allocation (#683).
+const MAX_PUT_BYTES: usize = 1 << 26;
+
 /// Enter a blockwise insert-replicate session (`CTRL-V` `I`/`A`/`c`): compute the top-row insert point
 /// and, for `c`, the block-delete edits + captured blockwise register. The typed text is replicated down
 /// the block by [`block_replicate`] when the session's `<Esc>` closes it. `seed` is text already typed into
@@ -428,35 +433,29 @@ fn search_char_landing(
             SearchOffset::Line(_) => unreachable!("line offsets take plan_search_line"),
         }
     };
-    let mut pos = origin;
-    let mut landed: Option<usize> = None;
     // A landing at the end of a line is compared one character back, where the cursor is put (#737).
     let key = |lp: usize| landing_key(b, lp);
-    for _ in 0..count.max(1) {
-        let next = if backward {
-            (spans
-                .iter()
-                .map(|&sp| landing(sp))
-                .filter(|&lp| key(lp) < key(pos)))
-            .max()
-            .or_else(|| spans.iter().map(|&sp| landing(sp)).max())
-        } else {
-            (spans
-                .iter()
-                .map(|&sp| landing(sp))
-                .filter(|&lp| key(lp) > key(pos)))
-            .min()
-            .or_else(|| spans.iter().map(|&sp| landing(sp)).min())
-        };
-        match next {
-            Some(lp) => {
-                pos = lp;
-                landed = Some(lp);
+    // The distinct landings in order. `key` never decreases along them, so the next landing after a
+    // position is a binary search away.
+    let mut lps: Vec<usize> = spans.iter().map(|&sp| landing(sp)).collect();
+    lps.sort_unstable();
+    lps.dedup();
+    let (first, last) = (lps[0], lps[lps.len() - 1]);
+    // One `n` (or `N`): the nearest landing strictly past the cursor's key, wrapping around the buffer.
+    let step = |pos: usize| -> Option<usize> {
+        let k = key(pos);
+        Some(if backward {
+            match lps.partition_point(|&lp| key(lp) < k) {
+                0 => last,
+                i => lps[i - 1],
             }
-            None => break,
-        }
-    }
-    landed
+        } else {
+            lps.get(lps.partition_point(|&lp| key(lp) <= k))
+                .copied()
+                .unwrap_or(first)
+        })
+    };
+    walk_count(origin, count, step)
 }
 
 /// The operator span between the cursor and a charwise search `target`, plus whether Vim's
@@ -541,16 +540,29 @@ fn search_line_target(
     backward: bool,
     n: i32,
 ) -> Option<usize> {
-    let opts = st.view.search_options();
-    let mut pos = cur;
-    for _ in 0..count.max(1) {
-        let step = if backward {
-            search_bwd(b, pattern, pos, opts)
+    // The match starts `search_fwd`/`search_bwd` step through, found once for every step (#682).
+    let mut starts: Vec<usize> = search_spans(b, pattern, st.view.search_options())
+        .into_iter()
+        .map(|(s, _)| s)
+        .collect();
+    starts.sort_unstable();
+    starts.dedup();
+    let (&first, &last) = (starts.first()?, starts.last()?);
+    let key = |s: usize| landing_key(b, s);
+    let step = |pos: usize| -> Option<usize> {
+        Some(if backward {
+            match starts.partition_point(|&s| key(s) < pos) {
+                0 => last,
+                i => starts[i - 1],
+            }
         } else {
-            search_fwd(b, pattern, pos + 1, opts)
-        };
-        pos = step?;
-    }
+            starts
+                .get(starts.partition_point(|&s| key(s) <= pos))
+                .copied()
+                .unwrap_or(first)
+        })
+    };
+    let pos = walk_count(cur, count, step)?;
     let last_line = crate::pos::line_of(b, b.len());
     let match_line = crate::pos::line_of(b, pos);
     Some((match_line as i64 + i64::from(n)).clamp(0, last_line as i64) as usize)
@@ -1199,10 +1211,17 @@ fn plan_virtual_replace_char(
     let mut buf = [0u8; 4];
     let typed = c.encode_utf8(&mut buf).as_bytes();
     let tn = typed.len();
-    for _ in 0..count {
+    for done in 0..count {
         if p >= line.len() {
-            // Past end-of-line: append the surplus (virtual Replace grows the line here).
-            line.splice(p..p, typed.iter().copied());
+            // Past end-of-line: append the whole surplus at once (virtual Replace grows the line here),
+            // bounded like every put ([`MAX_PUT_BYTES`]) so a hostile count cannot exhaust memory (#683).
+            let rest = ((count - done) as usize).min((MAX_PUT_BYTES / tn).max(1));
+            line.reserve(rest * tn);
+            for _ in 0..rest {
+                line.extend_from_slice(typed);
+            }
+            p += rest * tn;
+            break;
         } else if line[p] == b'\t' {
             // Over a TAB spanning `w` virtual columns: insert before it (shrinking it) while more than one
             // column remains; on its last column replace the tab itself — preserving the next char's column.
@@ -1638,10 +1657,10 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, coun
                 let sp = if forward { next_boundary(&b2, c2) } else { c2 };
                 let mut out = b2[..sp].to_vec();
                 out.push(b'\n');
-                // Bounded like every other put (`paste`'s `MAX_PASTE_BYTES`), so a hostile count cannot
-                // exhaust memory.
+                // Bounded like every other put ([`MAX_PUT_BYTES`]), so a hostile count cannot exhaust
+                // memory.
                 let reps =
-                    (count.max(1) as usize).min(((1 << 26) / reg.text().len().max(1)).max(1));
+                    (count.max(1) as usize).min((MAX_PUT_BYTES / reg.text().len().max(1)).max(1));
                 for _ in 0..reps {
                     out.extend_from_slice(reg.text());
                 }
@@ -4646,11 +4665,9 @@ fn paste(
         return nop;
     }
     // Bound the repetition so a pathological `{count}p` (e.g. a digit-spam count that saturates to
-    // `u32::MAX`) cannot request a multi-gigabyte allocation. 64 MiB of pasted bytes is far beyond any
-    // interactive intent; clamping the count keeps the editor from OOM-ing on absurd input.
-    const MAX_PASTE_BYTES: usize = 1 << 26;
+    // `u32::MAX`) cannot request a multi-gigabyte allocation ([`MAX_PUT_BYTES`]).
     let unit_len = reg.text().len().max(1);
-    let count = (count.max(1) as usize).min((MAX_PASTE_BYTES / unit_len).max(1));
+    let count = (count.max(1) as usize).min((MAX_PUT_BYTES / unit_len).max(1));
     if reg.is_blockwise() {
         return paste_block(b, cur, reg, after, count, pad_block, ts);
     }
