@@ -42,6 +42,31 @@ const SCROLLOFF: usize = 3;
 /// Rust stack, so ruse stops earlier.
 const MAX_NORMAL_DEPTH: usize = 20;
 
+/// Where Insert resumes after a `:normal` run from `i_CTRL-O` (#1097): the caret's line, and whether it
+/// sat past the end of that line.
+struct InsertReturn {
+    line: usize,
+    at_eol: bool,
+}
+
+/// The start of the UTF-8 char before byte `at` (`0` at the start).
+fn prev_char_start(b: &[u8], at: usize) -> usize {
+    let mut i = at.saturating_sub(1);
+    while i > 0 && b.get(i).is_some_and(|&c| c & 0xC0 == 0x80) {
+        i -= 1;
+    }
+    i
+}
+
+/// The start of the UTF-8 char after the one at byte `at`.
+fn next_char_start(b: &[u8], at: usize) -> usize {
+    let mut i = at + 1;
+    while b.get(i).is_some_and(|&c| c & 0xC0 == 0x80) {
+        i += 1;
+    }
+    i
+}
+
 /// Append a recovery-journal frame after every Nth change (revision bump) of a file buffer — a coarse
 /// hard-kill safety net. Idle ticks never write (#858). A panic, fatal signal or I/O error journals every
 /// modified buffer's exact latest state separately (`recover`). Full incremental journaling is post-MVP.
@@ -447,6 +472,9 @@ pub(crate) struct Session {
     pub(crate) status: String,
     /// How many `:normal` runs are in progress (nested ones count each).
     normal_depth: usize,
+    /// The error a `:silent!` hid from the status line (Vim's `v:errmsg` still records it, #609); the
+    /// headless harness reads and clears it.
+    pub(crate) silenced_error: Option<String>,
 }
 
 impl Session {
@@ -562,6 +590,7 @@ impl Session {
             lsp: LspCoordinator::new(cwd, trusted),
             status,
             normal_depth: 0,
+            silenced_error: None,
         }
     }
 
@@ -1906,6 +1935,30 @@ impl Session {
                     engine.cmdline_splice(&w);
                 }
             }
+            // `c_CTRL-R_CTRL-L`: the buffer line under the cursor, without its newline.
+            Feed::CmdlineInsertLine => {
+                let b = ws.focused().doc.bytes();
+                let line = ruse_core::pos::line_of(b, ws.focused().view.cursor());
+                let start = ruse_core::pos::nth_line_start(b, line).min(b.len());
+                let end = b[start..]
+                    .iter()
+                    .position(|&c| c == b'\n')
+                    .map_or(b.len(), |n| start + n);
+                let text = String::from_utf8_lossy(&b[start..end]).into_owned();
+                engine.cmdline_splice(&text);
+            }
+            // `c_CTRL-R {reg}`: the register's text at the caret. The read-only `"/ ": ". "%` registers are
+            // refreshed first, as before any dispatch. An unknown or empty register splices nothing.
+            Feed::CmdlineInsertRegister(name) => {
+                sync_special_registers(ws, engine, &self.last_ex_line, files);
+                let name = name.to_ascii_lowercase();
+                let linewise = ws
+                    .register_snapshot()
+                    .iter()
+                    .any(|(n, kind, _)| *n == name && *kind == ruse_core::RegKind::Linewise);
+                let bytes = ws.register_bytes(Some(name));
+                engine.cmdline_splice_register(&String::from_utf8_lossy(&bytes), linewise);
+            }
             // `!{motion}` / `!!` (the filter operator): the engine resolved a linewise motion but has no
             // document to number it. Resolve the op-span's first/last line here, then open the `:` cmdline
             // pre-seeded with `{first},{last}!` (Vim's `:.,.+N!`). Typing the command and `<CR>` runs it
@@ -2130,10 +2183,19 @@ impl Session {
         let mut pieces = pieces.into_iter();
         while let Some(cmd) = pieces.next() {
             self.status.clear();
-            self.execute_ex_one(cmd, frame);
+            // Command modifiers (`:silent`, `:verbose`, …) come first (#609). `:silent` hides the command's
+            // message but not an error; `:silent!` hides the error too, and the line goes on after it. The
+            // hidden error is still the last error (Vim's `v:errmsg`).
+            let (mods, cmd) = crate::input::strip_modifiers(&cmd);
+            self.execute_ex_one(cmd.to_string(), frame);
             if let Some(prompt) = &mut self.swap {
                 prompt.pending.extend(pieces);
                 return;
+            }
+            if mods.silent_errors && is_ex_error(&self.status) {
+                self.silenced_error = Some(std::mem::take(&mut self.status));
+            } else if mods.silent && !is_ex_error(&self.status) {
+                self.status.clear();
             }
             if self.quit || self.confirm.is_some() || is_ex_error(&self.status) {
                 break;
@@ -2953,6 +3015,7 @@ impl Session {
             return;
         }
         self.normal_depth += 1;
+        let insert_return = self.leave_insert_for_normal();
         let replay = self.macros.suspend_replay();
         let line = self.engine.suspend_cmdline();
         let doc = self.ws.focused_buffer();
@@ -2968,7 +3031,65 @@ impl Session {
         }
         self.engine.resume_cmdline(line);
         self.macros.resume_replay(replay);
+        if let Some(ret) = insert_return {
+            self.resume_insert_after_normal(ret);
+        }
         self.normal_depth -= 1;
+    }
+
+    /// A `:normal` typed from `i_CTRL-O` (the core mode still reads Insert) runs its keys in NORMAL mode,
+    /// as Vim's `ex_normal` clears `restart_edit` (#1097): leave Insert with the caret where it was — on
+    /// the last char when it sat past the end of the line, as `i_CTRL-O` does — and return where Insert
+    /// resumes. `None` when not in Insert.
+    fn leave_insert_for_normal(&mut self) -> Option<InsertReturn> {
+        if self.ws.focused().view.mode() != Mode::Insert {
+            return None;
+        }
+        let b = self.ws.focused().doc.bytes();
+        let cur = self.ws.focused().view.cursor().min(b.len());
+        let line = ruse_core::pos::line_of(b, cur);
+        let start = ruse_core::pos::nth_line_start(b, line).min(b.len());
+        let at_eol = cur > start && b.get(cur).is_none_or(|&c| c == b'\n');
+        let place = if at_eol { prev_char_start(b, cur) } else { cur };
+        let Session {
+            ws,
+            files,
+            recorded,
+            status,
+            quit,
+            ..
+        } = self;
+        run_cmd(Command::EnterNormal, ws, files, recorded, status, quit);
+        ws.place_focused_cursor(place);
+        Some(InsertReturn { line, at_eol })
+    }
+
+    /// Resume the Insert a [`Self::leave_insert_for_normal`] left: after the last char when the caret was
+    /// past the end of the line and is still on that line's last char (Vim `edit()` with `ins_at_eol`),
+    /// else at the caret. Nothing when the keys quit or left a mode other than Normal.
+    fn resume_insert_after_normal(&mut self, ret: InsertReturn) {
+        if self.quit || self.ws.focused().view.mode() != Mode::Normal {
+            return;
+        }
+        let b = self.ws.focused().doc.bytes();
+        let cur = self.ws.focused().view.cursor().min(b.len());
+        let on_last = b.get(cur).is_some_and(|&c| c != b'\n')
+            && b.get(next_char_start(b, cur)).is_none_or(|&c| c == b'\n');
+        let cmd = if ret.at_eol && on_last && ruse_core::pos::line_of(b, cur) == ret.line {
+            Command::EnterInsertAfter
+        } else {
+            Command::EnterInsert
+        };
+        let Session {
+            ws,
+            files,
+            recorded,
+            status,
+            quit,
+            ..
+        } = self;
+        run_cmd(cmd, ws, files, recorded, status, quit);
+        self.engine.resume_insert_after_one_shot();
     }
 
     /// Execute `:[range]normal[!] {keys}` (`:help :normal`). With no range it runs ONCE at the cursor
@@ -3320,6 +3441,9 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         // The Native leader (which-key) hint owns the command line while armed (F-013 NAT-2), shown with a
         // Space prefix — below the overlay, above the ordinary `:`/`/` line (none can co-occur).
         let leader_hint = s.engine.leader_hint();
+        // The engine's command line also places the terminal caret (F-026 line editor); a picker's caret
+        // stays at the end of its query.
+        let mut cmd_caret = None;
         let cmd_line: Option<(char, &str)> = if let Some(p) = s.palette.as_ref() {
             Some(('>', p.query.as_str())) // command palette prompt
         } else if let Some(p) = s.line_picker.as_ref() {
@@ -3350,7 +3474,10 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
             // The command-line window's prompt glyph (`:`/`/`/`?`) with a short hint that `<CR>` runs the line.
             Some((kind, "[cmdwin] <CR> run  <Esc> close"))
         } else {
-            s.engine.cmdline().map(|(pfx, t, _)| (pfx, t))
+            s.engine.cmdline().map(|(pfx, t, caret)| {
+                cmd_caret = Some(caret);
+                (pfx, t)
+            })
         };
         // F-011: reap terminals whose buffer was closed (Drop hangs up the child), resize each to its window
         // rect (so the child reflows), then pull pending PTY output into its VT grid so it paints this frame.
@@ -3388,7 +3515,7 @@ pub(crate) fn run(path: Option<PathBuf>, raw: Vec<u8>) -> io::Result<()> {
         let images = render(
             &mut out,
             &s.ws,
-            cmd_line,
+            cmd_line.map(|(pfx, t)| (pfx, t, cmd_caret)),
             &s.status,
             spans,
             virt_lines,

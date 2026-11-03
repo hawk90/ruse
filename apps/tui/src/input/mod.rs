@@ -92,6 +92,13 @@ pub enum Feed {
     /// `Workspace::cword_under_cursor` / `cbig_word_under_cursor`) and splices it back with
     /// [`InputEngine::cmdline_splice`]. The command line stays open.
     CmdlineInsertUnder { big: bool },
+    /// `c_CTRL-R_CTRL-L`: splice the BUFFER line under the cursor into the open command line at the caret
+    /// (the frontend resolves it, as for [`Feed::CmdlineInsertUnder`]).
+    CmdlineInsertLine,
+    /// `c_CTRL-R {reg}` (and the literal `CTRL-R CTRL-R`/`CTRL-O {reg}` forms): splice register `reg` into
+    /// the open command line at the caret. The engine has no registers, so the frontend reads it and calls
+    /// [`InputEngine::cmdline_splice_register`]. The command line stays open.
+    CmdlineInsertRegister(char),
     /// `!{motion}` / `!!` (the Normal-mode filter operator): the motion resolved to a LINE range, but the
     /// engine has no document to number it and no shell to run. The frontend resolves the motion's first/last
     /// line (via `Workspace::reindent_range`), then opens the `:` command-line pre-seeded with
@@ -708,15 +715,24 @@ impl InputEngine {
     }
 
     /// Splice `text` into the open command line at the caret — the frontend's response to
-    /// [`Feed::CmdlineInsertUnder`] (`c_CTRL-R_CTRL-W`/`_CTRL-A`), after it has resolved the `<cword>` /
-    /// `<cWORD>` from the buffer. No-op when no line is open. MVP appends at the end (the cmdline caret is
-    /// end-anchored, matching the append/backspace edit model); splicing also ends any history-recall walk.
+    /// [`Feed::CmdlineInsertUnder`] / [`Feed::CmdlineInsertLine`], after it has resolved the text from the
+    /// buffer. No-op when no line is open; splicing also ends any history-recall walk.
     pub fn cmdline_splice(&mut self, text: &str) {
         if let Some(cl) = self.cmdline.as_mut() {
-            cl.buffer.push_str(text);
-            cl.cursor = cl.buffer.chars().count();
-            cl.walk = history::HistWalk::default();
+            cl.insert(text);
         }
+    }
+
+    /// Splice a register's text at the caret — the frontend's response to [`Feed::CmdlineInsertRegister`].
+    /// As in nvim, a linewise register drops its final newline and every remaining newline is typed as a
+    /// literal `^M` (`:<C-r>a` on `"l1\nl2\n"` gives `l1^Ml2`).
+    pub fn cmdline_splice_register(&mut self, text: &str, linewise: bool) {
+        let text = if linewise {
+            text.strip_suffix('\n').unwrap_or(text)
+        } else {
+            text
+        };
+        self.cmdline_splice(&text.replace('\n', "\r"));
     }
 
     /// The Native leader (which-key) discovery hint (F-013 NAT-2) as a one-line `"w:write  q:quit  …"`
@@ -752,14 +768,8 @@ impl InputEngine {
     /// Open the command-line namespace with `prefix` (`:`/`/`), optionally as `gQ` Ex mode.
     fn open_cmdline(&mut self, prefix: char, ex_mode: bool) {
         self.cmdline = Some(CmdLine {
-            prefix,
-            buffer: String::new(),
-            cursor: 0,
             ex_mode,
-            mx: false,
-            expr: None,
-            ctrl_r: false,
-            walk: history::HistWalk::default(),
+            ..CmdLine::new(prefix)
         });
     }
 
@@ -768,16 +778,9 @@ impl InputEngine {
     /// seeds `"{first},{last}!"`, so typing the shell command and pressing `<CR>` runs the SAME
     /// `:{range}!{cmd}` ex filter (reusing its executor + `shell.rs`). Vim shows this pre-filled `:.,.+N!`.
     pub fn open_filter_cmdline(&mut self, seed: &str) {
-        self.cmdline = Some(CmdLine {
-            prefix: ':',
-            buffer: seed.to_string(),
-            cursor: seed.chars().count(),
-            ex_mode: false,
-            mx: false,
-            expr: None,
-            ctrl_r: false,
-            walk: history::HistWalk::default(),
-        });
+        let mut cl = CmdLine::new(':');
+        cl.set_text(seed.to_string());
+        self.cmdline = Some(cl);
     }
 
     /// Open the command-line window (`:help cmdwin`) for `kind` — `:` mirrors the ex ring, `/`/`?` the
@@ -869,14 +872,8 @@ impl InputEngine {
     /// The prompt glyph is a placeholder here; the frontend shows the `M-x ` prompt (a rendering follow-up).
     fn open_minibuffer(&mut self) {
         self.cmdline = Some(CmdLine {
-            prefix: ':',
-            buffer: String::new(),
-            cursor: 0,
-            ex_mode: false,
             mx: true,
-            expr: None,
-            ctrl_r: false,
-            walk: history::HistWalk::default(),
+            ..CmdLine::new(':')
         });
     }
 
@@ -885,55 +882,69 @@ impl InputEngine {
     /// to the evaluator via the command `target` produces (see [`ExprTarget`]); `<Esc>` aborts.
     fn open_expr_prompt(&mut self, target: ExprTarget) {
         self.cmdline = Some(CmdLine {
-            prefix: '=',
-            buffer: String::new(),
-            cursor: 0,
-            ex_mode: false,
-            mx: false,
             expr: Some(target),
-            ctrl_r: false,
-            walk: history::HistWalk::default(),
+            ..CmdLine::new('=')
         });
     }
 
-    /// Route a key into the open command-line buffer (F-026). The namespace owns the buffer: a printable
-    /// key appends (open/append policy), `<BS>` deletes back, `<Esc>` aborts, `<CR>` finalises — a
-    /// search folds through [`Self::submit_search`], an ex line becomes [`Feed::ExecuteEx`]. In `gQ` Ex
-    /// mode the line re-opens after `<CR>` until `:visual`/`:vi`/an empty line exits.
-    fn feed_cmdline(&mut self, key: KeyEvent) -> Feed {
-        if self.cmdline.is_none() {
-            return Feed::Ignored;
-        }
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        // `c_CTRL-R` prefix armed: THIS key selects what to splice at the cmdline caret. Checked before the
-        // history-recall match below so that when armed, `C-r C-p`/etc. is consumed as the (unsupported)
-        // selector rather than triggering `<C-p>` history recall. Only the word-under-cursor variants are
-        // wired: `c_CTRL-R_CTRL-W` = `<cword>`, `c_CTRL-R_CTRL-A` = `<cWORD>`; the frontend resolves the
-        // buffer text (see [`Feed::CmdlineInsertUnder`]). Any other selector aborts the prefix cleanly
-        // (general `C-r{reg}` register insertion into the command line is deferred). :help c_CTRL-R_CTRL-W
-        if self.cmdline.as_ref().is_some_and(|cl| cl.ctrl_r) {
-            if let Some(cl) = self.cmdline.as_mut() {
-                cl.ctrl_r = false;
+    /// Route a key into the open command-line buffer (F-026). The namespace owns the buffer and its caret
+    /// (`:help cmdline-editing`): a printable key types at the caret, `<Left>`/`<Right>`/`<Home>`/`<End>`
+    /// and the word motions move it, `<BS>`/`<Del>`/`CTRL-U`/`CTRL-W` delete around it, `<Esc>` aborts, and
+    /// `<CR>` finalises — a search folds through [`Self::submit_search`], an ex line becomes
+    /// [`Feed::ExecuteEx`]. In `gQ` Ex mode the line re-opens after `<CR>` until `:visual`/`:vi`/an empty
+    /// line exits.
+    fn feed_cmdline(&mut self, mut key: KeyEvent) -> Feed {
+        // `c_CTRL-V`/`c_CTRL-Q`: the collector owns the key; a code ended by a non-digit hands that key
+        // back to be processed as ordinary input.
+        if let Some(cl) = self.cmdline.as_mut().filter(|cl| cl.literal.is_some()) {
+            match cl.feed_literal(key) {
+                cmdline::LiteralStep::Reprocess(k) => key = k,
+                _ => return Feed::Pending,
             }
+        }
+        let Some(cl) = self.cmdline.as_mut() else {
+            return Feed::Ignored;
+        };
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // `c_CTRL-K {char1} {char2}`: the digraph collector owns the next two keys.
+        if cl.digraph.is_some() {
+            cl.feed_digraph(key);
+            return Feed::Pending;
+        }
+        // `c_CTRL-R` prefix armed: THIS key selects what to splice at the caret. Checked before the
+        // history-recall match below so that `C-r C-p` is consumed as a selector, not as `<C-p>` recall.
+        // `CTRL-W`/`CTRL-A`/`CTRL-L` name the word/WORD/line under the cursor; `CTRL-R`/`CTRL-O` (insert
+        // literally) keep the prefix armed for the register name; a plain char names a register, which the
+        // frontend reads (the engine has none). Any other key aborts the prefix and stays on the line.
+        if cl.ctrl_r {
+            cl.ctrl_r = false;
             return match key.code {
                 KeyCode::Char('w') if ctrl => Feed::CmdlineInsertUnder { big: false },
                 KeyCode::Char('a') if ctrl => Feed::CmdlineInsertUnder { big: true },
-                _ => Feed::Pending, // unsupported selector: swallow, stay on the line
+                KeyCode::Char('l') if ctrl => Feed::CmdlineInsertLine,
+                KeyCode::Char('r' | 'o') if ctrl => {
+                    cl.ctrl_r = true;
+                    Feed::Pending
+                }
+                // `C-r =` (the expression register's prompt) is not wired on the command line yet.
+                KeyCode::Char('=') => Feed::Pending,
+                KeyCode::Char(c) if !is_chord(key) => Feed::CmdlineInsertRegister(c),
+                _ => Feed::Pending,
             };
         }
-        // `c_CTRL-R` — arm the prefix; the next key selects the word/register to insert.
-        if ctrl && key.code == KeyCode::Char('r') {
-            if let Some(cl) = self.cmdline.as_mut() {
-                cl.ctrl_r = true;
-            }
+        if ctrl && key.code == KeyCode::Char('r') && !cl.mx {
+            cl.ctrl_r = true;
             return Feed::Pending;
         }
-        // History recall (`:help cmdline-history`), handled before the buffer borrow so the recall helper
-        // can re-borrow the (disjoint) history ring. nvim-VERIFIED distinction: `<Up>`/`<Down>` recall
-        // PREFIX-FILTERED by the draft typed before the walk; `<C-p>`/`<C-n>` walk the RAW ring unfiltered.
+        // History recall (`:help cmdline-history`). nvim-VERIFIED distinction: `<Up>`/`<Down>` recall
+        // PREFIX-FILTERED by the text before the caret; `<C-p>`/`<C-n>`, `<S-Up>`/`<S-Down>` and
+        // `<PageUp>`/`<PageDown>` walk the RAW ring unfiltered.
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
-            KeyCode::Up => return self.cmdline_recall(true, true),
-            KeyCode::Down => return self.cmdline_recall(false, true),
+            KeyCode::Up if !shift => return self.cmdline_recall(true, true),
+            KeyCode::Down if !shift => return self.cmdline_recall(false, true),
+            KeyCode::Up | KeyCode::PageUp => return self.cmdline_recall(true, false),
+            KeyCode::Down | KeyCode::PageDown => return self.cmdline_recall(false, false),
             KeyCode::Char('p') if ctrl => return self.cmdline_recall(true, false),
             KeyCode::Char('n') if ctrl => return self.cmdline_recall(false, false),
             _ => {}
@@ -942,16 +953,28 @@ impl InputEngine {
             return Feed::Ignored;
         };
         // CTRL aliases (nvim v0.12.6): `c_CTRL-C` and `<C-[>` abandon the line like `<Esc>`, `c_CTRL-H` is
-        // `<BS>`, `c_CTRL-J`/`<C-m>` run it like `<CR>`. The Emacs `M-x` minibuffer shares this editor, so it
-        // keeps its own quit key (`C-g`) and leaves `C-c`/`C-h`/`C-u`/`C-w` to the swallow below.
-        let key = match key.code {
+        // `<BS>`, `c_CTRL-J`/`<C-m>` run it like `<CR>`, `c_CTRL-B`/`c_CTRL-E` are `<Home>`/`<End>`. The
+        // Emacs `M-x` minibuffer shares this editor with Emacs keys instead: `C-g` quits, `C-a`/`C-e`/`C-b`/
+        // `C-f` move, `C-d` deletes forward, `C-k` kills to the end; `C-c`/`C-h`/`C-u`/`C-w` are inert.
+        key = match key.code {
             KeyCode::Char('[') if ctrl => plain(KeyCode::Esc),
             KeyCode::Char('c') if ctrl && !cl.mx => plain(KeyCode::Esc),
             KeyCode::Char('g') if ctrl && cl.mx => plain(KeyCode::Esc),
             KeyCode::Char('h') if ctrl && !cl.mx => plain(KeyCode::Backspace),
             KeyCode::Char('j' | 'm') if ctrl => plain(KeyCode::Enter),
+            KeyCode::Char('b') if ctrl && !cl.mx => plain(KeyCode::Home),
+            KeyCode::Char('e') if ctrl => plain(KeyCode::End),
+            KeyCode::Char('a') if ctrl && cl.mx => plain(KeyCode::Home),
+            KeyCode::Char('b') if ctrl && cl.mx => plain(KeyCode::Left),
+            KeyCode::Char('f') if ctrl && cl.mx => plain(KeyCode::Right),
             _ => key,
         };
+        // `<S-Left>`/`<C-Left>` and `<S-Right>`/`<C-Right>` move by space-separated WORD.
+        let word = key
+            .modifiers
+            .intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL);
+        // An empty Vim line (not `M-x`, not `gQ` Ex mode) is abandoned by `<BS>`/`<Del>` (#811).
+        let cancels_empty = !cl.mx && !cl.ex_mode;
         match key.code {
             KeyCode::Esc => {
                 self.cmdline = None;
@@ -961,44 +984,82 @@ impl InputEngine {
                 Feed::Ignored
             }
             KeyCode::Backspace => {
-                cl.buffer.pop();
-                cl.cursor = cl.buffer.chars().count();
-                // Editing the line ends the current recall walk: the next `<Up>` re-captures the edited
-                // buffer as its draft/prefix (Vim recalls against the CURRENT line after an edit).
-                cl.walk = history::HistWalk::default();
+                if cl.backspace() && cancels_empty {
+                    return self.feed_cmdline(plain(KeyCode::Esc));
+                }
                 Feed::Pending
             }
-            // `c_CTRL-U` — delete everything before the caret (the caret is end-anchored, so the whole line).
+            KeyCode::Delete => {
+                if cl.delete() && cancels_empty {
+                    return self.feed_cmdline(plain(KeyCode::Esc));
+                }
+                Feed::Pending
+            }
+            KeyCode::Char('d') if ctrl && cl.mx => {
+                if cl.cursor < cl.buffer.chars().count() {
+                    cl.delete();
+                }
+                Feed::Pending
+            }
+            KeyCode::Char('k') if ctrl && cl.mx => {
+                cl.kill_after();
+                Feed::Pending
+            }
+            KeyCode::Left if word => {
+                cl.word_left();
+                Feed::Pending
+            }
+            KeyCode::Right if word => {
+                cl.word_right();
+                Feed::Pending
+            }
+            KeyCode::Left => {
+                cl.left();
+                Feed::Pending
+            }
+            KeyCode::Right => {
+                cl.right();
+                Feed::Pending
+            }
+            KeyCode::Home => {
+                cl.home();
+                Feed::Pending
+            }
+            KeyCode::End => {
+                cl.end();
+                Feed::Pending
+            }
+            // `c_<Insert>` toggles overstrike.
+            KeyCode::Insert => {
+                cl.overstrike = !cl.overstrike;
+                Feed::Pending
+            }
+            // `c_CTRL-U` — delete everything before the caret.
             KeyCode::Char('u') if ctrl && !cl.mx => {
-                cl.buffer.clear();
-                cl.cursor = 0;
-                cl.walk = history::HistWalk::default();
+                cl.kill_before();
                 Feed::Pending
             }
-            // `c_CTRL-W` — delete the word before the caret: trailing blanks, then one run of keyword or of
-            // non-keyword chars (`ex_getln.c`): `:ab cd<C-w>` leaves `ab `, `:a.b<C-w>` leaves `a.`.
+            // `c_CTRL-W` — delete the word before the caret.
             KeyCode::Char('w') if ctrl && !cl.mx => {
-                let word = |c: char| c.is_alphanumeric() || c == '_';
-                let kept = cl.buffer.trim_end_matches([' ', '\t']).len();
-                let class = cl.buffer[..kept].chars().next_back().map(word);
-                let start = cl.buffer[..kept]
-                    .char_indices()
-                    .rev()
-                    .take_while(|&(_, c)| c != ' ' && c != '\t' && Some(word(c)) == class)
-                    .last()
-                    .map_or(kept, |(i, _)| i);
-                cl.buffer.truncate(start);
-                cl.cursor = cl.buffer.chars().count();
-                cl.walk = history::HistWalk::default();
+                cl.kill_word_before();
+                Feed::Pending
+            }
+            // `c_CTRL-V` / `c_CTRL-Q` — insert the next key literally (`<C-v><CR>` types a `^M`), or a
+            // numeric code.
+            KeyCode::Char('v' | 'q') if ctrl => {
+                cl.literal = Some(cmdline::Literal::AwaitFirst);
+                Feed::Pending
+            }
+            // `c_CTRL-K {char1} {char2}` — a digraph (Emacs `C-k` is kill-line, above).
+            KeyCode::Char('k') if ctrl => {
+                cl.digraph = Some(None);
                 Feed::Pending
             }
             // Any other chord is unbound here and never appends its letter (#599). nvim appends some of them
             // (`<C-g>`, `<C-o>`, `<C-t>`, …) as a raw control character; ruse appends nothing.
             KeyCode::Char(_) if is_chord(key) => Feed::Pending,
             KeyCode::Char(c) => {
-                cl.buffer.push(c);
-                cl.cursor = cl.buffer.chars().count();
-                cl.walk = history::HistWalk::default();
+                cl.insert(c.encode_utf8(&mut [0; 4]));
                 Feed::Pending
             }
             KeyCode::Enter => {
@@ -1033,10 +1094,10 @@ impl InputEngine {
                         return Feed::Ignored;
                     }
                     // A gQ-Ex line is still an ex command: record it in the `:` history (empty ignored by
-                    // push). Re-prompting resets the walk via `open_cmdline`'s fresh `CmdLine`... but gQ
-                    // stays in the SAME CmdLine, so clear the walk explicitly for the next line.
+                    // push). gQ stays in the SAME CmdLine, so reset its caret and walk for the next line.
                     self.ex_history.push(&text);
                     cl.cursor = 0;
+                    cl.overstrike = false;
                     cl.walk = history::HistWalk::default();
                     return Feed::ExecuteEx(text);
                 }
@@ -1056,9 +1117,10 @@ impl InputEngine {
     }
 
     /// Recall a history entry into the open command-line (`:help cmdline-history`). `prev` walks older
-    /// (`<Up>`/`<C-p>`), else more-recent (`<Down>`/`<C-n>`); `filter` prefix-filters by the typed draft
-    /// (`<Up>`/`<Down>`) vs the raw ring (`<C-p>`/`<C-n>`). Chooses the ex vs search ring by prefix; the
-    /// `M-x`/expression prompts have no history and pass the key through. Rewrites the buffer + cursor.
+    /// (`<Up>`/`<C-p>`), else more-recent (`<Down>`/`<C-n>`); `filter` prefix-filters by the text before
+    /// the caret (`<Up>`/`<Down>`) vs the raw ring (`<C-p>`/`<C-n>`). Chooses the ex vs search ring by
+    /// prefix; the `M-x`/expression prompts have no history and pass the key through. Rewrites the buffer
+    /// and puts the caret at its end.
     fn cmdline_recall(&mut self, prev: bool, filter: bool) -> Feed {
         let Some(cl) = self.cmdline.as_mut() else {
             return Feed::Ignored;
@@ -1074,14 +1136,14 @@ impl InputEngine {
         } else {
             &self.ex_history
         };
+        let current = cl.before_cursor().to_string();
         let recalled = if prev {
-            ring.recall_prev(&mut cl.walk, &cl.buffer, filter)
+            ring.recall_prev(&mut cl.walk, &current, filter)
         } else {
-            ring.recall_next(&mut cl.walk, &cl.buffer, filter)
+            ring.recall_next(&mut cl.walk, &current, filter)
         };
         if let Some(text) = recalled {
-            cl.buffer = text;
-            cl.cursor = cl.buffer.chars().count();
+            cl.set_text(text);
         }
         Feed::Pending
     }
@@ -2163,6 +2225,13 @@ impl InputEngine {
     /// command then classifies as a Normal command, and the first edit after the return opens a fresh `i`
     /// change
     /// (`InsertState::resumed`, consumed in [`record`](Self::record)).
+    /// Insert resumed by the frontend after a `:normal` run from `i_CTRL-O` (#1097): the keys ran in
+    /// Normal mode, which dropped the Insert state, so mark the return as an `i_CTRL-O` one — the first
+    /// edit opens a fresh change.
+    pub fn resume_insert_after_one_shot(&mut self) {
+        self.insert.resumed = true;
+    }
+
     fn end_insert_change_for_one_shot(&mut self) {
         if let Some(mut rec) = self.recording.take() {
             rec.insert.push(Command::EnterNormal);
@@ -3985,6 +4054,7 @@ use emacs::{emacs_repeat, fold_emacs_count, EmacsArg, EmacsBinding, EmacsKey, Em
 mod cmdline;
 mod cmdwin;
 mod history;
+pub use cmdline::display_with_caret;
 use cmdline::{CmdLine, ExprTarget};
 use cmdwin::CmdWin;
 use history::CmdHistory;
@@ -3996,8 +4066,10 @@ mod repeat;
 use repeat::{change_kind, ChangeIntent, ChangeKind};
 
 mod ex;
+mod ex_cmd;
 mod nvim_options;
 pub(crate) use ex::reuse_last_search;
+pub use ex_cmd::{strip_modifiers, ExModifiers};
 // `GlobalPayload` is referenced by the non-test dispatch/run-loop (routing `:g/pat/normal` vs `d`/`s`) and
 // by the integration scenarios that drive `:g` directly, so it is part of the input surface like `Ex`.
 pub use ex::{

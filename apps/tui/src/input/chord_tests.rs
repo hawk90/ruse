@@ -249,6 +249,75 @@ fn emacs_minibuffer_quits_on_ctrl_g_and_appends_no_chord() {
     assert_eq!(e.cmdline(), None, "C-g quits the minibuffer");
 }
 
+/// The `M-x` minibuffer edits with Emacs keys: `C-a`/`C-e` to the ends, `C-b`/`C-f` by a char, `C-d`
+/// deletes forward (never cancelling), `C-k` kills to the end.
+#[test]
+fn emacs_minibuffer_edits_with_emacs_keys() {
+    let mut e = InputEngine::emacs();
+    e.feed(
+        KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT),
+        Mode::Insert,
+    );
+    let mut run = |k: KeyEvent| {
+        e.feed(k, Mode::Insert);
+        e.cmdline().map(|(_, t, c)| (t.to_string(), c))
+    };
+    for c in "abc".chars() {
+        run(key(c));
+    }
+    assert_eq!(run(ctrl('a')), Some(("abc".into(), 0)));
+    assert_eq!(run(ctrl('f')), Some(("abc".into(), 1)));
+    assert_eq!(run(ctrl('d')), Some(("ac".into(), 1)));
+    assert_eq!(run(ctrl('e')), Some(("ac".into(), 2)));
+    assert_eq!(run(ctrl('b')), Some(("ac".into(), 1)));
+    assert_eq!(run(ctrl('k')), Some(("a".into(), 1)));
+    assert_eq!(
+        run(ctrl('d')),
+        Some(("a".into(), 1)),
+        "C-d at the end does nothing"
+    );
+    assert_eq!(run(special(KeyCode::Backspace)), Some(("".into(), 0)));
+    assert_eq!(
+        run(special(KeyCode::Backspace)),
+        Some(("".into(), 0)),
+        "no cancel"
+    );
+}
+
+/// `c_CTRL-R {reg}` asks the frontend for the register; `CTRL-R`/`CTRL-O` in between keep the prefix, and
+/// `C-r =` (not wired on the `:` line) leaves the line alone.
+#[test]
+fn cmdline_ctrl_r_names_a_register() {
+    for (keys, want) in [
+        (vec![ctrl('r'), key('a')], Feed::CmdlineInsertRegister('a')),
+        (
+            vec![ctrl('r'), ctrl('r'), key('"')],
+            Feed::CmdlineInsertRegister('"'),
+        ),
+        (
+            vec![ctrl('r'), ctrl('o'), key('0')],
+            Feed::CmdlineInsertRegister('0'),
+        ),
+        (vec![ctrl('r'), ctrl('l')], Feed::CmdlineInsertLine),
+        (vec![ctrl('r'), key('=')], Feed::Pending),
+    ] {
+        let mut e = InputEngine::new();
+        e.feed(key(':'), Mode::Normal);
+        let mut got = Feed::Pending;
+        for k in keys {
+            got = e.feed(k, Mode::Normal);
+        }
+        assert_eq!(got, want);
+        assert_eq!(e.cmdline().map(|(_, t, _)| t), Some(""));
+    }
+    let mut e = InputEngine::new();
+    for k in [key(':'), key('a'), key('b'), special(KeyCode::Left)] {
+        e.feed(k, Mode::Normal);
+    }
+    e.cmdline_splice_register("l1\nl2\n", true);
+    assert_eq!(e.cmdline(), Some((':', "al1\rl2b", 6)));
+}
+
 /// An awaited key is never a chord's letter: `f<C-a>`, `r<C-a>`, `"<C-a>`, `m<C-a>`, `di<C-b>`, `g<C-e>`
 /// all abort in nvim (`r<C-a>` would insert a raw `^A`; ruse aborts) and leave nothing pending.
 #[test]

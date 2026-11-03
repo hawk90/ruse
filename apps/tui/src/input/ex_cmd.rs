@@ -1,0 +1,328 @@
+//! Ex command words (`:help :abbreviate-commands`, #609): the table-driven resolver that turns a typed
+//! command word — any abbreviation Neovim accepts — into the one spelling the ex parsers match, and the
+//! command modifiers (`:silent`, `:verbose`, …) that may precede a command.
+//!
+//! Neovim resolves a word to the FIRST command in its table that it is a prefix of (`find_ex_command`), so
+//! every command has a shortest accepted abbreviation and every longer prefix of its name resolves to it
+//! too. [`COMMANDS`] records that shortest length for each command ruse implements, measured with
+//! nvim v0.12.6's `fullcommand()`; a word shorter than it belongs to another command (`:s` is
+//! `:substitute`, `:sig` is `:sign`), which ruse does not implement, so it stays unknown (E492).
+
+use std::borrow::Cow;
+
+/// One implemented command: its full Vim name, the shortest abbreviation nvim accepts for it, and the
+/// spelling the ex parsers in `ex.rs` match.
+struct ExCommand {
+    name: &'static str,
+    min: usize,
+    canonical: &'static str,
+}
+
+const fn cmd(name: &'static str, min: usize, canonical: &'static str) -> ExCommand {
+    ExCommand {
+        name,
+        min,
+        canonical,
+    }
+}
+
+/// The implemented Vim commands with nvim v0.12.6's minimal abbreviations (`fullcommand()` probe).
+const COMMANDS: &[ExCommand] = &[
+    cmd("write", 1, "w"),
+    cmd("quit", 1, "q"),
+    cmd("wq", 2, "wq"),
+    cmd("xit", 1, "x"),
+    cmd("exit", 3, "exit"),
+    cmd("qall", 2, "qa"),
+    cmd("quitall", 5, "qa"),
+    cmd("hide", 3, "hide"),
+    cmd("split", 2, "split"),
+    cmd("vsplit", 2, "vsplit"),
+    cmd("close", 3, "close"),
+    cmd("only", 2, "only"),
+    cmd("terminal", 2, "terminal"),
+    cmd("registers", 3, "registers"),
+    cmd("display", 2, "display"),
+    cmd("digraphs", 3, "digraphs"),
+    cmd("marks", 5, "marks"),
+    cmd("jumps", 2, "jumps"),
+    cmd("changes", 7, "changes"),
+    cmd("ascii", 2, "ascii"),
+    cmd("nohlsearch", 3, "nohlsearch"),
+    cmd("checkhealth", 3, "checkhealth"),
+    cmd("edit", 1, "edit"),
+    cmd("enew", 3, "enew"),
+    cmd("ls", 2, "ls"),
+    cmd("buffers", 7, "buffers"),
+    cmd("files", 5, "files"),
+    cmd("bnext", 2, "bnext"),
+    cmd("bNext", 2, "bprevious"),
+    cmd("bprevious", 2, "bprevious"),
+    cmd("bdelete", 2, "bdelete"),
+    cmd("buffer", 1, "buffer"),
+    cmd("lmap", 2, "lmap"),
+    cmd("lunmap", 2, "lunmap"),
+    cmd("cquit", 2, "cquit"),
+    cmd("read", 1, "read"),
+    cmd("delete", 1, "delete"),
+    cmd("yank", 1, "yank"),
+    cmd("join", 1, "join"),
+    cmd("move", 1, "move"),
+    cmd("copy", 2, "copy"),
+    cmd("t", 1, "t"),
+    cmd("put", 2, "put"),
+    cmd("sort", 3, "sort"),
+    cmd("set", 2, "set"),
+    cmd("earlier", 2, "earlier"),
+    cmd("later", 3, "later"),
+    cmd("substitute", 1, "s"),
+    cmd("global", 1, "g"),
+    cmd("vglobal", 1, "v"),
+    cmd("normal", 4, "normal"),
+    cmd("trust", 3, "trust"),
+];
+
+/// ruse's own commands (no Vim counterpart). Matched by exact spelling and never abbreviated, so they
+/// cannot shadow a Vim abbreviation: none of these is a word nvim resolves (`:ca` is `:cabbrev` in nvim,
+/// so it is not an alias of `:codeaction`).
+const RUSE_COMMANDS: &[&str] = &[
+    "fmt",
+    "format",
+    "references",
+    "refs",
+    "ref",
+    "codeaction",
+    "codeactions",
+    "diagnostics",
+    "diags",
+    "diag",
+    "rename",
+    "rn",
+    "trace",
+];
+
+/// A command modifier (`:help :command-modifiers`) ruse honours.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Modifier {
+    Silent,
+    Unsilent,
+    /// Accepted with no effect: ruse prints nothing that depends on `'verbose'`.
+    Verbose,
+    /// Accepted with no effect: ruse has no autocommands.
+    NoAutocmd,
+}
+
+/// The modifiers with nvim v0.12.6's minimal abbreviations.
+const MODIFIERS: &[(&str, usize, Modifier)] = &[
+    ("silent", 3, Modifier::Silent),
+    ("unsilent", 3, Modifier::Unsilent),
+    ("verbose", 4, Modifier::Verbose),
+    ("noautocmd", 3, Modifier::NoAutocmd),
+];
+
+/// What the modifiers before a command asked for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct ExModifiers {
+    /// `:silent` — the command's normal messages are not shown.
+    pub silent: bool,
+    /// `:silent!` — its error messages are not shown either, and an error does not end the `|` chain.
+    pub silent_errors: bool,
+}
+
+/// The length of the leading range (`:help :range`) of an ex line: numbers, `.`, `$`, `%`, `,`, `;`,
+/// `+`/`-` offsets, `'x` marks, `/pat/` and `?pat?` searches, and the blanks between them.
+fn range_len(s: &str) -> usize {
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'0'..=b'9' | b',' | b';' | b'%' | b'.' | b'$' | b'+' | b'-' | b' ' | b'\t' => i += 1,
+            b'\'' if i + 1 < b.len() => {
+                i += 1 + s[i + 1..].chars().next().map_or(1, char::len_utf8)
+            }
+            d @ (b'/' | b'?') => {
+                // A search address runs to the next unescaped delimiter.
+                let mut j = i + 1;
+                while j < b.len() && b[j] != d {
+                    j += if b[j] == b'\\' { 2 } else { 1 };
+                }
+                i = (j + 1).min(b.len());
+            }
+            _ => break,
+        }
+    }
+    i
+}
+
+/// Vim's `:s` exception (`find_ex_command`): `s` directly followed by `c`, `g`, `i`, `I` or `r` is
+/// `:substitute` with flags (`:sg`, `:sI`), except where that spells another command — `:sc[riptnames]`,
+/// `:scs[cope]`, `:sre[wind]`, `:sim[alt]`, `:sig[n]`, `:sil[ent]`.
+fn is_substitute_with_flags(word: &[u8]) -> bool {
+    let at = |i: usize| word.get(i).copied().unwrap_or(0);
+    at(0) == b's'
+        && match at(1) {
+            b'c' => {
+                at(2) == 0
+                    || (at(2) != b's'
+                        && at(2) != b'r'
+                        && (at(3) == 0 || (at(3) != b'i' && at(4) != b'p')))
+            }
+            b'g' | b'I' => true,
+            b'i' => !matches!(at(2), b'm' | b'l' | b'g'),
+            b'r' => at(2) != b'e',
+            _ => false,
+        }
+}
+
+/// The full name of the command `word` abbreviates, among the implemented ones, with its canonical
+/// spelling.
+fn lookup(word: &str) -> Option<&'static ExCommand> {
+    COMMANDS
+        .iter()
+        .find(|c| word.len() >= c.min && c.name.starts_with(word))
+}
+
+/// The command word of `line` after its range: the run of letters, or `None` for a non-letter command
+/// (`:!`, `:&`, `:<`, `:>`, `:=`, …) or an empty line. Returns the byte span of the word.
+fn command_word(line: &str) -> Option<(usize, usize)> {
+    let start = range_len(line);
+    let len = line[start..]
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(line.len() - start);
+    (len > 0).then_some((start, start + len))
+}
+
+/// Rewrite the command word of `line` to the spelling the ex parsers match: `:wr` → `:w`, `:del` →
+/// `:delete`, `:su/a/b/` → `:s/a/b/`, `:norm x` → `:normal x`. A word that is no implemented command's
+/// abbreviation, one of ruse's own commands, or the `:s{flags}` form is left as typed.
+#[must_use]
+pub fn resolve_command_word(line: &str) -> Cow<'_, str> {
+    let Some((start, end)) = command_word(line) else {
+        return Cow::Borrowed(line);
+    };
+    let word = &line[start..end];
+    if RUSE_COMMANDS.contains(&word) || is_substitute_with_flags(word.as_bytes()) {
+        return Cow::Borrowed(line);
+    }
+    match lookup(word) {
+        Some(c) if c.canonical != word => {
+            Cow::Owned(format!("{}{}{}", &line[..start], c.canonical, &line[end..]))
+        }
+        _ => Cow::Borrowed(line),
+    }
+}
+
+/// Strip the command modifiers before an ex command (`:help :command-modifiers`): `:sil[ent][!]`,
+/// `:uns[ilent]`, `:verb[ose]`, `:noa[utocmd]`, each followed by blanks (or `:`), in any order. As in
+/// Vim, the modifiers come before the range (`:silent 2d`). Returns what they ask for and the rest.
+#[must_use]
+pub fn strip_modifiers(line: &str) -> (ExModifiers, &str) {
+    let mut mods = ExModifiers::default();
+    let mut rest = line.trim_start_matches([' ', '\t', ':']);
+    loop {
+        let len = rest
+            .find(|c: char| !c.is_ascii_alphabetic())
+            .unwrap_or(rest.len());
+        let word = &rest[..len];
+        let Some(&(_, _, m)) = MODIFIERS
+            .iter()
+            .find(|(name, min, _)| word.len() >= *min && name.starts_with(word))
+        else {
+            return (mods, rest);
+        };
+        let mut after = &rest[len..];
+        let bang = m == Modifier::Silent && after.starts_with('!');
+        if bang {
+            after = &after[1..];
+        }
+        // A modifier is a separate word: `:silentx` is not `:silent x`.
+        if !after.is_empty() && !after.starts_with([' ', '\t', ':']) {
+            return (mods, rest);
+        }
+        match m {
+            Modifier::Silent => {
+                mods.silent = true;
+                mods.silent_errors |= bang;
+            }
+            Modifier::Unsilent => mods = ExModifiers::default(),
+            Modifier::Verbose | Modifier::NoAutocmd => {}
+        }
+        rest = after.trim_start_matches([' ', '\t', ':']);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn abbreviations_resolve_like_nvim() {
+        for (typed, want) in [
+            ("wr", "w"),
+            ("write", "w"),
+            ("del", "delete"),
+            ("d", "delete"),
+            ("clos", "close"),
+            ("ju", "jumps"),
+            ("bu 2", "buffer 2"),
+            ("b2", "buffer2"),
+            ("su/a/b/", "s/a/b/"),
+            ("2,3subs/a/b/g", "2,3s/a/b/g"),
+            ("norm x", "normal x"),
+            ("norma! x", "normal! x"),
+            ("bN", "bprevious"),
+            ("e!", "edit!"),
+            ("q!", "q!"),
+            ("quita!", "qa!"),
+            ("glo/a/d", "g/a/d"),
+            ("mo0", "move0"),
+            ("co.", "copy."),
+            ("'a,'bd", "'a,'bdelete"),
+        ] {
+            assert_eq!(resolve_command_word(typed), want, ":{typed}");
+        }
+    }
+
+    #[test]
+    fn other_commands_words_stay_as_typed() {
+        // Too short for an implemented command (nvim resolves them elsewhere), ruse's own commands, the
+        // `:s{flags}` form, and non-letter commands.
+        for typed in [
+            "sig", "sil", "ca", "no", "nor", "cl", "mar", "sg", "sI", "sc", "sr", "fmt", "diag",
+            "rn x", "!ls", "&&", ">>", "", "normalx",
+        ] {
+            assert_eq!(resolve_command_word(typed), typed, ":{typed}");
+        }
+    }
+
+    #[test]
+    fn modifiers_strip_before_the_range() {
+        assert_eq!(
+            strip_modifiers("silent 2d"),
+            (
+                ExModifiers {
+                    silent: true,
+                    silent_errors: false
+                },
+                "2d"
+            )
+        );
+        assert_eq!(
+            strip_modifiers("sil! verb noa s/a/b/"),
+            (
+                ExModifiers {
+                    silent: true,
+                    silent_errors: true
+                },
+                "s/a/b/"
+            )
+        );
+        assert_eq!(
+            strip_modifiers("silent unsilent d"),
+            (ExModifiers::default(), "d")
+        );
+        assert_eq!(strip_modifiers("si d").1, "si d");
+        assert_eq!(strip_modifiers("silentx").1, "silentx");
+        assert_eq!(strip_modifiers("d").1, "d");
+    }
+}

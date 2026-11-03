@@ -207,6 +207,12 @@ impl Headless {
 
     /// Remember the status line's E-number, if it now shows an error message.
     fn note_emsg(&mut self) {
+        // An error `:silent!` kept off the status line still counts (Vim's `v:errmsg`).
+        if let Some(hidden) = self.s.silenced_error.take() {
+            if let Some(code) = emsg_code(&hidden) {
+                self.emsg = code.to_string();
+            }
+        }
         if let Some(code) = emsg_code(&self.s.status) {
             if code != self.emsg {
                 self.emsg = code.to_string();

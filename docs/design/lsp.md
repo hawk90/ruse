@@ -114,7 +114,7 @@ file → `open_file_into_buffer` then move), **deferred until after render** bec
   `open_file_into_buffer` then move — the goto path, run INLINE in the picker's accept since the `spans` borrow
   is already released post-render); Esc closes. The picker is OPENED after render (setting it mid-frame would
   clash with `cmd_line`'s borrow — deferred via `pending_refs`, like `goto_jump`). Verified end-to-end.
-- **Slice 7 (landed):** code-actions (`:codeaction` / `:ca`) — `textDocument/codeAction` at the cursor with a
+- **Slice 7 (landed):** code-actions (`:codeaction`; `:ca` is nvim's `:cabbrev`, #609) — `textDocument/codeAction` at the cursor with a
   reconstructed `context.diagnostics` (the normalized `Diag`s overlapping the cursor, round-tripped to LSP via
   `Severity::to_lsp` + `byte_to_lsp_pos`, so the server offers their quickfixes alongside assists) →
   `parse_code_actions` (see Command code actions) → an **action picker** (`ui/action_picker.rs`, a `Picker<CodeAction>`) listing titles;

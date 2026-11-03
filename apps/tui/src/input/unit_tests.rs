@@ -3630,9 +3630,9 @@ mod tests {
         assert_eq!(parse_ex("references"), Ex::References);
         assert_eq!(parse_ex("refs"), Ex::References);
         assert_eq!(parse_ex("ref"), Ex::References);
-        // `:codeaction` / `:ca` (F-014 LSP code actions).
+        // `:codeaction` (F-014 LSP code actions); `:ca` is nvim's `:cabbrev`, not an alias (#609).
         assert_eq!(parse_ex("codeaction"), Ex::CodeAction);
-        assert_eq!(parse_ex("ca"), Ex::CodeAction);
+        assert!(matches!(parse_ex("ca"), Ex::Unknown(_)));
         // `:diagnostics` / `:diags` / `:diag` (F-014 diagnostics list); `:d` is still delete.
         assert_eq!(parse_ex("diagnostics"), Ex::Diagnostics);
         assert_eq!(parse_ex("diags"), Ex::Diagnostics);

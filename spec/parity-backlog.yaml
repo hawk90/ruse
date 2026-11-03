@@ -28,8 +28,8 @@ backlog:
   - { id: COM-8,  feature: F-005, reason: "undo TREE (branching history) — implemented in undo.rs, but the branching-undo MODEL is ruse architecture with no enumerable upstream census surface; the catalog row is tracked debt until a persistence/history PILLAR is written" }
   # F-026 (#97): VIM-MODE-8 Ex mode is entered by gQ only (Q is replay-last-register at the pin) and is
   # "Adapted" — it is NOT one of the 8 map_mode namespaces, so it has no census home. gQ entry + reprompt
-  # is implemented, with history and a read-only q: window; wildmenu and full line editing are deferred (#612, #613).
-  - { id: VIM-MODE-8, feature: F-026, reason: "Ex mode (gQ) — Adapted, not a map_mode census namespace; entry+reprompt, history and read-only q: shipped, wildmenu and full line editing deferred" }
+  # is implemented, with history, the line editor (#612) and a read-only q: window; wildmenu is deferred (#613).
+  - { id: VIM-MODE-8, feature: F-026, reason: "Ex mode (gQ) — Adapted, not a map_mode census namespace; entry+reprompt, history, line editing and read-only q: shipped, wildmenu deferred" }
   # F-002 coordinate/anchor model (#98, D-043) — ruse KERNEL ARCHITECTURE (C-DOCUMENT/C-ANCHOR).
   # extmarks (nvim API), markers (emacs runtime), and grapheme/cell width are cross-editor coordinate
   # FACTS with no enumerable census surface (building nvim-extmark / emacs-marker census surfaces is a

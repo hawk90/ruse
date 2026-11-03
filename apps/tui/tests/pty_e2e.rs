@@ -393,3 +393,27 @@ fn signal_journals_every_modified_buffer() {
     assert_eq!(replay(Some(&a)).as_deref(), Some(&b"AAa\n"[..]));
     assert_eq!(replay(Some(&b)).as_deref(), Some(&b"BBb\n"[..]));
 }
+
+/// The command line shows a `c_CTRL-V` literal `<CR>` as `^M` and puts the terminal caret on its own caret
+/// (#612): after `<Left><Left>` it sits before `cd`, not at the end of the line.
+#[test]
+fn cmdline_shows_control_chars_and_its_caret() {
+    let dir = Scratch::new();
+    let file = dir.file("f.txt", b"x\n");
+    let mut ed = Editor::start(&dir, &[&file]);
+    ed.keys(":ab");
+    let before = ed.screen_bytes().len();
+    ed.keys("\u{16}\r");
+    // The frame diff repaints only the changed cells: the two cells of `^M`.
+    let shown = ed.screen_bytes()[before..].to_string();
+    assert!(shown.contains("^M"), "{shown:?}");
+    ed.keys("cd");
+    let before = ed.screen_bytes().len();
+    // Two `<Left>` arrows, each in one read so they decode as arrows, not as `<Esc>` and text.
+    ed.raw_chunks(&[b"\x1b[D", b"\x1b[D"]);
+    // `:ab^M` is five cells, so the caret is in column 6 of the last row (1-based).
+    let after = ed.screen_bytes()[before..].to_string();
+    assert!(after.contains("\u{1b}[24;6H"), "{after:?}");
+    ed.keys(&format!("{ESC}:q\r"));
+    assert_eq!(ed.exit_status(), 0);
+}

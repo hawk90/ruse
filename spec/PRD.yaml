@@ -349,6 +349,11 @@ features:
     # engine.cmdline(). `gQ` (only) enters Ex mode (re-prompts until `:visual`); bare `Q` does not.
     # 6 namespace tests + property no-leak updated + oracle comparator simplified (still green).
     # VIM-MODE-8 (Ex mode, Adapted, gQ-only) has no map_mode census home -> backlogged.
+    # #612/#811: the line editor (caret motion by char/word, <Home>/<End>, <BS>/<Del>/C-u/C-w around the
+    # caret, <Insert> overstrike, C-v/C-q literal + numeric codes, C-k digraphs, C-r {reg}/C-r C-l) lives in
+    # input/cmdline.rs; <BS>/<Del> on an empty line abandon it. #609: Ex command words resolve through one
+    # abbreviation table (input/ex_cmd.rs, nvim's fullcommand() minima) and :silent[!]/:unsilent/:verbose/
+    # :noautocmd modifiers precede a command. Census rows stay unclassified (whole-surface lock).
     status: done
     depends_on: [C-INPUT, C-COMMAND]
     summary: A real namespace with its own line editor, not an ad-hoc text buffer on the UI.
@@ -359,7 +364,7 @@ features:
       verify: [../tests/parity/vim/command-line.yaml]
     acceptance:
       - "':' / '/' enter the namespace, <CR> executes and <Esc> aborts; it is engine-routed with a single mode owner, not an ad-hoc text buffer (anti-patterns command-line P2)."
-      - "An unmatched printable key appends to the line buffer (open/append); the namespace owns line buffer, cursor and history index."
+      - "An unmatched printable key is typed at the caret (open/append); the namespace owns line buffer, cursor and history index, and edits mid-line (#612)."
       - "Ex mode is entered by `gQ` only — `Q` is not an Ex-mode key at the pinned Neovim revision (see vim-style.yaml census_corrections). Command-line & search history shipped (#452: separate `:`/`/` rings, prefix-filtered <Up> vs raw <C-p> recall). The command-line window `q:`/`q/`/`q?` (`:help cmdwin`) shipped as a REDUCED list-overlay slice (#455): a navigable read-only list of the ex/search history with Vim's trailing empty line, `<CR>` runs the selected line through the same ex/search dispatch the `:`/`/` prompt uses, `<Esc>`/`<C-c>` close; full in-window EDITING (a real editable scratch buffer) is deferred pending a hostable secondary editable buffer (the same multi-buffer arena the buffer/file pickers wait on). wildmenu / incsearch-UX remain deferred."
 
   F-027:
@@ -746,7 +751,7 @@ features:
     # diag+hover+format+rename+completion pipeline is verified end-to-end vs real rust-analyzer (live_lsp_pipeline
     # ignored smoke). Slice 6 (#304): references (:references/:refs/:ref) — textDocument/references → a
     # references picker (Picker<(uri,line,char)>, reusing the F-004/F-013 overlay) → Enter jumps (same/cross
-    # file). Slice 7 (#307): code-actions (:codeaction/:ca) — textDocument/codeAction w/ reconstructed
+    # file). Slice 7 (#307): code-actions (:codeaction; :ca is nvim's :cabbrev, #609) — textDocument/codeAction w/ reconstructed
     # context.diagnostics → an action picker → Enter applies the WorkspaceEdit (shared multi-file apply w/
     # rename). ORCHESTRATION now lives in app/lsp_coordinator.rs (#306); apply_edits is provenance-agnostic
     # (#305, origin param). #308: fast RA-independent contract tests (mock JSON-RPC round-trip + undo). #309:

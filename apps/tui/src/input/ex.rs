@@ -653,6 +653,8 @@ fn strip_global_verb(rest: &str) -> Option<(&str, bool)> {
 /// Parse the command that follows `:g/pat/`: `normal[!] {keys}` (frontend-executed), `d`/`delete`, or a
 /// `s/pat/rep/flags` substitute (both core-executed).
 fn parse_global_cmd(cmd: &str) -> Option<GlobalPayload> {
+    let resolved = super::ex_cmd::resolve_command_word(cmd);
+    let cmd = &*resolved;
     // `normal[!] {keys}` is recognized BEFORE the `.trim()` below so the key payload keeps its internal
     // spaces — only the single delimiting space after the verb is consumed (as `:normal` does).
     if let Some(payload) = parse_global_normal(cmd) {
@@ -745,7 +747,8 @@ pub fn split_bar(line: &str) -> Vec<String> {
 fn split_first_command(cmd: &str) -> (&str, Option<&str>) {
     // Skip the range prefix (line numbers, `.`/`$`/`%`, `,`/`;`, relative `+`/`-` offsets, `'x` marks).
     let bytes = cmd.as_bytes();
-    let mut i = 0;
+    // Command modifiers (`:silent normal x|y`) come before the range; the command after them decides.
+    let mut i = cmd.len() - super::ex_cmd::strip_modifiers(cmd).1.len();
     while i < bytes.len() {
         match bytes[i] {
             b'0'..=b'9' | b',' | b';' | b'%' | b'*' | b'.' | b'$' | b'+' | b'-' | b' ' | b'\t' => {
@@ -914,6 +917,10 @@ const INVALID_RANGE: &str = "E16: Invalid range";
 /// Parse the text typed after `:` (without the leading colon).
 #[must_use]
 pub fn parse_ex(line: &str) -> Ex {
+    // Any accepted abbreviation of the command word becomes the one spelling the parsers below match
+    // (`:wr` → `:w`, `:del` → `:delete`, #609).
+    let resolved = super::ex_cmd::resolve_command_word(line);
+    let line = &*resolved;
     // `:[range]normal[!] {keys}` is parsed FIRST, on the RAW line: everything after the one delimiting space
     // is the verbatim key payload, so a trailing space in the keys must survive the `line.trim()` below.
     if let Some(ex) = parse_normal(line) {
@@ -938,7 +945,8 @@ pub fn parse_ex(line: &str) -> Ex {
         "terminal" | "term" => Ex::Terminal,
         "fmt" | "format" => Ex::Format,
         "references" | "refs" | "ref" => Ex::References,
-        "codeaction" | "codeactions" | "ca" => Ex::CodeAction,
+        // Not `:ca`: nvim reads it as `:cabbrev` (#609).
+        "codeaction" | "codeactions" => Ex::CodeAction,
         "diagnostics" | "diags" | "diag" => Ex::Diagnostics,
         "trust" => Ex::Trust,
         "registers" | "reg" | "display" | "di" => Ex::Registers,
