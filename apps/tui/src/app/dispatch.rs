@@ -261,7 +261,7 @@ pub(crate) fn run_repeat(
             // splices (#1123): each edit copies the buffer, so one edit per character made
             // `1000000ix<Esc>` quadratic. Doubling the chunk keeps the total copy linear in the result up
             // to the cap, which bounds the memory of one chunk and the time between interrupt checks.
-            Some(text) if done > 0 => {
+            Some(text) if done > 0 && splice_is_typing(ws) => {
                 let per = (REPEAT_CHUNK_BYTES / text.len()).max(1);
                 let reps = (done as usize).min(per).min((r.times - done) as usize);
                 run_cmd(
@@ -293,6 +293,17 @@ pub(crate) fn run_repeat(
 /// time CTRL-C stops it each later key is slow on that line (`pty_interrupt.rs`): 64 KiB gives a 1 MB
 /// line 300 ms in (1 MiB gave 4 MB), and a million-char insert in about 30 steps.
 const REPEAT_CHUNK_BYTES: usize = 64 << 10;
+
+/// Whether a literal splice does what typing the characters one by one does: only in plain Insert mode
+/// (Replace overwrites instead of inserting) and with `'textwidth'` off (typed blanks can wrap the line).
+fn splice_is_typing(ws: &Workspace) -> bool {
+    let view = &ws.focused().view;
+    view.mode() == ruse_core::Mode::Insert
+        && view
+            .editing_options()
+            .iter()
+            .all(|o| !matches!(o, ruse_core::EditorOption::TextWidth(n) if *n > 0))
+}
 
 /// The text a repeat unit inserts when it is nothing but typed characters (`ix`, `ihello`, an Emacs
 /// `C-u 8 x`), so its repetitions can be spliced as one literal paste. `None` for any other command: a
