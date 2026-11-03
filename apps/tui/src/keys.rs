@@ -133,6 +133,13 @@ impl MacroState {
         self.queue.pop_front()
     }
 
+    /// Drop the queued replay keys: a command failed, and Vim flushes the keys that were not typed, so a
+    /// macro stops at its first failure (#1085). A linewise-Visual run goes on with its next line, which
+    /// nvim runs as a `:normal` of its own.
+    pub fn flush_replay(&mut self) {
+        self.queue.clear();
+    }
+
     /// Enqueue register bytes for replay, honouring the shared recursion budget. Returns `false` if the
     /// macro was TRUNCATED at [`MACRO_KEY_CAP`] (the caller shows a status).
     pub fn replay(&mut self, bytes: &[u8]) -> bool {

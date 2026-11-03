@@ -660,3 +660,15 @@ fn g_normal_skips_lines_an_earlier_pass_deleted_or_joined() {
     );
     assert_eq!(run("x1\nx2\ny\n", ":g/x/normal J<CR>").text(), "x1 x2\ny\n");
 }
+
+#[test]
+fn a_failed_motion_ends_a_recursive_macro() {
+    // `qaq` empties `a`, then `qa0xj@aq` records a macro that calls itself; replaying it stops when `j`
+    // fails on the last line, instead of running on to the replay key cap (#1085, nvim v0.12.6).
+    let started = std::time::Instant::now();
+    let h = run("a1\na2\na3\na4\n", "qaqqa0xj@aq@a");
+    assert_eq!(h.text(), "1\n2\n3\n4\n");
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    // Keys typed after the failure still run: only the replay is flushed.
+    assert_eq!(run("abc\n", "$wx").text(), "ab\n");
+}

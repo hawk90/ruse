@@ -527,6 +527,9 @@ pub struct InputEngine {
     /// The register named by the most recent `"x`, held only until the NEXT recorded change picks it up (so
     /// `.` replays it). Cleared by any intervening non-register command — a stray `"x` then a motion forgets.
     pending_record_register: Option<char>,
+    /// The expression of a `"=` register held with [`InputEngine::pending_record_register`] (`=`), for the
+    /// change that follows (#808).
+    pending_record_expr: Option<String>,
     /// The count typed before a PURE insert-entry (`3i`/`3o`/`3A`; VIM-CNT-INS), captured BEFORE
     /// [`action`](Self::action) resets the axes and handed to the [`ChangeIntent`] the next insert-entry
     /// opens. `0` between entries; only the six pure insert-entries set it (change-family entries leave it
@@ -648,6 +651,7 @@ impl InputEngine {
             recording: None,
             last_inserted: Vec::new(),
             pending_record_register: None,
+            pending_record_expr: None,
             pending_insert_count: 0,
             pending_insert_replay: None,
             pending_search: None,
@@ -1329,10 +1333,12 @@ impl InputEngine {
                 self.reset();
                 self.leader = false;
                 self.pending_record_register = None;
+                self.pending_record_expr = None;
                 let change = ChangeIntent {
                     lead: Command::EnterInsertAfter,
                     insert: vec![paste.clone(), Command::EnterNormal],
                     register: None,
+                    expr: None,
                     entry_count: 1,
                 };
                 self.last_inserted = change.insert_body().to_vec();
@@ -1891,6 +1897,14 @@ impl InputEngine {
             if matches!(out, Feed::Cmd(Command::Search { .. })) && mode != Mode::Insert {
                 self.record(&out, mode);
             }
+            // ...and an expression's result: `<C-r>=` is typed text of the insert, `"=` selects the register
+            // of the change that follows, so `.` repeats both (#808).
+            if matches!(
+                out,
+                Feed::Cmd(Command::InsertEval(_) | Command::SetExprRegister(_))
+            ) {
+                self.record(&out, mode);
+            }
             return out;
         }
         // An `i_CTRL-O` one-shot borrows the Normal grammar while the core mode still reads Insert; the
@@ -2089,6 +2103,7 @@ impl InputEngine {
                     lead: Command::EnterInsert,
                     insert: Vec::new(),
                     register: None,
+                    expr: None,
                     entry_count: 1,
                 });
             }
@@ -2114,6 +2129,13 @@ impl InputEngine {
         // `"x` selects the register the NEXT recorded change should carry — remembered, not itself a change.
         if let Command::SetRegister(name) = cmd {
             self.pending_record_register = *name;
+            self.pending_record_expr = None;
+            return;
+        }
+        // `"={expr}<CR>` is the register selection of the change that follows (#808).
+        if let Command::SetExprRegister(expr) = cmd {
+            self.pending_record_register = Some('=');
+            self.pending_record_expr = Some(expr.clone());
             return;
         }
         match change_kind(cmd) {
@@ -2127,6 +2149,7 @@ impl InputEngine {
                     },
                     insert: Vec::new(),
                     register: self.pending_record_register.take(),
+                    expr: self.pending_record_expr.take(),
                     // The count a pure insert-entry captured (`3i`); `0` (→ 1) for a count-less or
                     // change-family entry, so only `i`/`a`/`I`/`A`/`o`/`O` ever repeat their text.
                     entry_count: std::mem::take(&mut self.pending_insert_count).max(1),
@@ -2138,11 +2161,15 @@ impl InputEngine {
                     lead: cmd.clone(),
                     insert: Vec::new(),
                     register: self.pending_record_register.take(),
+                    expr: self.pending_record_expr.take(),
                     entry_count: 1,
                 });
             }
             // A non-change (motion, mode switch, yank) forgets a dangling register selection.
-            ChangeKind::NotAChange => self.pending_record_register = None,
+            ChangeKind::NotAChange => {
+                self.pending_record_register = None;
+                self.pending_record_expr = None;
+            }
         }
     }
 
@@ -2215,6 +2242,7 @@ impl InputEngine {
                 lead: Command::EnterInsert,
                 insert: Vec::new(),
                 register: None,
+                expr: None,
                 entry_count: 1,
             });
         }
@@ -3089,8 +3117,13 @@ impl InputEngine {
                 }
                 // Visual `p`/`P` — replace the selection with the register. `p` swaps the deleted text into
                 // the unnamed register; `P` preserves it (paste the same thing over successive selections).
-                KeyCode::Char('p') => return self.action(Command::PasteSelection { swap: true }),
-                KeyCode::Char('P') => return self.action(Command::PasteSelection { swap: false }),
+                KeyCode::Char(c @ ('p' | 'P')) => {
+                    let count = self.mcount();
+                    return self.action(Command::PasteSelection {
+                        swap: c == 'p',
+                        count,
+                    });
+                }
                 // `o` swaps the selection's ends (cursor <-> anchor); the SAME text stays selected but a
                 // later motion extends the other end. In Normal `o` is OpenBelow — here it is the swap.
                 KeyCode::Char('o') => return self.action(Command::SwapSelectionEnds),
@@ -3789,10 +3822,20 @@ impl InputEngine {
                 self.normal.awaiting = Awaiting::Nothing;
                 // Only a named mark composes with an operator here (`` d`a ``); the special marks do not yet,
                 // so under an operator they abort rather than jump with the operator dropped (#790).
-                if self.normal.op.is_some() && !matches!(key.code, KeyCode::Char('a'..='z')) {
+                if self.normal.op.is_some()
+                    && !matches!(
+                        key.code,
+                        KeyCode::Char('a'..='z' | 'A'..='Z' | '^' | '<' | '>')
+                    )
+                {
                     return self.unmatched(Ns::OperatorPending, key);
                 }
                 return match key.code {
+                    // `` `^ `` (where Insert stopped), and `` d`< ``/`` d`> `` under an operator (#1088).
+                    KeyCode::Char('^') => self.mark_op('^', false),
+                    KeyCode::Char(c @ ('<' | '>')) if self.normal.op.is_some() => {
+                        self.mark_op(c, false)
+                    }
                     // `` `. `` — jump to the last-change mark.
                     KeyCode::Char('.') => self.action(Command::GotoLastChange),
                     // `` `` `` / `` `' `` — jump to the context mark (position before the latest jump).
@@ -3806,7 +3849,7 @@ impl InputEngine {
                     KeyCode::Char('<') => self.action(Command::GotoVisualMarkStart),
                     KeyCode::Char('>') => self.action(Command::GotoVisualMarkEnd),
                     // `` `{a-z} `` — jump to a named mark, or `` d`a ``/`` y`a `` with an operator pending.
-                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, false),
+                    KeyCode::Char(c @ ('a'..='z' | 'A'..='Z')) => self.mark_op(c, false),
                     // Any other mark name is not wired — abort the pending construct.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
@@ -3814,18 +3857,31 @@ impl InputEngine {
             Awaiting::SetMarkChar => {
                 self.normal.awaiting = Awaiting::Nothing;
                 return match key.code {
-                    // `m{a-z}` — set a named mark at the cursor.
-                    KeyCode::Char(c @ 'a'..='z') => self.action(Command::SetNamedMark(c)),
-                    // Uppercase/global marks and specials are deferred — abort.
+                    // `m{a-zA-Z}` — set a named mark at the cursor (an uppercase one stays with this
+                    // buffer, #1088).
+                    KeyCode::Char(c @ ('a'..='z' | 'A'..='Z')) => {
+                        self.action(Command::SetNamedMark(c))
+                    }
+                    // The other marks `m` can set are deferred — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };
             }
             Awaiting::MarkJumpLine => {
                 self.normal.awaiting = Awaiting::Nothing;
-                if self.normal.op.is_some() && !matches!(key.code, KeyCode::Char('a'..='z')) {
+                if self.normal.op.is_some()
+                    && !matches!(
+                        key.code,
+                        KeyCode::Char('a'..='z' | 'A'..='Z' | '^' | '<' | '>')
+                    )
+                {
                     return self.unmatched(Ns::OperatorPending, key);
                 }
                 return match key.code {
+                    // `'^`, and `d'<`/`d'>` under an operator (#1088).
+                    KeyCode::Char('^') => self.mark_op('^', true),
+                    KeyCode::Char(c @ ('<' | '>')) if self.normal.op.is_some() => {
+                        self.mark_op(c, true)
+                    }
                     // `'.` — linewise to the last-change line.
                     KeyCode::Char('.') => self.action(Command::GotoLastChangeLine),
                     // `''` / `` '` `` — linewise to the context mark's line (position before the latest jump).
@@ -3839,7 +3895,7 @@ impl InputEngine {
                     KeyCode::Char('<') => self.action(Command::GotoVisualMarkStartLine),
                     KeyCode::Char('>') => self.action(Command::GotoVisualMarkEndLine),
                     // `'{a-z}` — linewise to a named mark's line, or `d'a`/`y'a` with an operator pending.
-                    KeyCode::Char(c @ 'a'..='z') => self.mark_op(c, true),
+                    KeyCode::Char(c @ ('a'..='z' | 'A'..='Z')) => self.mark_op(c, true),
                     // Any other mark name is not wired — abort.
                     _ => self.unmatched(Ns::OperatorPending, key),
                 };

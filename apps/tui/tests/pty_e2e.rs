@@ -393,3 +393,13 @@ fn signal_journals_every_modified_buffer() {
     assert_eq!(replay(Some(&a)).as_deref(), Some(&b"AAa\n"[..]));
     assert_eq!(replay(Some(&b)).as_deref(), Some(&b"BBb\n"[..]));
 }
+
+/// #1085: an emptied buffer saves as an empty file (nvim v0.12.6 writes 0 bytes for `ggdG:w`, its
+/// `ML_EMPTY` buffer), while one empty line saves as `\n`. Text typed into an emptied buffer is not pinned
+/// here: nvim then writes a final newline (`ia` gives `a\n`, `o` gives `\n\n`), ruse does not yet (#1085).
+#[test]
+fn an_emptied_buffer_saves_like_nvim() {
+    assert_eq!(edit_and_save(b"a\nb\n", "ggdG"), b"");
+    assert_eq!(edit_and_save(b"a\n", "S"), b"\n");
+    assert_eq!(edit_and_save(b"a", "dd"), b"");
+}

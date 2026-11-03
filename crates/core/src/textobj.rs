@@ -310,6 +310,19 @@ fn current_word(
     include: bool,
     big: bool,
 ) -> Option<(usize, usize, bool)> {
+    current_word_at(buf, cursor, visual, count, include, big).ok()
+}
+
+/// [`current_word`], reporting a failure with where it left the cursor: Vim moves `curwin->w_cursor` while
+/// it scans and does not put it back, so `daw` on a blank line rests at the blanks' end (#1089).
+fn current_word_at(
+    buf: &Buf,
+    cursor: usize,
+    visual: Option<usize>,
+    count: u32,
+    include: bool,
+    big: bool,
+) -> Result<(usize, usize, bool), usize> {
     let mut cur = cursor;
     let mut start = cursor;
     let mut vis = visual;
@@ -322,7 +335,7 @@ fn current_word(
         start = cur;
         if (buf.cls(cur, big) == 0) == include {
             if !end_word(buf, &mut cur, big, true, true) {
-                return None;
+                return Err(cur);
             }
         } else {
             // A word with trailing blanks ("word   "), or a blank run without them: go to the next word
@@ -348,32 +361,32 @@ fn current_word(
         inclusive = true;
         if vis.is_some_and(|v| cur < v) {
             if buf.decl(&mut cur) == -1 {
-                return None;
+                return Err(cur);
             }
             if include != (buf.cls(cur, big) != 0) {
                 if !bck_word(buf, &mut cur, big, true) {
-                    return None;
+                    return Err(cur);
                 }
             } else {
                 if !bckend_word(buf, &mut cur, big, true) {
-                    return None;
+                    return Err(cur);
                 }
                 buf.incl(&mut cur);
             }
         } else {
             if buf.incl(&mut cur) == -1 {
-                return None;
+                return Err(cur);
             }
             if include != (buf.cls(cur, big) == 0) {
                 if !fwd_word(buf, &mut cur, big, true) && count > 1 {
-                    return None;
+                    return Err(cur);
                 }
                 // Ending just past a line break must not take the next line's first char.
                 if !buf.oneleft(&mut cur) {
                     inclusive = false;
                 }
             } else if !end_word(buf, &mut cur, big, true, true) {
-                return None;
+                return Err(cur);
             }
         }
         count -= 1;
@@ -394,7 +407,7 @@ fn current_word(
         }
     }
 
-    Some((vis.unwrap_or(start), cur, inclusive))
+    Ok((vis.unwrap_or(start), cur, inclusive))
 }
 
 // --- sentences (`is`/`as`) ----------------------------------------------------------------------------
@@ -527,6 +540,13 @@ fn findsent(buf: &Buf, p: &mut usize, forward: bool, mut count: u32) -> bool {
     }
     *p = pos;
     true
+}
+
+/// Whether `count` `)`/`(` steps from `p` fail (Vim `findsent` returns FAIL: the count ran past the buffer).
+pub(crate) fn sentence_motion_fails(b: &[u8], p: usize, forward: bool, count: u32) -> bool {
+    let buf = Buf::new(b);
+    let mut pos = p.min(buf.last);
+    !findsent(&buf, &mut pos, forward, count.max(1))
 }
 
 /// The landing of the `)` / `(` motions (Vim `nv_brace` → `findsent`): an empty line is a sentence of its
@@ -1104,6 +1124,21 @@ fn object(
         }
         _ => None,
     }
+}
+
+/// Where a failed word object (`aw`/`iw`/`aW`/`iW` under an operator) leaves the cursor, or `None` when it
+/// does not fail (#1089).
+pub(crate) fn word_object_fails(b: &[u8], cursor: usize, m: Motion, count: u32) -> Option<usize> {
+    let (include, big) = match m {
+        Motion::InnerWord => (false, false),
+        Motion::AWord => (true, false),
+        Motion::InnerBigWord => (false, true),
+        Motion::ABigWord => (true, true),
+        _ => return None,
+    };
+    let buf = Buf::new(b);
+    let cur = cursor.min(b.len()).min(buf.last);
+    current_word_at(&buf, cur, None, count, include, big).err()
 }
 
 /// Whether `m` is one of the objects this module computes.

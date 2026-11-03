@@ -2526,11 +2526,17 @@ mod tests {
         };
         assert_eq!(
             e.feed(k('p'), vis),
-            Feed::Cmd(Command::PasteSelection { swap: true })
+            Feed::Cmd(Command::PasteSelection {
+                swap: true,
+                count: 1,
+            })
         );
         assert_eq!(
             e.feed(k('P'), vis),
-            Feed::Cmd(Command::PasteSelection { swap: false })
+            Feed::Cmd(Command::PasteSelection {
+                swap: false,
+                count: 1,
+            })
         );
     }
 

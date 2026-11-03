@@ -53,6 +53,12 @@ pub enum Ex {
     Digraphs,
     /// `:marks` — view the set marks (a-z, `.`, `^`); Enter jumps to the mark (F-003).
     Marks,
+    /// `:[range]ma[rk] {a-zA-Z}` / `:[range]k{a-zA-Z}` — set mark `name` at column 0 of the range's last
+    /// line (no range: the cursor's line), as nvim's `ex_mark` does (#1088).
+    Mark {
+        range: SubRange,
+        name: char,
+    },
     /// `:jumps` — view the jumplist; Enter jumps to the position (F-003).
     Jumps,
     /// `:changes` — view the change list; Enter jumps to the position (F-003).
@@ -983,6 +989,8 @@ pub fn parse_ex(line: &str) -> Ex {
                 ex
             } else if let Some(rest) = line.strip_prefix("trace save") {
                 Ex::SaveTrace(rest.trim().to_string())
+            } else if let Some(ex) = parse_mark(line) {
+                ex
             } else if let Some((range, reg)) =
                 parse_register_verb(line, &["d", "de", "del", "dele", "delet", "delete"])
             {
@@ -1226,6 +1234,36 @@ fn parse_put(line: &str) -> Option<(LineAddr, Option<char>)> {
         parse_line_addr(addr_str.trim())?
     };
     Some((addr, reg))
+}
+
+/// Parse `:[range]ma[rk] {x}` and `:[range]k[ ]{x}` with `{x}` a letter (nvim's `ex_mark`, #1088): no
+/// argument is `E471`, more than one char `E488`. A numbered mark (which ruse does not keep) is not a
+/// `:mark` here and falls through to `Unknown`, as do `:keepjumps` and the other `:k…` commands.
+fn parse_mark(line: &str) -> Option<Ex> {
+    let split = line
+        .find(|c: char| !matches!(c, '0'..='9' | ',' | '%' | '.' | '$'))
+        .unwrap_or(line.len());
+    let (range_str, rest) = line.split_at(split);
+    let spelled = ["mark", "mar", "ma"].into_iter().find_map(|v| {
+        rest.strip_prefix(v)
+            .filter(|a| a.is_empty() || a.starts_with(' '))
+    });
+    let arg = spelled.or_else(|| rest.strip_prefix('k'))?;
+    // `:kfoo` is another command; `:k foo` and `:mark foo` are a `:mark` with trailing characters.
+    let spaced = spelled.is_some() || arg.starts_with(' ');
+    let arg = arg.trim();
+    let mut chars = arg.chars();
+    let Some(name) = chars.next() else {
+        return Some(Ex::Fail(ARGUMENT_REQUIRED.into()));
+    };
+    if chars.next().is_some() {
+        return spaced.then(|| Ex::Fail(format!("E488: Trailing characters: {arg}")));
+    }
+    if !name.is_ascii_alphabetic() {
+        return None;
+    }
+    let range = parse_sub_range(range_str)?;
+    Some(Ex::Mark { range, name })
 }
 
 /// Parse `:[range]{verb} [x]` (`:d`, `:y`) into the range and the register `x`, a single char after

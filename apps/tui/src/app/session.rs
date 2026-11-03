@@ -798,11 +798,15 @@ impl Session {
         from_replay: bool,
         frame: &FrameCtx,
     ) -> Flow {
+        let status_before = self.status.clone();
         self.route(raw_key, from_replay, frame);
         if let Some(key) = self.swap_answer.take() {
             if let Some(prompt) = self.swap.take() {
                 self.answer_swap(prompt, key, frame);
             }
+        }
+        if self.failed_since(&status_before) {
+            self.macros.flush_replay();
         }
         if self.quit {
             Flow::Quit
@@ -2396,6 +2400,8 @@ impl Session {
                     *marks_picker = Some(marks_picker::open(snapshot, ws.focused().doc.bytes()));
                 }
             }
+            // `:[range]mark {x}` / `:[range]k{x}` (#1088).
+            Ex::Mark { range, name } => ws.set_mark_on_line(range, name),
             // `:jumps` / `:changes` (F-003): position viewers over the jumplist / change list;
             // Enter jumps. Both share the `pos_picker` overlay (never open at once).
             ex @ (Ex::Jumps | Ex::Changes) => {
@@ -2854,9 +2860,17 @@ impl Session {
 
     /// Feed one key of a `:normal` through the whole session key path (#689), then run any replay it
     /// started (`@a`, `Q`, a linewise-Visual `@`) to completion, as Vim executes it inside the `:normal`.
-    fn nested_key(&mut self, key: KeyEvent, frame: &FrameCtx) {
+    ///
+    /// Returns whether a command failed: the rest of the replay it started is dropped then, and the caller
+    /// drops the rest of its `:normal` keys too (#1085).
+    fn nested_key(&mut self, key: KeyEvent, frame: &FrameCtx) -> bool {
         let f = self.nested_frame(frame);
+        let status_before = self.status.clone();
         self.route(key, true, &f);
+        if self.failed_since(&status_before) {
+            self.macros.flush_replay();
+            return true;
+        }
         while !self.quit {
             if let Some(line) = self.macros.next_line_run() {
                 let b = self.ws.focused().doc.bytes();
@@ -2869,8 +2883,22 @@ impl Session {
                 break;
             };
             let f = self.nested_frame(frame);
+            let status_before = self.status.clone();
             self.route(k, true, &f);
+            if self.failed_since(&status_before) {
+                self.macros.flush_replay();
+                return true;
+            }
         }
+        false
+    }
+
+    /// Whether the key just routed failed (Vim beeps or gives an error), clearing the beep: nvim's
+    /// `beep_flush`/`emsg` then flush the keys that were not typed (`flush_buffers(FLUSH_MINIMAL)`) — the rest
+    /// of a macro replay, of a `:normal` payload, of a `:g` pass. Typed keys go on (#1085).
+    fn failed_since(&mut self, status_before: &str) -> bool {
+        let error = self.status != status_before && is_ex_error(&self.status);
+        self.ws.take_beep() || error
     }
 
     /// One `:normal` pass of `events` at the cursor, then the implicit `<Esc>` that aborts an unfinished
@@ -2882,12 +2910,16 @@ impl Session {
             if self.quit {
                 return;
             }
-            self.nested_key(ev, frame);
+            if self.nested_key(ev, frame) {
+                break;
+            }
         }
         if self.quit {
             return;
         }
         self.nested_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), frame);
+        // The `:normal` saved and restores the keys around it, so its failure does not flush them.
+        self.ws.take_beep();
         // The next line's column-0 placement relies on Normal (an Esc leaves Visual too, but not every
         // state a key can leave behind).
         if self.ws.focused().view.mode() != Mode::Normal {

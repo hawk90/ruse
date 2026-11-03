@@ -801,70 +801,110 @@ fn is_blank_line(b: &[u8], ls: usize) -> bool {
     ls >= b.len() || b[ls] == b'\n'
 }
 
-/// The paragraph object (`ip` / `ap`), returned as a linewise byte range `[s, e)` covering whole lines. The
-/// paragraph is the maximal run of lines with the same blank-ness as the cursor's line; `around` extends it
-/// over the following blank lines (Vim's `ap`), or the preceding ones when there are none trailing.
-fn paragraph_span(b: &[u8], cur: usize, around: bool) -> (usize, usize) {
+/// The starts of the buffer's lines in Vim's model (the slot after a final newline is not a line).
+fn line_starts(b: &[u8]) -> Vec<usize> {
+    let end = content_end(b);
+    let mut v = vec![0];
+    v.extend(
+        b.iter()
+            .enumerate()
+            .filter(|&(i, &c)| c == b'\n' && i < end)
+            .map(|(i, _)| i + 1),
+    );
+    v
+}
+
+/// The 0-based line of `pos` among `starts`.
+fn line_of_starts(starts: &[usize], pos: usize) -> usize {
+    starts.partition_point(|&s| s <= pos).saturating_sub(1)
+}
+
+/// The paragraph object (`ip` / `ap`) with `count`, as Vim's `current_par` resolves it for an operator: the
+/// 0-based first and last line, or `None` when it fails (`count` paragraphs do not fit before the end, or
+/// `ap` starts on blank lines with no paragraph after them, #1089). A white line holds only blanks; a
+/// non-white run also stops at a line starting with a form feed (`startPS`).
+fn paragraph_lines(b: &[u8], cur: usize, count: u32, include: bool) -> Option<(usize, usize)> {
+    let starts = line_starts(b);
+    let last = starts.len() - 1;
+    let white = |l: usize| {
+        let ls = starts[l];
+        b[ls..line_end(b, ls)]
+            .iter()
+            .all(|&c| c == b' ' || c == b'\t')
+    };
+    let start_ps = |l: usize| {
+        let ls = starts[l];
+        ls >= b.len() || b[ls] == b'\n' || b[ls] == 0x0C
+    };
+    let mut start = line_of_starts(&starts, cur);
+    let white_in_front = white(start);
+    while start > 0 {
+        if white_in_front {
+            if !white(start - 1) {
+                break;
+            }
+        } else if white(start - 1) || start_ps(start) {
+            break;
+        }
+        start -= 1;
+    }
+    // `next` is the first line not taken yet (Vim's `end_lnum + 1`): past the white lines at the start.
+    let mut next = start;
+    while next <= last && white(next) {
+        next += 1;
+    }
+    let mut i = count.max(1);
+    if !include && white_in_front {
+        i -= 1;
+    }
+    while i > 0 {
+        i -= 1;
+        if next > last {
+            return None;
+        }
+        let do_white = !include && white(next);
+        if include || !do_white {
+            next += 1;
+            while next <= last && !white(next) && !start_ps(next) {
+                next += 1;
+            }
+        }
+        if i == 0 && white_in_front && include {
+            break;
+        }
+        if include || do_white {
+            while next <= last && white(next) {
+                next += 1;
+            }
+        }
+    }
+    let end = next - 1;
+    // `ap` with no white lines after it takes the ones before it.
+    if !white_in_front && !white(end) && include {
+        while start > 0 && white(start - 1) {
+            start -= 1;
+        }
+    }
+    Some((start, end))
+}
+
+/// The paragraph object as a linewise byte range `[s, e)` covering whole lines ([`paragraph_lines`]); a
+/// failed object is the empty range at the cursor.
+fn paragraph_span(b: &[u8], cur: usize, count: u32, around: bool) -> (usize, usize) {
     if b.is_empty() {
         return (0, 0);
     }
-    let start_ls = line_start(b, cur);
-    let blank = is_blank_line(b, start_ls);
-    // Extend up over same-blankness lines.
-    let mut s = start_ls;
-    while s > 0 {
-        let prev_ls = line_start(b, s - 1);
-        if is_blank_line(b, prev_ls) != blank {
-            break;
-        }
-        s = prev_ls;
-    }
-    // Walk down to the last line of the block, then take the exclusive end (past its newline).
-    let mut last_ls = start_ls;
-    loop {
-        let le = line_end(b, last_ls);
-        if le >= b.len() {
-            break; // last line of the buffer (no trailing newline)
-        }
-        let next_ls = le + 1;
-        if next_ls > b.len() || is_blank_line(b, next_ls) != blank {
-            break;
-        }
-        last_ls = next_ls;
-    }
-    let block_end = {
-        let le = line_end(b, last_ls);
-        if le < b.len() {
-            le + 1
-        } else {
-            le
-        }
+    let Some((first, last)) = paragraph_lines(b, cur, count, around) else {
+        return (cur, cur);
     };
-    if !around {
-        return (s, block_end);
-    }
-    // `ap`: include trailing lines of the opposite blank-ness, else leading ones.
-    let mut e2 = block_end;
-    while e2 < b.len() && is_blank_line(b, e2) != blank {
-        let le = line_end(b, e2);
-        e2 = if le < b.len() { le + 1 } else { le };
-        if le >= b.len() {
-            break;
-        }
-    }
-    if e2 > block_end {
-        return (s, e2);
-    }
-    let mut s2 = s;
-    while s2 > 0 {
-        let prev_ls = line_start(b, s2 - 1);
-        if is_blank_line(b, prev_ls) != blank {
-            s2 = prev_ls;
-        } else {
-            break;
-        }
-    }
-    (s2, block_end)
+    let starts = line_starts(b);
+    let le = line_end(b, starts[last]);
+    (starts[first], if le < b.len() { le + 1 } else { le })
+}
+
+/// Whether the paragraph object fails ([`paragraph_lines`]).
+fn paragraph_fails(b: &[u8], cur: usize, count: u32, around: bool) -> bool {
+    !b.is_empty() && paragraph_lines(b, cur, count, around).is_none()
 }
 
 /// One `}` step (Vim `findpar`): the start of the next blank line after the cursor's line that follows a
@@ -1128,9 +1168,16 @@ fn down(b: &[u8], cur: usize) -> usize {
 /// Vertical motion (`j`/`k`) that honours a STICKY desired column (`want`, Vim `curswant`) instead of the
 /// cursor's current column, so moving through a shorter interior line does not collapse the column: `want`
 /// is clamped to each line's length by [`at_col`] but never forgotten. `want == usize::MAX` (set by `$`)
-/// rides each line's end. `down` picks the direction; `count` repeats. Char columns, like the rest of the
-/// motion model (tab/wide-char virtual columns are a documented follow-up).
-pub(crate) fn vmove(b: &[u8], cursor: usize, count: u32, down: bool, want: usize) -> usize {
+/// rides each line's end. `down` picks the direction; `count` repeats. `want` is a virtual (screen) column,
+/// so a `<Tab>` (`ts`) or a wide char counts its cells, as nvim's `curswant` does (#1090).
+pub(crate) fn vmove(
+    b: &[u8],
+    cursor: usize,
+    count: u32,
+    down: bool,
+    want: usize,
+    ts: usize,
+) -> usize {
     let mut c = cursor.min(b.len());
     for _ in 0..count.max(1) {
         if down {
@@ -1138,13 +1185,13 @@ pub(crate) fn vmove(b: &[u8], cursor: usize, count: u32, down: bool, want: usize
             if le >= content_end(b) {
                 break; // don't descend onto the phantom line after a trailing '\n'
             }
-            c = at_col(b, le + 1, want);
+            c = crate::editor::want_col(b, le + 1, want, ts);
         } else {
             let ls = line_start(b, c);
             if ls == 0 {
                 break;
             }
-            c = at_col(b, line_start(b, ls - 1), want);
+            c = crate::editor::want_col(b, line_start(b, ls - 1), want, ts);
         }
     }
     c
@@ -1502,6 +1549,87 @@ fn unmatched_spec(m: Motion) -> Option<(u8, u8, bool)> {
         Motion::UnmatchedBraceBack => Some((b'{', b'}', false)),
         Motion::UnmatchedBraceFwd => Some((b'{', b'}', true)),
         _ => None,
+    }
+}
+
+/// Whether motion `m` FAILS from `cursor` (Vim's `clearopbeep`: the command is cancelled, the cursor stays
+/// and the typeahead is flushed, #1085). `op` is an operator waiting for the motion; `visual` is a Visual
+/// selection, where `l` may still step onto the line break. Checked against nvim v0.12.6:
+/// - `h`/`l`/`<BS>`/`<Space>` fail when they cannot move at all (a count moves as far as it can); under an
+///   operator `h`/`l` are a silent no-op instead (`dh` at column 0).
+/// - `j`/`k`/`+`/`-`/`<CR>` fail only on the last (first) line; a count past the edge stops there.
+/// - `w`/`W`/`b`/`B`/`ge`/`gE` fail when they cannot move; `e`/`E` when the last count step cannot. Under an
+///   operator `w`/`W` and `e`/`E` reach the buffer end instead (`$dw`, `$de`).
+/// - `f`/`t`/`F`/`T`/`;`/`,` without the count-th match, `}`/`{`/`)`/`(` with count left over, `%` without a
+///   bracket, `[(`/`])`/`[{`/`]}` without an enclosing one, and `{count}$` (count > 1) on the last line.
+///
+/// Every other motion (text objects, line jumps, `0`, `^`, `$`, `|`, sections, …) never fails here.
+#[must_use]
+pub(crate) fn fails(
+    b: &[u8],
+    cursor: usize,
+    m: Motion,
+    count: u32,
+    op: bool,
+    visual: bool,
+) -> bool {
+    let n = count.max(1);
+    let cur = cursor.min(b.len());
+    let ls = line_start(b, cur);
+    let le = line_end(b, cur);
+    let last_line = le >= content_end(b);
+    // Where the motion leaves an on-char caret: never on a non-empty line's break or the phantom slot.
+    let clamp = |t: usize| {
+        let t = off_phantom(b, t.min(b.len()));
+        let (tls, tle) = (line_start(b, t), line_end(b, t));
+        if t == tle && tle > tls {
+            prev_grapheme(b, tle)
+        } else {
+            t
+        }
+    };
+    let still = || clamp(target(b, cur, m, count)) == clamp(cur);
+    match m {
+        Motion::Left => !op && cur <= ls,
+        Motion::Right if visual => !op && cur >= le,
+        Motion::Right => !op && next_grapheme(b, cur) >= le,
+        Motion::WrapLeft | Motion::WrapRight => !op && still(),
+        Motion::Up | Motion::UpFirstNonBlank => ls == 0,
+        Motion::Down | Motion::DownFirstNonBlank => last_line,
+        Motion::WordFwd | Motion::BigWordFwd => !op && still(),
+        Motion::WordBack | Motion::BigWordBack | Motion::WordEndBack | Motion::BigWordEndBack => {
+            still()
+        }
+        Motion::WordEnd | Motion::BigWordEnd => {
+            !op && {
+                let before = if n > 1 { target(b, cur, m, n - 1) } else { cur };
+                clamp(target(b, cur, m, n)) == clamp(before)
+            }
+        }
+        Motion::FindChar {
+            ch,
+            forward,
+            till,
+            repeat,
+        } => find_char_target(b, cur, ch, forward, till, repeat, n).is_none(),
+        Motion::ParagraphFwd | Motion::ParagraphBack => {
+            paragraph_landing(b, cur, m == Motion::ParagraphFwd, n).is_none()
+        }
+        Motion::SentenceFwd | Motion::SentenceBack => {
+            crate::textobj::sentence_motion_fails(b, cur, m == Motion::SentenceFwd, n)
+        }
+        Motion::MatchBracket => match_bracket(b, cur).is_none(),
+        Motion::InnerParagraph | Motion::AParagraph => {
+            paragraph_fails(b, cur, n, m == Motion::AParagraph)
+        }
+        Motion::UnmatchedParenBack
+        | Motion::UnmatchedParenFwd
+        | Motion::UnmatchedBraceBack
+        | Motion::UnmatchedBraceFwd => still(),
+        // `{count}$` moves `count - 1` lines down first, failing like `j` only on the last line (`5$` on
+        // the line above it still reaches the last line's end).
+        Motion::LineEnd => n > 1 && last_line,
+        _ => false,
     }
 }
 
@@ -1941,8 +2069,8 @@ fn char_span_raw(b: &[u8], cursor: usize, m: Motion, count: u32) -> (usize, usiz
             let (s, e, _) = crate::textobj::op_range(b, cur, m, n);
             (s, e)
         }
-        Motion::InnerParagraph => paragraph_span(b, cur, false),
-        Motion::AParagraph => paragraph_span(b, cur, true),
+        Motion::InnerParagraph => paragraph_span(b, cur, n, false),
+        Motion::AParagraph => paragraph_span(b, cur, n, true),
         Motion::Tag { around } => tag_span(b, cur, around, n),
         // vertical / linewise motions are not charwise — callers handle Line / line-jumps specially
         Motion::Up

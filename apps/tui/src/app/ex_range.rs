@@ -76,7 +76,8 @@ impl std::fmt::Display for ExRangeError {
 /// - a line number, `.` (the cursor's line), `$` (the last line);
 /// - `%` (`1,$`) or `*` (`'<,'>`), which stand for two addresses;
 /// - a mark: `'a`–`'z`, `'<`/`'>` (the last Visual selection), `'[`/`']` (the last change or yank), `'.`
-///   (the last change) and `''` (the line before the latest jump); an unset one, or a file mark, is `E20`;
+///   (the last change), `''` (the line before the latest jump) and `'A`–`'Z`; an unset one, or a numbered
+///   mark, is `E20`;
 /// - `/pat/` (the next line that matches, wrapping around the end) or `?pat?` (the previous one), where
 ///   another `/pat/` or `?pat?` may follow to search on from there (`:/a//b/`), and an empty pattern is the
 ///   last search; `\/` and `\?` search for the last search pattern, `\&` for the last substitute pattern;
@@ -309,18 +310,19 @@ fn resolve(
 }
 
 /// The 1-based line of the mark named by the byte `c` after a `'`: `Some(None)` for a mark that is not set
-/// (or a file mark, which ruse does not keep), `None` when `c` names no mark.
+/// (or a numbered mark, which ruse does not keep), `None` when `c` names no mark.
 fn mark_line(ws: &Workspace, c: u8, visual: Option<(i64, i64)>) -> Option<Option<i64>> {
     let view = &ws.focused().view;
     let pos = match c {
-        b'a'..=b'z' => view.named_mark(c as char),
+        // An uppercase mark is kept with its buffer (#1088).
+        b'a'..=b'z' | b'A'..=b'Z' => view.named_mark(c as char),
         b'<' => return Some(visual.map(|v| v.0)),
         b'>' => return Some(visual.map(|v| v.1)),
         b'[' => view.change_mark_start(),
         b']' => view.change_mark_end(),
         b'.' => view.last_change(),
         b'\'' | b'`' => view.context_mark(),
-        b'A'..=b'Z' | b'0'..=b'9' => None,
+        b'0'..=b'9' => None,
         _ => return None,
     };
     let b = ws.focused().doc.bytes();

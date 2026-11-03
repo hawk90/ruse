@@ -195,8 +195,9 @@ fn mark_error(cmd: &Command, ws: &Workspace) -> Option<String> {
         Command::OpToMark { name, .. } => *name,
         _ => return None,
     };
-    (name.is_ascii_lowercase() && ws.focused().view.named_mark(name).is_none())
-        .then(|| "E20: Mark not set".to_string())
+    ((name.is_ascii_alphabetic() || matches!(name, '^' | '<' | '>'))
+        && ws.focused().view.named_mark(name).is_none())
+    .then(|| "E20: Mark not set".to_string())
 }
 
 /// The error a Normal-mode put from an EMPTY register fails with (`:help E353`), or `None` when the put
@@ -210,7 +211,14 @@ fn put_error(cmd: &Command, ws: &mut Workspace) -> Option<String> {
         return None;
     }
     let name = ws.focused().view.pending_register();
-    if matches!(name, Some('_' | '+' | '*' | '=')) || !ws.register_bytes(name).is_empty() {
+    // A register written with nothing (`qaq`) puts nothing without an error (#1091); the read-only
+    // registers are synced from frontend state, so only their text says whether they hold anything.
+    let reg = ws.focused().view.registers().get(name);
+    let holds = match name {
+        Some(':' | '/' | '.' | '%') => !reg.is_empty(),
+        _ => reg.is_set(),
+    };
+    if matches!(name, Some('_' | '+' | '*' | '=')) || holds {
         return None;
     }
     Some(match name {
@@ -362,6 +370,8 @@ pub(crate) fn apply_effect(
             None => *quit = true,
         },
         Effect::Status(s) => *status = s,
+        // Recorded by the workspace; the session flushes the replayed keys (#1085).
+        Effect::Beep => {}
     }
 }
 

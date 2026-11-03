@@ -18,14 +18,38 @@ mod parity_ratchet;
 /// as `nvim_replace_termcodes` reads it) through the real key path: the session's intercepts, the input
 /// engine and the Ex dispatch, exactly as the binary routes them (#895). The oracle runs `-u NONE`, so the
 /// session uses Vim's factory search case, not ruse's shipped smartcase.
+///
+/// A fixture whose last line is empty is opened as a newline-TERMINATED buffer (`["", "", ""]` is
+/// `"\n\n\n"`): joined bare, its empty last line would be the slot after a final newline, which is not a
+/// line in ruse's model (as in Vim's), so the buffer would have a line fewer than nvim's (#1089).
 fn drive_ruse(lines: &[String], keys: &str) -> Headless {
-    let mut h = Headless::vim(&lines.join("\n")).vanilla_search_case();
+    let mut h = Headless::vim(&ruse_input(lines)).vanilla_search_case();
     h.keys(keys);
     h
 }
 
-fn ruse_text(h: &Headless) -> Vec<String> {
-    h.text().split('\n').map(str::to_string).collect()
+/// Whether the fixture opens as a terminated buffer (see [`drive_ruse`]).
+fn terminated(lines: &[String]) -> bool {
+    lines.len() > 1 && lines.last().is_some_and(String::is_empty)
+}
+
+fn ruse_input(lines: &[String]) -> String {
+    let mut text = lines.join("\n");
+    if terminated(lines) {
+        text.push('\n');
+    }
+    text
+}
+
+/// ruse's buffer as the oracle's lines. A terminated fixture's final newline ends its last line.
+fn ruse_text(h: &Headless, terminated: bool) -> Vec<String> {
+    let text = h.text();
+    let text = if terminated {
+        text.strip_suffix('\n').unwrap_or(&text)
+    } else {
+        &text
+    };
+    text.split('\n').map(str::to_string).collect()
 }
 
 /// ruse's register `name` as the oracle's `(text, type)`.
@@ -51,7 +75,7 @@ fn fixture_diffs(fx: &Value) -> Vec<String> {
     let mut h = drive_ruse(&lines, keys);
 
     // ruse observables.
-    let r_text = ruse_text(&h);
+    let r_text = ruse_text(&h, terminated(&lines));
     let (r_row, r_col) = h.cursor_row_col();
     let (r_row, r_col) = (r_row as i64, r_col as i64);
     let (r_reg_text, r_reg_type) = ruse_reg(&mut h, '"');

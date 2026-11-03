@@ -3688,7 +3688,10 @@ mod visual_tests {
                 },
                 Command::MoveRight,
                 Command::MoveRight, // select "bar"
-                Command::PasteSelection { swap: true },
+                Command::PasteSelection {
+                    swap: true,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "foo foo");
@@ -3710,7 +3713,10 @@ mod visual_tests {
                 },
                 Command::MoveRight,
                 Command::MoveRight,
-                Command::PasteSelection { swap: false },
+                Command::PasteSelection {
+                    swap: false,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "foo foo");
@@ -4147,7 +4153,10 @@ mod blockwise_tests {
                 Command::EnterVisual {
                     kind: SelectKind::Linewise,
                 },
-                Command::PasteSelection { swap: true },
+                Command::PasteSelection {
+                    swap: true,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "a\na\nc");
@@ -4164,7 +4173,10 @@ mod blockwise_tests {
                     kind: SelectKind::Charwise,
                 },
                 Command::Move(1, Motion::InnerWord),
-                Command::PasteSelection { swap: false },
+                Command::PasteSelection {
+                    swap: false,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "\nx\n bar\nx");
@@ -4184,7 +4196,10 @@ mod blockwise_tests {
                 },
                 Command::MoveDown,
                 Command::MoveRight,
-                Command::PasteSelection { swap: true },
+                Command::PasteSelection {
+                    swap: true,
+                    count: 1,
+                },
             ],
         );
         assert_eq!(text(&st), "ac\naf\nghi");

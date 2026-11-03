@@ -2446,6 +2446,58 @@ FIXTURES: list[dict] = [
     {"name": "gQ_under_operator_cancels", "lines": ["foo bar baz"], "keys": "dgQvi<CR>w"},
     {"name": "gQ_from_insert_ctrl_o", "lines": ["abcd"], "keys": "i<C-o>gQvi<CR>Z<Esc>"},
     {"name": "gQ_normal_runs_in_normal_mode", "lines": ["foo bar", "baz"], "keys": "gQnormal x<CR>vi<CR>"},
+    #     FAILED COMMANDS (#1085): a failed motion cancels its operator and aborts a macro replay or a `:normal`
+    #     payload; keys typed after it still run.
+    {"name": "nl_fail_count_dollar_last_line", "lines": ["ab", "cd"], "keys": "j2$"},
+    {"name": "nl_fail_d_count_dollar_last_line", "lines": ["ab", "cd"], "keys": "jd2$"},
+    {"name": "nl_fail_count_e_moves_then_fails", "lines": ["ab cd ef"], "keys": "5ex"},
+    {"name": "nl_fail_visual_l_at_eol", "lines": ["ab"], "keys": "v$ld"},
+    {"name": "nl_mac_failed_w_aborts", "lines": ["$wx", "abc"], "keys": "\"ay$j@a"},
+    {"name": "nl_normal_failed_motion_stops", "lines": ["abc", "abc"], "keys": ":2normal $wx<CR>"},
+    {"name": "nl_normal_failure_per_line", "lines": ["ax", "bc"], "keys": ":%normal fcx<CR>"},
+    {"name": "nl_g_normal_failure_skips_rest", "lines": ["x1", "y", "x2"], "keys": ":g/x/normal jdd<CR>"},
+    {"name": "nl_g_normal_failure_per_pass", "lines": ["xa", "xb", "y"], "keys": ":g/x/normal fbx<CR>"},
+    #     WANTED COLUMN (#1090): `j`/`k` keep the screen column over tabs and wide chars.
+    {"name": "nl_mb_k_screen_col", "lines": ["abcdef", "가나다"], "keys": "4lj"},
+    {"name": "nl_mb_k_back_to_ascii", "lines": ["abcdef", "가나다"], "keys": "4ljk"},
+    {"name": "nl_tab_j_screen_col", "lines": ["\tx", "abcdefghij"], "keys": "lj", "setup": "set ts=4"},
+    {"name": "nl_tab_k_past_short", "lines": ["\tx", "abcdefghij"], "keys": "j3lk", "setup": "set ts=4"},
+    {"name": "nl_tab_k_onto_tab_keeps_want", "lines": ["\tx", "abcdefghij"], "keys": "j2lkj", "setup": "set ts=4"},
+    {"name": "nl_mb_block_j", "lines": ["가나다", "abcdef"], "keys": "l<C-v>jd"},
+    #     PARAGRAPH AND WORD OBJECTS (#1089): counts, failures and where a failed object leaves the cursor.
+    {"name": "nl_d2ap", "lines": ["a", "", "b"], "keys": "d2ap"},
+    {"name": "nl_d3ap_fails", "lines": ["a", "", "b"], "keys": "d3ap"},
+    {"name": "nl_dap_on_blank_mid", "lines": ["a", "", "", "b"], "keys": "jdap"},
+    {"name": "nl_d2ip", "lines": ["a", "", "b"], "keys": "d2ip"},
+    {"name": "nl_daw_blank_mid", "lines": ["   "], "keys": "ldaw"},
+    {"name": "nl_daW_blank", "lines": ["   "], "keys": "daW"},
+    {"name": "nl_dap_white_line_is_blank", "lines": ["a", "  ", "b"], "keys": "dap"},
+    #     REGISTERS (#1091): a named delete fills "1; a recording updates the unnamed register naming it.
+    {"name": "nl_reg_named_small_delete_skips_minus", "lines": ["abc def"], "keys": "\"adw\"-p"},
+    {"name": "nl_reg_named_delete_lands_in_1", "lines": ["1", "2", "3"], "keys": "\"add\"1p"},
+    {"name": "nl_mac_empty_recording_unnamed_elsewhere", "lines": ["abc"], "keys": "yyqaqp"},
+    {"name": "nl_mac_recording_updates_unnamed", "lines": ["abc"], "keys": "\"ayyqalqp"},
+    #     MARKS (#1088): `^, :mark/:k, uppercase marks, `> under an operator, `[`]` after a put, `` after `/`.
+    {"name": "nl_mark_last_insert_line", "lines": ["abc", "  def"], "keys": "jAxy<Esc>gg'^x"},
+    {"name": "nl_mark_d_to_last_insert", "lines": ["abc def"], "keys": "wix<Esc>0d`^"},
+    {"name": "nl_mark_ex_mark_current_line", "lines": ["a", "b", "c"], "keys": "j:mark b<CR>gg'bx"},
+    {"name": "nl_mark_ex_k_space", "lines": ["a", "b", "c"], "keys": "j:k b<CR>gg'bx"},
+    {"name": "nl_mark_ex_mark_no_argument", "lines": ["a", "b"], "keys": ":mark<CR>"},
+    {"name": "nl_mark_ex_k_no_argument", "lines": ["a", "b"], "keys": ":k<CR>"},
+    {"name": "nl_mark_ex_mark_trailing", "lines": ["a", "b"], "keys": ":mark ab<CR>"},
+    {"name": "nl_mark_uppercase_in_ex_range", "lines": ["a", "b", "c"], "keys": "jmAgg:'Ad<CR>"},
+    {"name": "nl_mark_uppercase_backtick", "lines": ["abc", "def"], "keys": "jlmBgg`Bx"},
+    {"name": "nl_mark_y_to_visual_end", "lines": ["abc def ghi"], "keys": "wviw<Esc>0y`>P"},
+    {"name": "nl_mark_change_start_put_below_last", "lines": ["abc", "def"], "keys": "yyjp`]x"},
+    {"name": "nl_mark_backtick_back_after_search", "lines": ["abc", "def x"], "keys": "l/x<CR>``x"},
+    #     EXPRESSION REGISTER AND DOT (#808).
+    {"name": "nl_expr_insert_dot", "lines": ["abc"], "keys": "i<C-r>=1+1<CR><Esc>."},
+    {"name": "nl_expr_put_dot", "lines": ["abc"], "keys": "\"=1+1<CR>p."},
+    #     VISUAL PUT COUNT (#1093).
+    {"name": "nl_vput_count_charwise", "lines": ["foo bar"], "keys": "yiwwviw2p"},
+    {"name": "nl_vput_count_linewise", "lines": ["foo", "bar"], "keys": "yyjV2p"},
+    {"name": "nl_vput_count_P", "lines": ["foo bar"], "keys": "yiwwviw3P"},
+    {"name": "nl_vput_count_line_reg_over_chars", "lines": ["foo", "bar baz"], "keys": "yyjwviw2p"},
 ]
 
 

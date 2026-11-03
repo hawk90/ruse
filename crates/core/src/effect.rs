@@ -14,4 +14,8 @@ pub enum Effect {
     Quit,
     /// A transient status-line message (errors, `:w` confirmations).
     Status(String),
+    /// The command failed (Vim beeps: a motion that cannot move, `wx` on the last char). Vim then flushes
+    /// the keys that were not typed — the rest of a macro, a `:normal` payload, fed keys — so `@a` stops at
+    /// the failure (#1085). The workspace records it ([`crate::Workspace::take_beep`]); nothing else to do.
+    Beep,
 }

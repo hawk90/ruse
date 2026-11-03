@@ -268,10 +268,11 @@ pub struct View {
     /// after an edit, so the first `g;` lands on the newest change; walks toward 0 (oldest) on `g;` and back
     /// toward the newest on `g,`. Reset to `changes.len()` whenever a new change is pushed.
     change_idx: usize,
-    /// The per-buffer named marks `a`–`z` (Vim `m{a-z}` / `` `{a-z} ``), indexed by `c - 'a'`. `None` = unset.
-    /// Set by [`Command::SetNamedMark`], read by [`Command::GotoNamedMark`], and snapped on every commit like
-    /// the change list. Uppercase/global marks and numbered marks stay deferred.
-    named_marks: [Option<usize>; 26],
+    /// The named marks `a`–`z` then `A`–`Z` (Vim `m{a-zA-Z}` / `` `{a-zA-Z} ``), indexed by [`mark_slot`].
+    /// `None` = unset. Set by [`Command::SetNamedMark`], read by [`Command::GotoNamedMark`], and snapped on
+    /// every commit like the change list. An uppercase (file) mark is kept with this view's buffer: a jump
+    /// to one set in another buffer is deferred (#1088), as are the numbered marks.
+    named_marks: [Option<usize>; 52],
     /// Where Insert mode was last left (Vim's `` `^ `` mark), for `gi` to resume Insert there. Set in
     /// [`commit`] on an Insert→Normal transition to the pre-clamp caret, and snapped like the marks. `None`
     /// until the first Insert session ends.
@@ -308,6 +309,15 @@ pub struct View {
     /// The current cursor into [`jumps`] for `CTRL-O`/`CTRL-I`. Equals `jumps.len()` (past the newest) until
     /// the first `CTRL-O`, which saves the current position so `CTRL-I` can return, then walks the list.
     jump_idx: usize,
+}
+
+/// The [`View::named_marks`] slot of mark `c`: `a`–`z` are 0–25, `A`–`Z` 26–51.
+fn mark_slot(c: char) -> Option<usize> {
+    match c {
+        'a'..='z' => Some(c as usize - 'a' as usize),
+        'A'..='Z' => Some(26 + c as usize - 'A' as usize),
+        _ => None,
+    }
 }
 
 /// Maximum entries kept in a View's change list (Vim's default `:changes` history is ~100).
@@ -403,7 +413,7 @@ impl View {
             caret: CaretGravity::OnChar,
             changes: Vec::new(),
             change_idx: 0,
-            named_marks: [None; 26],
+            named_marks: [None; 52],
             last_insert: None,
             change_start: None,
             change_end: None,
@@ -421,20 +431,27 @@ impl View {
         self.last_insert
     }
 
-    /// The byte offset of named mark `c` (`a`–`z`), or `None` if unset / not a lowercase letter.
+    /// The byte offset of mark `c`, or `None` if unset or not a mark this resolves: a letter (`a`–`z`,
+    /// `A`–`Z`), `^` (where Insert stopped) or `<`/`>` (the last Visual area's start / end; a linewise one
+    /// from its first line's start to its last line's end). The marks a jump or an operator reads by name
+    /// (`` `^ ``, `` d`> ``, #1088).
     #[must_use]
     pub fn named_mark(&self, c: char) -> Option<usize> {
-        let i = (c as usize).checked_sub('a' as usize)?;
-        self.named_marks.get(i).copied().flatten()
+        match c {
+            '^' => self.last_insert,
+            '<' | '>' => {
+                let (s, e, _) = self.last_visual_bounds()?;
+                Some(if c == '<' { s } else { e })
+            }
+            _ => self.named_marks[mark_slot(c)?],
+        }
     }
 
-    /// Set named mark `c` (`a`–`z`) to `pos`. A non-lowercase `c` is ignored (the input layer only sends
-    /// `a`–`z`, so this is a defensive guard).
-    fn set_named_mark(&mut self, c: char, pos: usize) {
-        if let Some(i) = (c as usize).checked_sub('a' as usize) {
-            if let Some(slot) = self.named_marks.get_mut(i) {
-                *slot = Some(pos);
-            }
+    /// Set named mark `c` (`a`–`z`, `A`–`Z`) to `pos`. Any other `c` is ignored (the input layer only sends
+    /// letters, so this is a defensive guard).
+    pub(crate) fn set_named_mark(&mut self, c: char, pos: usize) {
+        if let Some(i) = mark_slot(c) {
+            self.named_marks[i] = Some(pos);
         }
     }
 
@@ -574,6 +591,12 @@ impl View {
     #[must_use]
     pub fn pending_register(&self) -> Option<char> {
         self.pending_register
+    }
+
+    /// The view's registers (read-only).
+    #[must_use]
+    pub fn registers(&self) -> &RegisterStore {
+        &self.registers
     }
 
     /// Place the cursor at byte offset `pos` (the frontend uses this to follow a `:s///c` match; the
@@ -925,7 +948,10 @@ impl EditorState {
         let mut doc = Document::new(DocumentId(1), initial);
         doc.mark_saved();
         let view = View::fresh(doc.id());
-        EditorState { doc, view }
+        let mut st = EditorState { doc, view };
+        // A caret on a leading `<Tab>` wants the tab's last cell (#1090).
+        st.view.curswant = st.wanted_col();
+        st
     }
 
     /// Reconstitute an editing context from a Document and a View taken out of a Workspace arena — the
@@ -1468,7 +1494,7 @@ impl EditorState {
         let cursor = if self.view.curswant == range::MAXCOL {
             motion::prev_boundary(bytes, le).max(ls)
         } else {
-            motion::at_col(bytes, ls, self.view.curswant)
+            range::want_col(bytes, ls, self.view.curswant, self.view.indent.tab_width)
         };
         if cursor >= le && le > ls {
             motion::prev_boundary(bytes, le)
@@ -2080,7 +2106,7 @@ impl EditorState {
     #[must_use]
     pub fn marks_snapshot(&self) -> Vec<(char, usize)> {
         let mut out = Vec::new();
-        for c in 'a'..='z' {
+        for c in ('a'..='z').chain('A'..='Z') {
             if let Some(p) = self.view.named_mark(c) {
                 out.push((c, p));
             }
@@ -2116,7 +2142,22 @@ impl EditorState {
         // a later `col_of`/slice would panic. Vim never overshoots, so this is a no-op on valid input.
         let pos = snap(b, pos.min(b.len()));
         self.view.cursor = pos;
-        self.view.curswant = col_of(b, line_start(b, pos), pos);
+        self.view.curswant = self.wanted_col();
+    }
+
+    /// The wanted column ([`View::curswant`]) the caret sets where it stands now (#1090).
+    fn wanted_col(&self) -> usize {
+        let tab_end = match self.view.mode {
+            Mode::Normal => self.view.caret == CaretGravity::OnChar,
+            Mode::Visual { .. } => self.view.anchor.is_none_or(|a| self.view.cursor >= a),
+            _ => false,
+        };
+        range::wanted_vcol(
+            self.doc.bytes(),
+            self.view.cursor,
+            self.view.indent.tab_width,
+            tab_end,
+        )
     }
 
     /// This View's caret gravity (D-050): `OnChar` (Vim/Neovim) or `BetweenChar` (Emacs profile).
@@ -2212,7 +2253,14 @@ fn edit_bracket(list: &EditList) -> Option<(usize, usize)> {
     let edits = list.edits();
     let first = edits.first()?;
     let last = edits.last()?;
-    let start = first.pos.0;
+    // Lines put below an unterminated last line arrive as `"\n" + lines` at its end: `[` is the first put
+    // line's start, not the old line's end (`yyjp`[`, #1088).
+    let start =
+        if edits.len() == 1 && first.del == 0 && first.ins.len() > 1 && first.ins[0] == b'\n' {
+            first.pos.0 + 1
+        } else {
+            first.pos.0
+        };
     let delta_before_last: isize = edits[..edits.len() - 1].iter().map(Edit::delta).sum();
     let post_last_start = (last.pos.0 as isize + delta_before_last).max(0) as usize;
     Some((start, post_last_start + last.ins.len()))
@@ -2286,7 +2334,7 @@ fn undo_target(st: &EditorState, placed: crate::undo_cursor::UndoCursor, mode: M
     let le = line_end(b, ls);
     let at = match placed.col {
         Some(col) => snap(b, (ls + col).min(le)),
-        None => at_col(b, ls, st.view.curswant),
+        None => range::want_col(b, ls, st.view.curswant, st.view.indent.tab_width),
     };
     if at == le && ls < le && mode == Mode::Normal && st.view.caret == CaretGravity::OnChar {
         prev_boundary(b, le)
@@ -2618,6 +2666,11 @@ fn is_jump(cmd: &Command) -> bool {
     match cmd {
         Command::SearchNext(_)
         | Command::SearchPrev(_)
+        // A `/`/`?` search is a jump too, so `''` returns from it (#1088).
+        | Command::Search {
+            op: crate::SearchOp::Move,
+            ..
+        }
         | Command::SearchWordUnder {
             op: crate::SearchOp::Move,
             ..
@@ -2683,7 +2736,8 @@ pub fn apply_command(st: &mut EditorState, cmd: &Command) -> Vec<Effect> {
     if matches!(cmd, Command::InsertCaretStep { .. }) {
         st.view.last_was_edit = entry_was_edit;
     }
-    if let Some(from) = jump_from {
+    // A failed jump (a search that matches nowhere) records nothing.
+    if let Some(from) = jump_from.filter(|_| !effects.contains(&Effect::Beep)) {
         st.view.push_jump(from);
     }
     // Maintain the auto-indent-pending flag (read by `EnterNormal` for `<Esc>` autoindent cleanup): a
@@ -2795,17 +2849,13 @@ fn update_curswant(st: &mut EditorState, cmd: &Command, entry_mode: Mode) {
         // A `/`/`?` search is a definite motion/edit: it establishes the match column (and, for `c?`,
         // the deletion point where Insert begins). It must never preserve a stale `$`/`A` append intent
         // — `$c?pat` inserts at the match, not at the line end.
-        | Command::Search { .. } => {
-            let b = st.doc.bytes();
-            st.view.curswant = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
-        }
+        | Command::Search { .. } => st.view.curswant = st.wanted_col(),
         // Everything else (edits like `dd`/`x`, mode changes): a one-shot `CTRL-O` command run while
         // `curswant == MAXCOL` that leaves the cursor at the line's end PRESERVES MAXCOL; otherwise recompute
         // the column.
         _ => {
             if !(from_insert && st.view.curswant == MAXCOL && at_line_end(st)) {
-                let b = st.doc.bytes();
-                st.view.curswant = col_of(b, line_start(b, st.view.cursor), st.view.cursor);
+                st.view.curswant = st.wanted_col();
             }
         }
     }

@@ -121,6 +121,8 @@ pub struct Workspace {
     /// frontend installs a real shell-out provider at startup via [`Workspace::set_clipboard`], and unit
     /// tests inject [`MemClipboard`](crate::clipboard::MemClipboard).
     clipboard: Box<dyn Clipboard>,
+    /// A command applied since the last [`Workspace::take_beep`] failed ([`Effect::Beep`], #1085).
+    beeped: bool,
 }
 
 impl Workspace {
@@ -143,7 +145,14 @@ impl Workspace {
             default_ignore_case: false,
             default_smart_case: false,
             clipboard: Box::new(NoClipboard),
+            beeped: false,
         }
+    }
+
+    /// Whether a command failed (Vim beeped) since the last call, clearing the flag. The frontend flushes the
+    /// keys that were not typed (a macro's rest) when it is set, as Vim's `beep_flush` does (#1085).
+    pub fn take_beep(&mut self) -> bool {
+        std::mem::take(&mut self.beeped)
     }
 
     /// Install the OS-clipboard provider backing `"+`/`"*` (`:help quoteplus`). The frontend calls this once
@@ -227,6 +236,25 @@ impl Workspace {
         self.pane(self.focus)
     }
 
+    /// `:[range]mark {name}`: set the focused view's named mark at column 0 of the range's last line (the
+    /// cursor's line for no range), clamped to the buffer (#1088).
+    pub fn set_mark_on_line(&mut self, range: SubRange, name: char) {
+        let vid = self.windows[self.focus].view;
+        let did = self.views[vid.0].as_ref().expect("focused view live").doc();
+        let b = self.docs[Self::doc_slot(did)]
+            .as_ref()
+            .expect("focused doc live")
+            .bytes();
+        let lines = crate::pos::count_newlines(b) + usize::from(b.last() != Some(&b'\n'));
+        let view = self.views[vid.0].as_mut().expect("focused view live");
+        let line = match range {
+            SubRange::CurrentLine => crate::pos::line_of(b, view.cursor()),
+            SubRange::WholeFile => lines.saturating_sub(1),
+            SubRange::Lines(_, last) => last.clamp(1, lines.max(1)) - 1,
+        };
+        view.set_named_mark(name, crate::pos::nth_line_start(b, line));
+    }
+
     /// Place the FOCUSED view's cursor at byte offset `pos` (the frontend uses this to scroll a
     /// `:s///c` match into view during the confirm loop). Clamped to the buffer.
     pub fn place_focused_cursor(&mut self, pos: usize) {
@@ -306,6 +334,7 @@ impl Workspace {
         }
 
         let effects = apply_command(&mut st, cmd);
+        self.beeped |= effects.contains(&Effect::Beep);
 
         if touches_clipboard {
             // The mirror slot now holds the yanked/deleted bytes (a paste leaves it unchanged, so the push is
@@ -416,7 +445,7 @@ impl Workspace {
             .chain(std::iter::once(('-', regs.get(Some('-')))))
             .chain(('a'..='z').map(|c| (c, regs.get(Some(c)))))
         {
-            if !r.is_empty() {
+            if r.is_set() {
                 out.push((name, r.kind(), r.text().to_vec()));
             }
         }

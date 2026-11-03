@@ -6,7 +6,7 @@
 //! these names through that re-export).
 
 use crate::command::ForcedWise;
-use crate::motion::{self, at_col, line_end, line_start, next_boundary, prev_boundary, Motion};
+use crate::motion::{self, line_end, line_start, next_boundary, prev_boundary, Motion};
 
 /// `curswant` sentinel meaning "the end of whatever line you land on" — Vim's MAXCOL, set by `$`.
 pub(crate) const MAXCOL: usize = usize::MAX;
@@ -225,14 +225,18 @@ pub(crate) fn op_landing(
     m: Motion,
     count: u32,
     curswant: usize,
+    ts: usize,
     yank: bool,
 ) -> usize {
     match m {
-        Motion::Up => motion::vmove(b, cur, count, false, curswant),
-        Motion::Down => motion::vmove(b, cur, count, true, curswant),
-        Motion::GotoLine | Motion::LastLine | Motion::GotoPercent => {
-            at_col(b, line_start(b, motion::target(b, cur, m, count)), curswant)
-        }
+        Motion::Up => motion::vmove(b, cur, count, false, curswant, ts),
+        Motion::Down => motion::vmove(b, cur, count, true, curswant, ts),
+        Motion::GotoLine | Motion::LastLine | Motion::GotoPercent => want_col(
+            b,
+            line_start(b, motion::target(b, cur, m, count)),
+            curswant,
+            ts,
+        ),
         Motion::Line => {
             let mut ls = line_start(b, cur);
             for _ in 1..count.max(1) {
@@ -243,7 +247,7 @@ pub(crate) fn op_landing(
                 ls = le + 1;
             }
             if yank {
-                at_col(b, ls, curswant)
+                want_col(b, ls, curswant, ts)
             } else {
                 motion::first_non_blank(b, ls)
             }
@@ -341,6 +345,7 @@ pub(crate) fn forced_span(
     count: u32,
     wise: ForcedWise,
     curswant: usize,
+    ts: usize,
 ) -> OpSpan {
     let plain = op_span_full(b, cur, m, count);
     let whole = |lo: usize, hi: usize| {
@@ -370,7 +375,7 @@ pub(crate) fn forced_span(
     if line_motion && plain.failed {
         return plain;
     }
-    let landing = op_landing(b, cur, m, count, curswant, false);
+    let landing = op_landing(b, cur, m, count, curswant, ts, false);
     // A charwise motion's own span and whether it is inclusive (its end char is operated on).
     let (s0, e0) = motion::char_span(b, cur, m, count);
     let inclusive = motion_inclusive(m) || e0 > cur.max(motion::target(b, cur, m, count));
@@ -546,6 +551,36 @@ pub(crate) fn at_vcol(b: &[u8], ls: usize, vcol: usize, ts: usize) -> usize {
         v += w;
     }
     last
+}
+
+/// Where a vertical move lands for the wanted column `want` (`curswant`, a virtual column) on the line at
+/// `ls` — Vim's `coladvance`: the character covering that cell (a `<Tab>` or a wide char spans several), or
+/// the line end when the line is shorter or `want` is [`MAXCOL`]. The caller pulls a Normal-mode caret off
+/// the line end (#1090).
+pub(crate) fn want_col(b: &[u8], ls: usize, want: usize, ts: usize) -> usize {
+    let le = line_end(b, ls);
+    let (mut i, mut v) = (ls, 0);
+    while i < le {
+        let (j, w) = cluster_cells(b, i, le, v, ts);
+        if want < v + w {
+            return i;
+        }
+        i = j;
+        v += w;
+    }
+    le
+}
+
+/// The wanted column (`curswant`) a caret at `pos` sets: its virtual column. On a `<Tab>` an on-char caret
+/// (`tab_end`: Normal, or Visual at or past the anchor) stands on the tab's LAST cell, as Vim draws and
+/// counts it (`getvcol`'s cursor column); otherwise the first (#1090).
+pub(crate) fn wanted_vcol(b: &[u8], pos: usize, ts: usize, tab_end: bool) -> usize {
+    let (s, e) = vcols_at(b, pos, ts);
+    if tab_end && b.get(pos) == Some(&b'\t') {
+        e
+    } else {
+        s
+    }
 }
 
 /// One line's slice of a block (Vim's `struct block_def`). Columns `lo..=hi` are the block's; a character

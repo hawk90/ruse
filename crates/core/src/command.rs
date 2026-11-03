@@ -600,9 +600,11 @@ pub enum Command {
     },
     /// Visual `p` / `P` — replace the current selection with the register's contents. `swap` (Vim `p`) puts
     /// the deleted selection into the unnamed register; `P` (`swap: false`) preserves the register so it can
-    /// be pasted over successive selections. A no-op outside a selection.
+    /// be pasted over successive selections. `count` puts the register that many times (`v2p`, #1093). A
+    /// no-op outside a selection.
     PasteSelection {
         swap: bool,
+        count: u32,
     },
     /// `]p` / `[p` (and `]P`/`[P`) — paste like `p`/`P` but ADJUST the indent of a linewise register to the
     /// current line: the first pasted line takes the current line's indent, the rest shift by the same
@@ -1489,11 +1491,12 @@ impl Command {
                     format!("paste_before_inner {count}")
                 }
             }
-            Command::PasteSelection { swap } => {
-                if *swap {
-                    "paste_selection swap".into()
+            Command::PasteSelection { swap, count } => {
+                let mode = if *swap { "swap" } else { "keep" };
+                if *count == 1 {
+                    format!("paste_selection {mode}")
                 } else {
-                    "paste_selection keep".into()
+                    format!("paste_selection {mode} {count}")
                 }
             }
             Command::SetRegister(name) => match name {
@@ -2030,9 +2033,15 @@ impl Command {
                 after: false,
                 count: arg_u32(arg, line)?,
             },
-            "paste_selection" => Command::PasteSelection {
-                swap: !matches!(arg.map(str::trim), Some("keep")),
-            },
+            "paste_selection" => {
+                let mut words = arg.unwrap_or("").split_whitespace();
+                let swap = words.next() != Some("keep");
+                let count = match words.next() {
+                    Some(n) => arg_u32(Some(n), line)?,
+                    None => 1,
+                };
+                Command::PasteSelection { swap, count }
+            }
             "select_register" => {
                 // No arg → the unnamed register; otherwise a decimal Unicode scalar for the register name.
                 let name = match arg {
@@ -2668,8 +2677,14 @@ mod tests {
                 after: true,
                 count: 2,
             },
-            Command::PasteSelection { swap: true },
-            Command::PasteSelection { swap: false },
+            Command::PasteSelection {
+                swap: true,
+                count: 1,
+            },
+            Command::PasteSelection {
+                swap: false,
+                count: 3,
+            },
             Command::SetRegister(None),
             Command::SetRegister(Some('a')),
             Command::SetRegister(Some('Z')),

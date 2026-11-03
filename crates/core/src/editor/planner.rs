@@ -155,9 +155,20 @@ fn plan_selection_span(
             let (s, cursor) = if !line {
                 (s, s)
             } else if e < b.len() || b[e - 1] == b'\n' {
-                (s, at_col(b, e, st.view.curswant) - (e - s))
+                (
+                    s,
+                    want_col(b, e, st.view.curswant, st.view.indent.tab_width) - (e - s),
+                )
             } else if s > 0 {
-                (s - 1, at_col(b, line_start(b, s - 1), st.view.curswant))
+                (
+                    s - 1,
+                    want_col(
+                        b,
+                        line_start(b, s - 1),
+                        st.view.curswant,
+                        st.view.indent.tab_width,
+                    ),
+                )
             } else {
                 (s, s)
             };
@@ -324,7 +335,15 @@ fn plan_change(
     hint: GroupHint,
 ) -> Plan {
     let sp = change_span(b, cur, *m, count);
-    let landing = op_landing(b, cur, *m, count, st.view.curswant, false);
+    let landing = op_landing(
+        b,
+        cur,
+        *m,
+        count,
+        st.view.curswant,
+        st.view.indent.tab_width,
+        false,
+    );
     apply_op(st, b, cur, MarkOp::Change, sp, landing, hint)
 }
 
@@ -617,7 +636,7 @@ fn plan_search_char(
     hint: GroupHint,
 ) -> Plan {
     let Some(target) = search_char_landing(st, b, origin, count, pattern, backward, offset) else {
-        return nop(cur, st.view.mode);
+        return beep(cur, st.view.mode);
     };
     if matches!(op, SearchOp::Move) {
         return nop(target, st.view.mode);
@@ -681,7 +700,7 @@ fn plan_search_line(
     hint: GroupHint,
 ) -> Plan {
     let Some(target_line) = search_line_target(st, b, cur, count, pattern, backward, n) else {
-        return nop(cur, st.view.mode);
+        return beep(cur, st.view.mode);
     };
     if matches!(op, SearchOp::Move) {
         // Column 0 of the target line (snapped/clamped in `commit`).
@@ -797,7 +816,7 @@ fn apply_op(
             let at = if adjusted {
                 motion::first_non_blank(b, line)
             } else {
-                at_col(b, line, st.view.curswant)
+                want_col(b, line, st.view.curswant, st.view.indent.tab_width)
             };
             edit_yank(
                 one(Edit::delete(del_start, e - del_start)),
@@ -1181,6 +1200,59 @@ fn plan_virtual_replace_char(
     )
 }
 
+/// A Vim-profile motion that fails ([`motion::fails`]), bare in Normal or Visual or under an operator: the
+/// command does nothing and beeps, so the frontend flushes the keys that were not typed (#1085). The
+/// operator is cancelled whole (`dfz`, `cj` on the last line stays in Normal).
+fn failed_motion(st: &EditorState, b: &[u8], cur: usize, cmd: &Command) -> Option<Plan> {
+    if st.view.caret != CaretGravity::OnChar
+        || !matches!(st.view.mode, Mode::Normal | Mode::Visual { .. })
+    {
+        return None;
+    }
+    let (count, m, op) = match *cmd {
+        Command::Move(count, m) => (count, m, false),
+        Command::Delete(count, m) | Command::Change(count, m) | Command::Yank(count, m) => {
+            (count, m, true)
+        }
+        Command::OpForced { count, motion, .. }
+        | Command::CaseMotion { count, motion, .. }
+        | Command::ShiftMotion { count, motion, .. }
+        | Command::Reindent { count, motion }
+        | Command::Format { count, motion, .. } => (count, motion, true),
+        _ => return None,
+    };
+    let visual = st.view.mode.selection().is_some();
+    if op && visual {
+        return None;
+    }
+    // A failed word object leaves the cursor where Vim's scan stopped (`daw` on blanks: their end).
+    if op {
+        if let Some(at) = crate::textobj::word_object_fails(b, cur, m, count) {
+            let at = motion::off_phantom(b, at);
+            let (ls, le) = (line_start(b, at), line_end(b, at));
+            let at = if at >= le && le > ls {
+                prev_grapheme(b, le)
+            } else {
+                at
+            };
+            return Some(beep(at, st.view.mode));
+        }
+    }
+    // A bare `{count}e` that runs out still moves as far as it can (handled in the `Move` arm).
+    if !op && matches!(m, Motion::WordEnd | Motion::BigWordEnd) {
+        return None;
+    }
+    motion::fails(b, cur, m, count, op, visual).then(|| beep(cur, st.view.mode))
+}
+
+/// A failed command: no change, the cursor at `cursor`, and a beep ([`Effect::Beep`], #1085).
+fn beep(cursor: usize, mode: Mode) -> Plan {
+    Plan {
+        effects: vec![Effect::Beep],
+        ..nop(cursor, mode)
+    }
+}
+
 fn nop(cursor: usize, mode: Mode) -> Plan {
     Plan {
         action: Action::Nop,
@@ -1426,7 +1498,7 @@ fn block_replace(block: &Block, c: char, hint: GroupHint) -> Plan {
 /// the line or file (Vim's "cursor at the end" test). The register is read before the delete, so `p` of the
 /// unnamed register still puts the old text; `p` then leaves the deleted text in the unnamed register, `P`
 /// leaves the registers as they were. The whole replacement is one edit and one undo step.
-fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool) -> Plan {
+fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool, count: u32) -> Plan {
     let (Some(kind), Some(anchor)) = (st.view.mode.selection(), st.view.anchor) else {
         return nop(cur, Mode::Normal);
     };
@@ -1499,7 +1571,18 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool) -> P
     }
     let caret = st.view.caret;
     let put = |reg: &Register, at: usize, after: bool| {
-        paste(&b2, at, Mode::Normal, reg, after, 1, caret, false, true, ts)
+        paste(
+            &b2,
+            at,
+            Mode::Normal,
+            reg,
+            after,
+            count.max(1),
+            caret,
+            false,
+            true,
+            ts,
+        )
     };
     let applied = |p: Plan| -> (Vec<u8>, usize) {
         match p.action {
@@ -1520,7 +1603,9 @@ fn plan_paste_selection(st: &EditorState, b: &[u8], cur: usize, swap: bool) -> P
                 let sp = if forward { next_boundary(&b2, c2) } else { c2 };
                 let mut out = b2[..sp].to_vec();
                 out.push(b'\n');
-                out.extend_from_slice(reg.text());
+                for _ in 0..count.max(1) {
+                    out.extend_from_slice(reg.text());
+                }
                 out.extend_from_slice(&b2[sp..]);
                 let fnb = reg
                     .text()
@@ -1878,6 +1963,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
     } else {
         GroupHint::BreakBefore
     };
+    if let Some(p) = failed_motion(st, b, cur, cmd) {
+        return p;
+    }
 
     match cmd {
         // `h`/`l` move by whole grapheme cluster so the cursor never lands mid-emoji/ZWJ/combining
@@ -1888,11 +1976,11 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         Command::MoveLineStart => nop(line_start(b, cur), st.view.mode),
         Command::MoveLineEnd => nop(line_end(b, cur), st.view.mode),
         Command::MoveUp => nop(
-            motion::vmove(b, cur, 1, false, st.view.curswant),
+            motion::vmove(b, cur, 1, false, st.view.curswant, st.view.indent.tab_width),
             st.view.mode,
         ),
         Command::MoveDown => nop(
-            motion::vmove(b, cur, 1, true, st.view.curswant),
+            motion::vmove(b, cur, 1, true, st.view.curswant, st.view.indent.tab_width),
             st.view.mode,
         ),
         Command::EnterInsert => nop(cur, Mode::Insert),
@@ -2651,8 +2739,9 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         // `m{a-z}` — install a named mark at the cursor. The cursor stays; `commit` writes the mark table.
         Command::SetNamedMark(ch) => moved(Action::SetNamedMark { ch: *ch }, cur, st.view.mode),
         // `` `{a-z} `` — jump to a named mark (snapped). No-op if unset.
+        // A mark past a line's last char (`` `^ `` after `A`) lands on that char, as Vim's `check_cursor`.
         Command::GotoNamedMark(ch) => match st.view.named_mark(*ch) {
-            Some(pos) => nop(motion::snap(b, pos), st.view.mode),
+            Some(pos) => nop(mark_char_target(b, pos), st.view.mode),
             None => nop(cur, st.view.mode),
         },
         // `'{a-z}` — LINEWISE to the first non-blank of a named mark's line. No-op if unset.
@@ -2763,15 +2852,17 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             }
             // Vertical motions honour the sticky desired column (curswant) so `j`/`k` keep the wanted
             // column through shorter interior lines; every other motion computes its own landing.
+            let ts = st.view.indent.tab_width;
             let target = match m {
-                Motion::Up => motion::vmove(b, cur, *count, false, st.view.curswant),
-                Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant),
+                Motion::Up => motion::vmove(b, cur, *count, false, st.view.curswant, ts),
+                Motion::Down => motion::vmove(b, cur, *count, true, st.view.curswant, ts),
                 // `gg`/`G`/`{count}%` keep the wanted column too (`'nostartofline'`, nvim's
                 // `beginline(BL_SOL)`).
-                Motion::GotoLine | Motion::LastLine | Motion::GotoPercent => at_col(
+                Motion::GotoLine | Motion::LastLine | Motion::GotoPercent => want_col(
                     b,
                     line_start(b, motion::target(b, cur, *m, *count)),
                     st.view.curswant,
+                    ts,
                 ),
                 // In charwise Visual `$` goes just past the line's last char, so the selection takes the
                 // line break (`v$d` joins the lines, #697).
@@ -2807,6 +2898,21 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 } else {
                     target
                 };
+            // `{count}e` past the last word moves to the end and still fails (nvim's `end_word`).
+            if matches!(m, Motion::WordEnd | Motion::BigWordEnd)
+                && st.view.caret == CaretGravity::OnChar
+                && matches!(st.view.mode, Mode::Normal | Mode::Visual { .. })
+                && motion::fails(
+                    b,
+                    cur,
+                    *m,
+                    *count,
+                    false,
+                    st.view.mode.selection().is_some(),
+                )
+            {
+                return beep(target, st.view.mode);
+            }
             nop(target, st.view.mode)
         }
         Command::Delete(count, m) => {
@@ -2818,13 +2924,29 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 // An object that selects nothing (`di(` on `(\n)`) still leaves the cursor at its start.
                 return nop(sp.s, st.view.mode);
             }
-            let landing = op_landing(b, cur, *m, *count, st.view.curswant, false);
+            let landing = op_landing(
+                b,
+                cur,
+                *m,
+                *count,
+                st.view.curswant,
+                st.view.indent.tab_width,
+                false,
+            );
             apply_op(st, b, cur, MarkOp::Delete, sp, landing, hint)
         }
         Command::Change(count, m) => plan_change(st, b, cur, *count, m, hint),
         Command::Yank(count, m) => {
             let sp = op_span_full(b, cur, *m, *count);
-            let landing = op_landing(b, cur, *m, *count, st.view.curswant, true);
+            let landing = op_landing(
+                b,
+                cur,
+                *m,
+                *count,
+                st.view.curswant,
+                st.view.indent.tab_width,
+                true,
+            );
             apply_op(st, b, cur, MarkOp::Yank, sp, landing, hint)
         }
         Command::CaseMotion {
@@ -2833,7 +2955,15 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
             case,
         } => {
             let sp = op_span_full(b, cur, *motion, *count);
-            let landing = op_landing(b, cur, *motion, *count, st.view.curswant, false);
+            let landing = op_landing(
+                b,
+                cur,
+                *motion,
+                *count,
+                st.view.curswant,
+                st.view.indent.tab_width,
+                false,
+            );
             apply_op(st, b, cur, MarkOp::Case(*case), sp, landing, hint)
         }
         // Forced-wise operator (`dvj`, `dVe`, `yv}`): reshape the span (see `forced_span`), then apply the
@@ -2850,7 +2980,15 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 let block = block_geom(b, cur, target, st.view.indent.tab_width, false);
                 return block_op(b, &block, *op, hint);
             }
-            let sp = forced_span(b, cur, *motion, *count, *wise, st.view.curswant);
+            let sp = forced_span(
+                b,
+                cur,
+                *motion,
+                *count,
+                *wise,
+                st.view.curswant,
+                st.view.indent.tab_width,
+            );
             if sp.s >= sp.e && *op == OpKind::Change && !sp.linewise {
                 // An empty charwise change still drops into Insert (Vim).
                 return nop(sp.s, Mode::Insert);
@@ -2861,6 +2999,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
                 *motion,
                 *count,
                 st.view.curswant,
+                st.view.indent.tab_width,
                 *op == OpKind::Yank,
             );
             apply_op(st, b, cur, mark_op(*op), sp, landing, hint)
@@ -3135,7 +3274,7 @@ pub fn plan(st: &EditorState, cmd: &Command) -> Plan {
         }
         // Visual `p`/`P` — replace the selection with the register; `swap` puts the deleted text into the
         // unnamed register (Vim `p`), `P` preserves the register (so it can overwrite successive selections).
-        Command::PasteSelection { swap } => plan_paste_selection(st, b, cur, *swap),
+        Command::PasteSelection { swap, count } => plan_paste_selection(st, b, cur, *swap, *count),
         Command::SearchNext(pat) => {
             let m = search_fwd(b, pat, cur + 1, st.view.search_options()).unwrap_or(cur);
             nop(m, st.view.mode)

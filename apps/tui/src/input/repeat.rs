@@ -22,6 +22,9 @@ pub(crate) struct ChangeIntent {
     /// The register the change targeted (`"a` before it), replayed so `.` reuses the SAME register (Vim).
     /// `None` for an unregistered change; replay then omits the leading `SetRegister`.
     pub(crate) register: Option<char>,
+    /// The expression of a `"=` register (`"=1+1<CR>p`): replay re-arms `"=` with it instead of selecting a
+    /// register by name, as nvim's redo buffer holds `"=1+1<CR>` (#808).
+    pub(crate) expr: Option<String>,
     /// The count typed before a PURE insert-entry (`3i`, `3o`, `3A`; VIM-CNT-INS): the number of times the
     /// typed text is inserted on `<Esc>`. `1` for a count-less entry and for every change-family entry
     /// (`c`/`s`/`ciw`, whose count applies to the MOTION, not to text repetition). Carried so `.` replays
@@ -50,7 +53,9 @@ impl ChangeIntent {
         let mut cmds =
             Vec::with_capacity(1 + self.insert.len() + usize::from(self.register.is_some()));
         // Re-select the register first, so the replayed change writes to the same slot (`"ax` then `.`).
-        if self.register.is_some() {
+        if let Some(expr) = &self.expr {
+            cmds.push(Command::SetExprRegister(expr.clone()));
+        } else if self.register.is_some() {
             cmds.push(Command::SetRegister(self.register));
         }
         cmds.push(lead);
