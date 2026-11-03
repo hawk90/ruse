@@ -527,13 +527,18 @@ features:
     # synchronized output: the diff batch is fenced in ?2026h/l when the F-010 ledger confirms it
     # (tested). #2 profile pinned: F-010 probes once in TermGuard; sync_output read once + held
     # (INV-RENDER-PROFILE). The full semantic Render-Tree IR (render-and-frontends.md §1-7) + enhanced
-    # tier (kitty graphics/inline images, TERM-GFX) + horizontal scroll stay post-MVP.
+    # tier (kitty graphics/inline images, TERM-GFX) stay post-MVP.
+    # #615/#616 (v0.1.7): soft wrap with 'linebreak'/'showbreak'/'breakindent', 'display', the wrapped
+    # viewport (nvim's update_topline, 'scrolljump'), horizontal scroll ('sidescroll', 'sidescrolloff',
+    # zh/zl/zH/zL/zs/ze) and the screen-line motions gj/gk/g0/g^/gm/g$ (ui/line_layout.rs,
+    # ui/window_view.rs); the number/sign gutter and 'list'/'listchars'. Open: 'smoothscroll',
+    # 'cursorline', 'colorcolumn', 'cursorcolumn', 'fillchars', 'foldcolumn', 'statuscolumn'.
     # Repoint (D-043): TERM-SYNC-1 -> census nvim.termmode.synchronizedoutput (from #91); the render-
     # architecture / heuristic / post-MVP-graphics ids (TERM-COLOR-1 truecolor, TERM-WIDTH-1 width,
     # TERM-GFX-1/2/3 images) are backlogged; NVIM-UI-2 stays derived via its other UI citer.
     status: done
     depends_on: [C-RENDER, C-TERMINAL]
-    summary: Render-diff output on the compatibility path; grapheme-correct widths.
+    summary: Render-diff output on the compatibility path; grapheme-correct widths; soft wrap, horizontal scroll and the line-number gutter.
     trace:
       parity: [nvim.termmode.synchronizedoutput]
       design: [../docs/design/render-and-frontends.md, ../docs/architecture/architecture.md#6]

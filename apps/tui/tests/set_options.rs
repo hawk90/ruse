@@ -120,11 +120,11 @@ fn errors_quote_the_argument() {
     );
     // An option nvim knows but ruse does not implement only says so; the rest of the line still runs.
     assert_eq!(
-        status_after(":set nowrap<CR>"),
-        "option not supported: nowrap"
+        status_after(":set nospell<CR>"),
+        "option not supported: nospell"
     );
     assert_eq!(
-        status_after(":set nowrap ts=6<CR>:set ts?<CR>"),
+        status_after(":set nospell ts=6<CR>:set ts?<CR>"),
         "  tabstop=6"
     );
     assert_eq!(

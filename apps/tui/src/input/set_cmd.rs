@@ -78,6 +78,22 @@ pub enum Opt {
     ShowMode,
     Verbose,
     VerboseFile,
+    BreakAt,
+    BreakIndent,
+    BreakIndentOptions,
+    Display,
+    LineBreak,
+    List,
+    ListChars,
+    Number,
+    NumberWidth,
+    RelativeNumber,
+    ScrollJump,
+    ShowBreak,
+    SideScroll,
+    SideScrollOff,
+    SignColumn,
+    Wrap,
 }
 
 /// An option's value.
@@ -117,6 +133,11 @@ pub enum TextCheck {
     FormatOptions,
     Comments,
     CommentString,
+    ListChars,
+    BreakIndentOpt,
+    ShowBreak,
+    Display,
+    SignColumn,
 }
 
 /// An option's type, with its value rules.
@@ -182,6 +203,10 @@ const LISTPAT: &str = r"^\s*\d\+[\]:.)}\t ]\s*";
 /// nvim's default `'cpoptions'`: the only value ruse implements (it behaves as these flags say).
 pub const CPO_DEFAULT: &str = "aABceFs_";
 
+/// nvim's default `'breakat'` and `'listchars'`.
+const BREAKAT: &str = crate::ui::line_layout::BREAKAT_DEFAULT;
+const LISTCHARS: &str = crate::ui::line_layout::LISTCHARS_DEFAULT;
+
 const FOLD_METHODS: &[&str] = &["manual", "expr", "marker", "syntax", "diff", "indent"];
 
 const fn def(
@@ -218,6 +243,39 @@ pub const OPTIONS: &[OptDef] = &[
         OptKind::Bool,
         OptVal::Bool(true),
         OptVal::Bool(true),
+        Locality::Local,
+    ),
+    def(
+        Opt::BreakAt,
+        "breakat",
+        "brk",
+        OptKind::Text {
+            list: ListKind::Flags,
+            check: TextCheck::None,
+        },
+        OptVal::text(BREAKAT),
+        OptVal::text(BREAKAT),
+        Locality::Global,
+    ),
+    def(
+        Opt::BreakIndent,
+        "breakindent",
+        "bri",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
+        Opt::BreakIndentOptions,
+        "breakindentopt",
+        "briopt",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::BreakIndentOpt,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
         Locality::Local,
     ),
     def(
@@ -275,6 +333,18 @@ pub const OPTIONS: &[OptDef] = &[
         },
         OptVal::text(CPO_DEFAULT),
         OptVal::text(CPO_DEFAULT),
+        Locality::Global,
+    ),
+    def(
+        Opt::Display,
+        "display",
+        "dy",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::Display,
+        },
+        OptVal::text("lastline"),
+        OptVal::text("lastline"),
         Locality::Global,
     ),
     def(
@@ -422,6 +492,54 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Global,
     ),
     def(
+        Opt::LineBreak,
+        "linebreak",
+        "lbr",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
+        Opt::List,
+        "list",
+        "list",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
+        Opt::ListChars,
+        "listchars",
+        "lcs",
+        OptKind::Text {
+            list: ListKind::Comma,
+            check: TextCheck::ListChars,
+        },
+        OptVal::text(LISTCHARS),
+        OptVal::text(LISTCHARS),
+        Locality::GlobalLocal,
+    ),
+    def(
+        Opt::Number,
+        "number",
+        "nu",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
+        Opt::NumberWidth,
+        "numberwidth",
+        "nuw",
+        OptKind::Num { min: 1, max: 20 },
+        OptVal::Num(4),
+        OptVal::Num(4),
+        Locality::Local,
+    ),
+    def(
         Opt::PreserveIndent,
         "preserveindent",
         "pi",
@@ -429,6 +547,27 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(false),
         OptVal::Bool(false),
         Locality::Local,
+    ),
+    def(
+        Opt::RelativeNumber,
+        "relativenumber",
+        "rnu",
+        OptKind::Bool,
+        OptVal::Bool(false),
+        OptVal::Bool(false),
+        Locality::Local,
+    ),
+    def(
+        Opt::ScrollJump,
+        "scrolljump",
+        "sj",
+        OptKind::Num {
+            min: -100,
+            max: INT_MAX,
+        },
+        OptVal::Num(1),
+        OptVal::Num(1),
+        Locality::Global,
     ),
     def(
         Opt::ScrollOff,
@@ -461,6 +600,18 @@ pub const OPTIONS: &[OptDef] = &[
         Locality::Local,
     ),
     def(
+        Opt::ShowBreak,
+        "showbreak",
+        "sbr",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::ShowBreak,
+        },
+        OptVal::text(""),
+        OptVal::text(""),
+        Locality::GlobalLocal,
+    ),
+    def(
         Opt::ShowMode,
         "showmode",
         "smd",
@@ -468,6 +619,36 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::Bool(true),
         OptVal::Bool(true),
         Locality::Global,
+    ),
+    def(
+        Opt::SideScroll,
+        "sidescroll",
+        "ss",
+        NUM0,
+        OptVal::Num(1),
+        OptVal::Num(1),
+        Locality::Global,
+    ),
+    def(
+        Opt::SideScrollOff,
+        "sidescrolloff",
+        "siso",
+        NUM0,
+        OptVal::Num(0),
+        OptVal::Num(0),
+        Locality::GlobalLocal,
+    ),
+    def(
+        Opt::SignColumn,
+        "signcolumn",
+        "scl",
+        OptKind::Text {
+            list: ListKind::Plain,
+            check: TextCheck::SignColumn,
+        },
+        OptVal::text("auto"),
+        OptVal::text("auto"),
+        Locality::Local,
     ),
     def(
         Opt::SmartCase,
@@ -561,6 +742,15 @@ pub const OPTIONS: &[OptDef] = &[
         OptVal::text(""),
         OptVal::text(""),
         Locality::Global,
+    ),
+    def(
+        Opt::Wrap,
+        "wrap",
+        "wrap",
+        OptKind::Bool,
+        OptVal::Bool(true),
+        OptVal::Bool(true),
+        Locality::Local,
     ),
     def(
         Opt::WrapMargin,
@@ -1001,6 +1191,10 @@ pub fn assign_value(
             if !(INT_MIN..=INT_MAX).contains(&v) {
                 return Err(ValueError::Invalid);
             }
+            // 'scrolljump' below -100 is nvim's E49, not E487.
+            if def.opt == Opt::ScrollJump && v < min {
+                return Err(ValueError::Message("E49: Invalid scroll size".into()));
+            }
             // Below the minimum is "not positive" (`'tabstop'` 0 too, as nvim says).
             if v < min {
                 return Err(ValueError::Positive);
@@ -1036,11 +1230,32 @@ pub fn assign_value(
                         Err(ruse_core::editor::OptionValueError::NoPercentS)
                     }
                 }
+                TextCheck::ListChars
+                | TextCheck::BreakIndentOpt
+                | TextCheck::ShowBreak
+                | TextCheck::Display
+                | TextCheck::SignColumn => {
+                    display_check(check, &new).map_err(|e| ValueError::Message(e.to_string()))?;
+                    Ok(())
+                }
             };
             checked.map_err(|e| ValueError::Message(e.to_string()))?;
             Ok(OptVal::Text(Cow::Owned(new)))
         }
         _ => Err(ValueError::Invalid),
+    }
+}
+
+/// The display options' value checks (#615, #616), as nvim's `did_set_*` callbacks make them.
+fn display_check(check: TextCheck, v: &str) -> Result<(), crate::ui::line_layout::DisplayOptError> {
+    use crate::ui::{line_layout, window_view};
+    match check {
+        TextCheck::ListChars => line_layout::parse_listchars(v).map(|_| ()),
+        TextCheck::BreakIndentOpt => line_layout::parse_briopt(v).map(|_| ()),
+        TextCheck::ShowBreak => line_layout::check_showbreak(v),
+        TextCheck::Display => window_view::check_display(v),
+        TextCheck::SignColumn => window_view::parse_signcolumn(v).map(|_| ()),
+        _ => Ok(()),
     }
 }
 
@@ -1230,7 +1445,8 @@ mod tests {
         assert_eq!(args("all"), [ShowAll]);
         assert_eq!(args("all&"), [ResetAll]);
         assert_eq!(args("t_xx=1 <F1>"), [Ignored, Ignored]);
-        assert_eq!(args("wrap"), [Unsupported("wrap".into())]);
+        assert_eq!(args("wrap"), [Bool(Opt::Wrap, true)]);
+        assert_eq!(args("spell"), [Unsupported("spell".into())]);
         // Comments.
         assert_eq!(args("\"x"), []);
         assert_eq!(args("ic\"x"), [Bool(Opt::IgnoreCase, true)]);

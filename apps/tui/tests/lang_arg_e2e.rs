@@ -58,6 +58,7 @@ fn step(engine: &mut InputEngine, st: &mut EditorState, key: KeyEvent) -> Feed {
         | Feed::FilterMotion { .. }
         | Feed::FilterSpan(_)
         | Feed::CountCmdline { .. }
+        | Feed::ScreenMotion { .. }
         | Feed::Pending
         | Feed::Ignored
         | Feed::Beep { .. } => {}

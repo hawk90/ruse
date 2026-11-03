@@ -37,7 +37,7 @@ text properties + overlays + inline images); Neovim does the equivalent with `ex
 
 **ruse ships faces, conceal, virtual text and rows, and Kitty inline images for Markdown and Org**
 (`apps/tui/src/highlight.rs`, `org.rs`, `graphics.rs`, `ui/render.rs`). The base model is still *1 buffer-line =
-1 screen-row, column = Σ grapheme-cell-widths* with no soft-wrap (#615); see
+display rows from the line layout (soft wrap, #615), column = Σ grapheme-cell-widths*; see
 [render-and-frontends.md §"v0"](render-and-frontends.md). F-031 owns the status; open image bugs include #829, #838,
 #839, #1005 and #1006.
 
@@ -459,8 +459,8 @@ it's testable and useful everywhere.
 
 - **Reveal granularity** — reveal-on-caret-*line* (chosen default) vs reveal-on-*element*-only, if line-reveal
   proves too eager in dense prose (D-052 re-eval hook).
-- **Soft-wrap** — now *cheap* once the layout pass exists (a line → multiple `DisplayRow`s is already the
-  pass's shape), but still **out of scope** here; a follow-up once rich rendering lands.
+- **Soft-wrap** — landed with #615 (`ui/line_layout.rs`): a line lays out over several rows, and conceal
+  and virtual text take part in that layout.
 - **Decoration-provider budget** — the per-frame time budget for providers (ties to the open scheduler budgets,
   D-018); start unbounded-but-snapshot-bounded, measure, then cap.
 

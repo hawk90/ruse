@@ -16,6 +16,8 @@ use crate::input::set_cmd::{
     SetLine, SetScope, OPTIONS,
 };
 use crate::input::{FoldMethod, InputEngine};
+use crate::ui::window_view::DisplayGlobals;
+use ruse_core::WindowOptions;
 
 /// Where an option's value came from (CFG-PROV-001): what `:verbose set opt?` reports. An option with no
 /// entry still has its default.
@@ -57,6 +59,8 @@ pub(crate) struct UiOptions {
     pub showmode: bool,
     /// `'verbose'`: above 0, `:set opt?` adds the `Last set from` line.
     pub verbose: i64,
+    /// The global copies of the global and global-local display options (#615, #616).
+    pub display: DisplayGlobals,
 }
 
 impl Default for UiOptions {
@@ -64,7 +68,45 @@ impl Default for UiOptions {
         UiOptions {
             showmode: true,
             verbose: 0,
+            display: DisplayGlobals::default(),
         }
+    }
+}
+
+/// A window-local display option's value in `o` (#615, #616), `None` for any other option.
+fn window_value(o: &WindowOptions, opt: Opt) -> Option<OptVal> {
+    Some(match opt {
+        Opt::Wrap => OptVal::Bool(o.wrap),
+        Opt::LineBreak => OptVal::Bool(o.linebreak),
+        Opt::BreakIndent => OptVal::Bool(o.breakindent),
+        Opt::BreakIndentOptions => OptVal::Text(o.breakindentopt.clone().into()),
+        Opt::Number => OptVal::Bool(o.number),
+        Opt::RelativeNumber => OptVal::Bool(o.relativenumber),
+        Opt::NumberWidth => OptVal::Num(o.numberwidth),
+        Opt::SignColumn => OptVal::Text(o.signcolumn.clone().into()),
+        Opt::List => OptVal::Bool(o.list),
+        _ => return None,
+    })
+}
+
+/// Write a window-local display option's value into `o`.
+fn set_window_value(o: &mut WindowOptions, opt: Opt, val: &OptVal) {
+    let on = matches!(val, OptVal::Bool(true));
+    let text = || match val {
+        OptVal::Text(t) => t.to_string(),
+        _ => String::new(),
+    };
+    match (opt, val) {
+        (Opt::Wrap, _) => o.wrap = on,
+        (Opt::LineBreak, _) => o.linebreak = on,
+        (Opt::BreakIndent, _) => o.breakindent = on,
+        (Opt::BreakIndentOptions, _) => o.breakindentopt = text(),
+        (Opt::Number, _) => o.number = on,
+        (Opt::RelativeNumber, _) => o.relativenumber = on,
+        (Opt::NumberWidth, OptVal::Num(n)) => o.numberwidth = *n,
+        (Opt::SignColumn, _) => o.signcolumn = text(),
+        (Opt::List, _) => o.list = on,
+        _ => {}
     }
 }
 
@@ -159,8 +201,40 @@ impl OptionHost<'_> {
         if let Some(v) = core_value(&opts, opt) {
             return v;
         }
+        let win = if global {
+            self.ws.window_defaults()
+        } else {
+            self.ws.focused().view.window_options()
+        };
+        if let Some(v) = window_value(win, opt) {
+            return v;
+        }
+        let d = &self.ui.display;
+        let local = (!global).then(|| self.ws.focused().view.window_options());
         let buf = self.ws.focused_buffer();
         match opt {
+            // Global-local: the window's own value when it has one, else the global one.
+            Opt::ShowBreak => OptVal::Text(
+                local
+                    .and_then(|o| o.showbreak.clone())
+                    .unwrap_or_else(|| d.showbreak.clone())
+                    .into(),
+            ),
+            Opt::ListChars => OptVal::Text(
+                local
+                    .and_then(|o| o.listchars.clone())
+                    .unwrap_or_else(|| d.listchars.clone())
+                    .into(),
+            ),
+            Opt::SideScrollOff => OptVal::Num(
+                local
+                    .and_then(|o| o.sidescrolloff)
+                    .unwrap_or(d.sidescrolloff),
+            ),
+            Opt::BreakAt => OptVal::Text(d.breakat.clone().into()),
+            Opt::Display => OptVal::Text(d.display.clone().into()),
+            Opt::SideScroll => OptVal::Num(d.sidescroll),
+            Opt::ScrollJump => OptVal::Num(d.scrolljump),
             Opt::HlSearch => OptVal::Bool(*self.hlsearch_on),
             Opt::IncSearch => OptVal::Bool(*self.incsearch_on),
             Opt::FixEol => OptVal::Bool(*self.fixeol_on),
@@ -197,7 +271,13 @@ impl OptionHost<'_> {
     /// option shows the window's own value, `-1` when it has none (nvim).
     pub(crate) fn read(&self, opt: Opt, scope: SetScope) -> OptVal {
         if scope == SetScope::Local && opt_def(opt).locality == Locality::GlobalLocal {
-            return OptVal::Num(self.ws.focused().view.scrolloff_local().unwrap_or(-1));
+            let o = self.ws.focused().view.window_options();
+            return match opt {
+                Opt::ShowBreak => OptVal::Text(o.showbreak.clone().unwrap_or_default().into()),
+                Opt::ListChars => OptVal::Text(o.listchars.clone().unwrap_or_default().into()),
+                Opt::SideScrollOff => OptVal::Num(o.sidescrolloff.unwrap_or(-1)),
+                _ => OptVal::Num(self.ws.focused().view.scrolloff_local().unwrap_or(-1)),
+            };
         }
         self.get(opt, scope == SetScope::Global)
     }
@@ -213,9 +293,46 @@ impl OptionHost<'_> {
             }
             return;
         }
+        if window_value(self.ws.window_defaults(), opt).is_some() {
+            self.ws
+                .update_window_options(level, |o| set_window_value(o, opt, &val));
+            return;
+        }
         let on = matches!(val, OptVal::Bool(true));
         let buf = self.ws.focused_buffer();
+        let text = match &val {
+            OptVal::Text(t) => t.to_string(),
+            _ => String::new(),
+        };
         match (opt, val) {
+            // The global-local display options: as 'scrolloff' (`:set` drops the window's own value).
+            (Opt::ShowBreak | Opt::ListChars | Opt::SideScrollOff, v) => {
+                let n = match v {
+                    OptVal::Num(n) => n,
+                    _ => 0,
+                };
+                if level != OptionLevel::Global {
+                    let local = level == OptionLevel::Local;
+                    self.ws
+                        .update_window_options(OptionLevel::Local, |o| match opt {
+                            Opt::ShowBreak => o.showbreak = local.then(|| text.clone()),
+                            Opt::ListChars => o.listchars = local.then(|| text.clone()),
+                            _ => o.sidescrolloff = local.then_some(n),
+                        });
+                }
+                if level != OptionLevel::Local {
+                    let d = &mut self.ui.display;
+                    match opt {
+                        Opt::ShowBreak => d.showbreak = text,
+                        Opt::ListChars => d.listchars = text,
+                        _ => d.sidescrolloff = n,
+                    }
+                }
+            }
+            (Opt::BreakAt, _) => self.ui.display.breakat = text,
+            (Opt::Display, _) => self.ui.display.display = text,
+            (Opt::SideScroll, OptVal::Num(n)) => self.ui.display.sidescroll = n,
+            (Opt::ScrollJump, OptVal::Num(n)) => self.ui.display.scrolljump = n,
             (Opt::HlSearch, _) => {
                 *self.hlsearch_on = on;
                 if !on {
@@ -412,6 +529,11 @@ fn text_supported(opt: Opt, t: &str) -> bool {
     match opt {
         Opt::CpOptions => t == crate::input::set_cmd::CPO_DEFAULT,
         Opt::VerboseFile => t.is_empty(),
+        // `'display'` `uhex` and `'breakindentopt'` `list:` are not drawn (#615).
+        Opt::Display => !t.split(',').any(|f| f == "uhex"),
+        Opt::BreakIndentOptions => {
+            crate::ui::line_layout::parse_briopt(t).is_ok_and(|o| o.list == 0)
+        }
         _ => true,
     }
 }
@@ -455,6 +577,18 @@ pub(crate) fn config_key(opt: Opt) -> Option<&'static str> {
         Opt::EqualPrg => "editor.equalprg",
         Opt::CinWords => "editor.cinwords",
         Opt::JoinSpaces => "editor.joinspaces",
+        Opt::SideScroll => "editor.sidescroll",
+        Opt::SideScrollOff => "editor.sidescrolloff",
+        Opt::Wrap => "render.wrap",
+        Opt::LineBreak => "render.linebreak",
+        Opt::BreakIndent => "render.breakindent",
+        Opt::ShowBreak => "render.showbreak",
+        Opt::Number => "render.number",
+        Opt::RelativeNumber => "render.relativenumber",
+        Opt::NumberWidth => "render.numberwidth",
+        Opt::SignColumn => "render.signcolumn",
+        Opt::List => "render.list",
+        Opt::ListChars => "render.listchars",
         _ => return None,
     })
 }

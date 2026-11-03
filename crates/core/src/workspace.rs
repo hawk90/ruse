@@ -117,6 +117,10 @@ pub struct Workspace {
     /// default (which the app turns ON; the engine/`EditorState::new` default stays vanilla-off for the
     /// differential parity oracle), the profile's caret gravity, the indent config, and every `:set`.
     defaults: ViewOptions,
+    /// The global copy of the window-local display options (#615, #616): what a View the workspace creates
+    /// for a buffer starts with, unless it replaces the focused window's View (then it keeps that window's
+    /// values, as an nvim window keeps its options across `:edit`).
+    window_defaults: crate::WindowOptions,
     /// The injected OS-clipboard provider behind the `"+`/`"*` registers (`:help quoteplus`). Defaults to
     /// [`NoClipboard`] (a no-op) so core stays pure and CI — which has no clipboard — is deterministic; the
     /// frontend installs a real shell-out provider at startup via [`Workspace::set_clipboard`], and unit
@@ -156,6 +160,7 @@ impl Workspace {
             buffer_order: vec![id],
             alt: None,
             defaults: ViewOptions::DEFAULT,
+            window_defaults: crate::WindowOptions::default(),
             clipboard: Box::new(NoClipboard),
             beeped: false,
             clipboard_read: None,
@@ -298,6 +303,7 @@ impl Workspace {
     fn push_view(&mut self, doc: DocumentId) -> ViewId {
         let mut view = View::fresh(doc);
         view.set_options(self.defaults.clone());
+        view.set_window_options(self.window_defaults.clone());
         self.views.push(Some(view));
         ViewId(self.views.len() - 1)
     }
@@ -417,6 +423,41 @@ impl Workspace {
         let vid = self.windows[i].view;
         if let Some(v) = self.views[vid.0].as_mut() {
             v.set_text_cols(cols);
+        }
+    }
+
+    /// Set the `i`th Window's first displayed column when `'wrap'` is off (the frontend's horizontal
+    /// scroll, #615).
+    pub fn set_leftcol(&mut self, i: usize, col: usize) {
+        let vid = self.windows[i].view;
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.set_leftcol(col);
+        }
+    }
+
+    /// The global copy of the window-local display options (#615, #616).
+    #[must_use]
+    pub fn window_defaults(&self) -> &crate::WindowOptions {
+        &self.window_defaults
+    }
+
+    /// Change the window-local display options at `level`: the focused window's own copy (`:setlocal`),
+    /// the global copy new windows start from (`:setglobal`), or both (`:set`).
+    pub fn update_window_options(
+        &mut self,
+        level: OptionLevel,
+        mut change: impl FnMut(&mut crate::WindowOptions),
+    ) {
+        if level != OptionLevel::Local {
+            change(&mut self.window_defaults);
+        }
+        if level != OptionLevel::Global {
+            let vid = self.windows[self.focus].view;
+            if let Some(v) = self.views[vid.0].as_mut() {
+                let mut opts = v.window_options().clone();
+                change(&mut opts);
+                v.set_window_options(opts);
+            }
         }
     }
 
@@ -1055,7 +1096,16 @@ impl Workspace {
                 _ => None,
             }
         });
-        reusable.unwrap_or_else(|| self.push_view(id))
+        reusable.unwrap_or_else(|| {
+            // A buffer new to this window keeps the window's display options (nvim's window-local
+            // options stay with the window across `:edit` / `:buffer`).
+            let opts = self.focused().view.window_options().clone();
+            let vid = self.push_view(id);
+            if let Some(v) = self.views[vid.0].as_mut() {
+                v.set_window_options(opts);
+            }
+            vid
+        })
     }
 
     /// Show buffer `id` in the FOCUSED window (Vim `:buffer`). Records the buffer being left as the

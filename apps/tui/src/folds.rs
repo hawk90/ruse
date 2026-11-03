@@ -171,6 +171,28 @@ pub fn hidden_before(folds: &[Fold], line: usize) -> usize {
     (0..line).filter(|&l| hidden(folds, l)).count()
 }
 
+/// The count of lines in `[a, b)` hidden by closed folds (nested folds counted once), without walking the
+/// lines: what `'relativenumber'` skips between two lines (#616).
+#[must_use]
+pub fn hidden_between(folds: &[Fold], a: usize, b: usize) -> usize {
+    let mut spans: Vec<(usize, usize)> = folds
+        .iter()
+        .filter(|f| f.closed && f.end > f.start)
+        .map(|f| ((f.start + 1).max(a), (f.end + 1).min(b)))
+        .filter(|&(s, e)| s < e)
+        .collect();
+    spans.sort_unstable();
+    let (mut n, mut reach) = (0, a);
+    for (s, e) in spans {
+        let s = s.max(reach);
+        if e > s {
+            n += e - s;
+            reach = e;
+        }
+    }
+    n
+}
+
 /// Buffer row → display (visible) row, subtracting the rows collapsed by closed folds above it.
 #[must_use]
 pub fn visible_row(folds: &[Fold], line: usize) -> usize {

@@ -196,24 +196,30 @@ terminal size, or the scroll rule. The viewport is a single `top` offset (the fi
 per View (`View.top`, so two Views of one buffer scroll independently) and recomputed each frame by the
 frontend viewport pass from the cursor's row.
 
-**Scroll-to-cursor (the one rule).** Before each draw, `top` is adjusted so the cursor stays visible with a
-`scrolloff` margin of context above and below (Vim's `scrolloff`). Given the cursor's buffer row, the text
-height (screen rows minus the status line), the current `top`, and the margin:
+**Line layout (#615, #616).** `ui/line_layout.rs` lays out one buffer line as nvim v0.12.6's
+`charsize_regular` does: every grapheme gets a size in virtual columns that includes what the screen inserts
+for it (the `>` filler for a wide glyph that does not fit in a row's last cell, the `'showbreak'` /
+`'breakindent'` head of each continuation row, the `'linebreak'` padding), so with `'wrap'` a cell's virtual
+column is `row × width + col`. `'list'` / `'listchars'` decide what tabs, spaces, nbsp and the line end show.
+The window's gutter (`'signcolumn'` with the diagnostics' `E`/`W`/`I`/`H`, then `'number'` /
+`'relativenumber'` / `'numberwidth'`) narrows the text area; `ui/window_view.rs` resolves a window's options
+(window-local on its View, global-local over the session's globals) into a `WinView` per frame, which the
+viewport pass, the painter and the key handlers share. The layout is unit-tested against 528 nvim screens.
 
-- cursor above the top margin (`cursor_row < top + margin`) → scroll up: `top = cursor_row − margin`.
-- cursor below the bottom margin (`cursor_row + margin ≥ top + height`) → scroll down:
-  `top = cursor_row + margin + 1 − height`.
-- otherwise `top` is unchanged (no scroll on pure horizontal / in-viewport motion).
+**Scroll-to-cursor.** Before each draw, `viewport::update_topline` (nvim's `update_topline` without
+'smoothscroll': `scroll_cursor_top` / `scroll_cursor_bot` / `scroll_cursor_halfway`) moves `top` so the cursor
+line shows whole with `'scrolloff'` rows of context, counting wrapped rows and a closed fold as one row; a jump
+further than about half a window centres the cursor line, and `'scrolljump'` is the least it scrolls. A cursor
+line taller than the window shows from the row that keeps the cursor on screen. Without `'wrap'` the window
+scrolls sideways (`View.leftcol`): nvim's `curs_columns` with `'sidescroll'` / `'sidescrolloff'`, plus
+`zh` / `zl` / `zH` / `zL` / `zs` / `ze`. The screen-line motions `gj` / `gk` / `g0` / `g^` / `gm` / `g$` are
+resolved by the frontend in these rows (nvim's `nv_screengo`) and handed to the engine as a `go`-style byte
+target, so operators compose and the trace replays them.
 
-All arithmetic saturates at 0, and the margin is clamped to `(height−1)/2` so it always fits (a 3-row window
-can't reserve 5 rows of context). The function is **pure and unit-tested** (`viewport::scroll_top`).
-
-**Rendering.** `render` draws the `height` buffer lines starting at `top`, and places the terminal cursor at
-`(cursor_row − top, col)`. Long lines are **truncated at the terminal width** (no wrap) so screen-row math
-stays exact; **horizontal scroll and soft-wrap are deferred** (daily-driver code lines fit; revisit when a
-real wide-line/wrap need appears). This is the same "over-invest in semantics, under-invest in structure"
-posture as the rest of v0 — the scroll *contract* is nailed down and tested; the *mechanism* is the simplest
-thing that renders a buffer.
+**Rendering.** `render` paints each window's lines from `top` through the layout, the last line that does not
+fit as `'display'` says (`lastline` `@@@`, `truncate`, or `@` rows), and places the terminal cursor on the
+cursor's cell (a tab's last cell in Normal mode, as nvim). Known gaps: no `~` end-of-buffer rows
+(`'fillchars'`), no 'smoothscroll', and `CTRL-F` / `CTRL-D` count buffer lines, not wrapped rows.
 
 ## Reference Invariants (this doc)
 

@@ -9,17 +9,13 @@ use crossterm::{cursor, queue, terminal};
 use ruse_core::{Command, Mode, SelectKind, SplitDir, Workspace};
 
 use crate::ui::layout::Rect;
+use crate::ui::window_view::{PaneText, WinView};
 use crate::{graphics, highlight, screen};
 
 /// The schema default tabstop (`editor.tab_width`), in display columns — the fixed width the renderer
-/// tests paint at. Live painting reads each View's own `'tabstop'` through [`view_tab`].
+/// tests paint at. Live painting reads each window's own `'tabstop'` from its `WinView`.
 #[cfg(test)]
 pub(crate) const TAB_WIDTH: u16 = 4;
-
-/// A View's `'tabstop'` (`:set ts`) as a display width: the column rule's tab stop (#601).
-pub(crate) fn view_tab(view: &ruse_core::View) -> u16 {
-    u16::try_from(view.tab_width()).unwrap_or(u16::MAX).max(1)
-}
 
 /// The terminal grids the renderer may paint (F-011), keyed by their placeholder buffer id. Unix-only; on
 /// other targets it is an empty map (there are no terminals) so `render`'s signature stays platform-neutral.
@@ -67,6 +63,7 @@ pub(crate) fn advance_col(col: u16, g: &str, tab: u16) -> u16 {
 /// The display column (0-based, from the line's left edge) of the grapheme boundary at byte offset
 /// `line_byte` within a single line `line` (no trailing `\n`). `line_byte` past the end clamps to the
 /// end. The caret's column ([`cursor_cell`]) and the P1/P2 coordinate tests go through here.
+#[cfg(test)]
 pub(crate) fn line_display_col(line: &str, line_byte: usize, tab: u16) -> u16 {
     use unicode_segmentation::UnicodeSegmentation;
     let mut col: u16 = 0;
@@ -96,14 +93,384 @@ pub(crate) fn line_byte_at_col(line: &str, col: u16, tab: u16) -> usize {
     line.len()
 }
 
-/// Paint one buffer view into its `rect`: `rect.h` lines from `top`, one GRAPHEME CLUSTER per cell at
-/// its true display width (F-006 #4), clipped to the rectangle. Tabs expand to the next stop measured
-/// from the pane's left edge; a wide glyph that would straddle the right edge is dropped and the rest
-/// of that line is skipped. `sel`/`block` paint the Visual selection in reverse video; `byte_style`
-/// carries the syntax FACE per byte (fg + bold/italic; empty ⇒ default) — F-031 slice 0. `conceal` byte
-/// ranges are HIDDEN from layout (0 cells, following columns shift) EXCEPT on `caret_line`, which is
-/// revealed so its markup is visible and editable — F-031 slice 1 reveal-at-point.
-#[allow(clippy::too_many_arguments)] // painting one pane legitimately needs the full cell context
+/// What one window paints (F-006; wrap, gutter and `'list'` #615, #616).
+pub(crate) struct PaneInput<'a> {
+    pub text: PaneText<'a>,
+    pub win: &'a WinView,
+    /// The syntax FACE per byte (fg + bold/italic; empty ⇒ default) — F-031 slice 0.
+    pub byte_style: &'a [screen::CellStyle],
+    pub top: usize,
+    /// The Visual selection (reverse video), charwise/linewise or blockwise rows.
+    pub sel: Option<(usize, usize)>,
+    pub block: Option<&'a [(usize, usize)]>,
+    /// The search / `:s///c` matches, also in reverse video.
+    pub hl: &'a [(usize, usize)],
+    /// The diagnostic ranges (F-014), underlined.
+    pub underline: &'a [(usize, usize)],
+    /// Byte ranges HIDDEN from layout except on `caret_line` (F-031 reveal-at-point), with the text painted
+    /// in their place.
+    pub conceal: &'a [(usize, usize, Option<&'a str>)],
+    pub caret_line: usize,
+    /// This window's cursor line, which `'relativenumber'` counts from.
+    pub cursor_line: usize,
+    /// Virtual blocks (image placeholders) below lines (F-031 slice 3a).
+    pub virt: &'a [highlight::VirtLine],
+    pub folds: &'a [crate::folds::Fold],
+    /// `(line, sign text, colour)` for the sign column (#616): the diagnostics' `E`/`W`/`I`/`H`.
+    pub signs: &'a [(usize, char, crossterm::style::Color)],
+    pub graphics_on: bool,
+    pub image_dims: &'a std::collections::HashMap<String, (u32, u32)>,
+}
+
+/// The colour nvim's `NonText` / `Whitespace` / `LineNr` groups get here.
+const DIM: crossterm::style::Color = crossterm::style::Color::DarkGrey;
+
+/// Paint one window into its `rect`: from line `top`, each line laid out by [`line_layout`] (soft wrap,
+/// `'showbreak'`, `'breakindent'`, `'linebreak'`, `'list'`, or the columns from `leftcol` without
+/// `'wrap'`), behind the sign and number columns. A closed fold's start row shows its summary; a last line
+/// that does not fit shows as `'display'` says. One GRAPHEME CLUSTER per cell at its display width.
+pub(crate) fn paint_window(
+    cur: &mut screen::Screen,
+    rect: Rect,
+    p: &PaneInput<'_>,
+    out_images: &mut Vec<(String, graphics::Placement)>,
+) {
+    use crate::ui::line_layout::{CellKind, CellText};
+    use crate::ui::window_view::LastLine;
+    use unicode_segmentation::UnicodeSegmentation;
+    if rect.w == 0 || rect.h == 0 {
+        return;
+    }
+    let win = p.win;
+    let gutter = u16::try_from(win.gutter()).unwrap_or(u16::MAX).min(rect.w);
+    let (tx, x1) = (rect.x + gutter, rect.x + rect.w);
+    let tw = usize::from(rect.w - gutter);
+    let lay_opts = win.layout();
+    let count = p.text.line_count();
+    let leftcol = if win.wrap { 0 } else { win.leftcol };
+    let paint_block = |cur: &mut screen::Screen, disp_row: u16, vb: &highlight::VirtLine| match (
+        p.graphics_on,
+        &vb.path,
+    ) {
+        // A graphics terminal shows the real image ONLY when its pixel dimensions were read; a missing
+        // or unreadable path paints a text "not found" band instead of a blank placeholder grid.
+        (true, Some(path)) => match p.image_dims.get(path).copied() {
+            Some(dims) => paint_image_cells(cur, rect, disp_row, vb.height, path, Some(dims)),
+            None => paint_missing_image(cur, rect, disp_row, vb.height, path),
+        },
+        _ => paint_virt_block(cur, rect, disp_row, vb),
+    };
+    let mut row: u16 = 0;
+    let mut line = p.top;
+    let mut first = true;
+    while row < rect.h && line < count {
+        if crate::folds::hidden(p.folds, line) {
+            line += 1;
+            continue;
+        }
+        let srow = rect.y + row;
+        paint_gutter(cur, rect, srow, line, p);
+        let ls = p.text.start(line);
+        // Only what the window can show is laid out (a huge line costs its visible rows).
+        let skip = if first { win.skip } else { 0 };
+        let max_vcol = if win.wrap {
+            (skip + usize::from(rect.h - row) + 1).saturating_mul(tw.max(1))
+        } else {
+            leftcol + tw + 1
+        };
+        let text = p.text.line_upto(line, PaneText::bytes_for(max_vcol));
+        if let Some(fold) = crate::folds::closed_starting_at(p.folds, line) {
+            // A closed fold's start row shows its one-line summary in place of the text.
+            let mut c = tx;
+            for gph in crate::folds::summary(fold, text).graphemes(true) {
+                if c >= x1 {
+                    break;
+                }
+                c = cur.put(srow, c, gph, DIM, false);
+            }
+            row += 1;
+        } else {
+            // F-031 conceal: hidden on every line but the caret's, which is revealed so its markup stays
+            // editable.
+            let conceal: Vec<(usize, usize, Option<&str>)> = if line == p.caret_line {
+                Vec::new()
+            } else {
+                p.conceal
+                    .iter()
+                    .filter(|&&(s, e, _)| s >= ls && s < ls + text.len().max(1) && e > s)
+                    .map(|&(s, e, v)| (s - ls, (e - ls).min(text.len()), v))
+                    .collect()
+            };
+            let lay = crate::ui::line_layout::layout_upto(
+                text,
+                &lay_opts,
+                &conceal,
+                max_vcol,
+                usize::MAX,
+            );
+            let rows = lay.rows.saturating_sub(skip).max(1);
+            let avail = usize::from(rect.h - row);
+            // The first line always paints; a later one that does not fit shows as 'display' says.
+            let partial = rows > avail && !first;
+            if partial && win.lastline == LastLine::AtRows {
+                for r in 0..avail {
+                    cur.put(srow + r as u16, tx, "@", DIM, false);
+                }
+                break;
+            }
+            let shown = rows.min(avail);
+            let truncate_row = (partial && win.lastline == LastLine::Truncate).then_some(shown - 1);
+            for c in &lay.cells {
+                let (r, col) = if win.wrap {
+                    lay.place(c.vcol)
+                } else {
+                    (0, c.vcol)
+                };
+                if r < skip || r - skip >= shown || Some(r - skip) == truncate_row {
+                    continue;
+                }
+                let srow = srow + (r - skip) as u16;
+                // Without 'wrap' the window shows the columns from `leftcol`: a wide glyph cut at the left
+                // edge shows `<`, one cut at the right edge `>`.
+                let (col, text, width, kind) = if win.wrap {
+                    (col, c.text.clone(), c.width, c.kind)
+                } else if col + c.width <= leftcol || col >= leftcol + tw {
+                    continue;
+                } else if col < leftcol {
+                    (0, CellText::Char('<'), 1, CellKind::NonText)
+                } else if col + c.width > leftcol + tw {
+                    (col - leftcol, CellText::Char('>'), 1, CellKind::NonText)
+                } else {
+                    (col - leftcol, c.text.clone(), c.width, c.kind)
+                };
+                if col >= tw {
+                    continue;
+                }
+                let x = tx + col as u16;
+                let byte = c.byte.map(|b| ls + b);
+                let style = cell_style(p, byte, kind);
+                let mut buf = [0u8; 4];
+                let g: &str = match &text {
+                    CellText::Str(s) => s,
+                    CellText::Char(ch) => ch.encode_utf8(&mut buf),
+                    CellText::Blank => " ",
+                };
+                if col + width > tw {
+                    // A wide glyph with no room for its second half (a window narrower than it).
+                    cur.put_styled(srow, x, " ", &style);
+                } else {
+                    cur.put_styled(srow, x, g, &style);
+                }
+            }
+            if !win.wrap {
+                if let Some(lc) = win.list.as_ref() {
+                    // 'listchars' `extends` / `precedes`: the line goes on past the right / left edge.
+                    let past_right = lay.cells.iter().any(|c| c.vcol >= leftcol + tw);
+                    if let (Some(ch), true) = (lc.extends, past_right) {
+                        let mut buf = [0u8; 4];
+                        cur.put(
+                            srow,
+                            tx + (tw - 1) as u16,
+                            ch.encode_utf8(&mut buf),
+                            DIM,
+                            false,
+                        );
+                    }
+                    if let (Some(ch), true) = (lc.precedes, leftcol > 0 && lay.total > leftcol) {
+                        let mut buf = [0u8; 4];
+                        cur.put(srow, tx, ch.encode_utf8(&mut buf), DIM, false);
+                    }
+                }
+            }
+            if partial {
+                let last = srow + (shown - 1) as u16;
+                match win.lastline {
+                    LastLine::Lastline => {
+                        for k in 0..3.min(tw) {
+                            cur.put(last, x1 - 1 - k as u16, "@", DIM, false);
+                        }
+                    }
+                    _ => {
+                        for k in 0..3.min(tw) {
+                            cur.put(last, tx + k as u16, "@", DIM, false);
+                        }
+                    }
+                }
+                break;
+            }
+            row += shown as u16;
+        }
+        first = false;
+        // A virtual block (an image placeholder) below the line pushes the lines after it down.
+        if let Some(vb) = p.virt.iter().find(|v| v.after_line == line) {
+            if row < rect.h {
+                paint_block(cur, row, vb);
+                collect_image(
+                    out_images,
+                    rect,
+                    row,
+                    vb,
+                    vb.path
+                        .as_deref()
+                        .and_then(|q| p.image_dims.get(q))
+                        .copied(),
+                );
+            }
+            row = row.saturating_add(vb.height);
+        }
+        line += 1;
+    }
+}
+
+/// The style of a painted cell: the byte's face plus the frame overlays (selection and match reverse
+/// video, diagnostic underline); decoration cells are dim.
+fn cell_style(
+    p: &PaneInput<'_>,
+    byte: Option<usize>,
+    kind: crate::ui::line_layout::CellKind,
+) -> screen::CellStyle {
+    use crate::ui::line_layout::CellKind;
+    let Some(i) = byte else {
+        return screen::CellStyle {
+            fg: DIM,
+            ..screen::CellStyle::default()
+        };
+    };
+    let inside = |&(s, e): &(usize, usize)| i >= s && i < e;
+    let selected = p.sel.as_ref().is_some_and(inside)
+        || p.block.is_some_and(|rows| rows.iter().any(inside))
+        || p.hl.iter().any(inside);
+    let base = p.byte_style.get(i).copied().unwrap_or_default();
+    let mut style = screen::CellStyle {
+        reverse: selected,
+        underline: base.underline || p.underline.iter().any(inside),
+        ..base
+    };
+    if kind != CellKind::Text {
+        style.fg = DIM;
+    }
+    style
+}
+
+/// Paint line `line`'s sign column and number column on screen row `srow` (#616): the sign (or blank),
+/// then the number right-aligned with a blank after it — the cursor line's own number left-aligned under
+/// `'number'` + `'relativenumber'`, distances that count a closed fold as one line.
+fn paint_gutter(cur: &mut screen::Screen, rect: Rect, srow: u16, line: usize, p: &PaneInput<'_>) {
+    let win = p.win;
+    let sign = p.signs.iter().find(|s| s.0 == line);
+    let mut x = rect.x;
+    let end = rect.x + rect.w;
+    if win.sign_w > 0 {
+        if let Some(&(_, ch, color)) = sign {
+            let mut buf = [0u8; 4];
+            cur.put(srow, x, ch.encode_utf8(&mut buf), color, false);
+        }
+        x += win.sign_w as u16;
+    }
+    if win.num_w == 0 || x >= end {
+        return;
+    }
+    let w = win.num_w - 1;
+    if let (true, Some(&(_, ch, color))) = (win.signs_in_number, sign) {
+        let mut buf = [0u8; 4];
+        cur.put(
+            srow,
+            x + (w - 2) as u16,
+            ch.encode_utf8(&mut buf),
+            color,
+            false,
+        );
+        return;
+    }
+    let rel = if line >= p.cursor_line {
+        line - p.cursor_line - crate::folds::hidden_between(p.folds, p.cursor_line, line)
+    } else {
+        p.cursor_line - line - crate::folds::hidden_between(p.folds, line, p.cursor_line)
+    };
+    let label = match (win.number, win.relativenumber) {
+        (true, true) if rel == 0 => format!("{:<w$} ", line + 1),
+        (_, true) => format!("{rel:>w$} "),
+        _ => format!("{:>w$} ", line + 1),
+    };
+    let mut c = x;
+    for ch in label.chars() {
+        if c >= end {
+            break;
+        }
+        let mut buf = [0u8; 4];
+        c = cur.put(srow, c, ch.encode_utf8(&mut buf), DIM, false);
+    }
+}
+
+/// The cursor's place in its window, relative to the window's top-left (gutter included): the rows of
+/// the lines from `top` down to the cursor line (closed folds one row, virtual blocks theirs), then the
+/// cursor's row and column in its laid-out line. A cursor inside a closed fold shows on the fold's row.
+/// Columns saturate at `u16::MAX` on a line wider than that (#899).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn cursor_screen(
+    text: PaneText<'_>,
+    win: &WinView,
+    top: usize,
+    folds: &[crate::folds::Fold],
+    virt: &[highlight::VirtLine],
+    pos: usize,
+    mode: ruse_core::Mode,
+) -> (u16, u16) {
+    let sat = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
+    let pos = pos.min(text.bytes.len());
+    let cline = text.idx.line_of(pos);
+    let shown = crate::folds::snap_out(folds, cline);
+    let mut row = 0usize;
+    let mut l = top;
+    while l < shown {
+        if !crate::folds::hidden(folds, l) {
+            let rows = if crate::folds::closed_starting_at(folds, l).is_some() || !win.wrap {
+                1
+            } else {
+                let limit = (win.skip + 1 + (1 << 12)).saturating_mul(win.width);
+                let line = text.line_upto(l, PaneText::bytes_for(limit));
+                crate::ui::line_layout::layout_upto(line, &win.layout(), &[], limit, usize::MAX)
+                    .rows
+            };
+            row += rows - if l == top { win.skip.min(rows - 1) } else { 0 };
+            row += virt
+                .iter()
+                .filter(|v| v.after_line == l)
+                .map(|v| usize::from(v.height))
+                .sum::<usize>();
+        }
+        l += 1;
+    }
+    let gutter = win.gutter();
+    if shown != cline || crate::folds::closed_starting_at(folds, cline).is_some() {
+        return (sat(row), sat(gutter));
+    }
+    let v = match win.cursor {
+        Some((at, v)) if at == pos => v,
+        _ => {
+            crate::ui::window_view::cursor_place(
+                win,
+                text,
+                cline,
+                pos - text.start(cline),
+                win.tab_end(mode),
+            )
+            .2
+        }
+    };
+    if win.wrap {
+        let (r, c) = (v / win.width, v % win.width);
+        let skip = if cline == top { win.skip } else { 0 };
+        (sat(row + r.saturating_sub(skip)), sat(gutter + c))
+    } else {
+        (sat(row), sat(gutter + v.saturating_sub(win.leftcol)))
+    }
+}
+
+/// Paint one buffer view into its `rect` without wrapping or a gutter — how every window painted before
+/// #615 — for the tests that pin the conceal, fold and virtual-block rules.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn paint_pane(
     cur: &mut screen::Screen,
     rect: Rect,
@@ -123,155 +490,28 @@ pub(crate) fn paint_pane(
     folds: &[crate::folds::Fold],
     tab: u16,
 ) {
-    use crossterm::style::Color;
-    use unicode_segmentation::UnicodeSegmentation;
-    // A graphics-capable terminal shows the real image via Unicode PLACEHOLDER cells (§8.8): the cell grid
-    // itself carries the image, so tmux renders it at the correct pane position. Otherwise paint the text
-    // placeholder box.
-    let paint_block = |cur: &mut screen::Screen, disp_row: u16, vb: &highlight::VirtLine| match (
+    let mut idx = crate::line_index::LineIndex::default();
+    idx.refresh(ruse_core::Revision(0), bytes);
+    let win = WinView::plain(usize::from(rect.w), usize::from(tab));
+    let p = PaneInput {
+        text: PaneText { bytes, idx: &idx },
+        win: &win,
+        byte_style,
+        top,
+        sel,
+        block,
+        hl,
+        underline,
+        conceal,
+        caret_line,
+        cursor_line: caret_line,
+        virt,
+        folds,
+        signs: &[],
         graphics_on,
-        &vb.path,
-    ) {
-        // A graphics terminal shows the real image ONLY when its pixel dimensions were read (the PNG exists
-        // and parsed). If the path is missing/unreadable there are no dims — paint a text "not found" band
-        // instead of a blank placeholder grid, so a broken link reads as an error rather than empty space.
-        (true, Some(path)) => match image_dims.get(path).copied() {
-            Some(dims) => paint_image_cells(cur, rect, disp_row, vb.height, path, Some(dims)),
-            None => paint_missing_image(cur, rect, disp_row, vb.height, path),
-        },
-        _ => paint_virt_block(cur, rect, disp_row, vb),
+        image_dims,
     };
-    if rect.w == 0 || rect.h == 0 {
-        return;
-    }
-    let (x0, x1) = (rect.x, rect.x + rect.w);
-    let text = std::str::from_utf8(bytes).unwrap_or("<binary>");
-    let mut line: usize = 0;
-    let mut scol: u16 = x0;
-    // Display rows added by virtual blocks (image placeholders) on lines ABOVE the current one — every
-    // subsequent buffer line paints that many rows lower (F-031 slice 3a row-coordinate model).
-    let mut virt_before: u16 = 0;
-    // Display rows REMOVED by closed folds on lines above the current one — the negative-space twin of
-    // `virt_before` (manual folds). `disp = (line-top) + virt_before − folded_before`.
-    let mut folded_before: u16 = 0;
-    // The display row for the current buffer `line` given the running virt/fold offsets.
-    let disp_of = |line: usize, virt_before: u16, folded_before: u16| -> u16 {
-        ((line - top) as u16 + virt_before).saturating_sub(folded_before)
-    };
-    for (i, g) in text.grapheme_indices(true) {
-        if g == "\n" {
-            // Finished buffer line `line`: paint a virtual block below it (unless the line is folded away),
-            // then grow the running offsets — `folded_before` for a line hidden inside a closed fold.
-            if line >= top && !crate::folds::hidden(folds, line) {
-                let disp = disp_of(line, virt_before, folded_before);
-                if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
-                    paint_block(cur, disp + 1, vb);
-                    collect_image(
-                        out_images,
-                        rect,
-                        disp + 1,
-                        vb,
-                        vb.path.as_deref().and_then(|p| image_dims.get(p)).copied(),
-                    );
-                    virt_before += vb.height;
-                }
-            }
-            if crate::folds::hidden(folds, line) {
-                folded_before += 1; // this line collapsed into the fold above it — remove its row
-            }
-            line += 1;
-            scol = x0;
-            if line >= top && disp_of(line, virt_before, folded_before) >= rect.h {
-                break; // next line is past the bottom of this pane (display rows include virt/fold offsets)
-            }
-            continue;
-        }
-        if line < top || scol >= x1 {
-            continue; // above the pane, or past its right edge (truncate)
-        }
-        if crate::folds::hidden(folds, line) {
-            continue; // a line collapsed inside a closed fold paints nothing (its `\n` bumps folded_before)
-        }
-        let disp = disp_of(line, virt_before, folded_before);
-        if disp >= rect.h {
-            continue; // clipped below the pane by the virtual/fold rows above
-        }
-        let srow = rect.y + disp;
-        // A closed fold's START row shows a one-line summary in place of its text; paint it once (at the
-        // line's first cell) and skip the rest of the start line's graphemes.
-        if let Some(fold) = crate::folds::closed_starting_at(folds, line) {
-            if scol == x0 {
-                let line_text = text[i..].split('\n').next().unwrap_or("");
-                let mut c = x0;
-                for gph in crate::folds::summary(fold, line_text).graphemes(true) {
-                    if c >= x1 {
-                        break;
-                    }
-                    c = cur.put(srow, c, gph, Color::DarkGrey, false);
-                }
-            }
-            scol = x1; // skip the real content of the fold's start line
-            continue;
-        }
-        // F-031 conceal: on a non-caret line, a concealed cluster paints NO cell and does not advance the
-        // column (following glyphs shift left) — the caret line is revealed so its markup stays editable.
-        // At the range's START, any virt_text (a bullet/checkbox glyph) is painted in the marker's place.
-        if line != caret_line {
-            if let Some(&(s, _e, virt)) = conceal.iter().find(|&&(s, e, _)| i >= s && i < e) {
-                if i == s {
-                    if let Some(vt) = virt {
-                        for vg in vt.graphemes(true) {
-                            if scol >= x1 {
-                                break;
-                            }
-                            scol = cur.put(srow, scol, vg, Color::Reset, false);
-                        }
-                    }
-                }
-                continue;
-            }
-        }
-        let selected = sel.is_some_and(|(s, e)| i >= s && i < e)
-            || block.is_some_and(|rows| rows.iter().any(|&(s, e)| i >= s && i < e))
-            || hl.iter().any(|&(s, e)| i >= s && i < e);
-        // The per-byte syntax face, plus the frame-local overlays (selection reverse, diagnostic underline).
-        let base = byte_style.get(i).copied().unwrap_or_default();
-        let underlined = underline.iter().any(|&(s, e)| i >= s && i < e); // F-014 diagnostic range
-        if g == "\t" {
-            for _ in 0..(advance_col(scol - x0, "\t", tab) - (scol - x0)) {
-                if scol >= x1 {
-                    break;
-                }
-                scol = cur.put(srow, scol, " ", base.fg, selected);
-            }
-        } else if scol + screen::cluster_width(g) > x1 {
-            scol = x1; // a wide glyph would cross the edge — drop it and skip the rest of the line
-        } else {
-            let style = screen::CellStyle {
-                reverse: selected,
-                underline: base.underline || underlined,
-                ..base
-            };
-            scol = cur.put_styled(srow, scol, g, &style);
-        }
-    }
-    // A virtual block on the FINAL buffer line (a file that ends without a trailing newline) never hits the
-    // `\n` branch above, so paint it here.
-    if line >= top && !crate::folds::hidden(folds, line) {
-        let disp = disp_of(line, virt_before, folded_before);
-        if disp < rect.h {
-            if let Some(vb) = virt.iter().find(|v| v.after_line == line) {
-                paint_block(cur, disp + 1, vb);
-                collect_image(
-                    out_images,
-                    rect,
-                    disp + 1,
-                    vb,
-                    vb.path.as_deref().and_then(|p| image_dims.get(p)).copied(),
-                );
-            }
-        }
-    }
+    paint_window(cur, rect, &p, out_images);
 }
 
 /// The image's `(left_col, cols)` within the pane: sized to the image's natural aspect (from its pixel
@@ -543,6 +783,7 @@ pub(crate) fn render(
     spans: &[highlight::Span],
     virt_lines: &[highlight::VirtLine],
     rects: &[Rect],
+    wins: &[WinView],
     prev: &mut screen::Screen,
     sync: bool,
     focus_hl: &[(usize, usize)],
@@ -609,6 +850,50 @@ pub(crate) fn render(
     // The focused caret's buffer row — from the revision-cached line index (O(log n)) rather than an
     // O(cursor-offset) newline scan every frame. `line_idx` is refreshed on this same focused buffer.
     let caret_line = line_idx.line_of(focus.view.cursor().min(fbytes.len()));
+    // #616: the focused buffer's diagnostics as signs, the most severe one on each line.
+    let signs: Vec<(usize, char, Color)> = {
+        use crate::lsp::model::Severity;
+        let mut by_line: std::collections::BTreeMap<usize, Severity> = Default::default();
+        let rank = |s: &Severity| match s {
+            Severity::Error => 0,
+            Severity::Warning => 1,
+            Severity::Info => 2,
+            Severity::Hint => 3,
+        };
+        for d in diagnostics {
+            let l = line_idx.line_of(d.start.min(fbytes.len()));
+            let e = by_line.entry(l).or_insert(d.severity);
+            if rank(&d.severity) < rank(e) {
+                *e = d.severity;
+            }
+        }
+        by_line
+            .into_iter()
+            .map(|(l, s)| match s {
+                Severity::Error => (l, 'E', Color::Red),
+                Severity::Warning => (l, 'W', Color::Yellow),
+                Severity::Info => (l, 'I', Color::Blue),
+                Severity::Hint => (l, 'H', Color::Cyan),
+            })
+            .collect()
+    };
+
+    // The focused cursor's cell in its window (the completion menu's anchor and the terminal cursor).
+    let focus_cursor = || match wins.get(ws.focus()) {
+        Some(win) => cursor_screen(
+            PaneText {
+                bytes: fbytes,
+                idx: line_idx,
+            },
+            win,
+            focus.view.top(),
+            folds,
+            virt_lines,
+            focus.view.cursor(),
+            focus.view.mode(),
+        ),
+        None => (0, 0),
+    };
 
     // Paint every window into its sub-rectangle; the focused view owns the terminal cursor below.
     for (i, &rect) in rects.iter().enumerate().take(ws.window_count()) {
@@ -652,25 +937,51 @@ pub(crate) fn render(
         } else {
             Vec::new()
         };
-        paint_pane(
-            &mut cur,
-            rect,
-            pbytes,
-            style,
-            p.view.top(),
+        // A pane on another buffer than the focused one gets its own line index (the cached one is the
+        // focused buffer's).
+        let own_idx;
+        let idx = if p.view.doc() == focus_doc {
+            line_idx
+        } else {
+            let mut ix = crate::line_index::LineIndex::default();
+            ix.refresh_for(p.view.doc(), p.doc.revision(), pbytes);
+            own_idx = ix;
+            &own_idx
+        };
+        let fallback;
+        let win = match wins.get(i) {
+            Some(w) => w,
+            None => {
+                fallback = WinView::resolve(
+                    p.view,
+                    &crate::ui::window_view::DisplayGlobals::default(),
+                    usize::from(rect.w),
+                    usize::from(rect.h),
+                    1,
+                    false,
+                );
+                &fallback
+            }
+        };
+        let input = PaneInput {
+            text: PaneText { bytes: pbytes, idx },
+            win,
+            byte_style: style,
+            top: p.view.top(),
             sel,
-            block.as_deref(),
+            block: block.as_deref(),
             hl,
-            &underline,
-            pane_conceal,
+            underline: &underline,
+            conceal: pane_conceal,
             caret_line,
-            pane_virt,
-            &mut images,
+            cursor_line: idx.line_of(p.view.cursor().min(pbytes.len())),
+            virt: pane_virt,
+            folds: pane_folds,
+            signs: if i == ws.focus() { &signs } else { &[] },
             graphics_on,
             image_dims,
-            pane_folds,
-            view_tab(p.view),
-        );
+        };
+        paint_window(&mut cur, rect, &input, &mut images);
     }
     draw_separators(&mut cur, rects, ws.split_dir(), cols, text_rows);
 
@@ -710,15 +1021,7 @@ pub(crate) fn render(
                 .clamp(10, 40);
             let height = rows.len().min(10) as u16;
             // Anchor at the focused cursor's screen cell (same math the terminal cursor uses below).
-            let (crow, ccol) = cursor_cell(
-                focus.doc.bytes(),
-                focus.view.cursor(),
-                focus.view.top(),
-                virt_lines,
-                folds,
-                line_idx,
-                view_tab(focus.view),
-            );
+            let (crow, ccol) = focus_cursor();
             let frect = rects.get(ws.focus()).copied().unwrap_or(Rect {
                 x: 0,
                 y: 0,
@@ -886,15 +1189,7 @@ pub(crate) fn render(
             out.flush()?;
             return Ok(images);
         }
-        let (row, col) = cursor_cell(
-            focus.doc.bytes(),
-            focus.view.cursor(),
-            focus.view.top(),
-            virt_lines,
-            folds,
-            line_idx,
-            view_tab(focus.view),
-        );
+        let (row, col) = focus_cursor();
         let screen_row = (frect.y + row).min(rows.saturating_sub(1));
         let screen_col = frect.x.saturating_add(col).min(cols.saturating_sub(1)); // #899
         queue!(out, cursor::MoveTo(screen_col, screen_row), cursor::Show)?;
@@ -981,10 +1276,9 @@ pub(crate) fn flush_diff(
     Ok(())
 }
 
-/// The cursor's on-screen `(row, col)`: `row` relative to the viewport `top`, `col` in DISPLAY cells
-/// (wide glyphs count 2, combining marks 0, tabs to the next stop) — grapheme-correct, not a char
-/// count (F-006 #4). `virt` adds the display rows of any virtual blocks (image placeholders) sitting
-/// between `top` and the caret's line, so the caret stays aligned with the painted rows (F-031 slice 3a).
+/// The cursor's on-screen `(row, col)` in an unwrapped window with no gutter, the caret on a tab at its
+/// first cell: the pre-#615 rule its tests pin (F-006 #4, F-031 slice 3a, #899).
+#[cfg(test)]
 pub(crate) fn cursor_cell(
     bytes: &[u8],
     pos: usize,
@@ -994,28 +1288,18 @@ pub(crate) fn cursor_cell(
     line_idx: &crate::line_index::LineIndex,
     tab: u16,
 ) -> (u16, u16) {
-    let pos = pos.min(bytes.len());
-    // Row + line-start from the revision-cached index (O(log n)) rather than O(pos) newline scans; this runs
-    // up to twice per frame. `line_idx` indexes the same (focused) buffer these offsets address.
-    let buf_row = line_idx.line_of(pos);
-    // A caret inside a closed fold displays on the fold's summary (start) row.
-    let disp_row = crate::folds::snap_out(folds, buf_row);
-    let line_start = line_idx.nth_line_start(buf_row);
-    // `line` runs from its start up to `pos`, so the caret column is the full display width of that
-    // slice — computed by the SHARED column rule, not a private re-derivation (F-031 slice 0).
-    let line = std::str::from_utf8(&bytes[line_start..pos]).unwrap_or("");
-    let col = line_display_col(line, line.len(), tab);
-    // Virtual rows inserted for lines in `[top, disp_row)` push the caret down (F-031 slice 3a); rows
-    // collapsed by closed folds above it pull the caret up (manual folds).
-    let virt_above: u16 = virt
-        .iter()
-        .filter(|v| v.after_line >= top && v.after_line < disp_row)
-        .map(|v| v.height)
-        .sum();
-    let folded_above = crate::folds::hidden_before(folds, disp_row).min(disp_row) as u16;
-    (
-        (disp_row.saturating_sub(top) as u16 + virt_above).saturating_sub(folded_above),
-        col,
+    let win = WinView::plain(1 << 20, usize::from(tab));
+    cursor_screen(
+        PaneText {
+            bytes,
+            idx: line_idx,
+        },
+        &win,
+        top,
+        folds,
+        virt,
+        pos,
+        ruse_core::Mode::Insert,
     )
 }
 
@@ -1806,5 +2090,195 @@ mod render_tests {
             n += 1;
         }
         assert!(n > 500, "most cases are checked ({n})");
+    }
+
+    // ---- #615 / #616: wrap, gutter, 'list' and the horizontal offset, against nvim v0.12.6 screens ----
+
+    /// The text rows a window paints, right-trimmed, for `lines` from line `top` (0-based), the cursor on
+    /// line `cursor`, with the window options `opts` set and `'tabstop'` 8 (nvim's).
+    #[allow(clippy::too_many_arguments)]
+    fn window_rows(
+        lines: &str,
+        w: u16,
+        h: u16,
+        top: usize,
+        cursor: usize,
+        leftcol: usize,
+        opts: impl FnMut(&mut ruse_core::WindowOptions),
+        globals: &crate::ui::window_view::DisplayGlobals,
+    ) -> Vec<String> {
+        let mut ws = Workspace::new(lines);
+        ws.set_option_in(
+            ruse_core::editor::EditorOption::TabStop(8),
+            ruse_core::OptionLevel::Both,
+        );
+        ws.update_window_options(ruse_core::OptionLevel::Both, opts);
+        let bytes = lines.as_bytes();
+        let idx = li(bytes);
+        let text = PaneText { bytes, idx: &idx };
+        let mut win = WinView::resolve(
+            ws.focused().view,
+            globals,
+            usize::from(w),
+            usize::from(h),
+            text.line_count(),
+            false,
+        );
+        win.leftcol = leftcol;
+        let dims = std::collections::HashMap::new();
+        let p = PaneInput {
+            text,
+            win: &win,
+            byte_style: &[],
+            top,
+            sel: None,
+            block: None,
+            hl: &[],
+            underline: &[],
+            conceal: &[],
+            caret_line: cursor,
+            cursor_line: cursor,
+            virt: &[],
+            folds: &[],
+            signs: &[],
+            graphics_on: false,
+            image_dims: &dims,
+        };
+        let mut scr = screen::Screen::new(w, h);
+        let rect = Rect { x: 0, y: 0, w, h };
+        paint_window(&mut scr, rect, &p, &mut Vec::new());
+        (0..h)
+            .map(|r| {
+                (0..w)
+                    .filter_map(|c| match scr.cell(r, c).content {
+                        screen::Content::Continuation => None,
+                        screen::Content::Blank => Some(" ".to_string()),
+                        screen::Content::Cluster(g) => Some(g.to_string()),
+                    })
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// nvim's probe buffer for the 20-column window.
+    const PROBE_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccc\nshort\n\tx\u{4e2d}\u{6587}yyyyyyyyyyyyyyyyyyyy\n  indented line that is long enough to wrap around twice ok\nxxxxxxxxxxxxxxxxxx\u{4e2d}zz\ntrail   \n";
+
+    #[test]
+    fn number_relativenumber_showbreak_and_lastline_match_nvim() {
+        let g = crate::ui::window_view::DisplayGlobals {
+            showbreak: ">>".into(),
+            ..Default::default()
+        };
+        let set = |rnu_only: bool| {
+            move |o: &mut ruse_core::WindowOptions| {
+                o.number = !rnu_only;
+                o.relativenumber = true;
+                o.linebreak = true;
+                o.breakindent = true;
+            }
+        };
+        let rows = window_rows(PROBE_A, 20, 8, 1, 2, 0, set(false), &g);
+        assert_eq!(
+            rows,
+            [
+                "  1 short",
+                "3           x\u{4e2d}\u{6587}yyy",
+                "    >>yyyyyyyyyyyyyy",
+                "    >>yyy",
+                "  1   indented line",
+                "    >>that is long",
+                "    >>enough to",
+                "    >>wrap around@@@",
+            ]
+        );
+        // 'relativenumber' alone: the cursor line shows 0, right-aligned.
+        let rows = window_rows(PROBE_A, 20, 8, 1, 2, 0, set(true), &g);
+        assert_eq!(rows[1], "  0         x\u{4e2d}\u{6587}yyy");
+    }
+
+    #[test]
+    fn listchars_match_nvim() {
+        let g = crate::ui::window_view::DisplayGlobals {
+            listchars: "tab:>-,trail:~,eol:$,space:.,nbsp:+".into(),
+            ..Default::default()
+        };
+        let rows = window_rows(PROBE_A, 20, 8, 1, 2, 0, |o| o.list = true, &g);
+        assert_eq!(
+            rows,
+            [
+                "short$",
+                ">-------x\u{4e2d}\u{6587}yyyyyyy",
+                "yyyyyyyyyyyyy$",
+                "..indented.line.that",
+                ".is.long.enough.to.w",
+                "rap.around.twice.ok$",
+                "xxxxxxxxxxxxxxxxxx\u{4e2d}",
+                "zz$",
+            ]
+        );
+    }
+
+    #[test]
+    fn nowrap_shows_the_columns_from_leftcol_like_nvim() {
+        let g = crate::ui::window_view::DisplayGlobals::default();
+        let rows = window_rows(PROBE_A, 20, 8, 0, 0, 6, |o| o.wrap = false, &g);
+        assert_eq!(
+            rows[..6],
+            [
+                "aaaaaaaaaaaaaaaaaaaa",
+                "",
+                "  x\u{4e2d}\u{6587}yyyyyyyyyyyyy",
+                "nted line that is lo",
+                "xxxxxxxxxxxx\u{4e2d}zz",
+                "",
+            ]
+        );
+        // A wide char cut at the left edge shows `<`.
+        let rows = window_rows(PROBE_A, 20, 8, 0, 0, 10, |o| o.wrap = false, &g);
+        assert_eq!(rows[2], "<\u{6587}yyyyyyyyyyyyyyyyy");
+    }
+
+    #[test]
+    fn sign_column_and_numberwidth_match_nvim() {
+        let text = format!(
+            "{}\u{4e2d}yy\nabcdefghijklmnopqrstuvwxyz\tTAB\n    indented words go on and on and on until wrap\n a  b   \nend\n",
+            "x".repeat(29)
+        );
+        let g = crate::ui::window_view::DisplayGlobals::default();
+        let yes = |o: &mut ruse_core::WindowOptions| {
+            o.number = true;
+            o.signcolumn = "yes".into();
+        };
+        let rows = window_rows(&text, 30, 10, 0, 0, 0, yes, &g);
+        assert_eq!(
+            rows[..9],
+            [
+                "    1 xxxxxxxxxxxxxxxxxxxxxxxx",
+                "      xxxxx\u{4e2d}yy",
+                "    2 abcdefghijklmnopqrstuvwx",
+                "      yz      TAB",
+                "    3     indented words go on",
+                "       and on and on until wra",
+                "      p",
+                "    4  a  b",
+                "    5 end",
+            ]
+        );
+        let narrow = |o: &mut ruse_core::WindowOptions| {
+            o.number = true;
+            o.numberwidth = 1;
+        };
+        let rows = window_rows(&text, 30, 10, 0, 0, 0, narrow, &g);
+        assert_eq!(
+            rows[..4],
+            [
+                "1 xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "  x\u{4e2d}yy",
+                "2 abcdefghijklmnopqrstuvwxyz",
+                "      TAB",
+            ]
+        );
     }
 }

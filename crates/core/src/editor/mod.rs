@@ -462,6 +462,12 @@ pub struct View {
     /// This window's own `'scrolloff'` (#1151), or `None` to use the global value (nvim's local `-1`).
     /// Frontend-owned, like `top`: the viewport pass reads it, and a split copies it with the View.
     scrolloff: Option<i64>,
+    /// The first displayed screen column when `'wrap'` is off (nvim's `w_leftcol`). Frontend-owned, like
+    /// `top`: the viewport pass and `zh`/`zl`/`zs`/`ze` set it (#615).
+    leftcol: usize,
+    /// nvim's window-local display options (#615, #616). The core only stores them: the frontend lays
+    /// out with them, and a split copies them with the View.
+    window: crate::WindowOptions,
     cursor: usize,
     mode: Mode,
     /// Whether the previous command edited text — drives undo grouping: an edit right after a non-edit
@@ -791,6 +797,8 @@ impl View {
             top: 0,
             scroll: None,
             scrolloff: None,
+            leftcol: 0,
+            window: crate::WindowOptions::default(),
             cursor: 0,
             mode: Mode::Normal,
             last_was_edit: false,
@@ -1201,6 +1209,35 @@ impl View {
     /// Set (or, with `None`, clear) this window's own `'scrolloff'` (`:setlocal so`, #1151).
     pub fn set_scrolloff_local(&mut self, so: Option<i64>) {
         self.scrolloff = so;
+    }
+
+    /// The first displayed screen column when `'wrap'` is off (#615).
+    #[must_use]
+    pub fn leftcol(&self) -> usize {
+        self.leftcol
+    }
+
+    /// Set the first displayed screen column (the frontend's horizontal scroll, #615).
+    pub fn set_leftcol(&mut self, col: usize) {
+        self.leftcol = col;
+    }
+
+    /// The wanted column (Vim's `curswant`) as a display column, `usize::MAX` after `$`: read by the
+    /// frontend's screen-line motions (`gj`, `gk`, #615).
+    #[must_use]
+    pub fn curswant(&self) -> usize {
+        self.curswant
+    }
+
+    /// This window's display options (#615, #616).
+    #[must_use]
+    pub fn window_options(&self) -> &crate::WindowOptions {
+        &self.window
+    }
+
+    /// Replace this window's display options.
+    pub fn set_window_options(&mut self, opts: crate::WindowOptions) {
+        self.window = opts;
     }
 
     /// The `CTRL-D`/`CTRL-U` amount for a window `height` rows high (Vim's 'scroll'): the value a count last

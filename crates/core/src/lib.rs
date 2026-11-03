@@ -59,6 +59,7 @@ pub mod trace;
 pub mod transaction;
 pub mod undo;
 mod undo_cursor;
+pub mod window_options;
 pub mod workspace;
 
 /// `n` proptest cases, scaled by `RUSE_PROPTEST_SCALE` for the scheduled deep tier (#920), with the reject
@@ -110,4 +111,5 @@ pub use trace::{doc_hash, Trace, TraceError, TRACE_FORMAT_VERSION};
 pub use transaction::{GroupHint, Transaction, TransactionOrigin};
 pub use undo::{MonotonicSeq, UndoHistory, UndoStep};
 pub use undo_cursor::{ChangeMarks, UndoCursor};
+pub use window_options::WindowOptions;
 pub use workspace::{OptionLevel, Pane, SplitDir, ViewId, Window, Workspace};

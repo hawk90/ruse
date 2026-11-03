@@ -251,6 +251,10 @@ UNDO_SETUP = "let &undolevels = &undolevels"
 # #1171: `j$` ends on the last char of the short last line, where the commands under test fail; `k` then
 # shows the wanted column on the long line above (its end, or the column of the cursor).
 FAIL_LINES = ["ab cd ef ghijklmnop qrstuvwxyz", "gh (ij kl"]
+# #615: long lines around a short one for the screen-line motions' wanted column, and a line wrapped over
+# three rows of the oracle's 80-column window.
+SCREEN_LINES = ["ab cd ef ghijklmnop qrstuvwxyz " * 2, "gh ij", "ab cd ef ghijklmnop qrstuvwxyz " * 2]
+WRAP_LINES = ["first", " ".join("word%02d" % i for i in range(30)), "last line"]
 
 FIXTURES: list[dict] = [
     {"name": "x_delete_char", "lines": ["hello"], "keys": "x"},
@@ -3682,6 +3686,18 @@ FIXTURES: list[dict] = [
     {"name": "cinw_custom_keyword", "lines": ["  unless x"], "keys": ":set ts=4 sw=4 et si cinw=unless<CR>oy<Esc>"},
     {"name": "cinw_drops_default", "lines": ["  if (x)"], "keys": ":set ts=4 sw=4 et si cinw=unless<CR>oy<Esc>"},
     {"name": "cinw_append", "lines": ["  loop"], "keys": ":set ts=4 sw=4 et si cinw+=loop<CR>oy<Esc>"},
+    # --- #615 screen-line motions (80-column window): `gm` / `g0` / `g^` / `g$` set the wanted column from
+    #     where they land (after `$` too), `gj` / `gk` keep theirs, and count over the wrapped rows. --------
+    {"name": "gm_resets_dollar_curswant", "lines": SCREEN_LINES, "keys": "$gmjj"},
+    {"name": "g0_resets_dollar_curswant", "lines": SCREEN_LINES, "keys": "$g0jj"},
+    {"name": "g_dollar_sets_curswant", "lines": SCREEN_LINES, "keys": "0g$jj"},
+    {"name": "gj_keeps_dollar_curswant", "lines": SCREEN_LINES, "keys": "$gjj"},
+    {"name": "gm_on_short_line_then_j", "lines": SCREEN_LINES, "keys": "j$gmj"},
+    {"name": "gj_over_wrapped_line", "lines": WRAP_LINES, "keys": "5lgjgjx"},
+    {"name": "gk_over_wrapped_line", "lines": WRAP_LINES, "keys": "Gk$gkgkx"},
+    {"name": "dgj_in_wrapped_line", "lines": WRAP_LINES, "keys": "3ldgj"},
+    {"name": "g_dollar_in_wrapped_line", "lines": WRAP_LINES, "keys": "gjdg$"},
+    {"name": "nowrap_gj_is_linewise", "lines": WRAP_LINES, "keys": ":set nowrap<CR>dgj"},
 ]
 
 

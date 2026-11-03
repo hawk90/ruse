@@ -88,42 +88,53 @@ mod tests {
             Feed::Cmd(Command::Delete(25, Motion::MidLine))
         );
         assert_eq!(feed("ygM"), Feed::Cmd(Command::Yank(50, Motion::MidLine)));
-        // `gm` (screen-line middle) is DEFERRED — it needs the window width, which the engine lacks — so it
-        // aborts as operator-pending rather than aliasing `gM` (see the GSecond note).
+    }
+
+    #[test]
+    fn g_prefixed_screen_line_motions_go_to_the_frontend() {
+        // `gj`/`gk`/`g0`/`g^`/`gm`/`g$` count in the window's screen rows (#615), which the engine does not
+        // know: it hands them over with the folded count and keeps the operator armed.
+        use crate::input::ScreenMotion::*;
+        let sm = |motion, count| Feed::ScreenMotion { motion, count };
+        assert_eq!(feed("gj"), sm(Down, 1));
+        assert_eq!(feed("gk"), sm(Up, 1));
+        assert_eq!(feed("g0"), sm(Start, 1));
+        assert_eq!(feed("g^"), sm(FirstNonBlank, 1));
+        assert_eq!(feed("gm"), sm(Middle, 1));
+        assert_eq!(feed("g$"), sm(End, 1));
+        assert_eq!(feed("3gj"), sm(Down, 3));
+        assert_eq!(feed("2d3gk"), sm(Up, 6));
+        // The frontend finishes it: the operator over the byte target (`go`'s rules), or `j`/`k` without
+        // 'wrap'.
+        let mut e = InputEngine::new();
+        for c in "dgj".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
         assert_eq!(
-            feed("gm"),
+            e.screen_motion_to(9),
+            Feed::Cmd(Command::Delete(10, Motion::GotoByte))
+        );
+        for c in "2dgj".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(
+            e.screen_motion_lines(true),
+            Feed::Cmd(Command::Delete(2, Motion::Down))
+        );
+        for c in "dgk".chars() {
+            e.feed(k(c), Mode::Normal);
+        }
+        assert_eq!(
+            e.screen_motion_fail(),
             Feed::Beep {
                 clear_register: false
             }
         );
-    }
-
-    #[test]
-    fn g_prefixed_display_line_motions_alias_plain_motions() {
-        // ruse does not soft-wrap (one buffer line == one display row), so Vim's display-line motions
-        // `gj`/`gk`/`g0`/`g$`/`g^` equal `j`/`k`/`0`/`$`/`^` — exactly as Vim itself under `nowrap`.
-        assert_eq!(feed("gj"), Feed::Cmd(Command::Move(1, Motion::Down)));
-        assert_eq!(feed("gk"), Feed::Cmd(Command::Move(1, Motion::Up)));
-        assert_eq!(feed("g0"), Feed::Cmd(Command::Move(1, Motion::LineStart)));
-        assert_eq!(feed("g$"), Feed::Cmd(Command::Move(1, Motion::LineEnd)));
+        // The failed motion dropped the operator: `x` is `x` again.
         assert_eq!(
-            feed("g^"),
-            Feed::Cmd(Command::Move(1, Motion::LineFirstNonBlank))
+            e.feed(k('x'), Mode::Normal),
+            Feed::Cmd(Command::DeleteUnder(1))
         );
-        // Count-aware: the count accumulated before `g` carries through (`3gj` == `3j`).
-        assert_eq!(feed("3gj"), Feed::Cmd(Command::Move(3, Motion::Down)));
-        assert_eq!(feed("2gk"), Feed::Cmd(Command::Move(2, Motion::Up)));
-        // Operator-composable. The horizontal forms match nvim exactly (`dg$` == `d$`, `dg^` == `d^`).
-        assert_eq!(feed("g$"), feed("$"));
-        assert_eq!(feed("dg$"), feed("d$"));
-        assert_eq!(feed("dg^"), feed("d^"));
-        assert_eq!(feed("dg0"), feed("d0"));
-        // DELIBERATE DIVERGENCE (operator over the VERTICAL forms): `dgj`/`dgk` alias `dj`/`dk` (linewise).
-        // nvim treats `gj`/`gk` as characterwise-exclusive (subject to exclusive-linewise promotion), so
-        // nvim's `dgj` deletes ONE line, not two — see the note in input/mod.rs's GSecond arms.
-        assert_eq!(feed("dgj"), Feed::Cmd(Command::Delete(1, Motion::Down)));
-        assert_eq!(feed("ygk"), Feed::Cmd(Command::Yank(1, Motion::Up)));
-        assert_eq!(feed("d2gj"), Feed::Cmd(Command::Delete(2, Motion::Down)));
     }
 
     #[test]
@@ -795,8 +806,9 @@ mod tests {
             err("set sw=x").as_deref(),
             Some("E521: Number required after =: sw=x")
         );
-        assert_eq!(one("set nonumber"), SetArg::Unsupported("number".into()));
-        assert_eq!(one("set invwrap"), SetArg::Unsupported("wrap".into()));
+        assert_eq!(one("set nonumber"), SetArg::Bool(Opt::Number, false));
+        assert_eq!(one("set nospell"), SetArg::Unsupported("spell".into()));
+        assert_eq!(one("set invwrap"), SetArg::Toggle(Opt::Wrap));
         // A bare `:set` lists the changed options.
         assert_eq!(set_args("set"), (vec![], None));
     }

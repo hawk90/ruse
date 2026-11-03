@@ -129,10 +129,32 @@ pub enum Feed {
     Pending,
     /// Nothing bound.
     Ignored,
+    /// A screen-line motion (`gj`, `gk`, `g0`, `g^`, `gm`, `g$`; #615) with its folded count: the frontend
+    /// resolves where it lands in the window's screen rows and finishes it with
+    /// [`InputEngine::screen_motion_to`], [`InputEngine::screen_motion_lines`] or
+    /// [`InputEngine::screen_motion_fail`]. The operator, count and register stay armed until then.
+    ScreenMotion { motion: ScreenMotion, count: u32 },
     /// Nothing bound, and Vim beeps (`nv_error`): the frontend records the failure, so the rest of a macro
     /// or a `:normal` is not run (#1111). `clear_register` abandons a `"x` prefix already handed to the
     /// core, as [`Feed::Ignored`]'s caller does with `Command::SetRegister(None)`.
     Beep { clear_register: bool },
+}
+
+/// A screen-line motion (`:help gj`): it moves over screen rows, not buffer lines (#615).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScreenMotion {
+    /// `gj` / `g<Down>`.
+    Down,
+    /// `gk` / `g<Up>`.
+    Up,
+    /// `g0` / `g<Home>`.
+    Start,
+    /// `g^`.
+    FirstNonBlank,
+    /// `gm`.
+    Middle,
+    /// `g$` / `g<End>`.
+    End,
 }
 
 /// The command-line completion keys (`:help cmdline-completion`).
@@ -1962,6 +1984,48 @@ impl InputEngine {
     /// it resolves `line` (honoring any `[count]`, read via [`peek_count`](Self::peek_count)) and passes it in.
     pub fn screen_op(&mut self, line: u32) -> Feed {
         self.op_over_motion(Motion::GotoLine, line)
+    }
+
+    /// Hand a screen-line motion to the frontend ([`Feed::ScreenMotion`]), keeping the operator armed.
+    fn screen_motion(&mut self, motion: ScreenMotion) -> Feed {
+        Feed::ScreenMotion {
+            motion,
+            count: self.mcount(),
+        }
+    }
+
+    /// Finish a [`Feed::ScreenMotion`] the frontend resolved to buffer byte `byte`: the bare move, or the
+    /// armed operator over it as an exclusive charwise motion (`go`'s rules: `dgj` from a line's start is
+    /// linewise). An inclusive one (`g$`) reaches here as the byte after its char.
+    pub fn screen_motion_to(&mut self, byte: usize) -> Feed {
+        let target = u32::try_from(byte.saturating_add(1)).unwrap_or(u32::MAX);
+        self.op_over_motion(Motion::GotoByte, target)
+    }
+
+    /// Finish a [`Feed::ScreenMotion`] that kept the end-of-line wanted column (`gj` after `$`) and landed
+    /// on the end of a line `lines - 1` below as `{lines}$`: the same place, inclusive, and the column
+    /// stays at the end as nvim keeps it.
+    pub fn screen_motion_line_end(&mut self, lines: u32) -> Feed {
+        self.op_over_motion(Motion::LineEnd, lines.max(1))
+    }
+
+    /// Finish a [`Feed::ScreenMotion`] as `j` / `k` with its count: `gj` / `gk` without 'wrap'.
+    pub fn screen_motion_lines(&mut self, down: bool) -> Feed {
+        let total = self.mcount();
+        self.op_over_motion(if down { Motion::Down } else { Motion::Up }, total)
+    }
+
+    /// Abandon a [`Feed::ScreenMotion`] that cannot move (`gj` on the last screen row): nvim beeps and
+    /// drops the operator.
+    pub fn screen_motion_fail(&mut self) -> Feed {
+        let had_register = self.normal.register;
+        self.reset();
+        self.drop_aborted_register(
+            had_register,
+            Feed::Beep {
+                clear_register: false,
+            },
+        )
     }
 
     /// Whether the Insert namespace is in a PLAIN-TEXT context right now: not mid a `CTRL-G`/`CTRL-R`
@@ -4045,6 +4109,7 @@ impl InputEngine {
                             | '0'
                             | '$'
                             | '^'
+                            | 'm'
                             | 'o'
                             | 'M'
                             | 'n'
@@ -4102,38 +4167,22 @@ impl InputEngine {
                     KeyCode::Char('E') => self.motion(Motion::BigWordEndBack),
                     // `g_` — to the last non-blank char of the line (`{count}g_` = count-1 lines down).
                     KeyCode::Char('_') => self.motion(Motion::LineLastNonBlank),
-                    // Display-line motions `gj`/`gk`/`g0`/`g$`/`g^`. ruse does NOT soft-wrap (each buffer
-                    // line is exactly one display row — `paint_pane` truncates at the right edge, the
-                    // viewport is a single vertical `top` offset with no horizontal scroll), so a buffer
-                    // line and its display line always coincide. Vim's `gj`/`gk`/`g0`/`g$`/`g^` therefore
-                    // equal `j`/`k`/`0`/`$`/`^` as BARE CURSOR MOTIONS here — the same equivalence Vim
-                    // itself gives under `nowrap` (`:help gj`). They are emitted as those motions so the
-                    // keys stop being dead: count-aware (`3gj`) and operator-composable via `motion`.
-                    //
-                    // DELIBERATE DIVERGENCE (operator forms only): `dgj`/`dgk` alias `dj`/`dk` (linewise),
-                    // whereas nvim treats `gj`/`gk` as characterwise-exclusive and applies its exclusive-
-                    // linewise promotion, so nvim's `dgj` deletes ONE line, not two. A column-preserving
-                    // charwise vertical motion (with desired-column tracking) is out of scope for wiring
-                    // these keys; the horizontal forms (`g0`/`g$`/`g^`) match nvim under operators exactly.
-                    KeyCode::Char('j') => self.motion(Motion::Down),
-                    KeyCode::Char('k') => self.motion(Motion::Up),
-                    KeyCode::Char('0') => self.motion(Motion::LineStart),
-                    KeyCode::Char('$') => self.motion(Motion::LineEnd),
-                    KeyCode::Char('^') => self.motion(Motion::LineFirstNonBlank),
+                    // Screen-line motions `gj`/`gk`/`g0`/`g^`/`gm`/`g$` (#615): they count in the window's
+                    // screen rows ('wrap', 'showbreak', the gutter, `leftcol`), which the engine does not
+                    // know, so the frontend resolves them (the operator, count and register stay armed) and
+                    // finishes them with `screen_motion_to` / `screen_motion_lines` / `screen_motion_fail`.
+                    KeyCode::Char('j') => self.screen_motion(ScreenMotion::Down),
+                    KeyCode::Char('k') => self.screen_motion(ScreenMotion::Up),
+                    KeyCode::Char('0') => self.screen_motion(ScreenMotion::Start),
+                    KeyCode::Char('$') => self.screen_motion(ScreenMotion::End),
+                    KeyCode::Char('^') => self.screen_motion(ScreenMotion::FirstNonBlank),
+                    KeyCode::Char('m') => self.screen_motion(ScreenMotion::Middle),
                     // `[count]go` — go to the count-th byte of the buffer (operator-aware: `dgo`).
                     KeyCode::Char('o') => self.motion(Motion::GotoByte),
                     // `gM` — go to `count`% of the line by CHARACTER count (bare `gM` = the middle char,
                     // i.e. 50%). The count is a PERCENTAGE, not a repeat, so seed it into `count` (default 50)
                     // and let `motion` carry it through — exactly the count-as-percentage shape `{count}%`
                     // (`GotoPercent`) uses. Operator-aware (`dgM`); `op_over_motion` clears the count after.
-                    //
-                    // `gm` (middle of the SCREEN line, i.e. the char at display column `window_width/2`) is
-                    // DEFERRED: it is a pure function of the window width (nvim goes to the last char once the
-                    // half-width column runs past the line), which the motion engine has no access to at motion
-                    // time — the frontend never threads viewport width into `Motion`. Aliasing it to `gM`
-                    // would be wrong (on a 10-char line in an 80-col window nvim's `gm` lands on the last
-                    // char, `gM` on the 6th), so `gm` is left unbound (aborts as operator-pending) until a
-                    // width-aware motion path exists.
                     KeyCode::Char('M') => {
                         if self.normal.typed() == 0 {
                             self.normal.count = 50; // bare `gM` = 50% of the line

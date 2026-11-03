@@ -94186,6 +94186,303 @@
         "emsg": "",
         "failed": false
       }
+    },
+    {
+      "name": "gm_resets_dollar_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+        "gh ij",
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+      ],
+      "keys": "$gmjj",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+          "gh ij",
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+        ],
+        "cursor": [
+          3,
+          40
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g0_resets_dollar_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+        "gh ij",
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+      ],
+      "keys": "$g0jj",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+          "gh ij",
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+        ],
+        "cursor": [
+          3,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_dollar_sets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+        "gh ij",
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+      ],
+      "keys": "0g$jj",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+          "gh ij",
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+        ],
+        "cursor": [
+          3,
+          61
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gj_keeps_dollar_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+        "gh ij",
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+      ],
+      "keys": "$gjj",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+          "gh ij",
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+        ],
+        "cursor": [
+          3,
+          61
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gm_on_short_line_then_j",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+        "gh ij",
+        "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+      ],
+      "keys": "j$gmj",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz ",
+          "gh ij",
+          "ab cd ef ghijklmnop qrstuvwxyz ab cd ef ghijklmnop qrstuvwxyz "
+        ],
+        "cursor": [
+          3,
+          4
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gj_over_wrapped_line",
+      "lines": [
+        "first",
+        "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+        "last line"
+      ],
+      "keys": "5lgjgjx",
+      "expect": {
+        "text": [
+          "first",
+          "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 ord12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+          "last line"
+        ],
+        "cursor": [
+          2,
+          84
+        ],
+        "reg_unnamed": {
+          "text": "w",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "gk_over_wrapped_line",
+      "lines": [
+        "first",
+        "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+        "last line"
+      ],
+      "keys": "Gk$gkgkx",
+      "expect": {
+        "text": [
+          "first",
+          "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 wod11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+          "last line"
+        ],
+        "cursor": [
+          2,
+          79
+        ],
+        "reg_unnamed": {
+          "text": "r",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "dgj_in_wrapped_line",
+      "lines": [
+        "first",
+        "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+        "last line"
+      ],
+      "keys": "3ldgj",
+      "expect": {
+        "text": [
+          "fird00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+          "last line"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "st\nwor",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "g_dollar_in_wrapped_line",
+      "lines": [
+        "first",
+        "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+        "last line"
+      ],
+      "keys": "gjdg$",
+      "expect": {
+        "text": [
+          "first",
+          "d11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+          "last line"
+        ],
+        "cursor": [
+          2,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 wor",
+          "type": "charwise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
+    },
+    {
+      "name": "nowrap_gj_is_linewise",
+      "lines": [
+        "first",
+        "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29",
+        "last line"
+      ],
+      "keys": ":set nowrap<CR>dgj",
+      "expect": {
+        "text": [
+          "last line"
+        ],
+        "cursor": [
+          1,
+          0
+        ],
+        "reg_unnamed": {
+          "text": "first\nword00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29\n",
+          "type": "linewise"
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": false
+      }
     }
   ]
 }
