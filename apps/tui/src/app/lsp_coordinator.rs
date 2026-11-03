@@ -492,7 +492,7 @@ impl LspCoordinator {
             if cur_path.as_deref() == Some(target.as_path()) {
                 rec(
                     ws,
-                    ExCmd::Place(lsp::model::lsp_pos_to_byte(snapshot, l, c)),
+                    ExCmd::Place(BytePos(lsp::model::lsp_pos_to_byte(snapshot, l, c))),
                 );
             } else {
                 let opened =
@@ -655,7 +655,7 @@ impl LspCoordinator {
             }
             apply_lsp_edits(ws, rec, edits);
             let caret_pos = (start as isize + caret as isize + shift).max(0) as usize;
-            rec(ws, ExCmd::Place(caret_pos));
+            rec(ws, ExCmd::Place(BytePos(caret_pos)));
             *status = format!("completed: {}", item.label);
             return true;
         }

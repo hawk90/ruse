@@ -131,7 +131,7 @@ pub enum ExCmd {
     Set(EditorOption),
     /// The cursor placed at a byte offset by the frontend (`:normal`'s per-line column 0, a `:g` landing
     /// line, a `:s///c` match left under the cursor). Leaves the wanted column alone, as the live placement.
-    Place(usize),
+    Place(BytePos),
     /// Vim's `u_sync` before a typed command: the next change starts a new undo step.
     UndoSync,
     /// An edit list that came from outside the core (RFC-0020 R6): a language server's formatting, rename,
@@ -302,7 +302,7 @@ impl EditorState {
             }
             ExCmd::Place(at) => {
                 let b = self.doc.bytes();
-                let at = crate::motion::snap(b, (*at).min(b.len()));
+                let at = crate::motion::snap(b, at.0.min(b.len()));
                 self.view.set_cursor(BytePos(at));
                 ExOutcome::Done
             }
@@ -574,7 +574,7 @@ impl ExCmd {
                 let (name, value) = option_name(opt);
                 format!("ex_set {name} {value}")
             }
-            ExCmd::Place(at) => format!("ex_place {at}"),
+            ExCmd::Place(at) => format!("ex_place {}", at.0),
             ExCmd::UndoSync => "ex_undo_sync".into(),
             ExCmd::Edits { origin, edits } => {
                 let mut s = format!("ex_edits {}", origin_token(*origin));
@@ -789,7 +789,7 @@ impl ExCmd {
                     ExCmd::Set(opt.ok_or_else(|| a.bad())?)
                 }
             }
-            "ex_place" => ExCmd::Place(a.num()?),
+            "ex_place" => ExCmd::Place(BytePos(a.num()?)),
             "ex_undo_sync" => ExCmd::UndoSync,
             "ex_edits" => {
                 let origin = match a.tok()? {
@@ -1157,7 +1157,7 @@ pub(crate) fn samples() -> Vec<ExCmd> {
         ExCmd::Set(EditorOption::ShiftRound(true)),
         ExCmd::Set(EditorOption::CaretGravity(CaretGravity::OnChar)),
         ExCmd::Set(EditorOption::CaretGravity(CaretGravity::BetweenChar)),
-        ExCmd::Place(17),
+        ExCmd::Place(BytePos(17)),
         ExCmd::UndoSync,
         ExCmd::Edits {
             origin: TransactionOrigin::Lsp,

@@ -366,7 +366,7 @@ mod tests {
                 cmds.push(Command::Ex(ExCmd::Begin(crate::editor::GroupKind::Normal)));
             }
             for at in [0, 2] {
-                cmds.push(Command::Ex(ExCmd::Place(at)));
+                cmds.push(Command::Ex(ExCmd::Place(crate::pos::BytePos(at))));
                 cmds.push(Command::AppendLineEnd);
                 cmds.push(Command::InsertChar('x'));
                 cmds.push(Command::EnterNormal);
@@ -380,6 +380,21 @@ mod tests {
         };
         assert_eq!(body(true).bytes(), b"a\nb\n");
         assert_eq!(body(false).bytes(), b"ax\nb\n");
+    }
+
+    /// A v1 trace written before `ExCmd::Place` carried a `BytePos` (RFC-0022 slice 2) still parses to
+    /// the same command, encodes back to the same text, and replays to the same cursor (INV-ADDITIVE).
+    #[test]
+    fn a_v1_ex_place_line_decodes_to_the_same_byte_position() {
+        let initial = b"ab\ncd\n";
+        let text = "# ruse-trace v1 doc_hash=58100c163f98d177\nex_place 4\n";
+        let t = Trace::from_text(text).unwrap();
+        assert_eq!(
+            t.commands,
+            vec![Command::Ex(ExCmd::Place(crate::pos::BytePos(4)))]
+        );
+        assert_eq!(t.to_text(), text);
+        assert_eq!(t.replay(initial).unwrap().cursor(), crate::pos::BytePos(4));
     }
 
     /// A saved trace starts from the session's options, whatever the replaying defaults are.

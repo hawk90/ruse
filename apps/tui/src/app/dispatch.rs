@@ -383,7 +383,7 @@ pub(crate) fn run_ex(ex: ExCmd, ws: &mut Workspace, recorded: &mut Vec<Command>)
 /// Place the focused cursor at `at` for an Ex command (`:normal`'s per-line column 0, a `:g` landing line),
 /// recorded so replay puts it in the same place.
 pub(crate) fn place_cursor(ws: &mut Workspace, recorded: &mut Vec<Command>, at: usize) {
-    run_ex(ExCmd::Place(at), ws, recorded);
+    run_ex(ExCmd::Place(BytePos(at)), ws, recorded);
 }
 
 /// Record a trace marker that changes nothing live by itself (`ex_begin`/`ex_end`, an undo sync the caller
