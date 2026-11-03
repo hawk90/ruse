@@ -9003,3 +9003,50 @@ mod operator_span_tests {
         assert_eq!(st.bytes(), b"def");
     }
 }
+
+#[cfg(test)]
+mod history_list_tests {
+    use crate::editor::*;
+    use crate::motion::Motion;
+
+    fn run(initial: &str, cmds: &[Command]) -> EditorState {
+        let mut st = EditorState::new(initial.as_bytes().to_vec());
+        for c in cmds {
+            apply_command(&mut st, c);
+        }
+        st
+    }
+
+    /// #722: typing a word is one undo step, so it is one change-list entry, not one per keystroke; a
+    /// change on another line after an undo sync is a new entry, and a third `g;` is past the oldest.
+    #[test]
+    fn change_list_takes_an_entry_per_undo_step() {
+        let mut cmds = vec![Command::EnterInsert];
+        cmds.extend("hello".chars().map(Command::InsertChar));
+        cmds.push(Command::EnterNormal);
+        let mut st = run("abc\ndef", &cmds);
+        assert_eq!(st.changes_snapshot().len(), 1, "one insert, one entry");
+        st.doc.sync_undo();
+        apply_command(&mut st, &Command::Move(1, Motion::Down));
+        apply_command(&mut st, &Command::DeleteUnder(1));
+        assert_eq!(st.changes_snapshot().len(), 2, "a change on another line");
+        apply_command(&mut st, &Command::GotoOlderChange);
+        apply_command(&mut st, &Command::GotoOlderChange);
+        let effects = apply_command(&mut st, &Command::GotoOlderChange);
+        assert!(
+            effects.contains(&Effect::Status("E662: At start of changelist".into())),
+            "{effects:?}"
+        );
+    }
+
+    /// #940: `g;` on an empty change list is E664; `CTRL-O` on an empty jumplist fails with no message.
+    #[test]
+    fn empty_lists_fail() {
+        let mut st = EditorState::new(b"abc".to_vec());
+        let effects = apply_command(&mut st, &Command::GotoOlderChange);
+        assert!(effects.contains(&Effect::Status("E664: Changelist is empty".into())));
+        assert!(effects.contains(&Effect::Beep));
+        let effects = apply_command(&mut st, &Command::GotoOlderJump);
+        assert_eq!(effects, vec![Effect::Beep]);
+    }
+}

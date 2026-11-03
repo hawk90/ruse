@@ -260,10 +260,14 @@ pub struct View {
     /// the Normal-mode on-character edit clamp in [`commit`] so Emacs point rests after the last char.
     caret: CaretGravity,
     /// The change list (Vim `:changes`): recent EDIT positions, oldest → newest, bounded to
-    /// [`MAX_CHANGES`]. Its last entry is the `` `. `` mark. Pushed in [`commit`] after any committing edit
-    /// (adjacent identical positions coalesce) and snapped so a later buffer-resizing edit keeps every entry
-    /// in range. Navigated by `g;` / `g,` through [`change_idx`].
+    /// [`MAX_CHANGES`]. Its last entry is the `` `. `` mark. Kept in [`commit`] after any committing edit by
+    /// Vim's rule (`changed_common`): an entry per undo step, not per keystroke — see [`View::push_change`] —
+    /// and snapped so a later buffer-resizing edit keeps every entry in range. Navigated by `g;` / `g,`
+    /// through [`change_idx`].
     changes: Vec<usize>,
+    /// Vim's `b_new_change`: an undo step began since the change list last took a new entry, so the next
+    /// change far enough from the newest entry takes one (#722).
+    new_change: bool,
     /// The current cursor into [`changes`] for `g;`/`g,`. Equals `changes.len()` (past the newest) right
     /// after an edit, so the first `g;` lands on the newest change; walks toward 0 (oldest) on `g;` and back
     /// toward the newest on `g,`. Reset to `changes.len()` whenever a new change is pushed.
@@ -412,6 +416,7 @@ impl View {
             },
             caret: CaretGravity::OnChar,
             changes: Vec::new(),
+            new_change: false,
             change_idx: 0,
             named_marks: [None; 52],
             last_insert: None,
@@ -487,14 +492,38 @@ impl View {
         self.jumps.last().copied()
     }
 
-    /// Record `pos` as the newest change (Vim change list). Adjacent identical positions coalesce; the list
-    /// is bounded to [`MAX_CHANGES`] (oldest dropped). Resets the `g;`/`g,` cursor past the newest entry.
-    fn push_change(&mut self, pos: usize) {
-        if self.changes.last() != Some(&pos) {
-            self.changes.push(pos);
-            if self.changes.len() > MAX_CHANGES {
-                self.changes.remove(0);
+    /// Record a change at `pos` in the change list, as Vim's `changed_common` does (#722): a change that
+    /// began a new undo step (`new_step`) takes a new entry unless it is on the newest entry's line within
+    /// `'textwidth'` (79 when unset) columns of it; every change then moves the newest entry to `pos`. So
+    /// typing a word, or `xxx`, leaves one entry. The list is bounded to [`MAX_CHANGES`] (oldest dropped).
+    /// Resets the `g;`/`g,` cursor past the newest entry.
+    fn push_change(&mut self, b: &[u8], pos: usize, new_step: bool) {
+        self.new_change |= new_step;
+        if self.new_change || self.changes.is_empty() {
+            let line_col = |p: usize| {
+                let p = p.min(b.len());
+                let ls = line_start(b, p);
+                (crate::pos::line_of(b, p), p - ls)
+            };
+            let add = self.changes.last().is_none_or(|&last| {
+                let ((line, col), (l, c)) = (line_col(pos), line_col(last));
+                let cols = if self.text_width == 0 {
+                    79
+                } else {
+                    self.text_width
+                };
+                l != line || c + cols < col || col + cols < c
+            });
+            if add {
+                self.new_change = false;
+                self.changes.push(pos);
+                if self.changes.len() > MAX_CHANGES {
+                    self.changes.remove(0);
+                }
             }
+        }
+        if let Some(last) = self.changes.last_mut() {
+            *last = pos;
         }
         self.change_idx = self.changes.len();
     }
@@ -519,9 +548,10 @@ impl View {
         self.changes.get(self.change_idx).copied()
     }
 
-    /// Record `from` as a jumplist entry — the position a jump command LEFT (Vim). Adjacent identical
-    /// positions coalesce; bounded to [`MAX_CHANGES`]; resets the `CTRL-O`/`CTRL-I` cursor past the newest.
-    fn push_jump(&mut self, from: usize) {
+    /// Record `from` as a jumplist entry — the position a jump command LEFT (Vim's `setpcmark`). Adjacent
+    /// identical positions coalesce; bounded to [`MAX_CHANGES`]; resets the `CTRL-O`/`CTRL-I` cursor past
+    /// the newest. Entries on one line are folded when the list is next walked ([`View::clean_jumps`]).
+    pub(crate) fn push_jump(&mut self, from: usize) {
         if self.jumps.last() != Some(&from) {
             self.jumps.push(from);
             if self.jumps.len() > MAX_CHANGES {
@@ -531,27 +561,59 @@ impl View {
         self.jump_idx = self.jumps.len();
     }
 
-    /// Step the jumplist (`CTRL-O` = `older`, `CTRL-I` = newer) from the current position `now`, returning
-    /// the position to jump to or `None` at an end. The FIRST `CTRL-O` saves `now` onto the list so a later
-    /// `CTRL-I` returns to it (Vim); subsequent steps just walk the cursor.
-    fn nav_jump(&mut self, older: bool, now: usize) -> Option<usize> {
-        if older {
-            if self.jump_idx == self.jumps.len() {
-                // First move back: remember where we are so `CTRL-I` can return, then step onto the list.
-                if self.jumps.last() != Some(&now) {
-                    self.jumps.push(now);
-                    if self.jumps.len() > MAX_CHANGES {
-                        self.jumps.remove(0);
-                    }
-                }
-                self.jump_idx = self.jumps.len().saturating_sub(1);
+    /// Vim's `cleanup_jumplist` (#725): drop every entry that a LATER entry shares a line with, so a line
+    /// appears once, at its newest place; then, with the cursor past the newest entry, drop that entry when
+    /// it is on the cursor's line `now` (a phantom jump, nvim #9805). The walk cursor follows its entry.
+    fn clean_jumps(&mut self, b: &[u8], now: usize) {
+        let line = |p: usize| crate::pos::line_of(b, p.min(b.len()));
+        let lines: Vec<usize> = self.jumps.iter().map(|&p| line(p)).collect();
+        let len = self.jumps.len();
+        let mut kept = Vec::with_capacity(len);
+        for (from, &pos) in self.jumps.iter().enumerate() {
+            if self.jump_idx == from {
+                self.jump_idx = kept.len();
             }
-            if self.jump_idx == 0 {
+            if !lines[from + 1..].contains(&lines[from]) {
+                kept.push(pos);
+            }
+        }
+        if self.jump_idx == len {
+            self.jump_idx = kept.len();
+        }
+        self.jumps = kept;
+        if self.jump_idx == self.jumps.len()
+            && self.jumps.last().is_some_and(|&p| line(p) == line(now))
+        {
+            self.jumps.pop();
+            self.jump_idx -= 1;
+        }
+    }
+
+    /// Step the jumplist (`CTRL-O` = `older`, `CTRL-I` = newer) from the current position `now`, returning
+    /// the position to jump to or `None` at an end — nvim's `get_jumplist`. The list is cleaned first
+    /// ([`View::clean_jumps`]). The FIRST `CTRL-O` saves `now` onto the list so a later `CTRL-I` returns to
+    /// it; subsequent steps just walk the cursor.
+    fn nav_jump(&mut self, older: bool, now: usize, b: &[u8]) -> Option<usize> {
+        self.clean_jumps(b, now);
+        let len = self.jumps.len();
+        if older {
+            if self.jump_idx == 0 || len == 0 {
                 return None; // already at the oldest jump
+            }
+            if self.jump_idx == len {
+                // First move back: remember where we are so `CTRL-I` can return, then step onto the list.
+                self.jumps.push(now);
+                if self.jumps.len() > MAX_CHANGES {
+                    self.jumps.remove(0);
+                }
+                self.jump_idx = self.jumps.len() - 1;
+                if self.jump_idx == 0 {
+                    return None;
+                }
             }
             self.jump_idx -= 1;
         } else {
-            if self.jump_idx + 1 >= self.jumps.len() {
+            if self.jump_idx + 1 >= len {
                 return None; // already at (or past) the newest jump
             }
             self.jump_idx += 1;
@@ -2480,6 +2542,10 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     let mut edit_span: Option<(usize, usize)> = None;
     // `g;`/`g,` resolve their destination here (they step `change_idx`, which the pure planner cannot do).
     let mut nav_target: Option<usize> = None;
+    // Effects the commit itself adds (a failed `g;`/`CTRL-O`), after the plan's own.
+    let mut extra: Vec<Effect> = Vec::new();
+    // The undo group before the command: an edit that leaves a different one began a new undo step.
+    let entry_group = st.doc.history().current_group();
     match plan.action {
         Action::Txn { edits, hint } => {
             edit_span = edit_bracket(&edits);
@@ -2544,9 +2610,24 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
         }
         Action::JumpChange { older } => {
             nav_target = st.view.nav_change(older);
+            if nav_target.is_none() {
+                // nvim's `nv_pcmark`: each end of the change list has its own error.
+                let msg = if st.view.changes.is_empty() {
+                    "E664: Changelist is empty"
+                } else if older {
+                    "E662: At start of changelist"
+                } else {
+                    "E663: At end of changelist"
+                };
+                extra.push(Effect::Status(msg.to_string()));
+                extra.push(Effect::Beep);
+            }
         }
         Action::JumpList { older } => {
-            nav_target = st.view.nav_jump(older, entry_cursor);
+            nav_target = st.view.nav_jump(older, entry_cursor, st.doc.bytes());
+            if nav_target.is_none() {
+                extra.push(Effect::Beep);
+            }
         }
         Action::SetNamedMark { ch } => {
             st.view.set_named_mark(ch, st.view.cursor);
@@ -2614,7 +2695,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // Vim change list: an edit records where it happened (the cursor it left behind) as the newest entry,
     // which is also the `` `. `` mark. Motions/undo/g;/g, don't push. Snapped below with the other offsets.
     if plan.is_edit {
-        st.view.push_change(st.view.cursor);
+        let new_step = st.doc.history().current_group() != entry_group;
+        st.view
+            .push_change(st.doc.bytes(), st.view.cursor, new_step);
     }
     // Vim `[`/`]` change marks: bound the last changed OR yanked text. A text-entry session (Insert/Replace)
     // is ONE change bracketed from where it began to the caret at exit (so `ihello<Esc>` brackets the whole
@@ -2759,7 +2842,9 @@ pub fn commit(st: &mut EditorState, plan: Plan) -> Vec<Effect> {
     // above) consumes it. Cleared here AFTER the register write so a stray `"x` before a non-register
     // command is simply forgotten, and a later plain edit never leaks into the named slot.
     st.view.pending_register = None;
-    plan.effects
+    let mut effects = plan.effects;
+    effects.extend(extra);
+    effects
 }
 
 /// Whether `cmd` is a Vim JUMP — a command that sets the `''`/jumplist "before" mark (search, `G`/`gg`, `%`,
@@ -2801,6 +2886,10 @@ fn is_jump(cmd: &Command) -> bool {
                 | M::ParagraphBack
                 | M::SentenceFwd
                 | M::SentenceBack
+                | M::SectionFwd
+                | M::SectionBack
+                | M::SectionEndFwd
+                | M::SectionEndBack
         ),
         _ => false,
     }

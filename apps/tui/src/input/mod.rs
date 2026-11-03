@@ -715,8 +715,15 @@ impl InputEngine {
 
     /// Whether a one-shot command borrowed from another layer is in flight (`i_CTRL-O`): keys resolve
     /// through the Normal grammar until it completes and pops its return address (KL-OBL-5).
-    fn in_one_shot(&self) -> bool {
+    pub fn in_one_shot(&self) -> bool {
         !self.activations.is_empty()
+    }
+
+    /// Whether Insert resumed after an `i_CTRL-O` one-shot that did not open a change of its own (so the
+    /// next typed text is a new change, and a new undo step, #678); false after `<C-o>cw`, whose change
+    /// owns the text typed next.
+    pub fn insert_resumed(&self) -> bool {
+        self.insert.resumed
     }
 
     /// A human label for `command`'s STATIC keymap-layer binding (F-004 #2 palette column), or `None`

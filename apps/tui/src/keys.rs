@@ -127,6 +127,12 @@ impl MacroState {
         }
     }
 
+    /// Whether replay keys are still to run: queued keys, or more lines of a linewise-Visual run.
+    #[must_use]
+    pub fn replay_pending(&self) -> bool {
+        !self.queue.is_empty() || self.line_run.is_some()
+    }
+
     /// Pop the next queued replay key WITHOUT resetting the budget when empty (a nested drain: the outer
     /// expansion still owns the budget).
     pub fn pop_replay(&mut self) -> Option<KeyEvent> {

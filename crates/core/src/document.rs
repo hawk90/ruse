@@ -168,6 +168,12 @@ impl Document {
                 unreachable!("EditList is validated disjoint at construction");
             }
         }
+        // An empty edit list changes nothing, so it is no undo step and leaves the modified state alone
+        // (INV-UNDO, #765); the revision still advances (INV-TXN).
+        if txn.edits.is_empty() {
+            self.revision = self.revision.next();
+            return Ok(self.revision);
+        }
         // Committed path — nothing above mutated state, so failure above is atomic-no-op.
         let inverse = txn.edits.inverse(&self.text);
         let new_text = txn.edits.apply_to(&self.text);
@@ -339,9 +345,19 @@ impl Document {
         self.saved_node != Some(self.undo.current_seq())
     }
 
-    /// Mark the current state as the one on disk (called after a save, or at open for a loaded file).
+    /// Mark the current state as the one on disk (called after a save, or at open for a loaded file). It
+    /// also closes the undo group, so a change after the save is a step of its own and undoing it lands
+    /// back on the saved state (#766).
     pub fn mark_saved(&mut self) {
         self.saved_node = Some(self.undo.current_seq());
+        self.undo.sync();
+    }
+
+    /// Close the current undo group (Vim's `u_sync`): the next change starts a new undo step even when its
+    /// transaction asks to continue the group. The frontend syncs before every typed command outside text
+    /// entry, so each Normal or Ex command undoes on its own while an Insert session stays one step (#678).
+    pub fn sync_undo(&mut self) {
+        self.undo.sync();
     }
 
     /// Access to the undo history (for chronological inspection / navigation state).
@@ -437,5 +453,62 @@ mod text_arc_tests {
         );
         d.undo();
         assert_eq!(d.bytes(), b"abc", "the block's changes undo together");
+    }
+
+    fn put_continue(d: &mut Document, at: usize, s: &[u8]) {
+        let list = EditList::new(vec![Edit::insert(at, s.to_vec())]).unwrap();
+        d.apply(Transaction::new(
+            d.revision(),
+            list,
+            TransactionOrigin::UserInput,
+        ))
+        .unwrap();
+    }
+
+    /// #765: an empty edit list is no undo step and does not make the buffer modified.
+    #[test]
+    fn an_empty_transaction_is_no_undo_step() {
+        let mut d = Document::new(DocumentId(1), b"abc".to_vec());
+        d.mark_saved();
+        let rev = d.revision();
+        let empty = EditList::new(Vec::new()).unwrap();
+        let after = d
+            .apply(Transaction::new(rev, empty, TransactionOrigin::UserInput))
+            .unwrap();
+        assert!(after > rev, "the revision still advances (INV-TXN)");
+        assert!(!d.is_modified());
+        assert!(!d.can_undo());
+        assert_eq!(d.history().node_count(), 1);
+    }
+
+    /// #766: a save closes the undo group, so undoing the change made after it lands on the saved state.
+    #[test]
+    fn a_save_breaks_the_undo_group() {
+        let mut d = Document::new(DocumentId(1), b"abc".to_vec());
+        put_continue(&mut d, 0, b"1");
+        d.mark_saved();
+        put_continue(&mut d, 0, b"2");
+        assert!(d.is_modified());
+        d.undo();
+        assert_eq!(d.bytes(), b"1abc");
+        assert!(!d.is_modified(), "back on the saved state");
+    }
+
+    /// #678: an undo sync makes the next change its own step even when it asks to continue the group.
+    #[test]
+    fn an_undo_sync_starts_a_new_step() {
+        let mut d = Document::new(DocumentId(1), b"abc".to_vec());
+        put_continue(&mut d, 0, b"1");
+        put_continue(&mut d, 0, b"2");
+        d.sync_undo();
+        put_continue(&mut d, 0, b"3");
+        d.undo();
+        assert_eq!(d.bytes(), b"21abc");
+        d.undo();
+        assert_eq!(
+            d.bytes(),
+            b"abc",
+            "the changes before the sync stay one step"
+        );
     }
 }

@@ -399,7 +399,7 @@ grouping rule keys off `TransactionOrigin` (INV-ORIGIN) plus an idle/gesture bou
 | --- | --- |
 | One insert session (`i … <Esc>`) | **one** undo group — all keystrokes between entering and leaving Insert coalesce (Vim semantics). |
 | A single operator (`dw`, `>}`, `ciw…<Esc>`) | one group (the whole change, including inserted text — [VIM-REPEAT-DOT](../parity/vim.md)). |
-| Consecutive same-origin `UserInput` edits with no intervening cursor-gesture/idle break | may coalesce within the session; a **mode change, cursor jump, or idle timeout closes the group**. |
+| Consecutive same-origin `UserInput` edits with no intervening cursor-gesture/idle break | may coalesce within the session; a **mode change, cursor jump, or idle timeout closes the group**. Under the Vim profile every TYPED command outside text entry (and every `i_CTRL-O` command, and the text typed after one) closes it first (Vim's `u_sync`, `Document::sync_undo`), so `xx` is two groups; a save closes it too. |
 | Formatter / `Lsp` edits (format-on-save, code action, rename) | grouped **separately** by their `correlation` — one code action = one undo group, distinct from surrounding typing, even if applied mid-session. |
 | `AiAgent` edits | always a **separate** group per proposal (INV-TRUST-1: reviewed before apply); never merged into user typing. |
 | `Macro` playback | the whole macro invocation is **one** group (so a single `u` undoes one `@a`), matching Vim. |

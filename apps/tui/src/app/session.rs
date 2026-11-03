@@ -420,6 +420,9 @@ pub(crate) struct Session {
     /// Vim macros (D-055): `q{a-z}` records the raw keystroke stream into a register, `@{a-z}` replays it.
     /// The whole record/replay state machine lives in `keys::MacroState` (unit-tested end to end).
     macros: crate::keys::MacroState,
+    /// The buffer whose undo block a running macro replay holds open (#939): the keys of one `@{reg}` are
+    /// not typed, so Vim records all their changes as one undo step. Closed once the replay drains.
+    macro_undo: Option<DocumentId>,
     /// A `:s///c` interactive confirm loop, when active (F-009).
     pub(crate) confirm: Option<Confirm>,
     /// A backwards Ex range waiting for its `y`/`n` (`Backwards range given, OK to swap (y/n)?`, #1093).
@@ -566,6 +569,7 @@ impl Session {
             fold_rev: HashMap::new(),
             meta_tail: None,
             macros: crate::keys::MacroState::new(),
+            macro_undo: None,
             confirm: None,
             swap: None,
             swap_answer: None,
@@ -817,7 +821,36 @@ impl Session {
             let at = ruse_core::pos::nth_line_start(b, line.min(lines.saturating_sub(1)));
             self.ws.place_focused_cursor(at);
         }
-        self.macros.next_replay().map(|k| (k, true))
+        let next = self.macros.next_replay();
+        if next.is_none() {
+            self.end_macro_undo();
+        }
+        next.map(|k| (k, true))
+    }
+
+    /// Close the undo block a macro replay opened ([`Session::macro_undo`]).
+    fn end_macro_undo(&mut self) {
+        if let Some(doc) = self.macro_undo.take() {
+            if let Some(d) = self.ws.document_mut(doc) {
+                d.end_undo_block();
+            }
+        }
+    }
+
+    /// Vim's undo sync before a TYPED key (#678): a key read outside text entry, or by an `i_CTRL-O`
+    /// one-shot, begins a new command, so its change is an undo step of its own; Insert keeps typing in one
+    /// step, except the text typed after an `i_CTRL-O` command returns (a new insert). Keys that were not
+    /// typed (a macro replay, `:normal`) never sync. The Emacs profile keeps its grouping (consecutive edits
+    /// until a motion).
+    fn sync_undo_before_typed(&mut self) {
+        if self.emacs_profile {
+            return;
+        }
+        let mode = self.ws.focused().view.mode();
+        let entry = matches!(mode, Mode::Insert | Mode::Replace | Mode::VirtualReplace);
+        if !entry || self.engine.in_one_shot() || self.engine.insert_resumed() {
+            self.ws.focused_doc_mut().sync_undo();
+        }
     }
 
     /// Route one key through the session (#878): the macro state machine, the LSP hover / completion
@@ -831,7 +864,19 @@ impl Session {
         frame: &FrameCtx,
     ) -> Flow {
         let status_before = self.status.clone();
+        if !from_replay {
+            // A typed key comes after any replay drained; a block left open would join this key's change.
+            self.end_macro_undo();
+            self.sync_undo_before_typed();
+        }
         self.route(raw_key, from_replay, frame);
+        if !from_replay && !self.emacs_profile {
+            // A typed `@{reg}` (or `@:`, `Q`) queued its replay: one undo step for all of it (#939).
+            if self.macros.replay_pending() && !self.ws.focused().doc.in_undo_block() {
+                self.ws.focused_doc_mut().begin_undo_block();
+                self.macro_undo = Some(self.ws.focused_buffer());
+            }
+        }
         if let Some(key) = self.swap_answer.take() {
             if let Some(prompt) = self.swap.take() {
                 self.answer_swap(prompt, key, frame);
@@ -872,6 +917,7 @@ impl Session {
                 return Flow::Continue;
             }
         }
+        self.sync_undo_before_typed();
         let visual_append = self.visual_paste_appends(mode, &frame.snapshot);
         let out = self.engine.paste(&text, mode, visual_append);
         let Session {
@@ -2740,7 +2786,12 @@ impl Session {
                 *status = match &last_substitute {
                     Some((pat, rep, stored)) => {
                         let use_flags = flags.unwrap_or(*stored);
-                        match ws.substitute(range, pat, rep, use_flags) {
+                        let from = ws.focused().view.cursor();
+                        let result = ws.substitute(range, pat, rep, use_flags);
+                        if matches!(result, Ok(out) if out.lines > 0) {
+                            ws.push_focused_jump(from);
+                        }
+                        match result {
                             Ok(out) if out.lines == 0 => format!("E486: pattern not found: {pat}"),
                             // A `:s/\n//` join on the last line: nothing to join, not an error.
                             Ok(out) if out.replacements == 0 => String::new(),
@@ -2795,19 +2846,24 @@ impl Session {
                         Err(e) => *status = crate::app::dispatch::invalid_command_msg(&e),
                     }
                 } else {
-                    *status =
-                        match ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags) {
-                            Ok(out) if out.lines == 0 && spec.quiet => String::new(),
-                            Ok(out) if out.lines == 0 => {
-                                format!("E486: pattern not found: {}", spec.pattern)
-                            }
-                            // A `:s/\n//` join on the last line: nothing to join, not an error.
-                            Ok(out) if out.replacements == 0 => String::new(),
-                            Ok(out) => {
-                                format!("{} substitutions on {} lines", out.replacements, out.lines)
-                            }
-                            Err(e) => crate::app::dispatch::invalid_command_msg(&e),
-                        };
+                    let from = ws.focused().view.cursor();
+                    let result = ws.substitute(spec.range, &spec.pattern, &spec.replacement, flags);
+                    // A `:s` that matched is a jump (Vim sets the pcmark at the first match, #940).
+                    if matches!(result, Ok(out) if out.lines > 0) {
+                        ws.push_focused_jump(from);
+                    }
+                    *status = match result {
+                        Ok(out) if out.lines == 0 && spec.quiet => String::new(),
+                        Ok(out) if out.lines == 0 => {
+                            format!("E486: pattern not found: {}", spec.pattern)
+                        }
+                        // A `:s/\n//` join on the last line: nothing to join, not an error.
+                        Ok(out) if out.replacements == 0 => String::new(),
+                        Ok(out) => {
+                            format!("{} substitutions on {} lines", out.replacements, out.lines)
+                        }
+                        Err(e) => crate::app::dispatch::invalid_command_msg(&e),
+                    };
                 }
             }
             // The `:w` family (#610). `:wq`/`:x` close the window only after a successful write (#842): no

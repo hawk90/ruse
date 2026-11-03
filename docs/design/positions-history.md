@@ -322,12 +322,14 @@ flag, §4.2).
 
 ```text
 // Membership: BEFORE executing a command whose NavMeta.is_jump, with current view Selection C:
-push_jump(list, C):
-    dedup: remove any existing entry on C's line (line-level dedup, Vim semantics)
-    truncate: list.entries.truncate(list.cursor)      // drop forward (newer) entries
+push_jump(list, C):                                   // nvim setpcmark; no forward truncation
     list.entries.push(collapse(C))                    // store as collapsed Selection
     if list.len > max: drop oldest (front)
     list.cursor = list.entries.len                    // cursor past the newest = "at current"
+// Traversal (<C-o>/<C-i>) first cleans the list (nvim cleanup_jumplist, #725):
+clean(list, C):
+    dedup: drop every entry a LATER entry shares a line with (a line appears once, at its newest place)
+    phantom: if list.cursor == list.len and the newest entry is on C's line, drop it
 
 // Traversal Older (<C-o>), count n:
 go_older(list, n):
@@ -496,8 +498,9 @@ jumps(view) / changes(buffer) / marks(scope) / mark_ring(buffer) -> Snapshot
 - **Persisted global mark to a since-changed file.** Re-anchor by fingerprint; on miss, clamp to the stored
   line and flag `shifted` with a status note (INV-CAP-DEGRADE). Never a panic, never a silent wrong jump
   without the flag.
-- **`<C-o>` / `g;` / `C-u C-SPC` on an empty container.** No-op with a status note (Vim "already at oldest"
-  / Emacs "No mark set"); the traversal returns `None`.
+- **`<C-o>` / `g;` / `C-u C-SPC` on an empty container.** No-op; the traversal returns `None` and the
+  command fails. The note follows the surface: Vim's change list reports `E664` (empty) and `E662` / `E663`
+  (past either end), Vim's jumplist only beeps (nvim `nv_pcmark`), Emacs reports "No mark set".
 - **Stale LSP go-to-def result** arriving after the user moved (INV-ASYNC-ORDER): dropped; does **not** push
   the jumplist.
 - **Buffer closed while entries reference it.** Entries detach (§6); a jump to a `Detached` entry loads the

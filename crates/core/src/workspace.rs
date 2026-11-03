@@ -302,6 +302,15 @@ impl Workspace {
         }
     }
 
+    /// Record `from` on the FOCUSED view's jumplist (Vim's `setpcmark`), for a jump the frontend runs: a
+    /// `:s` that found a match (#940).
+    pub fn push_focused_jump(&mut self, from: usize) {
+        let vid = self.windows[self.focus].view;
+        if let Some(v) = self.views[vid.0].as_mut() {
+            v.push_jump(from);
+        }
+    }
+
     /// Select the caret gravity for every live View (D-050 / RFC-0015): the frontend calls this once at
     /// startup with `BetweenChar` when the Emacs profile is active, so its edits rest on Emacs point rather
     /// than being Vim-clamped. Splits clone the focused View, so a later `:split` inherits the gravity.
