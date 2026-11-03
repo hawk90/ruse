@@ -730,21 +730,22 @@ impl Session {
         }
     }
 
-    /// For a paste over a charwise or blockwise Visual/Select selection: whether deleting it leaves the
-    /// caret past the end of its line, so the text must be appended (`a`) rather than inserted (`i`) to
-    /// land where the selection began, as nvim does. A linewise selection inserts at the caret.
+    /// For a paste over a blockwise Visual/Select selection: whether deleting the block leaves the caret
+    /// past the end of its top row, so the text must be appended (`a`) rather than inserted (`i`) to land
+    /// where the block began, as nvim does. Charwise and linewise pastes replace the selection in the core.
     fn visual_paste_appends(&self, mode: Mode, bytes: &[u8]) -> bool {
         let (Mode::Visual { kind } | Mode::Select { kind }) = mode else {
             return false;
         };
-        let view = &self.ws.focused().view;
-        let span = match kind {
-            ruse_core::SelectKind::Charwise => view.selection_span(bytes),
-            ruse_core::SelectKind::Blockwise => view
-                .block_spans(bytes)
-                .and_then(|rows| rows.first().copied()),
-            ruse_core::SelectKind::Linewise => None,
-        };
+        if kind != ruse_core::SelectKind::Blockwise {
+            return false;
+        }
+        let span = self
+            .ws
+            .focused()
+            .view
+            .block_spans(bytes)
+            .and_then(|rows| rows.first().copied());
         let Some((s, e)) = span else {
             return false;
         };

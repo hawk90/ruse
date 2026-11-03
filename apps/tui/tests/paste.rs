@@ -202,6 +202,9 @@ fn visual_paste_replaces_the_selection() {
         (1, 6),
         Mode::Normal,
     );
+    // Select mode takes the same replace path as a typed Select key.
+    let h = paste(4, "gh", "PP", "");
+    check(&h, "abc PPef\nxyz\n  ind\n", (1, 5), Mode::Normal);
     check(
         &paste(0, "<C-v>jl", "PP", ""),
         "PPc def\nz\n  ind\n",

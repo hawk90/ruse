@@ -334,7 +334,8 @@ pub enum Command {
     /// the current mode with the caret after it. One edit however large the text, and none of the
     /// insert-time rewrites a typed key gets (no autoindent, no abbreviation, no auto-pair): the frontend
     /// never rewrites this command. Recorded in the insert session, so `.` replays the pasted text. Line
-    /// endings are already normalised to `\n` by the frontend.
+    /// endings are already normalised to `\n` by the frontend. Over a charwise or linewise Visual/Select
+    /// selection it REPLACES the selection, as [`Command::ReplaceSelection`] does, and enters Insert.
     InsertPaste(String),
     /// A bracketed paste in Replace mode (`R`): overwrite as many characters of the current line as the
     /// text holds (newlines excluded), then splice the text, as nvim's `vim.paste` does. The caret lands

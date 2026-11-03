@@ -1235,9 +1235,10 @@ impl InputEngine {
     /// - Insert: the text is inserted at the caret, part of the insert session (one undo step, `.`);
     /// - Replace: the text overwrites ([`Command::ReplacePaste`]);
     /// - Normal: `a{text}<Esc>`, recorded as that change for `.`;
-    /// - Visual/Select: the selection is deleted, then the text inserted where it was and Normal resumes.
-    ///   The engine has no buffer, so `visual_append` (the caller's answer to "did the deletion leave the
-    ///   caret past the end of its line") picks `a` over `i`. `.` repeats it as the Normal paste.
+    /// - Visual/Select: the selection is replaced by the text (Select's replace-selection path, #1073)
+    ///   and Normal resumes. A block is deleted and the text goes at its top-left corner; the engine has
+    ///   no buffer, so `visual_append` (the caller's answer to "does deleting the block leave the caret
+    ///   past the end of its line") picks `a` over `i`. `.` repeats it as the Normal paste.
     ///
     /// The command-line window ignores a paste.
     pub fn paste(&mut self, text: &str, mode: Mode, visual_append: bool) -> Feed {
@@ -1286,17 +1287,31 @@ impl InputEngine {
                 };
                 self.last_inserted = change.insert_body().to_vec();
                 self.last_change = Some(change);
-                let mut cmds = Vec::with_capacity(4);
-                if mode != Mode::Normal {
-                    cmds.push(Command::DeleteSelection);
-                }
-                cmds.push(if mode == Mode::Normal || visual_append {
-                    Command::EnterInsertAfter
-                } else {
-                    Command::EnterInsert
-                });
-                cmds.push(paste);
-                cmds.push(Command::EnterNormal);
+                let block = matches!(
+                    mode,
+                    Mode::Visual {
+                        kind: SelectKind::Blockwise
+                    } | Mode::Select {
+                        kind: SelectKind::Blockwise
+                    }
+                );
+                let cmds = match mode {
+                    Mode::Normal => vec![Command::EnterInsertAfter, paste, Command::EnterNormal],
+                    // A block is deleted, then the text goes at its top-left corner (not down every row).
+                    _ if block => vec![
+                        Command::DeleteSelection,
+                        if visual_append {
+                            Command::EnterInsertAfter
+                        } else {
+                            Command::EnterInsert
+                        },
+                        paste,
+                        Command::EnterNormal,
+                    ],
+                    // Charwise/linewise: Select's replace-selection path (the core's `InsertPaste`
+                    // over a selection), then Normal.
+                    _ => vec![paste, Command::EnterNormal],
+                };
                 Feed::Replay(cmds)
             }
             // A terminal buffer's paste goes to its child; the session routes it before the engine.
