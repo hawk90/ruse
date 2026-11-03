@@ -2366,8 +2366,15 @@ impl Session {
             return;
         }
         // A search (`/pat`, `?pat`, `n`, `N`, bare, under an operator or `!`) whose pattern matches
-        // nowhere fails with E486 and nothing runs (#901).
+        // nowhere fails with E486 and nothing runs (#901). The core fails it too (a beep, nothing moved or
+        // edited); it still runs so the wanted column resets, as nvim's `normal_search` sets
+        // `w_set_curswant` before it searches (#1171).
         if search_misses(&cmd, ws, status) {
+            if matches!(cmd, Command::Search { .. }) {
+                let err = std::mem::take(status);
+                run_cmd(cmd, ws, files, recorded, status, quit);
+                *status = err;
+            }
             return;
         }
         // `gd`/`gD` (declaration under cursor, TEXT heuristic — not LSP): like `*`/`#`, the engine

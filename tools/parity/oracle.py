@@ -248,6 +248,9 @@ PAGE_SETUP = "set laststatus=0 scrolloff=3"
 U_SETUP = "call append('$', '') | $d _ | call cursor(1, 1)"
 # An undo break after the oracle's `nvim_buf_set_lines`, so `u` undoes only the fixture's change.
 UNDO_SETUP = "let &undolevels = &undolevels"
+# #1171: `j$` ends on the last char of the short last line, where the commands under test fail; `k` then
+# shows the wanted column on the long line above (its end, or the column of the cursor).
+FAIL_LINES = ["ab cd ef ghijklmnop qrstuvwxyz", "gh (ij kl"]
 
 FIXTURES: list[dict] = [
     {"name": "x_delete_char", "lines": ["hello"], "keys": "x"},
@@ -1748,6 +1751,45 @@ FIXTURES: list[dict] = [
     {"name": "dollar_r_then_k", "lines": ["ab cd ef ghijklmnop", "gh ij", "kl"], "keys": "$jrxk"},
     {"name": "dollar_gUiw_then_k", "lines": ["ab cd ef ghijklmnop", "gh ij", "kl"], "keys": "$jgUiwk"},
     {"name": "dollar_x_undo_then_k", "lines": ["ab cd ef ghijklmnop", "gh ij", "kl"], "keys": "$jxuk", "setup": UNDO_SETUP},
+    # --- #1171 a FAILED command after `$` keeps the end-of-line wanted column unless its nvim handler sets
+    #     `w_set_curswant` before the check that fails: `h`/`l`, `f`/`t`/`;`/`,`, `%`, `[(`/`])`/`[{`/`]}`,
+    #     CTRL-I at the jumplist's end, CTRL-A/CTRL-X, `J`/`gJ`, `r` past the end and `~` on an empty line
+    #     keep it (an operator over such a motion is cancelled with it); searches, word/sentence/paragraph
+    #     motions, text objects, mark jumps and redo reset it to the cursor's column. -----------------------
+    {"name": "fail_ctrl_a_keeps_curswant", "lines": FAIL_LINES, "keys": "j$<C-a>k"},
+    {"name": "fail_ctrl_x_keeps_curswant", "lines": FAIL_LINES, "keys": "j$<C-x>k"},
+    {"name": "fail_f_keeps_curswant", "lines": FAIL_LINES, "keys": "j$fzk"},
+    {"name": "fail_F_keeps_curswant", "lines": FAIL_LINES, "keys": "j$Fzk"},
+    {"name": "fail_t_keeps_curswant", "lines": FAIL_LINES, "keys": "j$tzk"},
+    {"name": "fail_l_keeps_curswant", "lines": FAIL_LINES, "keys": "j$lk"},
+    {"name": "fail_count_l_keeps_curswant", "lines": FAIL_LINES, "keys": "j$2lk"},
+    {"name": "fail_dfz_keeps_curswant", "lines": FAIL_LINES, "keys": "j$dfzk"},
+    {"name": "fail_percent_keeps_curswant", "lines": FAIL_LINES, "keys": "j$%k"},
+    {"name": "fail_d_percent_keeps_curswant", "lines": FAIL_LINES, "keys": "j$d%k"},
+    {"name": "fail_unmatched_paren_keeps_curswant", "lines": FAIL_LINES, "keys": "j$])k"},
+    {"name": "fail_unmatched_brace_keeps_curswant", "lines": FAIL_LINES, "keys": "j$[{k"},
+    {"name": "fail_J_keeps_curswant", "lines": FAIL_LINES, "keys": "j$Jk"},
+    {"name": "fail_gJ_keeps_curswant", "lines": FAIL_LINES, "keys": "j$gJk"},
+    {"name": "fail_count_r_keeps_curswant", "lines": FAIL_LINES, "keys": "j$3rxk"},
+    {"name": "fail_ctrl_i_keeps_curswant", "lines": FAIL_LINES, "keys": "j$<C-i>k"},
+    {"name": "fail_tilde_empty_line_keeps_curswant", "lines": ["abc def", ""], "keys": "j$~k"},
+    {"name": "fail_l_empty_line_keeps_curswant", "lines": ["abc def", ""], "keys": "j$lk"},
+    {"name": "cancelled_search_keeps_curswant", "lines": FAIL_LINES, "keys": "j$/zzz<Esc>k"},
+    {"name": "fail_search_resets_curswant", "lines": FAIL_LINES, "keys": "j$/zzz<CR>k"},
+    {"name": "fail_search_back_resets_curswant", "lines": FAIL_LINES, "keys": "j$?zzz<CR>k"},
+    {"name": "fail_d_search_resets_curswant", "lines": FAIL_LINES, "keys": "j$d/zzz<CR>k"},
+    {"name": "fail_n_no_pattern_resets_curswant", "lines": FAIL_LINES, "keys": "j$nk"},
+    {"name": "fail_di_paren_resets_curswant", "lines": FAIL_LINES, "keys": "j$di(k"},
+    {"name": "fail_da_bracket_resets_curswant", "lines": FAIL_LINES, "keys": "j$da[k"},
+    {"name": "fail_backtick_mark_resets_curswant", "lines": FAIL_LINES, "keys": "j$`ak"},
+    {"name": "fail_quote_mark_resets_curswant", "lines": FAIL_LINES, "keys": "j$'ak"},
+    {"name": "fail_d_backtick_mark_resets_curswant", "lines": FAIL_LINES, "keys": "j$d`ak"},
+    {"name": "fail_w_resets_curswant", "lines": FAIL_LINES, "keys": "j$wk"},
+    {"name": "fail_e_resets_curswant", "lines": FAIL_LINES, "keys": "j$ek"},
+    {"name": "fail_redo_resets_curswant", "lines": FAIL_LINES, "keys": "j$<C-r>k", "setup": UNDO_SETUP},
+    # A failed mark jump or search is not a jump: CTRL-O goes back past it to where `G` jumped from.
+    {"name": "fail_mark_jump_not_on_jumplist", "lines": FAIL_LINES, "keys": "wG$`a<C-o>"},
+    {"name": "fail_search_not_on_jumplist", "lines": FAIL_LINES, "keys": "wG$/zzz<CR><C-o>"},
     # --- #909 `f`/`t` match the first char of a cluster only: a combining mark or an emoji modifier inside one
     #     is never a target. -----------------------------------------------------------------------------------
     {"name": "f_combining_mark_finds_nothing", "lines": ["xáb"], "keys": "f́"},

@@ -40202,6 +40202,931 @@
       }
     },
     {
+      "name": "fail_ctrl_a_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$<C-a>k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_ctrl_x_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$<C-x>k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_f_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$fzk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_F_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$Fzk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_t_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$tzk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_l_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$lk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_count_l_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$2lk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_dfz_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$dfzk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_percent_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$%k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_d_percent_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$d%k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_unmatched_paren_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$])k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_unmatched_brace_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$[{k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_J_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$Jk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_gJ_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$gJk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_count_r_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$3rxk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_ctrl_i_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$<C-i>k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_tilde_empty_line_keeps_curswant",
+      "lines": [
+        "abc def",
+        ""
+      ],
+      "keys": "j$~k",
+      "expect": {
+        "text": [
+          "abc def",
+          ""
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_l_empty_line_keeps_curswant",
+      "lines": [
+        "abc def",
+        ""
+      ],
+      "keys": "j$lk",
+      "expect": {
+        "text": [
+          "abc def",
+          ""
+        ],
+        "cursor": [
+          1,
+          6
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "cancelled_search_keeps_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$/zzz<Esc>k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          29
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_search_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$/zzz<CR>k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_search_back_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$?zzz<CR>k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_d_search_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$d/zzz<CR>k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_n_no_pattern_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$nk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E35",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_di_paren_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$di(k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_da_bracket_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$da[k",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_backtick_mark_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$`ak",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_quote_mark_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$'ak",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_d_backtick_mark_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$d`ak",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_w_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$wk",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_e_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$ek",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_redo_resets_curswant",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "j$<C-r>k",
+      "setup": "let &undolevels = &undolevels",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          8
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_mark_jump_not_on_jumplist",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "wG$`a<C-o>",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E20",
+        "failed": true
+      }
+    },
+    {
+      "name": "fail_search_not_on_jumplist",
+      "lines": [
+        "ab cd ef ghijklmnop qrstuvwxyz",
+        "gh (ij kl"
+      ],
+      "keys": "wG$/zzz<CR><C-o>",
+      "expect": {
+        "text": [
+          "ab cd ef ghijklmnop qrstuvwxyz",
+          "gh (ij kl"
+        ],
+        "cursor": [
+          1,
+          3
+        ],
+        "reg_unnamed": {
+          "text": "",
+          "type": ""
+        },
+        "reg0": {
+          "text": "",
+          "type": ""
+        },
+        "emsg": "E486",
+        "failed": true
+      }
+    },
+    {
       "name": "f_combining_mark_finds_nothing",
       "lines": [
         "xáb"

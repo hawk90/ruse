@@ -302,12 +302,20 @@ pub(crate) fn run_cmd(
     status: &mut String,
     quit: &mut bool,
 ) {
-    if let Some(err) = put_error(&cmd, ws).or_else(|| mark_error(&cmd, ws)) {
+    if let Some(err) = put_error(&cmd, ws) {
         // Nothing runs; a `"x` the command would have read is spent, as in Vim. Recorded, so a replay does
         // not hand that register to the next command.
         *status = err;
         recorded.push(Command::SetRegister(None));
         ws.apply(&Command::SetRegister(None));
+        return;
+    }
+    if let Some(err) = mark_error(&cmd, ws) {
+        // The core fails the jump itself (a beep, nothing moved or recorded on the jumplist); it runs so the
+        // wanted column resets as nvim's `nv_mark_move_to` does (#1171), and a `"x` is spent.
+        *status = err;
+        recorded.push(cmd.clone());
+        ws.apply(&cmd);
         return;
     }
     let at = recorded.len();

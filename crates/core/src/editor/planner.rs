@@ -3186,33 +3186,33 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
             // `` `. `` — move to the last change position (snapped into range). No-op before any edit.
             match st.view.last_change() {
                 Some(pos) => nop(motion::snap(b, pos), st.view.mode),
-                None => nop(cur, st.view.mode),
+                None => beep(cur, st.view.mode),
             }
         }
         // `'.` — LINEWISE to the first non-blank of the last change's line. No-op before any edit.
         Command::GotoLastChangeLine => match st.view.last_change() {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `` `[ `` — to the FIRST char of the last changed/yanked text. No-op before any change/yank.
         Command::GotoChangeMarkStart => match st.view.change_mark_start() {
             Some(pos) => nop(mark_char_target(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `` `] `` — to the LAST char of the last changed/yanked text (EOL-clamped). No-op if unset.
         Command::GotoChangeMarkEnd => match st.view.change_mark_end() {
             Some(pos) => nop(mark_char_target(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `'[` — LINEWISE to the first non-blank of the `[` mark's line. No-op if unset.
         Command::GotoChangeMarkStartLine => match st.view.change_mark_start() {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `']` — LINEWISE to the first non-blank of the `]` mark's line. No-op if unset.
         Command::GotoChangeMarkEndLine => match st.view.change_mark_end() {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `` `< `` — to the START of the last visual selection. Charwise/blockwise: the byte-min end (the
         // block's top corner is that end). Linewise: column 0 of the first selected line (Vim). No-op if
@@ -3226,7 +3226,7 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 };
                 nop(mark_char_target(b, pos), st.view.mode)
             }
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `` `> `` — to the END of the last visual selection. Charwise/blockwise: the byte-max end. Linewise:
         // the last char of the last selected line (Vim clamps its MAXCOL `>` mark onto the last char). No-op
@@ -3240,28 +3240,28 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
                 };
                 nop(mark_char_target(b, pos), st.view.mode)
             }
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `'<` — LINEWISE to the first non-blank of the FIRST selected line. No-op if unset.
         Command::GotoVisualMarkStartLine => match st.view.last_visual_bounds() {
             Some((s, _e, _kind)) => nop(mark_line_target(b, s), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `'>` — LINEWISE to the first non-blank of the LAST selected line. No-op if unset.
         Command::GotoVisualMarkEndLine => match st.view.last_visual_bounds() {
             Some((_s, e, _kind)) => nop(mark_line_target(b, e), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `` `` `` — jump to the context mark (position before the latest jump). No-op before any jump. It is
         // itself a jump (`apply_command` records the leave position AFTER commit), so a repeat toggles.
         Command::GotoContextMark => match st.view.context_mark() {
             Some(pos) => nop(motion::snap(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `''` — LINEWISE to the first non-blank of the context mark's line. No-op before any jump.
         Command::GotoContextMarkLine => match st.view.context_mark() {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `g;`/`g,` — step the change list. The cursor here is a placeholder; `commit` steps `change_idx`
         // (a mutation the pure planner cannot make) and overrides it with the resolved change position.
@@ -3277,18 +3277,18 @@ fn plan_cmd(st: &EditorState, cmd: &Command) -> Plan {
         // A mark past a line's last char (`` `^ `` after `A`) lands on that char, as Vim's `check_cursor`.
         Command::GotoNamedMark(ch) => match st.view.named_mark(*ch) {
             Some(pos) => nop(mark_char_target(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `'{a-z}` — LINEWISE to the first non-blank of a named mark's line. No-op if unset.
         Command::GotoNamedMarkLine(ch) => match st.view.named_mark(*ch) {
             Some(pos) => nop(mark_line_target(b, pos), st.view.mode),
-            None => nop(cur, st.view.mode),
+            None => beep(cur, st.view.mode),
         },
         // `` d`{a-z} `` / `d'{a-z}` (and `c`/`y`): operate from the cursor to a named mark. `` ` `` is
         // exclusive charwise; `'` is linewise over the line range. No-op if the mark is unset.
         Command::OpToMark { op, name, linewise } => {
             let Some(mark) = st.view.named_mark(*name) else {
-                return nop(cur, st.view.mode);
+                return beep(cur, st.view.mode);
             };
             let mark = motion::snap(b, mark.min(b.len()));
             let (lo, hi) = (cur.min(mark), cur.max(mark));

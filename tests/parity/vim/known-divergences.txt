@@ -9,3 +9,4 @@ sc_edge_empty_Vd # as sc_edge_empty_dd: the oracle's empty line vs ruse's no-lin
 sc_edge_empty_ex_delete # as sc_edge_empty_dd: the oracle's empty line vs ruse's no-lines buffer (#906)
 fold_ex_range_takes_a_closed_fold_whole # an Ex range does not grow to whole closed folds (#819 follow-up)
 vb_C_cr_then_esc # nvim copies the text typed before a <CR> in a block change onto the next line; ruse replicates nothing (pre-existing)
+fail_n_no_pattern_resets_curswant # `n` with no previous pattern fails E35 inside the Vim input engine and no command reaches the core, so the wanted column is not reset as nvim's normal_search does (#1171 follow-up)
